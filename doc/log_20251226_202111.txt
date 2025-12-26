@@ -792,3 +792,4 @@ To load "dexador":
 [L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
 [L] 📊 RESEARCH: UP trend ✓ agrees
 [L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
