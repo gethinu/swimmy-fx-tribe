@@ -10,6 +10,8 @@
 (load (merge-pathnames "strategies.lisp" *load-truename*))
 (load (merge-pathnames "school.lisp" *load-truename*))
 (load (merge-pathnames "mixseek.lisp" *load-truename*))
+(load (merge-pathnames "research.lisp" *load-truename*))
+(load (merge-pathnames "llm-integration.lisp" *load-truename*))
 (load (merge-pathnames "evolution.lisp" *load-truename*))
 
 ;; Quality modules (Ver 38.1 EXCELLENCE)
