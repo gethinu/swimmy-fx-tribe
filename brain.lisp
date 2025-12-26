@@ -393,6 +393,56 @@
         (error (e) nil)))))
 
 ;;; ==========================================
+;;; LIVE STATUS JSON (Discord Bot Sync)
+;;; ==========================================
+;;; Write live status to JSON file for Discord bot to read
+
+(defparameter *live-status-path* "/home/swimmy/swimmy/.opus/live_status.json")
+(defparameter *live-status-interval* 60)  ; Write every 60 seconds
+(defparameter *last-status-write* 0)
+
+(defun save-live-status ()
+  "Write live status to JSON for Discord bot"
+  (let ((now (get-universal-time)))
+    ;; Only write every *live-status-interval* seconds
+    (when (> (- now *last-status-write*) *live-status-interval*)
+      (setf *last-status-write* now)
+      (handler-case
+          (progn
+            ;; Ensure directory exists
+            (ensure-directories-exist *live-status-path*)
+            (with-open-file (out *live-status-path* :direction :output :if-exists :supersede)
+              (let* ((progress (get-goal-progress))
+                     (ecosystem-health (if (fboundp 'calculate-ecosystem-health)
+                                           (* 100 (funcall 'calculate-ecosystem-health))
+                                           0))
+                     (leader-name (if (and (boundp '*current-leader*) *current-leader*)
+                                      (leader-info-strategy-name *current-leader*)
+                                      "UNKNOWN"))
+                     (regime-str (if (and (boundp '*current-regime*) *current-regime*)
+                                     (symbol-name *current-regime*)
+                                     "UNKNOWN"))
+                     (volatility-str (if (and (boundp '*volatility-regime*) *volatility-regime*)
+                                         (symbol-name *volatility-regime*)
+                                         "UNKNOWN"))
+                     (danger (if (boundp '*danger-level*) *danger-level* 0)))
+                (format out "{~%")
+                (format out "  \"daily_pnl\": ~,2f,~%" *daily-pnl*)
+                (format out "  \"accumulated_pnl\": ~,2f,~%" *accumulated-pnl*)
+                (format out "  \"monthly_goal\": ~d,~%" *monthly-goal*)
+                (format out "  \"goal_progress\": ~,2f,~%" (or (getf progress :progress-pct) 0))
+                (format out "  \"regime\": \"~a\",~%" regime-str)
+                (format out "  \"volatility\": \"~a\",~%" volatility-str)
+                (format out "  \"leader\": \"~a\",~%" leader-name)
+                (format out "  \"danger_level\": ~d,~%" danger)
+                (format out "  \"ecosystem_health\": ~,0f,~%" ecosystem-health)
+                (format out "  \"last_updated\": \"~a\"~%" (get-jst-str))
+                (format out "}~%")))
+            (format t "[L] 📝 Live status saved to JSON~%"))
+        (error (e) 
+          (format t "[L] ⚠️ Failed to save live status: ~a~%" e))))))
+
+;;; ==========================================
 ;;; EVALUATOR AI (Multi-Agent Debate)
 ;;; ==========================================
 ;;; A second "AI" that reviews proposals before execution
@@ -1865,7 +1915,9 @@
   (handler-case
       (let* ((json (jsown:parse msg)) (type (jsown:val json "type")))
         (cond
-          ((string= type "TICK") (update-candle (jsown:val json "bid") (jsown:val json "symbol")))
+          ((string= type "TICK") 
+           (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
+           (save-live-status))  ; Write status for Discord bot
           ((string= type "HISTORY")
            (let ((bars nil)
                  (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))

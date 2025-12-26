@@ -1,125 +1,417 @@
- Apex
- Gen 15 | Top: Mutant-10-31 (Elo 1436.)
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
 
 discode_webhook
 アプリ
- — 9:472025年12月26日 金曜日 9:47
+ — 12:522025年12月26日 金曜日 12:52
  Apex
- TREND closed 0.40
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ Scalp-Cross-5-12: Sharpe=2.45, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
  Apex
- REVERSION closed 0.40
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ TF-5-20: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
  Apex
- BREAKOUT closed 0.40
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ TF-10-50: Sharpe=5.22, Trades=10, Win=30.0%
+[12:52]2025年12月26日 金曜日 12:52
  Apex
- SCALP closed 0.40
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ Triple-EMA-Trend-Follow: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
  Apex
- USDJPY  Hunters (TREND) BUY 0.02 lot
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ Perfect-Order-SMA: Sharpe=4.84, Trades=12, Win=41.7%
+[12:52]2025年12月26日 金曜日 12:52
  Apex
- USDJPY  Shamans (REVERSION) BUY 0.06 lot
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+ Fibonacci-EMA-Scalp: Sharpe=2.45, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Conservative-Trend: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ MACD-Zero-Cross-Long: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ MACD-Signal-Cross: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ MACD-Expansion: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ RSI-Momentum-Break: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ RSI-Bull-Zone: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ RSI-Trend-Shift: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Elder-Impulse-Simulated: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Momentum-Burst: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ RSI-Overbought-Reversal: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ RSI-Short-Reversion: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-Lower-Bounce: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-Upper-Rejection: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-RSI-Reversion-Combo: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Extreme-Reversion-BB: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Stoch-Oversold-Entry: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Stoch-Overbought-Entry: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Stoch-Extreme-Dip: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-Breakout-Upper: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-Breakout-Lower: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ BB-Squeeze-Expansion: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ ATR-Confirmed-Breakout: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Crossover-Plus-MACD: Sharpe=2.47, Trades=36, Win=33.3%
+[12:52]2025年12月26日 金曜日 12:52
+ Apex
+ Pullback-Breakout: Sharpe=2.47, Trades=36, Win=33.3%
+
+discode_webhook
+アプリ
+ — 13:022025年12月26日 金曜日 13:02
+ Apex
+ USDJPY  Hunters (TREND) BUY 0.01 lot
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ USDJPY  Shamans (REVERSION) BUY 0.03 lot
+[13:02]2025年12月26日 金曜日 13:02
  Apex
  USDJPY  Breakers (BREAKOUT) BUY 0.01 lot
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:47]2025年12月26日 金曜日 9:47
+[13:02]2025年12月26日 金曜日 13:02
  Apex
  USDJPY  Raiders (SCALP) BUY 0.01 lot
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Golden-Cross-50-200: Sharpe=-16.12, Trades=2, Win=0.0%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Death-Cross-50-200: Sharpe=-16.12, Trades=2, Win=0.0%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Fast-EMA-Cross-9-21: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Medium-EMA-Cross-20-50: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Silver-Cross-20-100: Sharpe=9.39, Trades=4, Win=75.0%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Scalp-Cross-5-12: Sharpe=-2.90, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ TF-5-20: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ TF-10-50: Sharpe=5.22, Trades=10, Win=30.0%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Triple-EMA-Trend-Follow: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Perfect-Order-SMA: Sharpe=4.84, Trades=12, Win=41.7%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Fibonacci-EMA-Scalp: Sharpe=-2.90, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Trend-Pullback-Entry: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Conservative-Trend: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ MACD-Zero-Cross-Long: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ MACD-Signal-Cross: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ MACD-Above-Zero-Cross: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ MACD-Expansion: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-Momentum-Break: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-Fast-Break: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-Trend-Shift: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ MACD-RSI-Confluence: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Elder-Impulse-Simulated: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-Oversold-Reversal: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-Short-Reversion: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ RSI-2-Period-Connors: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ BB-Lower-Bounce: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ BB-RSI-Reversion-Combo: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Extreme-Reversion-BB: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Stoch-Overbought-Entry: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ BB-Breakout-Upper: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ BB-Squeeze-Expansion: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Bollinger-Band-Walk: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Triple-Screen-Proxy: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ Stoch-Pop: Sharpe=-2.88, Trades=36, Win=33.3%
+[13:02]2025年12月26日 金曜日 13:02
+ Apex
+ CCI-Trend-Breakout: Sharpe=-2.88, Trades=36, Win=33.3%
 
 discode_webhook
 アプリ
- — 9:552025年12月26日 金曜日 9:55
+ — 13:382025年12月26日 金曜日 13:38
  Apex
- Gen 16 | Top: Child-10-31 (Elo 1434.)
+ Gen 2 | Top: SMA-15-100 (Elo 1340.)
+
+discode_webhook
+アプリ
+ — 14:142025年12月26日 金曜日 14:14
+ Apex
+ Gen 3 | Top: SMA-15-100 (Elo 1435.)
+
+r-estoer
+
+BTC
+ — 14:162025年12月26日 金曜日 14:16
+swimmy all
+
+Swimmy-Bot
+アプリ
+ — 14:162025年12月26日 金曜日 14:16
+ Swimmy Status
+━━━━━━━━━━━━━━━━━
+ Daily PnL: ¥0
+ Total PnL: ¥0
+ Goal: 0.0%
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Danger: 0
+━━━━━━━━━━━━━━━━━
+ Updated: 14:15:35
+[14:16]2025年12月26日 金曜日 14:16
+ Goal Progress
+━━━━━━━━━━━━━━━━━
+ Monthly Target: ¥100,000
+� Current: ¥0
+ Progress: 0.0%
+ Remaining: ¥100,000
+━━━━━━━━━━━━━━━━━
+[14:16]2025年12月26日 金曜日 14:16
+ Market Status
+━━━━━━━━━━━━━━━━━
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Ecosystem Health: 0%
+━━━━━━━━━━━━━━━━━
+
+discode_webhook
+アプリ
+ — 14:502025年12月26日 金曜日 14:50
+ Apex
+ Gen 4 | Top: SMA-15-100 (Elo 1534.)
+
+discode_webhook
+アプリ
+ — 15:262025年12月26日 金曜日 15:26
+ Apex
+ Gen 5 | Top: SMA-20-200 (Elo 1403.)
+
+discode_webhook
+アプリ
+ — 16:022025年12月26日 金曜日 16:02
+ Apex
+ Gen 6 | Top: Mutant-20-200 (Elo 1425.)
+
+discode_webhook
+アプリ
+ — 16:382025年12月26日 金曜日 16:38
+ Apex
+ Gen 7 | Top: Mutant-24-200 (Elo 1404.)
+
+discode_webhook
+アプリ
+ — 16:542025年12月26日 金曜日 16:54
+ Apex
+ TREND closed 0.43
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ REVERSION closed 0.43
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ BREAKOUT closed 0.43
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ SCALP closed 0.43
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ USDJPY  Hunters (TREND) BUY 0.02 lot
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ USDJPY  Shamans (REVERSION) BUY 0.05 lot
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ USDJPY  Breakers (BREAKOUT) BUY 0.01 lot
+[16:54]2025年12月26日 金曜日 16:54
+ Apex
+ USDJPY  Raiders (SCALP) BUY 0.02 lot
+
+r-estoer
+
+BTC
+ — 17:032025年12月26日 金曜日 17:03
+swimmy all
+
+Swimmy-Bot
+アプリ
+ — 17:032025年12月26日 金曜日 17:03
+ Swimmy Status
+━━━━━━━━━━━━━━━━━
+ Daily PnL: ¥0
+ Total PnL: ¥0
+ Goal: 0.0%
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Danger: 0
+━━━━━━━━━━━━━━━━━
+ Updated: 17:02:38
+[17:03]2025年12月26日 金曜日 17:03
+ Goal Progress
+━━━━━━━━━━━━━━━━━
+ Monthly Target: ¥100,000
+� Current: ¥0
+ Progress: 0.0%
+ Remaining: ¥100,000
+━━━━━━━━━━━━━━━━━
+[17:03]2025年12月26日 金曜日 17:03
+ Market Status
+━━━━━━━━━━━━━━━━━
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Ecosystem Health: 0%
+━━━━━━━━━━━━━━━━━
+
+discode_webhook
+アプリ
+ — 17:142025年12月26日 金曜日 17:14
+ Apex
+ Gen 8 | Top: Mutant-24-200 (Elo 1404.)
+
+discode_webhook
+アプリ
+ — 17:502025年12月26日 金曜日 17:50
+ Apex
+ Gen 9 | Top: Mutant-24-200 (Elo 1404.)
+
+discode_webhook
+アプリ
+ — 18:262025年12月26日 金曜日 18:26
+ Apex
+ Gen 10 | Top: Mutant-24-200 (Elo 1404.)
+
+discode_webhook
+アプリ
+ — 19:022025年12月26日 金曜日 19:02
+ Apex
+ Gen 11 | Top: Mutant-24-200 (Elo 1404.)
+
+r-estoer
+
+BTC
+ — 19:092025年12月26日 金曜日 19:09
+swimmy all
+
+Swimmy-Bot
+アプリ
+ — 19:092025年12月26日 金曜日 19:09
+ Swimmy Status
+━━━━━━━━━━━━━━━━━
+ Daily PnL: ¥0
+ Total PnL: ¥0
+ Goal: 0.0%
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Danger: 0
+━━━━━━━━━━━━━━━━━
+ Updated: 19:09:01
+[19:09]2025年12月26日 金曜日 19:09
+ Goal Progress
+━━━━━━━━━━━━━━━━━
+ Monthly Target: ¥100,000
+� Current: ¥0
+ Progress: 0.0%
+ Remaining: ¥100,000
+━━━━━━━━━━━━━━━━━
+[19:09]2025年12月26日 金曜日 19:09
+ Market Status
+━━━━━━━━━━━━━━━━━
+ Regime: UNKNOWN
+ Volatility: UNKNOWN
+ Leader: UNKNOWN
+ Ecosystem Health: 0%
+━━━━━━━━━━━━━━━━━
+
+discode_webhook
+アプリ
+ — 19:382025年12月26日 金曜日 19:38
+ Apex
+ Gen 12 | Top: Mutant-24-200 (Elo 1404.)

@@ -1,0 +1,2962 @@
+🦀 Guardian (Full Duplex + Backtester + Neural Net) is activating...
+🔌 Connecting to Market Data: tcp://172.18.192.1:5557
+👂 Listening for Brain Commands on port 5559
+👊 Ready to punch commands to MT5 on port 5560
+🧠 Neural Network: READY
+🚀 System All Green. Loop Start.
+To load "pzmq":
+  Load 1 ASDF system:
+    pzmq
+; Loading "pzmq"
+
+To load "jsown":
+  Load 1 ASDF system:
+    jsown
+; Loading "jsown"
+
+To load "dexador":
+  Load 1 ASDF system:
+    dexador
+; Loading "dexador"
+.....
+[DSL] Kalman Filter loaded (ArXiv:1808.03297)
+[DSL] Loaded with CCI support
+[DSL] Advanced Macros loaded (PG-style)
+[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)
+[VS] Verbalized Sampling loaded (ArXiv:2510.01171)
+[L] 📚 Knowledge base loaded: 61 strategies
+[STRATEGIES] 61 strategies loaded from Knowledge Base
+[SCHOOL] Swimmy School ready
+[MIXSEEK] Competition System loaded
+[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders
+[EVOLUTION] Continuous evolution system loaded
+[ERRORS] Comprehensive error handling loaded
+[QUALITY] Code quality tools loaded
+[QUALITY] Run (swimmy-quality:analyze-code-quality) for analysis
+
+; file: /home/swimmy/swimmy/repl.lisp
+; in: DEFUN PRINT-PATTERNS
+;     (MAPHASH
+;      (LAMBDA (SWIMMY-REPL::NAME SWIMMY-REPL::INFO)
+;        (FORMAT T "~a: ~a~%" SWIMMY-REPL::NAME
+;                (GETF SWIMMY-REPL::INFO :DESCRIPTION)))
+;      *TRIBAL-DIALECT*)
+; --> SB-IMPL::HASH-TABLE-PAIRS 
+; ==>
+;   1
+; 
+; caught WARNING:
+;   undefined variable: COMMON-LISP-USER::*TRIBAL-DIALECT*
+
+;     (AND (BOUNDP '*TRIBAL-DIALECT*) *TRIBAL-DIALECT*)
+; 
+; caught WARNING:
+;   undefined variable: COMMON-LISP-USER::*TRIBAL-DIALECT*
+; 
+; compilation unit finished
+;   Undefined variable:
+;     COMMON-LISP-USER::*TRIBAL-DIALECT*
+;   caught 2 WARNING conditions
+
+; file: /home/swimmy/swimmy/repl.lisp
+; in: DEFUN PRINT-REPUTATION
+;     (GETHASH SWIMMY-REPL::NAME *REPUTATION-SCORES*)
+; 
+; caught WARNING:
+;   undefined variable: COMMON-LISP-USER::*REPUTATION-SCORES*
+
+;     (AND (BOUNDP '*REPUTATION-SCORES*) *REPUTATION-SCORES* SWIMMY-REPL::NAME)
+; ==>
+;   (IF (BOUNDP '*REPUTATION-SCORES*)
+;       *REPUTATION-SCORES*)
+; 
+; caught WARNING:
+;   undefined variable: COMMON-LISP-USER::*REPUTATION-SCORES*
+; 
+; compilation unit finished
+;   Undefined functions:
+;     COMMON-LISP-USER::REPUTATION-PROFIT-SCORE COMMON-LISP-USER::REPUTATION-RELIABILITY COMMON-LISP-USER::REPUTATION-TRUST-SCORE
+;   Undefined variable:
+;     COMMON-LISP-USER::*REPUTATION-SCORES*
+;   caught 2 WARNING conditions
+[REPL] Swimmy REPL interface loaded
+[REPL] Type (swimmy :help) for commands
+
+; file: /home/swimmy/swimmy/tests.lisp
+; in: DEFTEST TEST-AIF-MACRO
+;     (AIF (+ 1 2) SWIMMY-TESTS::IT NIL)
+; ==>
+;   (IF IT
+;       SWIMMY-TESTS::IT
+;       NIL)
+; 
+; caught WARNING:
+;   undefined variable: SWIMMY-TESTS::IT
+; 
+; compilation unit finished
+;   Undefined variable:
+;     IT
+;   caught 1 WARNING condition
+
+; file: /home/swimmy/swimmy/tests.lisp
+; in: DEFTEST TEST-AWHEN-MACRO
+;     (SETF SWIMMY-TESTS::RESULT SWIMMY-TESTS::IT)
+; ==>
+;   (THE T SWIMMY-TESTS::IT)
+; 
+; caught WARNING:
+;   undefined variable: SWIMMY-TESTS::IT
+; 
+; compilation unit finished
+;   Undefined variable:
+;     IT
+;   caught 1 WARNING condition
+[TESTS] Test framework loaded
+[TESTS] Run (swimmy-tests:run-all-tests) to execute
+
+[L] 🦈 Swimmy Ver 39.0 - CIVILIZATION COMPLETE
+[L] 🏛️ Hierarchy | 🤝 Economics | 👑 High Council
+[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect
+
+[L] ═══════════════════════════════════════
+[L] 🌅 MORNING RITUAL - The Clans Gather
+[L] ═══════════════════════════════════════
+
+[L] 📜 CONSTITUTION RECITATION:
+[L] 「勝とうとするな。ただ、生き残れ。
+[L]  そうすれば、最後に立っているのは我々だ。」
+
+[L] 📜 CONSTITUTION INITIALIZED (v1.0)
+[L] 📜 5 Core Values loaded
+[L] 📚 Loading Tribal Dialect...
+[L] 📚 4 patterns defined
+[L] 🏛️ THE FOUR GREAT CLANS STAND READY:
+
+[L] 🏹 Hunters (追跡者)「風が吹いている」
+[L] 🔮 Shamans (呪術師)「高すぎるものは落ちる」
+[L] ⚔️ Breakers (破壊者)「壁は壊された」
+[L] 🗡️ Raiders (盗賊)「隙あり」
+
+[L] 🎯 TODAY'S MISSION: 月間目標 ¥100,000 への道
+[L] ═══════════════════════════════════════
+
+[L] 🧬 73 arms. Portfolio: (69 65 66)
+[L] 📚 Strategies: 61 knowledge base + 0 evolved
+[L] ⚙️ Daily Limit: -500 | Max Losses: 3
+[L] 🧹 Closing all existing positions...
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"USDJPY","close_all":true}
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"EURUSD","close_all":true}
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"GBPUSD","close_all":true}
+⚡ COMMAND DETECTED: {"action":"REQ_HISTORY","symbol":"ALL","volume":0}
+[L] Unknown msg type: TRADE_CLOSED
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[L] 📚 USDJPY: 5000 bars
+[2025-12-26 13:02:00] USD.
+[L] 🧪 Starting batch backtest of 61 strategies...
+[L] 🧪 Batch testing 61 strategies...
+[L] 📊 Requesting backtest for Golden-Cross-50-200...
+📂 NN Model loaded from file
+🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 📤 Sent 32389 bytes to Rust
+[L] 📊 Requesting backtest for Death-Cross-50-200...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Golden-Cross-50-200
+  Candles: 500
+📈 Result: Sharpe=-16.12, Trades=2, PnL=-8.50
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Fast-EMA-Cross-9-21...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Death-Cross-50-200
+  Candles: 500
+📈 Result: Sharpe=-16.12, Trades=2, PnL=-8.50
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Medium-EMA-Cross-20-50...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Fast-EMA-Cross-9-21
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for Silver-Cross-20-100...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Medium-EMA-Cross-20-50
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32389 bytes to Rust
+[L] 📊 Requesting backtest for Scalp-Cross-5-12...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Silver-Cross-20-100
+  Candles: 500
+📈 Result: Sharpe=9.39, Trades=4, PnL=8.54
+[L] 📤 Sent 32385 bytes to Rust
+[L] 📊 Requesting backtest for TF-5-20...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Scalp-Cross-5-12
+  Candles: 500
+📈 Result: Sharpe=-2.90, Trades=36, PnL=-9.05
+[L] 📤 Sent 32376 bytes to Rust
+[L] 📊 Requesting backtest for TF-10-50...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: TF-5-20
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32377 bytes to Rust
+[L] 📊 Requesting backtest for Triple-EMA-Trend-Follow...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: TF-10-50
+  Candles: 500
+📈 Result: Sharpe=5.22, Trades=10, PnL=8.28
+[L] 📤 Sent 32392 bytes to Rust
+[L] 📊 Requesting backtest for Perfect-Order-SMA...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Triple-EMA-Trend-Follow
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for Fibonacci-EMA-Scalp...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Perfect-Order-SMA
+  Candles: 500
+📈 Result: Sharpe=4.84, Trades=12, PnL=8.46
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Trend-Pullback-Entry...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Fibonacci-EMA-Scalp
+  Candles: 500
+📈 Result: Sharpe=-2.90, Trades=36, PnL=-9.05
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Conservative-Trend...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Trend-Pullback-Entry
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for MACD-Zero-Cross-Long...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Conservative-Trend
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for MACD-Signal-Cross...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-Zero-Cross-Long
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for MACD-Above-Zero-Cross...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-Signal-Cross
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for MACD-Expansion...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-Above-Zero-Cross
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32382 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Momentum-Break...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-Expansion
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Bull-Zone...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Momentum-Break
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32381 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Fast-Break...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Bull-Zone
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32383 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Trend-Shift...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Fast-Break
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32383 bytes to Rust
+[L] 📊 Requesting backtest for MACD-RSI-Confluence...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Trend-Shift
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Elder-Impulse-Simulated...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-RSI-Confluence
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32392 bytes to Rust
+[L] 📊 Requesting backtest for Momentum-Burst...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Elder-Impulse-Simulated
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32384 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Oversold-Reversal...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Momentum-Burst
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32389 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Overbought-Reversal...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Oversold-Reversal
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32391 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Short-Reversion...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Overbought-Reversal
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for RSI-2-Period-Connors...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Short-Reversion
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for BB-Lower-Bounce...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-2-Period-Connors
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32384 bytes to Rust
+[L] 📊 Requesting backtest for BB-Upper-Rejection...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-Lower-Bounce
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for BB-RSI-Reversion-Combo...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-Upper-Rejection
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for Extreme-Reversion-BB...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-RSI-Reversion-Combo
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Stoch-Oversold-Entry...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Extreme-Reversion-BB
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Stoch-Overbought-Entry...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Stoch-Oversold-Entry
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for Stoch-Extreme-Dip...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Stoch-Overbought-Entry
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for BB-Breakout-Upper...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Stoch-Extreme-Dip
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32385 bytes to Rust
+[L] 📊 Requesting backtest for BB-Breakout-Lower...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-Breakout-Upper
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32385 bytes to Rust
+[L] 📊 Requesting backtest for BB-Squeeze-Expansion...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-Breakout-Lower
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Bollinger-Band-Walk...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: BB-Squeeze-Expansion
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Volatility-Trend-Follow...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Bollinger-Band-Walk
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32391 bytes to Rust
+[L] 📊 Requesting backtest for ATR-Confirmed-Breakout...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Volatility-Trend-Follow
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for Session-Breakout-Proxy...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: ATR-Confirmed-Breakout
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32390 bytes to Rust
+[L] 📊 Requesting backtest for Low-Vol-Breakout...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Session-Breakout-Proxy
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32384 bytes to Rust
+[L] 📊 Requesting backtest for Puria-Method-Proxy...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Low-Vol-Breakout
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for Holy-Grail-Proxy...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Puria-Method-Proxy
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32386 bytes to Rust
+[L] 📊 Requesting backtest for Triple-Screen-Proxy...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Holy-Grail-Proxy
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Trend-Scalp-1M...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Triple-Screen-Proxy
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32382 bytes to Rust
+[L] 📊 Requesting backtest for MACD-Zero-Reject...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Trend-Scalp-1M
+  Candles: 500
+📈 Result: Sharpe=-2.90, Trades=36, PnL=-9.05
+[L] 📤 Sent 32384 bytes to Rust
+[L] 📊 Requesting backtest for Crossover-Plus-MACD...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MACD-Zero-Reject
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Simple-Momentum-Sync...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Crossover-Plus-MACD
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Stoch-Reversal...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Simple-Momentum-Sync
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Aggressive-Reversal...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Stoch-Reversal
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+[L] 📊 Requesting backtest for Double-Bollinger-Trend...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Aggressive-Reversal
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32391 bytes to Rust
+[L] 📊 Requesting backtest for MA-Ribbon-Scalp...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Double-Bollinger-Trend
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32383 bytes to Rust
+[L] 📊 Requesting backtest for Stoch-Momentum-Cross...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: MA-Ribbon-Scalp
+  Candles: 500
+📈 Result: Sharpe=-2.04, Trades=71, PnL=-9.02
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for Stoch-Pop...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Stoch-Momentum-Cross
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32379 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Volatility-Break...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Stoch-Pop
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32389 bytes to Rust
+[L] 📊 Requesting backtest for Pullback-Breakout...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: RSI-Volatility-Break
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32385 bytes to Rust
+[L] 📊 Requesting backtest for Bladerunner...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Pullback-Breakout
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32379 bytes to Rust
+[L] 📊 Requesting backtest for Sweet-Chariot-SMA-40...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Bladerunner
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32388 bytes to Rust
+[L] 📊 Requesting backtest for CCI-Trend-Breakout...
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: Sweet-Chariot-SMA-40
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📤 Sent 32387 bytes to Rust
+📊 BACKTEST REQUEST RECEIVED
+  Strategy: CCI-Trend-Breakout
+  Candles: 500
+📈 Result: Sharpe=-2.88, Trades=36, PnL=-8.98
+[L] 📊 Regime: RANGING | Volatility: HIGH (1.268%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 0, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🧬 Initial population: 41 strategies
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 🏹 Hunters (TREND) 🏹 BUY 0.01 lot (USDJPY) [WARMUP]
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. SMA-20-200 (Elo: 1224, Wins: 19)
+  2. SMA-12-100 (Elo: 1211, Wins: 20)
+  3. SMA-15-200 (Elo: 1198, Wins: 19)
+  4. SMA-12-200 (Elo: 1196, Wins: 18)
+  5. SMA-10-100 (Elo: 1178, Wins: 17)
+🧬 Evolution cycle complete. Population: 41
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.010000001,"sl":155.84401,"tp":156.394}
+[L] 🔮 Shamans (REVERSION) 🔮 BUY 0.03 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.025,"sl":155.84401,"tp":156.394}
+[L] ⚔️ Breakers (BREAKOUT) ⚔️ BUY 0.01 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.01,"sl":155.84401,"tp":156.394}
+[L] 🗡️ Raiders (SCALP) 🗡️ BUY 0.01 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.010000001,"sl":155.84401,"tp":156.394}
+[L] 📈 BACKTEST: Golden-Cross-50-200 | Sharpe=-16.12 | Trades=2 | PnL=-8.50 | Win=0.0%
+[L] 📈 BACKTEST: Death-Cross-50-200 | Sharpe=-16.12 | Trades=2 | PnL=-8.50 | Win=0.0%
+[L] 📈 BACKTEST: Fast-EMA-Cross-9-21 | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Medium-EMA-Cross-20-50 | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Silver-Cross-20-100 | Sharpe=9.39 | Trades=4 | PnL=8.54 | Win=75.0%
+[L] 📈 BACKTEST: Scalp-Cross-5-12 | Sharpe=-2.90 | Trades=36 | PnL=-9.05 | Win=33.3%
+[L] 📈 BACKTEST: TF-5-20 | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: TF-10-50 | Sharpe=5.22 | Trades=10 | PnL=8.28 | Win=30.0%
+[L] 📈 BACKTEST: Triple-EMA-Trend-Follow | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Perfect-Order-SMA | Sharpe=4.84 | Trades=12 | PnL=8.46 | Win=41.7%
+[L] 📈 BACKTEST: Fibonacci-EMA-Scalp | Sharpe=-2.90 | Trades=36 | PnL=-9.05 | Win=33.3%
+[L] 📈 BACKTEST: Trend-Pullback-Entry | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Conservative-Trend | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MACD-Zero-Cross-Long | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MACD-Signal-Cross | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MACD-Above-Zero-Cross | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MACD-Expansion | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Momentum-Break | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Bull-Zone | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Fast-Break | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Trend-Shift | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MACD-RSI-Confluence | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Elder-Impulse-Simulated | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Momentum-Burst | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Oversold-Reversal | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Overbought-Reversal | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Short-Reversion | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-2-Period-Connors | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-Lower-Bounce | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-Upper-Rejection | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-RSI-Reversion-Combo | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Extreme-Reversion-BB | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Stoch-Oversold-Entry | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Stoch-Overbought-Entry | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Stoch-Extreme-Dip | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-Breakout-Upper | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-Breakout-Lower | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: BB-Squeeze-Expansion | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Bollinger-Band-Walk | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Volatility-Trend-Follow | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: ATR-Confirmed-Breakout | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Session-Breakout-Proxy | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Low-Vol-Breakout | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Puria-Method-Proxy | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Holy-Grail-Proxy | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Triple-Screen-Proxy | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Trend-Scalp-1M | Sharpe=-2.90 | Trades=36 | PnL=-9.05 | Win=33.3%
+[L] 📈 BACKTEST: MACD-Zero-Reject | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Crossover-Plus-MACD | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Simple-Momentum-Sync | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Stoch-Reversal | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Aggressive-Reversal | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Double-Bollinger-Trend | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: MA-Ribbon-Scalp | Sharpe=-2.04 | Trades=71 | PnL=-9.02 | Win=31.0%
+[L] 📈 BACKTEST: Stoch-Momentum-Cross | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Stoch-Pop | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: RSI-Volatility-Break | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Pullback-Breakout | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Bladerunner | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: Sweet-Chariot-SMA-40 | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+[L] 📈 BACKTEST: CCI-Trend-Breakout | Sharpe=-2.88 | Trades=36 | PnL=-8.98 | Win=33.3%
+
+[L] 🏆 Generation 1 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. SMA-20-200 (Elo: 1224., Wins: 19)
+    2. SMA-12-100 (Elo: 1211., Wins: 20)
+    3. SMA-15-200 (Elo: 1198., Wins: 19)
+    4. SMA-12-200 (Elo: 1196., Wins: 18)
+    5. SMA-10-100 (Elo: 1178., Wins: 17)
+[2025-12-26 13:03:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:33.2% FLAT:30.5%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:04:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:05:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:33.2% FLAT:30.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:06:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:07:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:08:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:33.2% FLAT:30.2%
+[L] 📊 Regime: TRENDING | Volatility: HIGH (1.268%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:09:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:10:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:11:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:12:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:13:00] USD.🧠 PREDICT: BUY (36.5%) | UP:36.5% DOWN:33.2% FLAT:30.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:14:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.1%
+[L] 📊 Regime: TRENDING | Volatility: HIGH (1.268%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:15:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:16:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:17:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:18:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:33.2% FLAT:30.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:19:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:20:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:30.9%
+[L] 📊 Regime: TRENDING | Volatility: HIGH (1.267%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:21:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:31.0%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:22:00] USD.🧠 PREDICT: BUY (36.0%) | UP:36.0% DOWN:33.2% FLAT:30.8%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:23:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.0%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:24:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:33.2% FLAT:30.5%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:25:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:26:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 📊 Regime: TRENDING | Volatility: LOW (0.008%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:27:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.9%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:28:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:29:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 13:30:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:31:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:32:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 📊 Regime: TRENDING | Volatility: LOW (0.009%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:33:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:34:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:35:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:36:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:37:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:38:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.8%
+[L] 📊 Regime: TRENDING | Volatility: LOW (0.012%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 1, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. SMA-15-100 (Elo: 1340, Wins: 38)
+  2. SMA-10-100 (Elo: 1324, Wins: 35)
+  3. SMA-12-100 (Elo: 1319, Wins: 37)
+  4. SMA-20-200 (Elo: 1313, Wins: 36)
+  5. SMA-20-100 (Elo: 1273, Wins: 31)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 2 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. SMA-15-100 (Elo: 1340., Wins: 38)
+    2. SMA-10-100 (Elo: 1324., Wins: 35)
+    3. SMA-12-100 (Elo: 1319., Wins: 37)
+    4. SMA-20-200 (Elo: 1313., Wins: 36)
+    5. SMA-20-100 (Elo: 1273., Wins: 31)
+[2025-12-26 13:39:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:40:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:41:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:42:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.0%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:43:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:30.0%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 13:44:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 📊 Regime: TRENDING | Volatility: LOW (0.013%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:45:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:46:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:47:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:48:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:49:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:50:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.012%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:51:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:52:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:53:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.2%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:54:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:55:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:56:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:30.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:57:00] USD.🧠 PREDICT: BUY (35.7%) | UP:35.7% DOWN:33.2% FLAT:31.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 13:58:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.0%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 13:59:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:00:00] USD.🧠 PREDICT: BUY (34.1%) | UP:34.1% DOWN:33.3% FLAT:32.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:01:00] USD.🧠 PREDICT: BUY (34.1%) | UP:34.1% DOWN:33.3% FLAT:32.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:02:00] USD.🧠 PREDICT: BUY (34.0%) | UP:34.0% DOWN:33.3% FLAT:32.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (58.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:03:00] USD.🧠 PREDICT: BUY (34.0%) | UP:34.0% DOWN:33.3% FLAT:32.7%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:04:00] USD.🧠 PREDICT: BUY (34.1%) | UP:34.1% DOWN:33.3% FLAT:32.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:05:00] USD.🧠 PREDICT: BUY (34.1%) | UP:34.1% DOWN:33.3% FLAT:32.7%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:06:00] USD.🧠 PREDICT: BUY (34.2%) | UP:34.2% DOWN:33.3% FLAT:32.5%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:07:00] USD.🧠 PREDICT: BUY (34.3%) | UP:34.3% DOWN:33.3% FLAT:32.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:08:00] USD.🧠 PREDICT: BUY (34.5%) | UP:34.5% DOWN:33.3% FLAT:32.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (62.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:09:00] USD.🧠 PREDICT: BUY (34.8%) | UP:34.8% DOWN:33.3% FLAT:31.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:10:00] USD.🧠 PREDICT: BUY (35.0%) | UP:35.0% DOWN:33.3% FLAT:31.7%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:11:00] USD.🧠 PREDICT: BUY (35.6%) | UP:35.6% DOWN:33.2% FLAT:31.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:12:00] USD.🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:13:00] USD.🧠 PREDICT: BUY (35.1%) | UP:35.1% DOWN:33.3% FLAT:31.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:14:00] USD.🧠 PREDICT: BUY (35.3%) | UP:35.3% DOWN:33.2% FLAT:31.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (65.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 2, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. SMA-15-100 (Elo: 1435, Wins: 58)
+  2. SMA-10-100 (Elo: 1431, Wins: 55)
+  3. SMA-12-100 (Elo: 1400, Wins: 52)
+  4. SMA-20-200 (Elo: 1364, Wins: 54)
+  5. SMA-20-100 (Elo: 1319, Wins: 45)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 3 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. SMA-15-100 (Elo: 1435., Wins: 58)
+    2. SMA-10-100 (Elo: 1431., Wins: 55)
+    3. SMA-12-100 (Elo: 1400., Wins: 52)
+    4. SMA-20-200 (Elo: 1364., Wins: 54)
+    5. SMA-20-100 (Elo: 1319., Wins: 45)
+[2025-12-26 14:15:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:16:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:17:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:18:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:19:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:20:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.1% FLAT:29.6%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (67.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:21:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:22:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:23:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:30.9%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:24:00] USD.🧠 PREDICT: BUY (34.9%) | UP:34.9% DOWN:33.3% FLAT:31.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:25:00] USD.🧠 PREDICT: BUY (34.2%) | UP:34.2% DOWN:33.3% FLAT:32.5%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:26:00] USD.🧠 PREDICT: BUY (33.5%) | UP:33.5% DOWN:33.3% FLAT:33.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.011%)
+[L] 🔮 FORECAST: RANGING → RANGING (68.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:27:00] USD.🧠 PREDICT: HOLD (35.5%) | UP:31.2% DOWN:33.2% FLAT:35.5%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:28:00] USD.🧠 PREDICT: HOLD (36.1%) | UP:30.7% DOWN:33.2% FLAT:36.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:29:00] USD.🧠 PREDICT: HOLD (36.7%) | UP:30.1% DOWN:33.2% FLAT:36.7%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:30:00] USD.🧠 PREDICT: HOLD (37.3%) | UP:29.6% DOWN:33.1% FLAT:37.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:31:00] USD.🧠 PREDICT: HOLD (37.9%) | UP:29.0% DOWN:33.1% FLAT:37.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:32:00] USD.🧠 PREDICT: HOLD (38.5%) | UP:28.5% DOWN:33.0% FLAT:38.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.011%)
+[L] 🔮 FORECAST: RANGING → RANGING (69.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:33:00] USD.🧠 PREDICT: HOLD (39.1%) | UP:28.0% DOWN:33.0% FLAT:39.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:34:00] USD.🧠 PREDICT: HOLD (39.7%) | UP:27.5% DOWN:32.9% FLAT:39.7%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:35:00] USD.🧠 PREDICT: HOLD (40.3%) | UP:26.9% DOWN:32.8% FLAT:40.3%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:36:00] USD.🧠 PREDICT: HOLD (40.8%) | UP:26.4% DOWN:32.7% FLAT:40.8%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:37:00] USD.🧠 PREDICT: HOLD (39.0%) | UP:28.0% DOWN:33.0% FLAT:39.0%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:38:00] USD.🧠 PREDICT: HOLD (37.2%) | UP:29.7% DOWN:33.1% FLAT:37.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (69.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:39:00] USD.🧠 PREDICT: HOLD (35.4%) | UP:31.3% DOWN:33.2% FLAT:35.4%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:40:00] USD.🧠 PREDICT: HOLD (38.6%) | UP:28.4% DOWN:33.0% FLAT:38.6%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:41:00] USD.🧠 PREDICT: BUY (35.2%) | UP:35.2% DOWN:33.2% FLAT:31.5%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:42:00] USD.🧠 PREDICT: BUY (35.7%) | UP:35.7% DOWN:33.2% FLAT:31.1%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:43:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.6%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 14:44:00] USD.🧠 PREDICT: BUY (35.1%) | UP:35.1% DOWN:33.3% FLAT:31.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (70.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:45:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:31.0%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 14:46:00] USD.🧠 PREDICT: BUY (35.1%) | UP:35.1% DOWN:33.3% FLAT:31.6%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 14:47:00] USD.🧠 PREDICT: BUY (35.9%) | UP:35.9% DOWN:33.2% FLAT:30.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:48:00] USD.🧠 PREDICT: BUY (35.3%) | UP:35.3% DOWN:33.2% FLAT:31.4%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 14:49:00] USD.🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:50:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:33.2% FLAT:30.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (70.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 3, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. SMA-15-100 (Elo: 1534, Wins: 77)
+  2. SMA-10-100 (Elo: 1446, Wins: 71)
+  3. SMA-12-100 (Elo: 1387, Wins: 66)
+  4. SMA-20-100 (Elo: 1369, Wins: 62)
+  5. Mutant-10-100 (Elo: 1342, Wins: 37)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 4 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. SMA-15-100 (Elo: 1534., Wins: 77)
+    2. SMA-10-100 (Elo: 1446., Wins: 71)
+    3. SMA-12-100 (Elo: 1387., Wins: 66)
+    4. SMA-20-100 (Elo: 1369., Wins: 62)
+    5. Mutant-10-100 (Elo: 1342., Wins: 37)
+[2025-12-26 14:51:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:33.2% FLAT:31.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:52:00] USD.🧠 PREDICT: BUY (35.6%) | UP:35.6% DOWN:33.2% FLAT:31.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:53:00] USD.🧠 PREDICT: BUY (35.6%) | UP:35.6% DOWN:33.2% FLAT:31.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:54:00] USD.🧠 PREDICT: BUY (35.0%) | UP:35.0% DOWN:33.3% FLAT:31.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:55:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:56:00] USD.🧠 PREDICT: BUY (36.0%) | UP:36.0% DOWN:33.2% FLAT:30.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (71.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:57:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:58:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 14:59:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:00:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:01:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:02:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (71.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:03:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:04:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:05:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:06:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:07:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:08:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.012%)
+[L] 🔮 FORECAST: RANGING → RANGING (71.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:09:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:10:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:11:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 15:12:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:13:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:14:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:33.2% FLAT:30.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.015%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 15:15:00] USD.🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:16:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.4%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:17:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.4%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:18:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:19:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:20:00] USD.🧠 PREDICT: BUY (35.7%) | UP:35.7% DOWN:33.2% FLAT:31.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.014%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:21:00] USD.🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:22:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:23:00] USD.🧠 PREDICT: BUY (36.0%) | UP:36.0% DOWN:33.2% FLAT:30.8%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:24:00] USD.🧠 PREDICT: BUY (36.5%) | UP:36.5% DOWN:33.2% FLAT:30.4%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:25:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:26:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.1%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 4, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. SMA-20-200 (Elo: 1403, Wins: 72)
+  2. SMA-15-100 (Elo: 1390, Wins: 87)
+  3. Child-20-200 (Elo: 1380, Wins: 58)
+  4. Mutant-20-200 (Elo: 1375, Wins: 55)
+  5. Child-20-200 (Elo: 1279, Wins: 48)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 5 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. SMA-20-200 (Elo: 1403., Wins: 72)
+    2. SMA-15-100 (Elo: 1390., Wins: 87)
+    3. Child-20-200 (Elo: 1380., Wins: 58)
+    4. Mutant-20-200 (Elo: 1375., Wins: 55)
+    5. Child-20-200 (Elo: 1279., Wins: 48)
+[2025-12-26 15:27:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:28:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:29:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:30:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:31:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:32:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:33:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:34:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:35:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:36:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:37:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:38:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:39:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:40:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:41:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.6%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:42:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:43:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:44:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (72.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:45:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:33.2% FLAT:30.5%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:46:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:33.2% FLAT:31.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:47:00] USD.🧠 PREDICT: BUY (35.7%) | UP:35.7% DOWN:33.2% FLAT:31.1%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:48:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:33.2% FLAT:31.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:49:00] USD.🧠 PREDICT: BUY (35.3%) | UP:35.3% DOWN:33.2% FLAT:31.4%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:50:00] USD.🧠 PREDICT: BUY (35.0%) | UP:35.0% DOWN:33.3% FLAT:31.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 15:51:00] USD.🧠 PREDICT: BUY (34.5%) | UP:34.5% DOWN:33.3% FLAT:32.2%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:52:00] USD.🧠 PREDICT: BUY (35.3%) | UP:35.3% DOWN:33.2% FLAT:31.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 15:53:00] USD.🧠 PREDICT: BUY (36.0%) | UP:36.0% DOWN:33.2% FLAT:30.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:54:00] USD.🧠 PREDICT: BUY (35.2%) | UP:35.2% DOWN:33.2% FLAT:31.5%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:55:00] USD.🧠 PREDICT: BUY (35.9%) | UP:35.9% DOWN:33.2% FLAT:30.9%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:56:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:33.2% FLAT:31.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 15:57:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:31.0%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 15:58:00] USD.🧠 PREDICT: BUY (36.1%) | UP:36.1% DOWN:33.2% FLAT:30.7%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 15:59:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:33.2% FLAT:30.2%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 16:00:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 16:01:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:02:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 5, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-20-200 (Elo: 1425, Wins: 64)
+  2. SMA-20-200 (Elo: 1415, Wins: 82)
+  3. Child-20-200 (Elo: 1396, Wins: 66)
+  4. Child-20-200 (Elo: 1320, Wins: 59)
+  5. Mutant-24-200 (Elo: 1301, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 6 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-20-200 (Elo: 1425., Wins: 64)
+    2. SMA-20-200 (Elo: 1415., Wins: 82)
+    3. Child-20-200 (Elo: 1396., Wins: 66)
+    4. Child-20-200 (Elo: 1320., Wins: 59)
+    5. Mutant-24-200 (Elo: 1301., Wins: 20)
+[2025-12-26 16:03:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:04:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:05:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:06:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:07:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:33.2% FLAT:30.4%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:08:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:33.2% FLAT:30.1%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:09:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:10:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:11:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:12:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:13:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:14:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:15:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:16:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 16:17:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 16:18:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 16:19:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 16:20:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 16:21:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:22:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:23:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:24:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:33.2% FLAT:29.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:25:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:26:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:33.2% FLAT:29.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:27:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:28:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:29:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:30:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 16:31:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:32:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:33:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:34:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:35:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:36:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:37:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:38:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.6%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 6, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 7 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 16:39:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:40:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:41:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:42:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:43:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:44:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:45:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:46:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:33.2% FLAT:31.3%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:47:00] USD.🧠 PREDICT: BUY (34.9%) | UP:34.9% DOWN:33.3% FLAT:31.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] Unknown msg type: TRADE_CLOSED
+[2025-12-26 16:48:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:33.2% FLAT:31.0%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:49:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:33.2% FLAT:31.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:50:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:51:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:33.2% FLAT:30.2%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:52:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.6%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:53:00] USD.🧠 PREDICT: BUY (36.0%) | UP:36.0% DOWN:33.2% FLAT:30.8%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 16:54:00] USD.🧠 PREDICT: BUY (35.0%) | UP:35.0% DOWN:33.3% FLAT:31.8%
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"USDJPY"}
+[L] 🎓 NN Train: UP
+[L] ✅ SUCCESS: active | BUY RANGING | RSI:71. | Session:NEWYORK
+[L] 🐟 TREND CLOSED ✅ pnl=0.43
+🎓 TRAIN: target=0 (0=UP,1=DOWN,2=FLAT)
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"USDJPY"}
+[L] 🎓 NN Train: UP
+[L] ✅ SUCCESS: active | BUY RANGING | RSI:71. | Session:NEWYORK
+[L] 🐟 REVERSION CLOSED ✅ pnl=0.43
+🎓 TRAIN: target=0 (0=UP,1=DOWN,2=FLAT)
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"USDJPY"}
+[L] 🎓 NN Train: UP
+[L] ✅ SUCCESS: active | BUY RANGING | RSI:71. | Session:NEWYORK
+[L] 🐟 BREAKOUT CLOSED ✅ pnl=0.43
+🎓 TRAIN: target=0 (0=UP,1=DOWN,2=FLAT)
+⚡ COMMAND DETECTED: {"action":"CLOSE","symbol":"USDJPY"}
+[L] 🎓 NN Train: UP
+[L] ✅ SUCCESS: active | BUY RANGING | RSI:71. | Session:NEWYORK
+[L] 🐟 SCALP CLOSED ✅ pnl=0.43
+🎓 TRAIN: target=0 (0=UP,1=DOWN,2=FLAT)
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 🏹 Hunters (TREND) 🏹 BUY 0.02 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.020000001,"sl":156.27101,"tp":156.821}
+[L] 🔮 Shamans (REVERSION) 🔮 BUY 0.05 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.05,"sl":156.27101,"tp":156.821}
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.010000001,"sl":156.27101,"tp":156.821}
+[L] ⚔️ Breakers (BREAKOUT) ⚔️ BUY 0.01 lot (USDJPY) [WARMUP]
+[L] 🗡️ Raiders (SCALP) 🗡️ BUY 0.02 lot (USDJPY) [WARMUP]
+⚡ COMMAND DETECTED: {"action":"BUY","symbol":"USDJPY","volume":0.020000001,"sl":156.27101,"tp":156.821}
+[2025-12-26 16:55:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:32.7% FLAT:30.2%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:56:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:57:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.7%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 16:58:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 16:59:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:00:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:32.7% FLAT:30.1%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:01:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:32.7% FLAT:30.1%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 17:02:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.013%)
+[L] 🔮 FORECAST: RANGING → RANGING (73.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:03:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.7%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:04:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:05:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 17:06:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:07:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:32.7% FLAT:30.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:08:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.014%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:09:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:10:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:11:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:12:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 17:13:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 17:14:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:32.7% FLAT:30.1%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.013%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 7, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 8 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 17:15:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:16:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:17:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:18:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:32.7% FLAT:30.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:19:00] USD.🧠 PREDICT: BUY (36.7%) | UP:36.7% DOWN:32.7% FLAT:30.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:20:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:32.7% FLAT:30.4%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:21:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:22:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:32.7% FLAT:29.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:23:00] USD.🧠 PREDICT: BUY (37.8%) | UP:37.8% DOWN:32.7% FLAT:29.5%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:24:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:25:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:26:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:27:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:28:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:29:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.5%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:30:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 17:31:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:32:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 17:33:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:34:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:35:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:36:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:37:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:38:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.009%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 17:39:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.2%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:40:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:41:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 17:42:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.0%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:43:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:44:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:45:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:46:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:47:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:48:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:49:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:50:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 8, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 9 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 17:51:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:52:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:53:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:54:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 17:55:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:56:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:57:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 17:58:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 17:59:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:00:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:32.7% FLAT:29.8%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:01:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:32.7% FLAT:29.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:02:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:03:00] USD.🧠 PREDICT: BUY (36.5%) | UP:36.5% DOWN:32.7% FLAT:30.8%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 18:04:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:32.7% FLAT:30.8%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:05:00] USD.🧠 PREDICT: BUY (36.7%) | UP:36.7% DOWN:32.7% FLAT:30.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:06:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:32.7% FLAT:30.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:07:00] USD.🧠 PREDICT: BUY (35.5%) | UP:35.5% DOWN:32.8% FLAT:31.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:08:00] USD.🧠 PREDICT: BUY (35.3%) | UP:35.3% DOWN:32.8% FLAT:31.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:09:00] USD.🧠 PREDICT: BUY (35.4%) | UP:35.4% DOWN:32.8% FLAT:31.8%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:10:00] USD.🧠 PREDICT: BUY (35.7%) | UP:35.7% DOWN:32.8% FLAT:31.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:11:00] USD.🧠 PREDICT: BUY (35.8%) | UP:35.8% DOWN:32.8% FLAT:31.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:12:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:13:00] USD.🧠 PREDICT: BUY (35.9%) | UP:35.9% DOWN:32.8% FLAT:31.4%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:14:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:32.7% FLAT:31.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:15:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:32.7% FLAT:30.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:16:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:32.7% FLAT:31.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:17:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:32.7% FLAT:30.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:18:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:19:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:20:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.010%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:21:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:32.7% FLAT:30.2%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:22:00] USD.🧠 PREDICT: BUY (37.8%) | UP:37.8% DOWN:32.7% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:23:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:24:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:25:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:26:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.011%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → NORMAL (INCREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 9, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 10 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 18:27:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 18:28:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:29:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:30:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:31:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:32:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:33:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:34:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:35:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.0%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:36:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 18:37:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:38:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.008%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:39:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.6%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:40:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:41:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:42:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:43:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:44:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:45:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:46:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:47:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.7% FLAT:29.2%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 18:48:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:49:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:50:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:51:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:52:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.2%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:53:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 18:54:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 18:55:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 18:56:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 18:57:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:58:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 18:59:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:00:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:01:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:02:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 10, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 11 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 19:03:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:04:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:05:00] USD.🧠 PREDICT: BUY (38.1%) | UP:38.1% DOWN:32.7% FLAT:29.3%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:06:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:07:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:08:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:09:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:10:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:11:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:12:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:13:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:14:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:15:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:16:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:17:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:18:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:19:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:20:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.005%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:21:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:22:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:23:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 19:24:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 19:25:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:29.0%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:26:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.005%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:27:00] USD.🧠 PREDICT: BUY (37.8%) | UP:37.8% DOWN:32.7% FLAT:29.5%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:28:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:32.7% FLAT:30.1%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:29:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:30:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:31:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:32.7% FLAT:30.1%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:32:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:33:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.7%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:34:00] USD.🧠 PREDICT: BUY (36.9%) | UP:36.9% DOWN:32.7% FLAT:30.4%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:35:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:36:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:32.7% FLAT:29.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:37:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:32.7% FLAT:29.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:38:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:32.7% FLAT:30.2%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 11, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 12 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 19:39:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.7%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:40:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:32.7% FLAT:30.4%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:41:00] USD.🧠 PREDICT: BUY (36.5%) | UP:36.5% DOWN:32.7% FLAT:30.7%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:42:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:32.7% FLAT:30.9%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:43:00] USD.🧠 PREDICT: BUY (36.3%) | UP:36.3% DOWN:32.7% FLAT:30.9%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 19:44:00] USD.🧠 PREDICT: BUY (36.6%) | UP:36.6% DOWN:32.7% FLAT:30.6%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.007%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: HOLD (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: HOLD (67.% consensus)
+[L] ⏸️ HOLD: Weak consensus (67.%)
+[2025-12-26 19:45:00] USD.🧠 PREDICT: BUY (36.8%) | UP:36.8% DOWN:32.7% FLAT:30.5%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:46:00] USD.🧠 PREDICT: BUY (36.4%) | UP:36.4% DOWN:32.7% FLAT:30.9%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 19:47:00] USD.🧠 PREDICT: BUY (37.9%) | UP:37.9% DOWN:32.7% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 19:48:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:49:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:50:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:51:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.0%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:52:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:53:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:54:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:55:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:56:00] USD.🧠 PREDICT: BUY (37.8%) | UP:37.8% DOWN:32.7% FLAT:29.5%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.005%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:57:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:58:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 19:59:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:00:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:01:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 20:02:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.005%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (DECREASING)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 20:03:00] USD.🧠 PREDICT: BUY (38.2%) | UP:38.2% DOWN:32.6% FLAT:29.1%
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 20:04:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.9%
+[L] 🐟 SWARM: SELL (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: SELL (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[2025-12-26 20:05:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:06:00] USD.🧠 PREDICT: BUY (38.0%) | UP:38.0% DOWN:32.7% FLAT:29.4%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:07:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:32.7% FLAT:29.8%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:08:00] USD.🧠 PREDICT: BUY (37.0%) | UP:37.0% DOWN:32.7% FLAT:30.3%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.005%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 20:09:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 20:10:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:32.7% FLAT:29.6%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 20:11:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:32.7% FLAT:30.0%
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[2025-12-26 20:12:00] USD.🧠 PREDICT: BUY (38.3%) | UP:38.3% DOWN:32.6% FLAT:29.0%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 20:13:00] USD.🧠 PREDICT: BUY (37.8%) | UP:37.8% DOWN:32.7% FLAT:29.5%
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:14:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:32.7% FLAT:29.7%
+[L] 📊 Regime: RANGING | Volatility: LOW (0.006%)
+[L] 🔮 FORECAST: RANGING → RANGING (74.% confidence) | Vol: LOW → LOW (STABLE)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 0 | Diversity: 0.97 | Balance: 19.% | Health: 55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥2 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥2
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥2
+[L] ═══════════════════════════════════════
+
+[L] 🧬 Requesting evolution (Gen 12, 20 rounds)...
+🧬 EVOLVE REQUEST: 20 rounds
+🏆 Starting tournament with 41 strategies, 20 rounds
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+  Round 10/20 complete
+  Round 20/20 complete
+🏆 Tournament complete! Top 5:
+  1. Mutant-24-200 (Elo: 1404, Wins: 35)
+  2. Child-20-200 (Elo: 1354, Wins: 68)
+  3. Mutant-20-200 (Elo: 1350, Wins: 64)
+  4. SMA-20-200 (Elo: 1328, Wins: 87)
+  5. Mutant-23-200 (Elo: 1305, Wins: 20)
+🧬 Evolution cycle complete. Population: 41
+
+[L] 🏆 Generation 13 Complete!
+[L] 📊 Population: 41 strategies
+[L] 🥇 Top Strategies:
+    1. Mutant-24-200 (Elo: 1404., Wins: 35)
+    2. Child-20-200 (Elo: 1354., Wins: 68)
+    3. Mutant-20-200 (Elo: 1350., Wins: 64)
+    4. SMA-20-200 (Elo: 1328., Wins: 87)
+    5. Mutant-23-200 (Elo: 1305., Wins: 20)
+[2025-12-26 20:15:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:16:00] USD.🧠 PREDICT: BUY (38.6%) | UP:38.6% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:17:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[2025-12-26 20:18:00] USD.🧠 PREDICT: BUY (38.5%) | UP:38.5% DOWN:32.6% FLAT:28.8%
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[2025-12-26 20:19:00] USD.🧠 PREDICT: BUY (38.4%) | UP:38.4% DOWN:32.6% FLAT:28.9%
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] ⏸️ HOLD: Weak consensus (50.%)
