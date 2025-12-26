@@ -2164,7 +2164,7 @@
    *category-positions*))
 
 (defun process-category-trades (symbol bid ask)
-  "Process trades using Swarm Intelligence, Memory System, and Danger Avoidance"
+  "Process trades using Swarm Intelligence, Memory System, Danger Avoidance, AND Research Insights"
   (when (and (trading-allowed-p) *candle-history* (> (length *candle-history*) 100))
     ;; First check if any positions need to be closed
     (close-category-positions symbol bid ask)
@@ -2172,6 +2172,15 @@
     ;; ===== DANGER AVOIDANCE: Check if safe to trade =====
     (unless (is-safe-to-trade-p)
       (return-from process-category-trades nil))
+    
+    ;; ===== RESEARCH ENHANCED ANALYSIS (Auto-integrated Paper Insights) =====
+    (let ((research-analysis nil))
+      (when (>= (length *candle-history*) 50)
+        (setf research-analysis (research-enhanced-analysis *candle-history*))
+        ;; Apply volatility-based model selection
+        (select-optimal-model *candle-history*)
+        ;; Detect HMM regime
+        (detect-regime-hmm *candle-history*))
     
     ;; ===== SWARM INTELLIGENCE: Collect votes from all strategies =====
     (let* ((swarm-decision (swarm-trade-decision symbol *candle-history*))
@@ -2181,10 +2190,20 @@
            (memory-suggestion (memory-suggests-direction symbol))
            (memory-confidence (if memory-suggestion 
                                   (get-memory-confidence symbol memory-suggestion)
-                                  0.5)))
+                                  0.5))
+           ;; ===== RESEARCH: Dual trend agreement check =====
+           (dual-trend (when research-analysis (getf research-analysis :dual-trend)))
+           (trend-agrees (or (null dual-trend)
+                            (eq (getf dual-trend :agreement) :aligned)
+                            (eq (getf dual-trend :direction) 
+                                (case swarm-direction (:BUY :UP) (:SELL :DOWN) (t :FLAT))))))
       
-      ;; Log collective decision
+      ;; Log collective decision with research enhancement
       (format t "[L] 🐟🐟🐟 SWARM: ~a (~,0f% consensus)~%" swarm-direction (* 100 consensus))
+      (when dual-trend
+        (format t "[L] 📊 RESEARCH: ~a trend ~a~%" 
+                (getf dual-trend :direction)
+                (if trend-agrees "✓ agrees" "⚠ diverges")))
       
       ;; Store consensus for trade execution (NEW)
       (defvar *last-swarm-consensus* 0)
@@ -2199,12 +2218,13 @@
       (let ((boosted-decision (get-leader-boosted-decision swarm-decision)))
         (setf swarm-decision boosted-decision))
       
-      ;; ===== UNIFIED DECISION MAKING =====
-      ;; Trade only if: Swarm consensus > 60% AND (Memory agrees OR no memory data)
+      ;; ===== UNIFIED DECISION MAKING (with Research Enhancement) =====
+      ;; Trade only if: Swarm consensus > 60% AND Memory agrees AND Research trend aligned
       (let ((should-trade (and (swarm-should-trade-p swarm-decision)
                                (or (null memory-suggestion)
                                    (eq memory-suggestion swarm-direction)
-                                   (< memory-confidence 0.55)))))  ; Weak memory can be ignored
+                                   (< memory-confidence 0.55))
+                               trend-agrees)))  ; Research paper insight: require trend alignment
         
         (if should-trade
             ;; All categories follow the swarm direction (群れで動く)
@@ -2223,7 +2243,9 @@
                (format t "[L] ⏸️ HOLD: Weak consensus (~,0f%)~%" (* 100 consensus)))
               ((and memory-suggestion (not (eq memory-suggestion swarm-direction)))
                (format t "[L] ⏸️ HOLD: Memory disagrees (~a vs ~a)~%" 
-                       memory-suggestion swarm-direction))))))))
+                       memory-suggestion swarm-direction))
+              ((not trend-agrees)
+               (format t "[L] ⏸️ HOLD: Research trend divergence~%")))))))))
 
 (defun init-school ()
   (build-category-pools)
