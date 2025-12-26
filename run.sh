@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Load secrets from .env file
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+else
+    echo "⚠️ Warning: .env file not found. Copy .env.template to .env and fill in secrets."
+fi
+
+# Log file setup
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/doc"
+LOG_FILE="$LOG_DIR/log_$(date +%Y%m%d_%H%M%S).txt"
+mkdir -p "$LOG_DIR"
+echo "📝 Logging to: $LOG_FILE"
+
+# 1. Kill old
+echo "💀 Killing old processes..."
+pkill -f "guardian"
+pkill -f "sbcl"
+pkill -f "discord_bot.py"
+
+# 2. Discord Bot (Python - for mobile interaction)
+echo "🤖 Starting Discord Bot..."
+.venv/bin/python discord_bot.py &
+DISCORD_BOT_PID=$!
+sleep 1
+
+# 3. Rust Guardian
+echo "🦀 Starting Guardian..."
+cd guardian
+./target/release/guardian 2>&1 | tee -a "$LOG_FILE" &
+GUARDIAN_PID=$!
+cd ..
+
+echo "⏳ Waiting for Guardian (2 sec)..."
+sleep 2
+
+# 4. Lisp Brain (output to both terminal and log file)
+echo "🧠 Starting Brain (Hyper-Evolution)..."
+sbcl --script brain.lisp 2>&1 | tee -a "$LOG_FILE"
+
+# Cleanup
+kill $GUARDIAN_PID 2>/dev/null
+
+trap "pkill -9 sbcl; pkill -9 guardian; exit" SIGINT

@@ -1,0 +1,35 @@
+# Swimmy Project - Git Ignore
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+doc/logs/
+nohup.out
+*.log
+
+# Secrets & Tokens
+.opus/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.bak
+*.tmp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust build artifacts (if any)
+guardian/target/
+
+# Guardian has its own git repo
+guardian/
