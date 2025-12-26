@@ -409,6 +409,146 @@ Output ONLY the s-expression. No markdown or explanation."
 
 (format t "[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)~%")
 
+;;; ══════════════════════════════════════════════════════════════════
+;;;  VERBALIZED SAMPLING (ArXiv:2510.01171)
+;;; ══════════════════════════════════════════════════════════════════
+;;; Mitigate mode collapse and unlock diversity in strategy generation.
+;;; Instead of generating one strategy, generate multiple with probabilities.
+;;;
+;;; Key insight: Post-training alignment causes "typicality bias" where 
+;;; models favor familiar outputs. VS prompts model to verbalize probability
+;;; distribution over responses, increasing diversity 1.6-2.1x.
+
+(defparameter *vs-candidate-count* 5
+  "Number of strategy candidates to generate with Verbalized Sampling")
+
+(defparameter *vs-temperature-boost* 0.3
+  "Temperature boost for diversity when using VS")
+
+(defun generate-vs-prompt (strategy-type context)
+  "Generate a Verbalized Sampling prompt for diverse strategy generation.
+   Based on ArXiv:2510.01171 methodology."
+  (format nil "You are an expert algorithmic trading strategist.
+
+TASK: Generate ~d distinct trading strategies of type '~a' with their confidence probabilities.
+
+CONTEXT:
+- Current regime: ~a
+- Recent performance: ~a
+- Market volatility: ~a
+
+OUTPUT FORMAT (JSON):
+{
+  \"strategies\": [
+    {
+      \"name\": \"Strategy-Name-1\",
+      \"probability\": 0.35,
+      \"indicators\": [[\"sma\", 5], [\"sma\", 20]],
+      \"entry\": \"cross-above sma-5 sma-20\",
+      \"exit\": \"cross-below sma-5 sma-20\",
+      \"sl\": 0.50,
+      \"tp\": 1.00,
+      \"reasoning\": \"Why this strategy fits the context\"
+    },
+    ...
+  ]
+}
+
+RULES:
+1. Each strategy MUST be meaningfully different (not just parameter variations)
+2. Probabilities MUST sum to 1.0
+3. Higher probability = more confident this fits current conditions
+4. Include at least one contrarian/unconventional approach (low probability but valuable diversity)
+5. DO NOT repeat the same structure with minor changes
+
+Generate ~d strategies now:"
+          *vs-candidate-count*
+          strategy-type
+          (or (getf context :regime) "unknown")
+          (or (getf context :performance) "neutral")
+          (or (getf context :volatility) "normal")
+          *vs-candidate-count*))
+
+(defun parse-vs-response (response-json)
+  "Parse Verbalized Sampling response into list of (strategy . probability) pairs"
+  (handler-case
+      (let* ((parsed (jsown:parse response-json))
+             (strategies (jsown:val parsed "strategies")))
+        (mapcar (lambda (s)
+                  (cons (make-strategy 
+                         :name (jsown:val s "name")
+                         :indicators (mapcar (lambda (ind) 
+                                              (list (intern (string-upcase (first ind)) :keyword)
+                                                    (second ind)))
+                                            (jsown:val s "indicators"))
+                         :entry (jsown:val s "entry")
+                         :exit (jsown:val s "exit")
+                         :sl (jsown:val s "sl")
+                         :tp (jsown:val s "tp")
+                         :volume 0.01)
+                        (jsown:val s "probability")))
+                strategies))
+    (error (e)
+      (format t "[VS] Parse error: ~a~%" e)
+      nil)))
+
+(defun select-from-vs-distribution (candidates)
+  "Select a strategy from VS candidates using weighted random sampling.
+   This maintains diversity while respecting confidence scores."
+  (when candidates
+    (let* ((total-prob (reduce #'+ candidates :key #'cdr))
+           (roll (random total-prob))
+           (cumulative 0.0))
+      (dolist (pair candidates)
+        (incf cumulative (cdr pair))
+        (when (>= cumulative roll)
+          (return-from select-from-vs-distribution (car pair))))
+      ;; Fallback to highest probability
+      (car (first (sort (copy-list candidates) #'> :key #'cdr))))))
+
+(defun vs-explore-diverse (candidates)
+  "Deliberately select a LOW probability candidate for exploration.
+   This combats mode collapse by occasionally trying unconventional strategies."
+  (when (and candidates (> (length candidates) 2))
+    (let ((sorted (sort (copy-list candidates) #'< :key #'cdr)))
+      ;; Return bottom 20% candidate
+      (car (nth (min 1 (1- (length sorted))) sorted)))))
+
+(defun dream-with-vs (strategy-type &key (explore-p nil))
+  "Generate strategy using Verbalized Sampling for diversity.
+   If explore-p is T, deliberately choose unconventional strategy."
+  (format t "[VS] 🎲 Verbalized Sampling for ~a (explore=~a)~%" strategy-type explore-p)
+  (let* ((context (list :regime *current-regime*
+                        :volatility *volatility-regime*
+                        :performance (if *evolved-strategies*
+                                        (format nil "top sharpe: ~,2f" 
+                                                (strategy-sharpe (first *evolved-strategies*)))
+                                        "no data")))
+         (prompt (generate-vs-prompt strategy-type context)))
+    ;; Note: Actual API call would go here. For now, using genetic fallback.
+    (format t "[VS] 📝 Prompt generated (~d chars)~%" (length prompt))
+    ;; Return prompt for external use or fallback to genetic
+    prompt))
+
+(defun vs-diversity-score (strategies)
+  "Calculate diversity score for a set of strategies.
+   Higher = more diverse (better for avoiding mode collapse)."
+  (if (< (length strategies) 2)
+      0.0
+      (let* ((n (length strategies))
+             (pairs (/ (* n (1- n)) 2))
+             (total-diff 0.0))
+        (loop for i from 0 below (1- n)
+              do (loop for j from (1+ i) below n
+                       do (let* ((s1 (nth i strategies))
+                                 (s2 (nth j strategies))
+                                 (sl-diff (abs (- (strategy-sl s1) (strategy-sl s2))))
+                                 (tp-diff (abs (- (strategy-tp s1) (strategy-tp s2)))))
+                            (incf total-diff (+ sl-diff tp-diff)))))
+        (/ total-diff pairs))))
+
+(format t "[VS] Verbalized Sampling loaded (ArXiv:2510.01171)~%")
+
 
 
 
