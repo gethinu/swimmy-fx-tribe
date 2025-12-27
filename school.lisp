@@ -2302,13 +2302,13 @@
            (macd-line (when (and ema12 ema26) (- ema12 ema26)))
            ;; ADX calculation
            (adx (when (>= (length history) 16)
-                  (let ((plus-dm 0) (minus-dm 0) (tr-sum 0))
+                  (let ((plus-dm 0.0) (minus-dm 0.0) (tr-sum 0.0))
                     (dotimes (i 14)
                       (let* ((c (nth i history)) (p (nth (1+ i) history)))
-                        (incf plus-dm (max 0 (- (candle-high c) (candle-high p))))
-                        (incf minus-dm (max 0 (- (candle-low p) (candle-low c))))
-                        (incf tr-sum (- (candle-high c) (candle-low c)))))
-                    (/ (abs (- plus-dm minus-dm)) (max (+ plus-dm minus-dm) 0.001) 0.01))))
+                        (incf plus-dm (float (max 0 (- (candle-high c) (candle-high p)))))
+                        (incf minus-dm (float (max 0 (- (candle-low p) (candle-low c)))))
+                        (incf tr-sum (float (- (candle-high c) (candle-low c))))))
+                    (float (* 100 (/ (abs (- plus-dm minus-dm)) (max (+ plus-dm minus-dm) 0.001)))))))
            ;; Research Paper #16: Kalman Filter Trend
            (kalman-trend (when (fboundp 'ind-kalman-trend) (ind-kalman-trend history)))
            ;; Research Paper #13: Dual Trend Signal

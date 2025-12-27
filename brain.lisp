@@ -1891,10 +1891,17 @@
       (let ((ask (+ bid 0.0002))
             (history (gethash symbol *candle-histories*)))
         ;; ===== V2.0: FOUR TRIBES SIGNAL COLLECTION =====
-        ;; TEMPORARILY DISABLED - ratio bug in ADX calculation causing errors
-        ;; TODO: Fix ADX calculation to return float, not ratio
-        ;; (when (and history (> (length history) 50))
-        ;;   ...)
+        (when (and history (> (length history) 50))
+          (handler-case
+              (let* ((tribe-signals (collect-all-tribe-signals symbol history))
+                     (aggregated (aggregate-tribe-signals tribe-signals))
+                     (direction (getf aggregated :direction))
+                     (consensus (getf aggregated :consensus)))
+                (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 (float (or consensus 0))))
+                ;; Store tribe decision for use in process-category-trades
+                (setf *tribe-direction* direction)
+                (setf *tribe-consensus* (float (or consensus 0))))
+            (error (e) (format t "[L] TRIBE warn: ~a~%" e))))
         ;; Category-based team trades (40/30/20/10 allocation)
         (process-category-trades symbol bid ask)))))
 (defun update-candle (bid symbol)
