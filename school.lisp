@@ -2197,6 +2197,8 @@
                   (record-strategy-trade (strategy-name lead-strat) 
                                          (if (> pnl 0) :win :loss) pnl)))
              (format t "[L] 🐟 ~a CLOSED ~a pnl=~,2f~%" category (if (> pnl 0) "✅" "❌") pnl)
+             ;; V2.0: Update clan treasury with trade profits/losses
+             (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "profit" "loss")))
              (notify-discord (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
    *category-positions*))
@@ -2369,17 +2371,29 @@
         (t (list :direction :hold :confidence 0.3 :clan :breakers))))))
 
 (defun get-raider-signal (symbol history)
-  "Raiders: Scalping using fast EMA crossover"
+  "Raiders: Scalping using fast EMA crossover + Kalman velocity"
   (when (and history (> (length history) 15))
     (let* ((close (candle-close (first history)))
            (ema3 (ind-ema 3 history))
            (ema8 (ind-ema 8 history))
            (prev-ema3 (when (> (length history) 4) (ind-ema 3 (cdr history))))
            (prev-ema8 (when (> (length history) 9) (ind-ema 8 (cdr history))))
+           ;; V2.0: Use Kalman velocity for momentum
+           (kalman-velocity (when (fboundp 'ind-kalman-velocity)
+                              (multiple-value-bind (price vel) (ind-kalman-velocity history)
+                                (declare (ignore price))
+                                vel)))
+           (strong-momentum (and kalman-velocity (> (abs kalman-velocity) 0.0002)))
            (golden-cross (and ema3 ema8 prev-ema3 prev-ema8 (> ema3 ema8) (<= prev-ema3 prev-ema8)))
            (death-cross (and ema3 ema8 prev-ema3 prev-ema8 (< ema3 ema8) (>= prev-ema3 prev-ema8)))
            (bullish (> close (candle-open (first history)))))
       (cond
+        ((and golden-cross bullish strong-momentum)
+         (format t "[L] 🗡️ [RAIDERS] BUY: EMA cross + Kalman velocity=~,5f~%" kalman-velocity)
+         (list :direction :buy :confidence 0.75 :clan :raiders))
+        ((and death-cross (not bullish) strong-momentum)
+         (format t "[L] 🗡️ [RAIDERS] SELL: EMA cross + Kalman velocity=~,5f~%" kalman-velocity)
+         (list :direction :sell :confidence 0.75 :clan :raiders))
         ((and golden-cross bullish)
          (format t "[L] 🗡️ [RAIDERS] BUY: EMA3/8 golden cross~%")
          (list :direction :buy :confidence 0.65 :clan :raiders))
