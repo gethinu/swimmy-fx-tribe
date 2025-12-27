@@ -793,3 +793,422 @@ To load "dexador":
 [L] 📊 RESEARCH: UP trend ✓ agrees
 [L] ✅ SCHOOL MOVES TOGETHER: BUY
 [L] 📝 Live status saved to JSON
+[2025-12-26 20:29:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 7.1329)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:30:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.9377)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:31:00] USD.🧠 PREDICT: BUY (36.2%) | UP:36.2% DOWN:33.2% FLAT:30.6%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.7753)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:32:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.6050)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:33:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.4161)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:34:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.3%
+[L] 📊 Regime: TRENDING | Volatility: HIGH (1.272%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.2553)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:35:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 6.0845)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] 📊 RESEARCH: UP trend ⚠ diverges
+[L] ⏸️ HOLD: Research trend divergence
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:36:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.5%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.9139)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: SELL (50.% consensus)
+[L] 📊 RESEARCH: UP trend ⚠ diverges
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:37:00] USD.🧠 PREDICT: BUY (37.4%) | UP:37.4% DOWN:33.1% FLAT:29.4%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.7551)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:38:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.6069)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:39:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.7%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.4288)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:40:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[L] 📊 Regime: TRENDING | Volatility: HIGH (1.272%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥0 / ¥100,000 (0.0%)
+[L] 📅 Day 1 | Expected: ¥4,546 | Actual: ¥0
+[L] ⚠️ Pace: 0.% (BEHIND)
+[L] 📊 Today's target: ¥4,546 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.2354)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (33.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (33.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:41:00] USD.🧠 PREDICT: BUY (37.1%) | UP:37.1% DOWN:33.2% FLAT:29.8%
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: SWARM | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 5.0760)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Normal volatility (1.24%): Swarm mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:42:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.9093)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:43:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.7362)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: BUY (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:44:00] USD.🧠 PREDICT: BUY (37.5%) | UP:37.5% DOWN:33.1% FLAT:29.4%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.5636)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: SELL
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:45:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, DIVERGENT)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.3927)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: SELL (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: SELL (67.% consensus)
+[L] 📊 RESEARCH: UP trend ⚠ diverges
+[L] ⏸️ HOLD: Research trend divergence
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:46:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.5%
+[L] 📊 Regime: TRENDING | Volatility: LOW (0.008%)
+[L] 🌿 ECOSYSTEM: Health=55.%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.2396)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟🐟🐟 SWARM: HOLD (50.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ⏸️ HOLD: Weak consensus (50.%)
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:47:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 4.0721)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (67.% consensus, 4 for/2 against)
+[L] 🐟🐟🐟 SWARM: BUY (67.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:48:00] USD.🧠 PREDICT: BUY (37.7%) | UP:37.7% DOWN:33.1% FLAT:29.2%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 3.9150)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:49:00] USD.🧠 PREDICT: BUY (37.6%) | UP:37.6% DOWN:33.1% FLAT:29.3%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 3.7461)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:50:00] USD.🧠 PREDICT: BUY (37.2%) | UP:37.2% DOWN:33.2% FLAT:29.7%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 3.5843)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY
+[L] 📝 Live status saved to JSON
+[2025-12-26 20:51:00] USD.🧠 PREDICT: BUY (37.3%) | UP:37.3% DOWN:33.1% FLAT:29.6%
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] Dual Trend: UP (strength: 0.17, ALIGNED)
+[RESEARCH] Model: KALMAN | Regime: TRENDING-UP
+[RESEARCH] Mean Reversion: NEUTRAL (dev: 3.4146)
+[RESEARCH] ═══════════════════════════════════════
+[RESEARCH] 📊 Low volatility (0.01%): Kalman mode
+[RESEARCH] 🔮 HMM Regime: TRENDING-UP (67.%)
+[L] 🐟 SWARM: BUY (83.% consensus, 5 for/1 against)
+[L] 🐟🐟🐟 SWARM: BUY (83.% consensus)
+[L] 📊 RESEARCH: UP trend ✓ agrees
+[L] ✅ SCHOOL MOVES TOGETHER: BUY

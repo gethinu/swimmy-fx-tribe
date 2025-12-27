@@ -1,0 +1,15 @@
+[Unit]
+Description=Swimmy Auto-Journal Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+Environment=DISPLAY=:0
+ExecStart=/home/swimmy/swimmy/.venv/bin/python -m auto_journal.auto_journal daemon
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -5,6 +5,9 @@
 (ql:quickload :jsown)
 (ql:quickload :dexador)
 
+;; Define candle struct BEFORE loading other files
+(defstruct candle timestamp open high low close volume)
+
 (load (merge-pathnames "dsl.lisp" *load-truename*))
 (load (merge-pathnames "dreamer2.lisp" *load-truename*))
 (load (merge-pathnames "strategies.lisp" *load-truename*))
@@ -19,7 +22,6 @@
 (load (merge-pathnames "quality.lisp" *load-truename*))
 (load (merge-pathnames "repl.lisp" *load-truename*))
 (load (merge-pathnames "tests.lisp" *load-truename*))
-(defstruct candle timestamp open high low close volume)
 
 (defun get-jst-str (&optional (ut (get-universal-time)))
   "Return current time as JST string [YYYY-MM-DD HH:MM:SS]"
@@ -47,6 +49,9 @@
 
 ;; Tribal Dialect forward declaration
 (defparameter *tribal-dialect* (make-hash-table :test 'equal))
+
+;; NOTE: clan struct and *clans* are defined in school.lisp (loaded earlier)
+;; The 4 tribes strategy functions are in school.lisp: get-hunter-signal, get-shaman-signal, etc.
 
 ;; Reputation System forward declaration
 (defparameter *reputation-scores* (make-hash-table :test 'equal))
@@ -1883,7 +1888,18 @@
       ;; (when (zerop (mod *dream-cycle* 3)) (dream-code))  ; Gemini - disabled
       (incf *dream-cycle*))
     (when (numberp bid)  ; Safety check for bid
-      (let ((ask (+ bid 0.0002)))
+      (let ((ask (+ bid 0.0002))
+            (history (gethash symbol *candle-histories*)))
+        ;; ===== V2.0: FOUR TRIBES SIGNAL COLLECTION =====
+        (when (and history (> (length history) 50))
+          (let* ((tribe-signals (collect-all-tribe-signals symbol history))
+                 (aggregated (aggregate-tribe-signals tribe-signals))
+                 (direction (getf aggregated :direction))
+                 (consensus (getf aggregated :consensus)))
+            (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 consensus))
+            ;; V2.0: Store tribe decision for use in process-category-trades
+            (setf *tribe-direction* direction)
+            (setf *tribe-consensus* consensus)))
         ;; Category-based team trades (40/30/20/10 allocation)
         (process-category-trades symbol bid ask)))))
 (defun update-candle (bid symbol)
@@ -2461,9 +2477,11 @@
   (format t "[L] ═══════════════════════════════════════~%~%"))
 
 (defun start-brain ()
-  (format t "~%[L] 🦈 Swimmy Ver 39.0 - CIVILIZATION COMPLETE~%")
-  (format t "[L] 🏛️ Hierarchy | 🤝 Economics | 👑 High Council~%")
+  (format t "~%[L] 🦈 Swimmy Ver 40.0 - V2.0 FOUR TRIBES~%")
+  (format t "[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders~%")
   (format t "[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect~%")
+  
+  ;; Clans already defined in school.lisp (Hunters, Shamans, Breakers, Raiders)
   
   ;; Initialize clan treasury
   (initialize-clan-treasury)

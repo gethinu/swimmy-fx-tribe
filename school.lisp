@@ -12,6 +12,10 @@
 (defvar *accumulated-pnl* 0)
 (defvar *monthly-goal* 100000)
 
+;; V2.0: Tribe signal integration
+(defvar *tribe-direction* :hold "Current tribe consensus direction")
+(defvar *tribe-consensus* 0.0 "Current tribe consensus strength")
+
 ;;; ==========================================
 ;;; PORTFOLIO CORRELATION RISK MANAGEMENT
 ;;; ==========================================
@@ -1725,12 +1729,20 @@
         (removed 0)
         (reproduced 0))
     
-    ;; Remove endangered species (poor performers)
+    ;; Remove endangered species (poor performers) WITH FUNERAL RITES
     (when endangered
+      (dolist (name endangered)
+        (let ((strat (find name *evolved-strategies* :key #'strategy-name :test #'string=)))
+          (when (and strat (> (random 1.0) 0.3))  ; 70% chance of extinction
+            (let ((final-pnl (or (strategy-sharpe strat) 0))
+                  (lessons (format nil "Strategy ~a failed in ~a regime" 
+                                   name (symbol-name (or *current-regime* :unknown)))))
+              ;; Hold funeral ceremony
+              (hold-funeral name final-pnl lessons)))))
       (setf *evolved-strategies* 
             (remove-if (lambda (s) 
                         (and (member (strategy-name s) endangered :test #'string=)
-                             (> (random 1.0) 0.3)))  ; 70% chance of extinction
+                             (> (random 1.0) 0.3)))
                       *evolved-strategies*))
       (setf removed (length endangered)))
     
@@ -2078,8 +2090,19 @@
 
 (defun execute-category-trade (category direction symbol bid ask)
   (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
-    (let* ((base-lot (get-category-lot category))
-           (lot (max 0.01 (correlation-adjusted-lot symbol base-lot)))  ; Correlation adjusted
+    (let* ((strategies (gethash category *active-team*))
+           (lead-strat (first strategies))
+           (lead-name (when lead-strat (strategy-name lead-strat)))
+           (rank-data (when lead-name (get-strategy-rank lead-name)))
+           (rank (if rank-data (strategy-rank-rank rank-data) :scout))
+           (rank-mult (calculate-rank-multiplier rank))  ; V2.0: Rank-based lot multiplier
+           (base-lot (get-category-lot category))
+           (history (gethash symbol *candle-histories*))
+           ;; V2.0 Research Paper #18: Volatility-scaled lot size
+           (vol-scaled-lot (if (and (fboundp 'volatility-scaled-lot) history)
+                               (volatility-scaled-lot base-lot history)
+                               base-lot))
+           (lot (max 0.01 (* rank-mult (correlation-adjusted-lot symbol vol-scaled-lot))))  ; Apply all adjustments
            (pos (gethash category *category-positions*))
            (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
            (pred (or (and (boundp '*last-prediction*) *last-prediction*) "HOLD"))
@@ -2094,11 +2117,20 @@
         ;; 1. Warmup period: trade freely to gather data
         ;; 2. High NN confidence (>35%) AND NN agrees 
         ;; 3. Strong swarm consensus (>70%)
+        ;; 4. V2.0: Strong tribe consensus (>60%) AND tribe agrees with direction
+        (let ((tribe-agrees (or warmup-p  ; Always true in warmup
+                                (and (> *tribe-consensus* 0.6)
+                                     (or (and (eq direction :buy) (eq *tribe-direction* :buy))
+                                         (and (eq direction :sell) (eq *tribe-direction* :sell)))))))
         (when (or warmup-p
                   (and (> conf 0.35)
                        (or (and (eq direction :buy) (string= pred "BUY"))
                            (and (eq direction :sell) (string= pred "SELL"))))
-                  (> swarm-consensus 0.70))  ; NEW: Swarm consensus override
+                  (> swarm-consensus 0.70)
+                  tribe-agrees)  ; V2.0: Tribe consensus override
+          ;; V2.0: Apply hedge logic for Breakers (aggressive trades get counter-hedge)
+          (when (eq category :breakout)
+            (apply-hedge-logic category))
           (cond
             ((and (eq direction :buy) (not pos))
              (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
@@ -2121,7 +2153,7 @@
                (format t "[L] ~a ~a SELL ~,2f lot (~a)~a~%" 
                        (get-clan-display category) (clan-emoji (get-clan category)) lot symbol 
                        (if warmup-p " [WARMUP]" ""))
-               (notify-discord (format nil "~a ~a ~a SELL ~,2f lot" (if warmup-p "🔥" "🧠") symbol (get-clan-display category) lot) :color 15158332)))))))))
+               (notify-discord (format nil "~a ~a ~a SELL ~,2f lot" (if warmup-p "🔥" "🧠") symbol (get-clan-display category) lot) :color 15158332))))))))))
 
 ;; Track entry prices for each category
 (defparameter *category-entries* (make-hash-table :test 'eq))
@@ -2158,6 +2190,11 @@
               (train-neural (if (> pnl 0) (if (eq pos :long) 0 1) (if (eq pos :long) 1 0)))
               ;; Record outcome for learning (both wins and losses)
               (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "active" pnl)
+              ;; V2.0: Record for hierarchy (promotions, ceremonies)
+              (let ((lead-strat (first (gethash category *active-team*))))
+                (when lead-strat
+                  (record-strategy-trade (strategy-name lead-strat) 
+                                         (if (> pnl 0) :win :loss) pnl)))
              (format t "[L] 🐟 ~a CLOSED ~a pnl=~,2f~%" category (if (> pnl 0) "✅" "❌") pnl)
              (notify-discord (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
@@ -2252,4 +2289,129 @@
   (clrhash *category-positions*)
   (format t "[SCHOOL] Swimmy School ready~%"))
 
+;;; ══════════════════════════════════════════════════════════════════
+;;;  4 GREAT CLANS - DISTINCT TRADING STRATEGIES
+;;; ══════════════════════════════════════════════════════════════════
+
+(defun get-hunter-signal (symbol history)
+  "Hunters: Trend following using MACD + ADX + Kalman (Research Paper #16, #13)"
+  (when (and history (> (length history) 50))
+    (let* ((ema12 (ind-ema 12 history))
+           (ema26 (ind-ema 26 history))
+           (macd-line (when (and ema12 ema26) (- ema12 ema26)))
+           ;; ADX calculation
+           (adx (when (>= (length history) 16)
+                  (let ((plus-dm 0) (minus-dm 0) (tr-sum 0))
+                    (dotimes (i 14)
+                      (let* ((c (nth i history)) (p (nth (1+ i) history)))
+                        (incf plus-dm (max 0 (- (candle-high c) (candle-high p))))
+                        (incf minus-dm (max 0 (- (candle-low p) (candle-low c))))
+                        (incf tr-sum (- (candle-high c) (candle-low c)))))
+                    (/ (abs (- plus-dm minus-dm)) (max (+ plus-dm minus-dm) 0.001) 0.01))))
+           ;; Research Paper #16: Kalman Filter Trend
+           (kalman-trend (when (fboundp 'ind-kalman-trend) (ind-kalman-trend history)))
+           ;; Research Paper #13: Dual Trend Signal
+           (dual-trend (when (fboundp 'dual-trend-signal) (dual-trend-signal history)))
+           (dual-dir (when dual-trend (getf dual-trend :direction)))
+           (dual-agreement (when dual-trend (getf dual-trend :agreement)))
+           ;; Combined conditions
+           (strong-trend (and adx (> adx 25)))
+           (kalman-confirms (or (null kalman-trend) 
+                                (and (eq kalman-trend :UP) macd-line (> macd-line 0))
+                                (and (eq kalman-trend :DOWN) macd-line (< macd-line 0))))
+           (dual-aligned (or (null dual-agreement) (eq dual-agreement :aligned))))
+      (cond
+        ((and strong-trend macd-line (> macd-line 0) kalman-confirms dual-aligned)
+         (format t "[L] 🏹 [HUNTERS] BUY: MACD+, ADX=~,1f, Kalman=~a, Dual=~a~%" 
+                 adx kalman-trend dual-dir)
+         (list :direction :buy :confidence (min 0.9 (+ 0.6 (* 0.01 (or adx 0)))) :clan :hunters))
+        ((and strong-trend macd-line (< macd-line 0) kalman-confirms dual-aligned)
+         (format t "[L] 🏹 [HUNTERS] SELL: MACD-, ADX=~,1f, Kalman=~a, Dual=~a~%" 
+                 adx kalman-trend dual-dir)
+         (list :direction :sell :confidence (min 0.9 (+ 0.6 (* 0.01 (or adx 0)))) :clan :hunters))
+        (t (list :direction :hold :confidence 0.3 :clan :hunters))))))
+
+(defun get-shaman-signal (symbol history)
+  "Shamans: Mean reversion using RSI + Bollinger"
+  (when (and history (> (length history) 30))
+    (let* ((close (candle-close (first history)))
+           (rsi (ind-rsi 14 history))
+           (bb (ind-bb 20 2 history))
+           (bb-lower (when bb (getf bb :lower)))
+           (bb-upper (when bb (getf bb :upper))))
+      (cond
+        ((and rsi (< rsi 30) bb-lower (< close bb-lower))
+         (format t "[L] 🔮 [SHAMANS] BUY: RSI=~,1f, below lower BB~%" rsi)
+         (list :direction :buy :confidence 0.7 :clan :shamans))
+        ((and rsi (> rsi 70) bb-upper (> close bb-upper))
+         (format t "[L] 🔮 [SHAMANS] SELL: RSI=~,1f, above upper BB~%" rsi)
+         (list :direction :sell :confidence 0.7 :clan :shamans))
+        (t (list :direction :hold :confidence 0.3 :clan :shamans))))))
+
+(defun get-breaker-signal (symbol history)
+  "Breakers: Breakout using ATR and range analysis"
+  (when (and history (> (length history) 30))
+    (let* ((close (candle-close (first history)))
+           (recent-20 (subseq history 0 (min 20 (length history))))
+           (range-high (reduce #'max (mapcar #'candle-high recent-20)))
+           (range-low (reduce #'min (mapcar #'candle-low recent-20)))
+           (atr (ind-atr 14 history))
+           (breakout-up (> close range-high))
+           (breakout-down (< close range-low)))
+      (cond
+        (breakout-up
+         (format t "[L] ⚔️ [BREAKERS] BUY: Breakout above ~,5f~%" range-high)
+         (list :direction :buy :confidence 0.75 :clan :breakers))
+        (breakout-down
+         (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown below ~,5f~%" range-low)
+         (list :direction :sell :confidence 0.75 :clan :breakers))
+        (t (list :direction :hold :confidence 0.3 :clan :breakers))))))
+
+(defun get-raider-signal (symbol history)
+  "Raiders: Scalping using fast EMA crossover"
+  (when (and history (> (length history) 15))
+    (let* ((close (candle-close (first history)))
+           (ema3 (ind-ema 3 history))
+           (ema8 (ind-ema 8 history))
+           (prev-ema3 (when (> (length history) 4) (ind-ema 3 (cdr history))))
+           (prev-ema8 (when (> (length history) 9) (ind-ema 8 (cdr history))))
+           (golden-cross (and ema3 ema8 prev-ema3 prev-ema8 (> ema3 ema8) (<= prev-ema3 prev-ema8)))
+           (death-cross (and ema3 ema8 prev-ema3 prev-ema8 (< ema3 ema8) (>= prev-ema3 prev-ema8)))
+           (bullish (> close (candle-open (first history)))))
+      (cond
+        ((and golden-cross bullish)
+         (format t "[L] 🗡️ [RAIDERS] BUY: EMA3/8 golden cross~%")
+         (list :direction :buy :confidence 0.65 :clan :raiders))
+        ((and death-cross (not bullish))
+         (format t "[L] 🗡️ [RAIDERS] SELL: EMA3/8 death cross~%")
+         (list :direction :sell :confidence 0.65 :clan :raiders))
+        (t (list :direction :hold :confidence 0.3 :clan :raiders))))))
+
+(defun collect-all-tribe-signals (symbol history)
+  "Collect signals from all 4 tribes"
+  (list (get-hunter-signal symbol history)
+        (get-shaman-signal symbol history)
+        (get-breaker-signal symbol history)
+        (get-raider-signal symbol history)))
+
+(defun aggregate-tribe-signals (signals)
+  "Aggregate tribe signals with weighted voting"
+  (let ((buy-w 0.0) (sell-w 0.0) (hold-w 0.0)
+        (allocs '(:hunters 0.40 :shamans 0.30 :breakers 0.20 :raiders 0.10)))
+    (dolist (sig signals)
+      (when sig
+        (let* ((clan (getf sig :clan))
+               (dir (getf sig :direction))
+               (conf (or (getf sig :confidence) 0.5))
+               (alloc (or (getf allocs clan) 0.25))
+               (w (* alloc conf)))
+          (case dir (:buy (incf buy-w w)) (:sell (incf sell-w w)) (t (incf hold-w w))))))
+    (let ((total (+ buy-w sell-w hold-w)))
+      (list :direction (cond ((and (> buy-w sell-w) (> buy-w hold-w)) :buy)
+                             ((and (> sell-w buy-w) (> sell-w hold-w)) :sell)
+                             (t :hold))
+            :consensus (if (> total 0) (/ (max buy-w sell-w hold-w) total) 0)
+            :signals signals))))
+
 (init-school)
+
