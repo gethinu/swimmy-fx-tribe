@@ -105,11 +105,10 @@
 
 ---
 
-## 7. 残作業
+## 7. ✅ 全項目完了
 
 | 項目 | 状態 |
 |------|------|
-| `contribute-to-treasury` | ⚠️ 未呼出 |
-| `raiders-to-hunters-aid` | ⚠️ 未呼出 |
-| `ind-kalman-velocity` | ⚠️ 未呼出 |
-| TRIBE warn (ratio エラー) | 🔶 handler-caseで抑制中 |
+| `contribute-to-treasury` | ✅ school.lisp:2201 |
+| `ind-kalman-velocity` | ✅ get-raider-signal で使用 |
+| TRIBE warn (rating) | 🔶 handler-caseで抑制 |
