@@ -1945,7 +1945,7 @@
                   (sharpe (jsown:val result "sharpe"))
                   (trades (jsown:val result "trades"))
                   (pnl (jsown:val result "pnl"))
-                  (win-rate (jsown:val result "win-rate")))
+                  (win-rate (handler-case (jsown:val result "win_rate") (error () 0))))
              (format t "[L] 📈 BACKTEST: ~a | Sharpe=~,2f | Trades=~d | PnL=~,2f | Win=~,1f%~%" 
                      name sharpe trades pnl win-rate)
              ;; Update strategy's sharpe score
