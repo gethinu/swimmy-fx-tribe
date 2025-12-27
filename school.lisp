@@ -2119,7 +2119,8 @@
         ;; 3. Strong swarm consensus (>70%)
         ;; 4. V2.0: Strong tribe consensus (>60%) AND tribe agrees with direction
         (let ((tribe-agrees (or warmup-p  ; Always true in warmup
-                                (and (> *tribe-consensus* 0.6)
+                                (and (numberp *tribe-consensus*)
+                                     (> (float *tribe-consensus*) 0.6)
                                      (or (and (eq direction :buy) (eq *tribe-direction* :buy))
                                          (and (eq direction :sell) (eq *tribe-direction* :sell)))))))
         (when (or warmup-p
@@ -2324,11 +2325,11 @@
         ((and strong-trend macd-line (> macd-line 0) kalman-confirms dual-aligned)
          (format t "[L] 🏹 [HUNTERS] BUY: MACD+, ADX=~,1f, Kalman=~a, Dual=~a~%" 
                  adx kalman-trend dual-dir)
-         (list :direction :buy :confidence (min 0.9 (+ 0.6 (* 0.01 (or adx 0)))) :clan :hunters))
+         (list :direction :buy :confidence (float (min 0.9 (+ 0.6 (* 0.01 (float (or adx 0)))))) :clan :hunters))
         ((and strong-trend macd-line (< macd-line 0) kalman-confirms dual-aligned)
          (format t "[L] 🏹 [HUNTERS] SELL: MACD-, ADX=~,1f, Kalman=~a, Dual=~a~%" 
                  adx kalman-trend dual-dir)
-         (list :direction :sell :confidence (min 0.9 (+ 0.6 (* 0.01 (or adx 0)))) :clan :hunters))
+         (list :direction :sell :confidence (float (min 0.9 (+ 0.6 (* 0.01 (float (or adx 0)))))) :clan :hunters))
         (t (list :direction :hold :confidence 0.3 :clan :hunters))))))
 
 (defun get-shaman-signal (symbol history)
@@ -2402,15 +2403,15 @@
       (when sig
         (let* ((clan (getf sig :clan))
                (dir (getf sig :direction))
-               (conf (or (getf sig :confidence) 0.5))
-               (alloc (or (getf allocs clan) 0.25))
-               (w (* alloc conf)))
+               (conf (float (or (getf sig :confidence) 0.5)))
+               (alloc (float (or (getf allocs clan) 0.25)))
+               (w (float (* alloc conf))))
           (case dir (:buy (incf buy-w w)) (:sell (incf sell-w w)) (t (incf hold-w w))))))
     (let ((total (+ buy-w sell-w hold-w)))
       (list :direction (cond ((and (> buy-w sell-w) (> buy-w hold-w)) :buy)
                              ((and (> sell-w buy-w) (> sell-w hold-w)) :sell)
                              (t :hold))
-            :consensus (if (> total 0) (/ (max buy-w sell-w hold-w) total) 0)
+            :consensus (if (> total 0.0) (float (/ (max buy-w sell-w hold-w) total)) 0.0)
             :signals signals))))
 
 (init-school)

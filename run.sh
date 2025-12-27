@@ -10,7 +10,7 @@ fi
 
 # Log file setup
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/doc"
+LOG_DIR="$SCRIPT_DIR/doc/logs"
 LOG_FILE="$LOG_DIR/log_$(date +%Y%m%d_%H%M%S).txt"
 mkdir -p "$LOG_DIR"
 echo "📝 Logging to: $LOG_FILE"

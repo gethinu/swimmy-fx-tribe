@@ -1892,14 +1892,17 @@
             (history (gethash symbol *candle-histories*)))
         ;; ===== V2.0: FOUR TRIBES SIGNAL COLLECTION =====
         (when (and history (> (length history) 50))
-          (let* ((tribe-signals (collect-all-tribe-signals symbol history))
-                 (aggregated (aggregate-tribe-signals tribe-signals))
-                 (direction (getf aggregated :direction))
-                 (consensus (getf aggregated :consensus)))
-            (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 consensus))
-            ;; V2.0: Store tribe decision for use in process-category-trades
-            (setf *tribe-direction* direction)
-            (setf *tribe-consensus* consensus)))
+          (handler-case
+              (let* ((tribe-signals (collect-all-tribe-signals symbol history))
+                     (aggregated (aggregate-tribe-signals tribe-signals))
+                     (direction (getf aggregated :direction))
+                     (consensus (getf aggregated :consensus)))
+                (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 (float (or consensus 0))))
+                ;; V2.0: Store tribe decision for use in process-category-trades
+                (setf *tribe-direction* direction)
+                (setf *tribe-consensus* (float (or consensus 0))))
+            (error (e)
+              (format t "[L] TRIBE ERR: ~a~%" e))))
         ;; Category-based team trades (40/30/20/10 allocation)
         (process-category-trades symbol bid ask)))))
 (defun update-candle (bid symbol)
@@ -1950,13 +1953,37 @@
                   (sharpe (jsown:val result "sharpe"))
                   (trades (jsown:val result "trades"))
                   (pnl (jsown:val result "pnl"))
-                  (win-rate (jsown:val result "win_rate")))
+                  (win-rate (jsown:val result "win-rate")))
              (format t "[L] 📈 BACKTEST: ~a | Sharpe=~,2f | Trades=~d | PnL=~,2f | Win=~,1f%~%" 
                      name sharpe trades pnl win-rate)
              ;; Update strategy's sharpe score
              (let ((strat (find name *evolved-strategies* :key #'strategy-name :test #'string=)))
                (when strat
                  (setf (strategy-sharpe strat) sharpe)
+                 ;; V2.0: AUTO-PARAMETER ADJUSTMENT based on performance
+                 (when (> trades 10)  ; Only adjust after sufficient data
+                   (cond
+                     ;; Poor performance: tighten SL, reduce volume
+                     ((or (< sharpe 0) (< win-rate 40))
+                      (when (strategy-sl strat)
+                        (setf (strategy-sl strat) (* 0.9 (strategy-sl strat))))  ; Reduce SL by 10%
+                      (when (strategy-volume strat)
+                        (setf (strategy-volume strat) (max 0.01 (* 0.8 (strategy-volume strat)))))  ; Reduce volume
+                      (format t "[L] ⚙️ 📉 ~a: Tightening params (poor perf)~%" name))
+                     ;; Good performance: widen TP, increase volume
+                     ((and (> sharpe 1.0) (> win-rate 55))
+                      (when (strategy-tp strat)
+                        (setf (strategy-tp strat) (* 1.1 (strategy-tp strat))))  ; Increase TP by 10%
+                      (when (strategy-volume strat)
+                        (setf (strategy-volume strat) (min 0.1 (* 1.2 (strategy-volume strat)))))  ; Increase volume
+                      (format t "[L] ⚙️ 📈 ~a: Expanding params (good perf)~%" name))
+                     ;; Average: adjust SL/TP ratio for better risk/reward
+                     ((and (> sharpe 0.5) (> win-rate 45))
+                      (when (and (strategy-sl strat) (strategy-tp strat))
+                        (let ((rr (/ (strategy-tp strat) (max 0.01 (strategy-sl strat)))))
+                          (when (< rr 2.0)  ; If R:R less than 2:1
+                            (setf (strategy-tp strat) (* 1.05 (strategy-tp strat)))
+                            (format t "[L] ⚙️ 🎯 ~a: Improving R:R ratio~%" name)))))))
                  (format t "[L] 📊 Updated ~a sharpe=~,2f~%" name sharpe)
                  ;; Sort evolved strategies by sharpe (best first)
                  (setf *evolved-strategies* 
