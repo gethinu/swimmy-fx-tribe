@@ -205,7 +205,7 @@ def daemon() -> None:
             # Auto-summarize at 23:00
             now = datetime.datetime.now()
             today = now.date()
-            if now.hour == 23 and now.minute < 2 and last_summary_date != today:
+            if now.hour == 23 and now.minute == 0 and last_summary_date != today:
                 print("[AutoJournal] Generating daily summary...")
                 summarize()
                 last_summary_date = today

@@ -11,6 +11,9 @@ doc/logs/
 nohup.out
 *.log
 
+# Auto-Journal data (screenshots, logs, reports)
+auto_journal/data/
+
 # Secrets & Tokens
 .opus/
 .env
