@@ -6,11 +6,13 @@
 | Component | Path |
 |-----------|------|
 | Brain (Lisp) | `/home/swimmy/swimmy/brain.lisp` |
-| School | `/home/swimmy/swimmy/school.lisp` |
-| DSL | `/home/swimmy/swimmy/dsl.lisp` |
+| School | `/home/swimmy/swimmy/src/lisp/school.lisp` |
+| DSL | `/home/swimmy/swimmy/src/lisp/dsl.lisp` |
 | Guardian (Rust) | `/home/swimmy/swimmy/guardian/src/main.rs` |
 | Run Script | `/home/swimmy/swimmy/run.sh` |
 | Genome | `/home/swimmy/swimmy/genome.lisp` |
+| Discord Bot | `/home/swimmy/swimmy/src/python/discord_bot.py` |
+| Config | `/home/swimmy/swimmy/config/.env` |
 
 ### Windows (MT5)
 | Component | Path |

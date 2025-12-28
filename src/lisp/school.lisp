@@ -1083,13 +1083,42 @@
         
         aid-amount))))
 
-(defun apply-hedge-logic (main-clan)
-  "Shamans and Raiders provide hedge for Breakers' aggressive trades"
-  (when (eq main-clan :breakout)
-    ;; Shamans prepare counter-position
-    (format t "[L] 🔮 Shamans: 「Breakersの突撃に備え、反動用意」~%")
-    ;; This would actually trigger a smaller reversion position
-    t))
+(defun apply-hedge-logic (main-clan direction symbol bid ask)
+  "Shamans provide hedge for Breakers' aggressive trades.
+   When Breakers go aggressive, Shamans take a small counter-position.
+   This is the 'inter-tribal cooperation' aspect of the civilization."
+  (when (and (eq main-clan :breakout)
+             (member direction '(:buy :sell)))
+    ;; Shamans take 30% size counter-position
+    (let* ((counter-direction (if (eq direction :buy) :sell :buy))
+           (hedge-lot 0.01)  ; Small hedge position
+           (hedge-sl 0.10)
+           (hedge-tp 0.20))
+      (format t "[L] 🔮 Shamans: 「Breakersの~a突撃に備え、~a反動用意」~%" 
+              direction counter-direction)
+      ;; Only execute hedge if we don't already have a Shaman position
+      (unless (gethash :reversion *category-positions*)
+        ;; Execute small counter-trade
+        (cond
+          ((eq counter-direction :buy)
+           (let ((sl (- bid hedge-sl)) (tp (+ bid hedge-tp)))
+             (pzmq:send *cmd-publisher* 
+                        (jsown:to-json 
+                         (jsown:new-js ("action" "BUY") ("symbol" symbol) 
+                                       ("volume" hedge-lot) ("sl" sl) ("tp" tp))))
+             (setf (gethash :reversion *category-positions*) :long)
+             (format t "[L] 🔮 Shamans HEDGE BUY ~,2f lot~%" hedge-lot)))
+          ((eq counter-direction :sell)
+           (let ((sl (+ ask hedge-sl)) (tp (- ask hedge-tp)))
+             (pzmq:send *cmd-publisher*
+                        (jsown:to-json 
+                         (jsown:new-js ("action" "SELL") ("symbol" symbol)
+                                       ("volume" hedge-lot) ("sl" sl) ("tp" tp))))
+             (setf (gethash :reversion *category-positions*) :short)
+             (format t "[L] 🔮 Shamans HEDGE SELL ~,2f lot~%" hedge-lot))))
+        ;; Log the inter-tribal cooperation
+        (format t "[L] 🤝 氏族間協力: Breakers攻撃 ⇔ Shamansヘッジ~%")
+        t))))
 
 (defun get-clan-treasury-summary ()
   "Get summary of all clan treasuries"
@@ -2108,9 +2137,29 @@
            (pred (or (and (boundp '*last-prediction*) *last-prediction*) "HOLD"))
            (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
            (sl-pips 0.15) (tp-pips 0.40)
-           (warmup-p (< *category-trades* 50)))  ; First 50 trades = warmup
+           (warmup-p (< *category-trades* 50))  ; First 50 trades = warmup
+           ;; V2.1: Conditions for High Council convening
+           (large-lot-p (> lot 0.05))      ; Large position needs council approval
+           (high-rank-p (member rank '(:veteran :legend)))  ; High rank strategy
+           (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))  ; High danger
       ;; Ensure conf is a number
       (setf conf (if (numberp conf) conf 0.0))
+      
+      ;; V2.1: Convene High Council for important decisions
+      (when (and (not warmup-p)
+                 (or large-lot-p high-rank-p danger-p)
+                 (fboundp 'convene-high-council))
+        (let* ((proposal (format nil "~a ~a ~,2f lot (~a戦略: ~a)"
+                                 symbol direction lot rank lead-name))
+               (urgency (cond (danger-p :critical)
+                              (large-lot-p :high)
+                              (t :normal)))
+               (council-result (convene-high-council proposal category :urgency urgency)))
+          ;; If council rejects, skip the trade
+          (when (eq council-result :rejected)
+            (format t "[L] 🏛️ HIGH COUNCIL REJECTED: ~a~%" proposal)
+            (return-from execute-category-trade nil))))
+      
       ;; Check for failure pattern BLOCK
       (unless (should-block-trade-p symbol direction category)
         ;; Trade conditions (FIXED - more permissive after warmup):
@@ -2131,7 +2180,7 @@
                   tribe-agrees)  ; V2.0: Tribe consensus override
           ;; V2.0: Apply hedge logic for Breakers (aggressive trades get counter-hedge)
           (when (eq category :breakout)
-            (apply-hedge-logic category))
+            (apply-hedge-logic category direction symbol bid ask))
           (cond
             ((and (eq direction :buy) (not pos))
              (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
@@ -2195,7 +2244,14 @@
               (let ((lead-strat (first (gethash category *active-team*))))
                 (when lead-strat
                   (record-strategy-trade (strategy-name lead-strat) 
-                                         (if (> pnl 0) :win :loss) pnl)))
+                                         (if (> pnl 0) :win :loss) pnl)
+                  ;; V2.1: Record failures for Failure Learning v2.0
+                  (when (and (< pnl 0) (fboundp 'record-failure))
+                    (record-failure symbol 
+                                    (if (eq pos :long) :buy :sell) 
+                                    category 
+                                    (strategy-name lead-strat)
+                                    pnl))))
              (format t "[L] 🐟 ~a CLOSED ~a pnl=~,2f~%" category (if (> pnl 0) "✅" "❌") pnl)
              ;; V2.0: Update clan treasury with trade profits/losses
              (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "profit" "loss")))
@@ -2259,33 +2315,46 @@
         (setf swarm-decision boosted-decision))
       
       ;; ===== UNIFIED DECISION MAKING (with Research Enhancement) =====
-      ;; Trade only if: Swarm consensus > 60% AND Memory agrees AND Research trend aligned
-      (let ((should-trade (and (swarm-should-trade-p swarm-decision)
-                               (or (null memory-suggestion)
-                                   (eq memory-suggestion swarm-direction)
-                                   (< memory-confidence 0.55))
-                               trend-agrees)))  ; Research paper insight: require trend alignment
-        
-        (if should-trade
-            ;; All categories follow the swarm direction (群れで動く)
+      ;; V2.1: Each clan follows their OWN signal (多様性重視)
+      ;; Swarm consensus is used as a FILTER, not a direction enforcer
+      (let* ((tribe-signals (collect-all-tribe-signals symbol *candle-history*))
+             (min-consensus-to-trade 0.4)  ; Lower threshold - allow disagreement
+             (any-strong-signal (some (lambda (sig) 
+                                        (and sig (> (float (or (getf sig :confidence) 0)) 0.6)))
+                                      tribe-signals)))
+        (if (or any-strong-signal
+                (> consensus min-consensus-to-trade))
+            ;; V2.1: Each clan trades according to their OWN philosophy
             (progn
-              (format t "[L] ✅ SCHOOL MOVES TOGETHER: ~a~%" swarm-direction)
-              (maphash 
-               (lambda (category strategies)
-                 (declare (ignore strategies))
-                 ;; All categories trade in the same direction
-                 (execute-category-trade category swarm-direction symbol bid ask))
-               *active-team*))
+              (format t "[L] 🏛️ CLANS TRADE INDEPENDENTLY~%")
+              (dolist (sig tribe-signals)
+                (when sig
+                  (let* ((clan-id (case (getf sig :clan)
+                                   (:hunters :trend) (:shamans :reversion)
+                                   (:breakers :breakout) (:raiders :scalp)
+                                   (t nil)))
+                         (direction (getf sig :direction))
+                         (conf (float (or (getf sig :confidence) 0))))
+                    (when (and clan-id 
+                               (member direction '(:buy :sell))
+                               (> conf 0.5))  ; Only trade if confidence > 50%
+                      (format t "[L] ~a ~a: ~a (conf ~,0f%)~%"
+                              (clan-emoji (get-clan clan-id))
+                              (clan-name (get-clan clan-id))
+                              direction (* 100 conf))
+                      (execute-category-trade clan-id direction symbol bid ask))))))
             
             ;; No trade - explain why
             (cond
-              ((not (swarm-should-trade-p swarm-decision))
-               (format t "[L] ⏸️ HOLD: Weak consensus (~,0f%)~%" (* 100 consensus)))
+              ((not any-strong-signal)
+               (format t "[L] ⏸️ HOLD: No strong clan signals~%"))
+              ((< consensus min-consensus-to-trade)
+               (format t "[L] ⏸️ HOLD: Very weak consensus (~,0f%)~%" (* 100 consensus)))
               ((and memory-suggestion (not (eq memory-suggestion swarm-direction)))
                (format t "[L] ⏸️ HOLD: Memory disagrees (~a vs ~a)~%" 
                        memory-suggestion swarm-direction))
               ((not trend-agrees)
-               (format t "[L] ⏸️ HOLD: Research trend divergence~%")))))))))
+               (format t "[L] ⏸️ HOLD: Research trend divergence~%"))))))))))
 
 (defun init-school ()
   (build-category-pools)
@@ -2335,39 +2404,110 @@
         (t (list :direction :hold :confidence 0.3 :clan :hunters))))))
 
 (defun get-shaman-signal (symbol history)
-  "Shamans: Mean reversion using RSI + Bollinger"
-  (when (and history (> (length history) 30))
+  "Shamans: Mean reversion using RSI + Bollinger + Research Paper #11 (Latent Mean Reversion)"
+  (when (and history (> (length history) 50))
     (let* ((close (candle-close (first history)))
            (rsi (ind-rsi 14 history))
            (bb (ind-bb 20 2 history))
            (bb-lower (when bb (getf bb :lower)))
-           (bb-upper (when bb (getf bb :upper))))
+           (bb-upper (when bb (getf bb :upper)))
+           (bb-middle (when bb (getf bb :middle)))
+           ;; Research Paper #11: Latent Mean Reversion Estimation
+           (mean-rev (when (fboundp 'estimate-mean-reversion)
+                       (estimate-mean-reversion history)))
+           (mean-signal (when mean-rev (getf mean-rev :signal)))
+           (deviation (when mean-rev (getf mean-rev :deviation)))
+           ;; HMM regime check - only trade reversion in ranging markets
+           (regime-ok (or (null *current-regime*)
+                          (member *current-regime* '(:RANGING :ranging :unknown))))
+           ;; Combined confidence
+           (rsi-extreme (or (and rsi (< rsi 25)) (and rsi (> rsi 75))))
+           (bb-extreme (or (and bb-lower (< close bb-lower))
+                           (and bb-upper (> close bb-upper))))
+           (mean-extreme (member mean-signal '(:OVERSOLD :OVERBOUGHT))))
       (cond
-        ((and rsi (< rsi 30) bb-lower (< close bb-lower))
-         (format t "[L] 🔮 [SHAMANS] BUY: RSI=~,1f, below lower BB~%" rsi)
-         (list :direction :buy :confidence 0.7 :clan :shamans))
-        ((and rsi (> rsi 70) bb-upper (> close bb-upper))
-         (format t "[L] 🔮 [SHAMANS] SELL: RSI=~,1f, above upper BB~%" rsi)
-         (list :direction :sell :confidence 0.7 :clan :shamans))
+        ;; Strong BUY: All indicators agree on oversold
+        ((and rsi (< rsi 30) bb-lower (< close bb-lower)
+              (or (null mean-signal) (eq mean-signal :OVERSOLD))
+              regime-ok)
+         (let ((conf (+ 0.6 
+                        (if rsi-extreme 0.1 0)
+                        (if mean-extreme 0.1 0)
+                        (if (and deviation (< deviation -0.5)) 0.1 0))))
+           (format t "[L] 🔮 [SHAMANS] BUY: RSI=~,1f, BB下限, Mean=~a (conf ~,0f%)~%" 
+                   rsi mean-signal (* 100 conf))
+           (list :direction :buy :confidence (min 0.9 conf) :clan :shamans)))
+        ;; Strong SELL: All indicators agree on overbought
+        ((and rsi (> rsi 70) bb-upper (> close bb-upper)
+              (or (null mean-signal) (eq mean-signal :OVERBOUGHT))
+              regime-ok)
+         (let ((conf (+ 0.6
+                        (if rsi-extreme 0.1 0)
+                        (if mean-extreme 0.1 0)
+                        (if (and deviation (> deviation 0.5)) 0.1 0))))
+           (format t "[L] 🔮 [SHAMANS] SELL: RSI=~,1f, BB上限, Mean=~a (conf ~,0f%)~%" 
+                   rsi mean-signal (* 100 conf))
+           (list :direction :sell :confidence (min 0.9 conf) :clan :shamans)))
+        ;; Medium BUY: RSI extreme only (mean reversion support)
+        ((and rsi (< rsi 25) mean-extreme (eq mean-signal :OVERSOLD) regime-ok)
+         (format t "[L] 🔮 [SHAMANS] BUY: RSI極端=~,1f, Mean=OVERSOLD~%" rsi)
+         (list :direction :buy :confidence 0.55 :clan :shamans))
+        ;; Medium SELL: RSI extreme only
+        ((and rsi (> rsi 75) mean-extreme (eq mean-signal :OVERBOUGHT) regime-ok)
+         (format t "[L] 🔮 [SHAMANS] SELL: RSI極端=~,1f, Mean=OVERBOUGHT~%" rsi)
+         (list :direction :sell :confidence 0.55 :clan :shamans))
+        ;; Default: HOLD
         (t (list :direction :hold :confidence 0.3 :clan :shamans))))))
 
 (defun get-breaker-signal (symbol history)
-  "Breakers: Breakout using ATR and range analysis"
-  (when (and history (> (length history) 30))
+  "Breakers: Breakout using ATR + Range + Research Paper #17/#18 (Volatility)"
+  (when (and history (> (length history) 50))
     (let* ((close (candle-close (first history)))
            (recent-20 (subseq history 0 (min 20 (length history))))
            (range-high (reduce #'max (mapcar #'candle-high recent-20)))
            (range-low (reduce #'min (mapcar #'candle-low recent-20)))
-           (atr (ind-atr 14 history))
+           (range-size (- range-high range-low))
+           (atr-14 (ind-atr 14 history))
+           (atr-50 (when (> (length history) 50) (ind-atr 50 history)))
+           ;; Research Paper #17/#18: Volatility expansion detection
+           (vol (when (fboundp 'calculate-realized-volatility)
+                  (calculate-realized-volatility history)))
+           (vol-expanding (and atr-14 atr-50 (> atr-14 (* 1.3 atr-50))))  ; ATR 30% above average
+           ;; BB squeeze detection (low volatility → breakout)
+           (bb (ind-bb 20 2 history))
+           (bb-width (when bb (- (getf bb :upper) (getf bb :lower))))
+           (squeeze-breakout (and bb-width atr-14 
+                                  (< bb-width (* 2 atr-14))))  ; Tight squeeze
+           ;; Breakout conditions
            (breakout-up (> close range-high))
-           (breakout-down (< close range-low)))
+           (breakout-down (< close range-low))
+           ;; Volume/momentum confirmation (if available)
+           (momentum-confirms (or vol-expanding squeeze-breakout)))
       (cond
+        ;; Strong Breakout UP: Price above range + volatility expanding
+        ((and breakout-up momentum-confirms)
+         (let ((conf (+ 0.7 (if vol-expanding 0.1 0) (if squeeze-breakout 0.1 0))))
+           (format t "[L] ⚔️ [BREAKERS] BUY: Breakout ~,5f + Vol拡大 (conf ~,0f%)~%" 
+                   range-high (* 100 conf))
+           (list :direction :buy :confidence (min 0.9 conf) :clan :breakers)))
+        ;; Strong Breakout DOWN: Price below range + volatility expanding
+        ((and breakout-down momentum-confirms)
+         (let ((conf (+ 0.7 (if vol-expanding 0.1 0) (if squeeze-breakout 0.1 0))))
+           (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown ~,5f + Vol拡大 (conf ~,0f%)~%" 
+                   range-low (* 100 conf))
+           (list :direction :sell :confidence (min 0.9 conf) :clan :breakers)))
+        ;; Medium Breakout: Price breakout without vol confirmation
         (breakout-up
-         (format t "[L] ⚔️ [BREAKERS] BUY: Breakout above ~,5f~%" range-high)
-         (list :direction :buy :confidence 0.75 :clan :breakers))
+         (format t "[L] ⚔️ [BREAKERS] BUY: Breakout above ~,5f (弱)~%" range-high)
+         (list :direction :buy :confidence 0.55 :clan :breakers))
         (breakout-down
-         (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown below ~,5f~%" range-low)
-         (list :direction :sell :confidence 0.75 :clan :breakers))
+         (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown below ~,5f (弱)~%" range-low)
+         (list :direction :sell :confidence 0.55 :clan :breakers))
+        ;; Squeeze alert (potential breakout coming)
+        (squeeze-breakout
+         (format t "[L] ⚔️ [BREAKERS] ALERT: Squeeze detected, breakout imminent~%")
+         (list :direction :hold :confidence 0.4 :clan :breakers))
+        ;; Default: HOLD
         (t (list :direction :hold :confidence 0.3 :clan :breakers))))))
 
 (defun get-raider-signal (symbol history)

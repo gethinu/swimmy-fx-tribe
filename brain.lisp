@@ -1876,6 +1876,10 @@
       (when (zerop (mod *dream-cycle* 6))
         (format t "[L] 🌱 Running natural selection...~%")
         (maintain-ecosystem-balance))
+      ;; ===== INTER-TRIBAL ECONOMICS: Calculate mutual aid every 3 cycles =====
+      (when (and (zerop (mod *dream-cycle* 3))
+                 (fboundp 'calculate-mutual-aid))
+        (calculate-mutual-aid))
       ;; ===== GOAL TRACKING: Report progress every 3 dream cycles =====
       (when (zerop (mod *dream-cycle* 3))
         (report-goal-status))
@@ -2503,7 +2507,7 @@
   (format t "[L] ═══════════════════════════════════════~%~%"))
 
 (defun start-brain ()
-  (format t "~%[L] 🦈 Swimmy Ver 40.0 - V2.0 FOUR TRIBES~%")
+  (format t "~%[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS~%")
   (format t "[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders~%")
   (format t "[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect~%")
   
