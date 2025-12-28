@@ -8,20 +8,20 @@
 ;; Define candle struct BEFORE loading other files
 (defstruct candle timestamp open high low close volume)
 
-(load (merge-pathnames "dsl.lisp" *load-truename*))
-(load (merge-pathnames "dreamer2.lisp" *load-truename*))
-(load (merge-pathnames "strategies.lisp" *load-truename*))
-(load (merge-pathnames "school.lisp" *load-truename*))
-(load (merge-pathnames "mixseek.lisp" *load-truename*))
-(load (merge-pathnames "research.lisp" *load-truename*))
-(load (merge-pathnames "llm-integration.lisp" *load-truename*))
-(load (merge-pathnames "evolution.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/dsl.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/dreamer2.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/strategies.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/school.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/mixseek.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/research.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/llm-integration.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/evolution.lisp" *load-truename*))
 
 ;; Quality modules (Ver 38.1 EXCELLENCE)
-(load (merge-pathnames "error-handling.lisp" *load-truename*))
-(load (merge-pathnames "quality.lisp" *load-truename*))
-(load (merge-pathnames "repl.lisp" *load-truename*))
-(load (merge-pathnames "tests.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/error-handling.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/quality.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/repl.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/tests.lisp" *load-truename*))
 
 (defun get-jst-str (&optional (ut (get-universal-time)))
   "Return current time as JST string [YYYY-MM-DD HH:MM:SS]"

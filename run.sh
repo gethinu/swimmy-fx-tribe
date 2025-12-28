@@ -2,10 +2,10 @@
 
 # Load secrets from .env file
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$SCRIPT_DIR/.env" ]; then
-    source "$SCRIPT_DIR/.env"
+if [ -f "$SCRIPT_DIR/config/.env" ]; then
+    source "$SCRIPT_DIR/config/.env"
 else
-    echo "⚠️ Warning: .env file not found. Copy .env.template to .env and fill in secrets."
+    echo "⚠️ Warning: config/.env file not found. Copy config/.env.template to config/.env and fill in secrets."
 fi
 
 # Log file setup
@@ -23,7 +23,7 @@ pkill -f "discord_bot.py"
 
 # 2. Discord Bot (Python - for mobile interaction)
 echo "🤖 Starting Discord Bot..."
-.venv/bin/python discord_bot.py &
+.venv/bin/python src/python/discord_bot.py &
 DISCORD_BOT_PID=$!
 sleep 1
 

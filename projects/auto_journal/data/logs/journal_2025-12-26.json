@@ -1,0 +1,583 @@
+[
+  {
+    "timestamp": "2025-12-26T21:53:32.890177",
+    "active_window": "Unknown",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "/home/swimmy/swimmy/auto_journal/data/screenshots/screenshot_20251226_215332.png"
+  },
+  {
+    "timestamp": "2025-12-26T21:57:37.453341",
+    "active_window": "Unknown",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "/home/swimmy/swimmy/auto_journal/data/screenshots/screenshot_20251226_215737.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:05:39.719947",
+    "active_window": "C:\\WINDOWS\\system32\\cmd.exe",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_220539.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:06:40.000921",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_220639.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:07:12.778141",
+    "active_window": "swimmy - エクスプローラー",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_220712.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:08:13.114788",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_220812.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:09:13.654376",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_220913.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:10:14.189765",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221013.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:11:14.571191",
+    "active_window": "#一般 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221114.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:12:14.942388",
+    "active_window": "連携サービス | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221214.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:13:15.327790",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221315.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:14:15.732392",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221415.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:15:16.100094",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - Walkthrough",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221515.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:16:03.624222",
+    "active_window": "#日報 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221603.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:17:03.974269",
+    "active_window": "Ubuntu (\\\\wsl$) (Z:) - エクスプローラー",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221703.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:17:49.030661",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - start_journal_hidden.vbs",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221748.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:18:04.350573",
+    "active_window": "#日報 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221804.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:18:49.416065",
+    "active_window": "#日報 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221849.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:19:04.723558",
+    "active_window": "管理者: Windows PowerShell",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221904.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:19:49.789780",
+    "active_window": "#日報 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_221949.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:20:05.104258",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222004.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:20:50.173960",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222049.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:21:05.491192",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222105.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:21:50.544039",
+    "active_window": "#日報 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222150.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:22:06.022360",
+    "active_window": "#一般 | 米国株自動売買 - Discord",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222205.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:22:51.095171",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222250.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:23:06.591783",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222306.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:23:51.664021",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222351.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:24:07.163744",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222406.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:24:52.225463",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222451.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:25:07.765900",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222507.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:25:52.805031",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - 論文_20251226.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222552.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:26:08.322607",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222607.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:26:53.374826",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222652.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:27:08.892586",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222708.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:27:53.922365",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222753.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:28:09.444166",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222808.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:28:54.465337",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222853.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:29:10.028674",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222909.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:29:55.008794",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_222954.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:30:10.563935",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223010.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:30:55.574216",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223055.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:31:11.133795",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223110.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:31:55.972329",
+    "active_window": "タイトルなし - メモ帳",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223155.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:32:11.553658",
+    "active_window": "*抽選キャンペーンページ - メモ帳",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223211.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:32:56.383426",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223256.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:33:11.937449",
+    "active_window": "10008785217 - MetaQuotes-Demo: デモ口座 - Hedge - MetaQuotes Ltd. - [USDJPY,M1]",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223311.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:33:56.799126",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223356.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:34:12.337424",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223411.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:34:57.204007",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223456.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:35:12.730677",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223512.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:35:57.614184",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223557.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:36:13.209268",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223612.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:36:58.030186",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223657.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:37:13.619432",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223713.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:37:58.436953",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223758.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:38:14.002945",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223813.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:38:58.824339",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223858.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:39:14.423065",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223914.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:39:59.243389",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_223958.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:40:14.846277",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224014.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:40:59.637990",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224059.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:41:15.243344",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224114.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:42:00.043710",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224159.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:42:15.649888",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224215.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:43:00.488397",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224300.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:43:16.052664",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - System Analysis",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224315.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:44:00.886979",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224400.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:44:16.453384",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224416.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:45:01.309761",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224500.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:45:16.858561",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224516.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:46:01.711703",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224601.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:46:17.262495",
+    "active_window": "*1儀式は存在するが呼ばれていない - coming-of-age、ho - メモ帳",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224616.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:47:02.115225",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224701.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:47:17.674246",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224717.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:48:02.518310",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224802.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:48:18.075536",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224817.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:49:02.951072",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224902.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:49:18.536153",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - IMPLEMENTATION_CHECKLIST.md",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_224918.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:50:03.315717",
+    "active_window": "Deep Learning and Financial Market Analysis Collection - NotebookLM および他 7 ページ - 個人用 2 - Microsoft​ Edge",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_225003.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:50:18.891943",
+    "active_window": "Deep Learning and Financial Market Analysis Collection - NotebookLM および他 7 ページ - 個人用 2 - Microsoft​ Edge",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_225018.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:51:03.673370",
+    "active_window": "swimmy [WSL: ubuntu] - Antigravity - bash",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_225103.png"
+  },
+  {
+    "timestamp": "2025-12-26T22:51:19.214181",
+    "active_window": "Untitled notebook - NotebookLM および他 7 ページ - 個人用 2 - Microsoft​ Edge",
+    "ocr_text": "",
+    "tags": [],
+    "screenshot": "Z:\\home\\swimmy\\swimmy\\auto_journal\\data\\screenshots\\screenshot_20251226_225118.png"
+  }
+]
