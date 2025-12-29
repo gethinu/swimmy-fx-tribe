@@ -1,764 +1,363 @@
-Gemini
-
-💎
-
-げ
-固定したチャット
-AI思考ワークフローの再現と応用
-副業向けAI部屋占いサービス再構成
-FXトレード戦略の作成依頼
-Swimmy: AI進化の戦略的ロードマップ
-ポイ活で月300円。 移動距離とアンケート回答で得たその小銭。 「隙間時間の有効活用」 真面目な人ほどそう捉えるけれど、構造を見ると逆です。 企業はあなたのデータが欲しいわけじゃない。 あなたの「判断のリソース」を安く買い叩いているだけ。 1ポイントのために広告を見せられ、 アプリを開くたびに思考が中断される。 これは努力の問題じゃない。 「判断のための脳のメモリ」を、小銭で切り売りさせる設計の問題。 夕方、大事な決断ができないほど疲れているのは、 仕事のせいだけではないかもしれません。 その疲れ、300円の価値はありましたか？ このポストに合うインフォグラフィック画像生成お願いします
-ポイ活は脳のメモリを奪う
-食費22万。 内訳は外食でも贅沢品でもない。 国産の野菜、安全な肉、まともな調味料。 家族の健康を考え、 当たり前の「和食」を選び続けた結果だ。 ここに、現代の残酷な構造がある。 「まともな食事」を維持するためには、 もはや「異常な働き方」をするしか選択肢がない。 あなたの首を絞めているのは、浪費癖ではない。 「家族に良いものを食べさせたい」という、 その真っ当すぎる「愛情」と「責任感」だ。 質を落とせば楽になる？ それができない性格だから、あなたは今日もそこに縛られている。 インフォグラフィックの画像生成お願いします。
-電車のドアが開いても、ほこりは外に出ない。 車内の気流に乗って、ふわりと舞い上がるだけ。 「ここなら上手く舞える」 そう錯覚しているように見える。 残業帰りの自分も同じだ。 「君がいないと困る」という上司の言葉。 この閉じた箱の中でだけ通用する、自分の価値。 それは優しさではない。 外の世界を忘れさせ、 心地よく飼い殺すための「柔らかい首輪」だ。 中の圧を下げて、依存させる。 そういう「設計」の中にいることに気づかない限り、 貴方はその首輪に守られたまま、 誰かの都合のいい場所へ運ばれて終わる。 このポスト文に合うインフォグラフィック画像を生成して。ちょっとだけ明るく。。
-🏕️キャンプ空室通知Botのアフィリエイト
-🎣🩸雑魚狩りその1：プロップファーム攻略に向けた開発指示
-副業アイデア：既存プラットフォーム活用
-AIコーダーへの誕生日プレゼント提案
-ナヴァル思想とアイデア創出
-何もしていない時が、一番幸せだったはずだ。 「とりあえずやってみよう」 その一歩を踏み出した瞬間、世界は牙を剥く。 頭の中では完璧だった計画が、 手ごたえのない現実に変わる。 自分がいかに無力で、 ゴールがいかに遠いか。 「やらなかった時」には見えなかった絶望が、鮮明に見えてくる。 多くの人がここで折れるのは、根性がないからじゃない。 一歩目は「前進」ではなく「解像度の上昇」だからだ。 夢見ていた「いつか」が、 対処すべき「タスク」に格下げされただけ。 さて。 知ってしまった以上、もう「知らない側」には戻れない。 進む地獄か、戻って腐る地獄か。 判断するのは、今のあなただ。 このポスト投稿に合うインフォグラフィックを生成してください。
-⭐️Lisp,Rust,swimmy
-Gemini との会話
-❶ 「脳」に渡すためのファクトを固める (1/7)
-
-
-
-まずは、思考の材料となる「事実」をNotebookLMにインプットします。
-
-ここでのポイントは「情報の純度」です。
-
-
-
-プロジェクトの仕様書、議事録、メンバーの日報、スケジュール表…関連する資料はすべてアップロードしてください。
-
-
-
-NotebookLMはソースに基づかない回答をしないため、ここが「絶対に嘘をつかないデータベース」になります。
-
-
-
-これが、AIが未来を予測するための「強固な土台」となります。
-
-
-
-次は、情報の純度を極限まで高めます
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❷ ノイズを除去し「事実」だけを抽出する (2/7)
-
-
-
-次に、集めた資料からGPT-5.2に渡すための「不純物のないエッセンス」を抽出します。 余計な解釈はいりません。事実だけを整理させます。
-
-
-
-【NotebookLMへの指示】
-
-「すべてのソースに基づき、現在の進捗状況、数値データ、顕在化している課題を客観的に網羅的に抽出して。主観的な解釈は不要です。出力できる限りの情報を徹底的に出力して。」
-
-
-
-この「純度の高い事実」を作ることが、次の思考モードの精度を極限まで高めます。
-
-
-
-次は、最強の指示書を作成します
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❸ 「Thinkingモード」を起動する指示書を作る (3/7)
-
-
-
-ここが最大の肝です。抽出した情報をコピペするだけでは、GPT-5.2の真価（Thinking）は発揮されません。
-
-「どのように思考すべきか」という指示書自体を、NotebookLMに書かせます。
-
-
-
-以下のプロンプトをNotebookLMに入力してください。
-
-※[タスク]部分のみ書き換えてください。
-
-
-
-——————
-
-【プロンプト生成指示】
-
-「これからGPT-5.2のThinkingモードに依頼します。以下の構成で、深い思考を促す最高のプロンプトを作成してください。
-
-
-
-・[役割]: ソース内容を熟知した最高レベルのプロジェクトマネージャー
-
-・[コンテキスト]: これまでの対話から重要事実を網羅的に要約して記載
-
-・[タスク]: ｛GPT-5.2に深く思考させたい課題や問い｝
-
-・[思考プロセス指示]: 直感で回答せず、過去のデータを元に論理的に推論し、複数のシナリオを検証してから結論を出すよう指示してください。」
-
-——————
-
-
-
-これにより、ChatGPT5.2に送るプロンプトが完成します。
-
-
-
-準備は整いました。次は、ChatGPTでの実践です
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❹「指示書」と「事実」を合体させて覚醒させる (4/7)
-
-
-
-いよいよ実行フェーズです。 NotebookLMで作った「設計図（プロンプト）」と「素材（事実）」を、ChatGPT 5.2に流し込みます。
-
-
-
-この「合体」の手順が、最強のアウトプットを生む鍵です。
-
-
-
-【ChatGPT 5.2への入力手順】
-
-
-
-1. ❸で生成された「プロンプト（指示書）」を貼り付け
-
-2. 改行して、その下に❷で抽出した「事実データ」を貼り付け
-
-3. 送信ボタンをON
-
-
-
-「最高の指示」×「純度100%の事実」。 この2つがセットされた瞬間、GPT-5.2のThinkingモードが覚醒し、あなたの代わりに猛烈な勢いで思考を開始します。
-
-
-
-次は、衝撃の実践例です
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❺ 実践例①：プロジェクトの未来を「予知」する (5/7)
-
-
-
-「このまま進めて大丈夫か？」という不安を、論理的な予測に変えます。
-
-
-
-【NotebookLMでの準備】
-
-進行中のプロジェクト資料、直近の進捗ログ、トラブル報告を整理。
-
-
-
-【GPT-5.2への指示（タスク）】
-
-「現在の進捗ペースと発生している小さな摩擦から、3ヶ月後のプロジェクトの状態をシミュレーションして。 『成功確率』をパーセントで出し、失敗するとしたら『何が致命的な原因（真犯人）』になるか、論理的に特定して」
-
-
-
-→ 経験則や勘ではなく、データに基づいた「未来の危機」を先回りして検知できます。
-
-
-
-次は、目標達成への最短ルートです
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❻ 実践例②：ゴールへの「最短ルート」を逆算する (6/7)
-
-
-
-「目標はあるが、道筋が見えない」という悩みを解消します。
-
-
-
-【NotebookLMでの準備】
-
-チームのリソース（人員・予算）、過去の類似案件のデータ、目標定義書を整理。
-
-
-
-【GPT-5.2への指示（タスク）】
-
-「リソースと期限を考慮し、目標を確実に達成するための『週間ロードマップ』を作成して。 理想論ではなく、現実的なリスクを織り込み、ボトルネックになりそうな箇所には『事前の回避策』もセットで配置して」
-
-
-
-→ ゴールから逆算された、明日から動ける「確実な勝ち筋」が手に入ります。
-
-
-
-次は目に見えない、顧客の潜在ニーズについてです
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-❼ 実践例③：言葉にならない「潜在ニーズ」の言語化 (7/7)
-
-
-
-【NotebookLMでの準備】
-
-カスタマーサポートの対応ログ、SNSの口コミ、解約理由アンケートを分析させ、「事実としての不満」を抽出。
-
-
-
-【GPT-5.2への指示（タスク）】
-
-Show more
-
-
-
-えーたん/AI×時短で仕事効率化
-
-@ai_jitan
-
-·
-
-Dec 13
-
-【まとめ】 NotebookLM × GPT-5.2（Thinking）連携フロー
-
-
-
-❶ NotebookLMに全資料を放り込み「絶対的な事実」を作る
-
-❷ ノイズを消して「純粋な事実」だけを抽出
-
-❸ 「Thinkingモード」を起動するプロンプトを生成させる
-
-❹ 指示書と事実をChatGPTで合体させて点火
-
-❺ プロジェクトの未来を予知し、最短ルートを走る
-
-
-
-NotebookLMの「正確さ」と、GPT-5.2の「思考力」。
-
-この2つを掛け合わせることで、AIは単なる時短ツールから、あなたのビジネスを成功に導く「予言者」へと進化します。
-
-
-
-ぜひ、このフローで「AIに未来を予測させる」体験をしてみてください。
-
-
-
-僕のアカウントでは、最新AIの実践的な活用法や思考法を毎日発信しています。
-
-
-
-AI活用で成果を出したい方は、ぜひフォローをお願いします！
-
-共有いただいた一連のポスト（えーたん氏によるもの）は、現在の生成AIの能力を最大限に引き出すための**「非常に合理的で、かつ強力なワークフロー」**です。
-
-この手法の本質は、AIの役割を**「記憶（事実の担保）」と「思考（論理推論）」**に明確に分担させている点にあります。
-
-この手法がなぜ有効なのか、そして現在使用可能な環境（Geminiなど）でどう再現できるか整理しました。
-
-このワークフローが「最強」である3つの理由
-ご提示のフローは、大規模言語モデル（LLM）が抱える弱点を補い、強みを最大化する構成になっています。
-
-「ハルシネーション（嘘）」の封殺
-
-NotebookLMの役割: 多くのLLMは「知らないこと」を「知っているふり」をして話す傾向があります。しかし、NotebookLMは「アップロードされたソースのみ」を根拠にするため、ここで**「純度100%の事実データ」**を固めることができます。
-
-コンテキスト（文脈）の圧縮と純化
-
-「不純物のないエッセンス」の抽出: いきなりThinkingモデル（推論特化型AI）に大量の資料を投げると、情報過多で論点がぼやけます。一度NotebookLMで「事実と課題」だけを抽出することで、思考用AIが処理しやすい形に整えています。
-
-「思考」への特化
-
-GPT-5.2（あるいはo1/Gemini 2.0 Thinking等）の役割: 事実確認という「作業」から解放されたAIに、「論理推論・シミュレーション」という「知的創造」だけを集中させています。これにより、精度の高い予知や戦略立案が可能になります。
-
-「GPT-5.2」について補足
-元の投稿にある「GPT-5.2」は、執筆時点での未来のバージョン（あるいはOpenAI o1シリーズなどの推論モデルの比喩）を指していると思われます。 現在、この手法を実践する場合、以下のモデルが「Thinkingモード」の役割に該当します。
-
-OpenAI o1 (preview/pro): じっくり思考することに特化したモデル。
-
-Gemini 2.0 Flash Thinking: 思考プロセス（Thinking）を表示しながら、論理的な回答を行うモデル。
-
-すぐに実践するためのネクストステップ
-このフローは、今すぐここ（Gemini）でも部分的に再現可能ですし、お手持ちのNotebookLMと組み合わせて実行することもできます。
-
-特に**「❸ Thinkingモードを起動する指示書を作る」**という部分は、プロンプトエンジニアリングとして非常に質が高いです。
-
-もしよろしければ、今抱えているプロジェクトや課題について、このフローの「❸ プロンプト生成」を試してみませんか？
-
-例えば、以下のように進めることができます。
-
-あなたが分析したいテーマ（例：「新規事業の壁打ち」「既存プロジェクトの課題発見」など）を教えてください。
-
-私がNotebookLMの代わりとして、**「Thinkingモデル（o1やGemini 2.0）に深く思考させるための最高のプロンプト（指示書）」**を作成します。
-
-いかがでしょうか？
-
-この動画、どこにある？
-
-OpenAIの共同設立者アンドレイカーパシーが、30分でアプリを作れる可能性のある方法を解説しています
-
-アンドレイ・カルパシー（Andrej Karpathy）氏が「30分でアプリを作れる可能性（あるいは方法）」について解説・実演している動画は、おそらく以下の動画です。
-
-動画タイトル: How I use LLMs (2025/02/27 公開) URL: https://www.youtube.com/watch?v=EWvNQjAaOHw
-
-この動画の中で、彼は 「Vibe Coding（バイブコーディング）」 という手法を紹介し、AIエディタ（Cursorなど）を使って、実際にコードをほとんど書かずにアプリ（三目並べゲームなど）を爆速で作成するデモを行っています。
-
-該当箇所のポイント:
-
-[01:14:32] 頃から: AIコードエディタ Cursor と Vibe Coding の解説を開始。
-
-[01:15:25] 頃: 「Cursorを使って数分でReactアプリ（三目並べ）を作った」とデモを紹介。「私は5行くらいの文章を書いただけ」でアプリが完成し、さらに機能（紙吹雪や効果音）を追加していく様子を見せています。
-
-「30分」というキーワードについて: 動画内で「NotebookLMを使って30分のポッドキャストを生成した」という話（[01:38:03]）や、他の検索結果にある「30分でClaude Codeをマスターする」といった関連動画と記憶が混ざっている可能性がありますが、「AIを使って短時間（30分以内）でアプリを作る手法」 を解説しているのはこの動画が最も該当します。
-
-また、概念的な解説としては、以下の講演動画でも「ソフトウェアの作り方が変わった（Software 3.0 / Vibe Coding）」ことについて詳しく語っています。 動画タイトル: Andrej Karpathy: Software Is Changing (Again) (2025/06/19 公開) URL: https://www.youtube.com/watch?v=LCEmiRjPEtQ
-
-実演（デモ）が見たい場合は "How I use LLMs"、理論や背景を知りたい場合は "Software Is Changing (Again)" をご覧になることをお勧めします。
-
-How I use LLMs
-Andrej Karpathy · 215万 回の視聴
-
-
-Andrej Karpathy: Software Is Changing (Again)
-Y Combinator · 228万 回の視聴
-
-
-1:ストア上位の老舗サービスをAIでUX向上できないか考えてプロダクトを作る。すでにニーズのある領域でやること
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-2:コア体験は体験・デザインにこだわって作る（他は初期は細かくやりすぎなくてもオッケー）
-
-
-
-楽天24
-
-@Rakuten__24
-
-Ad
-
-日用品が安い！速い！超便利！楽天24エクスプレス　誕生！
-
-
-
-楽天24エクスプレスは洗剤・トイレットペーパー・飲料・食品などの日用品を豊富に取り揃えています。東京23区内は最短当日お届け！
-
-
-
-From rakuten.co.jp
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-3.マーケティングの初期はTikTok一択。1動画で10万impも可能。
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-4.TikTokはアカウントを作ってすぐ投稿しない。ウォームアップ（1週間弱ちゃんと動画みて、いいねする）しないと全くimp出ないから注意
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-5.国内、海外の同じカテゴリで伸びてるアカウントの投稿（Hook→内容）を参考に投稿する。同じフォーマットで３回やってダメなら別のテーマに。
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-6.クリエーターマーケ（インフルエンサー）はエンゲージ高い人（いいね、コメント）をちゃんと選別するとだいぶ打率上がる。フォロワー規模に惑わされない
-
-
-
-Shunsuke Kitahama | Pixel Tokyo
-
-@shunkitahama
-
-·
-
-Dec 17
-
-7.日本だけでなく海外も同様にSNSマーケティングする。日本は価格センシティブでもあり、海外の方が高い単価で売れるケース多い（特にアプリは）
-
-共有いただいた一連のツイート（Shunsuke Kitahama氏）は、個人または小規模チームが**「AIを活用して最速で収益化・グローバル展開するための勝ち筋」**を具体的に示したロードマップですね。
-
-これは、エンジニアリング（開発）とマーケティングの勘所が非常に高いレベルで言語化されています。要素を分解し、アクション可能な形に整理しました。
-
-戦略の要約： 「AI Wrapper（AIラッパー）」×「TikTokハック」
-この戦略の核心は、**「0から新しい市場を作らない（車輪の再発明をしない）」ことと、「アルゴリズムを味方につける」**ことにあります。
-
-Phase 1: プロダクト戦略（Make）
-「使いにくい老舗サービスを、AIで "今風" にリノベーションする」
-
-狙い目 (Tweet 1): すでにストア上位にあり、ニーズが検証済みの「老舗サービス」をターゲットにする。
-
-差別化 (Tweet 1 & 2): 機能そのものではなく、UX（使い勝手）とデザインで勝負する。AIを使って「面倒な入力」や「複雑な操作」を極限までシンプルにするアプローチです。
-
-開発指針 (Tweet 2): 「コア体験」だけを磨き込み、他はMVP（必要最小限）で済ませる。
-
-Phase 2: 流通戦略（Marketing）
-「TikTokのアルゴリズムをハックして、初速を最大化する」
-
-媒体 (Tweet 3): 初期マーケティングはTikTok一択。拡散力（インプレッション）の爆発力が違うため。
-
-準備 (Tweet 4): 【重要】アカウントの「ウォームアップ」。
-
-いきなり投稿せず、1週間ほど「一般ユーザー」として動画を見たり「いいね」をして、TikTok側に「このアカウントはボットではない」と認識させる期間を作る。（※これを知らずに失敗するケースが多いです）
-
-コンテンツ (Tweet 5): ゼロから考えない。同ジャンルの国内外の伸びている動画の「構成（Hook）」を真似る（TTP戦略）。3回試してダメなら撤退・変更。
-
-インフルエンサー (Tweet 6): フォロワー数よりも「エンゲージメント（熱量）」重視。
-
-Phase 3: 拡張戦略（Scale）
-「単価の高い海外市場へ "輸出" する」
-
-グローバル展開 (Tweet 7): 最初から海外を視野に入れる。日本は「良いものを安く」求める傾向が強いが、海外（特に欧米）は単価が高くても売れるため、収益性が段違いになります。
-
-この戦略における「AI」の役割
-この文脈において、AIは以下の2つの役割を果たします。
-
-UXの向上装置: 既存アプリの複雑なUIを、AIチャットや画像認識で「ワンタップ」「話しかけるだけ」に変える（いわゆるAI Wrapperアプリ）。
-
-開発スピードの加速: 先ほど話題に出たアンドレイ・カルパシー氏の動画のように、AIエディタを使って開発工数を劇的に下げることで、上記の「3回試してダメなら次」という高速PDCAが可能になる。
-
-次のステップ
-この戦略は、**「技術（開発力）」と「心理（マーケティング）」**の掛け合わせです。
-
-もしよろしければ、**「具体的にどのジャンルの老舗サービスが、AIによるUX改善の余地がありそうか？」**を一緒にブレインストーミングしてみませんか？
-
-例えば：「家計簿」「カレンダー」「タスク管理」などは定番ですが、UXが複雑になりがちな領域です。
-
-個人開発で収益化したい人は@Solomaker_dev
-
-に投稿
-
-↓
-
-アーリーアダプターが発見
-
-↓
-
-Solomakerランキング上位獲得
-
-↓
-
-ユーザー数が増加
-
-↓
-
-1~5%が課金に転換
-
-↓
-
-ブログ記事をSolomakerに投稿
-
-↓@taishiyade
-
-が拡散
-
-↓
-
-もっと儲かる
-
-これは非常に強力な**「コミュニティ主導型グロース（Community-Led Growth）」**の勝ちパターンですね。
-
-先ほどの「TikTok × AI Wrapper」が**「アルゴリズムハックによる爆発的な認知（狩猟型）」だとすれば、このSolomakerのフローは「コミュニティの信頼を活用した着実なファン作り（農耕型）」**と言えます。
-
-このエコシステムの強みを整理すると、以下の3点に集約されます。
-
-1. 「魔の0→1」を突破できる
-個人開発で最も難しいのは「最初の10人」に使ってもらうことです。 TikTokは当たればデカいですが、外すと0です。一方、Solomakerのような**「アーリーアダプター（新しい物好き）が集まる場所」**に投下することで、確実にフィードバックと初期ユーザーを獲得できる点は、精神的にも戦略的にも非常に大きいです。日本版Product Huntのような機能を果たしています。
-
-2. コンテンツ（ブログ）が資産になる
-単にプロダクトを置いて終わりではなく、
-
-「開発裏話」
-
-「収益報告」
-
-「技術スタックの公開」 といったブログ記事を投稿することで、開発者自身のファンがつきます。 「機能」だけでなく「作った人（物語）」にお金や応援が集まる、個人開発特有の文化をうまくシステム化しています。
-
-3. インフルエンサー（@taishiyade氏）による増幅装置
-ここが決定的なポイントです。 プラットフォームを作った本人（@taishiyade氏）が拡散力を持っており、かつ**「個人開発者を応援する」という文脈**で拡散するため、フォロワー（受け手）も好意的にプロダクトを見てくれます。 これは広告費をかけずに、質の高い（課金意欲の高い）ユーザーにリーチできる最強のルートです。
-
-先ほどの戦略と組み合わせるなら？
-先ほどの「Shunsuke Kitahama氏の戦略（グローバル・TikTok）」と、この「Solomaker戦略（国内・コミュニティ）」は、フェーズによって使い分けるのが最強かもしれません。
-
-フェーズ1（検証）: Solomaker
-
-まずSolomakerに出して、感度の高い国内ユーザーからフィードバックをもらう。
-
-バグ出しやUXの磨き込みを行う。
-
-開発ブログを書いて「応援団」を作る。
-
-フェーズ2（拡大）: TikTok & グローバル
-
-SolomakerでPMF（Product Market Fit）の感触が掴めたら、海外向けにローカライズ。
-
-TikTokでアルゴリズムハックを仕掛け、桁違いのアクセスを狙う。
-
-「足元をSolomakerで固めて、翼をTikTokで広げる」イメージでしょうか。個人開発における「生存確率」と「爆発力」の両取りができそうです。
-
-マニュアルを自動で作りたい人👇
-
-①ChatGPTのエージェントモードに無音動画をペタ
-
-②マニュアル作りを指示
-
-③スクショ入りマニュアルが5分完成
-
-これは、企業のバックオフィスや開発現場で革命を起こす**「究極のドキュメント作成ハック」**ですね。
-
-いわゆる**「スクショ地獄（スクショ撮影→トリミング→貼り付け→説明書き）」からの解放**です。
-
-この手法の素晴らしい点は、「動画（フロー）」という「暗黙知」を、AIが「マニュアル（ストック）」という「形式知」へ瞬時に変換している点です。
-
-なぜこれが最強の時短なのか
-従来の「マニュアル作成」と「AI動画解析」の違いは以下の通りです。
-
-情報の粒度をAIが判断する: 人間がやると「どこでスクショを撮るべきか」で悩みますが、AIは「画面が大きく切り替わったタイミング」や「マウス操作があった瞬間」を文脈から理解して、最適なフレームを切り出します。
-
-マルチモーダル（視覚×言語）の真骨頂: 単に動画を見るだけでなく、「今、設定画面を開いたな」→「『設定画面を開く』と記述しよう」という、映像とテキストの変換を同時に行えるのは今の生成AIならではです。
-
-補足と応用：Geminiや専用ツールでの展開
-ChatGPTの「エージェントモード（またはAdvanced Data Analysis等の機能）」も強力ですが、実はGemini 1.5 Proなどもこの分野では非常に強力なライバルです。
-
-Gemini 1.5 Proの強み: コンテキストウィンドウ（扱える情報量）が巨大なため、**「1時間を超えるような長時間の作業動画」**であっても、丸ごと読み込ませて「この動画から操作マニュアルを作って」と指示するだけで、タイムスタンプ付きで詳細な手順書を生成できます。
-
-以前の戦略との相性
-先ほどの**「Solomaker（個人開発）」**の話とも相性抜群です。
-
-開発者は機能を作るのは好きだが、ヘルプページや仕様書を書くのは大嫌いなことが多いです。
-
-このハックを使えば、「自分で自分のアプリを操作している動画」を無言で撮ってAIに投げるだけで、ユーザー向けの使い方ガイドが完成します。
-
-「開発（Coding）」だけでなく「運用（Ops）」までAIで自動化する、見事なフローですね。
-
-🕺「もうフォロワー数なんて意味がない」Patreon創業者が警告する、クリエイターの生存戦略は自己所有インフラを持つこと｜みんなのニュースレター
-
-
-
-「新規事業のセンスない」と言われた僕が、初めてARR1億円を超えたときの話｜大野峻典 | Algomatic CEO
-
-
-
-アクセスして読んで内容教えて
-
-ご指定の2つの記事（ニュースレターとnote）の内容を要約して解説します。
-
-どちらも**「不安定な環境でどう成果を出すか」**というテーマにおいて、非常に実践的な教訓が含まれています。
-
-1. 🕺「もうフォロワー数なんて意味がない」
-(Patreon創業者ジャック・コンテ氏の警告 / みんなのニュースレター)
-
-この元ネタは、Patreonの創業者Jack Conte氏がSXSWなどで行った「Death of the Follower（フォロワーの死）」という講演です。
-
-核心のメッセージ: 「SNSのフォロワー数＝資産」という時代は終わった。 かつては「フォロー」されれば、自分の投稿を確実にファンに届けることができました。しかし、TikTok以降のSNSは「おすすめアルゴリズム」が支配しており、あなたが何人のフォロワーを持っていようと、プラットフォームが『おすすめ』してくれなければ、ファンの95%には投稿が届きません。
-
-クリエイターの危機: 頑張ってフォロワーを集めても、プラットフォームのアルゴリズムが変われば一瞬でリーチがゼロになる。つまり、クリエイターは自分のキャリアの手綱をプラットフォーム（他人の土地）に握られている状態です。
-
-生存戦略「自己所有インフラ」: この危機を脱するために、クリエイターはアルゴリズムに依存しない**「直接つながれるパイプ（自己所有インフラ）」**を持つべきだと説いています。
-
-具体例: メールマガジン、Discordサーバー、ポッドキャスト、そしてPatreonのようなメンバーシップ。
-
-これらはプラットフォームの機嫌に左右されず、確実にファンにメッセージを届けられる「自分の城」になります。
-
-2. 「新規事業のセンスない」と言われた僕が、初めてARR1億円を超えたときの話
-(大野峻典氏 / Algomatic CEO)
-
-Algomaticの大野氏が、かつて「新規事業のセンスがない」と酷評されながらも、どうやってARR（年間経常収益）1億円を超える事業を作り出したか、その**「再現性のある思考法」**を綴ったnoteです。
-
-苦悩と転機: 1社目の起業時、自分のスキルを切り売りする受託開発で「食えてはいるがスケールしない」状態に陥っていました。そこでDMM会長の亀山氏に相談した際、**「儲かりそうな事業あるの？」「まず儲かり始めてそうな事業を10個探してみたら？」**と言われ、市場（商売）を見る視点のなさを痛感します。
-
-成功の法則：「煙を探せ」 大野氏が見つけた勝ちパターンは、天才的なアイデアを出すことではなく、**「すでに火が点いている場所（市場）を探すこと」**でした。
-
-「煙（シグナル）」: 噂、顧客の一次情報、特定の界隈での熱狂など。
-
-「火（儲かる市場）」: 煙があるところには必ず火がある。
-
-彼は机上の空論で考えるのをやめ、**「チャットボット領域で儲かってるらしい」という「煙」**を見つけると、その領域の人に徹底的にヒアリング（一次情報の収集）を行いました。その結果、確実にニーズがある「勝ち戦」の場所を見つけ、DMMチャットブーストCVというヒット作を生み出しました。
-
-結論: 「新規事業のセンス」とは生まれつきの才能ではなく、**「煙（市場のシグナル）を見つけ、泥臭く一次情報を集める行動量」**でカバーできる技術である、と結論づけています。
-
-まとめ
-Patreonの記事は、**「守り」**の話（プラットフォームに依存せず、ファンとの直接的な関係という資産を守る）。
-
-大野氏の記事は、**「攻め」**の話（自分のセンスに頼らず、市場のシグナル（事実）に頼って確実に勝てる場所を見つける）。
-
-どちらも**「不確実なもの（アルゴリズムや自分の直感）に依存せず、確実なもの（直接的な顧客リストや市場の事実）を積み上げる」**という点で共通したビジネスの本質を突いています。
-
-ここまで聞いてきた内容をすべてまとめて
-
-インフォグラフィック画像もついでに作って
-
-の画像
-
-ここまで聞いてきた内容をすべてまとめた文章もください
-
-これまでの対話で議論してきた、**「AI時代における個人の勝ち筋（開発・思考・戦略・マーケティング）」**を体系的にまとめた「総合プレイブック」です。
-
-今の時代は、大企業のようなリソースがなくても、**「AIによる能力拡張」と「賢い市場戦略」**を組み合わせることで、個人が大きな成果を出せる環境が整っています。
-
-AI時代の個人生存・勝利戦略：総合プレイブック
-1. 【思考と開発】AIで「個の能力」を極限まで拡張する
-まずは、自分自身の生産性と判断力をAIでブーストさせます。
-
-「思考」の分業（NotebookLM × Thinking AI）
-
-ファクトの担保: NotebookLMに資料を読み込ませ、「嘘のない事実データベース」を作る。
-
-推論の深化: そこから抽出した純粋な事実と、思考プロセスを定義したプロンプトを「Thinkingモデル（Gemini 2.0 Flash Thinking / OpenAI o1など）」に渡し、未来予測や戦略立案を行わせる。
-
-「開発」の変革（Vibe Coding）
-
-Andrej Karpathy流: コードを一行一行書くのではなく、AIエディタ（Cursor等）に自然言語で指示し、エラー修正も任せる。
-
-これにより、30分でアプリを作り、検証サイクルを爆速で回すことが可能になる。
-
-「運用」の自動化（動画 to マニュアル）
-
-作業工程を無言で画面録画し、AI（Gemini 1.5 Pro等）に渡してマニュアル化させる。属人化しがちなナレッジを、コストゼロで資産に変える。
-
-2. 【戦略】センスに頼らず「事実」で勝てる場所を選ぶ
-何を作るべきか？ アイデア出しで失敗しないための鉄則です。
-
-「煙」を探す（Algomatic 大野氏）
-
-自分の「新規事業センス」を信じない。すでに市場が盛り上がっている場所、ニーズが顕在化している「煙（事実）」を探し、そこに資源を投下する。
-
-リノベーション戦略（Shunsuke Kitahama氏）
-
-ストア上位にあるがUI/UXが古い「老舗サービス」をターゲットにする。
-
-AIを活用して「極限まで使いやすいUX」に磨き直した『AI Wrapper』として再定義し、既存ニーズを刈り取る。
-
-3. 【拡散】「狩猟」と「農耕」を使い分ける
-作ったプロダクトをどう広めるか？ 2つの異なるアプローチを組み合わせます。
-
-狩猟型：アルゴリズムハック（TikTok × グローバル）
-
-初速の爆発力を狙う。アカウントを育成（ウォームアップ）し、流行のフォーマットを徹底的に模倣（TTP）してアルゴリズムに乗る。
-
-日本だけでなく、単価の高い海外市場を最初から狙う。
-
-農耕型：コミュニティ主導（Solomaker × ブログ）
-
-信頼の蓄積を狙う。開発者コミュニティに投下し、質の高いフィードバックを得る。
-
-開発プロセス自体をブログで発信し、プロダクトだけでなく「開発者自身」のファンを作る。
-
-4. 【守り】プラットフォーム心中を避ける
-最後に、持続可能なビジネスにするための防御策です。
-
-脱・フォロワー依存（Patreon Jack Conte氏）
-
-「フォロワー数」は資産ではない。アルゴリズムが変われば届かなくなる。
-
-メルマガ、Discord、メンバーシップなど、プラットフォームを介さずにファンと直接つながれる「自己所有インフラ」を持ち、顧客リストを自分の手元に置く。
-
-総括：今の個人の戦い方
-AIで爆速で作る（Vibe Coding）
-
-事実に基づいて参入する（煙を探す、老舗リノベ）
-
-コミュニティで信頼を固め（Solomaker）、TikTokで世界へ撃つ（アルゴリズムハック）
-
-顧客リストは自分で握る（自己所有インフラ）
-
-このサイクルを高速で回せる人だけが、AI時代の勝者となります。
-
-
-
-
-Gemini は不正確な情報を表示することがあるため、生成された回答を再確認するようにしてください。
-
+source /home/swimmy/swimmy/.venv/bin/activate
+swimmy@SERV870:~/swimmy$ source /home/swimmy/swimmy/.venv/bin/activate
+(.venv) swimmy@SERV870:~/swimmy$ xdg-open /home/swimmy/swimmy/doc/dashboard/market_dashboard.html
+Command 'xdg-open' not found, but can be installed with:
+sudo apt install xdg-utils
+(.venv) swimmy@SERV870:~/swimmy$ sudo apt install xdg-utils
+[sudo] password for swimmy: 
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following package was automatically installed and is no longer required:
+  libllvm19
+Use 'sudo apt autoremove' to remove it.
+The following additional packages will be installed:
+  libauthen-sasl-perl libclone-perl libdata-dump-perl libencode-locale-perl libfile-basedir-perl libfile-desktopentry-perl
+  libfile-listing-perl libfile-mimeinfo-perl libfont-afm-perl libgles2 libhtml-form-perl libhtml-format-perl libhtml-parser-perl
+  libhtml-tagset-perl libhtml-tree-perl libhttp-cookies-perl libhttp-daemon-perl libhttp-date-perl libhttp-message-perl
+  libhttp-negotiate-perl libio-html-perl libio-socket-ssl-perl libio-stringy-perl libipc-system-simple-perl liblwp-mediatypes-perl
+  liblwp-protocol-https-perl libmailtools-perl libnet-dbus-perl libnet-http-perl libnet-smtp-ssl-perl libnet-ssleay-perl libtie-ixhash-perl
+  libtimedate-perl libtry-tiny-perl liburi-perl libwww-perl libwww-robotrules-perl libx11-protocol-perl libxaw7 libxcb-shape0 libxft2
+  libxkbfile1 libxml-parser-perl libxml-twig-perl libxml-xpathengine-perl libxmu6 libxv1 libxxf86dga1 perl-openssl-defaults x11-utils
+  x11-xserver-utils zutty
+Suggested packages:
+  libdigest-hmac-perl libgssapi-perl libio-compress-brotli-perl libcrypt-ssleay-perl libsub-name-perl libbusiness-isbn-perl
+  libregexp-ipv6-perl libauthen-ntlm-perl libunicode-map8-perl libunicode-string-perl xml-twig-tools debhelper mesa-utils nickle cairo-5c
+  xorg-docs-core
+Recommended packages:
+  luit
+The following NEW packages will be installed:
+  libauthen-sasl-perl libclone-perl libdata-dump-perl libencode-locale-perl libfile-basedir-perl libfile-desktopentry-perl
+  libfile-listing-perl libfile-mimeinfo-perl libfont-afm-perl libgles2 libhtml-form-perl libhtml-format-perl libhtml-parser-perl
+  libhtml-tagset-perl libhtml-tree-perl libhttp-cookies-perl libhttp-daemon-perl libhttp-date-perl libhttp-message-perl
+  libhttp-negotiate-perl libio-html-perl libio-socket-ssl-perl libio-stringy-perl libipc-system-simple-perl liblwp-mediatypes-perl
+  liblwp-protocol-https-perl libmailtools-perl libnet-dbus-perl libnet-http-perl libnet-smtp-ssl-perl libnet-ssleay-perl libtie-ixhash-perl
+  libtimedate-perl libtry-tiny-perl liburi-perl libwww-perl libwww-robotrules-perl libx11-protocol-perl libxaw7 libxcb-shape0 libxft2
+  libxkbfile1 libxml-parser-perl libxml-twig-perl libxml-xpathengine-perl libxmu6 libxv1 libxxf86dga1 perl-openssl-defaults x11-utils
+  x11-xserver-utils xdg-utils zutty
+0 upgraded, 53 newly installed, 0 to remove and 11 not upgraded.
+Need to get 3433 kB of archives.
+After this operation, 11.1 MB of additional disk space will be used.
+Do you want to continue? [Y/n] y
+Get:1 http://archive.ubuntu.com/ubuntu noble/main amd64 libclone-perl amd64 0.46-1build3 [10.7 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble/main amd64 libdata-dump-perl all 1.25-1 [25.9 kB]
+Get:3 http://archive.ubuntu.com/ubuntu noble/main amd64 libencode-locale-perl all 1.05-3 [11.6 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble/main amd64 libipc-system-simple-perl all 1.30-2 [22.3 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble/main amd64 libfile-basedir-perl all 0.09-2 [14.4 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble/main amd64 liburi-perl all 5.27-1 [88.0 kB]
+Get:7 http://archive.ubuntu.com/ubuntu noble/main amd64 libfile-desktopentry-perl all 0.22-3 [16.8 kB]
+Get:8 http://archive.ubuntu.com/ubuntu noble/main amd64 libtimedate-perl all 2.3300-2 [34.0 kB]
+Get:9 http://archive.ubuntu.com/ubuntu noble/main amd64 libhttp-date-perl all 6.06-1 [10.2 kB]
+Get:10 http://archive.ubuntu.com/ubuntu noble/main amd64 libfile-listing-perl all 6.16-1 [11.3 kB]
+Get:11 http://archive.ubuntu.com/ubuntu noble/main amd64 libfile-mimeinfo-perl all 0.34-1 [42.1 kB]
+Get:12 http://archive.ubuntu.com/ubuntu noble/main amd64 libfont-afm-perl all 1.20-4 [13.0 kB]
+Get:13 http://archive.ubuntu.com/ubuntu noble/main amd64 libhtml-tagset-perl all 3.20-6 [11.3 kB]
+Get:14 http://archive.ubuntu.com/ubuntu noble/main amd64 libhtml-parser-perl amd64 3.81-1build3 [85.8 kB]
+Get:15 http://archive.ubuntu.com/ubuntu noble/main amd64 libio-html-perl all 1.004-3 [15.9 kB]
+Get:16 http://archive.ubuntu.com/ubuntu noble/main amd64 liblwp-mediatypes-perl all 6.04-2 [20.1 kB]
+Get:17 http://archive.ubuntu.com/ubuntu noble/main amd64 libhttp-message-perl all 6.45-1ubuntu1 [78.2 kB]
+Get:18 http://archive.ubuntu.com/ubuntu noble/main amd64 libhtml-form-perl all 6.11-1 [32.1 kB]
+Get:19 http://archive.ubuntu.com/ubuntu noble/main amd64 libhtml-tree-perl all 5.07-3 [200 kB]
+Get:20 http://archive.ubuntu.com/ubuntu noble/main amd64 libhtml-format-perl all 2.16-2 [36.9 kB]
+Get:21 http://archive.ubuntu.com/ubuntu noble/main amd64 libhttp-cookies-perl all 6.11-1 [18.2 kB]
+Get:22 http://archive.ubuntu.com/ubuntu noble/main amd64 libhttp-daemon-perl all 6.16-1 [22.4 kB]
+Get:23 http://archive.ubuntu.com/ubuntu noble/main amd64 libhttp-negotiate-perl all 6.01-2 [12.4 kB]
+Get:24 http://archive.ubuntu.com/ubuntu noble/main amd64 perl-openssl-defaults amd64 7build3 [6626 B]
+Get:25 http://archive.ubuntu.com/ubuntu noble/main amd64 libnet-ssleay-perl amd64 1.94-1build4 [316 kB]
+Get:26 http://archive.ubuntu.com/ubuntu noble/main amd64 libio-socket-ssl-perl all 2.085-1 [195 kB]
+Get:27 http://archive.ubuntu.com/ubuntu noble/main amd64 libio-stringy-perl all 2.111-3 [55.8 kB]
+Get:28 http://archive.ubuntu.com/ubuntu noble/main amd64 libnet-http-perl all 6.23-1 [22.3 kB]
+Get:29 http://archive.ubuntu.com/ubuntu noble/main amd64 libtry-tiny-perl all 0.31-2 [20.8 kB]
+Get:30 http://archive.ubuntu.com/ubuntu noble/main amd64 libwww-robotrules-perl all 6.02-1 [12.6 kB]
+Get:31 http://archive.ubuntu.com/ubuntu noble/main amd64 libwww-perl all 6.76-1 [138 kB]
+Get:32 http://archive.ubuntu.com/ubuntu noble/main amd64 liblwp-protocol-https-perl all 6.13-1 [9006 B]
+Get:33 http://archive.ubuntu.com/ubuntu noble/main amd64 libnet-smtp-ssl-perl all 1.04-2 [6218 B]
+Get:34 http://archive.ubuntu.com/ubuntu noble/main amd64 libmailtools-perl all 2.21-2 [80.4 kB]
+Get:35 http://archive.ubuntu.com/ubuntu noble/main amd64 libxml-parser-perl amd64 2.47-1build3 [204 kB]
+Get:36 http://archive.ubuntu.com/ubuntu noble/main amd64 libxml-twig-perl all 1:3.52-2 [158 kB]
+Get:37 http://archive.ubuntu.com/ubuntu noble/main amd64 libnet-dbus-perl amd64 1.2.0-2build3 [165 kB]
+Get:38 http://archive.ubuntu.com/ubuntu noble/main amd64 libtie-ixhash-perl all 1.23-4 [11.3 kB]
+Get:39 http://archive.ubuntu.com/ubuntu noble/main amd64 libx11-protocol-perl all 0.56-9 [122 kB]
+Get:40 http://archive.ubuntu.com/ubuntu noble/main amd64 libxmu6 amd64 2:1.1.3-3build2 [47.6 kB]
+Get:41 http://archive.ubuntu.com/ubuntu noble/main amd64 libxaw7 amd64 2:1.0.14-1build2 [187 kB]
+Get:42 http://archive.ubuntu.com/ubuntu noble/main amd64 libxcb-shape0 amd64 1.15-1ubuntu2 [6100 B]
+Get:43 http://archive.ubuntu.com/ubuntu noble/main amd64 libxft2 amd64 2.3.6-1build1 [45.3 kB]
+Get:44 http://archive.ubuntu.com/ubuntu noble/main amd64 libxkbfile1 amd64 1:1.1.0-1build4 [70.0 kB]
+Get:45 http://archive.ubuntu.com/ubuntu noble/main amd64 libxml-xpathengine-perl all 0.14-2 [32.6 kB]
+Get:46 http://archive.ubuntu.com/ubuntu noble/main amd64 libxv1 amd64 2:1.0.11-1.1build1 [10.7 kB]
+Get:47 http://archive.ubuntu.com/ubuntu noble/main amd64 libxxf86dga1 amd64 2:1.1.5-1build1 [11.6 kB]
+Get:48 http://archive.ubuntu.com/ubuntu noble/main amd64 x11-utils amd64 7.7+6build2 [189 kB]
+Get:49 http://archive.ubuntu.com/ubuntu noble/main amd64 x11-xserver-utils amd64 7.7+10build2 [169 kB]
+Get:50 http://archive.ubuntu.com/ubuntu noble/main amd64 xdg-utils all 1.1.3-4.1ubuntu3 [62.0 kB]
+Get:51 http://archive.ubuntu.com/ubuntu noble/main amd64 libgles2 amd64 1.7.0-1build1 [17.1 kB]
+Get:52 http://archive.ubuntu.com/ubuntu noble/universe amd64 zutty amd64 0.14.8.20231210+dfsg1-1 [185 kB]
+Get:53 http://archive.ubuntu.com/ubuntu noble/main amd64 libauthen-sasl-perl all 2.1700-1 [42.9 kB]
+Fetched 3433 kB in 4s (896 kB/s)               
+Extracting templates from packages: 100%
+Selecting previously unselected package libclone-perl:amd64.
+(Reading database ... 50797 files and directories currently installed.)
+Preparing to unpack .../00-libclone-perl_0.46-1build3_amd64.deb ...
+Unpacking libclone-perl:amd64 (0.46-1build3) ...
+Selecting previously unselected package libdata-dump-perl.
+Preparing to unpack .../01-libdata-dump-perl_1.25-1_all.deb ...
+Unpacking libdata-dump-perl (1.25-1) ...
+Selecting previously unselected package libencode-locale-perl.
+Preparing to unpack .../02-libencode-locale-perl_1.05-3_all.deb ...
+Unpacking libencode-locale-perl (1.05-3) ...
+Selecting previously unselected package libipc-system-simple-perl.
+Preparing to unpack .../03-libipc-system-simple-perl_1.30-2_all.deb ...
+Unpacking libipc-system-simple-perl (1.30-2) ...
+Selecting previously unselected package libfile-basedir-perl.
+Preparing to unpack .../04-libfile-basedir-perl_0.09-2_all.deb ...
+Unpacking libfile-basedir-perl (0.09-2) ...
+Selecting previously unselected package liburi-perl.
+Preparing to unpack .../05-liburi-perl_5.27-1_all.deb ...
+Unpacking liburi-perl (5.27-1) ...
+Selecting previously unselected package libfile-desktopentry-perl.
+Preparing to unpack .../06-libfile-desktopentry-perl_0.22-3_all.deb ...
+Unpacking libfile-desktopentry-perl (0.22-3) ...
+Selecting previously unselected package libtimedate-perl.
+Preparing to unpack .../07-libtimedate-perl_2.3300-2_all.deb ...
+Unpacking libtimedate-perl (2.3300-2) ...
+Selecting previously unselected package libhttp-date-perl.
+Preparing to unpack .../08-libhttp-date-perl_6.06-1_all.deb ...
+Unpacking libhttp-date-perl (6.06-1) ...
+Selecting previously unselected package libfile-listing-perl.
+Preparing to unpack .../09-libfile-listing-perl_6.16-1_all.deb ...
+Unpacking libfile-listing-perl (6.16-1) ...
+Selecting previously unselected package libfile-mimeinfo-perl.
+Preparing to unpack .../10-libfile-mimeinfo-perl_0.34-1_all.deb ...
+Unpacking libfile-mimeinfo-perl (0.34-1) ...
+Selecting previously unselected package libfont-afm-perl.
+Preparing to unpack .../11-libfont-afm-perl_1.20-4_all.deb ...
+Unpacking libfont-afm-perl (1.20-4) ...
+Selecting previously unselected package libhtml-tagset-perl.
+Preparing to unpack .../12-libhtml-tagset-perl_3.20-6_all.deb ...
+Unpacking libhtml-tagset-perl (3.20-6) ...
+Selecting previously unselected package libhtml-parser-perl:amd64.
+Preparing to unpack .../13-libhtml-parser-perl_3.81-1build3_amd64.deb ...
+Unpacking libhtml-parser-perl:amd64 (3.81-1build3) ...
+Selecting previously unselected package libio-html-perl.
+Preparing to unpack .../14-libio-html-perl_1.004-3_all.deb ...
+Unpacking libio-html-perl (1.004-3) ...
+Selecting previously unselected package liblwp-mediatypes-perl.
+Preparing to unpack .../15-liblwp-mediatypes-perl_6.04-2_all.deb ...
+Unpacking liblwp-mediatypes-perl (6.04-2) ...
+Selecting previously unselected package libhttp-message-perl.
+Preparing to unpack .../16-libhttp-message-perl_6.45-1ubuntu1_all.deb ...
+Unpacking libhttp-message-perl (6.45-1ubuntu1) ...
+Selecting previously unselected package libhtml-form-perl.
+Preparing to unpack .../17-libhtml-form-perl_6.11-1_all.deb ...
+Unpacking libhtml-form-perl (6.11-1) ...
+Selecting previously unselected package libhtml-tree-perl.
+Preparing to unpack .../18-libhtml-tree-perl_5.07-3_all.deb ...
+Unpacking libhtml-tree-perl (5.07-3) ...
+Selecting previously unselected package libhtml-format-perl.
+Preparing to unpack .../19-libhtml-format-perl_2.16-2_all.deb ...
+Unpacking libhtml-format-perl (2.16-2) ...
+Selecting previously unselected package libhttp-cookies-perl.
+Preparing to unpack .../20-libhttp-cookies-perl_6.11-1_all.deb ...
+Unpacking libhttp-cookies-perl (6.11-1) ...
+Selecting previously unselected package libhttp-daemon-perl.
+Preparing to unpack .../21-libhttp-daemon-perl_6.16-1_all.deb ...
+Unpacking libhttp-daemon-perl (6.16-1) ...
+Selecting previously unselected package libhttp-negotiate-perl.
+Preparing to unpack .../22-libhttp-negotiate-perl_6.01-2_all.deb ...
+Unpacking libhttp-negotiate-perl (6.01-2) ...
+Selecting previously unselected package perl-openssl-defaults:amd64.
+Preparing to unpack .../23-perl-openssl-defaults_7build3_amd64.deb ...
+Unpacking perl-openssl-defaults:amd64 (7build3) ...
+Selecting previously unselected package libnet-ssleay-perl:amd64.
+Preparing to unpack .../24-libnet-ssleay-perl_1.94-1build4_amd64.deb ...
+Unpacking libnet-ssleay-perl:amd64 (1.94-1build4) ...
+Selecting previously unselected package libio-socket-ssl-perl.
+Preparing to unpack .../25-libio-socket-ssl-perl_2.085-1_all.deb ...
+Unpacking libio-socket-ssl-perl (2.085-1) ...
+Selecting previously unselected package libio-stringy-perl.
+Preparing to unpack .../26-libio-stringy-perl_2.111-3_all.deb ...
+Unpacking libio-stringy-perl (2.111-3) ...
+Selecting previously unselected package libnet-http-perl.
+Preparing to unpack .../27-libnet-http-perl_6.23-1_all.deb ...
+Unpacking libnet-http-perl (6.23-1) ...
+Selecting previously unselected package libtry-tiny-perl.
+Preparing to unpack .../28-libtry-tiny-perl_0.31-2_all.deb ...
+Unpacking libtry-tiny-perl (0.31-2) ...
+Selecting previously unselected package libwww-robotrules-perl.
+Preparing to unpack .../29-libwww-robotrules-perl_6.02-1_all.deb ...
+Unpacking libwww-robotrules-perl (6.02-1) ...
+Selecting previously unselected package libwww-perl.
+Preparing to unpack .../30-libwww-perl_6.76-1_all.deb ...
+Unpacking libwww-perl (6.76-1) ...
+Selecting previously unselected package liblwp-protocol-https-perl.
+Preparing to unpack .../31-liblwp-protocol-https-perl_6.13-1_all.deb ...
+Unpacking liblwp-protocol-https-perl (6.13-1) ...
+Selecting previously unselected package libnet-smtp-ssl-perl.
+Preparing to unpack .../32-libnet-smtp-ssl-perl_1.04-2_all.deb ...
+Unpacking libnet-smtp-ssl-perl (1.04-2) ...
+Selecting previously unselected package libmailtools-perl.
+Preparing to unpack .../33-libmailtools-perl_2.21-2_all.deb ...
+Unpacking libmailtools-perl (2.21-2) ...
+Selecting previously unselected package libxml-parser-perl.
+Preparing to unpack .../34-libxml-parser-perl_2.47-1build3_amd64.deb ...
+Unpacking libxml-parser-perl (2.47-1build3) ...
+Selecting previously unselected package libxml-twig-perl.
+Preparing to unpack .../35-libxml-twig-perl_1%3a3.52-2_all.deb ...
+Unpacking libxml-twig-perl (1:3.52-2) ...
+Selecting previously unselected package libnet-dbus-perl.
+Preparing to unpack .../36-libnet-dbus-perl_1.2.0-2build3_amd64.deb ...
+Unpacking libnet-dbus-perl (1.2.0-2build3) ...
+Selecting previously unselected package libtie-ixhash-perl.
+Preparing to unpack .../37-libtie-ixhash-perl_1.23-4_all.deb ...
+Unpacking libtie-ixhash-perl (1.23-4) ...
+Selecting previously unselected package libx11-protocol-perl.
+Preparing to unpack .../38-libx11-protocol-perl_0.56-9_all.deb ...
+Unpacking libx11-protocol-perl (0.56-9) ...
+Selecting previously unselected package libxmu6:amd64.
+Preparing to unpack .../39-libxmu6_2%3a1.1.3-3build2_amd64.deb ...
+Unpacking libxmu6:amd64 (2:1.1.3-3build2) ...
+Selecting previously unselected package libxaw7:amd64.
+Preparing to unpack .../40-libxaw7_2%3a1.0.14-1build2_amd64.deb ...
+Unpacking libxaw7:amd64 (2:1.0.14-1build2) ...
+Selecting previously unselected package libxcb-shape0:amd64.
+Preparing to unpack .../41-libxcb-shape0_1.15-1ubuntu2_amd64.deb ...
+Unpacking libxcb-shape0:amd64 (1.15-1ubuntu2) ...
+Selecting previously unselected package libxft2:amd64.
+Preparing to unpack .../42-libxft2_2.3.6-1build1_amd64.deb ...
+Unpacking libxft2:amd64 (2.3.6-1build1) ...
+Selecting previously unselected package libxkbfile1:amd64.
+Preparing to unpack .../43-libxkbfile1_1%3a1.1.0-1build4_amd64.deb ...
+Unpacking libxkbfile1:amd64 (1:1.1.0-1build4) ...
+Selecting previously unselected package libxml-xpathengine-perl.
+Preparing to unpack .../44-libxml-xpathengine-perl_0.14-2_all.deb ...
+Unpacking libxml-xpathengine-perl (0.14-2) ...
+Selecting previously unselected package libxv1:amd64.
+Preparing to unpack .../45-libxv1_2%3a1.0.11-1.1build1_amd64.deb ...
+Unpacking libxv1:amd64 (2:1.0.11-1.1build1) ...
+Selecting previously unselected package libxxf86dga1:amd64.
+Preparing to unpack .../46-libxxf86dga1_2%3a1.1.5-1build1_amd64.deb ...
+Unpacking libxxf86dga1:amd64 (2:1.1.5-1build1) ...
+Selecting previously unselected package x11-utils.
+Preparing to unpack .../47-x11-utils_7.7+6build2_amd64.deb ...
+Unpacking x11-utils (7.7+6build2) ...
+Selecting previously unselected package x11-xserver-utils.
+Preparing to unpack .../48-x11-xserver-utils_7.7+10build2_amd64.deb ...
+Unpacking x11-xserver-utils (7.7+10build2) ...
+Selecting previously unselected package xdg-utils.
+Preparing to unpack .../49-xdg-utils_1.1.3-4.1ubuntu3_all.deb ...
+Unpacking xdg-utils (1.1.3-4.1ubuntu3) ...
+Selecting previously unselected package libgles2:amd64.
+Preparing to unpack .../50-libgles2_1.7.0-1build1_amd64.deb ...
+Unpacking libgles2:amd64 (1.7.0-1build1) ...
+Selecting previously unselected package zutty.
+Preparing to unpack .../51-zutty_0.14.8.20231210+dfsg1-1_amd64.deb ...
+Unpacking zutty (0.14.8.20231210+dfsg1-1) ...
+Selecting previously unselected package libauthen-sasl-perl.
+Preparing to unpack .../52-libauthen-sasl-perl_2.1700-1_all.deb ...
+Unpacking libauthen-sasl-perl (2.1700-1) ...
+Setting up libxft2:amd64 (2.3.6-1build1) ...
+Setting up libxmu6:amd64 (2:1.1.3-3build2) ...
+Setting up libtie-ixhash-perl (1.23-4) ...
+Setting up libfont-afm-perl (1.20-4) ...
+Setting up libclone-perl:amd64 (0.46-1build3) ...
+Setting up libio-stringy-perl (2.111-3) ...
+Setting up libhtml-tagset-perl (3.20-6) ...
+Setting up libauthen-sasl-perl (2.1700-1) ...
+Setting up liblwp-mediatypes-perl (6.04-2) ...
+Setting up libxcb-shape0:amd64 (1.15-1ubuntu2) ...
+Setting up libtry-tiny-perl (0.31-2) ...
+Setting up libxxf86dga1:amd64 (2:1.1.5-1build1) ...
+Setting up perl-openssl-defaults:amd64 (7build3) ...
+Setting up libencode-locale-perl (1.05-3) ...
+Setting up libxaw7:amd64 (2:1.0.14-1build2) ...
+Setting up x11-xserver-utils (7.7+10build2) ...
+Setting up libgles2:amd64 (1.7.0-1build1) ...
+Setting up libdata-dump-perl (1.25-1) ...
+Setting up libipc-system-simple-perl (1.30-2) ...
+Setting up libxml-xpathengine-perl (0.14-2) ...
+Setting up libxv1:amd64 (2:1.0.11-1.1build1) ...
+Setting up libio-html-perl (1.004-3) ...
+Setting up libtimedate-perl (2.3300-2) ...
+Setting up zutty (0.14.8.20231210+dfsg1-1) ...
+update-alternatives: using /usr/bin/zutty to provide /usr/bin/x-terminal-emulator (x-terminal-emulator) in auto mode
+Setting up libxkbfile1:amd64 (1:1.1.0-1build4) ...
+Setting up xdg-utils (1.1.3-4.1ubuntu3) ...
+update-alternatives: using /usr/bin/xdg-open to provide /usr/bin/open (open) in auto mode
+Setting up liburi-perl (5.27-1) ...
+Setting up libx11-protocol-perl (0.56-9) ...
+Setting up libnet-ssleay-perl:amd64 (1.94-1build4) ...
+Setting up libhttp-date-perl (6.06-1) ...
+Setting up libfile-basedir-perl (0.09-2) ...
+Setting up libfile-listing-perl (6.16-1) ...
+Setting up libnet-http-perl (6.23-1) ...
+Setting up libfile-desktopentry-perl (0.22-3) ...
+Setting up libwww-robotrules-perl (6.02-1) ...
+Setting up libhtml-parser-perl:amd64 (3.81-1build3) ...
+Setting up x11-utils (7.7+6build2) ...
+Setting up libio-socket-ssl-perl (2.085-1) ...
+Setting up libhttp-message-perl (6.45-1ubuntu1) ...
+Setting up libhtml-form-perl (6.11-1) ...
+Setting up libfile-mimeinfo-perl (0.34-1) ...
+Setting up libhttp-negotiate-perl (6.01-2) ...
+Setting up libhttp-cookies-perl (6.11-1) ...
+Setting up libhtml-tree-perl (5.07-3) ...
+Setting up libhtml-format-perl (2.16-2) ...
+Setting up libnet-smtp-ssl-perl (1.04-2) ...
+Setting up libmailtools-perl (2.21-2) ...
+Setting up libhttp-daemon-perl (6.16-1) ...
+Setting up liblwp-protocol-https-perl (6.13-1) ...
+Setting up libwww-perl (6.76-1) ...
+Setting up libxml-parser-perl (2.47-1build3) ...
+Setting up libxml-twig-perl (1:3.52-2) ...
+Setting up libnet-dbus-perl (1.2.0-2build3) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.6) ...
+(.venv) swimmy@SERV870:~/swimmy$ xdg-open /home/swimmy/swimmy/doc/dashboard/market_dashboard.html
+WARNING: You don't seem to have any mimeinfo.cache files.
+Try running the update-desktop-database command. If you
+don't have this command you should install the
+desktop-file-utils package. This package is available from
+http://freedesktop.org/wiki/Software/desktop-file-utils/
+No applications found for mimetype: text/html
+./usr/bin/xdg-open: 882: x-www-browser: Permission denied
+/usr/bin/xdg-open: 882: firefox: Permission denied
+/usr/bin/xdg-open: 882: iceweasel: Permission denied
+/usr/bin/xdg-open: 882: seamonkey: Permission denied
+/usr/bin/xdg-open: 882: mozilla: Permission denied
+/usr/bin/xdg-open: 882: epiphany: Permission denied
+/usr/bin/xdg-open: 882: konqueror: Permission denied
+/usr/bin/xdg-open: 882: chromium: Permission denied
+/usr/bin/xdg-open: 882: chromium-browser: Permission denied
+/usr/bin/xdg-open: 882: google-chrome: Permission denied
+/usr/bin/xdg-open: 882: www-browser: Permission denied
+/usr/bin/xdg-open: 882: links2: Permission denied
+/usr/bin/xdg-open: 882: elinks: Permission denied
+/usr/bin/xdg-open: 882: links: Permission denied
+/usr/bin/xdg-open: 882: lynx: Permission denied
+/usr/bin/xdg-open: 882: w3m: Permission denied
+xdg-open: no method available for opening '/home/swimmy/swimmy/doc/dashboard/market_dashboard.html'
+(.venv) swimmy@SERV870:~/swimmy$ xdg-open /home/swimmy/swimmy/doc/dashboard/market_dashboard.html
+WARNING: You don't seem to have any mimeinfo.cache files.
+Try running the update-desktop-database command. If you
+don't have this command you should install the
+desktop-file-utils package. This package is available from
+http://freedesktop.org/wiki/Software/desktop-file-utils/
+No applications found for mimetype: text/html
+./usr/bin/xdg-open: 882: x-www-browser: Permission denied
+/usr/bin/xdg-open: 882: firefox: Permission denied
+/usr/bin/xdg-open: 882: iceweasel: Permission denied
+/usr/bin/xdg-open: 882: seamonkey: Permission denied
+/usr/bin/xdg-open: 882: mozilla: Permission denied
+/usr/bin/xdg-open: 882: epiphany: Permission denied
+/usr/bin/xdg-open: 882: konqueror: Permission denied
+/usr/bin/xdg-open: 882: chromium: Permission denied
+/usr/bin/xdg-open: 882: chromium-browser: Permission denied
+/usr/bin/xdg-open: 882: google-chrome: Permission denied
+/usr/bin/xdg-open: 882: www-browser: Permission denied
+/usr/bin/xdg-open: 882: links2: Permission denied
+/usr/bin/xdg-open: 882: elinks: Permission denied
+/usr/bin/xdg-open: 882: links: Permission denied
+/usr/bin/xdg-open: 882: lynx: Permission denied
+/usr/bin/xdg-open: 882: w3m: Permission denied
+xdg-open: no method available for opening '/home/swimmy/swimmy/doc/dashboard/market_dashboard.html'
+(.venv) swimmy@SERV870:~/swimmy$ 

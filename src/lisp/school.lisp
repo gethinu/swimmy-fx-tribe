@@ -8,6 +8,7 @@
 (defvar *trade-history* (make-hash-table :test 'eq))
 (defvar *category-entries* (make-hash-table :test 'eq))
 (defvar *last-swarm-consensus* 0)
+(defvar *category-positions* nil)  ; Forward declaration for apply-hedge-logic
 (defvar *daily-pnl* 0)
 (defvar *accumulated-pnl* 0)
 (defvar *monthly-goal* 100000)
@@ -922,14 +923,59 @@
   (let ((clan (get-clan category-id)))
     (if clan (clan-battle-cry clan) "")))
 
-(defun announce-clan-trade (category-id direction symbol lot)
-  "Announce a trade with clan personality"
+(defun generate-clan-narrative (category-id direction confidence symbol price)
+  "Generate natural language narrative for clan trade entry"
+  (let* ((clan (get-clan category-id))
+         (strategy-desc (case category-id
+                          (:trend "🎯 MACD + ADX momentum with Kalman trend filter. We ride the wave until exhaustion.")
+                          (:reversion "🔮 RSI oversold/overbought + Bollinger deviation. The price must return to equilibrium.")
+                          (:breakout "💥 Bollinger band breakout confirmed by volume. Once the walls fall, we charge.")
+                          (:scalp "⚡ EMA velocity + micro-swing detection. Quick profits in the chaos.")
+                          (t "Unknown strategy")))
+         (exit-plan (case direction
+                      (:buy "📈 Exit: Take profit at +1.0%, Stop loss at -0.3%")
+                      (:sell "📉 Exit: Take profit at +1.0%, Stop loss at -0.3%")
+                      (t "Unknown")))
+         (dir-emoji (if (eq direction :buy) "🟢 BUY" "🔴 SELL"))
+         (dir-str (string-upcase (symbol-name direction))))
+    (format nil "
+═══════════════════════════════
+~a 【~a】 ENTERS THE BATTLEFIELD!
+═══════════════════════════════
+「~a」
+
+📍 Symbol: ~a @ ~,3f
+~a
+
+~a
+~a
+
+💪 Confidence: ~,0f%
+═══════════════════════════════"
+            (clan-emoji clan) (clan-name clan)
+            (clan-philosophy clan)
+            symbol price
+            dir-emoji
+            strategy-desc
+            exit-plan
+            (* 100 confidence))))
+
+(defun announce-clan-trade (category-id direction symbol lot &key (price 0) (confidence 0))
+  "Announce a trade with full clan narrative - sends to Discord"
   (let ((clan (get-clan category-id)))
     (when clan
+      ;; Console log
       (format t "[L] ~a ~a: ~a我々はここに参戦する！ ~a ~a ~,2f lot~%"
               (clan-emoji clan) (clan-name clan)
               (clan-philosophy clan)
-              direction symbol lot))))
+              direction symbol lot)
+      ;; Rich narrative for Discord
+      (let ((narrative (generate-clan-narrative category-id direction confidence symbol price)))
+        (format t "~a~%" narrative)
+        ;; Send to Discord with color (green for buy, red for sell)
+        (handler-case
+            (notify-discord narrative :color (if (eq direction :buy) 3066993 15158332))
+          (error (e) (format t "[L] Discord notify error: ~a~%" e)))))))
 
 
 ;;; ══════════════════════════════════════════════════════════════════
@@ -2065,6 +2111,108 @@
              (best (select-best-from-pool cat slots)))
         (setf (gethash cat *active-team*) best)))))
 
+;;; ══════════════════════════════════════════════════════════════════
+;;;  61-STRATEGY SIGNAL SYSTEM (全戦略シグナルシステム)
+;;; ══════════════════════════════════════════════════════════════════
+
+;; Category inference from strategy name
+(defun infer-strategy-category (strat)
+  "Infer clan category from strategy name/indicators AND TP/SL values"
+  (let ((name (string-downcase (strategy-name strat)))
+        (tp (strategy-tp strat))
+        (sl (strategy-sl strat)))
+    (cond
+      ;; Breakout strategies
+      ((or (search "breakout" name) (search "squeeze" name) (search "low-vol" name)) :breakout)
+      ;; Reversion strategies
+      ((or (search "oversold" name) (search "overbought" name) (search "reversal" name) 
+           (search "bounce" name) (search "reversion" name)) :reversion)
+      ;; Scalp: tight TP (under 0.30 = 30 pips) and specific keywords
+      ((and (<= tp 0.30) (or (search "scalp" name) (search "pop" name) (search "1m" name))) :scalp)
+      ;; Everything else is trend
+      (t :trend))))
+
+;; Get actual indicator values for narrative
+(defun get-indicator-values (strat history)
+  "Calculate current indicator values for display"
+  (let ((values nil))
+    (dolist (ind (strategy-indicators strat))
+      (let ((type (car ind)) (p (cdr ind)))
+        (handler-case
+            (case type
+              (sma (push (list (format nil "SMA-~d" (car p)) (float (ind-sma (car p) history))) values))
+              (ema (push (list (format nil "EMA-~d" (car p)) (float (ind-ema (car p) history))) values))
+              (rsi (push (list (format nil "RSI-~d" (car p)) (float (ind-rsi (car p) history))) values))
+              (macd (multiple-value-bind (m s) (ind-macd (first p) (second p) (third p) history)
+                      (push (list "MACD" (float m)) values)))
+              (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
+                    (push (list "BB-Mid" (float m)) values))))
+          (error (e) nil))))
+    (nreverse values)))
+
+;; Duplicate trade prevention
+(defparameter *last-clan-trade-time* (make-hash-table :test 'eq))
+(defparameter *min-trade-interval* 300)  ; 5 min cooldown to reduce Discord spam
+
+(defun can-clan-trade-p (category)
+  (let ((last-time (gethash category *last-clan-trade-time* 0)))
+    (> (- (get-universal-time) last-time) *min-trade-interval*)))
+
+(defun record-clan-trade-time (category)
+  (setf (gethash category *last-clan-trade-time*) (get-universal-time)))
+
+;; Collect signals from all 61 strategies
+(defun collect-strategy-signals (symbol history)
+  "Evaluate ALL strategies and return triggered signals"
+  (let ((signals nil))
+    (dolist (strat *strategy-knowledge-base*)
+      (handler-case
+          (let ((sig (evaluate-strategy-signal strat history)))
+            (when (member sig '(:buy :sell))
+              (push (list :strategy-name (strategy-name strat)
+                          :category (infer-strategy-category strat)
+                          :direction sig
+                          :sl (strategy-sl strat)
+                          :tp (strategy-tp strat)
+                          :indicator-values (get-indicator-values strat history))
+                    signals)))
+        (error (e) nil)))
+    signals))
+
+;; Generate dynamic narrative with actual values
+(defun generate-dynamic-narrative (strat-signal symbol price)
+  "Generate natural language explanation"
+  (let* ((name (getf strat-signal :strategy-name))
+         (direction (getf strat-signal :direction))
+         (category (getf strat-signal :category))
+         (ind-vals (getf strat-signal :indicator-values))
+         (sl (getf strat-signal :sl))
+         (tp (getf strat-signal :tp))
+         (clan (get-clan category)))
+    (format nil "
+═══════════════════════════════
+~a 【~a】が戦場に立つ！
+═══════════════════════════════
+
+📊 発動戦略: ~a
+
+~{~a~^~%~}
+
+📍 ~a @ ~,3f
+~a
+
+🎯 利確: +~d pips | 🛡️ 損切: -~d pips
+
+💪 この条件で行く。
+═══════════════════════════════"
+            (if clan (clan-emoji clan) "🏛️") 
+            (if clan (clan-name clan) "Unknown")
+            name
+            (mapcar (lambda (iv) (format nil "• ~a = ~,2f" (first iv) (second iv))) ind-vals)
+            symbol price
+            (if (eq direction :buy) "🟢 BUY - 上昇を狙う" "🔴 SELL - 下落を狙う")
+            (round (* 100 tp)) (round (* 100 sl)))))
+
 (defparameter *category-positions* (make-hash-table :test 'eq))
 (defparameter *total-capital* 0.10)
 (defparameter *lstm-threshold* 0.60)
@@ -2095,9 +2243,13 @@
                                      (multiple-value-bind (pm ps) (ind-macd (first p) (second p) (third p) rest-hist)
                                        `((macd-line ,m) (signal-line ,s) (macd-line-prev ,pm) (signal-line-prev ,ps)))))
                              (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
-                                   `((bb-middle ,m) (bb-upper ,u) (bb-lower ,l) 
-                                     (bb-middle-1 ,m) (bb-upper-1 ,u) (bb-lower-1 ,l)
-                                     (bb-middle-2 ,m) (bb-upper-2 ,u) (bb-lower-2 ,l))))
+                                   (let ((dev (second p)))
+                                     ;; Both unique and generic names - generic will use last BB's values
+                                     `((,(intern (format nil "BB-MIDDLE-~d" dev)) ,m)
+                                       (,(intern (format nil "BB-UPPER-~d" dev)) ,u)
+                                       (,(intern (format nil "BB-LOWER-~d" dev)) ,l)
+                                       ;; Generic aliases for strategies using simple bb-upper, etc.
+                                       (bb-middle ,m) (bb-upper ,u) (bb-lower ,l)))))
                              (stoch (let ((k (ind-stoch (first p) (second p) history))
                                           (pk (ind-stoch (first p) (second p) rest-hist)))
                                       `((stoch-k ,k) (stoch-k-prev ,pk) (stoch-d 50) (stoch-d-prev 50)))))))))
@@ -2105,6 +2257,9 @@
       (push `(close-prev ,(candle-close (second history))) bindings)
       (push `(high ,(candle-high (first history))) bindings)
       (push `(low ,(candle-low (first history))) bindings)
+      
+      ;; Remove duplicate bindings (keep first occurrence) for multi-BB strategies
+      (setf bindings (remove-duplicates bindings :key #'car :from-end t))
       
       (handler-case
           (let ((entry-result (eval `(let ,bindings ,entry-logic))))
@@ -2269,6 +2424,10 @@
     (unless (is-safe-to-trade-p)
       (return-from process-category-trades nil))
     
+    ;; ===== VOLATILITY CHECK: Extreme volatility blocks trading =====
+    (unless (volatility-allows-trading-p)
+      (return-from process-category-trades nil))
+    
     ;; ===== RESEARCH ENHANCED ANALYSIS (Auto-integrated Paper Insights) =====
     (let ((research-analysis nil))
       (when (>= (length *candle-history*) 50)
@@ -2290,13 +2449,14 @@
            ;; ===== RESEARCH: Dual trend agreement check =====
            (dual-trend (when research-analysis (getf research-analysis :dual-trend)))
            (trend-agrees (or (null dual-trend)
+                            (not (listp dual-trend))
                             (eq (getf dual-trend :agreement) :aligned)
                             (eq (getf dual-trend :direction) 
                                 (case swarm-direction (:BUY :UP) (:SELL :DOWN) (t :FLAT))))))
       
       ;; Log collective decision with research enhancement
       (format t "[L] 🐟🐟🐟 SWARM: ~a (~,0f% consensus)~%" swarm-direction (* 100 consensus))
-      (when dual-trend
+      (when (and dual-trend (listp dual-trend))
         (format t "[L] 📊 RESEARCH: ~a trend ~a~%" 
                 (getf dual-trend :direction)
                 (if trend-agrees "✓ agrees" "⚠ diverges")))
@@ -2317,44 +2477,62 @@
       ;; ===== UNIFIED DECISION MAKING (with Research Enhancement) =====
       ;; V2.1: Each clan follows their OWN signal (多様性重視)
       ;; Swarm consensus is used as a FILTER, not a direction enforcer
-      (let* ((tribe-signals (collect-all-tribe-signals symbol *candle-history*))
-             (min-consensus-to-trade 0.4)  ; Lower threshold - allow disagreement
-             (any-strong-signal (some (lambda (sig) 
-                                        (and sig (> (float (or (getf sig :confidence) 0)) 0.6)))
-                                      tribe-signals)))
+      (handler-case
+        (let* ((tribe-signals (collect-all-tribe-signals symbol *candle-history*))
+               (min-consensus-to-trade 0.25)  ; Lowered from 0.4 - more aggressive
+               (any-strong-signal (some (lambda (sig) 
+                                          (and sig (listp sig) (> (float (or (getf sig :confidence) 0)) 0.6)))
+                                        tribe-signals)))
         (if (or any-strong-signal
                 (> consensus min-consensus-to-trade))
-            ;; V2.1: Each clan trades according to their OWN philosophy
+            ;; V3.0: Use 61-STRATEGY SIGNALS (not just 4 clan hardcoded signals)
             (progn
-              (format t "[L] 🏛️ CLANS TRADE INDEPENDENTLY~%")
-              (dolist (sig tribe-signals)
-                (when sig
-                  (let* ((clan-id (case (getf sig :clan)
-                                   (:hunters :trend) (:shamans :reversion)
-                                   (:breakers :breakout) (:raiders :scalp)
-                                   (t nil)))
-                         (direction (getf sig :direction))
-                         (conf (float (or (getf sig :confidence) 0))))
-                    (when (and clan-id 
-                               (member direction '(:buy :sell))
-                               (> conf 0.5))  ; Only trade if confidence > 50%
-                      (format t "[L] ~a ~a: ~a (conf ~,0f%)~%"
-                              (clan-emoji (get-clan clan-id))
-                              (clan-name (get-clan clan-id))
-                              direction (* 100 conf))
-                      (execute-category-trade clan-id direction symbol bid ask))))))
+              (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
+              (let ((strat-signals (collect-strategy-signals symbol *candle-history*)))
+                (when strat-signals
+                  (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                  ;; Group by category and pick best for each clan
+                  (let ((by-category (make-hash-table :test 'eq)))
+                    ;; Group signals by category
+                    (dolist (sig strat-signals)
+                      (let ((cat (getf sig :category)))
+                        (push sig (gethash cat by-category))))
+                    ;; Trade TOP 3 strategies per clan (not just 1)
+                    (dolist (category '(:trend :reversion :breakout :scalp))
+                      (let ((cat-sigs (gethash category by-category)))
+                        (when cat-sigs
+                          ;; Take up to 3 strategies per clan
+                          (let ((top-sigs (subseq cat-sigs 0 (min 4 (length cat-sigs)))))
+                            (dolist (sig top-sigs)
+                              (let* ((strat-name (getf sig :strategy-name))
+                                     (direction (getf sig :direction))
+                                     ;; Per-strategy cooldown
+                                     (strat-key (intern (format nil "~a-~a" category strat-name) :keyword)))
+                                ;; Check per-strategy cooldown (not per-clan)
+                                (when (can-clan-trade-p strat-key)
+                                  (let ((narrative (generate-dynamic-narrative sig symbol bid)))
+                                    ;; Log the dynamic narrative
+                                    (format t "~a~%" narrative)
+                                    ;; Send to Discord
+                                    (handler-case
+                                        (notify-discord narrative :color (if (eq direction :buy) 3066993 15158332))
+                                      (error (e) (format t "[L] Discord error: ~a~%" e)))
+                                    ;; Record trade time for this strategy
+                                    (record-clan-trade-time strat-key)
+                                    ;; Execute the trade
+                                    (execute-category-trade category direction symbol bid ask)
+                                    ;; Record for rank promotion
+                                    (record-strategy-trade strat-name :trade 0)))))))))))))
             
             ;; No trade - explain why
             (cond
               ((not any-strong-signal)
-               (format t "[L] ⏸️ HOLD: No strong clan signals~%"))
+               (format t "[L] ⏸️ HOLD: No strong signals~%"))
               ((< consensus min-consensus-to-trade)
-               (format t "[L] ⏸️ HOLD: Very weak consensus (~,0f%)~%" (* 100 consensus)))
-              ((and memory-suggestion (not (eq memory-suggestion swarm-direction)))
-               (format t "[L] ⏸️ HOLD: Memory disagrees (~a vs ~a)~%" 
-                       memory-suggestion swarm-direction))
+               (format t "[L] ⏸️ HOLD: Weak consensus (~,0f%)~%" (* 100 consensus)))
               ((not trend-agrees)
-               (format t "[L] ⏸️ HOLD: Research trend divergence~%"))))))))))
+               (format t "[L] ⏸️ HOLD: Research trend divergence~%")))))
+        (error (e) nil))))))  ;; Suppress tribe processing errors
 
 (defun init-school ()
   (build-category-pools)
@@ -2384,8 +2562,8 @@
            (kalman-trend (when (fboundp 'ind-kalman-trend) (ind-kalman-trend history)))
            ;; Research Paper #13: Dual Trend Signal
            (dual-trend (when (fboundp 'dual-trend-signal) (dual-trend-signal history)))
-           (dual-dir (when dual-trend (getf dual-trend :direction)))
-           (dual-agreement (when dual-trend (getf dual-trend :agreement)))
+           (dual-dir (when (and dual-trend (listp dual-trend)) (getf dual-trend :direction)))
+           (dual-agreement (when (and dual-trend (listp dual-trend)) (getf dual-trend :agreement)))
            ;; Combined conditions
            (strong-trend (and adx (> adx 25)))
            (kalman-confirms (or (null kalman-trend) 
@@ -2543,30 +2721,34 @@
         (t (list :direction :hold :confidence 0.3 :clan :raiders))))))
 
 (defun collect-all-tribe-signals (symbol history)
-  "Collect signals from all 4 tribes"
-  (list (get-hunter-signal symbol history)
-        (get-shaman-signal symbol history)
-        (get-breaker-signal symbol history)
-        (get-raider-signal symbol history)))
+  "Collect signals from all 4 tribes - with error protection"
+  (list (handler-case (get-hunter-signal symbol history) (error () nil))
+        (handler-case (get-shaman-signal symbol history) (error () nil))
+        (handler-case (get-breaker-signal symbol history) (error () nil))
+        (handler-case (get-raider-signal symbol history) (error () nil))))
 
 (defun aggregate-tribe-signals (signals)
   "Aggregate tribe signals with weighted voting"
-  (let ((buy-w 0.0) (sell-w 0.0) (hold-w 0.0)
-        (allocs '(:hunters 0.40 :shamans 0.30 :breakers 0.20 :raiders 0.10)))
-    (dolist (sig signals)
-      (when sig
-        (let* ((clan (getf sig :clan))
-               (dir (getf sig :direction))
-               (conf (float (or (getf sig :confidence) 0.5)))
-               (alloc (float (or (getf allocs clan) 0.25)))
-               (w (float (* alloc conf))))
-          (case dir (:buy (incf buy-w w)) (:sell (incf sell-w w)) (t (incf hold-w w))))))
-    (let ((total (+ buy-w sell-w hold-w)))
-      (list :direction (cond ((and (> buy-w sell-w) (> buy-w hold-w)) :buy)
-                             ((and (> sell-w buy-w) (> sell-w hold-w)) :sell)
-                             (t :hold))
-            :consensus (if (> total 0.0) (float (/ (max buy-w sell-w hold-w) total)) 0.0)
-            :signals signals))))
+  (handler-case
+    (let ((buy-w 0.0) (sell-w 0.0) (hold-w 0.0)
+          (allocs '(:hunters 0.40 :shamans 0.30 :breakers 0.20 :raiders 0.10)))
+      (dolist (sig signals)
+        (when (and sig (listp sig) (getf sig :clan))  ;; Extra check for :clan key
+          (let* ((clan (getf sig :clan))
+                 (dir (getf sig :direction))
+                 (conf (float (or (getf sig :confidence) 0.5)))
+                 (alloc (float (or (getf allocs clan) 0.25)))
+                 (w (float (* alloc conf))))
+            (case dir (:buy (incf buy-w w)) (:sell (incf sell-w w)) (t (incf hold-w w))))))
+      (let ((total (+ buy-w sell-w hold-w)))
+        (list :direction (cond ((and (> buy-w sell-w) (> buy-w hold-w)) :buy)
+                               ((and (> sell-w buy-w) (> sell-w hold-w)) :sell)
+                               (t :hold))
+              :consensus (if (> total 0.0) (float (/ (max buy-w sell-w hold-w) total)) 0.0)
+              :signals signals)))
+    (error (e) 
+      ;; Return safe default if any error occurs
+      (list :direction :hold :consensus 0.0 :signals nil))))
 
 (init-school)
 

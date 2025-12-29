@@ -106,10 +106,214 @@ def format_help():
 `swimmy status` / `swimmy 状況` - 現在の状態
 `swimmy goal` / `swimmy 目標` - 目標進捗
 `swimmy market` / `swimmy 相場` - 市場状況
+`swimmy tribe` / `swimmy 部族` - 4部族の意見
+`swimmy progress` / `swimmy 進捗` - Warmup進捗
 `swimmy all` / `swimmy 全部` - 全部まとめて表示
 `swimmy help` - このヘルプ
 ━━━━━━━━━━━━━━━━━
+📚 **arXiv Scout**
+`arxiv add <番号>` - 論文をストックに追加
+`arxiv list` - 今日のレポート
+━━━━━━━━━━━━━━━━━
 🤖 Powered by Opus AI Partnership"""
+
+
+def format_tribes():
+    """Format tribe status for Discord"""
+    load_status()
+    tribes = status_cache.get("tribes", {})
+    consensus = status_cache.get("tribe_consensus", {})
+
+    # Emoji mapping
+    emojis = {"hunters": "🏹", "shamans": "🔮", "breakers": "⚔️", "raiders": "🗡️"}
+    names = {
+        "hunters": "Hunters (追跡者)",
+        "shamans": "Shamans (呪術師)",
+        "breakers": "Breakers (破壊者)",
+        "raiders": "Raiders (盗賊)",
+    }
+
+    msg = """🏛️ **Four Great Clans Status**
+━━━━━━━━━━━━━━━━━\n"""
+
+    for clan in ["hunters", "shamans", "breakers", "raiders"]:
+        info = tribes.get(clan, {})
+        direction = info.get("direction", "HOLD").upper()
+        confidence = info.get("confidence", 0)
+        reason = info.get("reason", "-")
+        emoji = emojis.get(clan, "🏛️")
+        name = names.get(clan, clan)
+
+        # Direction color emoji
+        dir_emoji = (
+            "🟢" if direction == "BUY" else ("🔴" if direction == "SELL" else "⚪")
+        )
+
+        msg += f"{emoji} **{name}**\n"
+        msg += f"   {dir_emoji} {direction} ({confidence:.0f}%)\n"
+        msg += f"   💡 {reason}\n\n"
+
+    # Consensus
+    cons_dir = consensus.get("direction", "HOLD").upper()
+    cons_str = consensus.get("strength", 0)
+    cons_emoji = "🟢" if cons_dir == "BUY" else ("🔴" if cons_dir == "SELL" else "⚪")
+
+    msg += f"━━━━━━━━━━━━━━━━━\n"
+    msg += f"🏛️ **Consensus**: {cons_emoji} {cons_dir} ({cons_str:.0f}%)"
+
+    return msg
+
+
+def format_progress():
+    """Format warmup progress for Discord"""
+    load_status()
+    total = status_cache.get("total_trades", 0)
+    warmup_pct = status_cache.get("warmup_progress", 0)
+    warmup_done = status_cache.get("warmup_complete", False)
+
+    # Progress bar
+    filled = int(warmup_pct / 10)
+    bar = "█" * filled + "░" * (10 - filled)
+
+    if warmup_done:
+        status = "✅ Warmup Complete! Full mode active."
+    else:
+        remaining = 50 - total
+        status = f"⏳ {remaining} trades until full mode"
+
+    return f"""📊 **Warmup Progress**
+━━━━━━━━━━━━━━━━━
+🔄 **Trades**: {total} / 50
+📈 **Progress**: [{bar}] {warmup_pct}%
+{status}
+━━━━━━━━━━━━━━━━━
+💡 First 50 trades = learning mode
+   After 50 = full autonomous trading"""
+
+
+# =============================================================================
+# arXiv Scout連携機能
+# =============================================================================
+
+ARXIV_DATA_DIR = "/home/swimmy/arxiv-scout/data"
+LAST_REPORT_FILE = f"{ARXIV_DATA_DIR}/last_report.json"
+STOCK_PAPERS_FILE = f"{ARXIV_DATA_DIR}/stock_papers.json"
+
+
+def arxiv_add_to_stock(number: int) -> str:
+    """番号指定で論文をストックに追加"""
+    try:
+        # last_report.json読み込み
+        if not os.path.exists(LAST_REPORT_FILE):
+            return "❌ レポートがありません。まず `arxiv list` で確認してください。"
+
+        with open(LAST_REPORT_FILE, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        papers = report.get("papers", [])
+        target = None
+        for p in papers:
+            if p.get("number") == number:
+                target = p
+                break
+
+        if not target:
+            return f"❌ 番号 {number} の論文が見つかりません。(1-{len(papers)}の範囲で指定)"
+
+        # stock_papers.json読み込み・追加
+        stock_data = {"papers": [], "last_updated": None}
+        if os.path.exists(STOCK_PAPERS_FILE):
+            with open(STOCK_PAPERS_FILE, "r", encoding="utf-8") as f:
+                stock_data = json.load(f)
+
+        stock_papers = stock_data.get("papers", [])
+        stock_ids = {p.get("id") for p in stock_papers}
+
+        if target["id"] in stock_ids:
+            return f"⚠️ 既にストック済み: **{target['title'][:40]}...**"
+
+        # 追加
+        stock_papers.append(
+            {
+                "id": target["id"],
+                "title": target["title"],
+                "link": target["link"],
+                "score": target.get("score"),
+                "key_tech": target.get("key_tech"),
+                "how_to_use": target.get("how_to_use"),
+                "stocked_at": datetime.now().isoformat(),
+                "added_via": "discord",
+            }
+        )
+
+        stock_data["papers"] = stock_papers
+        stock_data["last_updated"] = datetime.now().isoformat()
+
+        with open(STOCK_PAPERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stock_data, f, ensure_ascii=False, indent=2)
+
+        return f"""✅ **ストックに追加しました！**
+━━━━━━━━━━━━━━━━━
+📄 **{target['title'][:50]}...**
+🔧 技術: {target.get('key_tech', '-')}
+📊 スコア: {target.get('score', '?')}/10
+🔗 <{target['link']}>"""
+
+    except Exception as e:
+        return f"❌ エラー: {e}"
+
+
+def arxiv_show_list() -> str:
+    """今日のレポート一覧を表示"""
+    try:
+        if not os.path.exists(LAST_REPORT_FILE):
+            return "❌ レポートがありません。"
+
+        with open(LAST_REPORT_FILE, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        papers = report.get("papers", [])
+        if not papers:
+            return "📭 レポートに論文がありません。"
+
+        msg = f"📚 **arXiv Scout レポート** ({report.get('date', '?')})\n━━━━━━━━━━━━━━━━━\n"
+        for p in papers[:10]:
+            num = p.get("number", "?")
+            score = p.get("score", "?")
+            title = p.get("title", "")[:35]
+            msg += f"**{num}.** [{score}/10] {title}...\n"
+
+        msg += "━━━━━━━━━━━━━━━━━\n💡 `arxiv add <番号>` でストック追加"
+        return msg
+
+    except Exception as e:
+        return f"❌ エラー: {e}"
+
+
+def arxiv_show_stock() -> str:
+    """ストック論文一覧を表示"""
+    try:
+        if not os.path.exists(STOCK_PAPERS_FILE):
+            return "📭 ストックが空です。"
+
+        with open(STOCK_PAPERS_FILE, "r", encoding="utf-8") as f:
+            stock_data = json.load(f)
+
+        papers = stock_data.get("papers", [])
+        if not papers:
+            return "📭 ストックが空です。"
+
+        msg = f"📦 **ストック論文** ({len(papers)}件)\n━━━━━━━━━━━━━━━━━\n"
+        for i, p in enumerate(papers[-5:], 1):  # 最新5件
+            score = p.get("score", "?")
+            title = p.get("title", "")[:30]
+            msg += f"**{i}.** [{score}/10] {title}...\n"
+
+        msg += "━━━━━━━━━━━━━━━━━"
+        return msg
+
+    except Exception as e:
+        return f"❌ エラー: {e}"
 
 
 @bot.event
@@ -139,10 +343,18 @@ async def on_message(message):
         elif query in ["market", "相場", "マーケット"]:
             await message.channel.send(format_market())
 
+        elif query in ["tribe", "部族", "tribes", "クラン", "clan"]:
+            await message.channel.send(format_tribes())
+
+        elif query in ["progress", "進捗", "warmup", "ウォームアップ", "トレード数"]:
+            await message.channel.send(format_progress())
+
         elif query in ["all", "全部", "すべて", "まとめ"]:
             await message.channel.send(format_status())
             await message.channel.send(format_goal())
             await message.channel.send(format_market())
+            await message.channel.send(format_tribes())
+            await message.channel.send(format_progress())
 
         elif query in ["help", "ヘルプ", "?"]:
             await message.channel.send(format_help())
@@ -156,6 +368,66 @@ async def on_message(message):
     # Also respond to just "swimmy" or mentions
     elif content == "swimmy" or bot.user.mentioned_in(message):
         await message.channel.send(format_status())
+
+    # ===== arXiv Scout連携コマンド =====
+    elif content.startswith("arxiv "):
+        query = content[6:].strip()
+
+        # arxiv add <番号> または arxiv <番号>番追加
+        if query.startswith("add ") or "追加" in query:
+            # 番号を抽出
+            import re
+
+            numbers = re.findall(r"\d+", query)
+            if numbers:
+                num = int(numbers[0])
+                result = arxiv_add_to_stock(num)
+                await message.channel.send(result)
+            else:
+                await message.channel.send(
+                    "❓ 番号を指定してください。例: `arxiv add 1`"
+                )
+
+        elif query in ["list", "リスト", "一覧"]:
+            result = arxiv_show_list()
+            await message.channel.send(result)
+
+        elif query in ["stock", "ストック"]:
+            result = arxiv_show_stock()
+            await message.channel.send(result)
+
+        elif query in ["help", "ヘルプ"]:
+            await message.channel.send(
+                """📚 **arXiv Scout Commands**
+━━━━━━━━━━━━━━━━━
+`arxiv add <番号>` - 論文をストックに追加
+`arxiv list` - 今日のレポート一覧
+`arxiv stock` - ストック論文一覧
+`arxiv help` - このヘルプ
+━━━━━━━━━━━━━━━━━"""
+            )
+
+        else:
+            # 数字だけの場合も追加として処理
+            import re
+
+            numbers = re.findall(r"^\d+$", query)
+            if numbers:
+                result = arxiv_add_to_stock(int(numbers[0]))
+                await message.channel.send(result)
+            else:
+                await message.channel.send(
+                    "❓ 不明なコマンド。`arxiv help` で使い方を確認"
+                )
+
+    # 日本語で「1番追加」「2番ストック」
+    elif "番追加" in content or "番ストック" in content:
+        import re
+
+        numbers = re.findall(r"\d+", content)
+        if numbers:
+            result = arxiv_add_to_stock(int(numbers[0]))
+            await message.channel.send(result)
 
 
 def main():

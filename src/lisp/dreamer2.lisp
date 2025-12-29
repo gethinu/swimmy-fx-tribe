@@ -9,6 +9,7 @@
 (defvar *current-regime* :unknown)
 (defvar *volatility-regime* :normal)
 (defvar *candle-histories* nil)
+(defvar *category-pools* nil)  ; Used by seed-evolution-from-knowledge-base
 
 ;; Forward declarations for struct accessors
 (declaim (ftype (function (t) t) trade-record-category))
@@ -45,8 +46,8 @@
                (s (gethash cat stats (list 0 0 0.0))))
           (incf (second s))
           (incf (third s) (or (trade-record-pnl record) 0))
-          (setf (gethash cat stats) s)))
-    stats)))
+          (setf (gethash cat stats) s))))
+    stats))
 
 (defun analyze-by-session ()
   "Analyze performance by trading session"
@@ -368,42 +369,73 @@ Output ONLY the s-expression. No markdown or explanation."
                      :exit (strategy-exit strat)
                      :sl new-sl :tp new-tp :volume (strategy-volume strat)))))
 
-;; Crossover: combine two strategies
+;; Crossover: combine two strategies (IMPROVED - preserves strategy diversity)
 (defun crossover-strategies (parent1 parent2)
-  "Create child strategy by combining two parents"
-  (multiple-value-bind (s1-short s1-long) (extract-sma-params (strategy-indicators parent1))
-    (multiple-value-bind (s2-short s2-long) (extract-sma-params (strategy-indicators parent2))
-      (let* ((child-short (if (zerop (random 2)) (or s1-short 5) (or s2-short 5)))
-             (child-long (if (zerop (random 2)) (or s1-long 20) (or s2-long 20)))
-             (child-sl (if (zerop (random 2)) (strategy-sl parent1) (strategy-sl parent2)))
-             (child-tp (if (zerop (random 2)) (strategy-tp parent1) (strategy-tp parent2)))
-             (child-name (format nil "~a×~a" 
-                                 (subseq (strategy-name parent1) 0 (min 3 (length (strategy-name parent1))))
-                                 (subseq (strategy-name parent2) 0 (min 3 (length (strategy-name parent2)))))))
-        ;; Ensure long > short
-        (when (<= child-long child-short) (setf child-long (+ child-short 10)))
-        (make-strategy :name child-name
-                       :indicators (list (list 'sma child-short) (list 'sma child-long))
-                       :entry (strategy-entry parent1)  ; Use parent1's entry logic
-                       :exit (strategy-exit parent1)
-                       :sl child-sl :tp child-tp :volume 0.01)))))
+  "Create child strategy by combining two parents - preserves strategy structure"
+  ;; Randomly pick which parent's indicators/entry/exit to use (preserves strategy type)
+  (let* ((indicator-parent (if (zerop (random 2)) parent1 parent2))
+         (logic-parent (if (zerop (random 2)) parent1 parent2))
+         ;; Blend SL/TP from both parents
+         (child-sl (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2))
+         (child-tp (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2))
+         (child-name (format nil "~a×~a" 
+                             (subseq (strategy-name parent1) 0 (min 4 (length (strategy-name parent1))))
+                             (subseq (strategy-name parent2) 0 (min 4 (length (strategy-name parent2)))))))
+    ;; Add slight mutation to SL/TP (10% variance)
+    (when (< (random 1.0) 0.3)
+      (setf child-sl (* child-sl (+ 0.9 (random 0.2)))))
+    (when (< (random 1.0) 0.3)
+      (setf child-tp (* child-tp (+ 0.9 (random 0.2)))))
+    (make-strategy :name child-name
+                   :indicators (strategy-indicators indicator-parent)  ; Preserve parent's indicators
+                   :entry (strategy-entry logic-parent)
+                   :exit (strategy-exit logic-parent)
+                   :sl (max 0.05 (min 0.5 child-sl))  ; Clamp to valid range
+                   :tp (max 0.1 (min 1.0 child-tp))
+                   :volume 0.01)))
 
-;; Evolve population using genetic operations
+;; Seed evolution pool from knowledge base (ALL 61 strategies!)
+(defun seed-evolution-from-knowledge-base ()
+  "Seed *evolved-strategies* with top strategies from each category"
+  (when (boundp '*category-pools*)
+    (let ((categories '(:trend :reversion :breakout :scalp))
+          (count 0))
+      (setf *evolved-strategies* nil)
+      ;; Add top 3 from each category (12 total)
+      (dolist (cat categories)
+        (let ((pool (gethash cat *category-pools*)))
+          (when pool
+            (dolist (strat (subseq pool 0 (min 3 (length pool))))
+              (push strat *evolved-strategies*)
+              (incf count)))))
+      (when (> count 0)
+        (format t "[L] 🧬 EVOLUTION SEEDED with ~d strategies:~%" count)
+        (dolist (s (subseq *evolved-strategies* 0 (min 5 (length *evolved-strategies*))))
+          (format t "[L]    • ~a~%" (strategy-name s)))))))
+
+;; Evolve population using genetic operations (with auto-seeding)
 (defun evolve-population ()
-  "Apply genetic operations to create new strategies"
+  "Apply genetic operations - auto-seeds from 61 strategies if pool is empty"
+  ;; Seed from knowledge base if pool is empty
+  (when (< (length *evolved-strategies*) 2)
+    (seed-evolution-from-knowledge-base))
+  
   (when (>= (length *evolved-strategies*) 2)
-    (format t "[L] 🧬 Evolving population...~%")
+    (format t "[L] 🧬 Evolving (~d strategies in pool)~%" (length *evolved-strategies*))
     (let* ((sorted (sort (copy-list *evolved-strategies*) #'> :key #'strategy-sharpe))
            (parent1 (first sorted))
            (parent2 (second sorted)))
+      ;; Log which strategies are being crossed (VERBOSE)
+      (format t "[L] 🧬 Parents: ~a × ~a~%" (strategy-name parent1) (strategy-name parent2))
+      (format t "[L]    P1 indicators: ~a~%" (strategy-indicators parent1))
+      (format t "[L]    P2 indicators: ~a~%" (strategy-indicators parent2))
       ;; Crossover
       (let ((child (crossover-strategies parent1 parent2)))
-        (format t "[L] 🧬 Crossover: ~a × ~a → ~a~%" 
-                (strategy-name parent1) (strategy-name parent2) (strategy-name child))
+        (format t "[L] 🧬 Child: ~a (inherits: ~a)~%" 
+                (strategy-name child) (strategy-indicators child))
         ;; Mutate the child
         (let ((mutant (mutate-strategy child 0.3)))
           (format t "[L] 🧬 Mutant: ~a~%" (strategy-name mutant))
-          ;; Add to pending for clone check
           (setf *pending-strategy* mutant)
           (request-clone-check mutant nil))))))
 
@@ -548,6 +580,9 @@ Generate ~d strategies now:"
         (/ total-diff pairs))))
 
 (format t "[VS] Verbalized Sampling loaded (ArXiv:2510.01171)~%")
+
+
+
 
 
 

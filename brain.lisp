@@ -72,6 +72,9 @@
 (defparameter *total-trades* 0)
 (defparameter *benched-arms* nil)
 
+;; Tribe Status for Discord (updated each tick)
+(defparameter *tribe-status* (make-hash-table :test 'eq))  ; :hunters, :shamans, :breakers, :raiders
+
 ;; Risk Management
 (defparameter *peak-equity* 0.0)
 (defparameter *max-drawdown* 0.0)
@@ -430,7 +433,12 @@
                      (volatility-str (if (and (boundp '*volatility-regime*) *volatility-regime*)
                                          (symbol-name *volatility-regime*)
                                          "UNKNOWN"))
-                     (danger (if (boundp '*danger-level*) *danger-level* 0)))
+                     (danger (if (boundp '*danger-level*) *danger-level* 0))
+                     ;; Tribe status for Discord
+                     (hunter-sig (gethash :hunters *tribe-status*))
+                     (shaman-sig (gethash :shamans *tribe-status*))
+                     (breaker-sig (gethash :breakers *tribe-status*))
+                     (raider-sig (gethash :raiders *tribe-status*)))
                 (format out "{~%")
                 (format out "  \"daily_pnl\": ~,2f,~%" *daily-pnl*)
                 (format out "  \"accumulated_pnl\": ~,2f,~%" *accumulated-pnl*)
@@ -441,6 +449,29 @@
                 (format out "  \"leader\": \"~a\",~%" leader-name)
                 (format out "  \"danger_level\": ~d,~%" danger)
                 (format out "  \"ecosystem_health\": ~,0f,~%" ecosystem-health)
+                ;; Trade counts
+                (format out "  \"total_trades\": ~d,~%" *total-trades*)
+                (format out "  \"warmup_progress\": ~d,~%" (min 100 (* 2 *total-trades*)))
+                (format out "  \"warmup_complete\": ~a,~%" (if (>= *total-trades* 50) "true" "false"))
+                ;; Tribe detailed status
+                (format out "  \"tribes\": {~%")
+                (format out "    \"hunters\": {\"direction\": \"~a\", \"confidence\": ~,0f, \"reason\": \"MACD+ADX+Kalman\"},~%"
+                        (if hunter-sig (getf hunter-sig :direction) :hold)
+                        (* 100 (or (and hunter-sig (getf hunter-sig :confidence)) 0)))
+                (format out "    \"shamans\": {\"direction\": \"~a\", \"confidence\": ~,0f, \"reason\": \"RSI+BB Mean Reversion\"},~%"
+                        (if shaman-sig (getf shaman-sig :direction) :hold)
+                        (* 100 (or (and shaman-sig (getf shaman-sig :confidence)) 0)))
+                (format out "    \"breakers\": {\"direction\": \"~a\", \"confidence\": ~,0f, \"reason\": \"Bollinger Breakout\"},~%"
+                        (if breaker-sig (getf breaker-sig :direction) :hold)
+                        (* 100 (or (and breaker-sig (getf breaker-sig :confidence)) 0)))
+                (format out "    \"raiders\": {\"direction\": \"~a\", \"confidence\": ~,0f, \"reason\": \"EMA Scalp+Kalman\"}~%"
+                        (if raider-sig (getf raider-sig :direction) :hold)
+                        (* 100 (or (and raider-sig (getf raider-sig :confidence)) 0)))
+                (format out "  },~%")
+                ;; Tribe consensus
+                (format out "  \"tribe_consensus\": {\"direction\": \"~a\", \"strength\": ~,0f},~%"
+                        (or *tribe-direction* :hold)
+                        (* 100 (or *tribe-consensus* 0)))
                 (format out "  \"last_updated\": \"~a\"~%" (get-jst-str))
                 (format out "}~%")))
             (format t "[L] 📝 Live status saved to JSON~%"))
@@ -1898,13 +1929,18 @@
         (when (and history (> (length history) 50))
           (handler-case
               (let* ((tribe-signals (collect-all-tribe-signals symbol history))
-                     (aggregated (aggregate-tribe-signals tribe-signals))
-                     (direction (getf aggregated :direction))
-                     (consensus (getf aggregated :consensus)))
-                (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 (float (or consensus 0))))
-                ;; Store tribe decision for use in process-category-trades
-                (setf *tribe-direction* direction)
-                (setf *tribe-consensus* (float (or consensus 0))))
+                     (aggregated (aggregate-tribe-signals tribe-signals)))
+                ;; Store individual tribe signals for Discord
+                (dolist (sig tribe-signals)
+                  (when (and sig (listp sig) (getf sig :clan))
+                    (setf (gethash (getf sig :clan) *tribe-status*) sig)))
+                (when (and aggregated (listp aggregated))  ;; Only process valid plists
+                  (let ((direction (getf aggregated :direction))
+                        (consensus (getf aggregated :consensus)))
+                    (format t "[L] 🏛️ TRIBES: ~a (~,0f% consensus)~%" direction (* 100 (float (or consensus 0))))
+                    ;; Store tribe decision for use in process-category-trades
+                    (setf *tribe-direction* direction)
+                    (setf *tribe-consensus* (float (or consensus 0))))))
             (error (e) (format t "[L] TRIBE warn: ~a~%" e))))
         ;; Category-based team trades (40/30/20/10 allocation)
         (process-category-trades symbol bid ask)))))
@@ -2027,6 +2063,71 @@
                   (score (jsown:val (jsown:val json "score") "composite")))
              (format t "[L] 🔍 MCTS Optimized (score: ~,3f): ~a~%" score best)
              (notify-discord (format nil "🔍 MCTS Optimized: ~,3f" score) :color 130821)))
+          
+          ;; ══════════════════════════════════════
+          ;; TRADE CLOSED - 葬儀 / Victory Ceremony
+          ;; ══════════════════════════════════════
+          ((string= type "TRADE_CLOSED")
+           (handler-case
+               (let* ((symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "UNKNOWN"))
+                      (pnl (cond 
+                             ((jsown:keyp json "profit") (jsown:val json "profit"))
+                             ((jsown:keyp json "pnl") (jsown:val json "pnl"))
+                             ((jsown:keyp json "close_profit") (jsown:val json "close_profit"))
+                             (t 0)))
+                      (direction (if (jsown:keyp json "type") (jsown:val json "type") ""))
+                      (is-win (> pnl 0)))
+                 ;; Update PnL tracking
+                 (incf *daily-pnl* pnl)
+                 (incf *accumulated-pnl* pnl)
+                 
+                 ;; Record result for danger tracking
+                 (record-trade-result (if is-win :win :loss))
+                 
+                 ;; ═══════════════════════════════════════
+                 ;; LEARNING: Record for dreamer analysis
+                 ;; ═══════════════════════════════════════
+                 (let ((dir-keyword (if (search "BUY" (string-upcase direction)) :buy :sell))
+                       (category (cond 
+                                   ((jsown:keyp json "category") 
+                                    (intern (string-upcase (jsown:val json "category")) :keyword))
+                                   (t :trend)))
+                       (strategy-name (if (jsown:keyp json "strategy") 
+                                         (jsown:val json "strategy") 
+                                         "unknown")))
+                   (handler-case
+                       (record-trade-outcome symbol dir-keyword category strategy-name pnl)
+                     (error (e) (format t "[L] Learning record error: ~a~%" e))))
+                 
+                 ;; Funeral/Victory Ceremony
+                 (if is-win
+                     ;; 💀 VICTORY - Warrior Returns Triumphant
+                     (let ((msg (format nil "
+⚔️ ═══════════════════════════════ ⚔️
+  🎉 戦士凱旋！
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 ~a | ~a
+💰 利益: +¥~,0f
+
+🏆 「勝利は準備の結果である」
+⚔️ ═══════════════════════════════ ⚔️" symbol direction pnl)))
+                       (format t "[L] ~a~%" msg)
+                       (notify-discord msg :color 3066993))  ; Green
+                     
+                     ;; 💀 FUNERAL - Fallen Warrior Remembered
+                     (let ((msg (format nil "
+🕯️ ═══════════════════════════════ 🕯️
+  ⚰️ 戦士追悼
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📉 ~a | ~a
+💸 損失: ¥~,0f
+
+🙏 「敗北もまた師である」
+🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
+                       (format t "[L] ~a~%" msg)
+                       (notify-discord msg :color 15158332))))  ; Red
+             (error (e) (format t "[L] Trade close error: ~a~%" e))))
+          
           (t (format t "[L] Unknown msg type: ~a~%" type))))
     (error (e) (format t "[L] Err: ~a~%" e))))
 

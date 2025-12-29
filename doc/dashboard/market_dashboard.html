@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐟 Swimmy Market Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #2d2d3a;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 1.25rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .header-time { color: var(--text-secondary); font-size: 0.875rem; }
+        
+        .container { max-width: 1800px; margin: 0 auto; padding: 1rem; }
+        
+        .quick-links {
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .quick-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+        
+        .quick-link:hover { background: var(--accent-blue); border-color: var(--accent-blue); }
+        
+        .badge {
+            padding: 0.15rem 0.35rem;
+            border-radius: 3px;
+            font-size: 0.6rem;
+            font-weight: 700;
+        }
+        
+        .badge-jp { background: #dc2626; }
+        .badge-us { background: #2563eb; }
+        .badge-global { background: #059669; }
+        .badge-sentiment { background: #7c3aed; }
+        
+        .widget-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .widget {
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        
+        .widget-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .widget-body { height: 400px; }
+        .widget-body.tall { height: 500px; }
+        .widget-body iframe { width: 100%; height: 100%; border: none; }
+        
+        .full-width { grid-column: 1 / -1; }
+        .full-width .widget-body { height: 600px; }
+        
+        .market-status {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .status-open { background: var(--accent-green); }
+        .status-closed { background: var(--accent-red); }
+        
+        .footer {
+            text-align: center;
+            padding: 1rem;
+            color: var(--text-secondary);
+            font-size: 0.7rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🐟 Swimmy Market Dashboard</h1>
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <div class="market-status" id="market-status"></div>
+            <div class="header-time" id="current-time"></div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Quick Links -->
+        <div class="quick-links">
+            <span style="color: var(--text-secondary); font-size: 0.75rem;">⚡ Open:</span>
+            <a href="https://sekai-kabuka.com" target="_blank" class="quick-link">
+                <span class="badge badge-global">Global</span> 世界の株価
+            </a>
+            <a href="https://nikkei225jp.com" target="_blank" class="quick-link">
+                <span class="badge badge-jp">JP</span> 日経先物
+            </a>
+            <a href="https://finviz.com/map.ashx" target="_blank" class="quick-link">
+                <span class="badge badge-us">US</span> Finviz
+            </a>
+            <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" class="quick-link">
+                <span class="badge badge-sentiment">😱</span> Fear&Greed
+            </a>
+            <a href="https://www.tradingview.com/chart/?symbol=FX:USDJPY" target="_blank" class="quick-link">
+                <span class="badge badge-global">📈</span> TradingView
+            </a>
+            <a href="https://www.investing.com/currencies/" target="_blank" class="quick-link">
+                <span class="badge badge-global">FX</span> Investing.com
+            </a>
+        </div>
+        
+        <!-- TradingView Widgets (Official embeds that work) -->
+        <div class="widget-grid">
+            <!-- Market Overview -->
+            <div class="widget full-width">
+                <div class="widget-header">
+                    📊 Market Overview (TradingView)
+                </div>
+                <div class="widget-body">
+                    <!-- TradingView Widget BEGIN -->
+                    <div class="tradingview-widget-container" style="height:100%;width:100%">
+                        <iframe scrolling="no" allowtransparency="true" frameborder="0" 
+                            src="https://s.tradingview.com/embed-widget/market-quotes/?locale=ja#%7B%22width%22%3A%22100%25%22%2C%22height%22%3A%22100%25%22%2C%22symbolsGroups%22%3A%5B%7B%22name%22%3A%22FX%22%2C%22symbols%22%3A%5B%7B%22name%22%3A%22FX%3AUSDJPY%22%7D%2C%7B%22name%22%3A%22FX%3AEURUSD%22%7D%2C%7B%22name%22%3A%22FX%3AGBPUSD%22%7D%2C%7B%22name%22%3A%22FX%3AEURJPY%22%7D%2C%7B%22name%22%3A%22FX%3AGBPJPY%22%7D%5D%7D%2C%7B%22name%22%3A%22Index%22%2C%22symbols%22%3A%5B%7B%22name%22%3A%22TVC%3ANI225%22%7D%2C%7B%22name%22%3A%22TVC%3ASPX%22%7D%2C%7B%22name%22%3A%22TVC%3ANDX%22%7D%2C%7B%22name%22%3A%22TVC%3ADJI%22%7D%2C%7B%22name%22%3A%22INDEX%3ADAX%22%7D%5D%7D%2C%7B%22name%22%3A%22Crypto%22%2C%22symbols%22%3A%5B%7B%22name%22%3A%22COINBASE%3ABTCUSD%22%7D%2C%7B%22name%22%3A%22COINBASE%3AETHUSD%22%7D%5D%7D%5D%2C%22showSymbolLogo%22%3Atrue%2C%22isTransparent%22%3Atrue%2C%22colorTheme%22%3A%22dark%22%7D"
+                            style="width: 100%; height: 100%;">
+                        </iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- USD/JPY Chart -->
+            <div class="widget">
+                <div class="widget-header">
+                    💱 USD/JPY Chart
+                </div>
+                <div class="widget-body tall">
+                    <iframe scrolling="no" allowtransparency="true" frameborder="0"
+                        src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=FX%3AUSDJPY&interval=60&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Asia%2FTokyo&withdateranges=1&showpopupbutton=1&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&showpopupbutton=1&locale=ja"
+                        style="width: 100%; height: 100%;">
+                    </iframe>
+                </div>
+            </div>
+            
+            <!-- Economic Calendar -->
+            <div class="widget">
+                <div class="widget-header">
+                    📅 Economic Calendar
+                </div>
+                <div class="widget-body tall">
+                    <iframe scrolling="no" allowtransparency="true" frameborder="0"
+                        src="https://s.tradingview.com/embed-widget/events/?locale=ja#%7B%22colorTheme%22%3A%22dark%22%2C%22isTransparent%22%3Atrue%2C%22width%22%3A%22100%25%22%2C%22height%22%3A%22100%25%22%2C%22importanceFilter%22%3A%22-1%2C0%2C1%22%2C%22countryFilter%22%3A%22us%2Cjp%2Ceu%2Cgb%22%7D"
+                        style="width: 100%; height: 100%;">
+                    </iframe>
+                </div>
+            </div>
+            
+            <!-- Ticker Tape -->
+            <div class="widget full-width" style="height: auto;">
+                <div class="widget-body" style="height: 80px;">
+                    <iframe scrolling="no" allowtransparency="true" frameborder="0"
+                        src="https://s.tradingview.com/embed-widget/ticker-tape/?locale=ja#%7B%22symbols%22%3A%5B%7B%22proName%22%3A%22FX%3AUSDJPY%22%2C%22title%22%3A%22USD%2FJPY%22%7D%2C%7B%22proName%22%3A%22FX%3AEURUSD%22%2C%22title%22%3A%22EUR%2FUSD%22%7D%2C%7B%22proName%22%3A%22TVC%3ANI225%22%2C%22title%22%3A%22Nikkei%22%7D%2C%7B%22proName%22%3A%22TVC%3ASPX%22%2C%22title%22%3A%22S%26P500%22%7D%2C%7B%22proName%22%3A%22TVC%3AVIX%22%2C%22title%22%3A%22VIX%22%7D%2C%7B%22proName%22%3A%22COINBASE%3ABTCUSD%22%2C%22title%22%3A%22BTC%22%7D%5D%2C%22showSymbolLogo%22%3Atrue%2C%22isTransparent%22%3Atrue%2C%22displayMode%22%3A%22adaptive%22%2C%22colorTheme%22%3A%22dark%22%7D"
+                        style="width: 100%; height: 100%;">
+                    </iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="footer">
+        🐟 Swimmy FX-Tribe Ver 41.0 | 「勝とうとするな。ただ、生き残れ。」
+    </footer>
+    
+    <script>
+        function updateTime() {
+            const now = new Date();
+            const options = { weekday: 'short', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            document.getElementById('current-time').textContent = '🕐 ' + now.toLocaleString('ja-JP', options) + ' JST';
+        }
+        
+        function updateMarketStatus() {
+            const now = new Date();
+            const hour = now.getUTCHours();
+            const day = now.getUTCDay();
+            
+            // Weekend check
+            const isWeekend = (day === 0 || day === 6);
+            
+            // Market hours (approximate UTC)
+            const tokyo = !isWeekend && (hour >= 0 && hour < 7);
+            const london = !isWeekend && (hour >= 8 && hour < 16);
+            const ny = !isWeekend && (hour >= 13 && hour < 22);
+            
+            document.getElementById('market-status').innerHTML = `
+                <div class="status-item">
+                    <span class="status-dot ${tokyo ? 'status-open' : 'status-closed'}"></span>
+                    Tokyo
+                </div>
+                <div class="status-item">
+                    <span class="status-dot ${london ? 'status-open' : 'status-closed'}"></span>
+                    London
+                </div>
+                <div class="status-item">
+                    <span class="status-dot ${ny ? 'status-open' : 'status-closed'}"></span>
+                    NY
+                </div>
+            `;
+        }
+        
+        updateTime();
+        updateMarketStatus();
+        setInterval(updateTime, 1000);
+        setInterval(updateMarketStatus, 60000);
+    </script>
+</body>
+</html>

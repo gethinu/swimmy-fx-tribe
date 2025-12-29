@@ -47,5 +47,15 @@ Based on 33 research papers (2024-2025)
 - #32: [FinRL-Tutorials](https://github.com/AI4Finance-Foundation/FinRL-Tutorials)
 - #33: [DQN-Trading](https://github.com/MehranTaghian/DQN-Trading)
 
+## 将来参考・汎用
+
+| # | タイトル | arXiv | 用途 |
+|---|----------|-------|------|
+| 30 | Large Causal Models from LLMs | [2512.07796](https://arxiv.org/abs/2512.07796) | 因果推論・意思決定支援 |
+
+> **#30 DEMOCRITUS**: LLMから因果関係を抽出し、大規模因果モデル（LCM）を構築するシステム。
+> ビジネス意思決定、戦略立案、複雑系の可視化に有用。
+> トレーディング直接適用は低いが、AI戦略生成・知識ベース構築に参照価値あり。
+
 ---
-*Last Updated: 2025-12-26*
+*Last Updated: 2025-12-28*

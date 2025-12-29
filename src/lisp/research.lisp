@@ -34,29 +34,29 @@
            (first-price (car (last closes)))
            (last-price (first closes))
            (change (- last-price first-price))
-           (avg-price (/ (+ first-price last-price) 2)))
+           (avg-price (float (/ (+ first-price last-price) 2))))
       (if (> avg-price 0)
-          (max -1.0 (min 1.0 (/ change (* avg-price 0.1))))  ; Normalize to ~10% move
+          (max -1.0 (min 1.0 (float (/ change (* avg-price 0.1)))))  ; Normalize to ~10% move
           0.0))))
 
 (defun dual-trend-signal (history)
   "Combine short and long-term trends for robust signal.
    Returns (:direction :UP/:DOWN/:FLAT :strength 0-1 :short-trend X :long-trend Y)"
   (when (>= (length history) *long-trend-period*)
-    (let* ((short-trend (calculate-trend-strength history *short-trend-period*))
-           (long-trend (calculate-trend-strength history *long-trend-period*))
+    (let* ((short-trend (or (calculate-trend-strength history *short-trend-period*) 0.0))
+           (long-trend (or (calculate-trend-strength history *long-trend-period*) 0.0))
            ;; Blend: Responsive short + Stable long
-           (blended (+ (* *trend-blend-alpha* short-trend)
-                       (* (- 1 *trend-blend-alpha*) long-trend)))
+           (blended (float (+ (* *trend-blend-alpha* short-trend)
+                       (* (- 1 *trend-blend-alpha*) long-trend))))
            ;; Direction
            (direction (cond
                        ((> blended 0.1) :UP)
                        ((< blended -0.1) :DOWN)
                        (t :FLAT))))
       (list :direction direction
-            :strength (abs blended)
-            :short-trend short-trend
-            :long-trend long-trend
+            :strength (float (abs blended))
+            :short-trend (float short-trend)
+            :long-trend (float long-trend)
             :agreement (if (or (and (> short-trend 0) (> long-trend 0))
                               (and (< short-trend 0) (< long-trend 0)))
                           :aligned
@@ -88,11 +88,11 @@
                           collect (let ((curr (nth i closes))
                                        (prev (nth (1+ i) closes)))
                                    (if (> prev 0)
-                                       (* 100 (/ (- curr prev) prev))
-                                       0))))
-           (mean (/ (reduce #'+ returns) period))
-           (variance (/ (reduce #'+ (mapcar (lambda (r) (expt (- r mean) 2)) returns))
-                       period)))
+                                       (float (* 100 (/ (- curr prev) prev)))
+                                       0.0))))
+           (mean (float (/ (reduce #'+ returns) period)))
+           (variance (float (/ (reduce #'+ (mapcar (lambda (r) (expt (- r mean) 2)) returns))
+                       period))))
       (sqrt variance))))
 
 (defun select-optimal-model (history)
@@ -214,10 +214,10 @@
       ;; Normalize
       (let ((total (+ trending-up-likelihood trending-down-likelihood 
                      ranging-likelihood volatile-likelihood)))
-        (list :trending-up (/ trending-up-likelihood total)
-              :trending-down (/ trending-down-likelihood total)
-              :ranging (/ ranging-likelihood total)
-              :volatile (/ volatile-likelihood total))))))
+        (list :trending-up (float (/ trending-up-likelihood total))
+              :trending-down (float (/ trending-down-likelihood total))
+              :ranging (float (/ ranging-likelihood total))
+              :volatile (float (/ volatile-likelihood total)))))))
 
 (defun detect-regime-hmm (history)
   "Detect current regime using HMM-style inference."
@@ -250,7 +250,7 @@
    Based on Ornstein-Uhlenbeck process assumption."
   (when (>= (length history) period)
     (let* ((closes (mapcar #'candle-close (subseq history 0 period)))
-           (mean (/ (reduce #'+ closes) period))
+           (mean (float (/ (reduce #'+ closes) period)))
            (current (first closes))
            ;; Estimate reversion speed from autocorrelation
            (lag1-sum 0) (var-sum 0))
@@ -260,7 +260,7 @@
                     (dev-i1 (- (nth (1+ i) closes) mean)))
                 (incf lag1-sum (* dev-i dev-i1))
                 (incf var-sum (* dev-i dev-i))))
-      (let ((rho (if (> var-sum 0) (/ lag1-sum var-sum) 0)))
+      (let ((rho (if (> var-sum 0) (float (/ lag1-sum var-sum)) 0.0)))
         ;; Mean reversion speed: -ln(rho)
         (setf *latent-mean-reversion* mean)
         (setf *latent-mean-speed* (max 0.01 (min 1.0 (- (log (max 0.01 (abs rho)))))))
@@ -309,11 +309,11 @@
     (let ((total (+ buy-count sell-count hold-count)))
       (cond
         ((and (> buy-count sell-count) (> buy-count hold-count))
-         (values :BUY (/ buy-count total)))
+         (values :BUY (float (/ buy-count total))))
         ((and (> sell-count buy-count) (> sell-count hold-count))
-         (values :SELL (/ sell-count total)))
+         (values :SELL (float (/ sell-count total))))
         (t
-         (values :HOLD (/ hold-count total)))))))
+         (values :HOLD (float (/ hold-count total))))))))
 
 (format t "[RESEARCH] #10/#27 Ensemble & Normalization loaded~%")
 
@@ -393,15 +393,16 @@
       (format t "~%[RESEARCH] ═══════════════════════════════════════~%")
       (format t "[RESEARCH] 📊 RESEARCH-ENHANCED ANALYSIS~%")
       (format t "[RESEARCH] ═══════════════════════════════════════~%")
-      (format t "[RESEARCH] Dual Trend: ~a (strength: ~,2f, ~a)~%"
-              (getf dual-trend :direction)
-              (getf dual-trend :strength)
-              (getf dual-trend :agreement))
+      (when (and dual-trend (listp dual-trend))
+        (format t "[RESEARCH] Dual Trend: ~a (strength: ~,2f, ~a)~%"
+                (getf dual-trend :direction)
+                (or (getf dual-trend :strength) 0.0)
+                (getf dual-trend :agreement)))
       (format t "[RESEARCH] Model: ~a | Regime: ~a~%" optimal-model regime)
-      (when mean-rev
+      (when (and mean-rev (listp mean-rev))
         (format t "[RESEARCH] Mean Reversion: ~a (dev: ~,4f)~%"
                 (getf mean-rev :signal)
-                (getf mean-rev :deviation)))
+                (or (getf mean-rev :deviation) 0.0)))
       (format t "[RESEARCH] ═══════════════════════════════════════~%")
       
       ;; Return combined analysis
