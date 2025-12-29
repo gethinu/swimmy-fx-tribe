@@ -960,22 +960,7 @@
             exit-plan
             (* 100 confidence))))
 
-(defun announce-clan-trade (category-id direction symbol lot &key (price 0) (confidence 0))
-  "Announce a trade with full clan narrative - sends to Discord"
-  (let ((clan (get-clan category-id)))
-    (when clan
-      ;; Console log
-      (format t "[L] ~a ~a: ~a我々はここに参戦する！ ~a ~a ~,2f lot~%"
-              (clan-emoji clan) (clan-name clan)
-              (clan-philosophy clan)
-              direction symbol lot)
-      ;; Rich narrative for Discord
-      (let ((narrative (generate-clan-narrative category-id direction confidence symbol price)))
-        (format t "~a~%" narrative)
-        ;; Send to Discord with color (green for buy, red for sell)
-        (handler-case
-            (notify-discord narrative :color (if (eq direction :buy) 3066993 15158332))
-          (error (e) (format t "[L] Discord notify error: ~a~%" e)))))))
+;; announce-clan-trade removed in V3.0 - duplicate notification (narrative already sent)
 
 
 ;;; ══════════════════════════════════════════════════════════════════
@@ -1905,6 +1890,15 @@
               ((> vol 0.005) :high)    ; > 0.5% per bar = high vol
               ((< vol 0.001) :low)     ; < 0.1% per bar = low vol
               (t :normal)))
+      ;; V3.0: Enhanced volatility shift detection (previously unused!)
+      (handler-case (detect-volatility-shift)
+        (error (e) (format t "[L] Vol shift error: ~a~%" e)))
+      ;; V3.0: Predict next regime (previously unused!)
+      (handler-case
+          (let ((next-regime (predict-next-regime)))
+            (when next-regime
+              (format t "[L] 🔮 Next regime prediction: ~a~%" next-regime)))
+        (error (e) (format t "[L] Regime prediction error: ~a~%" e)))
       (format t "[L] 📊 Regime: ~a | Volatility: ~a (~,3f%)~%" 
               *current-regime* *volatility-regime* (* vol 100))
       *current-regime*)))
@@ -2169,6 +2163,8 @@
       (handler-case
           (let ((sig (evaluate-strategy-signal strat history)))
             (when (member sig '(:buy :sell))
+              ;; V4.0: Record for correlation analysis
+              (record-strategy-signal (strategy-name strat) sig (get-universal-time))
               (push (list :strategy-name (strategy-name strat)
                           :category (infer-strategy-category strat)
                           :direction sig
@@ -2286,8 +2282,16 @@
            (vol-scaled-lot (if (and (fboundp 'volatility-scaled-lot) history)
                                (volatility-scaled-lot base-lot history)
                                base-lot))
-           (lot (max 0.01 (* rank-mult (correlation-adjusted-lot symbol vol-scaled-lot))))  ; Apply all adjustments
-           (pos (gethash category *category-positions*))
+           ;; V3.0: Apply volatility multiplier (previously unused!)
+           (vol-mult (handler-case (get-volatility-lot-multiplier)
+                       (error () 1.0)))
+           ;; V3.0: Consider risk-parity lot (previously unused!)
+           (rp-lot (handler-case (get-risk-parity-lot category)
+                     (error () base-lot)))
+           ;; Final lot: min of all adjustments, then apply rank multiplier
+           (lot (max 0.01 (* rank-mult vol-mult 
+                             (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot))))
+           ;; V3.0: Track positions by strategy (not by category) for multi-position support
            (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
            (pred (or (and (boundp '*last-prediction*) *last-prediction*) "HOLD"))
            (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
@@ -2336,29 +2340,39 @@
           ;; V2.0: Apply hedge logic for Breakers (aggressive trades get counter-hedge)
           (when (eq category :breakout)
             (apply-hedge-logic category direction symbol bid ask))
-          (cond
-            ((and (eq direction :buy) (not pos))
+          ;; V3.0: PREDICTION CHECK - use previously unused function
+          (let* ((prediction (handler-case (predict-trade-outcome symbol direction)
+                               (error (e) (progn (format t "[L] Prediction error: ~a~%" e) nil))))
+                 (should-trade (or warmup-p 
+                                   (null prediction)
+                                   (should-take-trade-p prediction))))
+            ;; V3.0: Explain trade decision (previously unused!)
+            (when prediction
+              (handler-case
+                  (let ((factors (trade-prediction-factors prediction))
+                        (action (if should-trade :execute :skip)))
+                    (explain-trade-decision symbol direction action factors))
+                (error (e) (format t "[L] Explain error: ~a~%" e))))
+            (when should-trade
+              ;; V3.0: Multiple warriors per clan (no pos check - allow up to 4 per clan)
+              (cond
+            ((eq direction :buy)
              (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
                (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
-               (setf (gethash category *category-positions*) :long)
-               (setf (gethash category *category-entries*) bid)
                (update-symbol-exposure symbol lot :open)
                (incf *category-trades*)
                (format t "[L] ~a ~a BUY ~,2f lot (~a)~a~%" 
                        (get-clan-display category) (clan-emoji (get-clan category)) lot symbol 
-                       (if warmup-p " [WARMUP]" ""))
-               (notify-discord (format nil "~a ~a ~a BUY ~,2f lot" (if warmup-p "🔥" "🧠") symbol (get-clan-display category) lot) :color 3066993)))
-            ((and (eq direction :sell) (not pos))
+                       (if warmup-p " [WARMUP]" ""))))
+               ;; NOTE: Discord narrative already sent above - no duplicate notify here
+            ((eq direction :sell)
              (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
-               (setf (gethash category *category-positions*) :short)
-               (setf (gethash category *category-entries*) ask)
                (update-symbol-exposure symbol lot :open)
                (incf *category-trades*)
                (format t "[L] ~a ~a SELL ~,2f lot (~a)~a~%" 
                        (get-clan-display category) (clan-emoji (get-clan category)) lot symbol 
-                       (if warmup-p " [WARMUP]" ""))
-               (notify-discord (format nil "~a ~a ~a SELL ~,2f lot" (if warmup-p "🔥" "🧠") symbol (get-clan-display category) lot) :color 15158332))))))))))
+                       (if warmup-p " [WARMUP]" "")))))))))))))
 
 ;; Track entry prices for each category
 (defparameter *category-entries* (make-hash-table :test 'eq))
@@ -2475,17 +2489,13 @@
         (setf swarm-decision boosted-decision))
       
       ;; ===== UNIFIED DECISION MAKING (with Research Enhancement) =====
-      ;; V2.1: Each clan follows their OWN signal (多様性重視)
-      ;; Swarm consensus is used as a FILTER, not a direction enforcer
+      ;; V3.0: 61 strategies are the ONLY entry source (removed 4-clan hardcoded signals)
       (handler-case
-        (let* ((tribe-signals (collect-all-tribe-signals symbol *candle-history*))
-               (min-consensus-to-trade 0.25)  ; Lowered from 0.4 - more aggressive
-               (any-strong-signal (some (lambda (sig) 
-                                          (and sig (listp sig) (> (float (or (getf sig :confidence) 0)) 0.6)))
-                                        tribe-signals)))
-        (if (or any-strong-signal
-                (> consensus min-consensus-to-trade))
-            ;; V3.0: Use 61-STRATEGY SIGNALS (not just 4 clan hardcoded signals)
+        (let* ((min-consensus-to-trade 0.25))
+        ;; V3.0: Always use 61-STRATEGY SIGNALS (no more tribe-signals check)
+        (when (or t  ; Always proceed - strategies have their own conditions
+                 (> consensus min-consensus-to-trade))
+            ;; V3.0: Use 61-STRATEGY SIGNALS
             (progn
               (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
               (let ((strat-signals (collect-strategy-signals symbol *candle-history*)))
@@ -2540,215 +2550,104 @@
   (format t "[SCHOOL] Swimmy School ready~%"))
 
 ;;; ══════════════════════════════════════════════════════════════════
-;;;  4 GREAT CLANS - DISTINCT TRADING STRATEGIES
+;;;  V3.0: 4氏族シグナル関数を削除
+;;;  61戦略が唯一のエントリーロジック源 (collect-strategy-signals)
+;;;  各戦略はinfer-strategy-categoryで氏族(:trend,:reversion,:breakout,:scalp)に配属
+;;;  Kalman/HMM等の研究論文実装は品質フィルターとして使用
 ;;; ══════════════════════════════════════════════════════════════════
 
-(defun get-hunter-signal (symbol history)
-  "Hunters: Trend following using MACD + ADX + Kalman (Research Paper #16, #13)"
-  (when (and history (> (length history) 50))
-    (let* ((ema12 (ind-ema 12 history))
-           (ema26 (ind-ema 26 history))
-           (macd-line (when (and ema12 ema26) (- ema12 ema26)))
-           ;; ADX calculation
-           (adx (when (>= (length history) 16)
-                  (let ((plus-dm 0.0) (minus-dm 0.0) (tr-sum 0.0))
-                    (dotimes (i 14)
-                      (let* ((c (nth i history)) (p (nth (1+ i) history)))
-                        (incf plus-dm (float (max 0 (- (candle-high c) (candle-high p)))))
-                        (incf minus-dm (float (max 0 (- (candle-low p) (candle-low c)))))
-                        (incf tr-sum (float (- (candle-high c) (candle-low c))))))
-                    (float (* 100 (/ (abs (- plus-dm minus-dm)) (max (+ plus-dm minus-dm) 0.001)))))))
-           ;; Research Paper #16: Kalman Filter Trend
-           (kalman-trend (when (fboundp 'ind-kalman-trend) (ind-kalman-trend history)))
-           ;; Research Paper #13: Dual Trend Signal
-           (dual-trend (when (fboundp 'dual-trend-signal) (dual-trend-signal history)))
-           (dual-dir (when (and dual-trend (listp dual-trend)) (getf dual-trend :direction)))
-           (dual-agreement (when (and dual-trend (listp dual-trend)) (getf dual-trend :agreement)))
-           ;; Combined conditions
-           (strong-trend (and adx (> adx 25)))
-           (kalman-confirms (or (null kalman-trend) 
-                                (and (eq kalman-trend :UP) macd-line (> macd-line 0))
-                                (and (eq kalman-trend :DOWN) macd-line (< macd-line 0))))
-           (dual-aligned (or (null dual-agreement) (eq dual-agreement :aligned))))
-      (cond
-        ((and strong-trend macd-line (> macd-line 0) kalman-confirms dual-aligned)
-         (format t "[L] 🏹 [HUNTERS] BUY: MACD+, ADX=~,1f, Kalman=~a, Dual=~a~%" 
-                 adx kalman-trend dual-dir)
-         (list :direction :buy :confidence (float (min 0.9 (+ 0.6 (* 0.01 (float (or adx 0)))))) :clan :hunters))
-        ((and strong-trend macd-line (< macd-line 0) kalman-confirms dual-aligned)
-         (format t "[L] 🏹 [HUNTERS] SELL: MACD-, ADX=~,1f, Kalman=~a, Dual=~a~%" 
-                 adx kalman-trend dual-dir)
-         (list :direction :sell :confidence (float (min 0.9 (+ 0.6 (* 0.01 (float (or adx 0)))))) :clan :hunters))
-        (t (list :direction :hold :confidence 0.3 :clan :hunters))))))
-
-(defun get-shaman-signal (symbol history)
-  "Shamans: Mean reversion using RSI + Bollinger + Research Paper #11 (Latent Mean Reversion)"
-  (when (and history (> (length history) 50))
-    (let* ((close (candle-close (first history)))
-           (rsi (ind-rsi 14 history))
-           (bb (ind-bb 20 2 history))
-           (bb-lower (when bb (getf bb :lower)))
-           (bb-upper (when bb (getf bb :upper)))
-           (bb-middle (when bb (getf bb :middle)))
-           ;; Research Paper #11: Latent Mean Reversion Estimation
-           (mean-rev (when (fboundp 'estimate-mean-reversion)
-                       (estimate-mean-reversion history)))
-           (mean-signal (when mean-rev (getf mean-rev :signal)))
-           (deviation (when mean-rev (getf mean-rev :deviation)))
-           ;; HMM regime check - only trade reversion in ranging markets
-           (regime-ok (or (null *current-regime*)
-                          (member *current-regime* '(:RANGING :ranging :unknown))))
-           ;; Combined confidence
-           (rsi-extreme (or (and rsi (< rsi 25)) (and rsi (> rsi 75))))
-           (bb-extreme (or (and bb-lower (< close bb-lower))
-                           (and bb-upper (> close bb-upper))))
-           (mean-extreme (member mean-signal '(:OVERSOLD :OVERBOUGHT))))
-      (cond
-        ;; Strong BUY: All indicators agree on oversold
-        ((and rsi (< rsi 30) bb-lower (< close bb-lower)
-              (or (null mean-signal) (eq mean-signal :OVERSOLD))
-              regime-ok)
-         (let ((conf (+ 0.6 
-                        (if rsi-extreme 0.1 0)
-                        (if mean-extreme 0.1 0)
-                        (if (and deviation (< deviation -0.5)) 0.1 0))))
-           (format t "[L] 🔮 [SHAMANS] BUY: RSI=~,1f, BB下限, Mean=~a (conf ~,0f%)~%" 
-                   rsi mean-signal (* 100 conf))
-           (list :direction :buy :confidence (min 0.9 conf) :clan :shamans)))
-        ;; Strong SELL: All indicators agree on overbought
-        ((and rsi (> rsi 70) bb-upper (> close bb-upper)
-              (or (null mean-signal) (eq mean-signal :OVERBOUGHT))
-              regime-ok)
-         (let ((conf (+ 0.6
-                        (if rsi-extreme 0.1 0)
-                        (if mean-extreme 0.1 0)
-                        (if (and deviation (> deviation 0.5)) 0.1 0))))
-           (format t "[L] 🔮 [SHAMANS] SELL: RSI=~,1f, BB上限, Mean=~a (conf ~,0f%)~%" 
-                   rsi mean-signal (* 100 conf))
-           (list :direction :sell :confidence (min 0.9 conf) :clan :shamans)))
-        ;; Medium BUY: RSI extreme only (mean reversion support)
-        ((and rsi (< rsi 25) mean-extreme (eq mean-signal :OVERSOLD) regime-ok)
-         (format t "[L] 🔮 [SHAMANS] BUY: RSI極端=~,1f, Mean=OVERSOLD~%" rsi)
-         (list :direction :buy :confidence 0.55 :clan :shamans))
-        ;; Medium SELL: RSI extreme only
-        ((and rsi (> rsi 75) mean-extreme (eq mean-signal :OVERBOUGHT) regime-ok)
-         (format t "[L] 🔮 [SHAMANS] SELL: RSI極端=~,1f, Mean=OVERBOUGHT~%" rsi)
-         (list :direction :sell :confidence 0.55 :clan :shamans))
-        ;; Default: HOLD
-        (t (list :direction :hold :confidence 0.3 :clan :shamans))))))
-
-(defun get-breaker-signal (symbol history)
-  "Breakers: Breakout using ATR + Range + Research Paper #17/#18 (Volatility)"
-  (when (and history (> (length history) 50))
-    (let* ((close (candle-close (first history)))
-           (recent-20 (subseq history 0 (min 20 (length history))))
-           (range-high (reduce #'max (mapcar #'candle-high recent-20)))
-           (range-low (reduce #'min (mapcar #'candle-low recent-20)))
-           (range-size (- range-high range-low))
-           (atr-14 (ind-atr 14 history))
-           (atr-50 (when (> (length history) 50) (ind-atr 50 history)))
-           ;; Research Paper #17/#18: Volatility expansion detection
-           (vol (when (fboundp 'calculate-realized-volatility)
-                  (calculate-realized-volatility history)))
-           (vol-expanding (and atr-14 atr-50 (> atr-14 (* 1.3 atr-50))))  ; ATR 30% above average
-           ;; BB squeeze detection (low volatility → breakout)
-           (bb (ind-bb 20 2 history))
-           (bb-width (when bb (- (getf bb :upper) (getf bb :lower))))
-           (squeeze-breakout (and bb-width atr-14 
-                                  (< bb-width (* 2 atr-14))))  ; Tight squeeze
-           ;; Breakout conditions
-           (breakout-up (> close range-high))
-           (breakout-down (< close range-low))
-           ;; Volume/momentum confirmation (if available)
-           (momentum-confirms (or vol-expanding squeeze-breakout)))
-      (cond
-        ;; Strong Breakout UP: Price above range + volatility expanding
-        ((and breakout-up momentum-confirms)
-         (let ((conf (+ 0.7 (if vol-expanding 0.1 0) (if squeeze-breakout 0.1 0))))
-           (format t "[L] ⚔️ [BREAKERS] BUY: Breakout ~,5f + Vol拡大 (conf ~,0f%)~%" 
-                   range-high (* 100 conf))
-           (list :direction :buy :confidence (min 0.9 conf) :clan :breakers)))
-        ;; Strong Breakout DOWN: Price below range + volatility expanding
-        ((and breakout-down momentum-confirms)
-         (let ((conf (+ 0.7 (if vol-expanding 0.1 0) (if squeeze-breakout 0.1 0))))
-           (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown ~,5f + Vol拡大 (conf ~,0f%)~%" 
-                   range-low (* 100 conf))
-           (list :direction :sell :confidence (min 0.9 conf) :clan :breakers)))
-        ;; Medium Breakout: Price breakout without vol confirmation
-        (breakout-up
-         (format t "[L] ⚔️ [BREAKERS] BUY: Breakout above ~,5f (弱)~%" range-high)
-         (list :direction :buy :confidence 0.55 :clan :breakers))
-        (breakout-down
-         (format t "[L] ⚔️ [BREAKERS] SELL: Breakdown below ~,5f (弱)~%" range-low)
-         (list :direction :sell :confidence 0.55 :clan :breakers))
-        ;; Squeeze alert (potential breakout coming)
-        (squeeze-breakout
-         (format t "[L] ⚔️ [BREAKERS] ALERT: Squeeze detected, breakout imminent~%")
-         (list :direction :hold :confidence 0.4 :clan :breakers))
-        ;; Default: HOLD
-        (t (list :direction :hold :confidence 0.3 :clan :breakers))))))
-
-(defun get-raider-signal (symbol history)
-  "Raiders: Scalping using fast EMA crossover + Kalman velocity"
-  (when (and history (> (length history) 15))
-    (let* ((close (candle-close (first history)))
-           (ema3 (ind-ema 3 history))
-           (ema8 (ind-ema 8 history))
-           (prev-ema3 (when (> (length history) 4) (ind-ema 3 (cdr history))))
-           (prev-ema8 (when (> (length history) 9) (ind-ema 8 (cdr history))))
-           ;; V2.0: Use Kalman velocity for momentum
-           (kalman-velocity (when (fboundp 'ind-kalman-velocity)
-                              (multiple-value-bind (price vel) (ind-kalman-velocity history)
-                                (declare (ignore price))
-                                vel)))
-           (strong-momentum (and kalman-velocity (> (abs kalman-velocity) 0.0002)))
-           (golden-cross (and ema3 ema8 prev-ema3 prev-ema8 (> ema3 ema8) (<= prev-ema3 prev-ema8)))
-           (death-cross (and ema3 ema8 prev-ema3 prev-ema8 (< ema3 ema8) (>= prev-ema3 prev-ema8)))
-           (bullish (> close (candle-open (first history)))))
-      (cond
-        ((and golden-cross bullish strong-momentum)
-         (format t "[L] 🗡️ [RAIDERS] BUY: EMA cross + Kalman velocity=~,5f~%" kalman-velocity)
-         (list :direction :buy :confidence 0.75 :clan :raiders))
-        ((and death-cross (not bullish) strong-momentum)
-         (format t "[L] 🗡️ [RAIDERS] SELL: EMA cross + Kalman velocity=~,5f~%" kalman-velocity)
-         (list :direction :sell :confidence 0.75 :clan :raiders))
-        ((and golden-cross bullish)
-         (format t "[L] 🗡️ [RAIDERS] BUY: EMA3/8 golden cross~%")
-         (list :direction :buy :confidence 0.65 :clan :raiders))
-        ((and death-cross (not bullish))
-         (format t "[L] 🗡️ [RAIDERS] SELL: EMA3/8 death cross~%")
-         (list :direction :sell :confidence 0.65 :clan :raiders))
-        (t (list :direction :hold :confidence 0.3 :clan :raiders))))))
-
+;; Stub functions for backward compatibility (actual logic uses 61 strategies now)
 (defun collect-all-tribe-signals (symbol history)
-  "Collect signals from all 4 tribes - with error protection"
-  (list (handler-case (get-hunter-signal symbol history) (error () nil))
-        (handler-case (get-shaman-signal symbol history) (error () nil))
-        (handler-case (get-breaker-signal symbol history) (error () nil))
-        (handler-case (get-raider-signal symbol history) (error () nil))))
+  "V3.0: Stub - returns nil, 61-strategy signals are used instead"
+  (declare (ignore symbol history))
+  nil)
 
 (defun aggregate-tribe-signals (signals)
-  "Aggregate tribe signals with weighted voting"
-  (handler-case
-    (let ((buy-w 0.0) (sell-w 0.0) (hold-w 0.0)
-          (allocs '(:hunters 0.40 :shamans 0.30 :breakers 0.20 :raiders 0.10)))
-      (dolist (sig signals)
-        (when (and sig (listp sig) (getf sig :clan))  ;; Extra check for :clan key
-          (let* ((clan (getf sig :clan))
-                 (dir (getf sig :direction))
-                 (conf (float (or (getf sig :confidence) 0.5)))
-                 (alloc (float (or (getf allocs clan) 0.25)))
-                 (w (float (* alloc conf))))
-            (case dir (:buy (incf buy-w w)) (:sell (incf sell-w w)) (t (incf hold-w w))))))
-      (let ((total (+ buy-w sell-w hold-w)))
-        (list :direction (cond ((and (> buy-w sell-w) (> buy-w hold-w)) :buy)
-                               ((and (> sell-w buy-w) (> sell-w hold-w)) :sell)
-                               (t :hold))
-              :consensus (if (> total 0.0) (float (/ (max buy-w sell-w hold-w) total)) 0.0)
-              :signals signals)))
-    (error (e) 
-      ;; Return safe default if any error occurs
-      (list :direction :hold :consensus 0.0 :signals nil))))
+  "V3.0: Stub - returns hold, 61-strategy signals are used instead"
+  (declare (ignore signals))
+  (list :direction :hold :consensus 0.0 :signals nil))
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  V4.0: STRATEGY CORRELATION ANALYSIS (教授指摘)
+;;;  目的: 冗長な戦略を特定して除去
+;;; ══════════════════════════════════════════════════════════════════
+
+(defparameter *strategy-signal-history* (make-hash-table :test 'equal))
+(defparameter *strategy-correlation-cache* nil)
+
+(defun record-strategy-signal (strategy-name direction timestamp)
+  "Record strategy signal for correlation analysis"
+  (let* ((key strategy-name)
+         (history (gethash key *strategy-signal-history* nil))
+         (signal (list timestamp direction)))
+    (push signal history)
+    ;; Keep only last 100 signals
+    (when (> (length history) 100)
+      (setf history (subseq history 0 100)))
+    (setf (gethash key *strategy-signal-history*) history)))
+
+(defun calculate-signal-correlation (name1 name2)
+  "Calculate correlation between two strategies' signals"
+  (let ((h1 (gethash name1 *strategy-signal-history*))
+        (h2 (gethash name2 *strategy-signal-history*)))
+    (if (and h1 h2 (> (length h1) 10) (> (length h2) 10))
+        (let ((matches 0)
+              (comparisons 0))
+          ;; Compare signals within same time windows
+          (dolist (s1 h1)
+            (let ((t1 (first s1))
+                  (d1 (second s1)))
+              (dolist (s2 h2)
+                (let ((t2 (first s2))
+                      (d2 (second s2)))
+                  ;; Same minute window
+                  (when (< (abs (- t1 t2)) 60)
+                    (incf comparisons)
+                    (when (eq d1 d2)
+                      (incf matches)))))))
+          (if (> comparisons 0)
+              (float (/ matches comparisons))
+              0.0))
+        0.0)))
+
+(defun analyze-strategy-correlation ()
+  "Analyze all strategies for correlation and identify redundant ones"
+  (let ((strategies (mapcar (lambda (s) (strategy-name s)) *strategy-knowledge-base*))
+        (high-corr nil))
+    (format t "~%[L] 🔬 V4.0: STRATEGY CORRELATION ANALYSIS~%")
+    (format t "[L] Analyzing ~d strategies...~%" (length strategies))
+    
+    ;; Compare all pairs
+    (loop for i from 0 below (length strategies)
+          for s1 = (nth i strategies) do
+          (loop for j from (1+ i) below (length strategies)
+                for s2 = (nth j strategies) do
+                (let ((corr (calculate-signal-correlation s1 s2)))
+                  (when (> corr 0.85)
+                    (push (list s1 s2 corr) high-corr)
+                    (format t "[L] ⚠️ High correlation (~,0f%): ~a ↔ ~a~%"
+                            (* 100 corr) s1 s2)))))
+    
+    (setf *strategy-correlation-cache* high-corr)
+    
+    (if high-corr
+        (format t "[L] 📊 Found ~d highly correlated pairs~%" (length high-corr))
+        (format t "[L] ✅ No highly correlated strategies found~%"))
+    
+    high-corr))
+
+(defun get-redundant-strategies ()
+  "Get list of strategies that might be redundant"
+  (unless *strategy-correlation-cache*
+    (analyze-strategy-correlation))
+  (let ((redundant nil))
+    (dolist (pair *strategy-correlation-cache*)
+      (let ((s1 (first pair))
+            (s2 (second pair)))
+        ;; Keep the one with better name (shorter, more descriptive)
+        (if (< (length s1) (length s2))
+            (pushnew s2 redundant :test 'equal)
+            (pushnew s1 redundant :test 'equal))))
+    redundant))
 
 (init-school)
-

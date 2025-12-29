@@ -420,6 +420,14 @@ Output ONLY the s-expression. No markdown or explanation."
   (when (< (length *evolved-strategies*) 2)
     (seed-evolution-from-knowledge-base))
   
+  ;; V3.0: Use ecosystem recommendation (previously unused function!)
+  (handler-case
+      (let ((recommendation (get-ecosystem-recommendation)))
+        (when recommendation
+          (format t "[L] 🌿 Ecosystem: ~a (focus: ~a)~%" 
+                  (getf recommendation :message) (getf recommendation :focus))))
+    (error (e) (format t "[L] Ecosystem check error: ~a~%" e)))
+  
   (when (>= (length *evolved-strategies*) 2)
     (format t "[L] 🧬 Evolving (~d strategies in pool)~%" (length *evolved-strategies*))
     (let* ((sorted (sort (copy-list *evolved-strategies*) #'> :key #'strategy-sharpe))
