@@ -66,6 +66,9 @@
     ;; Every 30 cycles: Evolution tournament
     ((zerop (mod *learning-cycle* 30))
      (check-evolution))
+    ;; V4.0: Every 100 cycles: Dream new strategy via Gemini
+    ((zerop (mod *learning-cycle* 100))
+     (handler-case (dream-code) (error (e) nil)))
     ;; Every 5 cycles: Update school team
     ((zerop (mod *learning-cycle* 5))
      (assemble-team))

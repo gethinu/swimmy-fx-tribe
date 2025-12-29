@@ -1939,7 +1939,9 @@
         (cond
           ((string= type "TICK") 
            (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
-           (save-live-status))  ; Write status for Discord bot
+           (save-live-status)  ; Write status for Discord bot
+           ;; V4.0: Continuous Learning Loop (evolution + dreamer)
+           (handler-case (continuous-learning-step) (error (e) nil)))
           ((string= type "HISTORY")
            (let ((bars nil)
                  (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))

@@ -2257,15 +2257,31 @@
       ;; Remove duplicate bindings (keep first occurrence) for multi-BB strategies
       (setf bindings (remove-duplicates bindings :key #'car :from-end t))
       
-      (handler-case
-          (let ((entry-result (eval `(let ,bindings ,entry-logic))))
-            (cond
-              (entry-result :buy)
-              ;; 逆張り戦略の場合、exit条件をSELLシグナルとして使用
-              ((and (strategy-exit strat)
-                    (eval `(let ,bindings ,(strategy-exit strat)))) :sell)
-              (t :hold)))
-        (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold)))))
+      ;; V4.0 FIX: Transform cross-above/cross-below to include PREV arguments
+      ;; (cross-above sma-50 sma-200) → (cross-above sma-50 sma-200 sma-50-prev sma-200-prev)
+      (labels ((add-prev-suffix (sym)
+                 (intern (format nil "~a-PREV" (symbol-name sym))))
+               (transform-cross-calls (expr)
+                 (cond
+                   ((atom expr) expr)
+                   ((and (listp expr) 
+                         (member (car expr) '(cross-above cross-below))
+                         (= (length expr) 3))  ; Only 2-arg calls
+                    (let ((fn (first expr))
+                          (a (second expr))
+                          (b (third expr)))
+                      (list fn a b (add-prev-suffix a) (add-prev-suffix b))))
+                   (t (mapcar #'transform-cross-calls expr)))))
+        (let ((transformed-logic (transform-cross-calls entry-logic)))
+          (handler-case
+              (let ((entry-result (eval `(let ,bindings ,transformed-logic))))
+                (cond
+                  (entry-result :buy)
+                  ;; 逆張り戦略の場合、exit条件をSELLシグナルとして使用
+                  ((and (strategy-exit strat)
+                        (eval `(let ,bindings ,(transform-cross-calls (strategy-exit strat))))) :sell)
+                  (t :hold)))
+            (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold))))))))
 (defparameter *category-trades* 0)  ; Track category trade count for warmup
 
 (defun execute-category-trade (category direction symbol bid ask)

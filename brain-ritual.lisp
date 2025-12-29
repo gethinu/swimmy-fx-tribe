@@ -99,6 +99,13 @@
           (format t "[L] 💰 TREASURY: ~a~%" treasury)))
     (error (e) (format t "[L] Treasury error: ~a~%" e)))
   
+  ;; V4.0: Dreamer - Generate new strategy with Gemini
+  (handler-case
+      (progn
+        (format t "[L] 💭 DREAMER: Generating new strategy...~%")
+        (dream-code))
+    (error (e) (format t "[L] Dreamer error: ~a~%" e)))
+  
   (format t "[L] ═══════════════════════════════════════~%~%"))
 
 (defun coming-of-age (strategy-name old-status new-status)
