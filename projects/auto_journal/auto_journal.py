@@ -19,17 +19,22 @@ import signal
 import sys
 from typing import NoReturn
 
-from . import config
-from .config import logger
-from .screenshot_capture import capture_and_save
-from .ocr_processor import extract_text, extract_keywords
-from .journal_storage import (
+import os
+import sys
+# Add parent directory to path for standalone execution
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import config
+from config import logger
+from screenshot_capture import capture_and_save
+from ocr_processor import extract_text, extract_keywords
+from journal_storage import (
     add_entry,
     get_entries_for_today,
     get_daily_summary_stats,
     cleanup_old_data,
 )
-from .ai_summarizer import generate_and_save_report
+from ai_summarizer import generate_and_save_report
 
 
 # Global flag for daemon mode

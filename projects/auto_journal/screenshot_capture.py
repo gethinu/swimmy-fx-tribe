@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING
 from PIL import Image
 import io
 
-from . import config
-from .config import logger
+import config
+from config import logger
 
 if TYPE_CHECKING:
     pass

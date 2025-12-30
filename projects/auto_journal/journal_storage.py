@@ -13,8 +13,8 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any
 
-from . import config
-from .config import logger
+import config
+from config import logger
 
 
 @dataclass

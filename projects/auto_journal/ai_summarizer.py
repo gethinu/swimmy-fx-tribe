@@ -14,9 +14,9 @@ from typing import Any
 
 import requests
 
-from . import config
-from .config import logger
-from .journal_storage import (
+import config
+from config import logger
+from journal_storage import (
     get_entries_for_today,
     get_entries_for_date,
     get_daily_summary_stats,

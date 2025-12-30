@@ -2281,7 +2281,7 @@
                   ((and (strategy-exit strat)
                         (eval `(let ,bindings ,(transform-cross-calls (strategy-exit strat))))) :sell)
                   (t :hold)))
-            (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold))))))))
+            (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold)))))))
 (defparameter *category-trades* 0)  ; Track category trade count for warmup
 
 (defun execute-category-trade (category direction symbol bid ask)

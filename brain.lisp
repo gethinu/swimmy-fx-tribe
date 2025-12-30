@@ -1942,6 +1942,9 @@
            (save-live-status)  ; Write status for Discord bot
            ;; V4.0: Continuous Learning Loop (evolution + dreamer)
            (handler-case (continuous-learning-step) (error (e) nil)))
+          ;; V5.0: Guardian Heartbeat
+          ((string= type "HEARTBEAT")
+           (setf *last-guardian-heartbeat* (get-universal-time)))
           ((string= type "HISTORY")
            (let ((bars nil)
                  (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))
