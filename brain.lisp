@@ -328,6 +328,20 @@
                   :headers '(("Content-Type" . "application/json")) :read-timeout 3)
       (error (e) nil))))
 
+;; V5.0: Backtest results to separate silent channel
+(defparameter *backtest-webhook-url* "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy")
+
+(defun notify-discord-backtest (msg &key (color 3447003))
+  "Send backtest results to separate channel without notification"
+  (when (and *backtest-webhook-url* msg)
+    (handler-case
+        (dex:post *backtest-webhook-url*
+                  :content (jsown:to-json (jsown:new-js 
+                              ("embeds" (list (jsown:new-js ("description" (format nil "~a" msg)) ("color" color))))
+                              ("flags" 4096)))  ;; SUPPRESS_NOTIFICATIONS
+                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
+      (error (e) nil))))
+
 ;; Multi-currency Discord webhooks (symbol -> webhook URL)
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
 
@@ -401,6 +415,60 @@
                                 ("color" 10181046))))))  ; Purple
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
+
+;;; ==========================================
+;;; V5.0: NEURAL NETWORK TRAINING
+;;; ==========================================
+
+(defun train-nn-from-trade (symbol pnl direction)
+  "Train NN from trade outcome - online learning"
+  (when (and *candle-history* (> (length *candle-history*) 30))
+    (handler-case
+        (let* ((target (cond
+                         ((> pnl 0.3) 0)   ;; Clear win -> UP correct
+                         ((< pnl -0.3) 1)  ;; Clear loss -> DOWN correct
+                         (t 2)))           ;; Small -> FLAT
+               (candles-json (mapcar (lambda (c)
+                                       (jsown:new-js
+                                         ("open" (candle-open c))
+                                         ("high" (candle-high c))
+                                         ("low" (candle-low c))
+                                         ("close" (candle-close c))
+                                         ("volume" 1)))
+                                     (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
+               (cmd (jsown:to-json (jsown:new-js
+                      ("action" "TRAIN")
+                      ("candles" candles-json)
+                      ("target" target)))))
+          (pzmq:send *cmd-publisher* cmd)
+          (format t "[L] 🧠 NN TRAIN: target=~a (~a)~%" target 
+                  (cond ((= target 0) "UP") ((= target 1) "DOWN") (t "FLAT"))))
+      (error (e) (format t "[L] NN train error: ~a~%" e)))))
+
+(defun request-walk-forward (strategy-name)
+  "Request walk-forward validation for a strategy"
+  (when (and *candle-history* (> (length *candle-history*) 500))
+    (handler-case
+        (let* ((strat (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))
+               (candles-json (mapcar (lambda (c)
+                                       (jsown:new-js
+                                         ("open" (candle-open c))
+                                         ("high" (candle-high c))
+                                         ("low" (candle-low c))
+                                         ("close" (candle-close c))
+                                         ("volume" 1)))
+                                     (subseq *candle-history* 0 (min 1000 (length *candle-history*)))))
+               (cmd (jsown:to-json (jsown:new-js
+                      ("action" "WALK_FORWARD")
+                      ("strategy_name" strategy-name)
+                      ("sma_short" 10)
+                      ("sma_long" 30)
+                      ("sl" 0.15)
+                      ("tp" 0.40)
+                      ("candles" candles-json)))))
+          (pzmq:send *cmd-publisher* cmd)
+          (format t "[L] 📊 Walk-forward requested for ~a~%" strategy-name))
+      (error (e) nil))))
 
 ;;; ==========================================
 ;;; LIVE STATUS JSON (Discord Bot Sync)
@@ -2000,7 +2068,7 @@
                  (format t "[L] 🏆 Top strategies: ~{~a~^, ~}~%" 
                          (mapcar (lambda (s) (format nil "~a(~,1f)" (strategy-name s) (strategy-sharpe s)))
                                  (subseq *evolved-strategies* 0 (min 3 (length *evolved-strategies*)))))))
-             (notify-discord (format nil "📊 ~a: Sharpe=~,2f, Trades=~d, Win=~,1f%" 
+             (notify-discord-backtest (format nil "📊 ~a: Sharpe=~,2f, Trades=~d, Win=~,1f%" 
                                      name sharpe trades win-rate) :color 3447003)))
           ((string= type "CLONE_CHECK_RESULT")
            (let* ((result (jsown:val json "result"))
@@ -2034,6 +2102,25 @@
              (format t "[L] 🔍 MCTS Optimized (score: ~,3f): ~a~%" score best)
              (notify-discord (format nil "🔍 MCTS Optimized: ~,3f" score) :color 130821)))
           
+          ;; V5.0: Walk-Forward validation result
+          ((string= type "WALK_FORWARD_RESULT")
+           (handler-case
+               (let* ((result (jsown:val json "result"))
+                      (name (jsown:val result "strategy_name"))
+                      (is-sharpe (jsown:val result "in_sample_sharpe"))
+                      (oos-sharpe (jsown:val result "out_of_sample_sharpe"))
+                      (efficiency (jsown:val result "efficiency_ratio"))
+                      (is-overfit (jsown:val result "is_overfit")))
+                 (format t "[L] 📊 WALK-FORWARD: ~a | IS:~,2f OOS:~,2f Eff:~,0f%~%" 
+                         name is-sharpe oos-sharpe (* 100 efficiency))
+                 (when is-overfit
+                   (format t "[L] ⚠️ OVERFIT DETECTED: ~a - reducing volume~%" name)
+                   ;; Find and penalize overfit strategy
+                   (let ((strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+                     (when (and strat (strategy-volume strat))
+                       (setf (strategy-volume strat) (* 0.5 (strategy-volume strat)))
+                       (format t "[L] 📉 ~a volume reduced to ~,3f~%" name (strategy-volume strat))))))
+             (error (e) (format t "[L] Walk-forward result error: ~a~%" e))))
           ;; ══════════════════════════════════════
           ;; TRADE CLOSED - 葬儀 / Victory Ceremony
           ;; ══════════════════════════════════════
@@ -2075,6 +2162,13 @@
                    (handler-case
                        (record-trade-outcome symbol dir-keyword category strategy-name pnl)
                      (error (e) (format t "[L] Learning record error: ~a~%" e))))
+                  
+                  ;; ═══════════════════════════════════════
+                  ;; V5.0: NEURAL NETWORK ONLINE LEARNING
+                  ;; ═══════════════════════════════════════
+                  (handler-case
+                      (train-nn-from-trade symbol pnl direction)
+                    (error (e) (format t "[L] NN train error: ~a~%" e)))
                  
                  ;; ═══════════════════════════════════════
                  ;; ELDER LEARNING: Learn from failures (V3.0: 6-dimension)

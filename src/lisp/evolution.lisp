@@ -59,20 +59,20 @@
   "One step of continuous learning"
   (incf *learning-cycle*)
   (cond
-    ;; Every 10 cycles: Backtest new/evolved strategies
-    ((zerop (mod *learning-cycle* 10))
+    ;; Every 300 cycles (~5 min): Backtest new/evolved strategies
+    ((zerop (mod *learning-cycle* 300))
      (when (and *candle-history* (> (length *candle-history*) 200))
        (batch-backtest-knowledge)))
-    ;; Every 30 cycles: Evolution tournament
-    ((zerop (mod *learning-cycle* 30))
+    ;; Every 1800 cycles (~30 min): Evolution tournament
+    ((zerop (mod *learning-cycle* 1800))
      (check-evolution))
-    ;; V4.0: Every 100 cycles: Dream new strategy via Gemini
-    ((zerop (mod *learning-cycle* 100))
+    ;; V4.0: Every 1800 cycles (~30 min): Dream new strategy via Gemini
+    ((zerop (mod *learning-cycle* 1800))
      (handler-case (dream-code) (error (e) nil)))
-    ;; Every 5 cycles: Update school team
-    ((zerop (mod *learning-cycle* 5))
+    ;; Every 60 cycles (~1 min): Update school team
+    ((zerop (mod *learning-cycle* 60))
      (assemble-team))
-    ;; Every cycle: Update NN threshold
+    ;; Every cycle: nothing special
     (t nil)))
 
 ;; ===== FITNESS FUNCTIONS =====

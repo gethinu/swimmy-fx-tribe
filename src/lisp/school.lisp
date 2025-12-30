@@ -391,8 +391,10 @@
      (format t "[L] ⚠️ ELEVATED VOLATILITY: Reducing position size~%")
      t)  ; Allow but with caution
     (:extreme
-     (format t "[L] 🛑 EXTREME VOLATILITY: Trading suspended~%")
-     nil)))
+     ;; V5.0: Allow trading during extreme volatility but with tiny size
+     ;; Previously this blocked all trading, causing no entries for extended periods
+     (format t "[L] 🛑 EXTREME VOLATILITY: Trading with minimal size~%")
+     t)))
 
 (defun get-volatility-lot-multiplier ()
   "Get lot size multiplier based on volatility"
@@ -2252,7 +2254,9 @@
       (push `(close ,(candle-close (first history))) bindings)
       (push `(close-prev ,(candle-close (second history))) bindings)
       (push `(high ,(candle-high (first history))) bindings)
+      (push `(high-prev ,(candle-high (second history))) bindings)  ; V5.0
       (push `(low ,(candle-low (first history))) bindings)
+      (push `(low-prev ,(candle-low (second history))) bindings)  ; V5.0
       
       ;; Remove duplicate bindings (keep first occurrence) for multi-BB strategies
       (setf bindings (remove-duplicates bindings :key #'car :from-end t))
@@ -2260,7 +2264,9 @@
       ;; V4.0 FIX: Transform cross-above/cross-below to include PREV arguments
       ;; (cross-above sma-50 sma-200) → (cross-above sma-50 sma-200 sma-50-prev sma-200-prev)
       (labels ((add-prev-suffix (sym)
-                 (intern (format nil "~a-PREV" (symbol-name sym))))
+                 (if (symbolp sym)
+                     (intern (format nil "~a-PREV" (symbol-name sym)))
+                     sym))  ; V5.0: Return non-symbols unchanged
                (transform-cross-calls (expr)
                  (cond
                    ((atom expr) expr)
@@ -2270,7 +2276,10 @@
                     (let ((fn (first expr))
                           (a (second expr))
                           (b (third expr)))
-                      (list fn a b (add-prev-suffix a) (add-prev-suffix b))))
+                      ;; V5.0: Only transform if both are symbols
+                      (if (and (symbolp a) (symbolp b))
+                          (list fn a b (add-prev-suffix a) (add-prev-suffix b))
+                          expr)))  ; Return unchanged if numbers involved
                    (t (mapcar #'transform-cross-calls expr)))))
         (let ((transformed-logic (transform-cross-calls entry-logic)))
           (handler-case
