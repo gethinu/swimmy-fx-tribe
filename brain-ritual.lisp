@@ -141,6 +141,9 @@
   ;; Initialize clan treasury
   (initialize-clan-treasury)
   
+  ;; V5.1: Setup multi-channel Discord webhooks
+  (setup-symbol-webhooks)
+  
   ;; Morning Ritual
   (morning-ritual)
   

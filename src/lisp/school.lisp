@@ -2163,17 +2163,21 @@
   (let ((signals nil))
     (dolist (strat *strategy-knowledge-base*)
       (handler-case
-          (let ((sig (evaluate-strategy-signal strat history)))
-            (when (member sig '(:buy :sell))
-              ;; V4.0: Record for correlation analysis
-              (record-strategy-signal (strategy-name strat) sig (get-universal-time))
-              (push (list :strategy-name (strategy-name strat)
-                          :category (infer-strategy-category strat)
-                          :direction sig
-                          :sl (strategy-sl strat)
-                          :tp (strategy-tp strat)
-                          :indicator-values (get-indicator-values strat history))
-                    signals)))
+          (let* ((name (strategy-name strat))
+                 ;; V5.1: Skip benched strategies
+                 (benched (and (fboundp 'strategy-benched-p) (strategy-benched-p name))))
+            (unless benched
+              (let ((sig (evaluate-strategy-signal strat history)))
+                (when (member sig '(:buy :sell))
+                  ;; V4.0: Record for correlation analysis
+                  (record-strategy-signal name sig (get-universal-time))
+                  (push (list :strategy-name name
+                              :category (infer-strategy-category strat)
+                              :direction sig
+                              :sl (strategy-sl strat)
+                              :tp (strategy-tp strat)
+                              :indicator-values (get-indicator-values strat history))
+                        signals)))))
         (error (e) nil)))
     signals))
 
@@ -2184,8 +2188,9 @@
          (direction (getf strat-signal :direction))
          (category (getf strat-signal :category))
          (ind-vals (getf strat-signal :indicator-values))
-         (sl (getf strat-signal :sl))
-         (tp (getf strat-signal :tp))
+         ;; V5.1: Default SL/TP when strategy has nil
+         (sl (or (getf strat-signal :sl) 0.15))  ; Default 15 pips
+         (tp (or (getf strat-signal :tp) 0.40))  ; Default 40 pips
          (clan (get-clan category)))
     (format nil "
 ═══════════════════════════════
@@ -2241,13 +2246,19 @@
                                      (multiple-value-bind (pm ps) (ind-macd (first p) (second p) (third p) rest-hist)
                                        `((macd-line ,m) (signal-line ,s) (macd-line-prev ,pm) (signal-line-prev ,ps)))))
                              (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
-                                   (let ((dev (second p)))
-                                     ;; Both unique and generic names - generic will use last BB's values
-                                     `((,(intern (format nil "BB-MIDDLE-~d" dev)) ,m)
-                                       (,(intern (format nil "BB-UPPER-~d" dev)) ,u)
-                                       (,(intern (format nil "BB-LOWER-~d" dev)) ,l)
-                                       ;; Generic aliases for strategies using simple bb-upper, etc.
-                                       (bb-middle ,m) (bb-upper ,u) (bb-lower ,l)))))
+                                   (multiple-value-bind (pm pu pl) (ind-bb (first p) (second p) rest-hist)
+                                     (let ((dev (second p)))
+                                       ;; Both unique and generic names - generic will use last BB's values
+                                       `((,(intern (format nil "BB-MIDDLE-~d" dev)) ,m)
+                                         (,(intern (format nil "BB-UPPER-~d" dev)) ,u)
+                                         (,(intern (format nil "BB-LOWER-~d" dev)) ,l)
+                                         ;; V5.1: Add PREV values for cross detection
+                                         (,(intern (format nil "BB-MIDDLE-~d-PREV" dev)) ,pm)
+                                         (,(intern (format nil "BB-UPPER-~d-PREV" dev)) ,pu)
+                                         (,(intern (format nil "BB-LOWER-~d-PREV" dev)) ,pl)
+                                         ;; Generic aliases for strategies using simple bb-upper, etc.
+                                         (bb-middle ,m) (bb-upper ,u) (bb-lower ,l)
+                                         (bb-middle-prev ,pm) (bb-upper-prev ,pu) (bb-lower-prev ,pl))))))
                              (stoch (let ((k (ind-stoch (first p) (second p) history))
                                           (pk (ind-stoch (first p) (second p) rest-hist)))
                                       `((stoch-k ,k) (stoch-k-prev ,pk) (stoch-d 50) (stoch-d-prev 50)))))))))
@@ -2384,6 +2395,9 @@
             ((eq direction :buy)
              (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
                (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
+               ;; V5.0: Record position for exit tracking
+               (setf (gethash category *category-positions*) :long)
+               (setf (gethash category *category-entries*) bid)
                (update-symbol-exposure symbol lot :open)
                (incf *category-trades*)
                (format t "[L] ~a ~a BUY ~,2f lot (~a)~a~%" 
@@ -2393,6 +2407,9 @@
             ((eq direction :sell)
              (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
+               ;; V5.0: Record position for exit tracking
+               (setf (gethash category *category-positions*) :short)
+               (setf (gethash category *category-entries*) ask)
                (update-symbol-exposure symbol lot :open)
                (incf *category-trades*)
                (format t "[L] ~a ~a SELL ~,2f lot (~a)~a~%" 

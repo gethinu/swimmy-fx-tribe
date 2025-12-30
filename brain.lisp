@@ -85,6 +85,58 @@
 (defparameter *max-dd-percent* 20)  ; Max 20% drawdown warning
 
 ;;; ==========================================
+;;; V5.1: STRATEGY BENCH SYSTEM (専門家合意)
+;;; ==========================================
+;;; Simpler than Volume adjustment: Bench losing strategies, keep winning ones unchanged
+
+;; Configuration
+(defparameter *bench-min-trades* 50)           ; Statistical significance threshold
+(defparameter *benched-strategies* (make-hash-table :test 'equal))  ; Name -> bench-time
+(defparameter *bench-log* nil)                 ; Bench history
+(defparameter *last-weekly-unbench* 0)         ; Weekly unbench for re-evaluation
+
+(defun strategy-benched-p (name)
+  "Check if a strategy is currently benched"
+  (gethash name *benched-strategies*))
+
+(defun bench-strategy (name reason sharpe win-rate trades)
+  "Bench a losing strategy - remove from active trading"
+  (setf (gethash name *benched-strategies*) (get-universal-time))
+  (push (list :timestamp (get-universal-time)
+              :strategy name
+              :reason reason
+              :sharpe sharpe
+              :win-rate win-rate
+              :trades trades)
+        *bench-log*)
+  (format t "[L] 🪑 BENCHED: ~a (~a) | Sharpe=~,2f Win=~,1f%~%" name reason sharpe win-rate))
+
+(defun unbench-strategy (name)
+  "Unbench a strategy for re-evaluation"
+  (when (gethash name *benched-strategies*)
+    (remhash name *benched-strategies*)
+    (format t "[L] ▶️ UNBENCHED: ~a (weekly reset)~%" name)))
+
+(defun weekly-unbench-all ()
+  "Weekly: Unbench all strategies for re-evaluation"
+  (format t "[L] 📅 Weekly unbench - all strategies get fresh start~%")
+  (clrhash *benched-strategies*)
+  (setf *last-weekly-unbench* (get-universal-time)))
+
+(defun should-weekly-unbench-p ()
+  "Check if weekly unbench is due"
+  (> (- (get-universal-time) *last-weekly-unbench*) (* 7 86400)))
+
+(defun evaluate-strategy-performance (strat sharpe trades win-rate)
+  "Evaluate strategy and bench if performing poorly"
+  (when (and strat (> trades *bench-min-trades*))
+    (let ((name (strategy-name strat)))
+      ;; Poor performance: bench the strategy
+      (when (and (or (< sharpe 0) (< win-rate 40))
+                 (not (strategy-benched-p name)))
+        (bench-strategy name "Poor performance" sharpe win-rate trades)))))
+
+;;; ==========================================
 ;;; GOAL DECOMPOSITION SYSTEM (目標分解)
 ;;; ==========================================
 ;;; Inspired by: LLM Chain-of-Thought + Planning
@@ -193,6 +245,20 @@
 ;;; Natural language status reporting like a personal assistant
 
 (defparameter *last-briefing-hour* -1)
+
+(defun get-volatility-state ()
+  "Return current volatility state (wrapper for school.lisp variable)"
+  (if (boundp '*current-volatility-state*)
+      *current-volatility-state*
+      :normal))
+
+(defun current-trading-session ()
+  "Return current trading session based on hour (UTC+9)"
+  (let ((hour (nth-value 2 (decode-universal-time (get-universal-time)))))
+    (cond
+      ((and (>= hour 6) (< hour 15)) :tokyo)
+      ((and (>= hour 15) (< hour 22)) :london)
+      (t :newyork))))
 
 (defun generate-daily-briefing ()
   "Generate natural language morning briefing"
@@ -347,10 +413,19 @@
 
 (defun setup-symbol-webhooks ()
   "Setup Discord webhooks for each currency pair"
-  ;; Default: use main webhook for all
-  (setf (gethash "USDJPY" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_USDJPY"))
-  (setf (gethash "EURUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_EURUSD"))
-  (setf (gethash "GBPUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_GBPUSD")))
+  ;; V5.1: Direct webhook URLs per symbol
+  (setf (gethash "USDJPY" *symbol-webhooks*) 
+        "https://discord.com/api/webhooks/1455548858921652442/pxCwnTnnMVd8-X8LIO3NrwtxQ0T2dm31GiS-SaHAkqQ0AAR5G5ABVcfKKJ0awKnGhnLk")
+  (setf (gethash "EURUSD" *symbol-webhooks*) 
+        "https://discord.com/api/webhooks/1455549049540313189/lw9iSajiYjzogZIUEuymaUaOIePL8yT0ya-qc8Utpyr5nM6bAZv6l8ekYTdf0knRRKZa")
+  (setf (gethash "GBPUSD" *symbol-webhooks*) 
+        "https://discord.com/api/webhooks/1455549049540313189/lw9iSajiYjzogZIUEuymaUaOIePL8yT0ya-qc8Utpyr5nM6bAZv6l8ekYTdf0knRRKZa"))  ;; TODO: Create GBPUSD channel
+
+;; V5.1: Status and Alerts webhooks
+(defparameter *status-webhook-url* 
+  "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
+(defparameter *alerts-webhook-url* 
+  "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH")
 
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
   "Send Discord notification to symbol-specific channel"
@@ -364,6 +439,30 @@
                               ("color" color))))))
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
+
+(defun notify-discord-alert (msg &key (color 15158332))
+  "Send critical alerts to alerts channel (FLEE mode, danger, etc.)"
+  (when (and *alerts-webhook-url* msg)
+    (handler-case
+        (dex:post *alerts-webhook-url*
+                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js 
+                            ("title" "🚨 ALERT") 
+                            ("description" (format nil "~a" msg)) 
+                            ("color" color))))))
+                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
+      (error (e) nil))))
+
+(defun notify-discord-status (msg &key (color 3066993))
+  "Send status updates to status channel"
+  (when (and *status-webhook-url* msg)
+    (handler-case
+        (dex:post *status-webhook-url*
+                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js 
+                            ("title" "📊 Status") 
+                            ("description" (format nil "~a" msg)) 
+                            ("color" color))))))
+                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
+      (error (e) nil))))
 
 ;;; ==========================================
 ;;; MULTI-CHANNEL DISCORD (複数チャンネル対応)
@@ -1017,6 +1116,9 @@
 
 
 ;; V4.0: Elder Lessons moved to brain-learning.lisp
+;; V5.1: NN tracking variables (must be defined before loading brain-learning.lisp)
+(defparameter *nn-wins* 0)
+(defparameter *nn-losses* 0)
 (load (merge-pathnames "brain-learning.lisp" *load-truename*))
 
 
@@ -2032,42 +2134,26 @@
                   (win-rate (handler-case (jsown:val result "win_rate") (error () 0))))
              (format t "[L] 📈 BACKTEST: ~a | Sharpe=~,2f | Trades=~d | PnL=~,2f | Win=~,1f%~%" 
                      name sharpe trades pnl win-rate)
-             ;; Update strategy's sharpe score - check BOTH evolved AND knowledge base
-             (let ((strat (or (find name *evolved-strategies* :key #'strategy-name :test #'string=)
-                              (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
-               (when strat
-                 (setf (strategy-sharpe strat) sharpe)
-                 ;; V2.0: AUTO-PARAMETER ADJUSTMENT based on performance
-                 (when (> trades 10)  ; Only adjust after sufficient data
-                   (cond
-                     ;; Poor performance: tighten SL, reduce volume
-                     ((or (< sharpe 0) (< win-rate 40))
-                      (when (strategy-sl strat)
-                        (setf (strategy-sl strat) (* 0.9 (strategy-sl strat))))  ; Reduce SL by 10%
-                      (when (strategy-volume strat)
-                        (setf (strategy-volume strat) (max 0.01 (* 0.8 (strategy-volume strat)))))  ; Reduce volume
-                      (format t "[L] ⚙️ 📉 ~a: Tightening params (poor perf)~%" name))
-                     ;; Good performance: widen TP, increase volume
-                     ((and (> sharpe 1.0) (> win-rate 55))
-                      (when (strategy-tp strat)
-                        (setf (strategy-tp strat) (* 1.1 (strategy-tp strat))))  ; Increase TP by 10%
-                      (when (strategy-volume strat)
-                        (setf (strategy-volume strat) (min 0.1 (* 1.2 (strategy-volume strat)))))  ; Increase volume
-                      (format t "[L] ⚙️ 📈 ~a: Expanding params (good perf)~%" name))
-                     ;; Average: adjust SL/TP ratio for better risk/reward
-                     ((and (> sharpe 0.5) (> win-rate 45))
-                      (when (and (strategy-sl strat) (strategy-tp strat))
-                        (let ((rr (/ (strategy-tp strat) (max 0.01 (strategy-sl strat)))))
-                          (when (< rr 2.0)  ; If R:R less than 2:1
-                            (setf (strategy-tp strat) (* 1.05 (strategy-tp strat)))
-                            (format t "[L] ⚙️ 🎯 ~a: Improving R:R ratio~%" name)))))))
-                 (format t "[L] 📊 Updated ~a sharpe=~,2f~%" name sharpe)
-                 ;; Sort evolved strategies by sharpe (best first)
-                 (setf *evolved-strategies* 
-                       (sort *evolved-strategies* #'> :key #'strategy-sharpe))
-                 (format t "[L] 🏆 Top strategies: ~{~a~^, ~}~%" 
-                         (mapcar (lambda (s) (format nil "~a(~,1f)" (strategy-name s) (strategy-sharpe s)))
-                                 (subseq *evolved-strategies* 0 (min 3 (length *evolved-strategies*)))))))
+              ;; Update strategy's sharpe score - check BOTH evolved AND knowledge base
+              (let ((strat (or (find name *evolved-strategies* :key #'strategy-name :test #'string=)
+                               (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
+                (when strat
+                  (setf (strategy-sharpe strat) sharpe)
+                  ;; V5.1: BENCH SYSTEM (simpler than volume adjustment)
+                  ;; Weekly unbench for re-evaluation
+                  (when (should-weekly-unbench-p)
+                    (weekly-unbench-all))
+                  ;; Evaluate and bench poor performers (50+ trades required)
+                  (evaluate-strategy-performance strat sharpe trades win-rate)
+                  ;; Always log performance
+                  (format t "[L] 📊 Updated ~a sharpe=~,2f~a~%" 
+                          name sharpe (if (strategy-benched-p name) " [BENCHED]" ""))
+                  ;; Sort evolved strategies by sharpe (best first)
+                  (setf *evolved-strategies* 
+                        (sort *evolved-strategies* #'> :key #'strategy-sharpe))
+                  (format t "[L] 🏆 Top strategies: ~{~a~^, ~}~%" 
+                          (mapcar (lambda (s) (format nil "~a(~,1f)" (strategy-name s) (strategy-sharpe s)))
+                                  (subseq *evolved-strategies* 0 (min 3 (length *evolved-strategies*)))))))
              (notify-discord-backtest (format nil "📊 ~a: Sharpe=~,2f, Trades=~d, Win=~,1f%" 
                                      name sharpe trades win-rate) :color 3447003)))
           ((string= type "CLONE_CHECK_RESULT")
@@ -2144,6 +2230,9 @@
                  ;; Record result for danger tracking
                  (record-trade-result (if is-win :win :loss))
                  
+                 ;; V5.1: Increment total trades for warmup tracking
+                 (incf *total-trades*)
+                 
                  ;; V3.0: Track success count for win rate (PM feedback)
                  (when is-win
                    (incf *success-count*))
@@ -2215,7 +2304,7 @@
 🏆 「勝利は準備の結果である」
 ⚔️ ═══════════════════════════════ ⚔️" symbol direction pnl)))
                        (format t "[L] ~a~%" msg)
-                       (notify-discord msg :color 3066993))  ; Green
+                       (notify-discord-symbol symbol msg :color 3066993))  ; Green to symbol channel
                      
                      ;; 💀 FUNERAL - Fallen Warrior Remembered
                      (let ((msg (format nil "
@@ -2228,7 +2317,7 @@
 🙏 「敗北もまた師である」
 🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
                        (format t "[L] ~a~%" msg)
-                       (notify-discord msg :color 15158332))))  ; Red
+                       (notify-discord-symbol symbol msg :color 15158332))))  ; Red to symbol channel
              (error (e) (format t "[L] Trade close error: ~a~%" e))))
           
           (t (format t "[L] Unknown msg type: ~a~%" type))))
@@ -2259,9 +2348,7 @@
       (pzmq:send *cmd-publisher* msg)
       (format t "[L] 🎓 NN Train: ~a~%" (case target (0 "UP") (1 "DOWN") (t "FLAT"))))))
 
-;; Adaptive threshold based on win rate
-(defparameter *nn-wins* 0)
-(defparameter *nn-losses* 0)
+;; Note: *nn-wins* and *nn-losses* now defined before brain-learning.lisp load
 
 
 ;; V4.0: Meta-Learning moved to brain-learning.lisp
