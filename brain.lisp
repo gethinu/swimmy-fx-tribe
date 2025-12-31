@@ -2666,5 +2666,8 @@ Sharpe   : ~,2f
 
 ;;; ══════════════════════════════════════════════════════════════════
 
+;; V5.3: Initialize symbol webhooks for hourly reports
+(setup-symbol-webhooks)
+
 ;; V4.0: Rituals moved to brain-ritual.lisp
 (load (merge-pathnames "brain-ritual.lisp" *load-truename*))
