@@ -2702,6 +2702,7 @@
                                     ;; Record trade time for this strategy
                                     (record-clan-trade-time strat-key)
                                     ;; Execute the trade
+                                    (format t "[TRACE] Calling execute-category-trade for ~a~%" category)
                                     (execute-category-trade category direction symbol bid ask)
                                     ;; Record for rank promotion
                                     (record-strategy-trade strat-name :trade 0)))))))))))))
