@@ -326,6 +326,42 @@
           (incf tr-sum tr)))
       (/ tr-sum n))))
 
+;; ============================================================
+;; Research Paper #34: SAMP-HDRL - Hierarchical Portfolio Management
+;; ============================================================
+
+(defparameter *currency-risk-cache* (make-hash-table :test 'equal))
+(defparameter *currency-risk-cache-time* (make-hash-table :test 'equal))
+
+(defun classify-currency-risk (symbol)
+  "SAMP-HDRL: Classify currency pair by risk level based on volatility"
+  (let* ((history (gethash symbol *candle-histories*))
+         (cache-time (gethash symbol *currency-risk-cache-time*))
+         (current-time (get-universal-time)))
+    (if (and cache-time (< (- current-time cache-time) 300))
+        (gethash symbol *currency-risk-cache*)
+        (when (and history (> (length history) 20))
+          (let* ((atr (calculate-atr history 14))
+                 (price (candle-close (first history)))
+                 (atr-percent (if (and atr price (> price 0)) 
+                                  (* 100 (/ atr price)) 
+                                  0.0))
+                 (risk-class (cond
+                               ((> atr-percent 0.15) :high-risk)
+                               ((< atr-percent 0.08) :low-risk)
+                               (t :medium-risk))))
+            (setf (gethash symbol *currency-risk-cache*) risk-class)
+            (setf (gethash symbol *currency-risk-cache-time*) current-time)
+            risk-class)))))
+
+(defun hdrl-adjusted-lot (symbol base-lot)
+  "SAMP-HDRL: Adjust lot size based on currency risk classification"
+  (let ((risk-class (classify-currency-risk symbol)))
+    (case risk-class
+      (:high-risk (* base-lot 0.5))
+      (:low-risk (* base-lot 1.5))
+      (t base-lot))))
+
 (defun count-direction-changes (history n)
   "Count how many times price direction changed in last n candles"
   (when (> (length history) n)
@@ -2304,6 +2340,28 @@
             (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold)))))))
 (defparameter *category-trades* 0)  ; Track category trade count for warmup
 
+;; ============================================================
+;; V5.2: Warrior ID System - 16 Global Slots (4 clans x 4 warriors)
+;; ============================================================
+
+(defparameter *warrior-allocation* (make-hash-table :test 'equal))
+
+(defun get-clan-id (category)
+  "Get numeric ID for clan (used in Magic Number calculation)"
+  (case category
+    (:hunters 10) (:shamans 20) (:breakers 30) (:raiders 40) (t 90)))
+
+(defun get-warrior-magic (category index)
+  "Generate unique Magic Number for warrior: BASE + CLAN*10 + INDEX"
+  (+ 123456 (* (get-clan-id category) 10) index))
+
+(defun find-free-warrior-slot (category)
+  "Find first available warrior slot (0-3) for the clan, returns nil if full"
+  (loop for i from 0 to 3
+        for key = (format nil "~a-~d" category i)
+        when (null (gethash key *warrior-allocation*))
+        return i))
+
 (defun execute-category-trade (category direction symbol bid ask)
   (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
     (let* ((strategies (gethash category *active-team*))
@@ -2324,9 +2382,12 @@
            ;; V3.0: Consider risk-parity lot (previously unused!)
            (rp-lot (handler-case (get-risk-parity-lot category)
                      (error () base-lot)))
+           ;; V5.2 Research Paper #34: HDRL portfolio risk adjustment
+           (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot)
+                       (error () base-lot)))
            ;; Final lot: min of all adjustments, then apply rank multiplier
            (lot (max 0.01 (* rank-mult vol-mult 
-                             (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot))))
+                             (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot hdrl-lot))))
            ;; V3.0: Track positions by strategy (not by category) for multi-position support
            (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
            (pred (or (and (boundp '*last-prediction*) *last-prediction*) "HOLD"))
@@ -2390,85 +2451,72 @@
                     (explain-trade-decision symbol direction action factors))
                 (error (e) (format t "[L] Explain error: ~a~%" e))))
             (when should-trade
-              ;; V3.0: Multiple warriors per clan (no pos check - allow up to 4 per clan)
-              (cond
-            ((eq direction :buy)
-             (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
-               (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
-               ;; V5.0: Record position for exit tracking
-               (setf (gethash category *category-positions*) :long)
-               (setf (gethash category *category-entries*) bid)
-               (update-symbol-exposure symbol lot :open)
-               (incf *category-trades*)
-               (format t "[L] ~a ~a BUY ~,2f lot (~a)~a~%" 
-                       (get-clan-display category) (clan-emoji (get-clan category)) lot symbol 
-                       (if warmup-p " [WARMUP]" ""))))
-               ;; NOTE: Discord narrative already sent above - no duplicate notify here
-            ((eq direction :sell)
-             (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-               (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp))))
-               ;; V5.0: Record position for exit tracking
-               (setf (gethash category *category-positions*) :short)
-               (setf (gethash category *category-entries*) ask)
-               (update-symbol-exposure symbol lot :open)
-               (incf *category-trades*)
-               (format t "[L] ~a ~a SELL ~,2f lot (~a)~a~%" 
-                       (get-clan-display category) (clan-emoji (get-clan category)) lot symbol 
-                       (if warmup-p " [WARMUP]" "")))))))))))))
+              ;; V5.2: Warrior Allocation - Find free slot (0-3) for this clan
+              (let ((slot-index (find-free-warrior-slot category)))
+                (if slot-index
+                    ;; Execute trade with unique Magic Number
+                    (let* ((magic (get-warrior-magic category slot-index))
+                           (key (format nil "~a-~d" category slot-index)))
+                      (cond
+                        ((eq direction :buy)
+                         (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
+                           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
+                           (setf (gethash key *warrior-allocation*) 
+                                 (list :symbol symbol :category category :direction :long :entry bid :magic magic :start-time (get-universal-time)))
+                           (update-symbol-exposure symbol lot :open)
+                           (incf *category-trades*)
+                           (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)))
+                        ((eq direction :sell)
+                         (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
+                           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
+                           (setf (gethash key *warrior-allocation*) 
+                                 (list :symbol symbol :category category :direction :short :entry ask :magic magic :start-time (get-universal-time)))
+                           (update-symbol-exposure symbol lot :open)
+                           (incf *category-trades*)
+                           (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)))))
+                    ;; Clan is full (4/4 warriors deployed)
+                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)))))))))))
 
 ;; Track entry prices for each category
 (defparameter *category-entries* (make-hash-table :test 'eq))
 
 (defun close-category-positions (symbol bid ask)
-  "Close category positions at SL/TP or on reverse signal"
+  "V5.2: Close warrior positions at SL/TP using warrior-allocation"
   (maphash 
-   (lambda (category pos)
-     (when pos
-       (let* ((entry (gethash category *category-entries*))
+   (lambda (key warrior)
+     (when (and warrior (equal (getf warrior :symbol) symbol))
+       (let* ((category (getf warrior :category))
+              (pos (getf warrior :direction))
+              (entry (getf warrior :entry))
+              (magic (getf warrior :magic))
               (sl-pips 0.15) (tp-pips 0.40)
               (pnl 0) (closed nil))
          (when (and entry (numberp bid) (numberp ask))
            (cond
-             ;; Long position: close on SL/TP or SELL signal
              ((eq pos :long)
               (let ((sl (- entry sl-pips)) (tp (+ entry tp-pips)))
                 (when (or (<= bid sl) (>= bid tp))
                   (setf pnl (- bid entry) closed t))))
-             ;; Short position: close on SL/TP or BUY signal  
              ((eq pos :short)
               (let ((sl (+ entry sl-pips)) (tp (- entry tp-pips)))
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed
-             (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol))))
-             (setf (gethash category *category-positions*) nil)
-             (setf (gethash category *category-entries*) nil)
-             (update-symbol-exposure symbol 0.01 :close)  ; Release exposure
-             ;; Update daily PnL and train NN
-             (incf *daily-pnl* pnl)
-             ;; ===== DANGER AVOIDANCE: Record result for cooldown tracking =====
+             ;; Send CLOSE with Magic Number
+             (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
+             (remhash key *warrior-allocation*)
+             (update-symbol-exposure symbol 0.01 :close)
+             (incf *daily-pnl* (round (* pnl 1000 100)))
              (record-trade-result (if (> pnl 0) :win :loss))
-              (train-neural (if (> pnl 0) (if (eq pos :long) 0 1) (if (eq pos :long) 1 0)))
-              ;; Record outcome for learning (both wins and losses)
-              (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "active" pnl)
-              ;; V2.0: Record for hierarchy (promotions, ceremonies)
-              (let ((lead-strat (first (gethash category *active-team*))))
-                (when lead-strat
-                  (record-strategy-trade (strategy-name lead-strat) 
-                                         (if (> pnl 0) :win :loss) pnl)
-                  ;; V2.1: Record failures for Failure Learning v2.0
-                  (when (and (< pnl 0) (fboundp 'record-failure))
-                    (record-failure symbol 
-                                    (if (eq pos :long) :buy :sell) 
-                                    category 
-                                    (strategy-name lead-strat)
-                                    pnl))))
-             (format t "[L] 🐟 ~a CLOSED ~a pnl=~,2f~%" category (if (> pnl 0) "✅" "❌") pnl)
-             ;; V2.0: Update clan treasury with trade profits/losses
-             (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "profit" "loss")))
-             (notify-discord (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
+             (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Warriors" pnl)
+             (let ((lead-strat (first (gethash category *active-team*))))
+               (when lead-strat
+                 (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl)))
+             (format t "[L] 🏁 WARRIOR RETURNED (~a): ~a pips~%" category (round (* pnl 100)))
+             (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "win" "loss")))
+             (notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
-   *category-positions*))
+   *warrior-allocation*))
 
 (defun process-category-trades (symbol bid ask)
   "Process trades using Swarm Intelligence, Memory System, Danger Avoidance, AND Research Insights"
