@@ -445,7 +445,11 @@ Output ONLY the s-expression. No markdown or explanation."
         (let ((mutant (mutate-strategy child 0.3)))
           (format t "[L] 🧬 Mutant: ~a~%" (strategy-name mutant))
           (setf *pending-strategy* mutant)
-          (request-clone-check mutant nil))))))
+          (request-clone-check mutant nil)
+          ;; V6.9: Persist evolution to disk
+          (when (fboundp 'save-genome)
+            (save-genome)
+            (format t "[L] 💾 Genome saved to disk~%")))))))
 
 (format t "[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)~%")
 

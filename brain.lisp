@@ -434,36 +434,64 @@
 (defparameter *backtest-start-time* 0)
 
 
+
+(defun categorize-strategy-name (name)
+  "Categorize strategy based on name keywords"
+  (let ((n (string-upcase name)))
+    (cond
+      ((or (search "RSI" n) (search "STOCH" n) (search "REVERS" n) (search "BOUNCE" n) (search "DIP" n) (search "FLIP" n))
+       :reversion)
+      ((or (search "BREAK" n) (search "ATR" n) (search "VOL" n) (search "SQUEEZE" n))
+       :breakout)
+      ((or (search "SCALP" n) (search "1M" n) (search "SECONDS" n))
+       :scalp)
+      (t :trend))))
+
 (defun notify-backtest-summary ()
-  "Compile and send backtest summary to Discord"
-  (let ((total (length *backtest-results-buffer*))
-        (passed 0)
-        (avg-sharpe 0.0)
-        (sorted-results (sort (copy-list *backtest-results-buffer*) #'> 
-                              :key (lambda (x) (getf (cdr x) :sharpe)))))
+  "Compile and send categorized backtest summary to Discord"
+  (let ((results (copy-list *backtest-results-buffer*))
+        (categories '(:trend :reversion :breakout :scalp))
+        (summary-msg "📊 **Backtest Summary (V6.9)**\n"))
     
-    (dolist (res *backtest-results-buffer*)
-      (let ((s (getf (cdr res) :sharpe)))
-        (incf avg-sharpe s)
-        (when (> s 0) (incf passed))))
+    (dolist (cat categories)
+      (let* ((cat-results (remove-if-not 
+                            (lambda (res) (eq (categorize-strategy-name (car res)) cat))
+                            results))
+             (total (length cat-results))
+             (passed (count-if (lambda (res) (> (getf (cdr res) :sharpe) 0)) cat-results))
+             (avg-sharpe (if (> total 0)
+                             (/ (loop for r in cat-results sum (getf (cdr r) :sharpe)) total)
+                             0.0))
+             ;; Sort by Sharpe descending
+             (sorted (sort (copy-list cat-results) #'> :key (lambda (x) (getf (cdr x) :sharpe)))))
+        
+        (when (> total 0)
+          (setf summary-msg (concatenate 'string summary-msg 
+                                         (format nil "\n**~a** (Total: ~d | Pass: ~d | Avg Sharpe: ~,2f)\n" 
+                                                 cat total passed avg-sharpe)))
+          
+          ;; Top 5
+          (setf summary-msg (concatenate 'string summary-msg "  Top 5:\n"))
+          (loop for i from 0 below (min 5 (length sorted))
+                for res = (nth i sorted)
+                do (setf summary-msg (concatenate 'string summary-msg 
+                                                  (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe)))))
+          
+          ;; Worst 5 (if enough results)
+          (when (> total 5)
+            (setf summary-msg (concatenate 'string summary-msg "  Worst 5:\n"))
+            (let ((worst (reverse sorted)))
+              (loop for i from 0 below (min 5 (length worst))
+                    for res = (nth i worst)
+                    do (setf summary-msg (concatenate 'string summary-msg 
+                                                      (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe))))))))))
     
-    (when (> total 0) 
-      (setf avg-sharpe (/ avg-sharpe total)))
-      
-    (let ((msg (format nil "📊 **Backtest Batch Complete** (~d strategies)~%Pass (>0): ~d | Fail: ~d | Avg Sharpe: ~,2f~%~%🏆 **Top 3 Performers**~%"
-                       total passed (- total passed) avg-sharpe)))
-       (loop for i from 0 below (min 3 (length sorted-results))
-             for res = (nth i sorted-results)
-             do (setf msg (concatenate 'string msg 
-                                       (format nil "**~d. ~a**~%Sharpe: ~,2f | Win: ~,1f% | Trades: ~d~%~%" 
-                                               (1+ i) (car res) 
-                                               (getf (cdr res) :sharpe)
-                                               (getf (cdr res) :win-rate)
-                                               (getf (cdr res) :trades)))))
-       (notify-discord-backtest msg :color (if (> passed (/ total 2)) 5763719 15548997))
-       ;; Clear buffer
-       (setf *backtest-results-buffer* nil)
-       (setf *expected-backtest-count* 0))))
+    (setf summary-msg (concatenate 'string summary-msg "\n🔍 Only showing Top/Worst to reduce spam."))
+    (notify-discord-backtest summary-msg :color 5763719)
+    
+    ;; Clear buffer
+    (setf *backtest-results-buffer* nil)
+    (setf *expected-backtest-count* 0)))
 
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
   "Send Discord notification to symbol-specific channel"
@@ -1277,24 +1305,7 @@
 (defun initialize-tribal-dialect ()
   "Initialize the tribal language"
   (format t "[L] 📚 Loading Tribal Dialect...~%")
-  ;; V6.8: Restore PnL from disk on startup
-(defun restore-daily-pnl ()
-  "Restore PnL from live_status.json if file exists and date matches"
-  (let ((path "/home/swimmy/swimmy/.opus/live_status.json"))
-    (when (probe-file path)
-      (handler-case
-          (let* ((json-str (alexandria:read-file-into-string path))
-                 (data (jsown:parse json-str))
-                 ;; Should valid date check here, but simple load for now
-                 (saved-pnl (jsown:val data "pnl")))
-             (setf *daily-pnl* saved-pnl)
-             (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
-        (error (e) (format t "[L] Failed to restore PnL: ~a~%" e))))))
-
-(restore-daily-pnl)
-
-(format t "[BRAIN] V6.8: System active and waiting for messages...~%")
-(run-loop)  
+  
   (define-pattern "Dragon-Tail"
     "価格は上昇しているがRSIは下落（隠れダイバージェンス）"
     (lambda (history)
@@ -2721,3 +2732,21 @@ Sharpe   : ~,2f
 
 ;; V4.0: Rituals moved to brain-ritual.lisp
 (load (merge-pathnames "brain-ritual.lisp" *load-truename*))
+
+;; V6.8: Restore PnL from disk on startup
+(defun restore-daily-pnl ()
+  "Restore PnL from live_status.json if file exists"
+  (let ((path "/home/swimmy/swimmy/.opus/live_status.json"))
+    (when (probe-file path)
+      (handler-case
+          (let* ((json-str (alexandria:read-file-into-string path))
+                 (data (jsown:parse json-str))
+                 (saved-pnl (jsown:val data "pnl")))
+             (setf *daily-pnl* saved-pnl)
+             (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
+        (error (e) (format t "[L] Failed to restore PnL: ~a~%" e))))))
+
+(restore-daily-pnl)
+
+(format t "[BRAIN] V6.9: System active and waiting for messages...~%")
+(run-loop)
