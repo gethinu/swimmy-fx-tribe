@@ -116,9 +116,24 @@
       nil))
 
 (defun should-unlearn-p (symbol)
-  "Check if recent performance is toxic (Darwin)"
-  (declare (ignore symbol))
-  nil) ; Stub - implement with trade history analysis
+  "V6.4 (Darwin): Check if recent performance is toxic - adaptive forgetting
+   Returns t if system should pause trading for this symbol"
+  (declare (ignore symbol))  ; Currently global, could be per-symbol later
+  (let ((toxic nil)
+        (daily-pnl (if (boundp '*daily-pnl*) *daily-pnl* 0))
+        (consecutive-losses (if (boundp '*consecutive-losses*) *consecutive-losses* 0)))
+    
+    ;; Condition 1: Heavy daily loss (> 3000 yen)
+    (when (< daily-pnl -3000)
+      (setf toxic t)
+      (format t "[L] 🧬 DARWIN: Daily PnL toxic (¥~,0f)~%" daily-pnl))
+    
+    ;; Condition 2: 4+ consecutive losses
+    (when (>= consecutive-losses 4)
+      (setf toxic t)
+      (format t "[L] 🧬 DARWIN: ~d consecutive losses~%" consecutive-losses))
+    
+    toxic))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V5.6 (Paper #36): PARALLEL VERIFICATION LOOPS
