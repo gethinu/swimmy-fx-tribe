@@ -2472,22 +2472,15 @@
       
       ;; Check for failure pattern BLOCK
       (unless (should-block-trade-p symbol direction category)
-        ;; Trade conditions (FIXED - more permissive after warmup):
+        ;; Trade conditions (V6.3: TRIBES removed, SWARM-only):
         ;; 1. Warmup period: trade freely to gather data
         ;; 2. High NN confidence (>35%) AND NN agrees 
-        ;; 3. Strong swarm consensus (>70%)
-        ;; 4. V2.0: Strong tribe consensus (>60%) AND tribe agrees with direction
-        (let ((tribe-agrees (or warmup-p  ; Always true in warmup
-                                (and (numberp *tribe-consensus*)
-                                     (> (float *tribe-consensus*) 0.6)
-                                     (or (and (eq direction :buy) (eq *tribe-direction* :buy))
-                                         (and (eq direction :sell) (eq *tribe-direction* :sell)))))))
+        ;; 3. Strong swarm consensus (>50%)  ;; V6.5: Lowered from 70% to 50%
         (when (or warmup-p
                   (and (> conf 0.35)
                        (or (and (eq direction :buy) (string= pred "BUY"))
                            (and (eq direction :sell) (string= pred "SELL"))))
-                  (> swarm-consensus 0.70)
-                  tribe-agrees)  ; V2.0: Tribe consensus override
+                  (> swarm-consensus 0.50))
           ;; V2.0: Apply hedge logic for Breakers (aggressive trades get counter-hedge)
           (when (eq category :breakout)
             (apply-hedge-logic category direction symbol bid ask))
@@ -2557,9 +2550,9 @@
                                  (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
                            (update-symbol-exposure symbol lot :open)
                            (incf *category-trades*)
-                           (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)))))
+                            (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)))))
                     ;; Clan is full (4/4 warriors deployed)
-                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)))))))))))
+                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category))))))))))
 
 ;; Track entry prices for each category
 (defparameter *category-entries* (make-hash-table :test 'eq))
