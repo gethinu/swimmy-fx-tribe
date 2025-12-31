@@ -12,6 +12,7 @@
 (defvar *daily-pnl* 0)
 (defvar *accumulated-pnl* 0)
 (defvar *monthly-goal* 100000)
+(defvar *category-trades* 0)  ; V6.5: Track total trades for warmup period
 
 ;; V2.0: Tribe signal integration
 (defvar *tribe-direction* :hold "Current tribe consensus direction")
@@ -2415,6 +2416,7 @@
         return i))
 
 (defun execute-category-trade (category direction symbol bid ask)
+  (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
   (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
     (let* ((strategies (gethash category *active-team*))
            (lead-strat (first strategies))
