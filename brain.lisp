@@ -440,6 +440,29 @@
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
 
+;; V5.3: Periodic Status Notification
+(defparameter *last-status-notification-time* (make-hash-table :test 'equal))
+(defparameter *status-notification-interval* 3600) ; Default 1 hour
+
+(defun send-periodic-status-report (symbol bid)
+  "Send a periodic status report to Discord if interval continues"
+  (let* ((now (get-universal-time))
+         (last-time (gethash symbol *last-status-notification-time* 0)))
+    (when (> (- now last-time) *status-notification-interval*)
+      (let ((tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
+            (tribe-con (if (boundp '*tribe-consensus*) *tribe-consensus* 0.0))
+            (swarm-con (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
+            (pred (if (boundp '*last-prediction*) *last-prediction* "N/A"))
+            (conf (if (boundp '*last-confidence*) *last-confidence* 0.0))
+            (danger (if (boundp '*danger-level*) *danger-level* 0))
+            (active-warriors (if (boundp '*warrior-allocation*) 
+                                 (hash-table-count *warrior-allocation*) 0)))
+        (notify-discord-symbol symbol 
+          (format nil "🕒 STATUS REPORT~%Price: ~,3f~%~%🧠 AI: ~a (~,1f%)~%🏛️ Tribes: ~a (~,0f%)~%🐟 Swarm: ~,0f%~%~%⚔️ Warriors: ~d~%⚠️ Danger: Lv~d"
+                  bid pred (* 100 conf) tribe-dir (* 100 tribe-con) (* 100 swarm-con) active-warriors danger)
+          :color 10070709) ; Dark Grey for status
+        (setf (gethash symbol *last-status-notification-time*) now)))))
+
 (defun notify-discord-alert (msg &key (color 15158332))
   "Send critical alerts to alerts channel (FLEE mode, danger, etc.)"
   (when (and *alerts-webhook-url* msg)
@@ -487,7 +510,7 @@
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
 
-(defun notify-discord-daily (msg)
+(defun notify-discord-daily (msg &key (color 3447003))
   "Send to daily report channel"
   (let ((webhook (or *discord-daily-webhook* *discord-webhook-url*)))
     (when webhook
@@ -497,7 +520,7 @@
                               ("embeds" (list (jsown:new-js 
                                 ("title" "📊 Daily Report") 
                                 ("description" (format nil "~a" msg)) 
-                                ("color" 3447003))))))  ; Blue
+                                ("color" color))))))  ; Use passed color
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
 
@@ -2078,9 +2101,14 @@
             (error (e) (format t "[L] TRIBE warn: ~a~%" e))))
         ;; Category-based team trades (40/30/20/10 allocation)
         (process-category-trades symbol bid ask)))))
+;; Global volatility tracking per symbol (Soros)
+(defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
+(defparameter *current-volatility-state* :normal)
+(defparameter *market-regime* :ranging)
+
 (defun update-candle (bid symbol)
-  "Update candle for specific symbol - multi-currency support"
-  (let* ((now (get-universal-time)) 
+  "Update candle history for a specific symbol - multi-currency support"
+  (let* ((now (get-universal-time))
          (min-idx (floor now 60))
          (curr-candle (gethash symbol *current-candles*))
          (curr-minute (gethash symbol *current-minutes* -1))
@@ -2103,13 +2131,15 @@
           (incf (candle-volume c))
           (when (> bid (candle-high c)) (setf (candle-high c) bid))
           (when (< bid (candle-low c)) (setf (candle-low c) bid))))))
-(defun process-msg (msg)
+(defun internal-process-msg (msg)
   (handler-case
       (let* ((json (jsown:parse msg)) (type (jsown:val json "type")))
         (cond
           ((string= type "TICK") 
            (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
            (save-live-status)  ; Write status for Discord bot
+           ;; V5.3: Periodic Status Report
+           (send-periodic-status-report (jsown:val json "symbol") (jsown:val json "bid"))
            ;; V4.0: Continuous Learning Loop (evolution + dreamer)
            (handler-case (continuous-learning-step) (error (e) nil)))
           ;; V5.0: Guardian Heartbeat
@@ -2322,6 +2352,112 @@
           
           (t (format t "[L] Unknown msg type: ~a~%" type))))
     (error (e) (format t "[L] Err: ~a~%" e))))
+
+
+
+
+;; V5.4: Daily Tribal Narrative
+(defparameter *last-narrative-day* -1)
+
+;; V5.6 (Research Paper #35): 3D/Virtual Flood Risk Metaphor
+(defun get-flood-status ()
+  "Convert Danger Level and Drawdown into a Flood Metaphor"
+  (let ((danger (if (boundp '*danger-level*) *danger-level* 0))
+        (dd (if (boundp '*max-drawdown*) *max-drawdown* 0.0)))
+    (cond
+      ((>= danger 5) "🌊🌊🌊 **TSUNAMI ALERT** (The Abyss)")
+      ((>= danger 4) "🏊 **Underwater** (Oxygen Critical)")
+      ((>= danger 3) "🚿 **Neck Deep** (Breathing Hard)")
+      ((>= danger 2) "🩳 **Waist Deep** (Hard to Move)")
+      ((>= danger 1) "👢 **Ankle Deep** (Wet Socks)")
+      ((> dd 5.0)    "🌧️ **Heavy Rain** (Puddles Forming)")
+      (t             "🏜️ **Dry Land** (Safe)"))))
+
+(defun send-daily-tribal-narrative ()
+  "Send a daily summary of tribal sentiments and results in Japanese with dynamic storytelling"
+  (let* ((pnl *daily-pnl*)
+         (wins *consecutive-wins*)
+         (losses *consecutive-losses*)
+         (tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
+         ;; Generate dynamic quotes based on situation
+         (hunter-quote (cond ((> pnl 0) "「獲物は十分に確保した。宴の準備を。」")
+                             ((> losses 2) "「風向きが悪い...一度森へ退くぞ。」")
+                             (t "「次の獲物を探して、矢を研いでおく。」")))
+         (breaker-quote (cond ((equal tribe-dir "BUY") "「壁はずっと叩けば壊れるもんだぜ！」")
+                              ((equal tribe-dir "SELL") "「崩れ落ちる足音を聞け！」")
+                              (t "「静かすぎる...嵐の前触れか？」")))
+         (raider-quote (cond ((> wins 0) "「いただいたぜ。追っ手が来る前にズラかるぞ。」")
+                             ((< pnl 0) "「チッ、今日のシノギは渋いな。」")
+                             (t "「隙を見せたら、いつでも頂くさ。」")))
+         (shaman-quote (cond ((> losses 0) "「精霊たちが怒っている...鎮めねばならぬ。」")
+                             ((> pnl 1000) "「星の巡りが良い。だが驕るなよ。」")
+                             (t "「まだその時ではない...耐え忍ぶのだ。」")))
+         (chief-quote (cond ((> pnl 0) "「今日も生き延びたか。だが、明日は明日の風が吹く。」")
+                            ((< pnl 0) "「傷を癒やせ。負けから学ぶことこそが、最強への近道だ。」")
+                            (t "「静寂もまた、戦略の一部である。」")))
+         ;; V5.6: Flood Status
+         (flood-status (get-flood-status)))
+    
+    (notify-discord-daily (format nil "
+📜 **日刊・部族クロニクル**
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 昨日の戦果: ¥~,0f
+🔥 現在の戦況: ~d 連勝中 | ~d 連敗中
+🌊 **洪水警報 (Risk Level)**:
+%  ~a
+
+🗣️ **部族たちの焚き火会議**:
+🏹 Hunters: ~a
+⚔️ Breakers: ~a
+🗡️ Raiders: ~a
+🔮 Shamans: ~a
+
+👑 **族長の言葉**:
+~a
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **Cold Reality (Kahneman's Data)**:
+Total PnL: ¥~,2f
+Win Rate : ~,1f%
+Drawdown : ~,2f%
+Sharpe   : ~,2f
+━━━━━━━━━━━━━━━━━━━━━━━━━━" pnl wins losses flood-status hunter-quote breaker-quote raider-quote shaman-quote chief-quote
+                    (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0.0)
+                    (if (boundp '*all-time-win-rate*) *all-time-win-rate* 50.0)
+                    (if (boundp '*max-drawdown*) *max-drawdown* 0.0)
+                    (if (boundp '*portfolio-sharpe*) *portfolio-sharpe* 0.0))
+     :color (cond ((>= (if (boundp '*danger-level*) *danger-level* 0) 3) 15158332) ; Red
+                  ((>= (if (boundp '*danger-level*) *danger-level* 0) 1) 16776960) ; Yellow
+                  (t 3447003))))) ; Blue/Green
+
+(defun check-daily-narrative ()
+  (multiple-value-bind (s m h date month year day-of-week dst-p tz)
+      (decode-universal-time (get-universal-time))
+    (declare (ignore s m h month year day-of-week dst-p tz))
+    (when (and *last-narrative-day* (/= date *last-narrative-day*))
+      ;; New day detected!
+      (send-daily-tribal-narrative)
+      (setf *last-narrative-day* date)
+      ;; Reset daily PnL
+      (setf *daily-pnl* 0))))
+
+;; V5.5 (Ms. Hopper): Periodic Heartbeat to MT5
+(defparameter *last-heartbeat-sent* 0)
+
+(defun send-heartbeat ()
+  (let ((now (get-internal-real-time)))
+    (when (> (- now *last-heartbeat-sent*) (* 10 internal-time-units-per-second)) ; Every 10s
+      (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT"))))
+      (setf *last-heartbeat-sent* now))))
+
+;; V5.3 (Ms. Hopper): Performance Monitoring Wrapper
+(defun process-msg (msg)
+  (let ((start-time (get-internal-real-time)))
+    (internal-process-msg msg)
+    (check-daily-narrative) ; V5.4: Check for new day
+    (send-heartbeat)        ; V5.5: Heartbeat to MT5
+    (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))
+      (when (> duration 0.5) ; 500ms threshold
+        (format t "[L] ⚠️ SLOW TICK: Processing took ~,3f seconds~%" duration)))))
 
 ;; Neural Network Integration
 (defparameter *last-prediction* "HOLD")

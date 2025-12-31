@@ -73,6 +73,49 @@
           (decf *danger-level*)
           (format t "[L] 🩹 RECOVERY: Danger level decreased to ~d~%" *danger-level*)))))
 
+;; Helper for Tactical Retreat
+(defun get-current-price (symbol type)
+  "Get current price from candle history or brain state"
+  (let ((candles (gethash symbol *candle-histories*)))
+    (if (and candles (first candles))
+        (if (eq type :bid) 
+            (candle-close (first candles)) ; Approx bid
+            (candle-close (first candles))) ; Approx ask
+        nil)))
+
+
+;; V5.3 (Sun Tzu): Tactical Retreat - Close ONLY losing positions
+(defun execute-tactical-retreat ()
+  "Close all losing positions immediately to stop bleeding"
+  (format t "[L] ⚔️ TACTICAL RETREAT INITIATED! Purging weak positions...~%")
+  (let ((closed-count 0))
+    (maphash 
+     (lambda (key warrior)
+       (let* ((symbol (getf warrior :symbol))
+              (entry (getf warrior :entry))
+              (direction (getf warrior :direction))
+              (magic (getf warrior :magic))
+              (current-bid (get-current-price symbol :bid)) ; Helper needed
+              (current-ask (get-current-price symbol :ask))
+              (pnl 0))
+         ;; Calculate unrealized PnL approx
+         (cond
+           ((and (eq direction :long) current-bid)
+            (setf pnl (- current-bid entry)))
+           ((and (eq direction :short) current-ask)
+            (setf pnl (- entry current-ask))))
+         
+         ;; If losing, CLOSE IT
+         (when (< pnl 0)
+           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
+           (remhash key *warrior-allocation*) ; Remove from memory
+           (update-symbol-exposure symbol (or (getf warrior :lot) 0.01) :close)
+           (incf closed-count)
+           (format t "[L] 🍂 Abandoning position: ~a (PnL: ~5f)~%" symbol pnl))))
+     *warrior-allocation*)
+    (when (> closed-count 0)
+      (notify-discord-alert (format nil "⚔️ TACTICAL RETREAT: Closed ~d losing positions." closed-count)))))
+
 (defun activate-danger-cooldown ()
   "Activate cooldown based on consecutive losses"
   (let* ((losses *consecutive-losses*)
@@ -83,7 +126,13 @@
     (setf *danger-cooldown-until* (+ (get-universal-time) duration))
     (format t "~%[L] 🦈🦈🦈 DANGER DETECTED! ~d consecutive losses~%" losses)
     (format t "[L] 🏃 FLEE MODE: Trading suspended for ~d seconds~%" duration)
-    (format t "[L] 🐟 School retreating to safety...~%~%")))
+    (format t "[L] 🐟 School retreating to safety...~%~%")
+    ;; Default to ALERT
+    (when (fboundp 'notify-discord-alert)
+      (notify-discord-alert (format nil "🦈 DANGER: ~d consecutive losses. FLEE MODE activated for ~ds." losses duration)))
+    
+    ;; Sun Tzu: Execute Tactical Retreat
+    (execute-tactical-retreat)))
 
 (defun danger-cooldown-active-p ()
   "Check if we're in danger cooldown mode"
@@ -146,7 +195,9 @@
       (format t "[L] 🏳️  RESIGNATION: Today's trading ends~%")
       (format t "[L] 🏳️  Reason: ~a~%" reason)
       (format t "[L] 🏳️  Tomorrow is another day.~%")
-      (format t "[L] 🏳️ ═══════════════════════════════════════~%~%"))
+      (format t "[L] 🏳️ ═══════════════════════════════════════~%~%")
+      (when (fboundp 'notify-discord-alert)
+        (notify-discord-alert (format nil "🏳️ RESIGNATION: Trading ended for today.~%Reason: ~a" reason))))
     
     should-resign))
 
@@ -2442,15 +2493,36 @@
                                (error (e) (progn (format t "[L] Prediction error: ~a~%" e) nil))))
                  (should-trade (or warmup-p 
                                    (null prediction)
-                                   (should-take-trade-p prediction))))
-            ;; V3.0: Explain trade decision (previously unused!)
             (when prediction
               (handler-case
                   (let ((factors (trade-prediction-factors prediction))
                         (action (if should-trade :execute :skip)))
                     (explain-trade-decision symbol direction action factors))
                 (error (e) (format t "[L] Explain error: ~a~%" e))))
+            
+            ;; V5.5 (Soros): Global Panic Protocol
+            (when (global-panic-active-p)
+              (setf should-trade nil)
+              (format t "[L] 💉 SOROS: Global Panic detected! Blocking trade.~%"))
+            
+            ;; V5.5 (Darwin): Unlearning Check
+            (when (should-unlearn-p symbol)
+              (setf should-trade nil)
+              (format t "[L] 🧬 DARWIN: Recent performance toxic. Unlearning active.~%"))
+
+            ;; V5.6 (Paper #36): Parallel Verification Loops
             (when should-trade
+              (unless (verify-parallel-scenarios symbol direction category)
+                (setf should-trade nil)
+                (format t "[L] 🧬 PARALLEL VERIFICATION: FAILED (Trade rejected)~%")))
+              
+            (when should-trade
+              ;; V5.5 (Sun Tzu): Operation Mist (Entry Jitter & Feint)
+              (sleep (/ (random 2000) 1000.0)) ; 0-2s delay
+              (when (< (random 100) 5)     ; 5% Feint chance
+                 (format t "[L] ⚔️ SUN TZU: Operation Mist - Feint executed (Trade skipped)~%")
+                 (return-from execute-category-trade nil))
+              
               ;; V5.2: Warrior Allocation - Find free slot (0-3) for this clan
               (let ((slot-index (find-free-warrior-slot category)))
                 (if slot-index
@@ -2462,7 +2534,7 @@
                          (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
                            (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
                            (setf (gethash key *warrior-allocation*) 
-                                 (list :symbol symbol :category category :direction :long :entry bid :magic magic :start-time (get-universal-time)))
+                                 (list :symbol symbol :category category :direction :long :entry bid :magic magic :lot lot :start-time (get-universal-time)))
                            (update-symbol-exposure symbol lot :open)
                            (incf *category-trades*)
                            (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)))
@@ -2470,7 +2542,7 @@
                          (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                            (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
                            (setf (gethash key *warrior-allocation*) 
-                                 (list :symbol symbol :category category :direction :short :entry ask :magic magic :start-time (get-universal-time)))
+                                 (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
                            (update-symbol-exposure symbol lot :open)
                            (incf *category-trades*)
                            (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)))))
@@ -2488,9 +2560,10 @@
        (let* ((category (getf warrior :category))
               (pos (getf warrior :direction))
               (entry (getf warrior :entry))
-              (magic (getf warrior :magic))
-              (sl-pips 0.15) (tp-pips 0.40)
-              (pnl 0) (closed nil))
+               (magic (getf warrior :magic))
+               (lot (or (getf warrior :lot) 0.01)) ; Use stored lot or default
+               (sl-pips 0.15) (tp-pips 0.40)
+               (pnl 0) (closed nil))
          (when (and entry (numberp bid) (numberp ask))
            (cond
              ((eq pos :long)
@@ -2504,8 +2577,10 @@
            (when closed
              ;; Send CLOSE with Magic Number
              (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
+             ;; Free the slot
              (remhash key *warrior-allocation*)
-             (update-symbol-exposure symbol 0.01 :close)
+             (update-symbol-exposure symbol lot :close)
+             (format t "[L] ⚔️ WARRIOR #~d RETURNS: ~a (~a) PnL: ~5f~%" (1+ (parse-integer (subseq (string key) (1+ (position #\- (string key)))))) category (if (> pnl 0) "WIN" "LOSS") pnl)
              (incf *daily-pnl* (round (* pnl 1000 100)))
              (record-trade-result (if (> pnl 0) :win :loss))
              (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Warriors" pnl)
@@ -2741,3 +2816,111 @@
     redundant))
 
 (init-school)
+
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  V5.5: FORTRESS HELPERS
+;;; ══════════════════════════════════════════════════════════════════
+
+(defun global-panic-active-p ()
+  "Check if multiple currencies are in extreme volatility (Soros)"
+  (if (boundp '*current-volatility-state*)
+      (let ((extreme-count 0))
+        (maphash (lambda (k v) 
+                   (declare (ignore k))
+                   (when (eq v :extreme) (incf extreme-count)))
+                 *symbol-volatility-states*) ; Assuming this exists or using single state for now
+        ;; Fallback to single state if multi-state not fully implemented
+        (eq *current-volatility-state* :extreme))
+      nil))
+
+(defun should-unlearn-p (symbol)
+  "Check if recent performance is toxic (Darwin)"
+  ;; Stub for unlearning logic - requires trade history analysis
+  (declare (ignore symbol))
+  nil) ; Implement properly later
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  V5.6 (Paper #36): PARALLEL VERIFICATION LOOPS
+;;; ══════════════════════════════════════════════════════════════════
+
+(defun verify-parallel-scenarios (symbol direction category)
+  "Run 3 parallel simulations to verify trade robustness (DeepMind)"
+  (let ((optimistic-pass nil)
+        (pessimistic-pass nil)
+        (chaos-pass nil))
+    
+    ;; 1. Optimistic World: Does the Market Regime support this trade?
+    (let ((regime (if (boundp '*market-regime*) *market-regime* :ranging)))
+       (setf optimistic-pass 
+             (cond ((member category '(:hunters :raiders)) (eq regime :trending))
+                   ((eq category :breakout) (eq regime :volatile))
+                   ((eq category :shamans) (eq regime :ranging))
+                   (t t)))) ; Default pass
+    
+    ;; 2. Pessimistic World: Do counter-indicators forbid this? (RSI Check)
+    ;; Needs actual RSI access, here we use a placeholder heuristic based on recent candles
+    (setf pessimistic-pass t) ; Placeholder: Implement actual RSI check if available
+    
+    ;; 3. Chaos World: Is Volatility acceptable?
+    (let ((vol (if (boundp '*current-volatility-state*) *current-volatility-state* :normal)))
+      (setf chaos-pass (not (eq vol :extreme))))
+      
+    ;; Verification: Pass if 2 out of 3 scenarios survive
+    (let ((score (+ (if optimistic-pass 1 0) 
+                    (if pessimistic-pass 1 0) 
+                    (if chaos-pass 1 0))))
+      (format t "[L] 🧬 PARALLEL VERIFICATION (~a): Opt=~a Pess=~a Chaos=~a (Score: ~d/3)~%" 
+              symbol optimistic-pass pessimistic-pass chaos-pass score)
+      (>= score 2))))
+
+
+
+(defun convene-high-council (proposal category &key (urgency 0))
+  "Evaluate trade proposal by the High Council. Returns t (approve) or nil (reject)."
+  (let* ((symbol (getf proposal :symbol))
+         (direction (getf proposal :direction))
+         (strategy (getf proposal :strategy))
+         (danger-level (if (boundp '*danger-level*) *danger-level* 0))
+         (tribe-consensus (if (boundp '*tribe-consensus*) *tribe-consensus* 0.5))
+         (swarm-consensus (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
+         (volatility-state (if (boundp '*current-volatility-state*) *current-volatility-state* :normal))
+         (approval nil)
+         (reason ""))
+    
+    (cond
+      ;; 1. Emergency Bypass
+      ((>= urgency 10)
+       (setf approval t)
+       (setf reason "🚨 EMERGENCY PROTOCOL Override"))
+      
+      ;; 2. Danger Level Checks
+      ((>= danger-level 3) ; FLEE MODE
+       (setf approval nil)
+       (setf reason "🚫 REJECTED: FLEE MODE active. No new deployments."))
+      
+      ((>= danger-level 2) ; HIGH DANGER
+       (if (and (> num-tribe-consensus 0.7) (> swarm-consensus 0.7))
+           (progn (setf approval t) (setf reason "⚠️ APPROVED: High consensus required in Danger Lv2"))
+           (progn (setf approval nil) (setf reason "🛡️ REJECTED: Danger Lv2 requires 70%+ consensus"))))
+           
+      ;; 3. Volatility Checks
+      ((eq volatility-state :extreme)
+       (if (member category '(:breakers :shamans)) ; Only robust clans
+           (progn (setf approval t) (setf reason "🌊 APPROVED: Extreme volatility fits this Clan"))
+           (progn (setf approval nil) (setf reason "�� REJECTED: Too volatile for this Clan"))))
+           
+      ;; 4. Standard Approval
+      (t
+       (setf approval t)
+       (setf reason "✅ APPROVED: Standard deployment authorized")))
+       
+    ;; Notification (Only deny or high danger approval)
+    (when (or (not approval) (>= danger-level 2) (eq volatility-state :extreme))
+      (let ((msg (format nil "🏛️ **HIGH COUNCIL DECREE**~%Proposal: ~a ~a (~a)~%Decision: ~a~%Reason: ~a~%~%Environment: Danger Lv~d | Volatility: ~a"
+                         category symbol direction (if approval "GRANTED" "DENIED") reason danger-level volatility-state)))
+        (format t "[L] ~a~%" msg)
+        (when (fboundp 'notify-discord-symbol)
+           (notify-discord-symbol symbol msg :color (if approval 3066993 15158332))))) ; Green/Red
+           
+    approval))

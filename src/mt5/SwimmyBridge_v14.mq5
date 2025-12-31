@@ -305,11 +305,31 @@ void ExecuteCommand(string cmd) {
    else if(StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
       SendHistoryData(cmd_symbol);
    }
+   else if(StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
+      g_last_heartbeat = TimeCurrent();
+      // Optional: Print("💓 Heartbeat received");
+   }
 }
+
+
+// V5.5 (Ms. Hopper): Dead Man's Switch
+datetime g_last_heartbeat = 0;
+const int HEARTBEAT_TIMEOUT = 60; // 60 seconds
 
 void OnTimer() {
    CheckPositionsClosed();
    
+   // V5.5: Check for Dead Man's Switch (Lisp brain death)
+   // Only active if we have at least one heartbeat received (to allow startup)
+   if(g_last_heartbeat > 0 && (TimeCurrent() - g_last_heartbeat) > HEARTBEAT_TIMEOUT) {
+      if(PositionsTotal() > 0) {
+         Print("💀 DEAD MAN'S SWITCH TRIGGERED! Brain is silent for >60s. EMERGENCY CLOSE ALL!");
+         CloseAllPositions("ALL");
+         g_last_heartbeat = TimeCurrent(); // Reset to prevent log spam
+      }
+   }
+   
+
    // V14.1: Send ticks for ALL configured symbols
    for(int s = 0; s < ArraySize(g_symbols); s++) {
       string sym = g_symbols[s];
