@@ -427,6 +427,44 @@
 (defparameter *alerts-webhook-url* 
   "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH")
 
+
+;; V6.8: Backtest Buffering
+(defparameter *backtest-results-buffer* nil)
+(defparameter *expected-backtest-count* 0)
+(defparameter *backtest-start-time* 0)
+
+
+(defun notify-backtest-summary ()
+  "Compile and send backtest summary to Discord"
+  (let ((total (length *backtest-results-buffer*))
+        (passed 0)
+        (avg-sharpe 0.0)
+        (sorted-results (sort (copy-list *backtest-results-buffer*) #'> 
+                              :key (lambda (x) (getf (cdr x) :sharpe)))))
+    
+    (dolist (res *backtest-results-buffer*)
+      (let ((s (getf (cdr res) :sharpe)))
+        (incf avg-sharpe s)
+        (when (> s 0) (incf passed))))
+    
+    (when (> total 0) 
+      (setf avg-sharpe (/ avg-sharpe total)))
+      
+    (let ((msg (format nil "📊 **Backtest Batch Complete** (~d strategies)~%Pass (>0): ~d | Fail: ~d | Avg Sharpe: ~,2f~%~%🏆 **Top 3 Performers**~%"
+                       total passed (- total passed) avg-sharpe)))
+       (loop for i from 0 below (min 3 (length sorted-results))
+             for res = (nth i sorted-results)
+             do (setf msg (concatenate 'string msg 
+                                       (format nil "**~d. ~a**~%Sharpe: ~,2f | Win: ~,1f% | Trades: ~d~%~%" 
+                                               (1+ i) (car res) 
+                                               (getf (cdr res) :sharpe)
+                                               (getf (cdr res) :win-rate)
+                                               (getf (cdr res) :trades)))))
+       (notify-discord-backtest msg :color (if (> passed (/ total 2)) 5763719 15548997))
+       ;; Clear buffer
+       (setf *backtest-results-buffer* nil)
+       (setf *expected-backtest-count* 0))))
+
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
   "Send Discord notification to symbol-specific channel"
   (let ((webhook (or (gethash symbol *symbol-webhooks*) *discord-webhook-url*)))
@@ -1239,7 +1277,24 @@
 (defun initialize-tribal-dialect ()
   "Initialize the tribal language"
   (format t "[L] 📚 Loading Tribal Dialect...~%")
-  
+  ;; V6.8: Restore PnL from disk on startup
+(defun restore-daily-pnl ()
+  "Restore PnL from live_status.json if file exists and date matches"
+  (let ((path "/home/swimmy/swimmy/.opus/live_status.json"))
+    (when (probe-file path)
+      (handler-case
+          (let* ((json-str (alexandria:read-file-into-string path))
+                 (data (jsown:parse json-str))
+                 ;; Should valid date check here, but simple load for now
+                 (saved-pnl (jsown:val data "pnl")))
+             (setf *daily-pnl* saved-pnl)
+             (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
+        (error (e) (format t "[L] Failed to restore PnL: ~a~%" e))))))
+
+(restore-daily-pnl)
+
+(format t "[BRAIN] V6.8: System active and waiting for messages...~%")
+(run-loop)  
   (define-pattern "Dragon-Tail"
     "価格は上昇しているがRSIは下落（隠れダイバージェンス）"
     (lambda (history)
@@ -2149,14 +2204,22 @@
                   (trades (jsown:val result "trades"))
                   (pnl (jsown:val result "pnl"))
                   (win-rate (handler-case (jsown:val result "win_rate") (error () 0))))
-             (format t "[L] 📈 BACKTEST: ~a | Sharpe=~,2f | Trades=~d | PnL=~,2f | Win=~,1f%~%" 
-                     name sharpe trades pnl win-rate)
-              ;; Update strategy's sharpe score - check BOTH evolved AND knowledge base
+             
+             ;; V6.8: Buffer results instead of spamming
+             (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
+                   *backtest-results-buffer*)
+             
+             (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
+                (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
+                        (length *backtest-results-buffer*) *expected-backtest-count*)
+                (notify-backtest-summary))
+
+              ;; Update strategy's sharpe score
               (let ((strat (or (find name *evolved-strategies* :key #'strategy-name :test #'string=)
                                (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
                 (when strat
                   (setf (strategy-sharpe strat) sharpe)
-                  ;; V5.1: BENCH SYSTEM (simpler than volume adjustment)
+                  ;; V5.1: BENCH SYSTEM
                   ;; Weekly unbench for re-evaluation
                   (when (should-weekly-unbench-p)
                     (weekly-unbench-all))

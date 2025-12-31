@@ -377,7 +377,9 @@
 
 (defun batch-backtest-knowledge ()
   "Backtest all knowledge base strategies"
-  (format t "[L] 🧪 Batch testing ~d strategies...~%" (length *strategy-knowledge-base*))
+  (setf *backtest-results-buffer* nil)
+  (setf *expected-backtest-count* (length *strategy-knowledge-base*))
+  (format t "[L] 🧪 Batch testing ~d strategies...~%" *expected-backtest-count*)
   (dolist (strat *strategy-knowledge-base*)
     (when (and *candle-history* (> (length *candle-history*) 100))
       (request-backtest strat))))
