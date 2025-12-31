@@ -2733,16 +2733,8 @@
 ;;;  Kalman/HMM等の研究論文実装は品質フィルターとして使用
 ;;; ══════════════════════════════════════════════════════════════════
 
-;; Stub functions for backward compatibility (actual logic uses 61 strategies now)
-(defun collect-all-tribe-signals (symbol history)
-  "V3.0: Stub - returns nil, 61-strategy signals are used instead"
-  (declare (ignore symbol history))
-  nil)
-
-(defun aggregate-tribe-signals (signals)
-  "V3.0: Stub - returns hold, 61-strategy signals are used instead"
-  (declare (ignore signals))
-  (list :direction :hold :consensus 0.0 :signals nil))
+;; V6.3 (Graham): TRIBES stubs removed - collect-all-tribe-signals, aggregate-tribe-signals
+;; were dead code always returning nil/0%. Trade decisions now use SWARM only.
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V4.0: STRATEGY CORRELATION ANALYSIS (教授指摘)
