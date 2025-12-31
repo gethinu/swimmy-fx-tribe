@@ -419,7 +419,7 @@
   (setf (gethash "EURUSD" *symbol-webhooks*) 
         "https://discord.com/api/webhooks/1455549049540313189/lw9iSajiYjzogZIUEuymaUaOIePL8yT0ya-qc8Utpyr5nM6bAZv6l8ekYTdf0knRRKZa")
   (setf (gethash "GBPUSD" *symbol-webhooks*) 
-        "https://discord.com/api/webhooks/1455549049540313189/lw9iSajiYjzogZIUEuymaUaOIePL8yT0ya-qc8Utpyr5nM6bAZv6l8ekYTdf0knRRKZa"))  ;; TODO: Create GBPUSD channel
+        "https://discord.com/api/webhooks/1455558971367882762/gOf_SFW0JvQd7tX1CqSGZbtGMcOz5wcwAiVgPhvCzEp7QAkl1g8u1dNx9qhfXbt5lAyB"))
 
 ;; V5.1: Status and Alerts webhooks
 (defparameter *status-webhook-url* 
