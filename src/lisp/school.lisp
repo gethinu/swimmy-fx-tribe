@@ -2393,96 +2393,10 @@
 
 ;; ============================================================
 ;; V5.2: Warrior ID System - 16 Global Slots (4 clans x 4 warriors)
+;; V6.2 (Graham): Gotobi/Kelly/WhyLog moved to school-fortress.lisp
 ;; ============================================================
 
-;;; ══════════════════════════════════════════════════════════════════
-;;;  V5.8 (Naval): SPECIFIC KNOWLEDGE - Gotobi Anomaly (五十日)
-;;; ══════════════════════════════════════════════════════════════════
-
-(defun gotobi-day-p ()
-  "Check if today is a Gotobi day (5th, 10th, 15th, 20th, 25th, or end of month)"
-  (multiple-value-bind (s m h day month year) (decode-universal-time (get-universal-time))
-    (declare (ignore s m h))
-    (let ((last-day (days-in-month month year)))
-      (or (member day '(5 10 15 20 25))
-          (= day last-day)
-          (and (> day 25) (member (day-of-week year month day) '(5 6)))))))  ; Fri/Sat before month end
-
-(defun days-in-month (month year)
-  "Return number of days in given month"
-  (case month
-    ((1 3 5 7 8 10 12) 31)
-    ((4 6 9 11) 30)
-    (2 (if (leap-year-p year) 29 28))))
-
-(defun leap-year-p (year)
-  "Check if year is a leap year"
-  (or (and (zerop (mod year 4)) (not (zerop (mod year 100))))
-      (zerop (mod year 400))))
-
-(defun day-of-week (year month day)
-  "Return day of week (0=Sun, 1=Mon, ..., 6=Sat)"
-  (let ((a (floor (- 14 month) 12)))
-    (mod (+ day (floor (* 13 (+ 1 month (* 12 a))) 5)
-            (- year a) (floor (- year a) 4)
-            (- (floor (- year a) 100)) (floor (- year a) 400))
-         7)))
-
-(defun gotobi-usdjpy-bias ()
-  "Return Gotobi trading bias for USDJPY (Japanese importers buy USD)"
-  (if (gotobi-day-p)
-      (let ((hour (nth-value 2 (decode-universal-time (get-universal-time)))))
-        (cond
-          ((and (>= hour 0) (< hour 9)) :strong-buy)   ; Pre-Tokyo
-          ((and (>= hour 9) (< hour 15)) :buy)         ; Tokyo session
-          (t :neutral)))
-      :neutral))
-
-(defun apply-gotobi-adjustment (symbol direction)
-  "Adjust trade based on Gotobi anomaly (Naval's Specific Knowledge)"
-  (when (string= symbol "USDJPY")
-    (let ((bias (gotobi-usdjpy-bias)))
-      (cond
-        ((and (eq direction :buy) (member bias '(:strong-buy :buy)))
-         (format t "[L] 🇯🇵 GOTOBI: Amplifying USDJPY BUY (Japanese importer demand)~%")
-         1.2)  ; 20% lot boost
-        ((and (eq direction :sell) (member bias '(:strong-buy :buy)))
-         (format t "[L] 🇯🇵 GOTOBI: Dampening USDJPY SELL (Counter to Gotobi flow)~%")
-         0.7)  ; 30% lot reduction
-        (t 1.0)))))
-
 (defparameter *warrior-allocation* (make-hash-table :test 'equal))
-
-;;; ══════════════════════════════════════════════════════════════════
-;;;  V5.7 (Thorp): KELLY CRITERION
-;;; ══════════════════════════════════════════════════════════════════
-
-(defun kelly-lot (win-rate avg-win avg-loss bankroll)
-  "Calculate optimal lot size using Kelly Criterion (half-Kelly for safety)"
-  (if (and (> avg-loss 0) (> win-rate 0) (< win-rate 1))
-      (let* ((payoff (/ avg-win avg-loss))
-             (edge (- (* win-rate (1+ payoff)) 1))
-             (kelly (if (> payoff 0) (/ edge payoff) 0))
-             (half-kelly (max 0 (* 0.5 kelly))))  ; Half-Kelly for safety
-        (format t "[L] 📊 KELLY: WinRate=~,1f% Payoff=~,2f Edge=~,2f%% -> Kelly=~,2f%%~%"
-                (* 100 win-rate) payoff (* 100 edge) (* 100 kelly))
-        (max 0.01 (min 0.10 (* half-kelly bankroll))))  ; Cap at 10% of bankroll
-      0.01))  ; Default minimum lot
-
-(defun get-strategy-kelly-lot (strat-name base-lot)
-  "Get Kelly-adjusted lot for a specific strategy"
-  (let ((rank-data (get-strategy-rank strat-name)))
-    (if rank-data
-        (let ((wins (strategy-rank-wins rank-data))
-              (losses (strategy-rank-losses rank-data))
-              (total-profit (or (strategy-rank-profit rank-data) 0)))
-          (if (> (+ wins losses) 10)  ; Need 10+ trades for meaningful Kelly
-              (let* ((win-rate (/ wins (+ wins losses)))
-                     (avg-win (if (> wins 0) (/ (max total-profit 0.001) wins) 0.001))
-                     (avg-loss (if (> losses 0) (/ (max (- total-profit) 0.001) losses) 0.001)))
-                (kelly-lot win-rate avg-win avg-loss base-lot))
-              base-lot))
-        base-lot)))
 
 (defun get-clan-id (category)
   "Get numeric ID for clan (used in Magic Number calculation)"
@@ -2492,24 +2406,6 @@
 (defun get-warrior-magic (category index)
   "Generate unique Magic Number for warrior: BASE + CLAN*10 + INDEX"
   (+ 123456 (* (get-clan-id category) 10) index))
-
-;;; ══════════════════════════════════════════════════════════════════
-;;;  V5.7 (Feynman): WHY LOG - Explainable Decisions
-;;; ══════════════════════════════════════════════════════════════════
-
-(defun log-why-trade (symbol direction category &key strategy tribe-cons swarm-cons parallel-score elder-ok)
-  "Log the reasoning behind a trade decision (Feynman)"
-  (format t "[L] 📜 WHY LOG: ~a ~a (~a)~%" direction symbol category)
-  (when strategy
-    (format t "[L]   ├─ Strategy: ~a~%" strategy))
-  (when tribe-cons
-    (format t "[L]   ├─ Tribe Consensus: ~,0f%~%" (* 100 tribe-cons)))
-  (when swarm-cons
-    (format t "[L]   ├─ Swarm Consensus: ~,0f%~%" (* 100 swarm-cons)))
-  (when parallel-score
-    (format t "[L]   ├─ Parallel Verification: ~d/3 PASS~%" parallel-score))
-  (when elder-ok
-    (format t "[L]   └─ Elder Approval: ~a~%" (if elder-ok "✅ YES" "❌ NO"))))
 
 (defun find-free-warrior-slot (category)
   "Find first available warrior slot (0-3) for the clan, returns nil if full"
