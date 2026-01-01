@@ -20,6 +20,7 @@
 (load (merge-pathnames "src/lisp/school-leader.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-swarm.lisp" *load-truename*))     ; V6.21
 (load (merge-pathnames "src/lisp/school-calendar.lisp" *load-truename*))  ; V6.21
+(load (merge-pathnames "src/lisp/school-constitution.lisp" *load-truename*)) ; V7.0
 (load (merge-pathnames "src/lisp/school.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/mixseek.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/research.lisp" *load-truename*))
