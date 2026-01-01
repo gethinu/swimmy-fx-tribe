@@ -57,6 +57,51 @@
         (t 1.0)))))
 
 ;;; ══════════════════════════════════════════════════════════════════
+;;;  V6.11 (Naval): LONDON EDGE - EURUSD/GBPUSD Session Optimization
+;;; ══════════════════════════════════════════════════════════════════
+
+(defun london-session-p ()
+  "Check if currently in London session (8:00-17:00 GMT = 17:00-02:00 JST)"
+  (multiple-value-bind (s m h) (decode-universal-time (get-universal-time))
+    (declare (ignore s m))
+    ;; JST is GMT+9, London session is 8-17 GMT = 17-26 JST (17:00-02:00 next day)
+    (or (>= h 17) (< h 2))))
+
+(defun london-overlap-p ()
+  "Check if in London-NY overlap (best liquidity, 13:00-17:00 GMT = 22:00-02:00 JST)"
+  (multiple-value-bind (s m h) (decode-universal-time (get-universal-time))
+    (declare (ignore s m))
+    (or (>= h 22) (< h 2))))
+
+(defun ecb-week-p ()
+  "Check if this week likely has ECB announcement (first Thursday of month)"
+  (multiple-value-bind (s m h day month year) (decode-universal-time (get-universal-time))
+    (declare (ignore s m h month year))
+    ;; First Thursday is between 1-7
+    (<= day 7)))
+
+(defun apply-london-edge (symbol direction)
+  "Apply session-based edge adjustments for EURUSD/GBPUSD (Naval - Specific Knowledge)"
+  (when (or (string= symbol "EURUSD") (string= symbol "GBPUSD"))
+    (cond
+      ;; Best: London-NY overlap
+      ((london-overlap-p)
+       (format t "[L] 🇬🇧 LONDON OVERLAP: Amplifying ~a trade (peak liquidity)~%" symbol)
+       1.3)
+      ;; Good: London session
+      ((london-session-p)
+       (format t "[L] 🇬🇧 LONDON SESSION: Standard ~a trade~%" symbol)
+       1.1)
+      ;; Avoid: ECB week with high volatility expected
+      ((and (ecb-week-p) (string= symbol "EURUSD"))
+       (format t "[L] 🇪🇺 ECB WEEK: Cautious EURUSD trading~%")
+       0.8)
+      ;; Asian session: reduce size for EUR/GBP
+      (t
+       (format t "[L] 😴 OFF-HOURS: Reduced size for ~a~%" symbol)
+       0.7))))
+
+;;; ══════════════════════════════════════════════════════════════════
 ;;;  V5.7 (Thorp): KELLY CRITERION
 ;;; ══════════════════════════════════════════════════════════════════
 

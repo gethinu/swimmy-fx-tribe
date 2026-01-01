@@ -246,7 +246,20 @@ CURRENT MARKET: Regime=~a, Volatility=~a
             (values 12 26))
            (t (values 5 20))))))))  ; Ultimate fallback
 
+;; V6.11: Detect indicator type from strategy indicators
+(defun detect-indicator-type (indicators)
+  "Detect primary indicator type from indicators list for Rust backtester"
+  (when (and indicators (listp indicators))
+    (let ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators))))
+      (cond
+        ((member first-ind '(rsi RSI :rsi)) "rsi")
+        ((member first-ind '(bb BB :bb bollinger)) "bb")
+        ((member first-ind '(macd MACD :macd)) "macd")
+        ((member first-ind '(stoch STOCH :stoch stochastic)) "stoch")
+        (t "sma")))))  ; Default to SMA
+
 ;; Convert strategy to JSON for Rust backtester
+;; V6.11: Now includes indicator_type
 (defun strategy-to-json (strat)
   "Convert strategy struct to JSON for backtest request"
   (multiple-value-bind (sma-short sma-long) 
@@ -257,7 +270,8 @@ CURRENT MARKET: Regime=~a, Volatility=~a
       ("sma_long" (or sma-long 20))
       ("sl" (strategy-sl strat))
       ("tp" (strategy-tp strat))
-      ("volume" (strategy-volume strat)))))
+      ("volume" (strategy-volume strat))
+      ("indicator_type" (detect-indicator-type (strategy-indicators strat))))))
 
 ;; Convert candle history to JSON
 (defun candles-to-json (history)
