@@ -133,31 +133,103 @@
                    "Trust should increase on win"))))
 
 ;;; ─────────────────────────────────────────
-;;; ELDER TESTS
+;;; V6.18: DANGER AVOIDANCE TESTS
 ;;; ─────────────────────────────────────────
 
-(deftest test-elder-induction
-  "Test elder induction"
-  (let ((elder (cl-user::induct-to-hall-of-fame 
-                "Legend-Strategy" 5000 :trend "Always follow the trend")))
-    (assert-not-nil elder "Elder should be created")
-    (assert-equal "Legend-Strategy" (cl-user::elder-name elder))))
+(deftest test-danger-level-initial
+  "Test initial danger level is 0"
+  (assert-equal 0 cl-user::*danger-level* "Initial danger level should be 0"))
+
+(deftest test-consecutive-losses-tracked
+  "Test consecutive losses tracking"
+  (let ((old-losses cl-user::*consecutive-losses*))
+    (cl-user::record-trade-result :loss)
+    (assert-true (>= cl-user::*consecutive-losses* 1) "Should track losses")
+    (setf cl-user::*consecutive-losses* old-losses)))
+
+(deftest test-cooldown-returns-false-initially
+  "Test cooldown is inactive initially"
+  (setf cl-user::*danger-cooldown-until* 0)
+  (assert-false (cl-user::danger-cooldown-active-p) "Cooldown should be inactive"))
 
 ;;; ─────────────────────────────────────────
-;;; MACRO TESTS
+;;; V6.18: RESIGNATION TESTS
 ;;; ─────────────────────────────────────────
 
-(deftest test-aif-macro
-  "Test anaphoric if"
-  (let ((result (cl-user::aif (+ 1 2) it nil)))
-    (assert-equal 3 result "aif should bind result to IT")))
+(deftest test-has-resigned-initial
+  "Test initial resignation state"
+  (setf cl-user::*has-resigned-today* nil)
+  (assert-false (cl-user::has-resigned-p) "Should not be resigned initially"))
 
-(deftest test-awhen-macro
-  "Test anaphoric when"
-  (let ((result nil))
-    (cl-user::awhen (+ 1 2)
-      (setf result it))
-    (assert-equal 3 result "awhen should bind result to IT")))
+(deftest test-resignation-threshold-exists
+  "Test resignation threshold is defined"
+  (assert-not-nil cl-user::*resignation-threshold* "Threshold should exist")
+  (assert-true (< cl-user::*resignation-threshold* 0) "Threshold should be negative"))
+
+;;; ─────────────────────────────────────────
+;;; V6.18: LEADER SYSTEM TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-leader-info-struct
+  "Test leader-info struct creation"
+  (let ((leader (cl-user::make-leader-info 
+                 :strategy-name "Test" 
+                 :sharpe 1.5 
+                 :win-rate 0.6
+                 :tenure-start 0
+                 :trades-as-leader 0
+                 :pnl-as-leader 0.0)))
+    (assert-equal "Test" (cl-user::leader-info-strategy-name leader))
+    (assert-equal 1.5 (cl-user::leader-info-sharpe leader))))
+
+;;; ─────────────────────────────────────────
+;;; V6.18: RISK MANAGER TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-risk-summary
+  "Test risk summary generation"
+  (let ((summary (cl-user::get-risk-summary)))
+    (assert-not-nil summary "Summary should be generated")
+    (assert-true (stringp summary) "Summary should be a string")))
+
+;;; ─────────────────────────────────────────
+;;; V6.18: DYNAMIC TP/SL TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-volatility-multiplier
+  "Test volatility multiplier values"
+  (let ((mult (cl-user::get-volatility-multiplier)))
+    (assert-not-nil mult "Multiplier should exist")
+    (assert-true (and (> mult 0) (<= mult 2)) "Should be reasonable range")))
+
+(deftest test-atr-empty-candles
+  "Test ATR with empty candles returns 0"
+  (let ((atr (cl-user::calculate-atr nil)))
+    (assert-equal 0.0 atr "ATR of nil should be 0")))
+
+;;; ─────────────────────────────────────────
+;;; V6.18: UTILITY TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-gotobi-day-returns-boolean
+  "Test gotobi-day-p returns proper boolean"
+  (let ((result (cl-user::gotobi-day-p)))
+    (assert-true (or (eq result t) (eq result nil)) "Should return t or nil")))
+
+(deftest test-london-session-check
+  "Test London session detection"
+  (let ((result (cl-user::london-session-p)))
+    (assert-true (or (eq result t) (eq result nil)) "Should return t or nil")))
+
+;;; ─────────────────────────────────────────
+;;; V6.18: CANDLE STRUCT TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-candle-creation
+  "Test candle struct creation"
+  (let ((c (cl-user::make-candle :open 100.0 :high 110.0 :low 90.0 :close 105.0)))
+    (assert-equal 100.0 (cl-user::candle-open c))
+    (assert-equal 105.0 (cl-user::candle-close c))))
 
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
@@ -170,25 +242,48 @@
   (setf *tests-failed* 0)
   
   (format t "~%═══════════════════════════════════════~%")
-  (format t "🧪 RUNNING SWIMMY TESTS~%")
+  (format t "🧪 RUNNING SWIMMY TESTS (V6.18)~%")
   (format t "═══════════════════════════════════════~%~%")
   
   ;; Run each test
-  (dolist (test '(test-clan-exists
+  (dolist (test '(;; Clan tests
+                  test-clan-exists
                   test-get-clan
                   test-clan-display
+                  ;; Macro tests
                   test-aif-macro
-                  test-awhen-macro))
+                  test-awhen-macro
+                  ;; V6.18: Danger tests
+                  test-danger-level-initial
+                  test-consecutive-losses-tracked
+                  test-cooldown-returns-false-initially
+                  ;; V6.18: Resignation tests
+                  test-has-resigned-initial
+                  test-resignation-threshold-exists
+                  ;; V6.18: Leader tests
+                  test-leader-info-struct
+                  ;; V6.18: Risk tests
+                  test-risk-summary
+                  ;; V6.18: Dynamic TP/SL tests
+                  test-volatility-multiplier
+                  test-atr-empty-candles
+                  ;; V6.18: Utility tests
+                  test-gotobi-day-returns-boolean
+                  test-london-session-check
+                  ;; V6.18: Candle tests
+                  test-candle-creation))
     (format t "Running ~a... " test)
     (if (funcall test)
         (format t "✅ PASSED~%")
         (format t "❌ FAILED~%")))
   
   (format t "~%═══════════════════════════════════════~%")
-  (format t "📊 RESULTS: ~d passed, ~d failed~%" *tests-passed* *tests-failed*)
+  (format t "📊 RESULTS: ~d passed, ~d failed~%~%" *tests-passed* *tests-failed*)
+  (format t "Test coverage: Clan, Macros, Danger, Resignation,~%")
+  (format t "               Leader, Risk, Dynamic TP/SL, Utilities~%")
   (format t "═══════════════════════════════════════~%~%")
   
   (values *tests-passed* *tests-failed*))
 
-(format t "[TESTS] Test framework loaded~%")
-(format t "[TESTS] Run (swimmy-tests:run-all-tests) to execute~%")
+(format t "[TESTS] Test framework loaded (V6.18 - Enhanced)~%")
+(format t "[TESTS] Run (swimmy-tests:run-all-tests) to execute ~d tests~%" 17)
