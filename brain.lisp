@@ -13,6 +13,7 @@
 (load (merge-pathnames "src/lisp/dsl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/dreamer2.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/strategies.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/school-state.lisp" *load-truename*))  ; V6.13: Shared state
 (load (merge-pathnames "src/lisp/school.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/mixseek.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/research.lisp" *load-truename*))
@@ -24,6 +25,7 @@
 (load (merge-pathnames "src/lisp/quality.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/repl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/tests.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/risk-manager.lisp" *load-truename*))  ; V6.13: Unified risk
 
 (defun get-jst-str (&optional (ut (get-universal-time)))
   "Return current time as JST string [YYYY-MM-DD HH:MM:SS]"
