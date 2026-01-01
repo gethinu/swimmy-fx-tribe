@@ -102,6 +102,75 @@
        0.7))))
 
 ;;; ══════════════════════════════════════════════════════════════════
+;;;  V6.16: DYNAMIC TP/SL - ATR-based Take Profit & Stop Loss
+;;; ══════════════════════════════════════════════════════════════════
+;;; Trading Expert Requirement: Volatility-adjusted targets
+
+(defun calculate-atr (candles &optional (period 14))
+  "Calculate Average True Range for volatility measurement"
+  (if (or (null candles) (< (length candles) (1+ period)))
+      0.0
+      (let ((true-ranges nil))
+        (loop for i from 0 below period
+              for curr = (nth i candles)
+              for prev = (nth (1+ i) candles)
+              when (and curr prev)
+              do (let* ((high (candle-high curr))
+                        (low (candle-low curr))
+                        (prev-close (candle-close prev))
+                        (tr (max (- high low)
+                                 (abs (- high prev-close))
+                                 (abs (- low prev-close)))))
+                   (push tr true-ranges)))
+        (if true-ranges
+            (/ (reduce #'+ true-ranges) (length true-ranges))
+            0.0))))
+
+(defun get-volatility-multiplier ()
+  "Get multiplier based on current volatility state"
+  (case *current-volatility-state*
+    (:extreme 0.8)  ; Tighter stops in extreme volatility
+    (:elevated 1.0)
+    (:normal 1.5)
+    (t 1.2)))
+
+(defun calculate-dynamic-tp-sl (symbol candles &key (direction :buy))
+  "Calculate ATR-based dynamic Take Profit and Stop Loss
+   Returns (values tp sl) in price units"
+  (let* ((atr (calculate-atr candles 14))
+         (multiplier (get-volatility-multiplier))
+         (base-sl-atr 1.5)  ; Base SL = 1.5 ATR
+         (base-tp-atr 2.5)  ; Base TP = 2.5 ATR (1.67 RR ratio)
+         (sl-distance (* atr base-sl-atr multiplier))
+         (tp-distance (* atr base-tp-atr multiplier)))
+    
+    (when (> atr 0)
+      (format t "[L] 📐 DYNAMIC TP/SL (~a): ATR=~,5f Vol=~a Mult=~,1f~%"
+              symbol atr *current-volatility-state* multiplier)
+      (format t "[L]    SL=~,5f (~,1f ATR) TP=~,5f (~,1f ATR)~%"
+              sl-distance base-sl-atr tp-distance base-tp-atr))
+    
+    (values tp-distance sl-distance)))
+
+(defun get-dynamic-lot-for-trade (symbol candles base-lot max-risk-pct)
+  "Calculate position size based on ATR stop-loss and risk percentage
+   max-risk-pct: Maximum % of capital to risk (e.g., 1.0 for 1%)"
+  (multiple-value-bind (tp sl) (calculate-dynamic-tp-sl symbol candles)
+    (if (and sl (> sl 0))
+        (let* ((capital (if (boundp '*monthly-goal*) *monthly-goal* 100000))
+               (max-risk-amount (* capital (/ max-risk-pct 100.0)))
+               (pip-value 100)  ; Approximate pip value for JPY pairs
+               (sl-pips (* sl pip-value))
+               (calculated-lot (if (> sl-pips 0)
+                                   (/ max-risk-amount sl-pips)
+                                   base-lot))
+               (final-lot (max 0.01 (min 0.10 calculated-lot))))
+          (format t "[L] 📊 POSITION SIZE: Risk=¥~:d SL=~,1f pips -> Lot=~,2f~%"
+                  (round max-risk-amount) sl-pips final-lot)
+          final-lot)
+        base-lot)))
+
+;;; ══════════════════════════════════════════════════════════════════
 ;;;  V5.7 (Thorp): KELLY CRITERION
 ;;; ══════════════════════════════════════════════════════════════════
 
