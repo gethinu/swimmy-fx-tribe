@@ -1,0 +1,87 @@
+;; school-leader.lisp - Leader Fish System
+;; V6.15: Extracted from school.lisp for modular architecture
+;; Inspired by: Ensemble Meta-Learning + Natural flocking behavior
+;; The best performing strategy leads the school
+
+;;; Variables defined in school-state.lisp:
+;;; *current-leader*, *leader-tenure*, *min-leader-tenure*
+;;; *leader-bonus-weight*, *leader-history*
+
+(defstruct leader-info
+  strategy-name
+  sharpe
+  win-rate
+  tenure-start
+  trades-as-leader
+  pnl-as-leader)
+
+(defun elect-leader ()
+  "Elect the best performing strategy as leader"
+  (let* ((all-strategies (append *strategy-knowledge-base* *evolved-strategies*))
+         (candidates (remove-if-not (lambda (s) 
+                                      (and (strategy-sharpe s)
+                                           (> (strategy-sharpe s) 0)))
+                                    all-strategies))
+         (sorted (sort (copy-list candidates) #'> :key #'strategy-sharpe))
+         (best (first sorted)))
+    (when best
+      (let ((new-leader-name (strategy-name best)))
+        (when (or (null *current-leader*)
+                  (> *leader-tenure* *min-leader-tenure*))
+          (unless (and *current-leader* 
+                       (string= new-leader-name 
+                                (leader-info-strategy-name *current-leader*)))
+            (when *current-leader*
+              (push *current-leader* *leader-history*))
+            (setf *current-leader*
+                  (make-leader-info
+                   :strategy-name new-leader-name
+                   :sharpe (strategy-sharpe best)
+                   :win-rate 0.0
+                   :tenure-start (get-universal-time)
+                   :trades-as-leader 0
+                   :pnl-as-leader 0.0))
+            (setf *leader-tenure* 0)
+            (format t "[L] 👑 NEW LEADER: ~a (Sharpe: ~,2f)~%" 
+                    new-leader-name (strategy-sharpe best)))))))
+  *current-leader*)
+
+(defun get-leader-direction (history)
+  "Get the leader's trading signal"
+  (when *current-leader*
+    (let* ((leader-name (leader-info-strategy-name *current-leader*))
+           (leader-strat (or (find leader-name *strategy-knowledge-base* 
+                                   :key #'strategy-name :test #'string=)
+                             (find leader-name *evolved-strategies*
+                                   :key #'strategy-name :test #'string=))))
+      (when leader-strat
+        (evaluate-strategy-signal leader-strat history)))))
+
+(defun leader-agrees-p (decision)
+  "Check if leader agrees with swarm decision"
+  (when (and *current-leader* *candle-history*)
+    (let ((leader-signal (get-leader-direction *candle-history*)))
+      (eq leader-signal (swarm-decision-direction decision)))))
+
+(defun get-leader-boosted-decision (decision)
+  "Boost swarm decision if leader agrees, or flag caution if not"
+  (if (leader-agrees-p decision)
+      (progn
+        (format t "[L] 👑 LEADER CONFIRMS: ~a~%" (swarm-decision-direction decision))
+        (setf (swarm-decision-confidence decision)
+              (min 1.0 (* (swarm-decision-confidence decision) 1.3)))
+        decision)
+      (progn
+        (format t "[L] ⚠️ LEADER CAUTION: Different view from swarm~%")
+        (setf (swarm-decision-confidence decision)
+              (* (swarm-decision-confidence decision) 0.8))
+        decision)))
+
+(defun update-leader-performance (result pnl)
+  "Update leader's performance stats after a trade"
+  (when *current-leader*
+    (incf (leader-info-trades-as-leader *current-leader*))
+    (incf (leader-info-pnl-as-leader *current-leader*) pnl)
+    (incf *leader-tenure*)))
+
+(format t "[L] 👑 school-leader.lisp loaded - Leader Fish System active~%")

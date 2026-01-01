@@ -14,6 +14,10 @@
 (load (merge-pathnames "src/lisp/dreamer2.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/strategies.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-state.lisp" *load-truename*))  ; V6.13: Shared state
+;; V6.15: Split modules (loaded in dependency order)
+(load (merge-pathnames "src/lisp/school-danger.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/school-resignation.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/school-leader.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/mixseek.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/research.lisp" *load-truename*))
