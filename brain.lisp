@@ -2734,16 +2734,33 @@ Sharpe   : ~,2f
 (load (merge-pathnames "brain-ritual.lisp" *load-truename*))
 
 ;; V6.8: Restore PnL from disk on startup
+;; V6.10: Added date validation (Taleb requirement)
+(defun same-trading-day-p (saved-timestamp)
+  "Check if saved timestamp is from the same trading day"
+  (let* ((now (get-universal-time))
+         (now-decoded (multiple-value-list (decode-universal-time now)))
+         (saved-decoded (multiple-value-list (decode-universal-time saved-timestamp)))
+         (now-day (nth 3 now-decoded))
+         (saved-day (nth 3 saved-decoded))
+         (now-month (nth 4 now-decoded))
+         (saved-month (nth 4 saved-decoded)))
+    (and (= now-day saved-day) (= now-month saved-month))))
+
 (defun restore-daily-pnl ()
-  "Restore PnL from live_status.json if file exists"
+  "Restore PnL from live_status.json if file exists and date matches"
   (let ((path "/home/swimmy/swimmy/.opus/live_status.json"))
     (when (probe-file path)
       (handler-case
           (let* ((json-str (alexandria:read-file-into-string path))
                  (data (jsown:parse json-str))
-                 (saved-pnl (jsown:val data "pnl")))
-             (setf *daily-pnl* saved-pnl)
-             (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
+                 (saved-pnl (jsown:val data "pnl"))
+                 (saved-timestamp (handler-case (jsown:val data "timestamp") (error () 0))))
+             ;; V6.10: Only restore if same trading day
+             (if (or (zerop saved-timestamp) (same-trading-day-p saved-timestamp))
+                 (progn
+                   (setf *daily-pnl* saved-pnl)
+                   (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
+                 (format t "[L] ⚠️ Stale PnL data (previous day), starting fresh~%")))
         (error (e) (format t "[L] Failed to restore PnL: ~a~%" e))))))
 
 (restore-daily-pnl)

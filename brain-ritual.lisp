@@ -162,8 +162,12 @@
            (dolist (sym *supported-symbols*)
              (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" sym) ("close_all" t)))))
            (sleep 1)
-           ;; Request history for all symbols
-           (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" "ALL") ("volume" 0))))
+           ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)
+           (format t "[L] 📊 Requesting history for all symbols...~%")
+           (dolist (sym *supported-symbols*)
+             (format t "[L]    → Requesting ~a history...~%" sym)
+             (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("volume" 0))))
+             (sleep 0.5))  ; Stagger requests to avoid overwhelming MT5
            ;; Initial setup
            (assemble-team)
            (request-prediction)

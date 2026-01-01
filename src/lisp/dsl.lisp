@@ -178,10 +178,11 @@
         (search "CCI-" name)
         (member sym '(close high low open)))))
 
-(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0))
+;; V6.10: Added :category slot for explicit classification (Graham requirement)
+(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume)
-  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0))
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend))
+  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category))
 
 (defun validate (e) 
   (cond 

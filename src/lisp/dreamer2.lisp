@@ -212,12 +212,39 @@ CURRENT MARKET: Regime=~a, Volatility=~a
           finally (return nil))))
 
 ;; Extract SMA parameters from indicator list
+;; V6.10: Fixed to handle RSI, BB, etc. (Taleb requirement - was causing Sharpe -3.75)
 (defun extract-sma-params (indicators)
-  "Extract short and long SMA periods from indicators list"
-  (let ((smas (remove-if-not (lambda (ind) (eq (car ind) 'sma)) indicators)))
-    (when (>= (length smas) 2)
-      (let ((periods (sort (mapcar #'cadr smas) #'<)))
-        (values (first periods) (second periods))))))
+  "Extract short and long parameters from any indicator list for backtesting.
+   Returns first two numeric params as (short, long) ordered ascending."
+  (let ((all-params nil))
+    ;; Collect all numeric parameters from all indicators
+    (dolist (ind indicators)
+      (when (listp ind)
+        (let ((nums (remove-if-not #'numberp (cdr ind))))
+          (dolist (n nums)
+            (push n all-params)))))
+    ;; If we have at least 2 params, use them as short/long
+    (cond
+      ((>= (length all-params) 2)
+       (let ((sorted (sort (remove-duplicates all-params) #'<)))
+         (values (first sorted) (second sorted))))
+      ((= (length all-params) 1)
+       ;; Single param (e.g., RSI 14) - use it and a derived value
+       (let ((p (first all-params)))
+         (values (max 3 (floor p 2)) p)))
+      (t
+       ;; No params found - use defaults based on indicator type
+       (let ((first-ind (car indicators)))
+         (cond
+           ((and (listp first-ind) (member (car first-ind) '(rsi RSI)))
+            (values 7 14))
+           ((and (listp first-ind) (member (car first-ind) '(bb BB)))
+            (values 10 20))
+           ((and (listp first-ind) (member (car first-ind) '(stoch STOCH)))
+            (values 7 14))
+           ((and (listp first-ind) (member (car first-ind) '(macd MACD)))
+            (values 12 26))
+           (t (values 5 20))))))))  ; Ultimate fallback
 
 ;; Convert strategy to JSON for Rust backtester
 (defun strategy-to-json (strat)
