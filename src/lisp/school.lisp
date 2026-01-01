@@ -1,60 +1,20 @@
 ;; school.lisp - Swimmy School: Team-based Portfolio Management
-
-;;; ==========================================
-;;; FORWARD DECLARATIONS (eliminate warnings)
-;;; ==========================================
-(defvar *has-resigned-today* nil)
-(defvar *current-leader* nil)
-(defvar *trade-history* (make-hash-table :test 'eq))
-(defvar *category-entries* (make-hash-table :test 'eq))
-(defvar *last-swarm-consensus* 0)
-(defvar *category-positions* nil)  ; Forward declaration for apply-hedge-logic
-(defvar *daily-pnl* 0)
-(defvar *accumulated-pnl* 0)
-(defvar *monthly-goal* 100000)
-(defvar *category-trades* 0)  ; V6.5: Track total trades for warmup period
-
-;; V2.0: Tribe signal integration
-(defvar *tribe-direction* :hold "Current tribe consensus direction")
-(defvar *tribe-consensus* 0.0 "Current tribe consensus strength")
+;; V6.14: Shared state moved to school-state.lisp (loaded before this file)
 
 ;;; ==========================================
 ;;; PORTFOLIO CORRELATION RISK MANAGEMENT
 ;;; ==========================================
-
-;; Known correlations between pairs (approximate)
-(defparameter *pair-correlations*
-  '(("USDJPY" . (("EURJPY" . 0.85) ("GBPJPY" . 0.80) ("EURUSD" . -0.60) ("GBPUSD" . -0.50)))
-    ("EURUSD" . (("GBPUSD" . 0.90) ("USDJPY" . -0.60) ("EURJPY" . 0.30)))
-    ("GBPUSD" . (("EURUSD" . 0.90) ("USDJPY" . -0.50) ("GBPJPY" . 0.40)))))
-
-;; Track total exposure per symbol
-(defparameter *symbol-exposure* (make-hash-table :test 'equal))
-(defparameter *max-symbol-exposure* 0.15)  ; Max 15% of capital per symbol
-(defparameter *max-total-exposure* 0.30)   ; Max 30% total exposure
+;; Note: *pair-correlations*, *symbol-exposure*, *max-symbol-exposure*, 
+;;       *max-total-exposure* defined in school-state.lisp
 
 ;;; ==========================================
 ;;; DANGER AVOIDANCE SYSTEM (天敵回避)
 ;;; ==========================================
 ;;; Inspired by: AlphaGo's resignation logic + RLHF safety
 ;;; Purpose: Protect the school from predators (consecutive losses)
-
-;; Consecutive loss tracking
-(defparameter *consecutive-losses* 0)
-(defparameter *consecutive-wins* 0)
-(defparameter *last-trade-result* nil)  ; :win, :loss, or nil
-
-;; Cooldown state
-(defparameter *danger-cooldown-until* 0)  ; Unix time when cooldown ends
-(defparameter *danger-level* 0)           ; 0=safe, 1=caution, 2=danger, 3=flee
-
-;; Cooldown durations (seconds)
-(defparameter *cooldown-durations*
-  '((1 . 0)      ; Level 0: No cooldown
-    (2 . 120)    ; Level 1: 2 minutes (2 consecutive losses)
-    (3 . 300)    ; Level 2: 5 minutes (3 consecutive losses)  
-    (4 . 600)    ; Level 3: 10 minutes (4 consecutive losses)
-    (5 . 1800))) ; Level 4+: 30 minutes (5+ consecutive losses)
+;; Note: *consecutive-losses*, *consecutive-wins*, *last-trade-result*,
+;;       *danger-cooldown-until*, *danger-level*, *cooldown-durations*
+;;       defined in school-state.lisp
 
 (defun record-trade-result (result)
   "Record trade result and update danger level"
@@ -159,10 +119,8 @@
 ;;; ==========================================
 ;;; Inspired by: Shogi/Chess AI resignation logic
 ;;; "Knowing when to stop is as important as knowing when to trade"
-
-(defparameter *has-resigned-today* nil)      ; Already resigned today?
-(defparameter *resignation-threshold* -5000) ; Daily loss to trigger resign
-(defparameter *resignation-loss-count* 7)    ; Or this many consecutive losses
+;; Note: *has-resigned-today*, *resignation-threshold*, *resignation-loss-count*
+;;       defined in school-state.lisp
 
 (defun check-resignation ()
   "Check if today's trading should be abandoned"
