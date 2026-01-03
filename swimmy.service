@@ -1,0 +1,32 @@
+[Unit]
+Description=Swimmy Trading System
+Documentation=https://github.com/swimmy/swimmy
+After=network.target
+
+[Service]
+Type=simple
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/run.sh
+Restart=always
+RestartSec=10
+
+# Environment
+Environment="HOME=/home/swimmy"
+EnvironmentFile=/home/swimmy/swimmy/config/.env
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/swimmy/swimmy/doc/logs
+ReadWritePaths=/home/swimmy/swimmy/.opus
+ReadWritePaths=/home/swimmy/swimmy/logs
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=swimmy
+
+[Install]
+WantedBy=multi-user.target

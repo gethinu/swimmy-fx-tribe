@@ -442,3 +442,71 @@
 
 (format t "[STRATEGIES] ~d strategies loaded from Knowledge Base~%" 
         (length *strategy-knowledge-base*))
+
+;;; FIX: Add evaluate-strategy-performance (Step 1136)
+(defun evaluate-strategy-performance (strat sharpe trades win-rate)
+  "Adjust strategy parameters based on backtest performance"
+  (let ((name (strategy-name strat)))
+    (when (> trades 10)
+       ;; CRITICAL FAILURE CHECK (Bench System)
+       (when (and (> trades 30) (or (< sharpe -1.5) (< win-rate 30)))
+         (bench-strategy name (format nil "Critical Failure: S=~,2f WR=~,0f%" sharpe win-rate))
+         (return-from evaluate-strategy-performance))
+
+       (cond
+         ;; Poor performance: tighten SL, reduce volume
+         ((or (< sharpe 0) (< win-rate 40))
+          (when (strategy-sl strat)
+            (setf (strategy-sl strat) (* 0.9 (strategy-sl strat))))  ; Reduce SL by 10%
+          (when (strategy-volume strat)
+            (setf (strategy-volume strat) (max 0.01 (* 0.8 (strategy-volume strat)))))  ; Reduce volume
+          (format t "[L] ⚙️ 📉 ~a: Tightening params (poor perf)~%" name))
+         ;; Good performance: widen TP, increase volume
+         ((and (> sharpe 1.0) (> win-rate 55))
+          (when (strategy-tp strat)
+            (setf (strategy-tp strat) (* 1.1 (strategy-tp strat))))  ; Increase TP by 10%
+          (when (strategy-volume strat)
+            (setf (strategy-volume strat) (min 0.1 (* 1.2 (strategy-volume strat)))))  ; Increase volume
+          (format t "[L] ⚙️ 📈 ~a: Expanding params (good perf)~%" name))
+         ;; Average: adjust SL/TP ratio for better risk/reward
+         ((and (> sharpe 0.5) (> win-rate 45))
+          (when (and (strategy-sl strat) (strategy-tp strat))
+            (let ((rr (/ (strategy-tp strat) (max 0.01 (strategy-sl strat)))))
+              (when (< rr 2.0)  ; If R:R less than 2:1
+                (setf (strategy-tp strat) (* 1.05 (strategy-tp strat)))
+                (format t "[L] ⚙️ 🎯 ~a: Improving R:R ratio~%" name))))))))
+
+;;; ==========================================
+;;; BENCH SYSTEM (V5.1 Restored)
+;;; ==========================================
+
+(defparameter *benched-strategies* (make-hash-table :test 'equal))
+
+(defun strategy-benched-p (name)
+  (gethash name *benched-strategies*))
+
+(defun bench-strategy (name reason)
+  (setf (gethash name *benched-strategies*) reason)
+  (format t "[L] 🚫 BENCHED: ~a (~a)~%" name reason))
+
+(defun unbench-all ()
+  (clrhash *benched-strategies*)
+  (format t "[L] ♻️  All strategies unbenched for new week~%"))
+
+(defun should-weekly-unbench-p ()
+  "Check if it is Monday morning (before 9am) to reset bench"
+  (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
+    (declare (ignore s m h d mo y))
+    (and (= dow 0) (< h 9))))
+
+(defun weekly-unbench-all ()
+  (unbench-all))
+
+(defun current-trading-session ()
+  "Determine current market session (JST based approximation)"
+  (let ((h (nth 2 (multiple-value-list (decode-universal-time (get-universal-time))))))
+    (cond 
+      ((and (>= h 9) (< h 15)) :asian)
+      ((and (>= h 16) (< h 21)) :london)
+      ((or (>= h 22) (< h 6)) :ny)
+      (t :mixed))))

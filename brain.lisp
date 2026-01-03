@@ -10,34 +10,16 @@
 ;; Define candle struct BEFORE loading other files
 (defstruct candle timestamp open high low close volume)
 
-;; V41.1: Forward declarations for variables used in submodules
-;; These are defined before loading strategies.lisp, school-*.lisp etc.
-(defparameter *backtest-results-buffer* nil)
-(defparameter *expected-backtest-count* 0)
-(defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
-(defparameter *warrior-allocation* (make-hash-table :test 'equal))
-(defparameter *active-team* (make-hash-table :test 'equal))
-(defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
-(defparameter *market-regime* :unknown)
-(defparameter *cmd-publisher* nil)  ; ZMQ publisher socket
-
-;; V41.2: Structured Logging (Graham Advisor) - Load EARLY
-(load (merge-pathnames "src/lisp/logger.lisp" *load-truename*))
+;; V41.4: Core Configuration (Strangler Fig - Foundation)
+(load (merge-pathnames "src/lisp/core/config.lisp" *load-truename*))
 
 (load (merge-pathnames "src/lisp/dsl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/dreamer2.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/strategies.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/school-state.lisp" *load-truename*))  ; V6.13: Shared state
-;; V6.15: Split modules (loaded in dependency order)
-(load (merge-pathnames "src/lisp/school-danger.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/risk-manager.lisp" *load-truename*))  ; V6.13: Unified risk - Loaded EARLY for gatekeeper
-(load (merge-pathnames "src/lisp/school-fortress.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/school-resignation.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/school-leader.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/school-swarm.lisp" *load-truename*))     ; V6.21
-(load (merge-pathnames "src/lisp/school-calendar.lisp" *load-truename*))  ; V6.21
-(load (merge-pathnames "src/lisp/school-constitution.lisp" *load-truename*)) ; V7.0
 (load (merge-pathnames "src/lisp/school.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/school-danger.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/logger.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/core/rituals.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/mixseek.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/research.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/llm-integration.lisp" *load-truename*))
@@ -49,17 +31,16 @@
 (load (merge-pathnames "src/lisp/repl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/tests.lisp" *load-truename*))
 
-;; Taleb Advisor Homework modules (V14.1)
-(load (merge-pathnames "src/lisp/performance-tracker.lisp" *load-truename*))  ; Sharpe tracking
-(load (merge-pathnames "src/lisp/stress-test.lisp" *load-truename*))  ; Black Swan testing
-
-;; Naval Advisor Homework modules (V14.2)
-(load (merge-pathnames "src/lisp/meta-learning.lisp" *load-truename*))  ; Regime-strategy selection
-(load (merge-pathnames "src/lisp/transfer-learning.lisp" *load-truename*))  ; Cross-asset learning
-
-;; Graham Advisor Homework modules (V14.3)
-(load (merge-pathnames "src/lisp/benchmark.lisp" *load-truename*))  ; Performance benchmarks
-(load (merge-pathnames "src/lisp/discord-async.lisp" *load-truename*))  ; V41.3: Async Discord notifications
+;; V41.4: Strangler Fig Core Modules (Logic)
+(load (merge-pathnames "src/lisp/discord-async.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/core/discord.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/core/tick-handler.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/core/governance.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/system/runner.lisp" *load-truename*))
+;; V41.5: Optional Modules Extracted (Naval's Cleanup)
+(load (merge-pathnames "src/lisp/core/evaluator.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/system/opus.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/core/meta-learning.lisp" *load-truename*))
 
 (defun get-jst-str (&optional (ut (get-universal-time)))
   "Return current time as JST string [YYYY-MM-DD HH:MM:SS]"
@@ -68,113 +49,12 @@
     (format nil "~D-~2,'0D-~2,'0D ~2,'0D:~2,'0D:~2,'0D" year month day hour min sec)))
 
 (defstruct arm-state position entry-price sl tp streak)
-;; Multi-currency support (defined at top of file)
-;; TODO: Re-enable crypto after IC Markets/Vantage setup
-;; *supported-symbols* = '("USDJPY" "EURUSD" "GBPUSD" "BTCUSD" "ETHUSD")
-(defparameter *candle-histories* (make-hash-table :test 'equal))  ; symbol -> history
-(defparameter *current-candles* (make-hash-table :test 'equal))   ; symbol -> candle
-(defparameter *current-minutes* (make-hash-table :test 'equal))   ; symbol -> minute
-;; Legacy single-currency compatibility
-(defparameter *candle-history* nil)
-(defparameter *current-candle* nil)
-(defparameter *current-minute* -1)
 
-;; Discord Emergency URL (for High Council notifications)
-(defparameter *discord-emergency-url* (uiop:getenv "SWIMMY_DISCORD_EMERGENCY"))
+;; NOTE: Most defparameters moved to src/lisp/core/config.lisp (Strangler Fig)
+;; Only keeping brain-specific items below
 
-;; Tribal Dialect forward declaration
-(defparameter *tribal-dialect* (make-hash-table :test 'equal))
-
-;; NOTE: clan struct and *clans* are defined in school.lisp (loaded earlier)
-;; The 4 tribes strategy functions are in school.lisp: get-hunter-signal, get-shaman-signal, etc.
-
-;; Reputation System forward declaration
-(defparameter *reputation-scores* (make-hash-table :test 'equal))
+;; Genome path (brain-specific as it uses *load-truename*)
 (defparameter *genome-path* (merge-pathnames "genome.lisp" *load-truename*))
-(defparameter *genome* nil)
-(defparameter *arms* nil)
-(defparameter *memory* nil)
-(defparameter *portfolio-indices* nil)
-(defparameter *arm-states* (make-hash-table))
-(defparameter *discord-webhook-url* (uiop:getenv "SWIMMY_DISCORD_WEBHOOK"))
-(defparameter *gemini-api-key* (uiop:getenv "SWIMMY_GEMINI_API_KEY"))
-(defparameter *last-dream-time* 0)
-(defparameter *dream-interval* 300)
-(defparameter *max-portfolio-size* 3)
-(defparameter *daily-pnl* 0.0)
-(defparameter *daily-loss-limit* -500)
-(defparameter *max-streak-losses* 3)
-(defparameter *total-trades* 0)
-(defparameter *benched-arms* nil)
-
-;; Tribe Status for Discord (updated each tick)
-(defparameter *tribe-status* (make-hash-table :test 'eq))  ; :hunters, :shamans, :breakers, :raiders
-
-;; Risk Management
-(defparameter *peak-equity* 0.0)
-(defparameter *max-drawdown* 0.0)
-(defparameter *current-drawdown* 0.0)  ; V41.1: Fix warning
-(defparameter *current-equity* 0.0)
-(defparameter *base-lot-size* 0.01)
-(defparameter *max-dd-percent* 20)  ; Max 20% drawdown warning
-
-;; V41.1: Additional variables for warnings
-(defparameter *alerts-webhook-url* (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
-(defparameter *last-guardian-heartbeat* 0)
-(defparameter *all-time-win-rate* 50.0)
-(defparameter *portfolio-sharpe* 0.0)
-
-;;; ==========================================
-;;; V5.1: STRATEGY BENCH SYSTEM (専門家合意)
-;;; ==========================================
-;;; Simpler than Volume adjustment: Bench losing strategies, keep winning ones unchanged
-
-;; Configuration
-(defparameter *bench-min-trades* 50)           ; Statistical significance threshold
-(defparameter *benched-strategies* (make-hash-table :test 'equal))  ; Name -> bench-time
-(defparameter *bench-log* nil)                 ; Bench history
-(defparameter *last-weekly-unbench* 0)         ; Weekly unbench for re-evaluation
-
-(defun strategy-benched-p (name)
-  "Check if a strategy is currently benched"
-  (gethash name *benched-strategies*))
-
-(defun bench-strategy (name reason sharpe win-rate trades)
-  "Bench a losing strategy - remove from active trading"
-  (setf (gethash name *benched-strategies*) (get-universal-time))
-  (push (list :timestamp (get-universal-time)
-              :strategy name
-              :reason reason
-              :sharpe sharpe
-              :win-rate win-rate
-              :trades trades)
-        *bench-log*)
-  (format t "[L] 🪑 BENCHED: ~a (~a) | Sharpe=~,2f Win=~,1f%~%" name reason sharpe win-rate))
-
-(defun unbench-strategy (name)
-  "Unbench a strategy for re-evaluation"
-  (when (gethash name *benched-strategies*)
-    (remhash name *benched-strategies*)
-    (format t "[L] ▶️ UNBENCHED: ~a (weekly reset)~%" name)))
-
-(defun weekly-unbench-all ()
-  "Weekly: Unbench all strategies for re-evaluation"
-  (format t "[L] 📅 Weekly unbench - all strategies get fresh start~%")
-  (clrhash *benched-strategies*)
-  (setf *last-weekly-unbench* (get-universal-time)))
-
-(defun should-weekly-unbench-p ()
-  "Check if weekly unbench is due"
-  (> (- (get-universal-time) *last-weekly-unbench*) (* 7 86400)))
-
-(defun evaluate-strategy-performance (strat sharpe trades win-rate)
-  "Evaluate strategy and bench if performing poorly"
-  (when (and strat (> trades *bench-min-trades*))
-    (let ((name (strategy-name strat)))
-      ;; Poor performance: bench the strategy
-      (when (and (or (< sharpe 0) (< win-rate 40))
-                 (not (strategy-benched-p name)))
-        (bench-strategy name "Poor performance" sharpe win-rate trades)))))
 
 ;;; ==========================================
 ;;; GOAL DECOMPOSITION SYSTEM (目標分解)
@@ -285,20 +165,6 @@
 ;;; Natural language status reporting like a personal assistant
 
 (defparameter *last-briefing-hour* -1)
-
-(defun get-volatility-state ()
-  "Return current volatility state (wrapper for school.lisp variable)"
-  (if (boundp '*current-volatility-state*)
-      *current-volatility-state*
-      :normal))
-
-(defun current-trading-session ()
-  "Return current trading session based on hour (UTC+9)"
-  (let ((hour (nth-value 2 (decode-universal-time (get-universal-time)))))
-    (cond
-      ((and (>= hour 6) (< hour 15)) :tokyo)
-      ((and (>= hour 15) (< hour 22)) :london)
-      (t :newyork))))
 
 (defun generate-daily-briefing ()
   "Generate natural language morning briefing"
@@ -427,21 +293,10 @@
   (with-open-file (out *genome-path* :direction :output :if-exists :supersede)
     (write *genome* :stream out :pretty t)))
 (defun notify-discord (msg &key (color 3447003))
-  "V41.3: Now uses async queue to prevent tick blocking"
   (when (and *discord-webhook-url* msg (not (equal msg "NIL")))
-    (queue-discord-notification *discord-webhook-url* msg :color color :title "🐟 Apex")))
-
-;; V5.0: Backtest results to separate silent channel
-(defparameter *backtest-webhook-url* "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy")
-
-(defun notify-discord-backtest (msg &key (color 3447003))
-  "Send backtest results to separate channel without notification"
-  (when (and *backtest-webhook-url* msg)
     (handler-case
-        (dex:post *backtest-webhook-url*
-                  :content (jsown:to-json (jsown:new-js 
-                              ("embeds" (list (jsown:new-js ("description" (format nil "~a" msg)) ("color" color))))
-                              ("flags" 4096)))  ;; SUPPRESS_NOTIFICATIONS
+        (dex:post *discord-webhook-url*
+                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js ("title" "🐟 Apex") ("description" (format nil "~a" msg)) ("color" color))))))
                   :headers '(("Content-Type" . "application/json")) :read-timeout 3)
       (error (e) nil))))
 
@@ -450,84 +305,10 @@
 
 (defun setup-symbol-webhooks ()
   "Setup Discord webhooks for each currency pair"
-  ;; V5.1: Direct webhook URLs per symbol
-  (setf (gethash "USDJPY" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_USDJPY") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
-        
-  (setf (gethash "EURUSD" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_EURUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
-        
-  (setf (gethash "GBPUSD" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
-        )
-
-;; V5.1: Status and Alerts webhooks
-(defparameter *status-webhook-url* 
-  "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
-;; Alert webhook: https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH
-
-
-;; V6.8: Backtest Buffering
-(defparameter *backtest-results-buffer* nil)
-(defparameter *expected-backtest-count* 0)
-(defparameter *backtest-start-time* 0)
-
-
-
-(defun categorize-strategy-name (name)
-  "Categorize strategy based on name keywords"
-  (let ((n (string-upcase name)))
-    (cond
-      ((or (search "RSI" n) (search "STOCH" n) (search "REVERS" n) (search "BOUNCE" n) (search "DIP" n) (search "FLIP" n))
-       :reversion)
-      ((or (search "BREAK" n) (search "ATR" n) (search "VOL" n) (search "SQUEEZE" n))
-       :breakout)
-      ((or (search "SCALP" n) (search "1M" n) (search "SECONDS" n))
-       :scalp)
-      (t :trend))))
-
-(defun notify-backtest-summary ()
-  "Compile and send categorized backtest summary to Discord"
-  (let ((results (copy-list *backtest-results-buffer*))
-        (categories '(:trend :reversion :breakout :scalp))
-        (summary-msg "📊 **Backtest Summary (V6.9)**\n"))
-    
-    (dolist (cat categories)
-      (let* ((cat-results (remove-if-not 
-                            (lambda (res) (eq (categorize-strategy-name (car res)) cat))
-                            results))
-             (total (length cat-results))
-             (passed (count-if (lambda (res) (> (getf (cdr res) :sharpe) 0)) cat-results))
-             (avg-sharpe (if (> total 0)
-                             (/ (loop for r in cat-results sum (getf (cdr r) :sharpe)) total)
-                             0.0))
-             ;; Sort by Sharpe descending
-             (sorted (sort (copy-list cat-results) #'> :key (lambda (x) (getf (cdr x) :sharpe)))))
-        
-        (when (> total 0)
-          (setf summary-msg (concatenate 'string summary-msg 
-                                         (format nil "\n**~a** (Total: ~d | Pass: ~d | Avg Sharpe: ~,2f)\n" 
-                                                 cat total passed avg-sharpe)))
-          
-          ;; Top 5
-          (setf summary-msg (concatenate 'string summary-msg "  Top 5:\n"))
-          (loop for i from 0 below (min 5 (length sorted))
-                for res = (nth i sorted)
-                do (setf summary-msg (concatenate 'string summary-msg 
-                                                  (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe)))))
-          
-          ;; Worst 5 (if enough results)
-          (when (> total 5)
-            (setf summary-msg (concatenate 'string summary-msg "  Worst 5:\n"))
-            (let ((worst (reverse sorted)))
-              (loop for i from 0 below (min 5 (length worst))
-                    for res = (nth i worst)
-                    do (setf summary-msg (concatenate 'string summary-msg 
-                                                      (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe))))))))))
-    
-    (setf summary-msg (concatenate 'string summary-msg "\n🔍 Only showing Top/Worst to reduce spam."))
-    (notify-discord-backtest summary-msg :color 5763719)
-    
-    ;; Clear buffer
-    (setf *backtest-results-buffer* nil)
-    (setf *expected-backtest-count* 0)))
+  ;; Default: use main webhook for all
+  (setf (gethash "USDJPY" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_USDJPY"))
+  (setf (gethash "EURUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_EURUSD"))
+  (setf (gethash "GBPUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_GBPUSD")))
 
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
   "Send Discord notification to symbol-specific channel"
@@ -542,157 +323,10 @@
                     :headers '(("Content-Type" . "application/json")) :read-timeout 3)
         (error (e) nil)))))
 
-;; V5.3: Periodic Status Notification
-(defparameter *last-status-notification-time* (make-hash-table :test 'equal))
-(defparameter *status-notification-interval* 3600) ; Default 1 hour
 
-(defun send-periodic-status-report (symbol bid)
-  "Send a periodic status report to Discord if interval continues"
-  (let* ((now (get-universal-time))
-         (last-time (gethash symbol *last-status-notification-time* 0)))
-    (when (> (- now last-time) *status-notification-interval*)
-      (let ((tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
-            (tribe-con (if (boundp '*tribe-consensus*) *tribe-consensus* 0.0))
-            (swarm-con (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
-            (pred (if (boundp '*last-prediction*) *last-prediction* "N/A"))
-            (conf (if (boundp '*last-confidence*) *last-confidence* 0.0))
-            (danger (if (boundp '*danger-level*) *danger-level* 0))
-            (active-warriors (if (boundp '*warrior-allocation*) 
-                                 (hash-table-count *warrior-allocation*) 0)))
-        (notify-discord-symbol symbol 
-          (format nil "🕒 STATUS REPORT~%Price: ~,3f~%~%🧠 AI: ~a (~,1f%)~%🏛️ Tribes: ~a (~,0f%)~%🐟 Swarm: ~,0f%~%~%⚔️ Warriors: ~d~%⚠️ Danger: Lv~d"
-                  bid pred (* 100 conf) tribe-dir (* 100 tribe-con) (* 100 swarm-con) active-warriors danger)
-          :color 10070709) ; Dark Grey for status
-        (setf (gethash symbol *last-status-notification-time*) now)))))
+;; NOTE: MULTI-CHANNEL DISCORD functions moved to src/lisp/core/discord.lisp
 
-(defun notify-discord-alert (msg &key (color 15158332))
-  "Send critical alerts to alerts channel (FLEE mode, danger, etc.)"
-  (when (and *alerts-webhook-url* msg)
-    (handler-case
-        (dex:post *alerts-webhook-url*
-                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js 
-                            ("title" "🚨 ALERT") 
-                            ("description" (format nil "~a" msg)) 
-                            ("color" color))))))
-                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-      (error (e) nil))))
 
-(defun notify-discord-status (msg &key (color 3066993))
-  "Send status updates to status channel"
-  (when (and *status-webhook-url* msg)
-    (handler-case
-        (dex:post *status-webhook-url*
-                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js 
-                            ("title" "📊 Status") 
-                            ("description" (format nil "~a" msg)) 
-                            ("color" color))))))
-                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-      (error (e) nil))))
-
-;;; ==========================================
-;;; MULTI-CHANNEL DISCORD (複数チャンネル対応)
-;;; ==========================================
-;;; Different channels for different purposes
-
-(defparameter *discord-emergency-webhook* (uiop:getenv "SWIMMY_DISCORD_EMERGENCY"))
-(defparameter *discord-daily-webhook* (uiop:getenv "SWIMMY_DISCORD_DAILY"))
-(defparameter *discord-weekly-webhook* (uiop:getenv "SWIMMY_DISCORD_WEEKLY"))
-
-(defun notify-discord-emergency (msg)
-  "Send to EMERGENCY channel - use sparingly!"
-  (let ((webhook (or *discord-emergency-webhook* *discord-webhook-url*)))
-    (when webhook
-      (handler-case
-          (dex:post webhook
-                    :content (jsown:to-json (jsown:new-js 
-                              ("embeds" (list (jsown:new-js 
-                                ("title" "🚨 EMERGENCY 🚨") 
-                                ("description" (format nil "~a" msg)) 
-                                ("color" 15158332))))))  ; Red
-                    :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-        (error (e) nil)))))
-
-(defun notify-discord-daily (msg &key (color 3447003))
-  "Send to daily report channel"
-  (let ((webhook (or *discord-daily-webhook* *discord-webhook-url*)))
-    (when webhook
-      (handler-case
-          (dex:post webhook
-                    :content (jsown:to-json (jsown:new-js 
-                              ("embeds" (list (jsown:new-js 
-                                ("title" "📊 Daily Report") 
-                                ("description" (format nil "~a" msg)) 
-                                ("color" color))))))  ; Use passed color
-                    :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-        (error (e) nil)))))
-
-(defun notify-discord-weekly (msg)
-  "Send to weekly summary channel"
-  (let ((webhook (or *discord-weekly-webhook* *discord-webhook-url*)))
-    (when webhook
-      (handler-case
-          (dex:post webhook
-                    :content (jsown:to-json (jsown:new-js 
-                              ("embeds" (list (jsown:new-js 
-                                ("title" "📈 Weekly Summary") 
-                                ("description" (format nil "~a" msg)) 
-                                ("color" 10181046))))))  ; Purple
-                    :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-        (error (e) nil)))))
-
-;;; ==========================================
-;;; V5.0: NEURAL NETWORK TRAINING
-;;; ==========================================
-
-(defun train-nn-from-trade (symbol pnl direction)
-  "Train NN from trade outcome - online learning"
-  (when (and *candle-history* (> (length *candle-history*) 30))
-    (handler-case
-        (let* ((target (cond
-                         ((> pnl 0.3) 0)   ;; Clear win -> UP correct
-                         ((< pnl -0.3) 1)  ;; Clear loss -> DOWN correct
-                         (t 2)))           ;; Small -> FLAT
-               (candles-json (mapcar (lambda (c)
-                                       (jsown:new-js
-                                         ("open" (candle-open c))
-                                         ("high" (candle-high c))
-                                         ("low" (candle-low c))
-                                         ("close" (candle-close c))
-                                         ("volume" 1)))
-                                     (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
-               (cmd (jsown:to-json (jsown:new-js
-                      ("action" "TRAIN")
-                      ("candles" candles-json)
-                      ("target" target)))))
-          (pzmq:send *cmd-publisher* cmd)
-          (format t "[L] 🧠 NN TRAIN: target=~a (~a)~%" target 
-                  (cond ((= target 0) "UP") ((= target 1) "DOWN") (t "FLAT"))))
-      (error (e) (format t "[L] NN train error: ~a~%" e)))))
-
-(defun request-walk-forward (strategy-name)
-  "Request walk-forward validation for a strategy"
-  (when (and *candle-history* (> (length *candle-history*) 500))
-    (handler-case
-        (let* ((strat (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))
-               (candles-json (mapcar (lambda (c)
-                                       (jsown:new-js
-                                         ("open" (candle-open c))
-                                         ("high" (candle-high c))
-                                         ("low" (candle-low c))
-                                         ("close" (candle-close c))
-                                         ("volume" 1)))
-                                     (subseq *candle-history* 0 (min 1000 (length *candle-history*)))))
-               (cmd (jsown:to-json (jsown:new-js
-                      ("action" "WALK_FORWARD")
-                      ("strategy_name" strategy-name)
-                      ("sma_short" 10)
-                      ("sma_long" 30)
-                      ("sl" 0.15)
-                      ("tp" 0.40)
-                      ("candles" candles-json)))))
-          (pzmq:send *cmd-publisher* cmd)
-          (format t "[L] 📊 Walk-forward requested for ~a~%" strategy-name))
-      (error (e) nil))))
 
 ;;; ==========================================
 ;;; LIVE STATUS JSON (Discord Bot Sync)
@@ -702,22 +336,6 @@
 (defparameter *live-status-path* "/home/swimmy/swimmy/.opus/live_status.json")
 (defparameter *live-status-interval* 60)  ; Write every 60 seconds
 (defparameter *last-status-write* 0)
-
-;; V41.2: Cache expensive calculations
-(defparameter *cached-ecosystem-health* 0.0)
-(defparameter *ecosystem-cache-interval* 300)  ; Recalculate every 5 minutes
-(defparameter *last-ecosystem-calc* 0)
-
-(defun get-cached-ecosystem-health ()
-  "Return cached ecosystem health, recalculating only every 5 minutes"
-  (let ((now (get-universal-time)))
-    (when (> (- now *last-ecosystem-calc*) *ecosystem-cache-interval*)
-      (setf *last-ecosystem-calc* now)
-      (setf *cached-ecosystem-health* 
-            (if (fboundp 'calculate-ecosystem-health)
-                (* 100 (handler-case (funcall 'calculate-ecosystem-health) (error () 0.5)))
-                50.0)))
-    *cached-ecosystem-health*))
 
 (defun save-live-status ()
   "Write live status to JSON for Discord bot"
@@ -731,7 +349,9 @@
             (ensure-directories-exist *live-status-path*)
             (with-open-file (out *live-status-path* :direction :output :if-exists :supersede)
               (let* ((progress (get-goal-progress))
-                     (ecosystem-health (get-cached-ecosystem-health))  ; V41.2: Use cached value
+                     (ecosystem-health (if (fboundp 'calculate-ecosystem-health)
+                                           (* 100 (funcall 'calculate-ecosystem-health))
+                                           0))
                      (leader-name (if (and (boundp '*current-leader*) *current-leader*)
                                       (leader-info-strategy-name *current-leader*)
                                       "UNKNOWN"))
@@ -787,351 +407,21 @@
           (format t "[L] ⚠️ Failed to save live status: ~a~%" e))))))
 
 ;;; ==========================================
-;;; EVALUATOR AI (Multi-Agent Debate)
+;;; EVALUATOR AI
 ;;; ==========================================
-;;; A second "AI" that reviews proposals before execution
-;;; Inspired by: 2025 Multi-Agent systems
-
-(defparameter *evaluator-enabled* t)
-(defparameter *debate-log* nil)
-
-(defstruct debate-entry
-  timestamp
-  proposal-type  ; :trade, :parameter-change, :strategy-switch
-  proposer       ; Who proposed (e.g., "Leader-Fish", "Swarm")
-  proposal       ; The actual proposal
-  evaluator-verdict  ; :approve, :reject, :modify
-  evaluator-reason
-  final-action)
-
-(defun evaluator-check-trade (direction symbol confidence)
-  "Evaluator AI reviews trade proposal"
-  (when *evaluator-enabled*
-    (let ((issues nil)
-          (verdict :approve)
-          (reason "All checks passed"))
-      
-      ;; Check 1: Volatility
-      (when (eq *current-volatility-state* :extreme)
-        (push "⚠️ EXTREME volatility - high risk" issues)
-        (setf verdict :reject))
-      
-      ;; Check 2: Danger level
-      (when (>= *danger-level* 3)
-        (push "⚠️ High danger level - avoid new trades" issues)
-        (setf verdict :reject))
-      
-      ;; Check 3: Already resigned
-      (when (has-resigned-p)
-        (push "⛔ Already resigned today" issues)
-        (setf verdict :reject))
-      
-      ;; Check 4: Confidence too low
-      (when (and confidence (< confidence 0.4))
-        (push "⚠️ Low confidence prediction" issues)
-        (setf verdict :modify))
-      
-      ;; Check 5: Against leader opinion
-      (when (and *current-leader* 
-                 (not (eq (get-leader-direction *candle-history*) direction)))
-        (push "📢 Leader disagrees with this direction" issues))
-      
-      ;; Check 6: Daily loss already significant
-      (when (< *daily-pnl* -2000)
-        (push "⚠️ Daily loss already significant" issues)
-        (setf verdict :modify))
-      
-      ;; Build reason
-      (when issues
-        (setf reason (format nil "~{~a~^; ~}" issues)))
-      
-      ;; Log debate
-      (let ((entry (make-debate-entry
-                    :timestamp (get-universal-time)
-                    :proposal-type :trade
-                    :proposer "Swarm"
-                    :proposal (format nil "~a ~a (conf: ~,0f%)" direction symbol (* 100 (or confidence 0)))
-                    :evaluator-verdict verdict
-                    :evaluator-reason reason
-                    :final-action nil)))
-        (push entry *debate-log*)
-        
-        ;; Output debate result
-        (format t "[L] 🔍 EVALUATOR REVIEW:~%")
-        (format t "[L]    Proposal: ~a ~a~%" direction symbol)
-        (format t "[L]    Verdict: ~a~%" verdict)
-        (when issues
-          (format t "[L]    Issues: ~{~a~^, ~}~%" issues))
-        
-        (list :verdict verdict :issues issues :entry entry)))))
-
-(defun evaluator-check-parameter-change (param old-value new-value)
-  "Evaluator reviews parameter change proposals"
-  (when *evaluator-enabled*
-    (let ((change-pct (if (and old-value (> (abs old-value) 0.001))
-                          (* 100 (/ (abs (- new-value old-value)) (abs old-value)))
-                          100))
-          (verdict :approve)
-          (issues nil))
-      
-      ;; Check for extreme changes
-      (when (> change-pct 50)
-        (push "⚠️ Change > 50% - too aggressive" issues)
-        (setf verdict :modify))
-      
-      ;; Log
-      (format t "[L] 🔍 EVALUATOR: ~a change ~,2f → ~,2f (~,0f%%) → ~a~%"
-              param old-value new-value change-pct verdict)
-      
-      (list :verdict verdict :change-pct change-pct))))
-
-(defun get-debate-summary ()
-  "Get summary of recent debates"
-  (let* ((recent (subseq *debate-log* 0 (min 10 (length *debate-log*))))
-         (approved (count :approve recent :key #'debate-entry-evaluator-verdict))
-         (rejected (count :reject recent :key #'debate-entry-evaluator-verdict)))
-    (format nil "Recent debates: ~d approved, ~d rejected out of ~d"
-            approved rejected (length recent))))
+;;; Extracted to src/lisp/core/evaluator.lisp
 
 
 ;;; ══════════════════════════════════════════════════════════════════
-;;;  2027 VISION: CONSTITUTION LAYER (憲法レイヤー)
-;;; ══════════════════════════════════════════════════════════════════
-;;; Instead of specific instructions, humans give values (Constitution)
-;;; AI makes decisions aligned with these values autonomously
 
-(defstruct core-value
-  name           ; Keyword like :capital-preservation
-  priority       ; 1-10 (higher = more important)
-  description    ; Human-readable description
-  threshold      ; Violation threshold
-  check-fn)      ; (lambda (context) -> score 0.0-1.0)
-
-(defparameter *constitution* nil)
-(defparameter *constitution-version* "1.0")
-
-(defun initialize-constitution ()
-  "Initialize Swimmy's Core Values - The fundamental principles that guide all decisions"
-  (setf *constitution*
-        (list
-         ;; Priority 10: Capital Preservation (資本保全)
-         (make-core-value
-          :name :capital-preservation
-          :priority 10
-          :description "壊滅的損失を絶対回避。生き残ることが最優先。"
-          :threshold 0.3
-          :check-fn (lambda (ctx)
-                      (let ((daily-loss (or (getf ctx :daily-pnl) 0))
-                            (max-dd (or (getf ctx :max-drawdown) 0)))
-                        (cond
-                          ((< daily-loss -5000) 0.0)   ; Severe violation
-                          ((< daily-loss -3000) 0.3)   ; High risk
-                          ((< daily-loss -1000) 0.6)   ; Warning
-                          ((> max-dd 20) 0.4)          ; High DD
-                          (t 1.0)))))
-         
-         ;; Priority 9: Ethical Trading (倫理的取引)
-         (make-core-value
-          :name :ethical-trading
-          :priority 9
-          :description "市場操作に加担しない。グレーな取引は利益が出ても棄却。"
-          :threshold 0.5
-          :check-fn (lambda (ctx)
-                      (let ((volatility (getf ctx :volatility-state)))
-                        (if (eq volatility :extreme)
-                            0.7  ; Caution during extreme volatility
-                            1.0))))
-         
-         ;; Priority 8: Sustainability (持続可能性)
-         (make-core-value
-          :name :sustainability
-          :priority 8
-          :description "短期利益より長期生存。過度なリスクを取らない。"
-          :threshold 0.4
-          :check-fn (lambda (ctx)
-                      (let ((danger (or (getf ctx :danger-level) 0))
-                            (consecutive-losses (or (getf ctx :consecutive-losses) 0)))
-                        (cond
-                          ((>= danger 3) 0.2)
-                          ((>= consecutive-losses 4) 0.3)
-                          ((>= consecutive-losses 2) 0.6)
-                          (t 1.0)))))
-         
-         ;; Priority 7: Continuous Learning (継続学習)
-         (make-core-value
-          :name :continuous-learning
-          :priority 7
-          :description "失敗から必ず学ぶ。同じ過ちを繰り返さない。"
-          :threshold 0.5
-          :check-fn (lambda (ctx)
-                      (let ((similar-failure (getf ctx :similar-failure-count)))
-                        (if (and similar-failure (> similar-failure 3))
-                            0.4
-                            1.0))))
-         
-         ;; Priority 6: Transparency (透明性)
-         (make-core-value
-          :name :transparency
-          :priority 6
-          :description "判断理由を常に記録。ブラックボックスにならない。"
-          :threshold 0.6
-          :check-fn (lambda (ctx)
-                      ;; Always high score - this is about logging, not blocking
-                      1.0))))
-  
-  (format t "[L] 📜 CONSTITUTION INITIALIZED (v~a)~%" *constitution-version*)
-  (format t "[L] 📜 ~d Core Values loaded~%" (length *constitution*))
-  *constitution*)
-
-(defun evaluate-constitution (context)
-  "Evaluate a decision against the Constitution. Returns overall alignment score."
-  (unless *constitution*
-    (initialize-constitution))
-  
-  (let ((total-score 0)
-        (total-weight 0)
-        (violations nil))
-    
-    (dolist (value *constitution*)
-      (let* ((score (funcall (core-value-check-fn value) context))
-             (priority (core-value-priority value))
-             (weighted-score (* score priority)))
-        
-        (incf total-score weighted-score)
-        (incf total-weight priority)
-        
-        ;; Track violations
-        (when (< score (core-value-threshold value))
-          (push (list :value (core-value-name value)
-                     :score score
-                     :priority priority
-                     :description (core-value-description value))
-                violations))))
-    
-    (let ((alignment (if (> total-weight 0) (/ total-score total-weight) 1.0)))
-      (list :alignment alignment
-            :violations violations
-            :passed (null violations)))))
-
-(defun constitution-allows-p (action context)
-  "Check if Constitution allows this action. Returns T if allowed."
-  (let* ((result (evaluate-constitution context))
-         (alignment (getf result :alignment))
-         (violations (getf result :violations)))
-    
-    (when violations
-      (format t "[L] 📜 CONSTITUTION CHECK: ~a~%" action)
-      (format t "[L] 📜 Alignment: ~,0f%~%" (* 100 alignment))
-      (dolist (v violations)
-        (format t "[L] 📜 ⚠️ Violation: ~a (~,0f%%) - ~a~%"
-                (getf v :value) (* 100 (getf v :score)) (getf v :description))))
-    
-    (> alignment 0.5)))  ; Must be >50% aligned
+;;; ==========================================
+;;; GOVERNANCE & PHILOSOPHY
+;;; ==========================================
+;;; NOTE: Constitution, Philosophy Logger, and High Council 
+;;; have been extracted to src/lisp/core/governance.lisp
+;;; (Strangler Fig Phase 3)
 
 
-;;; ══════════════════════════════════════════════════════════════════
-;;;  2027 VISION: PHILOSOPHY LOGGER (哲学ロガー)
-;;; ══════════════════════════════════════════════════════════════════
-;;; Records not just WHAT happened, but WHY it happened
-;;; The "Why" becomes the most important thing in 2028
-
-(defparameter *philosophy-log* nil)
-(defparameter *philosophy-log-max* 500)
-(defparameter *philosophy-log-path* "/home/swimmy/swimmy/.opus/philosophy_log.md")
-
-(defstruct philosophy-entry
-  timestamp
-  action-type    ; :trade, :skip, :resign, :parameter-change
-  what           ; What happened
-  why            ; Why it happened (auto-generated reasoning)
-  constitution-alignment  ; How well aligned with values
-  context-snapshot        ; Captured context at decision time
-  outcome)                ; Result of the decision (filled later)
-
-(defun generate-why (action-type context decision)
-  "Generate the philosophical 'Why' for a decision"
-  (let ((parts nil))
-    
-    ;; Market context
-    (when (getf context :regime)
-      (push (format nil "市場レジームは~aであった" (getf context :regime)) parts))
-    
-    ;; Danger awareness
-    (when (and (getf context :danger-level) (> (getf context :danger-level) 0))
-      (push (format nil "危険レベルは~dに達していた" (getf context :danger-level)) parts))
-    
-    ;; Goal progress
-    (when (getf context :goal-progress)
-      (let ((prog (getf context :goal-progress)))
-        (if (< prog 50)
-            (push "目標ペースを下回っていた" parts)
-            (push "目標に向かって順調であった" parts))))
-    
-    ;; Leader opinion
-    (when (getf context :leader-agrees)
-      (if (getf context :leader-agrees)
-          (push "リーダー戦略が同意していた" parts)
-          (push "リーダー戦略は反対意見であった" parts)))
-    
-    ;; Constitution alignment
-    (when (getf context :constitution-alignment)
-      (let ((align (getf context :constitution-alignment)))
-        (if (> align 0.8)
-            (push "憲法との整合性が高かった" parts)
-            (push (format nil "憲法との整合性は~,0f%%であった" (* 100 align)) parts))))
-    
-    ;; Action-specific
-    (case action-type
-      (:trade
-       (push (format nil "~aの判断を下した" decision) parts))
-      (:skip
-       (push "トレードを見送った" parts))
-      (:resign
-       (push "本日のトレードを投了した" parts)))
-    
-    ;; Combine
-    (format nil "~{~a。~}" (reverse parts))))
-
-(defun log-philosophy (action-type what context &optional decision)
-  "Log a philosophical entry - the Why behind the What"
-  (let* ((constitution-result (evaluate-constitution context))
-         (alignment (getf constitution-result :alignment))
-         (why (generate-why action-type context decision))
-         (entry (make-philosophy-entry
-                 :timestamp (get-universal-time)
-                 :action-type action-type
-                 :what what
-                 :why why
-                 :constitution-alignment alignment
-                 :context-snapshot context
-                 :outcome nil)))
-    
-    (push entry *philosophy-log*)
-    
-    ;; Trim if too long
-    (when (> (length *philosophy-log*) *philosophy-log-max*)
-      (setf *philosophy-log* (subseq *philosophy-log* 0 *philosophy-log-max*)))
-    
-    ;; Output
-    (format t "[L] 📖 PHILOSOPHY: ~a~%" what)
-    (format t "[L] 📖 Why: ~a~%" why)
-    
-    entry))
-
-(defun save-philosophy-log ()
-  "Save philosophy log to file for human review"
-  (handler-case
-      (with-open-file (out *philosophy-log-path* :direction :output :if-exists :supersede)
-        (format out "# 🔮 Swimmy Philosophy Log~%~%")
-        (format out "「何をしたか」ではなく「なぜしたか」の記録~%~%")
-        (format out "---~%~%")
-        (dolist (entry (subseq *philosophy-log* 0 (min 50 (length *philosophy-log*))))
-          (format out "## ~a~%~%" (philosophy-entry-what entry))
-          (format out "**Why:** ~a~%~%" (philosophy-entry-why entry))
-          (format out "**Alignment:** ~,0f%%~%~%" 
-                  (* 100 (philosophy-entry-constitution-alignment entry)))
-          (format out "---~%~%")))
-    (error (e) nil)))
 
 
 ;;; ══════════════════════════════════════════════════════════════════
@@ -1253,13 +543,198 @@
     
     elder))
 
+;;; ═══════════════════════════════════════════════════════════════════
+;;; ELDER LESSONS V3.0 - ML Engineer Feedback Implementation
+;;; 6-Dimension Feature Engineering + Structured Pattern Learning
+;;; ═══════════════════════════════════════════════════════════════════
 
-;; V4.0: Elder Lessons moved to brain-learning.lisp
-;; V5.1: NN tracking variables (must be defined before loading brain-learning.lisp)
-(defparameter *nn-wins* 0)
-(defparameter *nn-losses* 0)
-(load (merge-pathnames "brain-learning.lisp" *load-truename*))
+;; Pattern structure: (count total-pnl avg-pnl last-seen)
+(defparameter *elder-lessons* (make-hash-table :test 'equal))
 
+;; Failure history for proper ML analysis
+(defparameter *failure-history* nil)
+(defparameter *max-failure-history* 100)
+
+;; V3.0: Success counter for win rate (PM feedback)
+(defparameter *success-count* 0)
+
+;; V3.0: Win rate trend history (PM feedback - show trend)
+(defparameter *win-rate-history* nil)  ; List of (timestamp win-rate)
+(defparameter *max-win-rate-history* 7)  ; Track 7 days
+
+(defstruct failure-record
+  timestamp
+  ;; 6-dimension feature vector (ML Engineer recommendation)
+  regime          ; :trending / :ranging
+  volatility      ; :high / :normal / :low
+  session         ; :tokyo / :london / :ny / :off
+  hour            ; 0-23
+  rsi-zone        ; :oversold / :neutral / :overbought
+  price-position  ; :above-ma / :below-ma / :at-ma
+  ;; Outcome
+  pnl
+  symbol
+  direction)
+
+(defun rsi-to-zone (rsi)
+  "Convert RSI value to zone"
+  (cond
+    ((null rsi) :unknown)
+    ((< rsi 30) :oversold)
+    ((> rsi 70) :overbought)
+    (t :neutral)))
+
+(defun get-price-position (history)
+  "Get price position relative to SMA50"
+  (when (and history (> (length history) 50))
+    (let* ((close (candle-close (first history)))
+           (sma50 (/ (reduce #'+ (mapcar #'candle-close (subseq history 0 50))) 50))
+           (diff-pct (/ (- close sma50) sma50)))
+      (cond
+        ((> diff-pct 0.005) :above-ma)
+        ((< diff-pct -0.005) :below-ma)
+        (t :at-ma)))))
+
+(defun learn-from-failure (context pnl)
+  "V3.0: 6-dimension feature learning from failed trades"
+  (let* ((regime (or (getf context :regime) :unknown))
+         (volatility (or (getf context :volatility-state) :normal))
+         (session (or (getf context :session) :unknown))
+         (rsi (getf context :rsi-value))
+         (hour (mod (floor (get-universal-time) 3600) 24))
+         (rsi-zone (rsi-to-zone rsi))
+         (price-pos (or (getf context :price-position) :unknown))
+         ;; Create 6-dimension pattern key
+         (pattern-key (format nil "~a|~a|~a|~d|~a|~a" 
+                              regime volatility session hour rsi-zone price-pos)))
+    
+    ;; Store structured failure record
+    (push (make-failure-record
+           :timestamp (get-universal-time)
+           :regime regime
+           :volatility volatility
+           :session session
+           :hour hour
+           :rsi-zone rsi-zone
+           :price-position price-pos
+           :pnl pnl
+           :symbol (getf context :symbol)
+           :direction (getf context :direction))
+          *failure-history*)
+    
+    ;; Trim history
+    (when (> (length *failure-history*) *max-failure-history*)
+      (setf *failure-history* (subseq *failure-history* 0 *max-failure-history*)))
+    
+    ;; Update pattern statistics
+    (let ((existing (gethash pattern-key *elder-lessons*)))
+      (if existing
+          ;; Update existing: (count total-pnl avg-pnl last-seen)
+          (let* ((count (1+ (first existing)))
+                 (total-pnl (+ (second existing) pnl))
+                 (avg-pnl (/ total-pnl count)))
+            (setf (gethash pattern-key *elder-lessons*)
+                  (list count total-pnl avg-pnl (get-universal-time)))
+            (when (>= count 5)  ;; V3.0: Increased from 3 to 5 (Professor feedback: n=3 not significant)
+              (format t "[L] 👴 パターン学習: ~a → ~d回, 平均損失 ¥~,0f~%" 
+                      pattern-key count avg-pnl)))
+          ;; New pattern
+          (setf (gethash pattern-key *elder-lessons*)
+                (list 1 pnl pnl (get-universal-time)))))
+    
+    ;; Also update simple dimension counters for quick lookup
+    (incf (gethash (format nil "dim:regime:~a" regime) *elder-lessons* 0))
+    (incf (gethash (format nil "dim:vol:~a" volatility) *elder-lessons* 0))
+    (incf (gethash (format nil "dim:session:~a" session) *elder-lessons* 0))
+    (incf (gethash (format nil "dim:hour:~d" hour) *elder-lessons* 0))
+    (incf (gethash (format nil "dim:rsi:~a" rsi-zone) *elder-lessons* 0))
+    (incf (gethash (format nil "dim:price:~a" price-pos) *elder-lessons* 0))))
+
+(defparameter *elder-lessons-last-decay* (get-universal-time))
+(defparameter *elder-decay-interval* 86400)  ; 24 hours in seconds
+(defparameter *elder-decay-rate* 0.9)        ; Reduce by 10% per day
+
+(defun decay-elder-lessons ()
+  "Apply decay to elder lessons - old lessons fade as market changes"
+  (let ((now (get-universal-time)))
+    (when (> (- now *elder-lessons-last-decay*) *elder-decay-interval*)
+      (setf *elder-lessons-last-decay* now)
+      (maphash (lambda (key value)
+                 (let ((new-val (* value *elder-decay-rate*)))
+                   (if (< new-val 0.5)
+                       (remhash key *elder-lessons*)  ; Remove if too small
+                       (setf (gethash key *elder-lessons*) new-val))))
+               *elder-lessons*)
+      (format t "[L] 👴 長老の記憶が薄れる...（減衰適用）~%"))))
+
+(defun elder-learned-lesson-p (lesson-key threshold)
+  "Check if elders have learned a specific lesson (V3.0: handles structured patterns)"
+  (decay-elder-lessons)  ; Apply decay before checking
+  (let ((lesson (gethash lesson-key *elder-lessons* nil)))
+    (cond
+      ;; New structured pattern: (count total-pnl avg-pnl last-seen)
+      ((and (listp lesson) (>= (length lesson) 1))
+       (>= (first lesson) threshold))
+      ;; Old simple counter format (for dim: keys)
+      ((numberp lesson)
+       (>= lesson threshold))
+      (t nil))))
+
+(defun elder-vote (proposal context)
+  "Ask elders to vote on a proposal. Returns :approve, :caution, or :reject"
+  (let ((approve-votes 0)
+        (reject-votes 0)
+        (total-weight 0))
+    
+    (dolist (elder *hall-of-fame*)
+      (let ((weight (elder-vote-weight elder)))
+        (incf total-weight weight)
+        
+        ;; Elder logic based on their wisdom
+        (cond
+          ;; Elder who learned about volatility warns during high vol
+          ((and (search "volatility" (string-downcase (elder-wisdom elder)))
+                (eq (getf context :volatility-state) :extreme))
+           (incf reject-votes weight)
+           (format t "[L] 👴 Elder ~a: 「ボラが高すぎる。わしの時代もそうだった。」~%"
+                   (elder-name elder)))
+          
+          ;; Elder who learned about patience during ranging markets
+          ((and (search "patience" (string-downcase (elder-wisdom elder)))
+                (eq (getf context :regime) :ranging))
+           (incf reject-votes (* 0.5 weight))
+           (format t "[L] 👴 Elder ~a: 「待て。レンジでは焦るな。」~%"
+                   (elder-name elder)))
+          
+          ;; Otherwise, approve
+          (t
+           (incf approve-votes weight)))))
+    
+    ;; ═══════════════════════════════════════
+    ;; DYNAMIC LESSONS from failure analysis
+    ;; ═══════════════════════════════════════
+    (when (elder-learned-lesson-p "extreme-volatility" 3)
+      (when (eq (getf context :volatility-state) :extreme)
+        (incf reject-votes 2)
+        (format t "[L] 👴 集合知: 「過去の失敗から学んだ。極端なボラは危険だ。」~%")))
+    
+    (when (elder-learned-lesson-p "ranging-losses" 3)
+      (when (eq (getf context :regime) :ranging)
+        (incf reject-votes 1)
+        (format t "[L] 👴 集合知: 「レンジ相場での失敗を覚えている。」~%")))
+    
+    ;; Decision
+    (cond
+      ((> reject-votes (* 0.6 total-weight)) :reject)
+      ((> reject-votes (* 0.3 total-weight)) :caution)
+      (t :approve))))
+
+(defun save-hall-of-fame ()
+  "Save Hall of Fame to file"
+  (handler-case
+      (with-open-file (out *hall-of-fame-path* :direction :output :if-exists :supersede)
+        (write *hall-of-fame* :stream out :pretty t))
+    (error (e) nil)))
 
 
 ;;; ══════════════════════════════════════════════════════════════════
@@ -1504,237 +979,9 @@
        "使えるクエリ: status/状況, goal/目標, performance/成績, market/相場"))))
 
 ;;; ==========================================
-;;; OPUS INTEGRATION: LOG ANALYSIS
+;;; OPUS INTEGRATION
 ;;; ==========================================
-;;; Enables continuous AI partnership with automatic log analysis
-
-(defparameter *log-analysis-history* nil)
-(defparameter *knowledge-base-path* (merge-pathnames "knowledge_base.lisp" *load-truename*))
-
-(defstruct log-analysis
-  timestamp
-  trading-days-analyzed
-  total-pnl
-  win-rate
-  best-strategy
-  worst-strategy
-  key-findings
-  improvement-suggestions)
-
-(defun generate-log-analysis-report ()
-  "Generate analysis report from recent performance data"
-  (let* ((wins *consecutive-wins*)
-         (losses *consecutive-losses*)
-         (total (+ wins losses))
-         (win-rate (if (> total 0) (* 100.0 (/ wins total)) 50.0))
-         (progress (get-goal-progress))
-         (findings nil)
-         (suggestions nil))
-    
-    ;; Analyze patterns
-    (when (< (getf progress :pace-pct) 80)
-      (push "ペースが目標を下回っている" findings)
-      (push "より積極的な戦略、またはリスク調整を検討" suggestions))
-    
-    (when (> *danger-level* 1)
-      (push "危険レベルが高い" findings)
-      (push "戦略の見直し、または一時停止を検討" suggestions))
-    
-    (when (eq *current-volatility-state* :elevated)
-      (push "ボラティリティが高い状態が続いている" findings)
-      (push "ポジションサイズの縮小を継続" suggestions))
-    
-    (when (and *current-leader* (< (leader-info-pnl-as-leader *current-leader*) 0))
-      (push "現在のリーダー戦略がマイナス" findings)
-      (push "リーダー交代の検討" suggestions))
-    
-    ;; Create analysis
-    (let ((analysis (make-log-analysis
-                     :timestamp (get-universal-time)
-                     :trading-days-analyzed (getf progress :days-elapsed)
-                     :total-pnl (getf progress :actual-pnl)
-                     :win-rate win-rate
-                     :best-strategy (if *current-leader* 
-                                        (leader-info-strategy-name *current-leader*) 
-                                        "N/A")
-                     :worst-strategy "分析中"
-                     :key-findings (or findings (list "特に問題なし"))
-                     :improvement-suggestions (or suggestions (list "現状維持")))))
-      
-      (push analysis *log-analysis-history*)
-      
-      ;; Output report
-      (format t "~%[L] ═══════════════════════════════════════════════════~%")
-      (format t "[L] 📊 OPUS LOG ANALYSIS REPORT~%")
-      (format t "[L] ═══════════════════════════════════════════════════~%")
-      (format t "[L] 📅 Days analyzed: ~d~%" (log-analysis-trading-days-analyzed analysis))
-      (format t "[L] 💰 Total PnL: ¥~:d~%" (round (log-analysis-total-pnl analysis)))
-      (format t "[L] 🎯 Win rate: ~,1f%~%" (log-analysis-win-rate analysis))
-      (format t "[L] 👑 Best strategy: ~a~%" (log-analysis-best-strategy analysis))
-      (format t "[L]~%")
-      (format t "[L] 🔍 Key Findings:~%")
-      (dolist (f (log-analysis-key-findings analysis))
-        (format t "[L]    • ~a~%" f))
-      (format t "[L]~%")
-      (format t "[L] 💡 Improvement Suggestions:~%")
-      (dolist (s (log-analysis-improvement-suggestions analysis))
-        (format t "[L]    → ~a~%" s))
-      (format t "[L] ═══════════════════════════════════════════════════~%~%")
-      
-      analysis)))
-
-;;; ==========================================
-;;; OPUS INTEGRATION: SELF-IMPROVEMENT LOOP
-;;; ==========================================
-;;; Swimmy can request analysis from Opus/Gemini
-
-(defparameter *improvement-requests* nil)
-
-(defstruct improvement-request
-  timestamp
-  category      ; :strategy, :risk, :performance, :architecture
-  description
-  context
-  status        ; :pending, :analyzed, :implemented
-  response)
-
-(defun request-opus-analysis (category description)
-  "Generate a request for Opus analysis (stored for next Gemini call)"
-  (let ((request (make-improvement-request
-                  :timestamp (get-universal-time)
-                  :category category
-                  :description description
-                  :context (list :pnl *daily-pnl*
-                                :regime *current-regime*
-                                :volatility *current-volatility-state*
-                                :danger *danger-level*)
-                  :status :pending
-                  :response nil)))
-    (push request *improvement-requests*)
-    (format t "[L] 🤖 SELF-IMPROVEMENT: Request queued - ~a: ~a~%" category description)
-    request))
-
-(defun auto-request-improvements ()
-  "Automatically generate improvement requests based on current state"
-  ;; Performance issues
-  (when (< *daily-pnl* (- (get-daily-target)))
-    (request-opus-analysis :performance 
-                           "日次損失が目標の倍以上。戦略の問題か市場適合の問題か分析が必要"))
-  
-  ;; Risk issues
-  (when (>= *consecutive-losses* 4)
-    (request-opus-analysis :risk 
-                           "4連敗以上。リスク管理の強化または戦略変更を検討"))
-  
-  ;; Strategy issues
-  (when (and *current-leader* 
-             (> (leader-info-trades-as-leader *current-leader*) 10)
-             (< (leader-info-pnl-as-leader *current-leader*) 0))
-    (request-opus-analysis :strategy 
-                           "10トレード以上でリーダー戦略がマイナス。戦略の有効性を再評価")))
-
-(defun generate-gemini-prompt-for-improvements ()
-  "Generate a prompt for Gemini API with pending improvement requests"
-  (let ((pending (remove-if-not (lambda (r) (eq (improvement-request-status r) :pending))
-                                *improvement-requests*)))
-    (when pending
-      (format nil "あなたはSwimmyトレーディングシステムの分析者です。~%~%現在の状況:~%- 日次PnL: ¥~:d~%- レジーム: ~a~%- ボラティリティ: ~a~%- 危険レベル: ~d~%~%以下の改善要求を分析してください:~%~{~%~a. [~a] ~a~}~%~%各項目について具体的な改善提案をしてください。"
-              (round *daily-pnl*)
-              *current-regime*
-              *current-volatility-state*
-              *danger-level*
-              (let ((i 0))
-                (mapcar (lambda (r)
-                          (incf i)
-                          (list i (improvement-request-category r) (improvement-request-description r)))
-                        pending))))))
-
-;;; ==========================================
-;;; OPUS INTEGRATION: KNOWLEDGE BASE
-;;; ==========================================
-;;; Automatically record learned patterns
-
-(defparameter *knowledge-patterns* nil)
-
-(defstruct knowledge-pattern
-  timestamp
-  pattern-type   ; :win-condition, :loss-condition, :regime-behavior
-  description
-  frequency
-  confidence)
-
-(defun record-knowledge-pattern (pattern-type description confidence)
-  "Record a learned pattern to knowledge base"
-  (let ((existing (find description *knowledge-patterns* 
-                        :key #'knowledge-pattern-description :test #'string=)))
-    (if existing
-        ;; Update existing
-        (progn
-          (incf (knowledge-pattern-frequency existing))
-          (setf (knowledge-pattern-confidence existing) 
-                (* 0.9 confidence (+ 0.1 (knowledge-pattern-confidence existing)))))
-        ;; Add new
-        (push (make-knowledge-pattern
-               :timestamp (get-universal-time)
-               :pattern-type pattern-type
-               :description description
-               :frequency 1
-               :confidence confidence)
-              *knowledge-patterns*)))
-  (format t "[L] 📚 KNOWLEDGE: Recorded pattern - ~a~%" description))
-
-(defun save-knowledge-base ()
-  "Save knowledge base to file"
-  (handler-case
-      (with-open-file (out *knowledge-base-path* :direction :output :if-exists :supersede)
-        (write (list :patterns *knowledge-patterns*
-                     :analyses *log-analysis-history*
-                     :improvements *improvement-requests*)
-               :stream out :pretty t))
-    (error (e) (format t "[L] ⚠️ Could not save knowledge base: ~a~%" e))))
-
-(defun load-knowledge-base ()
-  "Load knowledge base from file"
-  (handler-case
-      (with-open-file (in *knowledge-base-path* :direction :input :if-does-not-exist nil)
-        (when in
-          (let ((data (read in nil nil)))
-            (setf *knowledge-patterns* (getf data :patterns))
-            (setf *log-analysis-history* (getf data :analyses))
-            (setf *improvement-requests* (getf data :improvements))
-            (format t "[L] 📚 Knowledge base loaded: ~d patterns, ~d analyses~%"
-                    (length *knowledge-patterns*) (length *log-analysis-history*)))))
-    (error (e) nil)))
-
-(defun opus-daily-session ()
-  "Run daily Opus integration session - call this at end of trading day"
-  (format t "~%[L] 🤖 ═══════════════════════════════════════════════════~%")
-  (format t "[L] 🤖 OPUS DAILY SESSION~%")
-  (format t "[L] 🤖 ═══════════════════════════════════════════════════~%~%")
-  
-  ;; 1. Generate log analysis
-  (generate-log-analysis-report)
-  
-  ;; 2. Auto-generate improvement requests
-  (auto-request-improvements)
-  
-  ;; 3. Record any obvious patterns
-  (when (> *consecutive-wins* 3)
-    (record-knowledge-pattern :win-condition 
-                            (format nil "~a レジームで ~a 連勝" *current-regime* *consecutive-wins*)
-                            0.7))
-  
-  ;; 4. Save knowledge base
-  (save-knowledge-base)
-  
-  ;; 5. Generate Gemini prompt if needed
-  (let ((prompt (generate-gemini-prompt-for-improvements)))
-    (when prompt
-      (format t "~%[L] 📋 GEMINI PROMPT FOR NEXT SESSION:~%")
-      (format t "[L] ~a~%~%" (subseq prompt 0 (min 500 (length prompt))))))
-  
-  (format t "[L] 🤖 Session complete. Ready for Opus review.~%")
-  (format t "[L] 🤖 ═══════════════════════════════════════════════════~%~%"))
+;;; Extracted to src/lisp/system/opus.lisp
 
 ;;; ==========================================
 ;;; DAILY HANDOFF SYSTEM (継続的AIコラボ)
@@ -1895,10 +1142,10 @@
       (format out "~%")
       
       (format out "## 学習したパターン~%~%")
-      (dolist (p (subseq *knowledge-patterns* 0 (min 5 (length *knowledge-patterns*))))
+      (dolist (p (subseq *learned-patterns* 0 (min 5 (length *learned-patterns*))))
         (format out "- ~a (確信度: ~,0f%)~%" 
-                (knowledge-pattern-description p)
-                (* 100 (knowledge-pattern-confidence p))))
+                (learned-pattern-description p)
+                (* 100 (learned-pattern-confidence p))))
       (format out "~%")
       
       (format out "## Opusへの質問~%~%")
@@ -2135,18 +1382,16 @@
               ((and (< s-prev l-prev) (> s-now l-now) nn-ok-buy)
                (setf (arm-state-position state) :LONG (arm-state-entry-price state) bid
                      (arm-state-sl state) (- bid sl-p) (arm-state-tp state) (+ bid tp-p))
-                 (when active
-                   ;; USE SAFE-ORDER for centralized risk check
-                   (when (safe-order "BUY" symbol vol (arm-state-sl state) (arm-state-tp state))
-                     (notify-discord (format nil "~a BUY #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 3066993))))
+               (when active
+                 (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" vol) ("sl" (arm-state-sl state)) ("tp" (arm-state-tp state)))))
+                 (notify-discord (format nil "~a BUY #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 3066993)))
               ;; SELL: SMA crossover DOWN + (warmup OR NN agrees)
               ((and (> s-prev l-prev) (< s-now l-now) nn-ok-sell)
                (setf (arm-state-position state) :SHORT (arm-state-entry-price state) ask
                      (arm-state-sl state) (+ ask sl-p) (arm-state-tp state) (- ask tp-p))
                (when active
-                 ;; USE SAFE-ORDER for centralized risk check
-                 (when (safe-order "SELL" symbol vol (arm-state-sl state) (arm-state-tp state))
-                   (notify-discord (format nil "~a SELL #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 15158332))))
+                 (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" vol) ("sl" (arm-state-sl state)) ("tp" (arm-state-tp state)))))
+                 (notify-discord (format nil "~a SELL #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 15158332)))
               ;; SMA signal but NN disagrees - skip (log for debugging)
               ((and (< s-prev l-prev) (> s-now l-now) (not nn-ok-buy) active)
                (format t "[L] ⏸️ Skip BUY #~d (NN:~a ~,0f%)~%" idx pred (* conf 100)))
@@ -2158,669 +1403,25 @@
 ;; Flag for initial batch backtest
 (defparameter *initial-backtest-done* nil)
 
-(defun processing-step (symbol bid)
-  (let ((now (get-universal-time)))
-    ;; Request NN prediction every minute for trade decisions
-    (request-prediction)
-    ;; One-time batch backtest when enough data is available
-    (when (and (not *initial-backtest-done*) 
-               *candle-history* 
-               (> (length *candle-history*) 1000))
-      (setf *initial-backtest-done* t)
-      (format t "~%[L] 🧪 Starting batch backtest of ~d strategies...~%" 
-              (length *strategy-knowledge-base*))
-      (batch-backtest-knowledge))
-    (when (> (- now *last-dream-time*) *dream-interval*)
-      (setf *last-dream-time* now)
-      ;; Reassemble team based on current market regime
-      (assemble-team)
-      ;; ===== ECOSYSTEM MAINTENANCE =====
-      ;; Check population health and diversity
-      (let ((health (get-population-health)))
-        (format t "[L] 🌿 ECOSYSTEM: Health=~,0f%~%" (* 100 health)))
-      ;; Natural selection every 6 dream cycles (≈ every 30 minutes)
-      (when (zerop (mod *dream-cycle* 6))
-        (format t "[L] 🌱 Running natural selection...~%")
-        (maintain-ecosystem-balance))
-      ;; ===== INTER-TRIBAL ECONOMICS: Calculate mutual aid every 3 cycles =====
-      (when (and (zerop (mod *dream-cycle* 3))
-                 (fboundp 'calculate-mutual-aid))
-        (calculate-mutual-aid))
-      ;; ===== GOAL TRACKING: Report progress every 3 dream cycles =====
-      (when (zerop (mod *dream-cycle* 3))
-        (report-goal-status))
-      ;; Regular evolution cycle (AlphaSwimmy)
-      (check-evolution)
-      ;; PURE GENETIC ALGORITHM (Gemini disabled - use /daily-review for strategy input)
-      ;; Previously: alternated dream-code and evolve-population
-      ;; Now: pure evolution + manual input via Opus chat
-      (evolve-population)  ; Pure genetic algorithm
-      ;; (when (zerop (mod *dream-cycle* 3)) (dream-code))  ; Gemini - disabled
-      (incf *dream-cycle*))
-    (when (numberp bid)  ; Safety check for bid
-      (let ((ask (+ bid 0.0002))
-            (history (gethash symbol *candle-histories*)))
-        ;; V6.3 (Graham): TRIBES removed - was using stub functions returning 0%
-        ;; Trade decisions now use SWARM consensus only (61 strategies)
-        (when (and history (> (length history) 50))
-          (format t "[L] 🏛️ SWARM-ONLY mode (TRIBES removed V6.3)~%"))
-        
-        ;; V7.0: Loop through ALL supported symbols to ensure multi-currency trading
-        ;; even if ticks are sparse or coming from one primary feed.
-        (dolist (sym *supported-symbols*)
-          (let ((hist (gethash sym *candle-histories*))
-                (curr-bid (if (string= sym symbol) bid (if (gethash sym *current-candles*) (candle-close (gethash sym *current-candles*)) 0))))
-            (when (and hist (> (length hist) 50) (> curr-bid 0))
-              ;; Temporarily set global history for legacy functions
-              (setf *candle-history* hist)
-              (process-category-trades sym curr-bid (+ curr-bid 0.0002)))))))))
-;; Global volatility tracking per symbol (Soros)
-(defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
-(defparameter *current-volatility-state* :normal)
-(defparameter *market-regime* :ranging)
-
-(defun update-candle (bid symbol)
-  "Update candle history for a specific symbol - multi-currency support"
-  (let* ((now (get-universal-time))
-         (min-idx (floor now 60))
-         (curr-candle (gethash symbol *current-candles*))
-         (curr-minute (gethash symbol *current-minutes* -1))
-         (history (gethash symbol *candle-histories*)))
-    ;; New minute - save previous candle and process
-    (when (and curr-candle (/= min-idx curr-minute))
-      (push curr-candle (gethash symbol *candle-histories*))
-      (setf *candle-history* (gethash symbol *candle-histories*))  ; Legacy compat
-      (format t "[~a] ~a." (get-jst-str) (subseq symbol 0 3)) (force-output)
-      (processing-step symbol bid)
-      (setf (gethash symbol *current-candles*) nil))
-    ;; Update or create candle
-    (if (null (gethash symbol *current-candles*))
-        (progn
-          (setf (gethash symbol *current-minutes*) min-idx)
-          (setf (gethash symbol *current-candles*) 
-                (make-candle :timestamp now :open bid :high bid :low bid :close bid :volume 1)))
-        (let ((c (gethash symbol *current-candles*)))
-          (setf (candle-close c) bid)
-          (incf (candle-volume c))
-          (when (> bid (candle-high c)) (setf (candle-high c) bid))
-          (when (< bid (candle-low c)) (setf (candle-low c) bid))))))
-(defun internal-process-msg (msg)
-  (handler-case
-      (let* ((json (jsown:parse msg)) (type (jsown:val json "type")))
-        (cond
-          ((string= type "TICK") 
-           (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
-           ;; V41.2: Throttled operations for performance
-           ;; Only save status every 60 seconds (already implemented in save-live-status)
-           (save-live-status)
-           ;; Only report every hour (already implemented in send-periodic-status-report)
-           (send-periodic-status-report (jsown:val json "symbol") (jsown:val json "bid"))
-           ;; Learning step is already throttled by cycle count
-           (handler-case (continuous-learning-step) (error (e) nil)))
-          ;; V5.0: Guardian Heartbeat
-          ((string= type "HEARTBEAT")
-           (setf *last-guardian-heartbeat* (get-universal-time)))
-          ((string= type "HISTORY")
-           (let ((bars nil)
-                 (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))
-             (dolist (b (jsown:val json "data"))
-               (let ((c (jsown:val b "c")))
-                 (push (make-candle :timestamp (jsown:val b "t") 
-                                    :open c :high c :low c :close c :volume 1) bars)))
-             (setf (gethash symbol *candle-histories*) bars)
-             (setf *candle-history* bars)  ; Legacy compat - use first symbol
-             (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))))
-          ((string= type "BACKTEST_RESULT")
-           (let* ((result (jsown:val json "result"))
-                  (name (jsown:val result "strategy_name"))
-                  (sharpe (jsown:val result "sharpe"))
-                  (trades (jsown:val result "trades"))
-                  (pnl (jsown:val result "pnl"))
-                  (win-rate (handler-case (jsown:val result "win_rate") (error () 0))))
-             
-             ;; V6.8: Buffer results instead of spamming
-             (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
-                   *backtest-results-buffer*)
-             
-             (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
-                (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
-                        (length *backtest-results-buffer*) *expected-backtest-count*)
-                (notify-backtest-summary))
-
-              ;; Update strategy's sharpe score
-              (let ((strat (or (find name *evolved-strategies* :key #'strategy-name :test #'string=)
-                               (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
-                (when strat
-                  (setf (strategy-sharpe strat) sharpe)
-                  ;; V5.1: BENCH SYSTEM
-                  ;; Weekly unbench for re-evaluation
-                  (when (should-weekly-unbench-p)
-                    (weekly-unbench-all))
-                  ;; Evaluate and bench poor performers (50+ trades required)
-                  (evaluate-strategy-performance strat sharpe trades win-rate)
-                  ;; Always log performance
-                  (format t "[L] 📊 Updated ~a sharpe=~,2f~a~%" 
-                          name sharpe (if (strategy-benched-p name) " [BENCHED]" ""))
-                  ;; Sort evolved strategies by sharpe (best first)
-                  (setf *evolved-strategies* 
-                        (sort *evolved-strategies* #'> :key #'strategy-sharpe))
-                  (format t "[L] 🏆 Top strategies: ~{~a~^, ~}~%" 
-                          (mapcar (lambda (s) (format nil "~a(~,1f)" (strategy-name s) (strategy-sharpe s)))
-                                  (subseq *evolved-strategies* 0 (min 3 (length *evolved-strategies*)))))))
-              ;; Note: Clone detection handled separately
-              ))
-          ((or (string= type "PREDICTION_RESULT") (string= type "PREDICTION"))
-           (handler-case
-               (let* ((pred-data (if (jsown:keyp json "prediction") (jsown:val json "prediction") json))
-                      (sig (if (jsown:keyp pred-data "signal") (jsown:val pred-data "signal") "HOLD"))
-                      (conf (if (jsown:keyp pred-data "confidence") (jsown:val pred-data "confidence") 0.0)))
-                 (setf *last-prediction* sig
-                       *last-confidence* conf))
-             (error (e) nil)))
-          ((string= type "EVOLVE_RESULT")
-           (process-evolution-result json))
-          ((string= type "MCTS_RESULT")
-           (let* ((best (jsown:val json "best"))
-                  (score (jsown:val (jsown:val json "score") "composite")))
-             (format t "[L] 🔍 MCTS Optimized (score: ~,3f): ~a~%" score best)
-             (notify-discord (format nil "🔍 MCTS Optimized: ~,3f" score) :color 130821)))
-          
-          ;; V5.0: Walk-Forward validation result
-          ((string= type "WALK_FORWARD_RESULT")
-           (handler-case
-               (let* ((result (jsown:val json "result"))
-                      (name (jsown:val result "strategy_name"))
-                      (is-sharpe (jsown:val result "in_sample_sharpe"))
-                      (oos-sharpe (jsown:val result "out_of_sample_sharpe"))
-                      (efficiency (jsown:val result "efficiency_ratio"))
-                      (is-overfit (jsown:val result "is_overfit")))
-                 (format t "[L] 📊 WALK-FORWARD: ~a | IS:~,2f OOS:~,2f Eff:~,0f%~%" 
-                         name is-sharpe oos-sharpe (* 100 efficiency))
-                 (when is-overfit
-                   (format t "[L] ⚠️ OVERFIT DETECTED: ~a - reducing volume~%" name)
-                   ;; Find and penalize overfit strategy
-                   (let ((strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-                     (when (and strat (strategy-volume strat))
-                       (setf (strategy-volume strat) (* 0.5 (strategy-volume strat)))
-                       (format t "[L] 📉 ~a volume reduced to ~,3f~%" name (strategy-volume strat))))))
-             (error (e) (format t "[L] Walk-forward result error: ~a~%" e))))
-          ;; ══════════════════════════════════════
-          ;; TRADE CLOSED - 葬儀 / Victory Ceremony
-          ;; ══════════════════════════════════════
-          ((string= type "TRADE_CLOSED")
-           ;; DEBUG: Log raw message to understand grouping
-           (format t "~%[L] 🔍 DEBUG TRADE_CLOSED: ~a~%" (subseq msg 0 (min 300 (length msg))))
-           (handler-case
-               (let* ((ticket (if (jsown:keyp json "ticket") (jsown:val json "ticket") "?"))
-                      (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "UNKNOWN"))
-                      (pnl (cond 
-                             ((jsown:keyp json "profit") (jsown:val json "profit"))
-                             ((jsown:keyp json "pnl") (jsown:val json "pnl"))
-                             ((jsown:keyp json "close_profit") (jsown:val json "close_profit"))
-                             (t 0)))
-                      (direction (if (jsown:keyp json "type") (jsown:val json "type") ""))
-                      (is-win (> pnl 0)))
-                 ;; Update PnL tracking
-                 (incf *daily-pnl* pnl)
-                 (incf *accumulated-pnl* pnl)
-                 
-                 ;; Record result for danger tracking
-                 (record-trade-result (if is-win :win :loss))
-                 
-                 ;; V5.1: Increment total trades for warmup tracking
-                 (incf *total-trades*)
-                 
-                 ;; V3.0: Track success count for win rate (PM feedback)
-                 (when is-win
-                   (incf *success-count*))
-                 
-                 ;; ═══════════════════════════════════════
-                 ;; LEARNING: Record for dreamer analysis
-                 ;; ═══════════════════════════════════════
-                 (let ((dir-keyword (if (search "BUY" (string-upcase direction)) :buy :sell))
-                       (category (cond 
-                                   ((jsown:keyp json "category") 
-                                    (intern (string-upcase (jsown:val json "category")) :keyword))
-                                   (t :trend)))
-                       (strategy-name (if (jsown:keyp json "strategy") 
-                                         (jsown:val json "strategy") 
-                                         "unknown")))
-                   (handler-case
-                       (record-trade-outcome symbol dir-keyword category strategy-name pnl)
-                     (error (e) (format t "[L] Learning record error: ~a~%" e))))
-                  
-                  ;; ═══════════════════════════════════════
-                  ;; V5.0: NEURAL NETWORK ONLINE LEARNING
-                  ;; ═══════════════════════════════════════
-                  (handler-case
-                      (train-nn-from-trade symbol pnl direction)
-                    (error (e) (format t "[L] NN train error: ~a~%" e)))
-                 
-                 ;; ═══════════════════════════════════════
-                 ;; ELDER LEARNING: Learn from failures (V3.0: 6-dimension)
-                 ;; ═══════════════════════════════════════
-                 (unless is-win
-                   (handler-case
-                       (let* ((history (gethash symbol *candle-histories*))
-                              (rsi (when (and history (> (length history) 14))
-                                     (ind-rsi 14 history)))
-                              (price-pos (when history (get-price-position history)))
-                              (context (list :regime *current-regime*
-                                            :volatility-state (get-volatility-state)
-                                            :session (current-trading-session)
-                                            :rsi-value rsi
-                                            :price-position price-pos
-                                            :symbol symbol
-                                            :direction (if (search "BUY" (string-upcase direction)) :buy :sell))))
-                         (learn-from-failure context pnl)
-                         (format t "[L] 📚 長老会議に敗因を報告(6次元)~%"))
-                     (error (e) (format t "[L] Elder learning error: ~a~%" e))))
-                 
-                 ;; ═══════════════════════════════════════
-                 ;; V3.0: LEADER STATS + MEMORY (previously unused!)
-                 ;; ═══════════════════════════════════════
-                 (handler-case
-                     (progn
-                       ;; Update leader stats
-                       (update-leader-stats pnl)
-                       ;; Store in memory for pattern recall
-                       (let ((dir-keyword (if (search "BUY" (string-upcase direction)) :buy :sell)))
-                         (store-memory symbol dir-keyword (if is-win :win :loss) pnl 0)))
-                   (error (e) (format t "[L] Leader/Memory error: ~a~%" e)))
-                 
-                 ;; Funeral/Victory Ceremony
-                 (if is-win
-                     ;; 💀 VICTORY - Warrior Returns Triumphant
-                     (let ((msg (format nil "
-⚔️ ═══════════════════════════════ ⚔️
-  🎉 戦士凱旋！
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 ~a | ~a
-💰 利益: +¥~,0f
-
-🏆 「勝利は準備の結果である」
-⚔️ ═══════════════════════════════ ⚔️" symbol direction pnl)))
-                       (format t "[L] ~a~%" msg)
-                       (async-notify-discord-symbol symbol msg :color 3066993))  ; Green to symbol channel (async)
-                     
-                     ;; 💀 FUNERAL - Fallen Warrior Remembered
-                     (let ((msg (format nil "
-🕯️ ═══════════════════════════════ 🕯️
-  ⚰️ 戦士追悼
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📉 ~a | ~a
-💸 損失: ¥~,0f
-
-🙏 「敗北もまた師である」
-🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
-                       (format t "[L] ~a~%" msg)
-                       (async-notify-discord-symbol symbol msg :color 15158332))))  ; Red to symbol channel (async)
-             (error (e) (format t "[L] Trade close error: ~a~%" e))))
-          
-          (t (format t "[L] Unknown msg type: ~a~%" type))))
-    (error (e) (format t "[L] Err: ~a~%" e))))
+;;; ==========================================
+;;; MAIN LOOP & TICK HANDLING
+;;; ==========================================
+;;; Extracted to src/lisp/core/tick-handler.lisp
+;;; and src/lisp/system/runner.lisp
+(load "src/lisp/core/tick-handler.lisp")
+(load "src/lisp/system/runner.lisp")
 
 
+;; Adaptive threshold based on win rate
+(defparameter *nn-wins* 0)
+(defparameter *nn-losses* 0)
+
+;;; ==========================================
+;;; META-LEARNING & HIGH COUNCIL
+;;; ==========================================
+;;; Extracted to src/lisp/core/meta-learning.lisp
+;;; and src/lisp/core/governance.lisp
 
 
-;; V5.4: Daily Tribal Narrative
-(defparameter *last-narrative-day* -1)
-
-;; V5.6 (Research Paper #35): 3D/Virtual Flood Risk Metaphor
-(defun get-flood-status ()
-  "Convert Danger Level and Drawdown into a Flood Metaphor"
-  (let ((danger (if (boundp '*danger-level*) *danger-level* 0))
-        (dd (if (boundp '*max-drawdown*) *max-drawdown* 0.0)))
-    (cond
-      ((>= danger 5) "🌊🌊🌊 **TSUNAMI ALERT** (The Abyss)")
-      ((>= danger 4) "🏊 **Underwater** (Oxygen Critical)")
-      ((>= danger 3) "🚿 **Neck Deep** (Breathing Hard)")
-      ((>= danger 2) "🩳 **Waist Deep** (Hard to Move)")
-      ((>= danger 1) "👢 **Ankle Deep** (Wet Socks)")
-      ((> dd 5.0)    "🌧️ **Heavy Rain** (Puddles Forming)")
-      (t             "🏜️ **Dry Land** (Safe)"))))
-
-(defun send-daily-tribal-narrative ()
-  "Send a daily summary of tribal sentiments and results in Japanese with dynamic storytelling"
-  (let* ((pnl *daily-pnl*)
-         (wins *consecutive-wins*)
-         (losses *consecutive-losses*)
-         (tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
-         ;; Generate dynamic quotes based on situation
-         (hunter-quote (cond ((> pnl 0) "「獲物は十分に確保した。宴の準備を。」")
-                             ((> losses 2) "「風向きが悪い...一度森へ退くぞ。」")
-                             (t "「次の獲物を探して、矢を研いでおく。」")))
-         (breaker-quote (cond ((equal tribe-dir "BUY") "「壁はずっと叩けば壊れるもんだぜ！」")
-                              ((equal tribe-dir "SELL") "「崩れ落ちる足音を聞け！」")
-                              (t "「静かすぎる...嵐の前触れか？」")))
-         (raider-quote (cond ((> wins 0) "「いただいたぜ。追っ手が来る前にズラかるぞ。」")
-                             ((< pnl 0) "「チッ、今日のシノギは渋いな。」")
-                             (t "「隙を見せたら、いつでも頂くさ。」")))
-         (shaman-quote (cond ((> losses 0) "「精霊たちが怒っている...鎮めねばならぬ。」")
-                             ((> pnl 1000) "「星の巡りが良い。だが驕るなよ。」")
-                             (t "「まだその時ではない...耐え忍ぶのだ。」")))
-         (chief-quote (cond ((> pnl 0) "「今日も生き延びたか。だが、明日は明日の風が吹く。」")
-                            ((< pnl 0) "「傷を癒やせ。負けから学ぶことこそが、最強への近道だ。」")
-                            (t "「静寂もまた、戦略の一部である。」")))
-         ;; V5.6: Flood Status
-         (flood-status (get-flood-status)))
-    
-    (notify-discord-daily (format nil "
-📜 **日刊・部族クロニクル**
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 昨日の戦果: ¥~,0f
-🔥 現在の戦況: ~d 連勝中 | ~d 連敗中
-🌊 **洪水警報 (Risk Level)**:
-%  ~a
-
-🗣️ **部族たちの焚き火会議**:
-🏹 Hunters: ~a
-⚔️ Breakers: ~a
-🗡️ Raiders: ~a
-🔮 Shamans: ~a
-
-👑 **族長の言葉**:
-~a
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 **Cold Reality (Kahneman's Data)**:
-Total PnL: ¥~,2f
-Win Rate : ~,1f%
-Drawdown : ~,2f%
-Sharpe   : ~,2f
-━━━━━━━━━━━━━━━━━━━━━━━━━━" pnl wins losses flood-status hunter-quote breaker-quote raider-quote shaman-quote chief-quote
-                    (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0.0)
-                    (if (boundp '*all-time-win-rate*) *all-time-win-rate* 50.0)
-                    (if (boundp '*max-drawdown*) *max-drawdown* 0.0)
-                    (if (boundp '*portfolio-sharpe*) *portfolio-sharpe* 0.0))
-     :color (cond ((>= (if (boundp '*danger-level*) *danger-level* 0) 3) 15158332) ; Red
-                  ((>= (if (boundp '*danger-level*) *danger-level* 0) 1) 16776960) ; Yellow
-                  (t 3447003))))) ; Blue/Green
-
-(defun check-daily-narrative ()
-  (multiple-value-bind (s m h date month year day-of-week dst-p tz)
-      (decode-universal-time (get-universal-time))
-    (declare (ignore s m h month year day-of-week dst-p tz))
-    (when (and *last-narrative-day* (/= date *last-narrative-day*))
-      ;; New day detected!
-      (send-daily-tribal-narrative)
-      (setf *last-narrative-day* date)
-      ;; Reset daily PnL
-      (setf *daily-pnl* 0))))
-
-;; V5.5 (Ms. Hopper): Periodic Heartbeat to MT5
-(defparameter *last-heartbeat-sent* 0)
-
-(defun send-heartbeat ()
-  (let ((now (get-internal-real-time)))
-    (when (> (- now *last-heartbeat-sent*) (* 10 internal-time-units-per-second)) ; Every 10s
-      (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT"))))
-      (setf *last-heartbeat-sent* now))))
-
-;; V5.3 (Ms. Hopper): Performance Monitoring Wrapper
-(defun process-msg (msg)
-  (let ((start-time (get-internal-real-time)))
-    (internal-process-msg msg)
-    (check-daily-narrative) ; V5.4: Check for new day
-    (send-heartbeat)        ; V5.5: Heartbeat to MT5
-    (flush-discord-queue)   ; V41.3: Async Discord notifications
-    (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))
-      (when (> duration 0.5) ; 500ms threshold
-        ;; V41.2: Structured logging for performance monitoring
-        (log-warn (format nil "SLOW TICK: Processing took ~,3f seconds" duration) 
-                  :data (jsown:new-js ("type" "slow_tick") 
-                                      ("duration" duration) 
-                                      ("threshold" 0.5)))))))
-
-;; Neural Network Integration
-(defparameter *last-prediction* "HOLD")
-(defparameter *last-confidence* 0.0)
-(defparameter *nn-threshold* 0.6)
-
-(defun request-prediction ()
-  "Request neural network prediction from Rust"
-  (when (and *candle-history* (> (length *candle-history*) 20))
-    (let ((msg (jsown:to-json 
-                 (jsown:new-js 
-                   ("action" "PREDICT")
-                   ("candles" (candles-to-json (subseq *candle-history* 0 (min 100 (length *candle-history*)))))))))
-      (pzmq:send *cmd-publisher* msg))))
-
-(defun train-neural (target)
-  "Train neural network: 0=UP, 1=DOWN, 2=FLAT"
-  (when (and *candle-history* (> (length *candle-history*) 20))
-    (let ((msg (jsown:to-json 
-                 (jsown:new-js 
-                   ("action" "TRAIN")
-                   ("candles" (candles-to-json (subseq *candle-history* 0 (min 100 (length *candle-history*)))))
-                   ("target" target)))))
-      (pzmq:send *cmd-publisher* msg)
-      (format t "[L] 🎓 NN Train: ~a~%" (case target (0 "UP") (1 "DOWN") (t "FLAT"))))))
-
-;; Note: *nn-wins* and *nn-losses* now defined before brain-learning.lisp load
-
-
-;; V4.0: Meta-Learning moved to brain-learning.lisp
-
-
-;;; ══════════════════════════════════════════════════════════════════
-;;;  HIGH COUNCIL (御前会議)
-;;; ══════════════════════════════════════════════════════════════════
-;;; 参加者: Grand Chieftain (あなた), Shaman (Opus), 4 Clan Chiefs
-;;; 重要な決定は大首長に通知
-
-(defparameter *council-log* nil)
-(defparameter *council-decision-threshold* 0.70)  ; 70% agreement needed
-(defparameter *notify-chieftain-threshold* :critical)  ; :all, :important, :critical
-
-(defstruct council-decision
-  id
-  proposal
-  proposer         ; Which clan proposed
-  votes            ; Plist of :clan → :approve/:reject/:abstain
-  elder-advice     ; What elders said
-  constitution-ok  ; Did it pass constitution check?
-  final-decision   ; :approved, :rejected, :escalated
-  chieftain-notified
-  timestamp)
-
-(defun convene-high-council (proposal proposer-clan &key (urgency :normal))
-  "Convene the High Council for an important decision"
-  (format t "~%[L] ═══════════════════════════════════════~%")
-  (format t "[L] 🏛️ HIGH COUNCIL CONVENED~%")
-  (format t "[L] ═══════════════════════════════════════~%")
-  (format t "[L] 📜 Proposal: ~a~%" proposal)
-  (format t "[L] 🎺 Proposed by: ~a~%" (get-clan-display proposer-clan))
-  (format t "[L] ⚡ Urgency: ~a~%~%" urgency)
-  
-  (let ((decision (make-council-decision
-                   :id (gensym "COUNCIL-")
-                   :proposal proposal
-                   :proposer proposer-clan
-                   :votes nil
-                   :elder-advice nil
-                   :constitution-ok nil
-                   :final-decision nil
-                   :chieftain-notified nil
-                   :timestamp (get-universal-time))))
-    
-    ;; Step 1: Gather clan votes
-    (format t "[L] 📢 CLAN CHIEFS SPEAK:~%")
-    (let ((votes (gather-clan-votes proposal proposer-clan)))
-      (setf (council-decision-votes decision) votes))
-    
-    ;; Step 2: Consult elders
-    (format t "~%[L] 👴 ELDERS COUNSEL:~%")
-    (let* ((context (list :regime *current-regime*
-                          :volatility-state *current-volatility-state*
-                          :daily-pnl *daily-pnl*))
-           (elder-vote (if *hall-of-fame* 
-                           (elder-vote proposal context) 
-                           :approve)))
-      (setf (council-decision-elder-advice decision) elder-vote)
-      (format t "[L]    Elders recommend: ~a~%" elder-vote))
-    
-    ;; Step 3: Constitutional check
-    (format t "~%[L] 📜 CONSTITUTION CHECK:~%")
-    (let ((const-ok (or (null *constitution*)
-                        (constitution-allows-p :trade (list :daily-pnl *daily-pnl*)))))
-      (setf (council-decision-constitution-ok decision) const-ok)
-      (format t "[L]    Constitution: ~a~%" (if const-ok "✅ PERMITS" "❌ FORBIDS")))
-    
-    ;; Step 4: Final decision
-    (let ((final (calculate-council-decision decision)))
-      (setf (council-decision-final-decision decision) final)
-      
-      (format t "~%[L] ═══════════════════════════════════════~%")
-      (format t "[L] 📋 COUNCIL DECISION: ~a~%" final)
-      (format t "[L] ═══════════════════════════════════════~%~%")
-      
-      ;; Step 5: Notify chieftain if critical
-      (when (or (eq urgency :critical)
-                (eq final :escalated)
-                (and (eq *notify-chieftain-threshold* :all)))
-        (notify-chieftain decision))
-      
-      ;; Log decision
-      (push decision *council-log*)
-      
-      final)))
-
-(defun gather-clan-votes (proposal proposer)
-  "Gather votes from each clan"
-  (let ((votes nil))
-    (dolist (clan-data *clans*)
-      (let* ((clan-id (clan-id clan-data))
-             (vote (simulate-clan-vote clan-id proposal proposer)))
-        (push (cons clan-id vote) votes)
-        (format t "[L]    ~a ~a: ~a~%"
-                (clan-emoji clan-data) (clan-name clan-data) vote)))
-    votes))
-
-(defun simulate-clan-vote (clan-id proposal proposer)
-  "Simulate a clan's vote based on their personality"
-  (cond
-    ;; Own proposal - always approve
-    ((eq clan-id proposer) :approve)
-    
-    ;; Shamans are cautious
-    ((and (eq clan-id :reversion) 
-          (eq *current-volatility-state* :extreme))
-     :reject)
-    
-    ;; Breakers are aggressive
-    ((eq clan-id :breakout) :approve)
-    
-    ;; Raiders abstain from big decisions
-    ((and (eq clan-id :scalp)
-          (search "aggressive" (string-downcase (format nil "~a" proposal))))
-     :abstain)
-    
-    ;; Default: follow proposer if same risk profile
-    (t :approve)))
-
-(defun calculate-council-decision (decision)
-  "Calculate final decision from votes and advisors"
-  (let* ((votes (council-decision-votes decision))
-         (elder-advice (council-decision-elder-advice decision))
-         (const-ok (council-decision-constitution-ok decision))
-         (approve-count (count :approve votes :key #'cdr))
-         (total-votes (length votes))
-         (approval-rate (if (> total-votes 0) (/ approve-count total-votes) 0)))
-    
-    (cond
-      ;; Constitution forbids - REJECT
-      ((not const-ok) :rejected)
-      
-      ;; Elders reject - ESCALATE to chieftain
-      ((eq elder-advice :reject) :escalated)
-      
-      ;; Strong approval - APPROVED
-      ((>= approval-rate *council-decision-threshold*) :approved)
-      
-      ;; Weak approval with elder caution - ESCALATE
-      ((and (>= approval-rate 0.5) (eq elder-advice :caution)) :escalated)
-      
-      ;; Otherwise - REJECTED
-      (t :rejected))))
-
-(defun notify-chieftain (decision)
-  "Notify the Grand Chieftain (user) via Discord about critical decision"
-  (setf (council-decision-chieftain-notified decision) t)
-  
-  (let ((msg (format nil "~%🏛️ **HIGH COUNCIL REQUIRES YOUR ATTENTION**~%~%~
-                          📜 **Proposal:** ~a~%~
-                          🎺 **Proposed by:** ~a~%~
-                          📋 **Council Decision:** ~a~%~
-                          👴 **Elder Advice:** ~a~%~
-                          📜 **Constitution:** ~a"
-                     (council-decision-proposal decision)
-                     (get-clan-display (council-decision-proposer decision))
-                     (council-decision-final-decision decision)
-                     (council-decision-elder-advice decision)
-                     (if (council-decision-constitution-ok decision) "Permits" "Forbids"))))
-    
-    ;; Send to emergency channel
-    (when (and (boundp '*discord-emergency-url*) *discord-emergency-url*)
-      (handler-case
-          (dex:post *discord-emergency-url*
-                    :content (jsown:to-json 
-                              (jsown:new-js 
-                               ("embeds" (list (jsown:new-js 
-                                               ("title" "🏛️ High Council Decision")
-                                               ("description" msg)
-                                               ("color" 15844367))))))  ; Gold
-                    :headers '(("Content-Type" . "application/json"))
-                    :read-timeout 3)
-        (error (e) nil)))
-    
-    (format t "[L] 📱 Grand Chieftain notified via Discord~%")))
-
-
-;;; ══════════════════════════════════════════════════════════════════
-
-;; V5.3: Initialize symbol webhooks for hourly reports
-(setup-symbol-webhooks)
-
-;; V4.0: Rituals moved to brain-ritual.lisp
-(load (merge-pathnames "brain-ritual.lisp" *load-truename*))
-
-;; V6.8: Restore PnL from disk on startup
-;; V6.10: Added date validation (Taleb requirement)
-(defun same-trading-day-p (saved-timestamp)
-  "Check if saved timestamp is from the same trading day"
-  (let* ((now (get-universal-time))
-         (now-decoded (multiple-value-list (decode-universal-time now)))
-         (saved-decoded (multiple-value-list (decode-universal-time saved-timestamp)))
-         (now-day (nth 3 now-decoded))
-         (saved-day (nth 3 saved-decoded))
-         (now-month (nth 4 now-decoded))
-         (saved-month (nth 4 saved-decoded)))
-    (and (= now-day saved-day) (= now-month saved-month))))
-
-(defun restore-daily-pnl ()
-  "Restore PnL from live_status.json if file exists and date matches"
-  (let ((path "/home/swimmy/swimmy/.opus/live_status.json"))
-    (when (probe-file path)
-      (handler-case
-          (let* ((json-str (alexandria:read-file-into-string path))
-                 (data (jsown:parse json-str))
-                 (saved-pnl (jsown:val data "pnl"))
-                 (saved-timestamp (handler-case (jsown:val data "timestamp") (error () 0))))
-             ;; V6.10: Only restore if same trading day
-             (if (or (zerop saved-timestamp) (same-trading-day-p saved-timestamp))
-                 (progn
-                   (setf *daily-pnl* saved-pnl)
-                   (format t "[L] 💰 Restored Daily PnL: ¥~,2f~%" *daily-pnl*))
-                 (format t "[L] ⚠️ Stale PnL data (previous day), starting fresh~%")))
-        (error (e) (format t "[L] Failed to restore PnL: ~a~%" e))))))
-
-(restore-daily-pnl)
-
-;; V7.9++: Send initial heartbeat - Handled by start-brain actions now
-;; (format t "[L] 💓 Sending initial heartbeat...~%")
-;; (handler-case
-;;     (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT"))))
-;;   (error (e) (format t "[L] Initial heartbeat error: ~a~%" e)))
-
-(format t "[BRAIN] V6.9: System active and waiting for messages...~%")
+;; Remove Duplicate Start-Brain - Handover to Runner
 (start-brain)

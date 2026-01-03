@@ -10,180 +10,16 @@
 ;;; ==========================================
 ;;; DANGER AVOIDANCE SYSTEM (天敵回避)
 ;;; ==========================================
-;;; Inspired by: AlphaGo's resignation logic + RLHF safety
-;;; Purpose: Protect the school from predators (consecutive losses)
-;; Note: *consecutive-losses*, *consecutive-wins*, *last-trade-result*,
-;;       *danger-cooldown-until*, *danger-level*, *cooldown-durations*
-;;       defined in school-state.lisp
-
-(defun record-trade-result (result)
-  "Record trade result and update danger level"
-  (setf *last-trade-result* result)
-  (if (eq result :loss)
-      (progn
-        (incf *consecutive-losses*)
-        (setf *consecutive-wins* 0)
-        ;; Trigger cooldown on consecutive losses
-        (when (>= *consecutive-losses* 2)
-          (activate-danger-cooldown)))
-      (progn
-        (incf *consecutive-wins*)
-        (setf *consecutive-losses* 0)
-        ;; Recovery from danger
-        (when (> *danger-level* 0)
-          (decf *danger-level*)
-          (format t "[L] 🩹 RECOVERY: Danger level decreased to ~d~%" *danger-level*)))))
-
-;; Helper for Tactical Retreat
-(defun get-current-price (symbol type)
-  "Get current price from candle history or brain state"
-  (let ((candles (gethash symbol *candle-histories*)))
-    (if (and candles (first candles))
-        (if (eq type :bid) 
-            (candle-close (first candles)) ; Approx bid
-            (candle-close (first candles))) ; Approx ask
-        nil)))
-
-
-;; V5.3 (Sun Tzu): Tactical Retreat - Close ONLY losing positions
-(defun execute-tactical-retreat ()
-  "Close all losing positions immediately to stop bleeding"
-  (format t "[L] ⚔️ TACTICAL RETREAT INITIATED! Purging weak positions...~%")
-  (let ((closed-count 0))
-    (maphash 
-     (lambda (key warrior)
-       (let* ((symbol (getf warrior :symbol))
-              (entry (getf warrior :entry))
-              (direction (getf warrior :direction))
-              (magic (getf warrior :magic))
-              (current-bid (get-current-price symbol :bid)) ; Helper needed
-              (current-ask (get-current-price symbol :ask))
-              (pnl 0))
-         ;; Calculate unrealized PnL approx
-         (cond
-           ((and (eq direction :long) current-bid)
-            (setf pnl (- current-bid entry)))
-           ((and (eq direction :short) current-ask)
-            (setf pnl (- entry current-ask))))
-         
-         ;; If losing, CLOSE IT
-         (when (< pnl 0)
-           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
-           (remhash key *warrior-allocation*) ; Remove from memory
-           (update-symbol-exposure symbol (or (getf warrior :lot) 0.01) :close)
-           (incf closed-count)
-           (format t "[L] 🍂 Abandoning position: ~a (PnL: ~5f)~%" symbol pnl))))
-     *warrior-allocation*)
-    (when (> closed-count 0)
-      (notify-discord-alert (format nil "⚔️ TACTICAL RETREAT: Closed ~d losing positions." closed-count)))))
-
-(defun activate-danger-cooldown ()
-  "Activate cooldown based on consecutive losses"
-  (let* ((losses *consecutive-losses*)
-         (cooldown-entry (or (assoc losses *cooldown-durations* :test #'<=)
-                             (cons 5 1800)))
-         (duration (cdr cooldown-entry)))
-    (setf *danger-level* (min 3 (- losses 1)))
-    (setf *danger-cooldown-until* (+ (get-universal-time) duration))
-    (format t "~%[L] 🦈🦈🦈 DANGER DETECTED! ~d consecutive losses~%" losses)
-    (format t "[L] 🏃 FLEE MODE: Trading suspended for ~d seconds~%" duration)
-    (format t "[L] 🐟 School retreating to safety...~%~%")
-    ;; Default to ALERT
-    (when (fboundp 'notify-discord-alert)
-      (notify-discord-alert (format nil "🦈 DANGER: ~d consecutive losses. FLEE MODE activated for ~ds." losses duration)))
-    
-    ;; Sun Tzu: Execute Tactical Retreat
-    (execute-tactical-retreat)))
-
-(defun danger-cooldown-active-p ()
-  "Check if we're in danger cooldown mode"
-  (> *danger-cooldown-until* (get-universal-time)))
-
-(defun get-cooldown-remaining ()
-  "Get remaining cooldown time in seconds"
-  (max 0 (- *danger-cooldown-until* (get-universal-time))))
-
-;; is-safe-to-trade-p is defined after resignation judgment section
-
-(defun reset-danger-state ()
-  "Reset danger state (e.g., at start of new day)"
-  (setf *consecutive-losses* 0)
-  (setf *consecutive-wins* 0)
-  (setf *danger-level* 0)
-  (setf *danger-cooldown-until* 0)
-  (setf *has-resigned-today* nil)  ; Reset resignation flag
-  (format t "[L] 🌅 Danger state reset - new day, fresh start~%"))
+;;; V41.3: Moved to school-danger.lisp (loaded before this file)
+;;; Functions: record-trade-result, get-current-price, execute-tactical-retreat,
+;;;            activate-danger-cooldown, danger-cooldown-active-p,
+;;;            get-cooldown-remaining, reset-danger-state
 
 ;;; ==========================================
 ;;; RESIGNATION JUDGMENT (投了判断)
 ;;; ==========================================
-;;; Inspired by: Shogi/Chess AI resignation logic
-;;; "Knowing when to stop is as important as knowing when to trade"
-;; Note: *has-resigned-today*, *resignation-threshold*, *resignation-loss-count*
-;;       defined in school-state.lisp
-
-(defun check-resignation ()
-  "Check if today's trading should be abandoned"
-  (when *has-resigned-today*
-    (return-from check-resignation t))
-  
-  (let ((should-resign nil)
-        (reason nil))
-    
-    ;; Condition 1: Daily loss exceeds threshold
-    (when (< *daily-pnl* *resignation-threshold*)
-      (setf should-resign t)
-      (setf reason (format nil "Daily loss ¥~:d exceeds limit ¥~:d" 
-                           (round *daily-pnl*) *resignation-threshold*)))
-    
-    ;; Condition 2: Too many consecutive losses
-    (when (>= *consecutive-losses* *resignation-loss-count*)
-      (setf should-resign t)
-      (setf reason (format nil "~d consecutive losses - strategy mismatch" 
-                           *consecutive-losses*)))
-    
-    ;; Condition 3: Daily goal already met (positive resignation)
-    (when (and (> *daily-pnl* 0) 
-               (> *daily-pnl* (* 1.5 (get-daily-target))))
-      (setf should-resign t)
-      (setf reason (format nil "Daily goal 150%% achieved: ¥~:d" (round *daily-pnl*))))
-    
-    (when should-resign
-      (setf *has-resigned-today* t)
-      (format t "~%[L] 🏳️ ═══════════════════════════════════════~%")
-      (format t "[L] 🏳️  RESIGNATION: Today's trading ends~%")
-      (format t "[L] 🏳️  Reason: ~a~%" reason)
-      (format t "[L] 🏳️  Tomorrow is another day.~%")
-      (format t "[L] 🏳️ ═══════════════════════════════════════~%~%")
-      (when (fboundp 'notify-discord-alert)
-        (notify-discord-alert (format nil "🏳️ RESIGNATION: Trading ended for today.~%Reason: ~a" reason))))
-    
-    should-resign))
-
-(defun has-resigned-p ()
-  "Check if we've resigned today"
-  *has-resigned-today*)
-
-(defun is-safe-to-trade-p ()
-  "Master safety check - combines all safety conditions including resignation"
-  (cond
-    ;; Already resigned - no more trading today
-    ((has-resigned-p)
-     (format t "[L] 🏳️ RESIGNED: No trading until tomorrow~%")
-     nil)
-    ;; Check if we should resign
-    ((check-resignation)
-     nil)
-    ;; In cooldown - definitely not safe
-    ((danger-cooldown-active-p)
-     (format t "[L] ⏸️ COOLDOWN: ~d seconds remaining~%" (get-cooldown-remaining))
-     nil)
-    ;; High danger level - extra caution
-    ((>= *danger-level* 2)
-     (format t "[L] ⚠️ HIGH DANGER: Level ~d - trading cautiously~%" *danger-level*)
-     t)
-    ;; Safe to trade
-    (t t)))
+;;; V41.3: Moved to school-resignation.lisp (loaded before this file)
+;;; Functions: check-resignation, has-resigned-p, is-safe-to-trade-p
 
 (defun get-correlation (sym1 sym2)
   "Get correlation between two symbols"
@@ -1039,8 +875,7 @@
 ;;;  HIERARCHY SYSTEM (階級制度)
 ;;; ══════════════════════════════════════════════════════════════════
 ;;; Warriors (戦士) vs Scouts (斥候) - 実弾 vs テスト
-
-(defparameter *strategy-ranks* (make-hash-table :test 'equal))
+;;; *strategy-ranks* defined in school-state.lisp (V41.4: removed duplicate)
 
 (defstruct strategy-rank
   name              ; Strategy name
@@ -2651,7 +2486,8 @@
       ;; ===== UNIFIED DECISION MAKING (with Research Enhancement) =====
       ;; V3.0: 61 strategies are the ONLY entry source (removed 4-clan hardcoded signals)
       (handler-case
-        (let* ((min-consensus-to-trade 0.25))
+        (let* ((min-consensus-to-trade 0.25)
+               (any-strong-signal nil))
         ;; V3.0: Always use 61-STRATEGY SIGNALS (no more tribe-signals check)
         (when (or t  ; Always proceed - strategies have their own conditions
                  (> consensus min-consensus-to-trade))
@@ -2659,6 +2495,7 @@
             (progn
               (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
               (let ((strat-signals (collect-strategy-signals symbol *candle-history*)))
+                (setf any-strong-signal (and strat-signals t))
                 (when strat-signals
                   (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
                   ;; Group by category and pick best for each clan

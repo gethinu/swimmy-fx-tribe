@@ -1,15 +1,10 @@
-;; brain-ritual.lisp - Swimmy V4.0 Ritual Module
-;; Contains: Morning Ritual, Ceremonies, Trading Day Summary
-;; Loaded by: brain-core.lisp
+(in-package :cl-user)
 
-;;; NOTE: This file depends on the following from brain-core.lisp:
-;;; - *constitution*, *clans*, *monthly-goal*, *accumulated-pnl*
-;;; - *failure-history*, *success-count*, *win-rate-history*
-;;; - initialize-constitution, initialize-tribal-dialect
-
-;;; ══════════════════════════════════════════════════════════════════
-;;;  TRIBAL RITUALS (儀式)
-;;; ══════════════════════════════════════════════════════════════════
+;;; ==========================================
+;;; SWIMMY CORE: RITUALS (rituals.lisp)
+;;; ==========================================
+;;; Contains: Morning Ritual, Coming of Age, Funeral Rites
+;;; Extracted from brain-ritual.lisp (Strangler Fig Phase 4)
 
 (defun morning-ritual ()
   "Morning Ritual - Recite the Constitution and gather the clans"
@@ -28,7 +23,8 @@
     (initialize-constitution))
   
   ;; Initialize tribal dialect
-  (initialize-tribal-dialect)
+  (if (fboundp 'initialize-tribal-dialect)
+      (initialize-tribal-dialect))
   
   ;; Each clan announces their philosophy
   (format t "[L] 🏛️ THE FOUR GREAT CLANS STAND READY:~%~%")
@@ -71,37 +67,41 @@
                (trend-emoji (cond ((> diff 5) "📈") ((< diff -5) "📉") (t "➡️"))))
           (format t "[L] ~a 勝率トレンド: ~,1f%~%" trend-emoji diff)))))
   
-  ;; V3.0: Display failure learning summary (previously unused function!)
+  ;; V3.0: Display failure learning summary
   (handler-case
-      (let ((summary (get-failure-summary)))
-        (when (and summary (> (length summary) 0))
-          (format t "[L] 📊 LEARNING SUMMARY: ~a~%" summary)))
+      (when (fboundp 'get-failure-summary)
+        (let ((summary (get-failure-summary)))
+          (when (and summary (> (length summary) 0))
+            (format t "[L] 📊 LEARNING SUMMARY: ~a~%" summary))))
     (error (e) (format t "[L] Learning summary error: ~a~%" e)))
   
-  ;; V3.0: Hour patterns analysis (previously unused!)
+  ;; V3.0: Hour patterns analysis
   (handler-case
-      (let ((patterns (get-hour-patterns)))
-        (when patterns
-          (format t "[L] 🕐 HOUR PATTERNS: ~a~%" patterns)))
+      (when (fboundp 'get-hour-patterns)
+        (let ((patterns (get-hour-patterns)))
+          (when patterns
+            (format t "[L] 🕐 HOUR PATTERNS: ~a~%" patterns))))
     (error (e) (format t "[L] Hour patterns error: ~a~%" e)))
   
-  ;; V3.0: Swarm accuracy report (previously unused!)
+  ;; V3.0: Swarm accuracy report
   (handler-case
-      (let ((accuracy (analyze-swarm-accuracy)))
-        (when accuracy
-          (format t "[L] 🐟 SWARM ACCURACY: ~a~%" accuracy)))
+      (when (fboundp 'analyze-swarm-accuracy)
+        (let ((accuracy (analyze-swarm-accuracy)))
+          (when accuracy
+            (format t "[L] 🐟 SWARM ACCURACY: ~a~%" accuracy))))
     (error (e) (format t "[L] Swarm accuracy error: ~a~%" e)))
   
-  ;; V3.0: Clan treasury summary (previously unused!)
+  ;; V3.0: Clan treasury summary
   (handler-case
-      (let ((treasury (get-clan-treasury-summary)))
-        (when treasury
-          (format t "[L] 💰 TREASURY: ~a~%" treasury)))
+      (when (fboundp 'get-clan-treasury-summary)
+        (let ((treasury (get-clan-treasury-summary)))
+          (when treasury
+            (format t "[L] 💰 TREASURY: ~a~%" treasury))))
     (error (e) (format t "[L] Treasury error: ~a~%" e)))
   
   ;; V4.0: Dreamer - Generate new strategy with Gemini
   (handler-case
-      (progn
+      (when (fboundp 'dream-code)
         (format t "[L] 💭 DREAMER: Generating new strategy...~%")
         (dream-code))
     (error (e) (format t "[L] Dreamer error: ~a~%" e)))
@@ -130,51 +130,3 @@
   (format t "[L] 📖 Lessons learned: ~a~%" lessons-learned)
   (format t "[L] 🙏 May the wisdom live on in the tribe.~%")
   (format t "[L] ═══════════════════════════════════════~%~%"))
-
-(defun start-brain ()
-  (format t "~%[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS~%")
-  (format t "[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders~%")
-  (format t "[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect~%")
-  
-  ;; Clans already defined in school.lisp (Hunters, Shamans, Breakers, Raiders)
-  
-  ;; Initialize clan treasury
-  (initialize-clan-treasury)
-  
-  ;; V5.1: Setup multi-channel Discord webhooks
-  (setup-symbol-webhooks)
-  
-  ;; Morning Ritual
-  (morning-ritual)
-  
-  (load-genome)
-  (format t "[L] 📚 Strategies: ~d knowledge base + ~d evolved~%" 
-          (length *strategy-knowledge-base*) (length *evolved-strategies*))
-  (format t "[L] ⚙️ Daily Limit: ~d | Max Losses: ~d~%" *daily-loss-limit* *max-streak-losses*)
-  (let ((ctx (pzmq:ctx-new)))
-    (unwind-protect
-         ;; V41.1: Fix ZMQ topology - Brain BINDS, Guardian CONNECTS
-         ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)  
-         ;; Brain: PULL<-5555 (bind), PUB->5556 (bind)
-         (let ((pull (pzmq:socket ctx :pull)) (pub (pzmq:socket ctx :pub)))
-           (pzmq:bind pull "tcp://*:5555")  ; Receive market data from Guardian
-           (pzmq:bind pub "tcp://*:5556")    ; Send commands to Guardian
-           (setf *cmd-publisher* pub)
-           (sleep 1)
-           ;; Close all existing positions on startup (clean slate)
-           (format t "[L] 🧹 Closing all existing positions...~%")
-           (dolist (sym *supported-symbols*)
-             (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" sym) ("close_all" t)))))
-           (sleep 1)
-           ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)
-           (format t "[L] 📊 Requesting history for all symbols...~%")
-           (dolist (sym *supported-symbols*)
-             (format t "[L]    → Requesting ~a history...~%" sym)
-             (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("volume" 0))))
-             (sleep 0.5))  ; Stagger requests to avoid overwhelming MT5
-           ;; Initial setup
-           (assemble-team)
-           (request-prediction)
-           (loop (process-msg (pzmq:recv-string pull))))
-      (pzmq:ctx-term ctx))))
-;; (start-brain) - Moved to brain.lisp to prevent blocking load sequence
