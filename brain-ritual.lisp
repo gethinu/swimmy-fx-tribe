@@ -69,7 +69,7 @@
                (previous (second (second *win-rate-history*)))
                (diff (- current previous))
                (trend-emoji (cond ((> diff 5) "📈") ((< diff -5) "📉") (t "➡️"))))
-          (format t "[L] ~a 勝率トレンド: ~@,1f%~%" trend-emoji diff)))))
+          (format t "[L] ~a 勝率トレンド: ~,1f%~%" trend-emoji diff)))))
   
   ;; V3.0: Display failure learning summary (previously unused function!)
   (handler-case
@@ -153,9 +153,13 @@
   (format t "[L] ⚙️ Daily Limit: ~d | Max Losses: ~d~%" *daily-loss-limit* *max-streak-losses*)
   (let ((ctx (pzmq:ctx-new)))
     (unwind-protect
-         (let ((sub (pzmq:socket ctx :sub)) (pub (pzmq:socket ctx :pub)))
-           (pzmq:connect sub "tcp://127.0.0.1:5558") (pzmq:setsockopt sub :subscribe "")
-           (pzmq:connect pub "tcp://127.0.0.1:5559") (setf *cmd-publisher* pub)
+         ;; V41.1: Fix ZMQ topology - Brain BINDS, Guardian CONNECTS
+         ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)  
+         ;; Brain: PULL<-5555 (bind), PUB->5556 (bind)
+         (let ((pull (pzmq:socket ctx :pull)) (pub (pzmq:socket ctx :pub)))
+           (pzmq:bind pull "tcp://*:5555")  ; Receive market data from Guardian
+           (pzmq:bind pub "tcp://*:5556")    ; Send commands to Guardian
+           (setf *cmd-publisher* pub)
            (sleep 1)
            ;; Close all existing positions on startup (clean slate)
            (format t "[L] 🧹 Closing all existing positions...~%")
@@ -171,6 +175,6 @@
            ;; Initial setup
            (assemble-team)
            (request-prediction)
-           (loop (process-msg (pzmq:recv-string sub))))
+           (loop (process-msg (pzmq:recv-string pull))))
       (pzmq:ctx-term ctx))))
-(start-brain)
+;; (start-brain) - Moved to brain.lisp to prevent blocking load sequence

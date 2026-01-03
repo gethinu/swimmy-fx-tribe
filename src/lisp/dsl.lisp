@@ -179,10 +179,11 @@
         (member sym '(close high low open)))))
 
 ;; V6.10: Added :category slot for explicit classification (Graham requirement)
-(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend))
+;; V7.9++: Added :indicator-type slot for correct backtesting (Sharpe=-3.75 bug fix)
+(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend) (indicator-type "sma"))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend))
-  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category))
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma"))
+  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category :indicator-type ,indicator-type))
 
 (defun validate (e) 
   (cond 

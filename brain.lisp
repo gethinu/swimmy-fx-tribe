@@ -10,12 +10,28 @@
 ;; Define candle struct BEFORE loading other files
 (defstruct candle timestamp open high low close volume)
 
+;; V41.1: Forward declarations for variables used in submodules
+;; These are defined before loading strategies.lisp, school-*.lisp etc.
+(defparameter *backtest-results-buffer* nil)
+(defparameter *expected-backtest-count* 0)
+(defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
+(defparameter *warrior-allocation* (make-hash-table :test 'equal))
+(defparameter *active-team* (make-hash-table :test 'equal))
+(defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
+(defparameter *market-regime* :unknown)
+(defparameter *cmd-publisher* nil)  ; ZMQ publisher socket
+
+;; V41.2: Structured Logging (Graham Advisor) - Load EARLY
+(load (merge-pathnames "src/lisp/logger.lisp" *load-truename*))
+
 (load (merge-pathnames "src/lisp/dsl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/dreamer2.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/strategies.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-state.lisp" *load-truename*))  ; V6.13: Shared state
 ;; V6.15: Split modules (loaded in dependency order)
 (load (merge-pathnames "src/lisp/school-danger.lisp" *load-truename*))
+(load (merge-pathnames "src/lisp/risk-manager.lisp" *load-truename*))  ; V6.13: Unified risk - Loaded EARLY for gatekeeper
+(load (merge-pathnames "src/lisp/school-fortress.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-resignation.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-leader.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/school-swarm.lisp" *load-truename*))     ; V6.21
@@ -32,7 +48,18 @@
 (load (merge-pathnames "src/lisp/quality.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/repl.lisp" *load-truename*))
 (load (merge-pathnames "src/lisp/tests.lisp" *load-truename*))
-(load (merge-pathnames "src/lisp/risk-manager.lisp" *load-truename*))  ; V6.13: Unified risk
+
+;; Taleb Advisor Homework modules (V14.1)
+(load (merge-pathnames "src/lisp/performance-tracker.lisp" *load-truename*))  ; Sharpe tracking
+(load (merge-pathnames "src/lisp/stress-test.lisp" *load-truename*))  ; Black Swan testing
+
+;; Naval Advisor Homework modules (V14.2)
+(load (merge-pathnames "src/lisp/meta-learning.lisp" *load-truename*))  ; Regime-strategy selection
+(load (merge-pathnames "src/lisp/transfer-learning.lisp" *load-truename*))  ; Cross-asset learning
+
+;; Graham Advisor Homework modules (V14.3)
+(load (merge-pathnames "src/lisp/benchmark.lisp" *load-truename*))  ; Performance benchmarks
+(load (merge-pathnames "src/lisp/discord-async.lisp" *load-truename*))  ; V41.3: Async Discord notifications
 
 (defun get-jst-str (&optional (ut (get-universal-time)))
   "Return current time as JST string [YYYY-MM-DD HH:MM:SS]"
@@ -41,11 +68,9 @@
     (format nil "~D-~2,'0D-~2,'0D ~2,'0D:~2,'0D:~2,'0D" year month day hour min sec)))
 
 (defstruct arm-state position entry-price sl tp streak)
-;; Multi-currency support
-;; Supported symbols (BTC/ETH disabled until crypto broker setup)
-(defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
-;; TODO: Re-enable after IC Markets/Vantage setup
-;; (defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD" "BTCUSD" "ETHUSD"))
+;; Multi-currency support (defined at top of file)
+;; TODO: Re-enable crypto after IC Markets/Vantage setup
+;; *supported-symbols* = '("USDJPY" "EURUSD" "GBPUSD" "BTCUSD" "ETHUSD")
 (defparameter *candle-histories* (make-hash-table :test 'equal))  ; symbol -> history
 (defparameter *current-candles* (make-hash-table :test 'equal))   ; symbol -> candle
 (defparameter *current-minutes* (make-hash-table :test 'equal))   ; symbol -> minute
@@ -53,7 +78,6 @@
 (defparameter *candle-history* nil)
 (defparameter *current-candle* nil)
 (defparameter *current-minute* -1)
-(defparameter *cmd-publisher* nil)
 
 ;; Discord Emergency URL (for High Council notifications)
 (defparameter *discord-emergency-url* (uiop:getenv "SWIMMY_DISCORD_EMERGENCY"))
@@ -89,9 +113,16 @@
 ;; Risk Management
 (defparameter *peak-equity* 0.0)
 (defparameter *max-drawdown* 0.0)
+(defparameter *current-drawdown* 0.0)  ; V41.1: Fix warning
 (defparameter *current-equity* 0.0)
 (defparameter *base-lot-size* 0.01)
 (defparameter *max-dd-percent* 20)  ; Max 20% drawdown warning
+
+;; V41.1: Additional variables for warnings
+(defparameter *alerts-webhook-url* (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+(defparameter *last-guardian-heartbeat* 0)
+(defparameter *all-time-win-rate* 50.0)
+(defparameter *portfolio-sharpe* 0.0)
 
 ;;; ==========================================
 ;;; V5.1: STRATEGY BENCH SYSTEM (専門家合意)
@@ -396,12 +427,9 @@
   (with-open-file (out *genome-path* :direction :output :if-exists :supersede)
     (write *genome* :stream out :pretty t)))
 (defun notify-discord (msg &key (color 3447003))
+  "V41.3: Now uses async queue to prevent tick blocking"
   (when (and *discord-webhook-url* msg (not (equal msg "NIL")))
-    (handler-case
-        (dex:post *discord-webhook-url*
-                  :content (jsown:to-json (jsown:new-js ("embeds" (list (jsown:new-js ("title" "🐟 Apex") ("description" (format nil "~a" msg)) ("color" color))))))
-                  :headers '(("Content-Type" . "application/json")) :read-timeout 3)
-      (error (e) nil))))
+    (queue-discord-notification *discord-webhook-url* msg :color color :title "🐟 Apex")))
 
 ;; V5.0: Backtest results to separate silent channel
 (defparameter *backtest-webhook-url* "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy")
@@ -423,18 +451,17 @@
 (defun setup-symbol-webhooks ()
   "Setup Discord webhooks for each currency pair"
   ;; V5.1: Direct webhook URLs per symbol
-  (setf (gethash "USDJPY" *symbol-webhooks*) 
-        "https://discord.com/api/webhooks/1455548858921652442/pxCwnTnnMVd8-X8LIO3NrwtxQ0T2dm31GiS-SaHAkqQ0AAR5G5ABVcfKKJ0awKnGhnLk")
-  (setf (gethash "EURUSD" *symbol-webhooks*) 
-        "https://discord.com/api/webhooks/1455549049540313189/lw9iSajiYjzogZIUEuymaUaOIePL8yT0ya-qc8Utpyr5nM6bAZv6l8ekYTdf0knRRKZa")
-  (setf (gethash "GBPUSD" *symbol-webhooks*) 
-        "https://discord.com/api/webhooks/1455558971367882762/gOf_SFW0JvQd7tX1CqSGZbtGMcOz5wcwAiVgPhvCzEp7QAkl1g8u1dNx9qhfXbt5lAyB"))
+  (setf (gethash "USDJPY" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_USDJPY") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
+        
+  (setf (gethash "EURUSD" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_EURUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
+        
+  (setf (gethash "GBPUSD" *symbol-webhooks*) (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
+        )
 
 ;; V5.1: Status and Alerts webhooks
 (defparameter *status-webhook-url* 
   "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
-(defparameter *alerts-webhook-url* 
-  "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH")
+;; Alert webhook: https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH
 
 
 ;; V6.8: Backtest Buffering
@@ -676,6 +703,22 @@
 (defparameter *live-status-interval* 60)  ; Write every 60 seconds
 (defparameter *last-status-write* 0)
 
+;; V41.2: Cache expensive calculations
+(defparameter *cached-ecosystem-health* 0.0)
+(defparameter *ecosystem-cache-interval* 300)  ; Recalculate every 5 minutes
+(defparameter *last-ecosystem-calc* 0)
+
+(defun get-cached-ecosystem-health ()
+  "Return cached ecosystem health, recalculating only every 5 minutes"
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-ecosystem-calc*) *ecosystem-cache-interval*)
+      (setf *last-ecosystem-calc* now)
+      (setf *cached-ecosystem-health* 
+            (if (fboundp 'calculate-ecosystem-health)
+                (* 100 (handler-case (funcall 'calculate-ecosystem-health) (error () 0.5)))
+                50.0)))
+    *cached-ecosystem-health*))
+
 (defun save-live-status ()
   "Write live status to JSON for Discord bot"
   (let ((now (get-universal-time)))
@@ -688,9 +731,7 @@
             (ensure-directories-exist *live-status-path*)
             (with-open-file (out *live-status-path* :direction :output :if-exists :supersede)
               (let* ((progress (get-goal-progress))
-                     (ecosystem-health (if (fboundp 'calculate-ecosystem-health)
-                                           (* 100 (funcall 'calculate-ecosystem-health))
-                                           0))
+                     (ecosystem-health (get-cached-ecosystem-health))  ; V41.2: Use cached value
                      (leader-name (if (and (boundp '*current-leader*) *current-leader*)
                                       (leader-info-strategy-name *current-leader*)
                                       "UNKNOWN"))
@@ -1613,40 +1654,40 @@
 ;;; ==========================================
 ;;; Automatically record learned patterns
 
-(defparameter *learned-patterns* nil)
+(defparameter *knowledge-patterns* nil)
 
-(defstruct learned-pattern
+(defstruct knowledge-pattern
   timestamp
   pattern-type   ; :win-condition, :loss-condition, :regime-behavior
   description
   frequency
   confidence)
 
-(defun record-learned-pattern (pattern-type description confidence)
+(defun record-knowledge-pattern (pattern-type description confidence)
   "Record a learned pattern to knowledge base"
-  (let ((existing (find description *learned-patterns* 
-                        :key #'learned-pattern-description :test #'string=)))
+  (let ((existing (find description *knowledge-patterns* 
+                        :key #'knowledge-pattern-description :test #'string=)))
     (if existing
         ;; Update existing
         (progn
-          (incf (learned-pattern-frequency existing))
-          (setf (learned-pattern-confidence existing) 
-                (* 0.9 confidence (+ 0.1 (learned-pattern-confidence existing)))))
+          (incf (knowledge-pattern-frequency existing))
+          (setf (knowledge-pattern-confidence existing) 
+                (* 0.9 confidence (+ 0.1 (knowledge-pattern-confidence existing)))))
         ;; Add new
-        (push (make-learned-pattern
+        (push (make-knowledge-pattern
                :timestamp (get-universal-time)
                :pattern-type pattern-type
                :description description
                :frequency 1
                :confidence confidence)
-              *learned-patterns*)))
+              *knowledge-patterns*)))
   (format t "[L] 📚 KNOWLEDGE: Recorded pattern - ~a~%" description))
 
 (defun save-knowledge-base ()
   "Save knowledge base to file"
   (handler-case
       (with-open-file (out *knowledge-base-path* :direction :output :if-exists :supersede)
-        (write (list :patterns *learned-patterns*
+        (write (list :patterns *knowledge-patterns*
                      :analyses *log-analysis-history*
                      :improvements *improvement-requests*)
                :stream out :pretty t))
@@ -1658,11 +1699,11 @@
       (with-open-file (in *knowledge-base-path* :direction :input :if-does-not-exist nil)
         (when in
           (let ((data (read in nil nil)))
-            (setf *learned-patterns* (getf data :patterns))
+            (setf *knowledge-patterns* (getf data :patterns))
             (setf *log-analysis-history* (getf data :analyses))
             (setf *improvement-requests* (getf data :improvements))
             (format t "[L] 📚 Knowledge base loaded: ~d patterns, ~d analyses~%"
-                    (length *learned-patterns*) (length *log-analysis-history*)))))
+                    (length *knowledge-patterns*) (length *log-analysis-history*)))))
     (error (e) nil)))
 
 (defun opus-daily-session ()
@@ -1679,7 +1720,7 @@
   
   ;; 3. Record any obvious patterns
   (when (> *consecutive-wins* 3)
-    (record-learned-pattern :win-condition 
+    (record-knowledge-pattern :win-condition 
                             (format nil "~a レジームで ~a 連勝" *current-regime* *consecutive-wins*)
                             0.7))
   
@@ -1854,10 +1895,10 @@
       (format out "~%")
       
       (format out "## 学習したパターン~%~%")
-      (dolist (p (subseq *learned-patterns* 0 (min 5 (length *learned-patterns*))))
+      (dolist (p (subseq *knowledge-patterns* 0 (min 5 (length *knowledge-patterns*))))
         (format out "- ~a (確信度: ~,0f%)~%" 
-                (learned-pattern-description p)
-                (* 100 (learned-pattern-confidence p))))
+                (knowledge-pattern-description p)
+                (* 100 (knowledge-pattern-confidence p))))
       (format out "~%")
       
       (format out "## Opusへの質問~%~%")
@@ -2094,16 +2135,18 @@
               ((and (< s-prev l-prev) (> s-now l-now) nn-ok-buy)
                (setf (arm-state-position state) :LONG (arm-state-entry-price state) bid
                      (arm-state-sl state) (- bid sl-p) (arm-state-tp state) (+ bid tp-p))
-               (when active
-                 (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" vol) ("sl" (arm-state-sl state)) ("tp" (arm-state-tp state)))))
-                 (notify-discord (format nil "~a BUY #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 3066993)))
+                 (when active
+                   ;; USE SAFE-ORDER for centralized risk check
+                   (when (safe-order "BUY" symbol vol (arm-state-sl state) (arm-state-tp state))
+                     (notify-discord (format nil "~a BUY #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 3066993))))
               ;; SELL: SMA crossover DOWN + (warmup OR NN agrees)
               ((and (> s-prev l-prev) (< s-now l-now) nn-ok-sell)
                (setf (arm-state-position state) :SHORT (arm-state-entry-price state) ask
                      (arm-state-sl state) (+ ask sl-p) (arm-state-tp state) (- ask tp-p))
                (when active
-                 (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" vol) ("sl" (arm-state-sl state)) ("tp" (arm-state-tp state)))))
-                 (notify-discord (format nil "~a SELL #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 15158332)))
+                 ;; USE SAFE-ORDER for centralized risk check
+                 (when (safe-order "SELL" symbol vol (arm-state-sl state) (arm-state-tp state))
+                   (notify-discord (format nil "~a SELL #~d~a" (if warmup-p "🔥" "🧠") idx (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))) :color 15158332))))
               ;; SMA signal but NN disagrees - skip (log for debugging)
               ((and (< s-prev l-prev) (> s-now l-now) (not nn-ok-buy) active)
                (format t "[L] ⏸️ Skip BUY #~d (NN:~a ~,0f%)~%" idx pred (* conf 100)))
@@ -2161,8 +2204,16 @@
         ;; Trade decisions now use SWARM consensus only (61 strategies)
         (when (and history (> (length history) 50))
           (format t "[L] 🏛️ SWARM-ONLY mode (TRIBES removed V6.3)~%"))
-        ;; Category-based team trades (40/30/20/10 allocation)
-        (process-category-trades symbol bid ask)))))
+        
+        ;; V7.0: Loop through ALL supported symbols to ensure multi-currency trading
+        ;; even if ticks are sparse or coming from one primary feed.
+        (dolist (sym *supported-symbols*)
+          (let ((hist (gethash sym *candle-histories*))
+                (curr-bid (if (string= sym symbol) bid (if (gethash sym *current-candles*) (candle-close (gethash sym *current-candles*)) 0))))
+            (when (and hist (> (length hist) 50) (> curr-bid 0))
+              ;; Temporarily set global history for legacy functions
+              (setf *candle-history* hist)
+              (process-category-trades sym curr-bid (+ curr-bid 0.0002)))))))))
 ;; Global volatility tracking per symbol (Soros)
 (defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
 (defparameter *current-volatility-state* :normal)
@@ -2199,10 +2250,12 @@
         (cond
           ((string= type "TICK") 
            (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
-           (save-live-status)  ; Write status for Discord bot
-           ;; V5.3: Periodic Status Report
+           ;; V41.2: Throttled operations for performance
+           ;; Only save status every 60 seconds (already implemented in save-live-status)
+           (save-live-status)
+           ;; Only report every hour (already implemented in send-periodic-status-report)
            (send-periodic-status-report (jsown:val json "symbol") (jsown:val json "bid"))
-           ;; V4.0: Continuous Learning Loop (evolution + dreamer)
+           ;; Learning step is already throttled by cycle count
            (handler-case (continuous-learning-step) (error (e) nil)))
           ;; V5.0: Guardian Heartbeat
           ((string= type "HEARTBEAT")
@@ -2254,24 +2307,8 @@
                   (format t "[L] 🏆 Top strategies: ~{~a~^, ~}~%" 
                           (mapcar (lambda (s) (format nil "~a(~,1f)" (strategy-name s) (strategy-sharpe s)))
                                   (subseq *evolved-strategies* 0 (min 3 (length *evolved-strategies*)))))))
-             (notify-discord-backtest (format nil "📊 ~a: Sharpe=~,2f, Trades=~d, Win=~,1f%" 
-                                     name sharpe trades win-rate) :color 3447003)))
-          ((string= type "CLONE_CHECK_RESULT")
-           (let* ((result (jsown:val json "result"))
-                  (is-clone (jsown:val result "is_clone"))
-                  (similar (jsown:val result "most_similar"))
-                  (sim (jsown:val result "similarity")))
-             (if is-clone
-                 (format t "[L] 🚫 CLONE rejected! ~,1f% similar to ~a~%" (* sim 100) similar)
-                 (progn
-                   (format t "[L] ✅ UNIQUE! Adding strategy (max sim: ~,1f%)~%" (* sim 100))
-                   ;; Add pending strategy and run backtest
-                   (when *pending-strategy*
-                     (push *pending-strategy* *evolved-strategies*)
-                     (when (and *candle-history* (> (length *candle-history*) 50))
-                       (request-backtest *pending-strategy*))
-                     (notify-discord (format nil "🧬 NEW UNIQUE: ~a" (strategy-name *pending-strategy*)) :color 65535)
-                     (setf *pending-strategy* nil))))))
+              ;; Note: Clone detection handled separately
+              ))
           ((or (string= type "PREDICTION_RESULT") (string= type "PREDICTION"))
            (handler-case
                (let* ((pred-data (if (jsown:keyp json "prediction") (jsown:val json "prediction") json))
@@ -2404,7 +2441,7 @@
 🏆 「勝利は準備の結果である」
 ⚔️ ═══════════════════════════════ ⚔️" symbol direction pnl)))
                        (format t "[L] ~a~%" msg)
-                       (notify-discord-symbol symbol msg :color 3066993))  ; Green to symbol channel
+                       (async-notify-discord-symbol symbol msg :color 3066993))  ; Green to symbol channel (async)
                      
                      ;; 💀 FUNERAL - Fallen Warrior Remembered
                      (let ((msg (format nil "
@@ -2417,7 +2454,7 @@
 🙏 「敗北もまた師である」
 🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
                        (format t "[L] ~a~%" msg)
-                       (notify-discord-symbol symbol msg :color 15158332))))  ; Red to symbol channel
+                       (async-notify-discord-symbol symbol msg :color 15158332))))  ; Red to symbol channel (async)
              (error (e) (format t "[L] Trade close error: ~a~%" e))))
           
           (t (format t "[L] Unknown msg type: ~a~%" type))))
@@ -2525,9 +2562,14 @@ Sharpe   : ~,2f
     (internal-process-msg msg)
     (check-daily-narrative) ; V5.4: Check for new day
     (send-heartbeat)        ; V5.5: Heartbeat to MT5
+    (flush-discord-queue)   ; V41.3: Async Discord notifications
     (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))
       (when (> duration 0.5) ; 500ms threshold
-        (format t "[L] ⚠️ SLOW TICK: Processing took ~,3f seconds~%" duration)))))
+        ;; V41.2: Structured logging for performance monitoring
+        (log-warn (format nil "SLOW TICK: Processing took ~,3f seconds" duration) 
+                  :data (jsown:new-js ("type" "slow_tick") 
+                                      ("duration" duration) 
+                                      ("threshold" 0.5)))))))
 
 ;; Neural Network Integration
 (defparameter *last-prediction* "HOLD")
@@ -2774,5 +2816,11 @@ Sharpe   : ~,2f
 
 (restore-daily-pnl)
 
+;; V7.9++: Send initial heartbeat - Handled by start-brain actions now
+;; (format t "[L] 💓 Sending initial heartbeat...~%")
+;; (handler-case
+;;     (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT"))))
+;;   (error (e) (format t "[L] Initial heartbeat error: ~a~%" e)))
+
 (format t "[BRAIN] V6.9: System active and waiting for messages...~%")
-(run-loop)
+(start-brain)

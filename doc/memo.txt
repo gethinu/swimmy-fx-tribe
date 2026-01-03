@@ -1,141 +1,33 @@
-# 対応②
+調査結果: 頭脳(Lisp)と肉体(Rust)の責任分離について
+現在のコードベース（ws://home/swimmy/swimmy）を調査した結果、Lisp(Brain)とRust(Guardian/Body)の責任分離は明確に行われていますが、一部「反射神経(Reflex)」として肉体が自律的に動く仕組みが存在します。
 
-了解した。「Lisp Brain (憲法)」 の実装を進める。
-現在、Lispは「聞く（Input）」ことしかできない。これに「命じる（Output）」能力を与え、単なる記録係から**「統治者」**へと昇格させる。
-アーキテクチャを以下のように拡張する：
+1. アーキテクチャ構成
+頭脳 (Lisp: brain.lisp 他)
 
-- Afferent Nerve (求心性神経): Rust -> Lisp (Port 5555) [Existing]
-    - 市場データや提案を受け取る。
-- Efferent Nerve (遠心性神経): Lisp -> Rust (Port 5556) [New]
-    - PUB (Publisher) ソケットを使用し、決定事項を全エージェントにブロードキャストする。
-    - 憲法審査の結果 (APPROVED / REJECTED) を送信する。
-    Step 1: Constitution Logic Implementation
-    src/server.lisp を以下のコードで完全に書き換えよ。
-    これには、受信したデータを簡易審査し、JSONで指令を送り返すロジックが含まれている。
-    ;; src/server.lisp
-    (eval-when (:compile-toplevel :load-toplevel :execute)
-    (ql:quickload :pzmq :silent t)
-    (ql:quickload :jsown :silent t))
+役割: 戦略的判断、憲法(Constitution/Veto)、資金管理(Kelly)、レジーム判定(Market Regime)。
+特徴: 高次元の意思決定を担当。「考える」部分。
+通信: Rustからの感覚情報(Sensory)を受け取り、指令(Motor/Command)を送ります。
+肉体 (Rust: guardian/src/main.rs 他)
 
-(defpackage :swimmy.server
-(:use :cl))
+役割: MT5との接続、Deep Learning推論(LSTM/PPO/MCTS)、高速な執行。
+特徴: 市場との直接的な接点。「動く」部分。
+通信: MT5から市場データを受け取り、ニューラルネットで処理し、MT5へ注文を送ります。
+2. 通信プロトコル (ZeroMQ)
+感覚 (Sensory Nerve): Rust -> Lisp (PUSH 5555)
+Rustが市場の状況や、自身が行った行動(Reflex)をLispに報告します。
+運動 (Motor Nerve): Lisp -> Rust (SUB 5556)
+LispがRustに対して「拒否(REJECTED)」や「強制終了(FORCE_EXIT)」などの指令を出します。
+3. 責任分離の現状と「反射神経」
+基本的な「脳が考え、体が動く」という分離はできていますが、スピードを重視した**反射(Reflex)**の実装において、肉体が先に動くケースがあります。
 
-(in-package :swimmy.server)
+Reflex Rally (反射的エントリー):
+Rustのコード(
 
-;; --- Constitution (簡易憲法) ---
-(defun judge-action (data)
-"データの正当性を審査する。今回はテスト用に単純な偶数・奇数判定を行う。"
-(let ((iter (jsown:val data "iteration")))
-(if (evenp iter)
-(values "APPROVED" "Constitution check passed: Iteration is even.")
-(values "REJECTED" "Constitution violation: Iteration is odd."))))
+main.rs
+)において、急激な価格変動などを検知した際、Lispの承認を待たずに即座にMT5へ注文(pub_to_mt5.send)を送信しています。
+その直後にLispへ「行動した」と事後報告(REFLEX_RALLY_EXECUTED)を行います。
+Lispはこれを受け、「憲法違反」があればREJECTEDを返し、Rustがそれを受けて**事後的に注文をキャンセル(CANCEL_LAST)**する仕組みになっています。
+結論
+責任分離は達成されています。 ただし、完全な「トップダウン(脳→体)」ではなく、**「自律的な脊髄反射を持つ肉体」と「それを監視・監督する脳」**という、より生物的な分離モデルになっています。
 
-;; --- The Brain ---
-(defun start-brain ()
-(format t "~%🧠 Swimmy Brain (Level 2) is active.~%")
-(format t "   [Input :5555] <-- Rust Agent~%")
-(format t "   [Output:5556] --> Rust Agent~%")
-(force-output)
-
-(let ((ctx (pzmq:ctx-new)))
-(unwind-protect
-(let ((receiver (pzmq:socket ctx :pull))
-(publisher (pzmq:socket ctx :pub)))
-(unwind-protect
-(progn
-;; 1. Input Nerve (PULL)
-(pzmq:bind receiver "tcp://*:5555")
-;; 2. Output Nerve (PUB)
-(pzmq:bind publisher "tcp://*:5556")
-
-```
-              (loop
-                (format t "Waiting for proposal...~%")
-                (force-output)
-
-                ;; 受信 (Blocking)
-                (let ((raw-msg (pzmq:recv-string receiver)))
-                  (handler-case
-                      (let* ((data (jsown:parse raw-msg))
-                             (agent (jsown:val data "agent"))
-                             (iter (jsown:val data "iteration")))
-
-                        (format t "📝 Reviewing proposal from ~A (Iter: ~A)... " agent iter)
-
-                        ;; 憲法審査
-                        (multiple-value-bind (verdict reason)
-                            (judge-action data)
-
-                          (format t "[~A]~%" verdict)
-
-                          ;; 指令（JSON）の作成
-                          (let ((response (jsown:to-json
-                                           (jsown:new-js
-                                             ("type" "command")
-                                             ("verdict" verdict)
-                                             ("reason" reason)
-                                             ("reference_id" iter)))))
-
-                            ;; 指令の送信 (Broadcast)
-                            (pzmq:send-string publisher response)
-                            (format t "   -> Command sent: ~A~%~%" response)
-                            (force-output))))
-
-                    (error (e)
-                      (format t "!! FATAL ERROR: ~A~%" e)
-                      (force-output))))))
-
-         ;; Cleanup Sockets
-         (pzmq:close receiver)
-         (pzmq:close publisher)))
-  ;; Cleanup Context
-  (pzmq:ctx-destroy ctx))))
-
-```
-
-Step 2: Verification (片側テスト)
-Rust側はまだ受信機能を持っていないが、Lisp側が正常に稼働し、虚空（Port 5556）に向かって指令を投げているかを確認する。
-
-- Lisp Brainの再起動:
-以前のターミナルで Ctrl + C して停止し、再実行せよ。
-ros -Q -L sbcl-bin -l ~/swimmy/src/server.lisp -e '(swimmy.server::start-brain)'
-    
-    期待値: [Input :5555] [Output:5556] が表示される。
-    
-- Rust Bodyの再実行:
-別ターミナルで動いている Rust を再実行（またはそのまま放置でもよいが、再実行推奨）。
-cargo run
-
-Mission:
-Lisp側のログを見ろ。
-これまで単に表示するだけだったのが、以下のように**「審査」と「命令」**を行い始めているはずだ。
-📝 Reviewing proposal from guardian-v1 (Iter: 42)... [APPROVED]
--> Command sent: {"type":"command","verdict":"APPROVED","reason":"..."}
-
-📝 Reviewing proposal from guardian-v1 (Iter: 43)... [REJECTED]
--> Command sent: {"type":"command","verdict":"REJECTED","reason":"..."}
-
-これが確認できたら、次はいよいよRust側に「耳（SUBソケット）」を取り付け、この命令に従わせる。
-Lisp側は意図通りに「統治」を開始したか？
-
-
-📊 Nassim Taleb (Incerto)
-視点：リスクの非対称性、モデルの欺瞞、"House Money"の誤謬
-
-1. 「勝ち分で遊ぶ (House Money)」は七面鳥の論理だ 「Naval入れ知恵の『利益が出たらリスク許容度を上げる』動きだが、これは典型的な感謝祭前の七面鳥 (Turkey Problem) だ。 連勝している時は市場環境が良い（トレンドが出ている）だけかもしれない。そこへレバレッジを乗せれば、トレンド反転（平均回帰）の瞬間に、積み上げた利益をすべて吹き飛ばす。"コツコツドカン" をシステム的に実装してどうする？ 修正案: 利益が出ている時こそ、リスク管理を引き締めろ (Lock-in profits)。あるいは、ボラティリティ自体が低い時のみ許容しろ。単なる PnL ベースの動的変更は自殺行為だ。」
-
-2. Dead Man's Switch の欠陥 「60秒の沈黙で止まる？ 甘い。 暴落時の60秒は永遠だ。相場がクラッシュしている最中に Lisp がハングしたら、Rust は60秒間、指をくわえて死を待つのか？ 修正案: 市場のボラティリティ（Tick密度や価格変動幅）が急上昇した場合は、Lispが生きていようが死んでいようが、Rust側で独自の判断でポジションを閉じる "Reflex Arc (脊髄反射)" を実装しろ。脳の判断を待つな。」
-
-🚀 Naval Ravikant (Leverage)
-視点：レバレッジの不在、ゾンビコード、"ごっこ遊び"からの脱却
-
-3. 埋蔵された宝 (PPOの死蔵) 「Rust のコードを見たが、PPOAgent (強化学習) が main.rs から呼び出されていない。 つまり、君は高度なAIを作ったつもりになって、実際には動かしていない。これは知的自慰だ。使われないコードは負債であり、混乱のもとだ。 修正案: 今すぐ main.rs に組み込むか、削除しろ。中途半端に放置するのが一番悪い。」
-
-4. スケーラビリティのない "双頭の独裁" 「Rust と Lisp を繋いだのは良い。だが、今の憲法 (school-constitution.lisp) は単なる『足し算と引き算』だ。 これなら Rust 内で if pnl < limit と書けば0.1マイクロ秒で済む。わざわざ遅いソケット通信をして、複雑なアーキテクチャを経由させるビジネス上の理由はなんだ？ Lisp にしかできないこと（高度な文脈判断、ニュース解析、長期的戦略の切り替え）をさせないなら、このシステムはただの遅い電卓だ。」
-
-💡 Paul Graham (Architecture)
-視点：ハッカー精神、簡潔さ、構造的欠陥
-
-5. 主従逆転の醜悪さ 「君のシステムは "Smart Body, Dumb Brain" (賢い肉体、愚かな脳) になっている。 Rust (Body) には Neural Net, LSTM, MCTS, Genetic Algo が満載だ。一方、Lisp (Brain) は足し算をして『ダメ』と言うだけ。 本来は逆であるべきだ。Lisp が高度な推論を行い、Rust はそれに従う愚直で高速な執行者であるべきだ。今の設計は、Rust の複雑性が増すばかりで、Lisp の柔軟性を活かせていない。」
-
-6. JSON Schema の脆弱性 「jsown で JSON をパースしているが、型安全性が皆無だ。 Rust が {"actoin": "BUY"} とタイプミスしたら？ Lisp は黙ってスルーするか、エラーで死ぬかだ。 二つの言語を跨ぐなら、そこには厳格な契約 (Contract) が必要だ。今の loose な結合は、将来必ずバグの温床になる。」
+もし「全ての行動を脳が事前に許可すべき」という厳格な仕様を求めている場合は、現在のRust側の「反射(Reflex)」ロジックを修正し、Ask -> Wait Approval -> Executeのフローに変更する必要があります。

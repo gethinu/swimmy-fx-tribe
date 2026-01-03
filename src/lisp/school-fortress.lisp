@@ -191,8 +191,8 @@
   (let ((rank-data (when (fboundp 'get-strategy-rank) (get-strategy-rank strat-name))))
     (if rank-data
         (let ((wins (strategy-rank-wins rank-data))
-              (losses (strategy-rank-losses rank-data))
-              (total-profit (or (strategy-rank-profit rank-data) 0)))
+              (losses (- (strategy-rank-trades rank-data) (strategy-rank-wins rank-data)))
+              (total-profit (or (strategy-rank-total-pnl rank-data) 0)))
           (if (> (+ wins losses) 10)
               (let* ((win-rate (/ wins (+ wins losses)))
                      (avg-win (if (> wins 0) (/ (max total-profit 0.001) wins) 0.001))

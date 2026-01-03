@@ -54,9 +54,11 @@
 ;; ===== CONTINUOUS LEARNING LOOP =====
 
 (defparameter *learning-cycle* 0)
+(defparameter *last-regime* :unknown "Last known regime for change detection")
+(defparameter *meta-learning-interval* 120)  ; Every 2 minutes
 
 (defun continuous-learning-step ()
-  "One step of continuous learning"
+  "One step of continuous learning - Naval enhanced with meta-learning hooks"
   (incf *learning-cycle*)
   (cond
     ;; Every 300 cycles (~5 min): Backtest new/evolved strategies
@@ -72,8 +74,74 @@
     ;; Every 60 cycles (~1 min): Update school team
     ((zerop (mod *learning-cycle* 60))
      (assemble-team))
+    
+    ;; NAVAL IMPROVEMENT: Meta-learning integration
+    ;; Every 120 cycles (~2 min): Check and update meta-learning
+    ((zerop (mod *learning-cycle* *meta-learning-interval*))
+     (naval-meta-learning-step))
+    
     ;; Every cycle: nothing special
     (t nil)))
+
+(defun naval-meta-learning-step ()
+  "Naval improvement: Integrated meta-learning step with regime change detection"
+  (handler-case
+      (progn
+        ;; 1. Update correlations for transfer learning
+        (when (fboundp 'maybe-update-correlations)
+          (maybe-update-correlations))
+        
+        ;; 2. Check for regime change
+        (let ((current-regime (if (boundp '*current-regime*) *current-regime* :unknown)))
+          (when (and (not (eq current-regime *last-regime*))
+                     (not (eq current-regime :unknown)))
+            (on-regime-change *last-regime* current-regime))
+          (setf *last-regime* current-regime))
+        
+        ;; 3. Periodically run meta-learning update
+        (when (and (fboundp 'update-best-strategy-for-regime)
+                   (boundp '*current-regime*))
+          (update-best-strategy-for-regime *current-regime*))
+        
+        ;; 4. REVIEW FIX: Periodic save of meta-learning state (every 30 min = 1800 cycles)
+        (when (and (zerop (mod *learning-cycle* 1800))
+                   (fboundp 'save-meta-learning))
+          (save-meta-learning)))
+    (error (e)
+      (format t "[E] Meta-learning step error: ~a~%" e))))
+
+(defun on-regime-change (old-regime new-regime)
+  "Naval improvement: Handle regime change with strategy auto-switch"
+  (format t "~%[M] 🔄 REGIME CHANGE: ~a → ~a~%" old-regime new-regime)
+  
+  ;; 1. Get best strategy for new regime
+  (let ((best-strategy (when (fboundp 'get-best-strategy-for-regime)
+                         (get-best-strategy-for-regime new-regime))))
+    (when best-strategy
+      (format t "[M] ✨ Auto-switching to: ~a~%" best-strategy)
+      
+      ;; 2. Generate new regime-appropriate strategy
+      (when (fboundp 'auto-generate-strategy-for-regime)
+        (let ((new-strat (auto-generate-strategy-for-regime)))
+          (when new-strat
+            (format t "[M] 🎯 Generated backup: ~a~%" (strategy-name new-strat))
+            (when (and (boundp '*evolved-strategies*) (listp *evolved-strategies*))
+              (push new-strat *evolved-strategies*)))))
+      
+      ;; 3. Discord notification
+      (when (fboundp 'notify-discord)
+        (notify-discord
+         (format nil "🔄 **Regime Change**~%~a → ~a~%Best: ~a"
+                 old-regime new-regime best-strategy)
+         :color 16776960))))  ; Yellow
+  
+  ;; 4. Trigger transfer learning update
+  (when (fboundp 'extract-learned-patterns)
+    (dolist (symbol '("USDJPY" "EURUSD" "GBPUSD"))
+      (handler-case
+          (extract-learned-patterns symbol)
+        (error () nil)))))
+
 
 ;; ===== FITNESS FUNCTIONS =====
 

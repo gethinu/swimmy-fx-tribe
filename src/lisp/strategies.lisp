@@ -400,5 +400,45 @@
 ;; Auto-initialize
 (init-knowledge-base)
 
+;;; ==========================================
+;;; V7.9++: INDICATOR TYPE INFERENCE (Sharpe=-3.75 Bug Fix)
+;;; Infer indicator_type from strategy indicators for correct backtesting
+;;; ==========================================
+
+(defun infer-indicator-type (strategy)
+  "Infer the primary indicator type from strategy indicators.
+   This fixes the Sharpe=-3.75 bug where all strategies defaulted to SMA."
+  (let* ((indicators (strategy-indicators strategy))
+         (first-indicator (first indicators))
+         (indicator-name (when first-indicator 
+                           (string-downcase (symbol-name (first first-indicator))))))
+    (cond
+      ;; MACD strategies
+      ((and indicator-name (search "macd" indicator-name)) "macd")
+      ;; RSI strategies (including elder, momentum)
+      ((and indicator-name (search "rsi" indicator-name)) "rsi")
+      ;; Stochastic strategies
+      ((and indicator-name (search "stoch" indicator-name)) "stoch")
+      ;; Bollinger Band strategies
+      ((and indicator-name (search "bb" indicator-name)) "bb")
+      ;; EMA strategies
+      ((and indicator-name (search "ema" indicator-name)) "ema")
+      ;; Default to SMA
+      (t "sma"))))
+
+(defun apply-indicator-types ()
+  "Apply inferred indicator types to all strategies in knowledge base."
+  (let ((counts (make-hash-table :test 'equal)))
+    (dolist (strat *strategy-knowledge-base*)
+      (let ((ind-type (infer-indicator-type strat)))
+        (setf (strategy-indicator-type strat) ind-type)
+        (incf (gethash ind-type counts 0))))
+    ;; Log the distribution
+    (format t "[STRATEGIES] Indicator types assigned:~%")
+    (maphash (lambda (k v) (format t "  ~a: ~a strategies~%" k v)) counts)))
+
+;; Apply indicator types after initialization
+(apply-indicator-types)
+
 (format t "[STRATEGIES] ~d strategies loaded from Knowledge Base~%" 
         (length *strategy-knowledge-base*))

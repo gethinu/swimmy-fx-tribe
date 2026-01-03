@@ -854,13 +854,15 @@
                   :atr-percentile (getf ctx :atr-percentile)
                   :pnl pnl
                   :hold-time hold-time
-                  :hit-sl-or-tp hit)))
+                  :hit-sl-or-tp hit))
+         (regime (getf ctx :regime))
+         (won-p (> pnl 0)))
     (if (< pnl 0)
         (progn
           (push record *failure-log*)
           (when (> (length *failure-log*) *max-log-size*)
             (setf *failure-log* (subseq *failure-log* 0 *max-log-size*)))
-          (format t "[L] � FAILURE: ~a | ~a ~a | RSI:~,0f | Session:~a | Prob:~,1f%~%"
+          (format t "[L] 📉 FAILURE: ~a | ~a ~a | RSI:~,0f | Session:~a | Prob:~,1f%~%"
                   strategy-name direction (getf ctx :regime) 
                   (getf ctx :rsi-value) (getf ctx :session)
                   (* 100 (calculate-failure-confidence symbol direction category))))
@@ -870,7 +872,29 @@
             (setf *success-log* (subseq *success-log* 0 *max-log-size*)))
           (format t "[L] ✅ SUCCESS: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
                   strategy-name direction (getf ctx :regime)
-                  (getf ctx :rsi-value) (getf ctx :session))))))
+                  (getf ctx :rsi-value) (getf ctx :session))))
+    
+    ;; ═══════════════════════════════════════════════════════════
+    ;; ADVISOR HOMEWORK INTEGRATION HOOKS
+    ;; ═══════════════════════════════════════════════════════════
+    
+    ;; Naval: Meta-learning - record regime-strategy result
+    (handler-case
+        (when (fboundp 'on-trade-close-meta)
+          (on-trade-close-meta regime strategy-name won-p pnl))
+      (error (e) (format t "[H] Meta-learning hook error: ~a~%" e)))
+    
+    ;; Naval: 3-month proof tracking
+    (handler-case
+        (when (fboundp 'record-proof-trade)
+          (record-proof-trade pnl))
+      (error (e) (format t "[H] Proof tracking hook error: ~a~%" e)))
+    
+    ;; Template performance tracking (if strategy came from template)
+    (handler-case
+        (when (and (fboundp 'record-template-result) category)
+          (record-template-result category won-p 0.0))  ;; Sharpe calculated separately
+      (error (e) (format t "[H] Template hook error: ~a~%" e)))))
 
 ;; Legacy compatibility wrapper
 (defun record-failure (symbol direction category strategy-name pnl)
@@ -2374,8 +2398,10 @@
         return i))
 
 (defun execute-category-trade (category direction symbol bid ask)
-  (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
-  (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
+  (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
+  (format t "[TRACE] Conditions: numberp-bid=~a numberp-ask=~a exposure-ok=~a~%" (numberp bid) (numberp ask) (total-exposure-allowed-p))
+  (handler-case
+    (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
     (let* ((strategies (gethash category *active-team*))
            (lead-strat (first strategies))
            (lead-name (when lead-strat (strategy-name lead-strat)))
@@ -2487,6 +2513,7 @@
                     ;; Execute trade with unique Magic Number
                     (let* ((magic (get-warrior-magic category slot-index))
                            (key (format nil "~a-~d" category slot-index)))
+                      (format t "[TRACE] Slot found: ~d Magic: ~d Direction: ~a (eq :buy? ~a)~%" slot-index magic direction (eq direction :buy))
                       (cond
                         ((eq direction :buy)
                          (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
@@ -2497,22 +2524,25 @@
                                          :swarm-cons swarm-consensus
                                          :parallel-score 2
                                          :elder-ok (not (should-block-trade-p symbol :buy)))
-                           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "BUY") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
-                           (setf (gethash key *warrior-allocation*) 
-                                 (list :symbol symbol :category category :direction :long :entry bid :magic magic :lot lot :start-time (get-universal-time)))
-                           (update-symbol-exposure symbol lot :open)
-                           (incf *category-trades*)
-                           (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)))
+                           ;; USE SAFE-ORDER for centralized risk check
+                           (when (safe-order "BUY" symbol lot sl tp magic)
+                             (setf (gethash key *warrior-allocation*) 
+                                   (list :symbol symbol :category category :direction :long :entry bid :magic magic :lot lot :start-time (get-universal-time)))
+                             (update-symbol-exposure symbol lot :open)
+                             (incf *category-trades*)
+                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic))))
                         ((eq direction :sell)
                          (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "SELL") ("symbol" symbol) ("volume" lot) ("sl" sl) ("tp" tp) ("magic" magic))))
-                           (setf (gethash key *warrior-allocation*) 
-                                 (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
-                           (update-symbol-exposure symbol lot :open)
-                           (incf *category-trades*)
-                            (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)))))
+                           ;; USE SAFE-ORDER for centralized risk check
+                           (when (safe-order "SELL" symbol lot sl tp magic)
+                             (setf (gethash key *warrior-allocation*) 
+                                   (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
+                             (update-symbol-exposure symbol lot :open)
+                             (incf *category-trades*)
+                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic))))))
                     ;; Clan is full (4/4 warriors deployed)
-                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category))))))))))
+                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)))))))))
+    (error (e) (format t "[TRACE] 🚨 ERROR in execute-category-trade: ~a~%" e))))
 
 ;; Track entry prices for each category
 (defparameter *category-entries* (make-hash-table :test 'eq))

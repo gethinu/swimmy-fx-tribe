@@ -15,11 +15,12 @@ LOG_FILE="$LOG_DIR/log_$(date +%Y%m%d_%H%M%S).txt"
 mkdir -p "$LOG_DIR"
 echo "📝 Logging to: $LOG_FILE"
 
-# 1. Kill old
+# 1. Kill old processes (force kill to ensure ports are released)
 echo "💀 Killing old processes..."
-pkill -f "guardian"
-pkill -f "sbcl"
-pkill -f "discord_bot.py"
+pkill -9 -f "guardian" 2>/dev/null
+pkill -9 -f "sbcl" 2>/dev/null
+pkill -9 -f "discord_bot.py" 2>/dev/null
+sleep 2  # Wait for ports to be released
 
 # 2. Discord Bot (Python - for mobile interaction)
 echo "🤖 Starting Discord Bot..."

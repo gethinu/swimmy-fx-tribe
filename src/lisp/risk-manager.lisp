@@ -57,11 +57,51 @@
                (eq *current-volatility-state* :extreme))
       (push "EXTREME_VOLATILITY" checks)
       (setf final-lot (* final-lot 0.5)))
+      
+    ;; 9. TALEB'S GATEKEEPER (Absolute Limits)
+    (when (< final-lot 0.01)
+      (setf approved nil)
+      (push "LOT_TOO_SMALL" checks))
     
     ;; Return results
     (values approved 
             (max 0.01 (min 0.10 final-lot))
             (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
+
+(defun safe-order (action symbol lot sl tp &optional (magic 0))
+  "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks."
+  (multiple-value-bind (approved adjusted-lot reason)
+      (risk-check-all symbol action lot :standard)
+    (if approved
+        (progn
+          (log-info (format nil "RISK APPROVED: ~a ~a (Lot: ~,2f)" action symbol adjusted-lot)
+                    :data (jsown:new-js 
+                            ("type" "trade_approved")
+                            ("action" action)
+                            ("symbol" symbol)
+                            ("requested_lot" lot)
+                            ("adjusted_lot" adjusted-lot)
+                            ("reason" reason)))
+          (let ((msg (jsown:to-json 
+                       (jsown:new-js 
+                         ("action" action)
+                         ("symbol" symbol)
+                         ("volume" adjusted-lot)
+                         ("sl" sl)
+                         ("tp" tp)
+                         ("magic" magic)))))
+            (pzmq:send *cmd-publisher* msg)
+            t))
+        (progn
+          (log-warn (format nil "RISK DENIED: ~a ~a Reason: ~a" action symbol reason)
+                    :data (jsown:new-js 
+                            ("type" "trade_denied")
+                            ("action" action)
+                            ("symbol" symbol)
+                            ("requested_lot" lot)
+                            ("reason" reason)))
+          (notify-discord (format nil "🛡️ Risk Manager Denied: ~a ~a (~a)" action symbol reason) :color 15158332)
+          nil))))
 
 (defun get-risk-summary ()
   "Get current risk state summary for monitoring"

@@ -297,8 +297,12 @@ Respond with JSON only, no explanation.
 
 (defun llm-enhanced-decision (symbol analysis context)
   "Generate LLM-enhanced trading decision.
-   Combines Papers #5, #14, #28, #24."
-  (let* (;; Match expert sketch
+   Combines Papers #5, #14, #28, #24.
+   V7.9++: Uses compress-for-llm before processing (Graham Agent Skills)."
+  (let* (;; V7.9++ Graham: Compress context before LLM processing
+         (compressed-context (if (fboundp 'compress-for-llm)
+                                 (funcall 'compress-for-llm context :trades)
+                                 context))
          (sketch (match-expert-sketch context))
          ;; Determine base direction from analysis
          (dual-trend (getf analysis :dual-trend))
