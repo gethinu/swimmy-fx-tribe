@@ -5,7 +5,7 @@
 ;;; Note: Swimmy is single-threaded, no locking needed
 
 ;;; Queue storage
-(defparameter *discord-queue* nil
+(defvar *discord-queue* nil
   "Queue of pending Discord notifications")
 
 (defparameter *discord-flush-interval* 3

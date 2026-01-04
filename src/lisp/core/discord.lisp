@@ -15,7 +15,8 @@
 
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
   "Symbol-specific channel - async"
-  (let ((webhook (or (gethash symbol *symbol-webhooks*) *discord-webhook-url*)))
+  (let* ((looked-up (gethash symbol *symbol-webhooks*))
+         (webhook (or looked-up *discord-webhook-url*)))
     (when (and webhook msg (not (equal msg "NIL")))
       (queue-discord-notification webhook msg :color color :title (format nil "🐟 ~a" symbol)))))
 

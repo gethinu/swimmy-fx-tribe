@@ -16,6 +16,15 @@
 (defvar *monthly-goal* 100000)
 (defvar *category-trades* 0)
 
+;; Warrior System (school-danger.lisp)
+(defparameter *warrior-allocation* (make-hash-table :test 'equal) 
+  "Tracks which warrior is assigned to which trade/symbol")
+
+;; Ritual History (rituals.lisp)
+(defparameter *failure-history* nil "List of recent failures for analysis")
+(defparameter *win-rate-history* nil "Historical win rates")
+(defparameter *max-win-rate-history* 100 "Max size of win rate history")
+
 ;; Tribe signal integration
 (defvar *tribe-direction* :hold "Current tribe consensus direction")
 (defvar *tribe-consensus* 0.0 "Current tribe consensus strength")

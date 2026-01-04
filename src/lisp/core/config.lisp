@@ -46,6 +46,8 @@
 (setf (gethash "GBPUSD" *symbol-webhooks*) 
       (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
 
+
+
 ;;; ==========================================
 ;;; STATE & BUFFERS
 ;;; ==========================================

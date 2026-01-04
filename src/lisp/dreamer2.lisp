@@ -74,6 +74,15 @@
         (nth (random (length matching)) matching)
         (nth (random (length *strategy-templates*)) *strategy-templates*))))
 
+(defun fill-template-params (template params)
+  "Fill parameter placeholders in template with actual values"
+  (if (atom template)
+      (let ((param-entry (assoc template params)))
+        (if param-entry
+            (floor (second param-entry))
+            template))
+      (mapcar (lambda (x) (fill-template-params x params)) template)))
+
 (defun generate-strategy-from-template (template-name &optional custom-params)
   "Generate a concrete strategy from a template with randomized or custom parameters"
   (let ((template (assoc template-name *strategy-templates*)))
@@ -111,14 +120,7 @@
                (t 0.4))
          :volume 0.01)))))
 
-(defun fill-template-params (template params)
-  "Fill parameter placeholders in template with actual values"
-  (if (atom template)
-      (let ((param-entry (assoc template params)))
-        (if param-entry
-            (floor (second param-entry))
-            template))
-      (mapcar (lambda (x) (fill-template-params x params)) template)))
+
 
 (defun auto-generate-strategy-for-regime ()
   "Automatically generate a strategy optimized for current regime"
@@ -574,6 +576,9 @@ Output ONLY the s-expression. No markdown or explanation."
                 (if valid
                     (progn
                       (format t "[L] ✅ Valid strategy!~%")
+                      ;; V6.13: Always notify ALL symbol channels
+                      ;; V6.14: Centralized Genome Notification (Alerts Channel)
+                      (notify-discord-alert (format nil "🧬 CODE: ~a" (subseq code 0 (min 100 (length code)))) :color 65535)
                       ;; Check for clones if we have existing strategies
                       (if (and *evolved-strategies* (> (length *evolved-strategies*) 0))
                           (progn
@@ -583,9 +588,8 @@ Output ONLY the s-expression. No markdown or explanation."
                           (progn
                             (push result *evolved-strategies*)
                             (when (and *candle-history* (> (length *candle-history*) 50))
-                              (request-backtest result))
-                            (notify-discord (format nil "🧬 CODE: ~a" (subseq code 0 (min 100 (length code)))) :color 65535)))))
-                    (format t "[L] ❌ Invalid code~%"))))))))
+                              (request-backtest result)))))
+                    (format t "[L] ❌ Invalid code~%")))))))))
 
 
 ;; Store pending strategy for clone check result

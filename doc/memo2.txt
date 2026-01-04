@@ -1,33 +1,150 @@
-backtest bot
-アプリ
- — 23:342026年1月3日 土曜日 23:34
-これは「@silent」のメッセージです。
- Backtest Summary (V6.9)nnTREND (Total: 28 | Pass: 2 | Avg Sharpe: -2.07)n Top 5:n 1. Death-Cross-50-200 (S: 15.65)n 2. Golden-Cross-50-200 (S: 15.65)n 3. Double-Bollinger-Trend (S: -0.17)n 4. Bollinger-Band-Walk (S: -0.17)n 5. BB-Upper-Rejection (S: -0.17)n Worst 5:n 1. Trend-Pullback-Entry (S: -8.24)n 2. Silver-Cross-20-100 (S: -8.12)n 3. Conservative-Trend (S: -5.27)n 4. Sweet-Chariot-SMA-40 (S: -4.93)n 5. TF-10-50 (S: -4.80)nnREVERSION (Total: 20 | Pass: 10 | Avg Sharpe: 0.86)n Top 5:n 1. RSI-Bull-Zone (S: 4.57)n 2. RSI-Volatility-Break (S: 2.82)n 3. RSI-Stoch-Reversal (S: 2.82)n 4. RSI-2-Period-Connors (S: 2.82)n 5. RSI-Overbought-Reversal (S: 2.82)n Worst 5:n 1. MACD-RSI-Confluence (S: -2.79)n 2. Stoch-Extreme-Dip (S: -1.82)n 3. Stoch-Pop (S: -1.82)n 4. Stoch-Oversold-Entry (S: -1.78)n 5. Stoch-Overbought-Entry (S: -1.78)nnBREAKOUT (Total: 9 | Pass: 0 | Avg Sharpe: -2.19)n Top 5:n 1. BB-Squeeze-Expansion (S: -0.17)n 2. BB-Breakout-Lower (S: -0.17)n 3. BB-Breakout-Upper (S: -0.17)n 4. Session-Breakout-Proxy (S: -2.83)n 5. CCI-Trend-Breakout (S: -2.90)n Worst 5:n 1. ATR-Confirmed-Breakout (S: -4.77)n 2. Volatility-Trend-Follow (S: -2.91)n 3. Low-Vol-Breakout (S: -2.91)n 4. Pullback-Breakout (S: -2.91)n 5. CCI-Trend-Breakout (S: -2.90)nnSCALP (Total: 4 | Pass: 0 | Avg Sharpe: -2.50)n Top 5:n 1. MA-Ribbon-Scalp (S: -2.22)n 2. Fibonacci-EMA-Scalp (S: -2.23)n 3. Scalp-Cross-5-12 (S: -2.69)n 4. Trend-Scalp-1M (S: -2.86)nn Only showing Top/Worst to reduce spam.
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[23:40]2026年1月3日 土曜日 23:40
- Backtest Summary (V6.9)nnTREND (Total: 28 | Pass: 2 | Avg Sharpe: -2.07)n Top 5:n 1. Death-Cross-50-200 (S: 15.65)n 2. Golden-Cross-50-200 (S: 15.65)n 3. Double-Bollinger-Trend (S: -0.17)n 4. Bollinger-Band-Walk (S: -0.17)n 5. BB-Upper-Rejection (S: -0.17)n Worst 5:n 1. Trend-Pullback-Entry (S: -8.24)n 2. Silver-Cross-20-100 (S: -8.12)n 3. Conservative-Trend (S: -5.27)n 4. Sweet-Chariot-SMA-40 (S: -4.93)n 5. TF-10-50 (S: -4.80)nnREVERSION (Total: 20 | Pass: 10 | Avg Sharpe: 0.86)n Top 5:n 1. RSI-Bull-Zone (S: 4.57)n 2. RSI-Volatility-Break (S: 2.82)n 3. RSI-Stoch-Reversal (S: 2.82)n 4. RSI-2-Period-Connors (S: 2.82)n 5. RSI-Overbought-Reversal (S: 2.82)n Worst 5:n 1. MACD-RSI-Confluence (S: -2.79)n 2. Stoch-Extreme-Dip (S: -1.82)n 3. Stoch-Pop (S: -1.82)n 4. Stoch-Oversold-Entry (S: -1.78)n 5. Stoch-Overbought-Entry (S: -1.78)nnBREAKOUT (Total: 9 | Pass: 0 | Avg Sharpe: -2.19)n Top 5:n 1. BB-Squeeze-Expansion (S: -0.17)n 2. BB-Breakout-Lower (S: -0.17)n 3. BB-Breakout-Upper (S: -0.17)n 4. Session-Breakout-Proxy (S: -2.83)n 5. CCI-Trend-Breakout (S: -2.90)n Worst 5:n 1. ATR-Confirmed-Breakout (S: -4.77)n 2. Volatility-Trend-Follow (S: -2.91)n 3. Low-Vol-Breakout (S: -2.91)n 4. Pullback-Breakout (S: -2.91)n 5. CCI-Trend-Breakout (S: -2.90)nnSCALP (Total: 4 | Pass: 0 | Avg Sharpe: -2.50)n Top 5:n 1. MA-Ribbon-Scalp (S: -2.22)n 2. Fibonacci-EMA-Scalp (S: -2.23)n 3. Scalp-Cross-5-12 (S: -2.69)n 4. Trend-Scalp-1M (S: -2.86)nn Only showing Top/Worst to reduce spam.
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
+source /home/swimmy/swimmy/.venv/bin/activate
+swimmy@SERV870:~/swimmy$ source /home/swimmy/swimmy/.venv/bin/activate
+(.venv) swimmy@SERV870:~/swimmy$ swim
+📝 Logging to: /home/swimmy/swimmy/doc/logs/log_20260104_170306.txt
+💀 Killing old processes...
+🤖 Starting Discord Bot...
+🐟 Starting Swimmy Discord Bot...
+📁 Status file: /home/swimmy/swimmy/.opus/live_status.json
+2026-01-04 17:03:08 INFO     discord.client logging in using static token
+🦀 Starting Guardian...
+⏳ Waiting for Guardian (2 sec)...
+🦀 Guardian (Full Duplex + Backtester + Neural Net) is activating...
+🔌 Binding Market Data: tcp://*:5557
+🧠 Connected to Brain Sensory Nerve (PUSH 5555)
+👂 Listening to Brain Motor Nerve (SUB 5556)
+👂 Listening for External Commands on port 5559
+👊 Ready to punch commands to MT5 on port 5560
+🧠 Neural Network: READY
+🚀 System All Green. Loop Start.
+2026-01-04 17:03:09 INFO     discord.gateway Shard ID None has connected to Gateway (Session ID: b35707c8e08e8257c2f8cf88a142ce4e).
+🧠 Starting Brain (Hyper-Evolution)...
+🐟 Swimmy Bot connected as Swimmy-Bot#5023
+🌐 Serving 1 guild(s)
+To load "pzmq":
+  Load 1 ASDF system:
+    pzmq
+; Loading "pzmq"
 
-backtest bot
-アプリ
- — 23:422026年1月3日 土曜日 23:42
-これは「@silent」のメッセージです。
- Backtest Summary (V6.9)nnTREND (Total: 28 | Pass: 2 | Avg Sharpe: -2.07)n Top 5:n 1. Death-Cross-50-200 (S: 15.65)n 2. Golden-Cross-50-200 (S: 15.65)n 3. Double-Bollinger-Trend (S: -0.17)n 4. Bollinger-Band-Walk (S: -0.17)n 5. BB-Upper-Rejection (S: -0.17)n Worst 5:n 1. Trend-Pullback-Entry (S: -8.24)n 2. Silver-Cross-20-100 (S: -8.12)n 3. Conservative-Trend (S: -5.27)n 4. Sweet-Chariot-SMA-40 (S: -4.93)n 5. TF-10-50 (S: -4.80)nnREVERSION (Total: 20 | Pass: 10 | Avg Sharpe: 0.86)n Top 5:n 1. RSI-Bull-Zone (S: 4.57)n 2. RSI-Volatility-Break (S: 2.82)n 3. RSI-Stoch-Reversal (S: 2.82)n 4. RSI-2-Period-Connors (S: 2.82)n 5. RSI-Overbought-Reversal (S: 2.82)n Worst 5:n 1. MACD-RSI-Confluence (S: -2.79)n 2. Stoch-Extreme-Dip (S: -1.82)n 3. Stoch-Pop (S: -1.82)n 4. Stoch-Oversold-Entry (S: -1.78)n 5. Stoch-Overbought-Entry (S: -1.78)nnBREAKOUT (Total: 9 | Pass: 0 | Avg Sharpe: -2.19)n Top 5:n 1. BB-Squeeze-Expansion (S: -0.17)n 2. BB-Breakout-Lower (S: -0.17)n 3. BB-Breakout-Upper (S: -0.17)n 4. Session-Breakout-Proxy (S: -2.83)n 5. CCI-Trend-Breakout (S: -2.90)n Worst 5:n 1. ATR-Confirmed-Breakout (S: -4.77)n 2. Volatility-Trend-Follow (S: -2.91)n 3. Low-Vol-Breakout (S: -2.91)n 4. Pullback-Breakout (S: -2.91)n 5. CCI-Trend-Breakout (S: -2.90)nnSCALP (Total: 4 | Pass: 0 | Avg Sharpe: -2.50)n Top 5:n 1. MA-Ribbon-Scalp (S: -2.22)n 2. Fibonacci-EMA-Scalp (S: -2.23)n 3. Scalp-Cross-5-12 (S: -2.69)n 4. Trend-Scalp-1M (S: -2.86)nn Only showing Top/Worst to reduce spam.
+To load "jsown":
+  Load 1 ASDF system:
+    jsown
+; Loading "jsown"
+
+To load "dexador":
+  Load 1 ASDF system:
+    dexador
+; Loading "dexador"
+.....
+[L] ⚙️ core/config.lisp loaded - System configuration
+[DSL] Kalman Filter loaded (ArXiv:1808.03297)
+[DSL] Loaded with CCI support
+[DSL] Advanced Macros loaded (PG-style)
+[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)
+[VS] Verbalized Sampling loaded (ArXiv:2510.01171)
+[L] 📚 Knowledge base loaded: 61 strategies
+[STRATEGIES] Indicator types assigned:
+  sma: 15 strategies
+  ema: 15 strategies
+  macd: 6 strategies
+  rsi: 10 strategies
+  bb: 10 strategies
+  stoch: 5 strategies
+[STRATEGIES] 61 strategies loaded from Knowledge Base
+[L] 📦 school-state.lisp loaded - Shared state initialized
+[L] 🕐 Strategy TTL system enabled (max TTL: 7 days, min WR: 35.0%)
+[L] 🗜️ Context Compression enabled (Graham Agent Skills)
+[L] 🧠 Memory Systems enabled (Episodic + Semantic)
+[L] 🤝 Multi-Agent Patterns enabled (Blackboard + Voting)
+[L] 🦈 school-danger.lisp loaded - Danger Avoidance System active
+[L] 🏳️ school-resignation.lisp loaded - Resignation Judgment active
+[SCHOOL] Swimmy School ready
+[FORTRESS] V6.1 features loaded (Paranoia + Japan Edge + Auto-Prune)
+[L] 🪵 logger.lisp loaded - Structured logging active
+[MIXSEEK] Competition System loaded
+[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders
+[RESEARCH] #13 Dual Trend Decomposition loaded
+[RESEARCH] #17 Volatility-Based Model Switch loaded
+[RESEARCH] #18 Volatility-Scaled Rewards loaded
+[RESEARCH] #16 Kalman+HMM Regime Detection loaded
+[RESEARCH] #11 Latent Parameter Estimation loaded
+[RESEARCH] #10/#27 Ensemble & Normalization loaded
+[RESEARCH] #4 Implementation Quality Checks loaded
+[RESEARCH] #9 Zero-Shot Caution loaded
+
+[RESEARCH] ════════════════════════════════════════════
+[RESEARCH] 📚 29 Research Paper Insights Integrated
+[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28...
+[RESEARCH] ════════════════════════════════════════════
+[LLM] #5 Trading-R1 Reasoning Structure loaded
+[LLM] #14 Text Feature Extraction loaded
+[LLM] #28 FinLlama Sentiment Integration loaded
+[LLM] #24 Logic-Guided DSL Extension loaded
+
+[LLM] ════════════════════════════════════════════
+[LLM] 🧠 LLM Integration Preparation Complete
+[LLM] Papers: #5 Trading-R1, #14 PrimoGPT, #28 FinLlama, #24 SYENS
+[LLM] ════════════════════════════════════════════
+[EVOLUTION] Continuous evolution system loaded
+[ERRORS] Comprehensive error handling loaded
+[QUALITY] Code quality tools loaded
+[QUALITY] Run (swimmy-quality:analyze-code-quality) for analysis
+[REPL] Swimmy REPL interface loaded
+[REPL] Type (swimmy :help) for commands
+[TESTS] Test framework loaded (V6.18 - Enhanced)
+[TESTS] Run (swimmy-tests:run-all-tests) to execute 17 tests
+[L] ✅ Discord Async Queue loaded (V41.3)
+[L] 💬 core/discord.lisp loaded - Discord notifications consolidated
+
+[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS (Refactored)
+[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders
+[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect
+
+[L] ═══════════════════════════════════════
+[L] 🌅 MORNING RITUAL - The Clans Gather
+[L] ═══════════════════════════════════════
+
+[L] 📜 CONSTITUTION RECITATION:
+[L] 「勝とうとするな。ただ、生き残れ。
+[L]  そうすれば、最後に立っているのは我々だ。」
+
+[L] 📜 CONSTITUTION INITIALIZED (v1.0)
+[L] 📜 5 Core Values loaded
+[L] 📚 Loading Tribal Dialect...
+[L] 📚 4 patterns defined
+[L] 🏛️ THE FOUR GREAT CLANS STAND READY:
+
+[L] 🏹 Hunters (追跡者)「風が吹いている」
+[L] 🔮 Shamans (呪術師)「高すぎるものは落ちる」
+[L] ⚔️ Breakers (破壊者)「壁は壊された」
+[L] 🗡️ Raiders (盗賊)「隙あり」
+
+[L] 🎯 TODAY'S MISSION: 月間目標 ¥10,000 への道
+[L] 📈 現在の累積PnL: ¥0 / 目標 ¥10,000 (0.0%)
+[L] 📊 LEARNING SUMMARY: Overall win rate: 50.0% (0 wins, 0 losses). Top failure patterns: 
+[L] 🕐 HOUR PATTERNS: #<HASH-TABLE :TEST EQL :COUNT 0 {1004456383}>
+[L] 🐟 SWARM ACCURACY: 0.5
+
+[L] ═══════════════════════════════════════
+[L] 💰 CLAN TREASURIES
+[L] ═══════════════════════════════════════
+[L] 🏹 Hunters: ¥0
+[L] 🔮 Shamans: ¥0
+[L] ⚔️ Breakers: ¥0
+[L] 🗡️ Raiders: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 💭 DREAMER: Generating new strategy...
+
+[L] ☁️ Dreaming CODE with Self-Analysis v2.0... 
+[L] 📝 Generated: (defstrategy "ZEPHYR" :indicators ((sma 5) (sma 60)) :entry (cross-above sma-5 s
+[L] ✅ Valid strategy!
+[L] ═══════════════════════════════════════
+
+[L] 📚 Strategies: 61 knowledge base + 1 evolved
+[L] ⚙️ Daily Limit: -500 | Max Losses: 3
+[L] 🧹 Closing all existing positions...
+🧠 BRAIN ACTION: {"action":"CLOSE","symbol":"USDJPY","close_all":true}
+🧠 BRAIN ACTION: {"action":"CLOSE","symbol":"EURUSD","close_all":true}
+🧠 BRAIN ACTION: {"action":"CLOSE","symbol":"GBPUSD","close_all":true}
+[L] 📊 Requesting history for all symbols...
