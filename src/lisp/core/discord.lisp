@@ -90,7 +90,7 @@
   "Compile and send categorized backtest summary to Discord"
   (let ((results (copy-list *backtest-results-buffer*))
         (categories '(:trend :reversion :breakout :scalp))
-        (summary-msg "📊 **Backtest Summary (V6.9)**\n"))
+        (summary-msg (format nil "📊 **Backtest Summary (V6.9)**~%")))
     
     (dolist (cat categories)
       (let* ((cat-results (remove-if-not 
@@ -106,26 +106,26 @@
         
         (when (> total 0)
           (setf summary-msg (concatenate 'string summary-msg 
-                                         (format nil "\n**~a** (Total: ~d | Pass: ~d | Avg Sharpe: ~,2f)\n" 
+                                         (format nil "~%**~a** (Total: ~d | Pass: ~d | Avg Sharpe: ~,2f)~%" 
                                                  cat total passed avg-sharpe)))
           
           ;; Top 5
-          (setf summary-msg (concatenate 'string summary-msg "  Top 5:\n"))
+          (setf summary-msg (concatenate 'string summary-msg (format nil "  Top 5:~%")))
           (loop for i from 0 below (min 5 (length sorted))
                 for res = (nth i sorted)
                 do (setf summary-msg (concatenate 'string summary-msg 
-                                                  (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe)))))
+                                                  (format nil "    ~d. ~a (S: ~,2f)~%" (1+ i) (car res) (getf (cdr res) :sharpe)))))
           
           ;; Worst 5 (if enough results)
           (when (> total 5)
-            (setf summary-msg (concatenate 'string summary-msg "  Worst 5:\n"))
+            (setf summary-msg (concatenate 'string summary-msg (format nil "  Worst 5:~%")))
             (let ((worst (reverse sorted)))
               (loop for i from 0 below (min 5 (length worst))
                     for res = (nth i worst)
                     do (setf summary-msg (concatenate 'string summary-msg 
-                                                      (format nil "    ~d. ~a (S: ~,2f)\n" (1+ i) (car res) (getf (cdr res) :sharpe))))))))))
+                                                      (format nil "    ~d. ~a (S: ~,2f)~%" (1+ i) (car res) (getf (cdr res) :sharpe))))))))))
     
-    (setf summary-msg (concatenate 'string summary-msg "\n🔍 Only showing Top/Worst to reduce spam."))
+    (setf summary-msg (concatenate 'string summary-msg (format nil "~%🔍 Only showing Top/Worst to reduce spam.")))
     (notify-discord-backtest summary-msg :color 5763719)
     
     ;; Clear buffer
@@ -138,10 +138,10 @@
          (last-time (gethash symbol *last-status-notification-time* 0)))
     (when (> (- now last-time) *status-notification-interval*)
       (let ((tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
-            (tribe-con (if (boundp '*tribe-consensus*) *tribe-consensus* 0.0))
-            (swarm-con (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
+            (tribe-con (if (and (boundp '*tribe-consensus*) *tribe-consensus*) *tribe-consensus* 0.0))
+            (swarm-con (if (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) *last-swarm-consensus* 0.0))
             (pred (if (boundp '*last-prediction*) *last-prediction* "N/A"))
-            (conf (if (boundp '*last-confidence*) *last-confidence* 0.0))
+            (conf (if (and (boundp '*last-confidence*) *last-confidence*) *last-confidence* 0.0))
             (danger (if (boundp '*danger-level*) *danger-level* 0))
             (active-warriors (if (boundp '*warrior-allocation*) 
                                  (hash-table-count *warrior-allocation*) 0)))

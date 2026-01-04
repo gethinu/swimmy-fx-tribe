@@ -353,10 +353,10 @@ Sharpe   : ~,2f
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))
                   (name (jsown:val result "strategy_name"))
-                  (sharpe (jsown:val result "sharpe"))
-                  (trades (jsown:val result "trades"))
-                  (pnl (jsown:val result "pnl"))
-                  (win-rate (handler-case (jsown:val result "win_rate") (error () 0))))
+                  (sharpe (or (handler-case (jsown:val result "sharpe") (error () 0.0)) 0.0))
+                  (trades (or (handler-case (jsown:val result "trades") (error () 0)) 0))
+                  (pnl (or (handler-case (jsown:val result "pnl") (error () 0.0)) 0.0))
+                  (win-rate (or (handler-case (jsown:val result "win_rate") (error () 0.0)) 0.0)))
              
              ;; V6.8: Buffer results instead of spamming
              (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
