@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.school)
 
 ;;; ==========================================
 ;;; SWIMMY CORE: GOVERNANCE (governance.lisp)

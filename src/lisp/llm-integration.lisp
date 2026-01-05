@@ -1,5 +1,7 @@
 ;; llm-integration.lisp - LLM Integration Preparation
 ;;
+
+(in-package :swimmy.core)
 ;; 論文知見: Phase 4 LLM統合準備
 ;; Based on Papers: #5 Trading-R1, #14 PrimoGPT, #28 FinLlama
 ;;

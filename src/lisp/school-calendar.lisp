@@ -1,4 +1,6 @@
 ;; school-calendar.lisp - Economic Calendar Integration
+
+(in-package :swimmy.school)
 ;; V6.21: Trading Expert requirement for 10/10 rating
 ;; Tracks major economic events and adjusts trading before announcements
 

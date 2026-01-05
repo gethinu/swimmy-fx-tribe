@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.core)
 
 ;; core/config.lisp - Extracted Configuration (Naval's Strangler Fig)
 ;; V41.4: First step of brain.lisp refactoring
@@ -100,8 +100,9 @@
 (defparameter *max-dd-percent* 20
   "Maximum drawdown percentage before warning")
 
+
 (defparameter *daily-loss-limit* -500
-  "Daily loss limit in yen")
+  "Daily loss limit in yen (Updated by goals/risk)")
 
 (defparameter *max-streak-losses* 3
   "Max consecutive losses before caution")
@@ -127,7 +128,7 @@
 (defparameter *risk-tolerance* :moderate
   "Risk level: :conservative, :moderate, :aggressive")
 
-(defparameter *daily-risk-limit* nil)
+;; *daily-risk-limit* removed - use *daily-loss-limit* instead
 (defparameter *daily-pnl* 0.0)
 (defparameter *total-trades* 0)
 (defparameter *benched-arms* nil)

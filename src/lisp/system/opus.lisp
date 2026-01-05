@@ -1,5 +1,6 @@
 ;;; src/lisp/system/opus.lisp
 ;;; OPUS INTEGRATION: LOG ANALYSIS & KNOWLEDGE BASE
+(in-package :swimmy.main)
 ;;; ==========================================
 ;;; Enables continuous AI partnership with automatic log analysis
 ;;; and knowledge base management.

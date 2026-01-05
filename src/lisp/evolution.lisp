@@ -1,4 +1,6 @@
 ;; evolution.lisp - Continuous Evolution Loop
+
+(in-package :swimmy.school)
 ;; AlphaZero-style self-improvement for Swimmy
 
 ;; ===== EVOLUTION CONTROL =====

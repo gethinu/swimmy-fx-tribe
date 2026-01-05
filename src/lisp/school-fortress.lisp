@@ -1,4 +1,22 @@
 ;; school-fortress.lisp - Swimmy V5.5-V6.1 Fortress Features
+
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
+(in-package :swimmy.school)
+
 ;; V6.0 (Graham): Extracted from school.lisp for modularity
 ;; V6.2 (Graham): Added Gotobi, Kelly, WhyLog
 
@@ -106,25 +124,7 @@
 ;;; ══════════════════════════════════════════════════════════════════
 ;;; Trading Expert Requirement: Volatility-adjusted targets
 
-(defun calculate-atr (candles &optional (period 14))
-  "Calculate Average True Range for volatility measurement"
-  (if (or (null candles) (< (length candles) (1+ period)))
-      0.0
-      (let ((true-ranges nil))
-        (loop for i from 0 below period
-              for curr = (nth i candles)
-              for prev = (nth (1+ i) candles)
-              when (and curr prev)
-              do (let* ((high (candle-high curr))
-                        (low (candle-low curr))
-                        (prev-close (candle-close prev))
-                        (tr (max (- high low)
-                                 (abs (- high prev-close))
-                                 (abs (- low prev-close)))))
-                   (push tr true-ranges)))
-        (if true-ranges
-            (/ (reduce #'+ true-ranges) (length true-ranges))
-            0.0))))
+;; Function calculate-atr moved to school-volatility.lisp
 
 (defun get-volatility-multiplier ()
   "Get multiplier based on current volatility state"

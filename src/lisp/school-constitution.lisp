@@ -1,18 +1,14 @@
 ;; school-constitution.lisp - The Supreme Law of Swimmy
+
+(in-package :swimmy.school)
 ;; V7.0: "The Dual Monarchy" - Lisp governs Rust
 ;; Defines the fundamental rules that cannot be broken by any strategy.
-
-(defpackage :swimmy.constitution
-  (:use :cl :jsown)
-  (:export :judge-action
-           :*max-daily-loss*
-           :*min-equity-threshold*))
-
-(in-package :swimmy.constitution)
 
 ;;; ============================================================
 ;;; CONSTITUTIONAL PARAMETERS
 ;;; ============================================================
+
+(defparameter *constitution-version* "7.9++ (Graham/Taleb Hybrid)")
 
 (defparameter *max-daily-loss-base* 50000)  ;; Base limit (1日の最大損失許容額)
 (defparameter *max-daily-loss* 50000)       ;; Dynamic limit (adjusted by volatility)

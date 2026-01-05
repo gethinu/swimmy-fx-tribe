@@ -1,4 +1,6 @@
 ;; mixseek.lisp - MixSeek-Style Competitive Multi-Agent Strategy Generation
+
+(in-package :swimmy.school)
 ;; Based on: https://note.com/drillan/n/n7379c02632c9
 ;; 
 ;; "人の褌で相撲を取る" - Standing on the shoulders of giants

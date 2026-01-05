@@ -1,5 +1,7 @@
 ;;; quality.lisp - Code Quality and Documentation Tools
 ;;; ═══════════════════════════════════════════════════════════════════
+
+(in-package :swimmy.main)
 ;;; "Programs must be written for people to read, and only incidentally
 ;;;  for machines to execute." - SICP
 ;;;

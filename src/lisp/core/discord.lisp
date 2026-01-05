@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.core)
 
 ;; core/discord.lisp - Discord Notification Functions
 ;; V41.4: Extracted from brain.lisp (Naval's Strangler Fig)

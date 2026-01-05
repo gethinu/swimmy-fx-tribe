@@ -13,7 +13,6 @@
 (defvar *category-positions* nil)
 (defvar *daily-pnl* 0)
 (defvar *accumulated-pnl* 0)
-(defvar *monthly-goal* 100000)
 (defvar *category-trades* 0)
 
 ;; Warrior System (school-danger.lisp)
@@ -21,7 +20,6 @@
   "Tracks which warrior is assigned to which trade/symbol")
 
 ;; Ritual History (rituals.lisp)
-(defparameter *failure-history* nil "List of recent failures for analysis")
 (defparameter *win-rate-history* nil "Historical win rates")
 (defparameter *max-win-rate-history* 100 "Max size of win rate history")
 

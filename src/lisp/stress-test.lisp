@@ -1,5 +1,7 @@
 ;; stress-test.lisp - Black Swan Resistance Testing
 ;; Taleb Advisor Homework #2: CHF Shock Level Stress Tests
+
+(in-package :swimmy.tests)
 ;; V1.0: Initial implementation
 
 ;;; ==========================================

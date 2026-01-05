@@ -2,6 +2,8 @@
 ;; Provides unified logging interface with JSON support
 ;; Phase 2 Step 2: Structured Logging Implementation
 
+(in-package :swimmy.core)
+
 (defparameter *log-file-path* (merge-pathnames "swimmy/logs/swimmy.json.log" (user-homedir-pathname)))
 (defparameter *enable-json-log* t)
 (defparameter *log-level* :info) ; :debug, :info, :warn, :error

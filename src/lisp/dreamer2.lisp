@@ -469,12 +469,13 @@ CURRENT MARKET: Regime=~a, Volatility=~a
 
 ;; Convert strategy to JSON for Rust backtester
 ;; V6.11: Now includes indicator_type
-(defun strategy-to-json (strat)
+;; V7.12: Updated to support name-suffix for WFV
+(defun strategy-to-json (strat &key (name-suffix ""))
   "Convert strategy struct to JSON for backtest request"
   (multiple-value-bind (sma-short sma-long) 
       (extract-sma-params (strategy-indicators strat))
     (jsown:new-js
-      ("name" (strategy-name strat))
+      ("name" (format nil "~a~a" (strategy-name strat) name-suffix))
       ("sma_short" (or sma-short 5))
       ("sma_long" (or sma-long 20))
       ("sl" (strategy-sl strat))
@@ -493,19 +494,107 @@ CURRENT MARKET: Regime=~a, Volatility=~a
                 ("h" (or (candle-high c) close))
                 ("l" (or (candle-low c) close))
                 ("c" close))))
-          (reverse (subseq history 0 (min 500 (length history))))))
+          ;; Send ALL history provided (caller must filter/slice)
+          (reverse history)))
 
 ;; Request backtest from Rust
-(defun request-backtest (strat)
+(defun request-backtest (strat &key (candles *candle-history*) (suffix ""))
   "Send strategy to Rust for high-speed backtesting"
-  (format t "[L] 📊 Requesting backtest for ~a...~%" (strategy-name strat))
+  (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d)...~%" (strategy-name strat) suffix (length candles))
   (let ((msg (jsown:to-json 
                (jsown:new-js 
                  ("action" "BACKTEST")
-                 ("strategy" (strategy-to-json strat))
-                 ("candles" (candles-to-json *candle-history*))))))
+                 ("strategy" (strategy-to-json strat :name-suffix suffix))
+                 ("candles" (candles-to-json candles))))))
     (pzmq:send *cmd-publisher* msg)
     (format t "[L] 📤 Sent ~d bytes to Rust~%" (length msg))))
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  WALK-FORWARD VALIDATION (López de Prado)
+;;; ══════════════════════════════════════════════════════════════════
+
+(defparameter *wfv-pending-strategies* (make-hash-table :test 'equal)
+  "Stores strategies currently undergoing WFV. Key: strategy-name")
+
+(defun start-walk-forward-validation (strat)
+  "Initiate OOS validation for a strategy by splitting data."
+  (unless (and *candle-history* (> (length *candle-history*) 100))
+    (format t "[L] ⚠️ Not enough data for WFV~%")
+    (return-from start-walk-forward-validation))
+
+  (let* ((len (length *candle-history*))
+         (split-idx (floor (* len 0.2))) ; Top 20% is OOS (Newest)
+         ;; *candle-history* is Newest-First.
+         ;; Index 0 to split-idx-1: Recent Data (OOS)
+         ;; Index split-idx to End: Past Data (IS)
+         (oos-candles (subseq *candle-history* 0 split-idx))
+         (is-candles (subseq *candle-history* split-idx)))
+    
+    (format t "[L] 🚦 Starting WFV for ~a. IS: ~d bars, OOS: ~d bars~%" 
+            (strategy-name strat) (length is-candles) (length oos-candles))
+            
+    ;; Register in pending table
+    (setf (gethash (strategy-name strat) *wfv-pending-strategies*) 
+          (list :is-result nil :oos-result nil :strategy strat))
+    
+    ;; Request IS Backtest
+    (request-backtest strat :candles is-candles :suffix "_IS")
+    ;; Request OOS Backtest
+    (request-backtest strat :candles oos-candles :suffix "_OOS")))
+
+(defun process-wfv-result (name-with-suffix result-map)
+  "Process returning backtest results for WFV"
+  (let* ((suffix-start (or (search "_IS" name-with-suffix :from-end t) 
+                           (search "_OOS" name-with-suffix :from-end t)))
+         (base-name (if suffix-start (subseq name-with-suffix 0 suffix-start) name-with-suffix))
+         (type (if (search "_IS" name-with-suffix) :is-result :oos-result))
+         (entry (gethash base-name *wfv-pending-strategies*)))
+    
+    (when entry
+      (setf (getf entry type) result-map)
+      (format t "[L] 📥 WFV Part Rcvd: ~a (~a) Sharpe: ~,2f~%" base-name type (getf result-map :sharpe))
+      
+      ;; Check if both parts are ready
+      (when (and (getf entry :is-result) (getf entry :oos-result))
+        (complete-wfv base-name entry)))))
+
+(defun complete-wfv (base-name entry)
+  "Compare IS and OOS performance and decide fate"
+  (let* ((is-res (getf entry :is-result))
+         (oos-res (getf entry :oos-result))
+         (is-sharpe (getf is-res :sharpe))
+         (oos-sharpe (getf oos-res :sharpe))
+         (strat (getf entry :strategy))
+         (degradation (if (> is-sharpe 0.1) 
+                          (/ (- is-sharpe oos-sharpe) is-sharpe)
+                          0.0))) ; Avoid div by zero
+    
+    (format t "[L] ⚖️ WFV VERDICT for ~a: IS=~,2f OOS=~,2f (Degradation: ~,1f%)~%"
+            base-name is-sharpe oos-sharpe (* degradation 100))
+            
+    (cond
+      ;; Scenario 1: Robust Strategy (OOS is good or at least positive)
+      ((and (> oos-sharpe 0.5) (< degradation 0.5))
+       (format t "[L] ✅ VALIDATED: ~a is robust! Promoted.~%" base-name)
+       (notify-discord-alert (format nil "Valid Strategy: ~a (OOS Sharpe: ~,2f)" base-name oos-sharpe) :color 3066993)
+       ;; Mark as validated (could set a flag on strategy struct)
+       )
+      
+      ;; Scenario 2: Overfit (Good IS, Bad OOS)
+      ((> degradation 0.7)
+       (format t "[L] 🚮 OVERFIT: ~a discarded. (Good past, bad future)~%" base-name)
+       ;; Remove from evolved strategies if present
+       (setf *evolved-strategies* 
+             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*)))
+       
+      ;; Scenario 3: Garbage (Both bad)
+      (t
+       (format t "[L] 🗑️ WEAK: ~a discarded.~%" base-name)
+       (setf *evolved-strategies* 
+             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))))
+    
+    ;; Cleanup pending
+    (remhash base-name *wfv-pending-strategies*)))
 
 ;; Clone check threshold (0.85 = 85% similar = reject, more diversity)
 (defparameter *clone-threshold* 0.85)
@@ -560,7 +649,7 @@ Format EXACTLY:
 
 Output ONLY the s-expression. No markdown or explanation."
                          self-analysis failure-summary random-seed))
-         (resp (call-gemini prompt))
+         (resp (swimmy.main:call-gemini prompt))
          (start (when resp (search "(defstrategy" resp)))
          (end (when start (find-balanced-end resp start))))
     ;; 括弧バランスチェック

@@ -1,6 +1,8 @@
 ;; test.lisp - Swimmy V5.0 Unit Tests
 ;; Run with: sbcl --script test.lisp
 
+(in-package :swimmy.tests)
+
 (load "brain.lisp" :if-does-not-exist nil)
 
 (defvar *test-passed* 0)

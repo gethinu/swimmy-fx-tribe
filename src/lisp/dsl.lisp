@@ -1,5 +1,7 @@
 ;; dsl.lisp - Strategy DSL
 
+(in-package :swimmy.school)
+
 ;; Forward declarations to suppress warnings (actual values set in brain.lisp)
 (defvar *candle-history* nil)
 (defvar *cmd-publisher* nil)

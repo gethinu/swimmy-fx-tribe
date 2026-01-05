@@ -4,6 +4,8 @@
 ;;; A second "AI" that reviews proposals before execution
 ;;; Inspired by: 2025 Multi-Agent systems
 
+(in-package :swimmy.school)
+
 (defparameter *evaluator-enabled* t)
 (defparameter *debate-log* nil)
 

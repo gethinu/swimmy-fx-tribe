@@ -1,5 +1,7 @@
 ;; strategies.lisp - Historical Strategy Knowledge Base
 ;; 歴史的に有効な戦略パターンのナレッジベース（100+種類）
+
+(in-package :swimmy.school)
 ;; Sources: NotebookLM, Gemini research
 
 (defparameter *strategy-knowledge-base* nil)

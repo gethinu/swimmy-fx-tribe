@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.main)
 
 ;;; ==========================================
 ;;; SWIMMY SYSTEM: RUNNER (runner.lisp)
@@ -41,6 +41,9 @@
            (pzmq:bind pull "tcp://*:5555")  ; Receive market data from Guardian
            (pzmq:bind pub "tcp://*:5556")    ; Send commands to Guardian
            (setf *cmd-publisher* pub)
+
+           ;; V41.7: Set Receive Timeout to 100ms for non-blocking loop
+           (pzmq:setsockopt pull :rcvtimeo 100)
            
            (sleep 1)
            
@@ -67,12 +70,22 @@
            
            (format t "[BRAIN] 🚀 System active and running...~%")
            
-           ;; MAIN LOOP
+           ;; MAIN LOOP - V41.7: Non-blocking with Timeout
            (loop 
              (handler-case 
-                 (process-msg (pzmq:recv-string pull))
+                 (let ((msg (pzmq:recv-string pull)))
+                   (process-msg msg))
+               ;; Ignore timeout errors (EAGAIN) - proceed to heartbeat
                (error (e) 
-                 (format t "[L] 🚨 Main Loop Error: ~a~%" e)
-                 (sleep 1)))))
+                 ;; Only log if NOT a timeout (how to detect? usually message contains "Resource temporarily unavailable")
+                 ;; For now, suppress log during timeout loops to avoid flood, or check string
+                 (let ((err-str (format nil "~a" e)))
+                   (unless (search "Resource temporarily unavailable" err-str)
+                      (format t "[L] 🚨 Main Loop Error: ~a~%" e)
+                      (sleep 0.1))))) ; Small sleep on real error
+               
+             ;; Always check heartbeat
+             (when (fboundp 'send-heartbeat)
+               (send-heartbeat))))
       
       (pzmq:ctx-term ctx))))

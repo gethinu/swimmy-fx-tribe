@@ -1,5 +1,7 @@
 ;;; discord-async.lisp - Async Discord Notification Queue
 ;;; ═══════════════════════════════════════════════════════
+
+(in-package :swimmy.core)
 ;;; V41.3: Non-blocking Discord notifications
 ;;; Purpose: Prevent tick processing delays from HTTP calls
 ;;; Note: Swimmy is single-threaded, no locking needed

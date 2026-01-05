@@ -1,5 +1,7 @@
 ;; school-swarm.lisp - Swarm Intelligence System
 ;; V6.21: Extracted from school.lisp for modular architecture
+
+(in-package :swimmy.school)
 ;; Features: Strategy voting with weighted votes, Consensus threshold, Minority reports
 
 ;;; Variables defined in school-state.lisp:

@@ -1,5 +1,7 @@
 ;; school-danger.lisp - Danger Avoidance System
 ;; V6.15: Extracted from school.lisp for modular architecture
+
+(in-package :swimmy.school)
 ;; Inspired by: AlphaGo's resignation logic + RLHF safety
 ;; Purpose: Protect the school from predators (consecutive losses)
 

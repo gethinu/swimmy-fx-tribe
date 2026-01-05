@@ -8,6 +8,9 @@
 ;;; - Historical performance decay
 ;;; - Multi-factor performance optimization
 
+
+(in-package :swimmy.school)
+
 (defparameter *nn-wins* 0)
 (defparameter *nn-losses* 0)
 
@@ -95,13 +98,13 @@
         (let* ((wins (performance-stats-wins stats))
                (losses (performance-stats-losses stats))
                (total (+ wins losses))
-               (win-rate (/ wins total))
                (avg-win (if (> wins 0) 
                            (/ (max 0 (performance-stats-total-pnl stats)) wins)
                            0.01))
                (avg-loss (if (> losses 0)
                             (/ (abs (min 0 (performance-stats-total-pnl stats))) losses)
                             0.01))
+               (win-rate (/ wins total))
                (win-loss-ratio (/ avg-win (max avg-loss 0.001)))
                ;; Kelly formula: f = (bp - q) / b where b=win/loss ratio, p=win rate, q=1-p
                (kelly (/ (- (* win-loss-ratio win-rate) (- 1 win-rate)) 

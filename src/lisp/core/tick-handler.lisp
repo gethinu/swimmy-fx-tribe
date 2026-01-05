@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.main)
 
 ;;; ==========================================
 ;;; SWIMMY CORE: TICK HANDLER (tick-handler.lisp)
@@ -50,6 +50,8 @@
 
 (defun run-periodic-maintenance ()
   "Handle periodic maintenance tasks (backtests, ecosystem, evolution)"
+  (unless (and (boundp '*candle-histories*) *candle-histories*)
+    (setf *candle-histories* (make-hash-table :test 'equal)))
   (let ((now (get-universal-time)))
     (request-prediction)
     ;; Batch backtest
@@ -59,11 +61,12 @@
       (batch-backtest-knowledge))
     
     ;; Dream cycle
+    (unless (numberp *last-dream-time*) (setf *last-dream-time* 0))
     (when (> (- now *last-dream-time*) *dream-interval*)
       (setf *last-dream-time* now)
-      (assemble-team)
+      (when (fboundp 'assemble-team) (assemble-team))
       ;; Ecosystem health
-      (let ((health (get-population-health)))
+      (let ((health (if (fboundp 'get-population-health) (get-population-health) 0.5)))
         (format t "[L] 🌿 ECOSYSTEM: Health=~,0f%~%" (* 100 health)))
       ;; Natural selection
       (when (zerop (mod *dream-cycle* 6))
@@ -78,7 +81,15 @@
       ;; Evolution
       (check-evolution)
       (evolve-population)
-      (incf *dream-cycle*))))
+      (incf *dream-cycle*)
+      
+      ;; V7.1: Persist learning state (Every 60 cycles ~ 1 hour)
+      (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
+        (funcall 'save-state)))
+    
+    ;; Discord Heartbeat for mobile monitoring (Naval)
+    (when (fboundp 'check-discord-heartbeat)
+      (check-discord-heartbeat))))
 
 (defun process-tick-round-robin (symbol bid)
   "Optimize tick processing by handling one symbol per tick"
@@ -210,8 +221,9 @@ Sharpe   : ~,2f
 
 (defun send-heartbeat ()
   (let ((now (get-internal-real-time)))
-    (when (> (- now *last-heartbeat-sent*) (* 10 internal-time-units-per-second)) ; Every 10s
-      (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT"))))
+    (when (> (- now *last-heartbeat-sent*) (* 5 internal-time-units-per-second)) ; Every 5s (V41.7)
+      (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
+        (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT")))))
       (setf *last-heartbeat-sent* now))))
 
 (defun process-trade-closed (json msg)
@@ -332,15 +344,22 @@ Sharpe   : ~,2f
            (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
            ;; V41.2: Throttled operations for performance
            ;; Only save status every 60 seconds (already implemented in save-live-status)
-           (save-live-status)
+           (when (fboundp 'save-live-status) (save-live-status))
            ;; Only report every hour (already implemented in send-periodic-status-report)
-           (send-periodic-status-report (jsown:val json "symbol") (jsown:val json "bid"))
+           (when (fboundp 'send-periodic-status-report)
+             (send-periodic-status-report (jsown:val json "symbol") (jsown:val json "bid")))
            ;; Learning step is already throttled by cycle count
-           (handler-case (continuous-learning-step) (error () nil)))
+           (handler-case (when (fboundp 'continuous-learning-step) (continuous-learning-step)) (error () nil)))
           ;; V5.0: Guardian Heartbeat
           ((string= type "HEARTBEAT")
+           (unless (numberp *last-guardian-heartbeat*) (setf *last-guardian-heartbeat* 0))
            (setf *last-guardian-heartbeat* (get-universal-time)))
           ((string= type "HISTORY")
+           ;; Self-healing: Ensure *candle-histories* is initialized
+           (unless (and (boundp '*candle-histories*) *candle-histories*)
+             (setf *candle-histories* (make-hash-table :test 'equal))
+             (format t "[L] 🩹 Patched NIL *candle-histories*~%"))
+           
            (let ((bars nil)
                  (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))
              (dolist (b (jsown:val json "data"))
@@ -358,14 +377,25 @@ Sharpe   : ~,2f
                   (pnl (or (handler-case (jsown:val result "pnl") (error () 0.0)) 0.0))
                   (win-rate (or (handler-case (jsown:val result "win_rate") (error () 0.0)) 0.0)))
              
-             ;; V6.8: Buffer results instead of spamming
-             (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
-                   *backtest-results-buffer*)
-             
-             (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
-                (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
-                        (length *backtest-results-buffer*) *expected-backtest-count*)
-                (notify-backtest-summary))
+             ;; V8.0: Redirect WFV results (Walk-Forward Validation)
+             (if (or (search "_IS" name :from-end t) (search "_OOS" name :from-end t))
+                 (handler-case
+                     (when (fboundp 'process-wfv-result)
+                       (funcall 'process-wfv-result name 
+                                (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate)))
+                   (error (e) (format t "[L] WFV Process Error: ~a~%" e)))
+                 
+                 ;; Normal Batch Processing
+                 (progn
+                   ;; V6.8: Buffer results instead of spamming
+                   (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
+                         *backtest-results-buffer*)
+                   
+                   (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
+                      (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
+                              (length *backtest-results-buffer*) *expected-backtest-count*)
+                      (notify-backtest-summary))))
+
 
               ;; Update strategy's sharpe score
               (let ((strat (or (find name *evolved-strategies* :key #'strategy-name :test #'string=)

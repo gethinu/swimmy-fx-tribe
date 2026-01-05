@@ -1,5 +1,7 @@
 ;;; repl.lisp - Interactive REPL Interface for Swimmy
 ;;; ═══════════════════════════════════════════════════
+
+(in-package :swimmy.shell)
 ;;; "The best debugging tool ever invented is the REPL."
 ;;;  - Rich Hickey (though Paul Graham would agree)
 

@@ -1,4 +1,6 @@
 ;; school-leader.lisp - Leader Fish System
+
+(in-package :swimmy.school)
 ;; V6.15: Extracted from school.lisp for modular architecture
 ;; Inspired by: Ensemble Meta-Learning + Natural flocking behavior
 ;; The best performing strategy leads the school

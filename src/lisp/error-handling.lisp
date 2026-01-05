@@ -1,5 +1,7 @@
 ;;; error-handling.lisp - Comprehensive Error Handling for Swimmy
 ;;; ═══════════════════════════════════════════════════════════════════
+
+(in-package :swimmy.core)
 ;;; "The only truly secure system is one that is powered off."
 ;;;  - Gene Spafford
 ;;;

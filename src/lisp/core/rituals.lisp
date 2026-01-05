@@ -1,4 +1,4 @@
-(in-package :cl-user)
+(in-package :swimmy.school)
 
 ;;; ==========================================
 ;;; SWIMMY CORE: RITUALS (rituals.lisp)
@@ -99,12 +99,11 @@
             (format t "[L] 💰 TREASURY: ~a~%" treasury))))
     (error (e) (format t "[L] Treasury error: ~a~%" e)))
   
-  ;; V4.0: Dreamer - Generate new strategy with Gemini
+  ;; V7.0: Metabolism - The Efficient Gardener Life Cycle
   (handler-case
-      (when (fboundp 'dream-code)
-        (format t "[L] 💭 DREAMER: Generating new strategy...~%")
-        (dream-code))
-    (error (e) (format t "[L] Dreamer error: ~a~%" e)))
+      (when (fboundp 'run-metabolism)
+        (run-metabolism))
+    (error (e) (format t "[L] Metabolism error: ~a~%" e)))
   
   (format t "[L] ═══════════════════════════════════════~%~%"))
 

@@ -1,4 +1,6 @@
 ;; school-resignation.lisp - Resignation Judgment System
+
+(in-package :swimmy.school)
 ;; V6.15: Extracted from school.lisp for modular architecture
 ;; Inspired by: Shogi/Chess AI resignation logic
 ;; "Knowing when to stop is as important as knowing when to trade"
