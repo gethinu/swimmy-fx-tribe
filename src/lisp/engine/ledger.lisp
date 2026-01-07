@@ -112,7 +112,11 @@
                   (setf *evolved-strategies* strats))
                 
                 (format t "[LEDGER] 📂 State restored: ~d arms, portfolio ~a, ~d strategies~%" 
-                        (length *arms*) *portfolio-indices* (length (or strats nil)))))))
+                        (length *arms*) *portfolio-indices* (length (or strats nil)))
+                
+                ;; V8.6: Restore Cold Reality Metrics (Sharpe, DD) from logs
+                (when (fboundp 'recalculate-portfolio-stats)
+                  (recalculate-portfolio-stats))))))
       (error (e)
         (format t "[LEDGER] ⚠️ Load failed: ~a~%" e)))))
 

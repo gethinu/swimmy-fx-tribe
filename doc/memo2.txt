@@ -559,3 +559,5 @@ swimmy-gbpusd
 [2026-01-07 16:45:23] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.88
 [2026-01-07 16:49:21] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91
 [2026-01-07 16:49:24] GBPUSD BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91
+[2026-01-07 17:42:02] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
+[2026-01-07 17:42:05] GBPUSD BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00

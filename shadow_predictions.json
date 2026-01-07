@@ -1859,10 +1859,30 @@
       "price_after": null,
       "pnl_ensemble": null,
       "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T08:42:02.938218296+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T08:42:05.370470617+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
     }
   ],
   "ensemble_total_pnl": 0.0,
   "actual_total_pnl": 0.0,
-  "matches": 186,
+  "matches": 188,
   "mismatches": 0
 }

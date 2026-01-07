@@ -65,3 +65,53 @@
           0))))
 
 (format t "[ENGINE] metrics.lisp loaded~%")
+
+(defun recalculate-portfolio-stats ()
+  "Recalculate all portfolio metrics from restored trade logs.
+   Updates: *accumulated-pnl*, *all-time-win-rate*, *max-drawdown*, *portfolio-sharpe*"
+  (when (and (boundp 'swimmy.school::*success-log*)
+             (boundp 'swimmy.school::*failure-log*))
+    (let* ((successes swimmy.school::*success-log*)
+           (failures swimmy.school::*failure-log*)
+           (all-trades (append successes failures))
+           (total-pnl 0.0)
+           (wins 0)
+           (losses 0)
+           (peak-pnl 0.0)
+           (max-dd 0.0)
+           (pnls nil))
+      
+      ;; 1. Sort by timestamp (asc) to simulate equity curve
+      (setf all-trades (sort all-trades #'< :key #'swimmy.school::trade-record-timestamp))
+      
+      ;; 2. Replay history
+      (dolist (trade all-trades)
+        (let ((pnl (swimmy.school::trade-record-pnl trade)))
+          (incf total-pnl pnl)
+          (push pnl pnls)
+          (if (> pnl 0) (incf wins) (incf losses))
+          
+          ;; Track Drawdown
+          (when (> total-pnl peak-pnl) (setf peak-pnl total-pnl))
+          (let ((dd (if (> peak-pnl 0) 
+                        (* 100 (/ (- peak-pnl total-pnl) peak-pnl))
+                        0.0)))
+            (when (> dd max-dd) (setf max-dd dd)))))
+      
+      ;; 3. Update Globals
+      (when (> (length all-trades) 0)
+        (setf *accumulated-pnl* total-pnl)
+        (setf *all-time-win-rate* (float (* 100 (/ wins (max 1 (+ wins losses))))))
+        (setf *max-drawdown* max-dd)
+        
+        ;; 4. Calculate Sharpe (using daily PnL approximation if detailed timestamps not strictly enforced)
+        (let* ((n (length pnls))
+               (mean (/ total-pnl (max 1 n)))
+               (sq-diffs (reduce #'+ (mapcar (lambda (x) (expt (- x mean) 2)) pnls)))
+               (std-dev (sqrt (/ sq-diffs (max 1 n)))))
+          (if (> std-dev 0)
+              (setf *portfolio-sharpe* (/ mean std-dev))
+              (setf *portfolio-sharpe* 0.0)))
+          
+        (format t "[METRICS] 🔄 Recalculated Stats: PnL=~,0f Win=~,1f% DD=~,2f% Sharpe=~,2f~%"
+                *accumulated-pnl* *all-time-win-rate* *max-drawdown* *portfolio-sharpe*)))))
