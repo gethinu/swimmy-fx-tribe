@@ -1361,7 +1361,7 @@
       
       (when (> count 0)
         (format t "[RECRUIT] 🔥 ~d strategies promoted from evolution!~%" count)
-        (notify-discord (format nil "🔥 Recruited ~d new strategies!" count) :color 3066993)
+        (notify-discord-recruit (format nil "🔥 Recruited ~d new strategies!" count) :color 3066993)
         ;; Clear the waiting list so we don't re-add
         (setf *evolved-strategies* nil)))))
 

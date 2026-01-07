@@ -64,7 +64,22 @@
     (funcall 'load-treasury))
     
   (load-hall-of-fame)
-  (setup-symbol-webhooks))
+  (load-hall-of-fame)
+  (setup-symbol-webhooks)
+  
+  ;; P1: Data Keeper Integration
+  (init-data-keeper-client)
+  (format t "[SYSTEM] Loading historical data from Data Keeper...~%")
+  (dolist (sym *supported-symbols*)
+    (let ((history (get-history-from-keeper sym 5000)))
+      (if history
+          (progn
+            (setf (gethash sym *candle-histories*) history)
+            (format t "[SYSTEM] Loaded ~d candles for ~a~%" (length history) sym)
+            ;; Legacy compat for main symbol
+            (when (string= sym "USDJPY")
+              (setf *candle-history* history)))
+          (format t "[SYSTEM] ⚠️ No history available for ~a~%" sym)))))
 
 ;;; MAIN ENTRY POINT
 (defun start-system ()

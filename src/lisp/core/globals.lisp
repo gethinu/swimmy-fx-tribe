@@ -95,6 +95,7 @@
 (defparameter *discord-weekly-webhook* nil)
 (defparameter *discord-emergency-url* nil)
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
+(defparameter *discord-recruit-webhook* "https://discord.com/api/webhooks/1458463482788708478/mLUKaJb9ZuEdhnWIMaXdF0hMZVFY-udSKfu5W_Qvsm6NB-SE3Jhz_cGWvNCOog0V-pfB")
 
 ;;; MISSING GLOBALS (Engine/Manager)
 (defparameter *benched-arms* nil)
@@ -112,6 +113,7 @@
 
 (defparameter *monthly-goal* 100000.0)
 (defparameter *last-narrative-day* -1)
+(defparameter *daily-report-sent-today* nil)
 
 ;;; ADDITIONAL MISSING GLOBALS (Comprehensive Review)
 (defparameter *danger-cooldown-until* nil)

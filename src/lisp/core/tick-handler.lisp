@@ -239,19 +239,31 @@ Sharpe   : ~,2f
                   ((>= (if (boundp '*danger-level*) *danger-level* 0) 1) 16776960) ; Yellow
                   (t 3447003))))) ; Blue/Green
 
-(defun check-daily-narrative ()
+(defun check-scheduled-tasks (&optional (now (get-universal-time)))
   (multiple-value-bind (s m h date month year day-of-week dst-p tz)
-      (decode-universal-time (get-universal-time))
-    (declare (ignore s m h month year day-of-week dst-p tz))
+      (decode-universal-time now)
+    (declare (ignore s m month year day-of-week dst-p tz))
+    
+    ;; 1. New Day Processing (Reset Logic)
     (when (and *last-narrative-day* (/= date *last-narrative-day*))
-      ;; New day detected!
-      (send-daily-tribal-narrative)
+      ;; Reset triggers for the new day
       (setf *last-narrative-day* date)
-      ;; Reset daily PnL
+      (setf *daily-report-sent-today* nil)
+      (setf *has-resigned-today* nil)
+      
+      ;; Reset daily counters
       (setf *daily-pnl* 0)
-      ;; V8.2: Persist reset immediately
+      (setf *daily-trade-count* 0)
+      
+      ;; Persist reset
       (when (fboundp 'swimmy.engine::save-state)
-        (funcall 'swimmy.engine::save-state)))))
+        (funcall 'swimmy.engine::save-state)))
+
+    ;; 2. Scheduled Report (23:00 Trigger)
+    (when (and (>= h 23) (not *daily-report-sent-today*))
+      (format t "[SCHEDULER] ⏰ 23:00 Trigger - Sending Daily Report...~%")
+      (send-daily-tribal-narrative)
+      (setf *daily-report-sent-today* t))))
 
 ;; V5.5: Heartbeat to MT5
 (defun send-heartbeat ()
@@ -520,7 +532,7 @@ Sharpe   : ~,2f
 (defun process-msg (msg)
   (let ((start-time (get-internal-real-time)))
     (internal-process-msg msg)
-    (check-daily-narrative) ; V5.4: Check for new day
+    (check-scheduled-tasks) ; V5.4: Check for scheduled tasks (23:00 report, midnight reset)
     (send-heartbeat)        ; V5.5: Heartbeat to MT5
     (flush-discord-queue)   ; V41.3: Async Discord notifications
     (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))

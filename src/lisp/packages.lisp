@@ -116,6 +116,8 @@
    #:*last-dream-time*
    
    ;; Misc State
+   #:*daily-report-sent-today*
+   #:*discord-recruit-webhook*
    #:*last-narrative-day*
    #:*last-guardian-heartbeat*
    #:*last-tick-time*
@@ -171,9 +173,14 @@
    ;; Discord (Infrastructure)
    #:notify-discord
    #:notify-discord-symbol
+   #:notify-discord-recruit
    #:notify-discord-daily
    #:notify-backtest-summary
    #:notify-discord-alert  ;; Exported for Circuit Breaker
+   #:notify-discord-status
+   #:notify-discord-weekly
+   #:notify-discord-emergency
+   #:notify-discord-backtest
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
    
@@ -183,6 +190,14 @@
    #:dual-trend-signal
    #:select-optimal-model
    #:estimate-mean-reversion
+   #:estimate-mean-reversion
+   
+   ;; Data Keeper Client (V8.0)
+   #:init-data-keeper-client
+   #:data-keeper-status
+   #:get-history-from-keeper
+   #:add-candle-to-keeper
+   #:close-data-keeper-client
    ))
 
 ;;; ----------------------------------------------------------------------------
@@ -464,7 +479,7 @@
    #:process-msg
    #:update-candle
    #:send-heartbeat
-   #:check-daily-narrative
+   #:check-scheduled-tasks
    ;; Utility functions
    #:candles-to-json
    ))
