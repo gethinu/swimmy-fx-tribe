@@ -93,6 +93,11 @@
         (categories '(:trend :reversion :breakout :scalp))
         (summary-msg (format nil "📊 **Backtest Summary (V6.9)**~%")))
     
+    ;; DEBUG: Log first 5 buffer entries to trace Sharpe values
+    (format t "[DEBUG] Backtest buffer has ~d entries~%" (length results))
+    (loop for r in (subseq results 0 (min 5 (length results)))
+          do (format t "[DEBUG] Buffer: ~a -> Sharpe: ~a~%" (car r) (getf (cdr r) :sharpe)))
+    
     (dolist (cat categories)
       (let* ((cat-results (remove-if-not 
                             (lambda (res) (eq (categorize-strategy-name (car res)) cat))

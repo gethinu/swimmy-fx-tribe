@@ -1,23 +1,20 @@
-backtest bot
-アプリ
- — 21:45
 📊 Backtest Summary (V6.9)
 
-TREND (Total: 43 | Pass: 0 | Avg Sharpe: -0.17)
+TREND (Total: 24 | Pass: 0 | Avg Sharpe: -0.15)
 Top 5:
 Conservative-Trend (S: 0.00)
 Trend-Pullback-Entry (S: 0.00)
 Perfect-Order-SMA (S: 0.00)
 Golden-Cross (S: 0.00)
-Triple-Screen-Proxy (S: -0.16)
+Triple-Screen-Proxy (S: -0.15)
 Worst 5:
-Crossover-Plus-MACD (S: -0.20)
-TF-10-50 (S: -0.20)
-Puria-Method-Proxy (S: -0.20)
-Sweet-Chariot-SMA-40 (S: -0.20)
-Medium-EMA-Cross-20-50 (S: -0.20)
+BB-Upper-Rejection (S: -0.19)
+Crossover-Plus-MACD (S: -0.19)
+Triple-EMA-Trend-Follow (S: -0.19)
+Puria-Method-Proxy (S: -0.19)
+Bollinger-Band-Walk (S: -0.19)
 
-REVERSION (Total: 31 | Pass: 0 | Avg Sharpe: -0.19)
+REVERSION (Total: 16 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
 RSI-Volatility-Break (S: -0.18)
 RSI-Stoch-Reversal (S: -0.18)
@@ -26,15 +23,15 @@ RSI-Oversold-Reversal (S: -0.18)
 RSI-Momentum-Break (S: -0.18)
 Worst 5:
 RSI-Bull-Zone (S: -0.20)
-Wisdom-USDJPY-Reversal-3976777256-M10 (S: -0.20)
-Wisdom-USDJPY-Reversal-3976778590-M85 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976778190-M58 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976777858-M8 (S: -0.19)
+BB-Lower-Bounce (S: -0.19)
+BB-RSI-Reversion-Combo (S: -0.19)
+Extreme-Reversion-BB (S: -0.19)
+Aggressive-Reversal (S: -0.19)
 
 BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
+CCI-Trend-Breakout (S: -0.19)
 Pullback-Breakout (S: -0.19)
-CCI-Trend-Breakout (S: -0.20)
 
 SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
