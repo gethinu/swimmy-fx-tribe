@@ -54,56 +54,51 @@
    - L67-92: Dream Cycle → Self-throttled by *dream-interval* (3600s)
    - L94-95: Discord Heartbeat → Self-throttled internally"
   (let ((now (get-universal-time)))
-    ;; ═══════════════════════════════════════════════════════
-    ;; SECTION 1: 60s Throttled Operations (Prediction, Backtest)
-    ;; ═══════════════════════════════════════════════════════
-    (when (> (- now *last-maintenance-time*) 59)
-      (setf *last-maintenance-time* now)
-      
-      (unless (and (boundp '*candle-histories*) *candle-histories*)
-        (setf *candle-histories* (make-hash-table :test 'equal)))
-      
-      (request-prediction)
-      ;; Batch backtest (one-time operation)
-      (when (and (not *initial-backtest-done*) *candle-history* (> (length *candle-history*) 1000))
-        (setf *initial-backtest-done* t)
-        (format t "~%[L] 🧪 Starting batch backtest of ~d strategies...~%" (length *strategy-knowledge-base*))
-        (batch-backtest-knowledge)))
-    
-    ;; ═══════════════════════════════════════════════════════
-    ;; SECTION 2: Self-Throttled Operations (Dream Cycle - 1hr)
-    ;; ═══════════════════════════════════════════════════════
-    (unless (numberp *last-dream-time*) (setf *last-dream-time* 0))
-    (when (> (- now *last-dream-time*) *dream-interval*)
-      (setf *last-dream-time* now)
-      (when (fboundp 'assemble-team) (assemble-team))
-      ;; Ecosystem health
-      (let ((health (if (fboundp 'get-population-health) (get-population-health) 0.5)))
-        (format t "[L] 🌿 ECOSYSTEM: Health=~,0f%~%" (* 100 health)))
-      ;; Natural selection
-      (when (zerop (mod *dream-cycle* 6))
-        (format t "[L] 🌱 Running natural selection...~%")
-        (maintain-ecosystem-balance))
-      ;; Mutual aid
-      (when (and (zerop (mod *dream-cycle* 3)) (fboundp 'calculate-mutual-aid))
-        (calculate-mutual-aid))
-      ;; Goal tracking
-      (when (zerop (mod *dream-cycle* 3))
-        (report-goal-status))
-      ;; Evolution
-      (check-evolution)
-      (evolve-population)
-      (incf *dream-cycle*)
-      
-      ;; V7.1: Persist learning state (Every 60 cycles ~ 1 hour)
-      (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
-        (funcall 'save-state)))
-    
-    ;; ═══════════════════════════════════════════════════════
-    ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
-    ;; ═══════════════════════════════════════════════════════
-    (when (fboundp 'check-discord-heartbeat)
-      (check-discord-heartbeat))))
+    ;; PROFILE SECTION 1
+    (with-profiling "maintenance-section-1"
+      ;; SECTION 1: 60s Throttled Operations (Prediction, Backtest)
+      (when (> (- now *last-maintenance-time*) 59)
+        (setf *last-maintenance-time* now)
+        (unless (and (boundp '*candle-histories*) *candle-histories*)
+          (setf *candle-histories* (make-hash-table :test 'equal)))
+        ;; Prediction cache lookup
+        (let ((cache-key (list now)))
+          (if (gethash cache-key *prediction-cache*)
+              (format t "[L] 🔄 Using cached prediction~%")
+              (progn
+                (request-prediction)
+                (setf (gethash cache-key *prediction-cache*) t))))
+        ;; Batch backtest (one-time operation)
+        (when (and (not *initial-backtest-done*) *candle-history* (> (length *candle-history*) 1000))
+          (setf *initial-backtest-done* t)
+          (format t "~%[L] 🧪 Starting batch backtest of ~d strategies...~%" (length *strategy-knowledge-base*))
+          (batch-backtest-knowledge))))
+    ;; PROFILE SECTION 2
+    (with-profiling "maintenance-section-2"
+      ;; SECTION 2: Self-Throttled Operations (Dream Cycle - 1hr)
+      (unless (numberp *last-dream-time*) (setf *last-dream-time* 0))
+      (when (> (- now *last-dream-time*) *dream-interval*)
+        (setf *last-dream-time* now)
+        (when (fboundp 'assemble-team) (assemble-team))
+        (let ((health (if (fboundp 'get-population-health) (get-population-health) 0.5)))
+          (format t "[L] 🌿 ECOSYSTEM: Health=~,0f%~%" (* 100 health)))
+        (when (zerop (mod *dream-cycle* 6))
+          (format t "[L] 🌱 Running natural selection...~%")
+          (maintain-ecosystem-balance))
+        (when (and (zerop (mod *dream-cycle* 3)) (fboundp 'calculate-mutual-aid))
+          (calculate-mutual-aid))
+        (when (zerop (mod *dream-cycle* 3))
+          (report-goal-status))
+        (check-evolution)
+        (evolve-population)
+        (incf *dream-cycle*)
+        (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
+          (funcall 'save-state))))
+    ;; PROFILE SECTION 3
+    (with-profiling "maintenance-section-3"
+      ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
+      (when (fboundp 'check-discord-heartbeat)
+        (check-discord-heartbeat)))))
 
 (defun process-tick-round-robin (symbol bid)
   "Optimize tick processing by handling one symbol per tick"

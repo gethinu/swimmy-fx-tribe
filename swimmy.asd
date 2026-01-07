@@ -9,6 +9,7 @@
   :components ((:file "src/lisp/packages")
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
+               (:file "src/lisp/core/profiling")
                
                ;; ENGINE
                (:file "src/lisp/engine/risk")

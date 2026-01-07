@@ -128,9 +128,11 @@
    ;; Discord Webhooks
    #:*alerts-webhook-url*
    #:*status-webhook-url*
-   #:*discord-daily-webhook*
    #:*discord-weekly-webhook*
    #:*discord-emergency-url*
+   
+   ;; New Prediction Cache
+   #:*prediction-cache*
    ))
 
 
@@ -278,6 +280,7 @@
    #:assemble-team
    #:morning-ritual
    #:request-prediction
+   #:request-backtest
    #:maintain-ecosystem-balance
    #:get-population-health
    #:process-category-trades
@@ -293,6 +296,7 @@
    #:recruit-special-forces
    #:strategy-allowed-by-volatility-p
    #:get-volatility-multiplier
+   #:*volatility-shift-threshold*
    
    ;; Constitution
    #:initialize-constitution

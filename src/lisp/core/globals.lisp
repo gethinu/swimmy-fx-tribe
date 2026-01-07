@@ -51,6 +51,7 @@
 (defparameter *max-dd-percent* 5.0)
 
 ;;; AI/ML STATE
+(defparameter *prediction-cache* (make-hash-table :test 'equal))
 (defparameter *last-prediction* nil)
 (defparameter *last-confidence* 0.5)
 (defparameter *last-swarm-consensus* 0.5)
