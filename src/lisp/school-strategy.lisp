@@ -159,12 +159,13 @@
       
       ;; Promotion criteria (Expert Panel Recommendation: Use Sharpe to filter luck)
       (cond
-        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, Positive Sharpe
+        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, Sharpe > 0.5
+        ;; [V8.2] Expert Panel (Graham): "Sharpe > 0 is pathetic"
         ((and (eq current-rank :scout)
               (>= trades 10)
               (>= win-rate 0.40)
               (> pnl 0)
-              (> sharpe 0.0)) ; Must have positive expectancy
+              (> sharpe 0.5)) ; Raised from 0.0 per Expert Panel
          (setf (strategy-rank-rank rank-data) :warrior)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          ;; Coming of Age ceremony

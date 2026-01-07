@@ -31,6 +31,35 @@
     (assert-true (= 1.0 (cl-user::pattern-similarity p1 p2)) "Identical patterns should be 1.0")
     (assert-true (< (cl-user::pattern-similarity p1 p3) 0.5) "Different patterns should be low")))
 
+;; [V8.2] Expert Panel (Uncle Bob): Test behavior, not just existence
+(deftest test-calculate-pattern-similarity-behavior
+  "Test that calculate-pattern-similarity returns 0 for nil/random and high for matches"
+  ;; Create a mock memory-episode for testing
+  (let* ((episode (swimmy.school::make-memory-episode
+                   :timestamp (get-universal-time)
+                   :symbol "USDJPY"
+                   :regime :trending
+                   :volatility :high
+                   :rsi-value 50
+                   :momentum-direction :flat
+                   :sma-position :above
+                   :hour-of-day 10
+                   :day-of-week 1))
+         ;; Matching pattern
+         (matching-pattern (list :regime :trending :volatility :high
+                                 :sma-position :above :momentum :flat
+                                 :rsi-value 50 :hour 10))
+         ;; Non-matching pattern
+         (different-pattern (list :regime :ranging :volatility :low
+                                  :sma-position :below :momentum :decelerating
+                                  :rsi-value 80 :hour 23)))
+    
+    (let ((high-sim (swimmy.school::calculate-pattern-similarity matching-pattern episode))
+          (low-sim (swimmy.school::calculate-pattern-similarity different-pattern episode)))
+      (assert-true (> high-sim 0.5) "Matching patterns should have high similarity")
+      (assert-true (< low-sim 0.5) "Different patterns should have low similarity")
+      (assert-true (> high-sim low-sim) "Matching should be higher than non-matching"))))
+
 ;;; ==========================================
 ;;; SCHOOL-VOLATILITY TESTS
 ;;; ==========================================

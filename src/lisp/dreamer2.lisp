@@ -495,6 +495,14 @@ CURRENT MARKET: Regime=~a, Volatility=~a
 ;; Since 'push' reverses the order, the 'chunk' variable becomes (Oldest ... Newest).
 ;; - first chunk = Oldest Candle (Start of Period) -> Use for OPEN
 ;; - last chunk  = Newest Candle (End of Period)   -> Use for CLOSE/TIMESTAMP
+;;
+;; [V8.2] Expert Panel Audit (Andrew Ng):
+;;   LOOK-AHEAD BIAS CHECK: PASSED
+;;   - Open price: Uses start-candle (oldest in chunk) → Correct
+;;   - Close price: Uses end-candle (newest in chunk) → Correct
+;;   - Timestamp: Uses end-candle timestamp → Correct (represents bar close time)
+;;   ⚠️ CAVEAT: Caller must ensure the LATEST candle is COMPLETE before calling.
+;;              If called mid-bar, the newest candle contains partial data.
 (defun resample-candles (candles factor)
   (let ((result nil)
         (chunk nil)

@@ -304,6 +304,7 @@
                   ;; V7.0: School Split Tests (Taleb)
                   test-time-decay-weight
                   test-pattern-similarity
+                  test-calculate-pattern-similarity-behavior ; [V8.2] Uncle Bob
                   test-atr-calculation-logic
                   test-volatility-shifts
                   test-prediction-structure
