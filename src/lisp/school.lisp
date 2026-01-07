@@ -1755,9 +1755,19 @@
               ;; V5.2: Warrior Allocation - Find free slot (0-3) for this clan
               (let ((slot-index (find-free-warrior-slot category)))
                 (if slot-index
-                    ;; Execute trade with unique Magic Number
+                     ;; Execute trade with unique Magic Number
                     (let* ((magic (get-warrior-magic category slot-index))
-                           (key (format nil "~a-~d" category slot-index)))
+                           (key (format nil "~a-~d" category slot-index))
+                           ;; V8.5 (Panel Decision): Tiered lot sizing based on Sharpe
+                           ;; Sharpe 0.0 ~ 0.3 = cap at 0.01 (proving ground)
+                           (strat (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
+                                      (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+                           (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
+                           (lot (if (and (>= sharpe 0.0) (< sharpe 0.3))
+                                    (progn
+                                      (format t "[L] 📊 TIERED LOT: ~a (Sharpe ~,2f) capped at 0.01~%" lead-name sharpe)
+                                      0.01)
+                                    lot)))
                       (format t "[TRACE] Slot found: ~d Magic: ~d Direction: ~a (eq :buy? ~a)~%" slot-index magic direction (eq direction :buy))
                       (cond
                         ((eq direction :buy)
