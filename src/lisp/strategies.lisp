@@ -29,11 +29,11 @@
       ;;   :exit '(cross-below ema-9 ema-21)
       ;;   :sl 0.20 :tp 0.40 :volume 0.01)
       (make-strategy :name "Medium-EMA-Cross-20-50"
-        :indicators '((ema 20) (ema 50))
-        :entry '(cross-above ema-20 ema-50)
+        :indicators '((ema 20) (ema 50) (rsi 14))
+        :entry '(and (cross-above ema-20 ema-50) (> rsi-14 50))
         :exit '(cross-below ema-20 ema-50)
-        :sl 0.30 :tp 0.60 :volume 0.01)
-      ;; (make-strategy :name "Silver-Cross-20-100"
+        :sl 0.40 :tp 0.80 :volume 0.02
+        :category :trend :timeframe 15) ; M15 for clearer trendategy :name "Silver-Cross-20-100"
       ;;   :indicators '((sma 20) (sma 100))
       ;;   :entry '(cross-above sma-20 sma-100)
       ;;   :exit '(cross-below sma-20 sma-100)
@@ -61,11 +61,11 @@
       ;;   :exit '(cross-below ema-10 ema-20)
       ;;   :sl 0.25 :tp 0.50 :volume 0.01)
       (make-strategy :name "Perfect-Order-SMA"
-        :indicators '((sma 20) (sma 50) (sma 100))
-        :entry '(and (> sma-20 sma-50) (> sma-50 sma-100))
-        :exit '(cross-below sma-20 sma-50)
-        :sl 0.30 :tp 0.90 :volume 0.01)
-      ;; (make-strategy :name "Fibonacci-EMA-Scalp"
+        :indicators '((sma 20) (sma 50) (sma 200))
+        :entry '(and (> sma-20 sma-50) (> sma-50 sma-200)) ; Perfect Order
+        :exit '(< sma-20 sma-50)
+        :sl 0.50 :tp 1.00 :volume 0.02
+        :category :trend :timeframe 60) ; H1 for major trendategy :name "Fibonacci-EMA-Scalp"
       ;;   :indicators '((ema 5) (ema 8) (ema 13))
       ;;   :entry '(and (> ema-5 ema-8) (> ema-8 ema-13))
       ;;   :exit '(cross-below ema-5 ema-8)
@@ -264,11 +264,11 @@
       ;;   :exit '(cross-below ema-5 sma-75)
       ;;   :sl 0.30 :tp 0.50 :volume 0.01)
       (make-strategy :name "Holy-Grail-Proxy"
-        :indicators '((ema 20) (sma 50) (rsi 14))
-        :entry '(and (> close sma-50) (cross-above close ema-20) (< rsi-14 70))
-        :exit '(cross-below close ema-20)
-        :sl 0.25 :tp 0.75 :volume 0.01)
-      ;; (make-strategy :name "Triple-Screen-Proxy"
+        :indicators '((ema 20) (adx 14))
+        :entry '(and (> adx-14 30) (cross-above close ema-20)) ; Pullback entry? No, breakout.
+        :exit '(< close ema-20)
+        :sl 0.30 :tp 0.60 :volume 0.02
+        :category :trend :timeframe 5) ; Proven on M5ategy :name "Triple-Screen-Proxy"
       ;;   :indicators '((ema 50) (rsi 14) (macd 12 26 9))
       ;;   :entry '(and (> close ema-50) (> macd-line 0) (< rsi-14 50))
       ;;   :exit '(> rsi-14 70)
@@ -304,7 +304,8 @@
         :indicators '((bb 20 2) (stoch 5 3 3))
         :entry '(and (< close bb-lower) (cross-above stoch-k 20))
         :exit '(>= close bb-middle)
-        :sl 0.20 :tp 0.50 :volume 0.01)
+        :sl 0.20 :tp 0.50 :volume 0.01
+        :timeframe 15) ; M15 for reversal stability
       
       ;; 5.3 Double Bollinger
       ;; (make-strategy :name "Double-Bollinger-Trend"
@@ -316,10 +317,11 @@
       ;; ===== 6. SCALPING (スキャルピング) =====
       
       (make-strategy :name "MA-Ribbon-Scalp"
-        :indicators '((sma 5) (sma 8) (sma 13))
-        :entry '(and (> sma-5 sma-8) (> sma-8 sma-13))
-        :exit '(cross-below sma-5 sma-8)
-        :sl 0.10 :tp 0.15 :volume 0.01)
+        :indicators '((ema 5) (ema 13) (rsi 14))
+        :entry '(and (> ema-5 ema-13) (> rsi-14 55)) ; Trend + Momentum
+        :exit '(cross-below ema-5 ema-13)
+        :sl 0.15 :tp 0.25 :volume 0.01
+        :timeframe 5) ; M5 Scalping
       ;; (make-strategy :name "Stoch-Momentum-Cross"
       ;;   :indicators '((stoch 14 3 3))
       ;;   :entry '(and (cross-above stoch-k stoch-d) (> stoch-k 50))
@@ -334,7 +336,8 @@
         :indicators '((rsi 14))
         :entry '(cross-above rsi-14 60)
         :exit '(cross-below rsi-14 40)
-        :sl 0.25 :tp 0.50 :volume 0.01)
+        :sl 0.25 :tp 0.50 :volume 0.01
+        :timeframe 5) ; M5 Volatility
       ;; (make-strategy :name "Pullback-Breakout"
       ;;   :indicators '((ema 20) (rsi 14))
       ;;   :entry '(and (cross-above close ema-20) (> rsi-14 50))
@@ -367,12 +370,13 @@
       (make-strategy :name "T-Nakane-Gotobi"
         :indicators '((sma 5))
         :entry '(and gotobi-p 
-                     (>= hour 8) (< hour 10)
+                     (>= hour 9) (< hour 10) ; Start at 9:00 (Tokyo Open) to avoid spread
                      (< minute 55)   ; Do not enter just before 9:55
                      (> close sma-5)) ; Basic trend filter
         :exit '(or (>= hour 10)      ; Time exit
                    (< close sma-5))  ; Trend broken
-        :sl 0.20 :tp 0.50 :volume 0.05) ; Larger volume for structural edge
+        :sl 0.20 :tp 0.25 :volume 0.05 ; Realistic TP for Nakane
+        :category :time-based :timeframe 5) ; M5 Nakane
     ))  
 
   (format t "[L] 📚 Knowledge base loaded: ~d strategies~%" 

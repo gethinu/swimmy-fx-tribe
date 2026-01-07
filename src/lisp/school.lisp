@@ -473,23 +473,27 @@
        
       (t t))))
 
-(defun collect-strategy-votes (symbol history)
-  "Collect votes from all active strategies"
+(defun collect-strategy-votes (symbol history &key timeframe-map)
+  "Collect votes from all active strategies using their specific timeframes"
   (let ((votes nil))
     (maphash 
      (lambda (category strategies)
        (dolist (strat strategies)
          (when (strategy-allowed-by-volatility-p strat)
-           (let* ((signal (evaluate-strategy-signal strat history))
-                (weight (calculate-strategy-weight strat))
-                (vote (make-strategy-vote
-                       :strategy-name (strategy-name strat)
-                       :direction signal
-                       :confidence (if (eq signal :hold) 0.3 0.7)
-                       :weight weight
-                       :timestamp (get-universal-time)
-                       :category category)))
-           (push vote votes)))))
+           (let* ((tf (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
+                  (target-history (if timeframe-map 
+                                      (or (cdr (assoc tf timeframe-map)) history)
+                                      history))
+                  (signal (evaluate-strategy-signal strat target-history))
+                  (weight (calculate-strategy-weight strat))
+                  (vote (make-strategy-vote
+                         :strategy-name (strategy-name strat)
+                         :direction signal
+                         :confidence (if (eq signal :hold) 0.3 0.7)
+                         :weight weight
+                         :timestamp (get-universal-time)
+                         :category category)))
+             (push vote votes)))))
      *active-team*)
     votes))
 
@@ -544,8 +548,17 @@
        :confidence (* consensus 0.8)))))  ; Scale confidence by consensus
 
 (defun swarm-trade-decision (symbol history)
-  "Get swarm's collective trading decision"
-  (let* ((votes (collect-strategy-votes symbol history))
+  "Get swarm's collective trading decision (Multi-Timeframe V8.0)"
+  ;; V8.0: Prepare Multi-Timeframe Data (M1, M5, M15, H1)
+  ;; Only resample if we have enough data (min 5 for M5, 15 for M15, 60 for H1)
+  (let* ((h-m5 (if (> (length history) 20) (resample-candles history 5) history))
+         (h-m15 (if (> (length history) 60) (resample-candles history 15) history))
+         (h-h1 (if (> (length history) 240) (resample-candles history 60) history))
+         (tf-map (list (cons 1 history) 
+                       (cons 5 h-m5) 
+                       (cons 15 h-m15) 
+                       (cons 60 h-h1)))
+         (votes (collect-strategy-votes symbol history :timeframe-map tf-map))
          (decision (aggregate-swarm-votes votes)))
     
     ;; Log significant decisions

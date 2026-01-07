@@ -488,17 +488,60 @@ CURRENT MARKET: Regime=~a, Volatility=~a
 
 
 
+
+;; Helper to resample candles (M1 -> M5, etc)
+(defun resample-candles (candles factor)
+  (let ((result nil)
+        (chunk nil)
+        (count 0))
+    (dolist (c candles)
+       (push c chunk)
+       (incf count)
+       (when (= count factor)
+         ;; chunk is (Newest ... Oldest) relative to batch
+         (let* ((oldest (car (last chunk)))
+                (newest (first chunk))
+                (high (loop for x in chunk maximize (candle-high x)))
+                (low (loop for x in chunk minimize (candle-low x)))
+                (vol (loop for x in chunk sum (candle-volume x))))
+            (push (make-candle :timestamp (candle-timestamp oldest)
+                               :open (candle-open oldest)
+                               :close (candle-close newest)
+                               :high high :low low :volume vol)
+                  result))
+         (setf chunk nil)
+         (setf count 0)))
+    ;; Result is now (OldestM5 ... NewestM5) because we pushed Future then Past
+    ;; Wait: 1st PUSH was Future. Result=(Future). 2nd PUSH was Past. Result=(Past Future).
+    ;; So we want (Future Past).
+    (nreverse result)))
+
+;; Request backtest from Rust
 ;; Request backtest from Rust
 (defun request-backtest (strat &key (candles *candle-history*) (suffix ""))
-  "Send strategy to Rust for high-speed backtesting"
-  (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d)...~%" (strategy-name strat) suffix (length candles))
-  (let ((msg (jsown:to-json 
-               (jsown:new-js 
-                 ("action" "BACKTEST")
-                 ("strategy" (strategy-to-json strat :name-suffix suffix))
-                 ("candles" (swimmy.main:candles-to-json candles))))))
-    (pzmq:send *cmd-publisher* msg)
-    (format t "[L] 📤 Sent ~d bytes to Rust~%" (length msg))))
+  "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe."
+  
+  ;; V8.0: Multi-Timeframe Logic
+  ;; Strategy decides its own destiny (timeframe)
+  (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
+         (timeframe (if (numberp tf-slot) tf-slot 1))
+         
+         ;; Resample if needed
+         (target-candles (if (> timeframe 1) 
+                             (resample-candles candles timeframe) 
+                             candles))
+         (len (length target-candles)))
+    
+    (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d / TF: M~d)...~%" 
+            (strategy-name strat) suffix len timeframe)
+    
+    (let ((msg (jsown:to-json 
+                 (jsown:new-js 
+                   ("action" "BACKTEST")
+                   ("strategy" (strategy-to-json strat :name-suffix suffix))
+                   ("candles" (swimmy.main:candles-to-json target-candles))))))
+      (pzmq:send *cmd-publisher* msg)
+      (format t "[L] 📤 Sent ~d bytes to Rust (TF: M~d)~%" (length msg) timeframe))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
