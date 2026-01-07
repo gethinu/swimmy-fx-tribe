@@ -35,3 +35,21 @@ quality-gate: test
 clean:
 	rm -rf ~/.cache/common-lisp/
 	rm -f *.fasl
+
+# Benchmarks
+run-benchmarks:
+	@echo "🧹 Cleaning up old processes..."
+	@-pkill -9 sbcl 2>/dev/null || true
+	@-pkill -9 guardian 2>/dev/null || true
+	@-fuser -k 5555/tcp 2>/dev/null || true
+	@-fuser -k 5556/tcp 2>/dev/null || true
+	@-fuser -k 5557/tcp 2>/dev/null || true
+	@-fuser -k 5560/tcp 2>/dev/null || true
+	@truncate -s 0 /tmp/guardian.log
+	@echo "🚀 Starting Guardian (Release)..."
+	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
+	@sleep 2
+	@echo "📊 Running Benchmarks..."
+	@./ci-test.sh
+	@echo "🧪 Running Lisp Benchmarks..."
+	@sbcl --noinform --load brain.lisp --load src/lisp/benchmark.lisp --eval '(swimmy.school:run-all-benchmarks)' --quit

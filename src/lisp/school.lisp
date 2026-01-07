@@ -210,55 +210,63 @@
     (otherwise 0.50)))
 
 (defun check-promotion (strategy-name)
-  "Check if strategy deserves promotion"
+  "Check if strategy deserves promotion (Enhanced with Sharpe Ratio)"
   (let ((rank-data (get-strategy-rank strategy-name)))
     (let* ((trades (strategy-rank-trades rank-data))
            (wins (strategy-rank-wins rank-data))
            (pnl (strategy-rank-total-pnl rank-data))
            (win-rate (if (> trades 0) (/ wins trades) 0))
-           (current-rank (strategy-rank-rank rank-data)))
+           (current-rank (strategy-rank-rank rank-data))
+           ;; V7.1: Resolve strategy to check Sharpe Ratio
+           (strat (or (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                      (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)))
+           (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0)))
       
-      ;; Promotion criteria
+      ;; Promotion criteria (Expert Panel Recommendation: Use Sharpe to filter luck)
       (cond
-        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL
+        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, Positive Sharpe
         ((and (eq current-rank :scout)
               (>= trades 10)
               (>= win-rate 0.40)
-              (> pnl 0))
+              (> pnl 0)
+              (> sharpe 0.0)) ; Must have positive expectancy
          (setf (strategy-rank-rank rank-data) :warrior)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          ;; Coming of Age ceremony
          (coming-of-age strategy-name "Scout" "Warrior")
          :warrior)
         
-        ;; Warrior → Veteran: 50+ trades, 50%+ win rate, 500+ PnL
+        ;; Warrior → Veteran: 50+ trades, 50%+ win rate, 500+ PnL, Sharpe > 0.5
         ((and (eq current-rank :warrior)
               (>= trades 50)
               (>= win-rate 0.50)
-              (> pnl 500))
+              (> pnl 500)
+              (> sharpe 0.5))
          (setf (strategy-rank-rank rank-data) :veteran)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Warrior" "Veteran")
          :veteran)
         
-        ;; Veteran → Legend: 100+ trades, 55%+ win rate, 2000+ PnL
+        ;; Veteran → Legend: 100+ trades, 55%+ win rate, 2000+ PnL, Sharpe > 1.0
         ((and (eq current-rank :veteran)
               (>= trades 100)
               (>= win-rate 0.55)
-              (> pnl 2000))
+              (> pnl 2000)
+              (> sharpe 1.0))
          (setf (strategy-rank-rank rank-data) :legend)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Veteran" "Legend")
          ;; Induct to Hall of Fame
          (induct-to-hall-of-fame strategy-name pnl current-rank 
-                                  (format nil "Win rate ~,0f%%" (* 100 win-rate)))
+                                  (format nil "WR ~,0f%% | Sharpe ~,2f" (* 100 win-rate) sharpe))
          :legend)
         
-        ;; Demotion: 5+ consecutive losses at Warrior level
+        ;; Demotion: 5+ consecutive losses at Warrior level OR Sharpe becomes negative
         ((and (member current-rank '(:warrior :veteran))
-              (< pnl -300))  ; Significant loss
+              (or (< pnl -300)
+                  (and (> trades 20) (< sharpe -0.5))))  ; Significant degradation
          (setf (strategy-rank-rank rank-data) :scout)
-         (format t "[L] ⚠️ ~a demoted to Scout due to poor performance~%" strategy-name)
+         (format t "[L] ⚠️ ~a demoted to Scout due to poor performance (Sharpe: ~,2f)~%" strategy-name sharpe)
          :scout)
         
         (t current-rank)))))
@@ -1453,7 +1461,37 @@
   (let ((alloc (cdr (assoc category (get-regime-weights)))))
     (if alloc (max 0.01 (* *total-capital* alloc)) 0.01)))
 
+(defun is-safe-trading-time-p (strategy-name)
+  "Check if current time is safe for trading (JST)"
+  (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
+    (declare (ignore s d mo y))
+    ;; Exempt specific time-based strategies
+    (when (search "Gotobi" strategy-name)
+      (return-from is-safe-trading-time-p t))
+      
+    (cond
+      ;; 1. ROLLOVER (Spread widen): 6:55 - 7:05
+      ((= h 6) nil) 
+      ((and (= h 7) (< m 5)) nil)
+      
+      ;; 2. ASIAN LUNCH (Low Volatility): 11:30 - 14:00 (approx)
+      ;;    Often choppy and creates false signals for trend strategies
+      ((or (= h 12) (= h 13)) nil)
+      
+      ;; 3. PRE-LONDON CHOP (Fakeouts): 15:00 - 15:30
+      ;;    Often creates false breakouts before real volume comes in
+      ((and (= h 15) (< m 30)) nil)
+      
+      ;; 4. FRIDAY CLOSE (Weekend Risk): After 23:00 on Friday
+      ((and (= dow 5) (>= h 23)) nil)
+      
+      (t t))))
+
 (defun evaluate-strategy-signal (strat history)
+  ;; EXPERT PANEL FILTER: Time & Day Check
+  (unless (is-safe-trading-time-p (strategy-name strat))
+    ;; (format t "[L] ⏳ TIME FILTER: ~a blocked at hour ~d~%" (strategy-name strat) (nth 2 (multiple-value-list (decode-universal-time (get-universal-time)))))
+    (return-from evaluate-strategy-signal :hold))
   (when (and history (> (length history) 100))
     (let* ((indicators (strategy-indicators strat))
            (entry-logic (strategy-entry strat))

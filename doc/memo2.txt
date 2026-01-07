@@ -550,3 +550,4 @@ swimmy-gbpusd
 [2026-01-07 01:05:01] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
 [2026-01-07 01:08:02] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
 [2026-01-07 01:28:00] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-07 13:00:22] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-16.21

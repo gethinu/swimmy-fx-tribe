@@ -1769,10 +1769,20 @@
       "price_after": null,
       "pnl_ensemble": null,
       "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T04:00:22.858838942+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
     }
   ],
   "ensemble_total_pnl": 0.0,
   "actual_total_pnl": 0.0,
-  "matches": 177,
+  "matches": 178,
   "mismatches": 0
 }
