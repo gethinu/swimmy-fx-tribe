@@ -1,41 +1,45 @@
+backtest bot
+アプリ
+ — 21:45
 📊 Backtest Summary (V6.9)
 
-TREND (Total: 23 | Pass: 0 | Avg Sharpe: -0.19)
+TREND (Total: 43 | Pass: 0 | Avg Sharpe: -0.17)
 Top 5:
-Holy-Grail-Proxy (S: -0.19)
-Wisdom-GBPUSD-Trend-3976769817-M1 (S: -0.19)
-Wisdom-USDJPY-Trend-3976769817-M36 (S: -0.19)
-Wisdom-GBPUSD-Trend-3976769817-M39 (S: -0.19)
-Wisdom-USDJPY-Trend-3976769884-M32 (S: -0.19)
+Conservative-Trend (S: 0.00)
+Trend-Pullback-Entry (S: 0.00)
+Perfect-Order-SMA (S: 0.00)
+Golden-Cross (S: 0.00)
+Triple-Screen-Proxy (S: -0.16)
 Worst 5:
-T-Nakane-Gotobi (S: -0.20)
-Sweet-Chariot-SMA-40 (S: -0.19)
-Medium-EMA-Cross-20-50-M89 (S: -0.19)
-Perfect-Order-SMA-M33 (S: -0.19)
-Perfect-Order-SMA-M89 (S: -0.19)
+Crossover-Plus-MACD (S: -0.20)
+TF-10-50 (S: -0.20)
+Puria-Method-Proxy (S: -0.20)
+Sweet-Chariot-SMA-40 (S: -0.20)
+Medium-EMA-Cross-20-50 (S: -0.20)
 
-REVERSION (Total: 18 | Pass: 0 | Avg Sharpe: -0.19)
+REVERSION (Total: 31 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
-Wisdom-USDJPY-Reversal-3976769817-M73 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M89 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M74 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M92 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M68 (S: -0.19)
+RSI-Volatility-Break (S: -0.18)
+RSI-Stoch-Reversal (S: -0.18)
+RSI-Overbought-Reversal (S: -0.18)
+RSI-Oversold-Reversal (S: -0.18)
+RSI-Momentum-Break (S: -0.18)
 Worst 5:
-Wisdom-USDJPY-Reversal-3976769817-M18 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769850-M39 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M11 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M62 (S: -0.19)
-Wisdom-USDJPY-Reversal-3976769817-M51 (S: -0.19)
+RSI-Bull-Zone (S: -0.20)
+Wisdom-USDJPY-Reversal-3976777256-M10 (S: -0.20)
+Wisdom-USDJPY-Reversal-3976778590-M85 (S: -0.19)
+Wisdom-USDJPY-Reversal-3976778190-M58 (S: -0.19)
+Wisdom-USDJPY-Reversal-3976777858-M8 (S: -0.19)
 
 BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
 Pullback-Breakout (S: -0.19)
-CCI-Trend-Breakout (S: -0.19)
+CCI-Trend-Breakout (S: -0.20)
 
-SCALP (Total: 2 | Pass: 0 | Avg Sharpe: -0.19)
+SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.19)
 Top 5:
+MA-Ribbon-Scalp (S: -0.19)
 Trend-Scalp-1M (S: -0.19)
-MA-Ribbon-Scalp (S: -0.20)
+Fibonacci-EMA-Scalp (S: -0.19)
 
 🔍 Only showing Top/Worst to reduce spam.

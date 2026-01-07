@@ -31,7 +31,15 @@ while [ $attempts -lt 10 ]; do
     
     if [ -z "$PORT_USAGE" ] && [ -z "$PROCESS_USAGE" ]; then
         echo "✅ System is CLEAN. Ports are free. No zombies."
-        echo "🚀 Starting System in 3 seconds..."
+        echo "🚀 Starting Data Keeper..."
+        # Start Data Keeper in background (Phase 7: System Separation)
+        if [ -f "tools/data_keeper.py" ]; then
+            source .venv/bin/activate 2>/dev/null || true
+            nohup python3 tools/data_keeper.py > logs/data_keeper.log 2>&1 &
+            sleep 2
+            echo "📚 Data Keeper started (port 5561)"
+        fi
+        echo "🚀 Starting Swimmy in 3 seconds..."
         sleep 3
         # Clean background run
         nohup make run > logs/swimmy.log 2>&1 &
