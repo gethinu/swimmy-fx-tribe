@@ -314,6 +314,32 @@
 ;;; TRADE OUTCOME RECORDING
 ;;; ==========================================
 
+;;; ==========================================
+;;; STRATEGY HISTORY & METRICS (V6.9 Fix)
+;;; ==========================================
+
+(defun update-strategy-metrics (strategy pnl)
+  "Update strategy history and recalculate Sharpe Ratio."
+  (when strategy
+    ;; 1. Check if pnl-history slot exists (it should, we added it to struct)
+    (when (slot-exists-p strategy 'pnl-history)
+      (push pnl (strategy-pnl-history strategy))
+      
+      ;; Limit history size
+      (when (> (length (strategy-pnl-history strategy)) 500)
+        (setf (strategy-pnl-history strategy) (subseq (strategy-pnl-history strategy) 0 500)))
+
+      ;; 2. Recalculate Sharpe
+      (let* ((history (strategy-pnl-history strategy))
+             (count (length history)))
+        (when (> count 5)
+          (let* ((mean (/ (reduce #'+ history) count))
+                 (sq-diffs (mapcar (lambda (x) (expt (- x mean) 2)) history))
+                 (variance (/ (reduce #'+ sq-diffs) count))
+                 (std-dev (sqrt (max 0.000001 variance))))
+            (setf (strategy-sharpe strategy) 
+                  (if (> std-dev 0) (/ mean std-dev) 0.0))))))))
+
 (defun record-trade-outcome (symbol direction category strategy-name pnl &key (hit :unknown) (hold-time 0))
   "Record trade outcome for learning (both wins and losses)"
   (let* ((ctx (get-rich-market-context symbol))
@@ -358,6 +384,13 @@
                   strategy-name direction (getf ctx :regime)
                   (getf ctx :rsi-value) (getf ctx :session))))
     
+    ;; Update Strategy Specific Metrics (V6.9 Fix: The -0.19 Bug)
+    (when strategy-name
+      (let ((strat (or (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)
+                       (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
+        (when strat
+          (update-strategy-metrics strat pnl))))
+
     ;; Homework integration hooks
     (handler-case
         (when (fboundp 'on-trade-close-meta)
