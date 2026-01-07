@@ -1,0 +1,33 @@
+---
+description: Run quality check and auto-commit if tests pass
+---
+# Quality Check Workflow
+
+This workflow runs quality gate tests and auto-commits if everything passes.
+
+## Steps
+
+// turbo-all
+
+1. **Run Quality Gate**
+```bash
+cd /home/swimmy/swimmy && make quality-gate
+```
+
+2. **If tests pass, stage all changes**
+```bash
+cd /home/swimmy/swimmy && git add -A
+```
+
+3. **Create auto-commit with timestamp**
+```bash
+cd /home/swimmy/swimmy && git commit -m "🤖 Auto-commit: Quality Gate Passed $(date '+%Y-%m-%d %H:%M')"
+```
+
+4. **Report result**
+Report to the user whether the commit was successful or if there were any issues.
+
+## Notes
+- This workflow should be run after completing a set of code modifications
+- If quality-gate fails, DO NOT commit - fix the issues first
+- The `// turbo-all` annotation means all steps auto-run without user confirmation

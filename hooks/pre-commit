@@ -1,0 +1,15 @@
+#!/bin/bash
+# Pre-commit hook: Run quality gate before allowing commit
+# Install: cp hooks/pre-commit .git/hooks/ && chmod +x .git/hooks/pre-commit
+
+echo "🔍 Running Quality Gate (Rust Tests)..."
+
+# Run Rust tests (fast and doesn't conflict with running Brain)
+if ! cd guardian && cargo test --release --quiet 2>/dev/null; then
+    echo "❌ Rust tests failed. Commit blocked."
+    exit 1
+fi
+
+echo "✅ Quality Gate PASSED. Proceeding with commit."
+echo "💡 Run 'make quality-gate' for full test suite including Lisp."
+exit 0

@@ -1,4 +1,7 @@
 ;; dreamer2.lisp - Code Generator (Genesis v2) + Backtester Integration
+
+(in-package :swimmy.school)
+
 ;; 変数を関数の前に定義して警告を防ぐ
 (defparameter *evolved-strategies* nil)
 
@@ -483,19 +486,7 @@ CURRENT MARKET: Regime=~a, Volatility=~a
       ("volume" (strategy-volume strat))
       ("indicator_type" (detect-indicator-type (strategy-indicators strat))))))
 
-;; Convert candle history to JSON
-(defun candles-to-json (history)
-  "Convert candle list to JSON array"
-  (mapcar (lambda (c)
-            (let ((close (candle-close c)))
-              (jsown:new-js
-                ("t" (or (candle-timestamp c) 0))
-                ("o" (or (candle-open c) close))
-                ("h" (or (candle-high c) close))
-                ("l" (or (candle-low c) close))
-                ("c" close))))
-          ;; Send ALL history provided (caller must filter/slice)
-          (reverse history)))
+
 
 ;; Request backtest from Rust
 (defun request-backtest (strat &key (candles *candle-history*) (suffix ""))
@@ -505,7 +496,7 @@ CURRENT MARKET: Regime=~a, Volatility=~a
                (jsown:new-js 
                  ("action" "BACKTEST")
                  ("strategy" (strategy-to-json strat :name-suffix suffix))
-                 ("candles" (candles-to-json candles))))))
+                 ("candles" (swimmy.main:candles-to-json candles))))))
     (pzmq:send *cmd-publisher* msg)
     (format t "[L] 📤 Sent ~d bytes to Rust~%" (length msg))))
 

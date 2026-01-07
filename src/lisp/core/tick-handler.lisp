@@ -9,19 +9,23 @@
 ;;; ==========================================
 ;;; HELPER FUNCTIONS (Logic moved from brain.lisp)
 ;;; ==========================================
+;;; Note: has-resigned-p is defined in school-resignation.lisp (swimmy.school)
+;;; Note: get-date-string, get-time-string are defined in shell/handoff.lisp (swimmy.shell)
+;;; These are inherited via (:use :swimmy.school :swimmy.shell) in package definition.
 
-(defun has-resigned-p ()
-  (or *has-resigned-today*
-      (and *danger-cooldown-until* (> *danger-cooldown-until* (get-universal-time)))))
-
-(defun get-date-string ()
-  (multiple-value-bind (s m h d mo y) (decode-universal-time (get-universal-time))
-    (declare (ignore s m h))
-    (format nil "~D-~2,'0D-~2,'0D" y mo d)))
-
-(defun get-time-string ()
-  (multiple-value-bind (s m h) (decode-universal-time (get-universal-time))
-    (format nil "~2,'0D:~2,'0D:~2,'0D" h m s)))
+;; Updated to match the robust version from dreamer2.lisp (handles nil timestamps & chronology)
+(defun candles-to-json (candles)
+  "Convert a list of candles to JSON structures for neural network input"
+  (mapcar (lambda (c)
+            (let ((close (candle-close c)))
+              (jsown:new-js
+                ("t" (or (candle-timestamp c) 0))
+                ("o" (or (candle-open c) close))
+                ("h" (or (candle-high c) close))
+                ("l" (or (candle-low c) close))
+                ("c" close))))
+          ;; Reverse to ensure chronological order if input is Newest-First (standard in this system)
+          (reverse candles)))
 
 (defun train-nn-from-trade (symbol pnl direction)
   "Train NN from trade outcome - online learning"
@@ -31,14 +35,7 @@
                          ((> pnl 0.3) 0)   ;; Clear win -> UP correct
                          ((< pnl -0.3) 1)  ;; Clear loss -> DOWN correct
                          (t 2)))           ;; Small -> FLAT
-               (candles-json (mapcar (lambda (c)
-                                       (jsown:new-js
-                                         ("open" (candle-open c))
-                                         ("high" (candle-high c))
-                                         ("low" (candle-low c))
-                                         ("close" (candle-close c))
-                                         ("volume" 1)))
-                                     (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
+               (candles-json (candles-to-json (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
                (cmd (jsown:to-json (jsown:new-js
                       ("action" "TRAIN")
                       ("candles" candles-json)
@@ -48,19 +45,34 @@
                   (cond ((= target 0) "UP") ((= target 1) "DOWN") (t "FLAT"))))
       (error (e) (format t "[L] NN train error: ~a~%" e)))))
 
+(defparameter *last-maintenance-time* 0)
+
 (defun run-periodic-maintenance ()
-  "Handle periodic maintenance tasks (backtests, ecosystem, evolution)"
-  (unless (and (boundp '*candle-histories*) *candle-histories*)
-    (setf *candle-histories* (make-hash-table :test 'equal)))
+  "Handle periodic maintenance tasks (backtests, ecosystem, evolution) - Throttled 60s
+   STRUCTURE NOTE (V8.3):
+   - L54-65: Prediction/Backtest → 60s throttle (from this function)
+   - L67-92: Dream Cycle → Self-throttled by *dream-interval* (3600s)
+   - L94-95: Discord Heartbeat → Self-throttled internally"
   (let ((now (get-universal-time)))
-    (request-prediction)
-    ;; Batch backtest
-    (when (and (not *initial-backtest-done*) *candle-history* (> (length *candle-history*) 1000))
-      (setf *initial-backtest-done* t)
-      (format t "~%[L] 🧪 Starting batch backtest of ~d strategies...~%" (length *strategy-knowledge-base*))
-      (batch-backtest-knowledge))
+    ;; ═══════════════════════════════════════════════════════
+    ;; SECTION 1: 60s Throttled Operations (Prediction, Backtest)
+    ;; ═══════════════════════════════════════════════════════
+    (when (> (- now *last-maintenance-time*) 59)
+      (setf *last-maintenance-time* now)
+      
+      (unless (and (boundp '*candle-histories*) *candle-histories*)
+        (setf *candle-histories* (make-hash-table :test 'equal)))
+      
+      (request-prediction)
+      ;; Batch backtest (one-time operation)
+      (when (and (not *initial-backtest-done*) *candle-history* (> (length *candle-history*) 1000))
+        (setf *initial-backtest-done* t)
+        (format t "~%[L] 🧪 Starting batch backtest of ~d strategies...~%" (length *strategy-knowledge-base*))
+        (batch-backtest-knowledge)))
     
-    ;; Dream cycle
+    ;; ═══════════════════════════════════════════════════════
+    ;; SECTION 2: Self-Throttled Operations (Dream Cycle - 1hr)
+    ;; ═══════════════════════════════════════════════════════
     (unless (numberp *last-dream-time*) (setf *last-dream-time* 0))
     (when (> (- now *last-dream-time*) *dream-interval*)
       (setf *last-dream-time* now)
@@ -87,7 +99,9 @@
       (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
         (funcall 'save-state)))
     
-    ;; Discord Heartbeat for mobile monitoring (Naval)
+    ;; ═══════════════════════════════════════════════════════
+    ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
+    ;; ═══════════════════════════════════════════════════════
     (when (fboundp 'check-discord-heartbeat)
       (check-discord-heartbeat))))
 
@@ -110,7 +124,6 @@
           (process-category-trades sym curr-bid (+ curr-bid 0.0002)))))))
 
 (defun processing-step (symbol bid)
-  (run-periodic-maintenance)
   (process-tick-round-robin symbol bid))
 
 (defun update-candle (bid symbol)
@@ -217,7 +230,10 @@ Sharpe   : ~,2f
       (send-daily-tribal-narrative)
       (setf *last-narrative-day* date)
       ;; Reset daily PnL
-      (setf *daily-pnl* 0))))
+      (setf *daily-pnl* 0)
+      ;; V8.2: Persist reset immediately
+      (when (fboundp 'swimmy.engine::save-state)
+        (funcall 'swimmy.engine::save-state)))))
 
 (defun send-heartbeat ()
   (let ((now (get-internal-real-time)))
@@ -244,7 +260,7 @@ Sharpe   : ~,2f
         (incf *accumulated-pnl* pnl)
         
         ;; Record result for danger tracking
-        (record-trade-result (if is-win :win :loss))
+        (swimmy.school:record-trade-result (if is-win :win :loss))
         
         ;; V5.1: Increment total trades for warmup tracking
         (incf *total-trades*)
@@ -283,7 +299,7 @@ Sharpe   : ~,2f
               (let* ((history (gethash symbol *candle-histories*))
                      (rsi (when (and history (> (length history) 14))
                             (ind-rsi 14 history)))
-                     (price-pos (when history (get-price-position history)))
+                     (price-pos (when (and history (fboundp 'get-price-position)) (get-price-position history)))
                      (context (list :regime *market-regime*
                                    :volatility-state *current-volatility-state*
                                    :session (current-trading-session)
@@ -291,7 +307,7 @@ Sharpe   : ~,2f
                                    :price-position price-pos
                                    :symbol symbol
                                    :direction (if (search "BUY" (string-upcase direction)) :buy :sell))))
-                (learn-from-failure context pnl)
+                (when (fboundp 'learn-from-failure) (learn-from-failure context pnl))
                 (format t "[L] 📚 長老会議に敗因を報告(6次元)~%"))
             (error (e) (format t "[L] Elder learning error: ~a~%" e))))
         
@@ -301,10 +317,10 @@ Sharpe   : ~,2f
         (handler-case
             (progn
               ;; Update leader stats
-              (update-leader-stats pnl)
+              (when (fboundp 'update-leader-stats) (update-leader-stats pnl))
               ;; Store in memory for pattern recall
               (let ((dir-keyword (if (search "BUY" (string-upcase direction)) :buy :sell)))
-                (store-memory symbol dir-keyword (if is-win :win :loss) pnl 0)))
+                (when (fboundp 'store-memory) (store-memory symbol dir-keyword (if is-win :win :loss) pnl 0))))
           (error (e) (format t "[L] Leader/Memory error: ~a~%" e)))
         
         ;; Funeral/Victory Ceremony
@@ -333,7 +349,12 @@ Sharpe   : ~,2f
 🙏 「敗北もまた師である」
 🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
               (format t "[L] ~a~%" msg)
-              (queue-discord-notification (gethash symbol *symbol-webhooks*) msg :color 15158332))))
+              (queue-discord-notification (gethash symbol *symbol-webhooks*) msg :color 15158332)))
+        
+        ;; V8.1: Persist state immediately after trade close (Fix restart data loss)
+        (when (fboundp 'swimmy.engine::save-state)
+          (funcall 'swimmy.engine::save-state)
+          (format t "[L] 💾 Global state saved after trade close~%")))
     (error (e) (format t "[L] Trade close error: ~a~%" e))))
 
 (defun internal-process-msg (msg)
@@ -368,7 +389,15 @@ Sharpe   : ~,2f
                                     :open c :high c :low c :close c :volume 1) bars)))
              (setf (gethash symbol *candle-histories*) bars)
              (setf *candle-history* bars)  ; Legacy compat - use first symbol
-             (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))))
+             (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))
+             
+             ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
+             (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
+                        (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
+                        (> (length bars) 100))
+               (format t "[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...~%")
+               (swimmy.school:batch-backtest-knowledge)
+               (setf *initial-backtest-done* t))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))
                   (name (jsown:val result "strategy_name"))
@@ -394,7 +423,10 @@ Sharpe   : ~,2f
                    (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
                       (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
                               (length *backtest-results-buffer*) *expected-backtest-count*)
-                      (notify-backtest-summary))))
+                      (notify-backtest-summary)
+                      ;; P1: Auto-adopt proven strategies
+                      (when (fboundp 'swimmy.school:adopt-proven-strategies)
+                        (swimmy.school:adopt-proven-strategies)))))
 
 
               ;; Update strategy's sharpe score

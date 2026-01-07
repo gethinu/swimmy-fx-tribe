@@ -18,7 +18,7 @@
     (let ((msg (jsown:to-json 
                  (jsown:new-js 
                    ("action" "EVOLVE")
-                   ("candles" (candles-to-json (subseq *candle-history* 0 (min 500 (length *candle-history*)))))
+                   ("candles" (swimmy.main:candles-to-json (subseq *candle-history* 0 (min 500 (length *candle-history*)))))
                    ("rounds" rounds)))))
       (pzmq:send *cmd-publisher* msg))))
 

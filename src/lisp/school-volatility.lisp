@@ -75,7 +75,9 @@
            (volatility-ratio (if (and current-atr baseline-atr (> baseline-atr 0))
                                  (/ current-atr baseline-atr)
                                  1.0))
+           (warmup-p (< (length *candle-history*) 50))  ; V6.5: Warmup period
            (new-state (cond
+                        (warmup-p :normal)  ; During warmup, always normal
                         ((> volatility-ratio 3.0) :extreme)
                         ((> volatility-ratio *volatility-shift-threshold*) :elevated)
                         (t :normal)))
@@ -127,7 +129,7 @@
   (case *current-volatility-state*
     (:normal 1.0)
     (:elevated 0.5)
-    (:extreme 0.0)))
+    (:extreme 0.25)))  ; V6.5: Changed from 0.0 to 0.25 to allow minimal trading
 
 ;;; ==========================================
 ;;; HDRL CURRENCY RISK CLASSIFICATION

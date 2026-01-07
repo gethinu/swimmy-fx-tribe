@@ -359,13 +359,28 @@
         :exit '(cross-below cci-14 0)
         :sl 0.25 :tp 0.50 :volume 0.01)
       
+      ;; ===== 6. CONTEXTUAL & STRUCTURAL =====
+      
+      ;; 6.1 Gotobi (Time-Based) Strategy
+      ;; Entry: Gotobi day AND 8:00 <= Hour < 10:00 AND Price > SMA-5 (Short-term trend OK)
+      ;; Exit: Hour >= 10:00 (Nakane passed)
+      (make-strategy :name "T-Nakane-Gotobi"
+        :indicators '((sma 5))
+        :entry '(and gotobi-p 
+                     (>= hour 8) (< hour 10)
+                     (< minute 55)   ; Do not enter just before 9:55
+                     (> close sma-5)) ; Basic trend filter
+        :exit '(or (>= hour 10)      ; Time exit
+                   (< close sma-5))  ; Trend broken
+        :sl 0.20 :tp 0.50 :volume 0.05) ; Larger volume for structural edge
+      
     ))
   (format t "[L] 📚 Knowledge base loaded: ~d strategies~%" 
           (length *strategy-knowledge-base*)))
 
-;; ===== Sharpe フィルター =====
-
-(defparameter *min-sharpe-threshold* 1.0)
+;; ===== Sharpe フィルター;; Thresholds
+(defparameter *min-sharpe-threshold* 0.5 "Minimum Sharpe to be adopted/kept")
+(defparameter *min-win-rate-threshold* 0.4 "Minimum Win Rate")
 (defparameter *approved-strategies* nil)
 
 (defun filter-by-sharpe (strategies)

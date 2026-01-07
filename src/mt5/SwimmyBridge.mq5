@@ -58,7 +58,7 @@ WarriorPosition g_warriors[16];
 
 datetime g_last_history_check = 0;
 datetime g_last_heartbeat = 0;
-const int HEARTBEAT_TIMEOUT = 60;
+const int HEARTBEAT_TIMEOUT = 300; // V15.2: Extended from 60s to 300s to avoid false triggers
 
 //+------------------------------------------------------------------+
 //| Logging functions with level control                              |
@@ -402,7 +402,9 @@ void ExecuteCommand(string cmd) {
    if(StringFind(cmd, "\"BUY\"") >= 0) {
       double sl = GetValueFromJson(cmd, "sl");
       double tp = GetValueFromJson(cmd, "tp");
-      double vol = GetValueFromJson(cmd, "volume");
+      // V15.11: Accept both "lot" and "volume" keys (Brain sends "lot")
+      double vol = GetValueFromJson(cmd, "lot");
+      if(vol <= 0) vol = GetValueFromJson(cmd, "volume");
       if(vol <= 0) vol = 0.01;
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
@@ -415,7 +417,9 @@ void ExecuteCommand(string cmd) {
    else if(StringFind(cmd, "\"SELL\"") >= 0) {
       double sl = GetValueFromJson(cmd, "sl");
       double tp = GetValueFromJson(cmd, "tp");
-      double vol = GetValueFromJson(cmd, "volume");
+      // V15.11: Accept both "lot" and "volume" keys (Brain sends "lot")
+      double vol = GetValueFromJson(cmd, "lot");
+      if(vol <= 0) vol = GetValueFromJson(cmd, "volume");
       if(vol <= 0) vol = 0.01;
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);

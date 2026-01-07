@@ -9,6 +9,30 @@
 ;;; *consecutive-losses*, *consecutive-wins*, *last-trade-result*
 ;;; *danger-cooldown-until*, *danger-level*, *cooldown-durations*
 
+(defun check-dynamic-circuit-breaker ()
+  "Check if dynamic circuit breaker should trip (3 losses in 5 mins)"
+  (let ((now (get-universal-time)))
+    ;; 1. Prune old losses
+    (setf *recent-losses* 
+          (remove-if (lambda (ts) (> (- now ts) *max-loss-window-seconds*))
+                     *recent-losses*))
+    
+    ;; 2. Check threshold
+    (when (>= (length *recent-losses*) *consecutive-loss-threshold*)
+      (setf *circuit-breaker-active* t)
+      (setf *breaker-cooldown-end* (+ now *breaker-cooldown-seconds*))
+      
+      (format t "~%[L] ⚡⚡ CIRCUIT BREAKER TRIPPED! ⚡⚡~%")
+      (format t "[L] 🚫 ~d losses in last ~ds. HALTING for ~ds.~%" 
+              (length *recent-losses*) *max-loss-window-seconds* *breaker-cooldown-seconds*)
+      
+      (when (fboundp 'swimmy.core:notify-discord-alert)
+        (swimmy.core:notify-discord-alert 
+         (format nil "⚡ **CIRCUIT BREAKER TRIPPED**~%~d losses in 5min.~%Halting trading for 15min."
+                 (length *recent-losses*))))
+      
+      (execute-tactical-retreat))))
+
 (defun record-trade-result (result)
   "Record trade result and update danger level"
   (setf *last-trade-result* result)
@@ -16,12 +40,21 @@
       (progn
         (incf *consecutive-losses*)
         (setf *consecutive-wins* 0)
-        ;; Trigger cooldown on consecutive losses
-        (when (>= *consecutive-losses* 2)
+        
+        ;; P1: Dynamic Circuit Breaker Tracking
+        (push (get-universal-time) *recent-losses*)
+        (check-dynamic-circuit-breaker)
+        
+        ;; Legacy Danger Logic (keep as fallback)
+        (when (>= *consecutive-losses* 5) ; Increased from 2 to 5 to prefer Circuit Breaker
           (activate-danger-cooldown)))
       (progn
         (incf *consecutive-wins*)
         (setf *consecutive-losses* 0)
+        ;; Clear recent losses on WIN (Dynamic Breaker only cares about CONSECUTIVE losses?)
+        ;; User requirement: "3 consecutive losses". So a WIN breaks the chain.
+        (setf *recent-losses* nil) 
+        
         ;; Recovery from danger
         (when (> *danger-level* 0)
           (decf *danger-level*)

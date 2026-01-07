@@ -447,13 +447,33 @@
       ((< sharpe -0.5) (* base-weight 0.5))
       (t base-weight))))
 
+(defun strategy-allowed-by-volatility-p (strat)
+  "Check if strategy is allowed in current volatility regime"
+  (let ((regime (if (boundp '*volatility-regime*) *volatility-regime* :normal))
+        (name (strategy-name strat)))
+    (cond
+      ;; Gotobi is exempt (Time-based structural edge)
+      ((search "Gotobi" name) t)
+      
+      ;; Extreme volatility: Only allow Breakout or Special strategies
+      ((eq regime :extreme)
+       (or (search "Breakout" name :test #'string=) 
+           (search "Volatility" name :test #'string=)))
+      
+      ;; Low volatility: Disallow generic Cross-Over (avoid chop)
+      ((eq regime :low)
+       (not (search "Cross" name :test #'string=)))
+       
+      (t t))))
+
 (defun collect-strategy-votes (symbol history)
   "Collect votes from all active strategies"
   (let ((votes nil))
     (maphash 
      (lambda (category strategies)
        (dolist (strat strategies)
-         (let* ((signal (evaluate-strategy-signal strat history))
+         (when (strategy-allowed-by-volatility-p strat)
+           (let* ((signal (evaluate-strategy-signal strat history))
                 (weight (calculate-strategy-weight strat))
                 (vote (make-strategy-vote
                        :strategy-name (strategy-name strat)
@@ -462,7 +482,7 @@
                        :weight weight
                        :timestamp (get-universal-time)
                        :category category)))
-           (push vote votes))))
+           (push vote votes)))))
      *active-team*)
     votes))
 
@@ -1440,43 +1460,59 @@
            (rest-hist (rest history))
            (bindings 
             (loop for ind in indicators
-                  append (let ((type (car ind)) (p (cdr ind)))
-                           (case type
-                             (sma `((,(intern (format nil "SMA-~d" (car p))) ,(ind-sma (car p) history))
-                                    (,(intern (format nil "SMA-~d-PREV" (car p))) ,(ind-sma (car p) rest-hist))))
-                             (ema `((,(intern (format nil "EMA-~d" (car p))) ,(ind-ema (car p) history))
-                                    (,(intern (format nil "EMA-~d-PREV" (car p))) ,(ind-ema (car p) rest-hist))))
-                             (rsi `((,(intern (format nil "RSI-~d" (car p))) ,(ind-rsi (car p) history))
-                                    (,(intern (format nil "RSI-~d-PREV" (car p))) ,(ind-rsi (car p) rest-hist))))
-                             (cci `((,(intern (format nil "CCI-~d" (car p))) ,(ind-cci (car p) history))
-                                    (,(intern (format nil "CCI-~d-PREV" (car p))) ,(ind-cci (car p) rest-hist))))
-                             (atr `((,(intern (format nil "ATR-~d" (car p))) ,(ind-atr (car p) history))))
-                             (macd (multiple-value-bind (m s) (ind-macd (first p) (second p) (third p) history)
-                                     (multiple-value-bind (pm ps) (ind-macd (first p) (second p) (third p) rest-hist)
-                                       `((macd-line ,m) (signal-line ,s) (macd-line-prev ,pm) (signal-line-prev ,ps)))))
-                             (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
-                                   (multiple-value-bind (pm pu pl) (ind-bb (first p) (second p) rest-hist)
-                                     (let ((dev (second p)))
-                                       ;; Both unique and generic names - generic will use last BB's values
-                                       `((,(intern (format nil "BB-MIDDLE-~d" dev)) ,m)
-                                         (,(intern (format nil "BB-UPPER-~d" dev)) ,u)
-                                         (,(intern (format nil "BB-LOWER-~d" dev)) ,l)
-                                         ;; V5.1: Add PREV values for cross detection
-                                         (,(intern (format nil "BB-MIDDLE-~d-PREV" dev)) ,pm)
-                                         (,(intern (format nil "BB-UPPER-~d-PREV" dev)) ,pu)
-                                         (,(intern (format nil "BB-LOWER-~d-PREV" dev)) ,pl)
-                                         ;; Generic aliases for strategies using simple bb-upper, etc.
-                                         (bb-middle ,m) (bb-upper ,u) (bb-lower ,l)
-                                         (bb-middle-prev ,pm) (bb-upper-prev ,pu) (bb-lower-prev ,pl))))))
-                             (stoch (let ((k (ind-stoch (first p) (second p) history))
-                                          (pk (ind-stoch (first p) (second p) rest-hist)))
-                                      `((stoch-k ,k) (stoch-k-prev ,pk) (stoch-d 50) (stoch-d-prev 50)))))))))
-      (push `(close ,(candle-close (first history))) bindings)
-      (push `(close-prev ,(candle-close (second history))) bindings)
-      (push `(high ,(candle-high (first history))) bindings)
-      (push `(high-prev ,(candle-high (second history))) bindings)  ; V5.0
-      (push `(low ,(candle-low (first history))) bindings)
-      (push `(low-prev ,(candle-low (second history))) bindings)  ; V5.0
+                  append (let ((type (car ind)) (p (cdr ind))
+                                (pkg (find-package :swimmy.school)))
+                            (case type
+                              (sma `((,(intern (format nil "SMA-~d" (car p)) pkg) ,(ind-sma (car p) history))
+                                     (,(intern (format nil "SMA-~d-PREV" (car p)) pkg) ,(ind-sma (car p) rest-hist))))
+                              (ema `((,(intern (format nil "EMA-~d" (car p)) pkg) ,(ind-ema (car p) history))
+                                     (,(intern (format nil "EMA-~d-PREV" (car p)) pkg) ,(ind-ema (car p) rest-hist))))
+                              (rsi `((,(intern (format nil "RSI-~d" (car p)) pkg) ,(ind-rsi (car p) history))
+                                     (,(intern (format nil "RSI-~d-PREV" (car p)) pkg) ,(ind-rsi (car p) rest-hist))))
+                              (cci `((,(intern (format nil "CCI-~d" (car p)) pkg) ,(ind-cci (car p) history))
+                                     (,(intern (format nil "CCI-~d-PREV" (car p)) pkg) ,(ind-cci (car p) rest-hist))))
+                              (atr `((,(intern (format nil "ATR-~d" (car p)) pkg) ,(ind-atr (car p) history))))
+                              (macd (multiple-value-bind (m s) (ind-macd (first p) (second p) (third p) history)
+                                      (multiple-value-bind (pm ps) (ind-macd (first p) (second p) (third p) rest-hist)
+                                        `((,(intern "MACD-LINE" pkg) ,m) (,(intern "SIGNAL-LINE" pkg) ,s) 
+                                          (,(intern "MACD-LINE-PREV" pkg) ,pm) (,(intern "SIGNAL-LINE-PREV" pkg) ,ps)))))
+                              (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
+                                    (multiple-value-bind (pm pu pl) (ind-bb (first p) (second p) rest-hist)
+                                      (let ((dev (second p)))
+                                        ;; Both unique and generic names - generic will use last BB's values
+                                        `((,(intern (format nil "BB-MIDDLE-~d" dev) pkg) ,m)
+                                          (,(intern (format nil "BB-UPPER-~d" dev) pkg) ,u)
+                                          (,(intern (format nil "BB-LOWER-~d" dev) pkg) ,l)
+                                          ;; V5.1: Add PREV values for cross detection
+                                          (,(intern (format nil "BB-MIDDLE-~d-PREV" dev) pkg) ,pm)
+                                          (,(intern (format nil "BB-UPPER-~d-PREV" dev) pkg) ,pu)
+                                          (,(intern (format nil "BB-LOWER-~d-PREV" dev) pkg) ,pl)
+                                          ;; Generic aliases for strategies using simple bb-upper, etc.
+                                          (,(intern "BB-MIDDLE" pkg) ,m) (,(intern "BB-UPPER" pkg) ,u) (,(intern "BB-LOWER" pkg) ,l)
+                                          (,(intern "BB-MIDDLE-PREV" pkg) ,pm) (,(intern "BB-UPPER-PREV" pkg) ,pu) (,(intern "BB-LOWER-PREV" pkg) ,pl))))))
+                              (stoch (let ((k (ind-stoch (first p) (second p) history))
+                                           (pk (ind-stoch (first p) (second p) rest-hist)))
+                                      `((,(intern "STOCH-K" pkg) ,k) (,(intern "STOCH-K-PREV" pkg) ,pk) 
+                                        (,(intern "STOCH-D" pkg) 50) (,(intern "STOCH-D-PREV" pkg) 50)))))))))
+      (let ((pkg (find-package :swimmy.school)))
+        ;; V5.0: Bind Price Data
+        (push `(,(intern "CLOSE" pkg) ,(candle-close (first history))) bindings)
+        (push `(,(intern "CLOSE-PREV" pkg) ,(candle-close (second history))) bindings)
+        (push `(,(intern "HIGH" pkg) ,(candle-high (first history))) bindings)
+        (push `(,(intern "HIGH-PREV" pkg) ,(candle-high (second history))) bindings)
+        (push `(,(intern "LOW" pkg) ,(candle-low (first history))) bindings)
+        (push `(,(intern "LOW-PREV" pkg) ,(candle-low (second history))) bindings)
+        
+        ;; V7.0: Bind Time Context (Musk's First Principles)
+        (multiple-value-bind (sec min hour day month year dow) (decode-universal-time (get-universal-time))
+          (declare (ignore sec day month year dow))
+          (push `(,(intern "HOUR" pkg) ,hour) bindings)
+          (push `(,(intern "MINUTE" pkg) ,min) bindings)
+          ;; Bind GOTOBI-P (using school-fortress function if available)
+          (let ((is-gotobi (if (fboundp (intern "GOTOBI-DAY-P" pkg))
+                               (funcall (intern "GOTOBI-DAY-P" pkg))
+                               nil)))
+            (push `(,(intern "GOTOBI-P" pkg) ,is-gotobi) bindings))))
       
       ;; Remove duplicate bindings (keep first occurrence) for multi-BB strategies
       (setf bindings (remove-duplicates bindings :key #'car :from-end t))
@@ -1485,7 +1521,7 @@
       ;; (cross-above sma-50 sma-200) → (cross-above sma-50 sma-200 sma-50-prev sma-200-prev)
       (labels ((add-prev-suffix (sym)
                  (if (symbolp sym)
-                     (intern (format nil "~a-PREV" (symbol-name sym)))
+                     (intern (format nil "~a-PREV" (symbol-name sym)) (find-package :swimmy.school))
                      sym))  ; V5.0: Return non-symbols unchanged
                (transform-cross-calls (expr)
                  (cond
@@ -1497,9 +1533,9 @@
                           (a (second expr))
                           (b (third expr)))
                       ;; V5.0: Only transform if both are symbols
-                      (if (and (symbolp a) (symbolp b))
-                          (list fn a b (add-prev-suffix a) (add-prev-suffix b))
-                          expr)))  ; Return unchanged if numbers involved
+                      (list fn (if (symbolp a) a (eval a)) (if (symbolp b) b (eval b)) 
+                            (if (symbolp a) (add-prev-suffix a) (eval a)) 
+                            (if (symbolp b) (add-prev-suffix b) (eval b)))))
                    (t (mapcar #'transform-cross-calls expr)))))
         (let ((transformed-logic (transform-cross-calls entry-logic)))
           (handler-case
@@ -1580,6 +1616,51 @@
       ;; Ensure conf is a number
       (setf conf (if (numberp conf) conf 0.0))
       
+      ;; ════════════════════════════════════════════════════════════════════
+      ;; P0 STARTUP SAFEGUARDS (Expert Panel 2026-01-07)
+      ;; ════════════════════════════════════════════════════════════════════
+      
+      ;; P0-1: WARMUP GUARD - Block ALL trades during warmup period
+      (let ((now (get-universal-time)))
+        ;; Transition from warmup to trading when time expires
+        (when (and (eq *system-state* :warmup) 
+                   (> now *warmup-end-time*))
+          (setf *system-state* :trading)
+          (format t "[L] ✅ P0 WARMUP COMPLETE: Trading ENABLED~%"))
+        
+        ;; Block trades during warmup
+        (when (eq *system-state* :warmup)
+          (format t "[L] ⏳ P0 WARMUP: Trade blocked (~d sec remaining)~%" 
+                  (- *warmup-end-time* now))
+          (return-from execute-category-trade nil))
+        
+        ;; P0-2: ENTRY RATE LIMIT - Max 1 entry per second
+        (when (< (- now *last-entry-time*) *min-entry-interval-seconds*)
+          (format t "[L] ⚡ P0 RATE LIMIT: Too fast, skipping (last entry ~a sec ago)~%"
+                  (- now *last-entry-time*))
+          (return-from execute-category-trade nil))
+        
+        ;; P0-3: STARTUP POSITION LIMIT - Max 1 position during first 60 sec after warmup
+        (let ((startup-period-end (+ *warmup-end-time* 60)))
+          (when (and (< now startup-period-end)
+                     (> (hash-table-count *warrior-allocation*) 0))
+            (format t "[L] 🛡️ P0 STARTUP LIMIT: Max 1 position during startup~%")
+            (return-from execute-category-trade nil)))
+            
+        ;; ════════════════════════════════════════════════════════════════════
+        ;; P1 FAILURE SAFETY (Dynamic Circuit Breaker)
+        ;; ════════════════════════════════════════════════════════════════════
+        (when *circuit-breaker-active*
+          (if (> now *breaker-cooldown-end*)
+              (progn
+                (setf *circuit-breaker-active* nil)
+                (setf *recent-losses* nil)
+                (format t "[L] ✅ CIRCUIT BREAKER RESET: Cooldown expired. Resuming trading.~%"))
+              (progn
+                (format t "[L] ⚡ CIRCUIT BREAKER ACTIVE: Trading HALTED for ~ds~%"
+                        (- *breaker-cooldown-end* now))
+                (return-from execute-category-trade nil)))))
+      
       ;; V2.1: Convene High Council for important decisions
       (when (and (not warmup-p)
                  (or large-lot-p high-rank-p danger-p)
@@ -1597,47 +1678,35 @@
       
       ;; Check for failure pattern BLOCK
       (unless (should-block-trade-p symbol direction category)
-        ;; Trade conditions (V6.3: TRIBES removed, SWARM-only):
-        ;; 1. Warmup period: trade freely to gather data
-        ;; 2. High NN confidence (>35%) AND NN agrees 
-        ;; 3. Strong swarm consensus (>50%)  ;; V6.5: Lowered from 70% to 50%
-        (when (or warmup-p
-                  (and (> conf 0.35)
-                       (or (and (eq direction :buy) (string= pred "BUY"))
-                           (and (eq direction :sell) (string= pred "SELL"))))
-                  (> swarm-consensus 0.50))
-          ;; V2.0: Apply hedge logic for Breakers (aggressive trades get counter-hedge)
-          (when (eq category :breakout)
-            (apply-hedge-logic category direction symbol bid ask))
-          ;; V3.0: PREDICTION CHECK - use previously unused function
-          (let* ((prediction (handler-case (predict-trade-outcome symbol direction)
-                               (error (e) (progn (format t "[L] Prediction error: ~a~%" e) nil))))
-                 (should-trade (or warmup-p 
-                                   (null prediction)
-                                   (should-take-trade-p prediction))))
-            ;; Explain decision (within let* scope)
-            (when prediction
-              (handler-case
-                  (let ((factors (trade-prediction-factors prediction))
-                        (action (if should-trade :execute :skip)))
-                    (explain-trade-decision symbol direction action factors))
-                (error (e) (format t "[L] Explain error: ~a~%" e))))
-            
-            ;; V5.5 (Soros): Global Panic Protocol
-            (when (global-panic-active-p)
-              (setf should-trade nil)
-              (format t "[L] 💉 SOROS: Global Panic detected! Blocking trade.~%"))
-            
-            ;; V5.5 (Darwin): Unlearning Check
-            (when (should-unlearn-p symbol)
-              (setf should-trade nil)
-              (format t "[L] 🧬 DARWIN: Recent performance toxic. Unlearning active.~%"))
+        ;; P0 HARDENED: ALL trades MUST pass prediction filter (no warmup bypass)
+        (let* ((prediction (handler-case (predict-trade-outcome symbol direction)
+                             (error (e) (progn (format t "[L] Prediction error: ~a~%" e) nil))))
+               ;; P0: NO BYPASS - prediction filter is MANDATORY
+               (should-trade (if prediction 
+                                 (should-take-trade-p prediction)
+                                 nil)))  ;; No prediction = no trade
+          ;; Explain decision
+          (when prediction
+            (handler-case
+                (let ((factors (trade-prediction-factors prediction))
+                      (action (if should-trade :execute :skip)))
+                  (explain-trade-decision symbol direction action factors))
+              (error (e) (format t "[L] Explain error: ~a~%" e))))
+          
+          ;; V5.5 (Soros): Global Panic Protocol
+          (when (global-panic-active-p)
+            (format t "[L] 💉 SOROS: Elevated volatility - trading with reduced size~%"))
+          
+          ;; V5.5 (Darwin): Unlearning Check
+          (when (should-unlearn-p symbol)
+            (setf should-trade nil)
+            (format t "[L] 🧬 DARWIN: Recent performance toxic. Unlearning active.~%"))
 
-            ;; V5.6 (Paper #36): Parallel Verification Loops
-            (when should-trade
-              (unless (verify-parallel-scenarios symbol direction category)
-                (setf should-trade nil)
-                (format t "[L] 🧬 PARALLEL VERIFICATION: FAILED (Trade rejected)~%")))
+          ;; V5.6 (Paper #36): Parallel Verification Loops
+          (when should-trade
+            (unless (verify-parallel-scenarios symbol direction category)
+              (setf should-trade nil)
+              (format t "[L] 🧬 PARALLEL VERIFICATION: FAILED (Trade rejected)~%")))
               
             (when should-trade
               ;; V5.5 (Sun Tzu): Operation Mist (Entry Jitter & Feint)
@@ -1662,14 +1731,21 @@
                                          :tribe-cons (if (boundp '*tribe-consensus*) *tribe-consensus* 0)
                                          :swarm-cons swarm-consensus
                                          :parallel-score 2
-                                         :elder-ok (not (should-block-trade-p symbol :buy)))
+                                         :elder-ok (not (should-block-trade-p symbol :buy category)))
                            ;; USE SAFE-ORDER for centralized risk check
                            (when (safe-order "BUY" symbol lot sl tp magic)
                              (setf (gethash key *warrior-allocation*) 
                                    (list :symbol symbol :category category :direction :long :entry bid :magic magic :lot lot :start-time (get-universal-time)))
                              (update-symbol-exposure symbol lot :open)
                              (incf *category-trades*)
-                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic))))
+                             ;; P0: Update last entry time for rate limiting
+                             (setf *last-entry-time* (get-universal-time))
+                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)
+                             ;; V8.1: Discord Notification
+                             (swimmy.shell:notify-discord-symbol symbol 
+                               (format nil "⚔️ **WARRIOR DEPLOYED**~%Strategy: ~a~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
+                                       lead-name symbol lot magic)
+                               :color 3066993))))
                         ((eq direction :sell)
                          (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                            ;; USE SAFE-ORDER for centralized risk check
@@ -1678,9 +1754,16 @@
                                    (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
                              (update-symbol-exposure symbol lot :open)
                              (incf *category-trades*)
-                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic))))))
+                             ;; P0: Update last entry time for rate limiting
+                             (setf *last-entry-time* (get-universal-time))
+                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)
+                             ;; V8.1: Discord Notification
+                             (swimmy.shell:notify-discord-symbol symbol 
+                               (format nil "⚔️ **WARRIOR DEPLOYED**~%Strategy: ~a~%Action: SELL ~a~%Lot: ~,2f~%Magic: ~d" 
+                                       lead-name symbol lot magic)
+                               :color 15158332))))))
                     ;; Clan is full (4/4 warriors deployed)
-                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)))))))))
+                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category))))))))
     (error (e) (format t "[TRACE] 🚨 ERROR in execute-category-trade: ~a~%" e))))
 
 ;; Track entry prices for each category
@@ -1726,6 +1809,13 @@
              (notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
    *warrior-allocation*))
+
+
+(defun trading-allowed-p ()
+  "Check if trading is globally allowed"
+  (if (boundp '*trading-enabled*)
+      *trading-enabled*
+      t))  ;; Default to true if not defined to avoid lockup, relying on other checks
 
 (defun process-category-trades (symbol bid ask)
   "Process trades using Swarm Intelligence, Memory System, Danger Avoidance, AND Research Insights"
@@ -1826,7 +1916,7 @@
                                     (format t "~a~%" narrative)
                                     ;; Send to Discord
                                     (handler-case
-                                        (notify-discord narrative :color (if (eq direction :buy) 3066993 15158332))
+                                        (swimmy.shell:notify-discord-symbol symbol narrative :color (if (eq direction :buy) 3066993 15158332))
                                       (error (e) (format t "[L] Discord error: ~a~%" e)))
                                     ;; Record trade time for this strategy
                                     (record-clan-trade-time strat-key)
@@ -1846,10 +1936,31 @@
                (format t "[L] ⏸️ HOLD: Research trend divergence~%")))))
         (error (e) nil))))))  ;; Suppress tribe processing errors
 
+(defun force-recruit-strategy (name)
+  "Forcefully recruit a strategy from knowledge base into active service (Special Forces)"
+  (let ((strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+    (if strat
+        (progn
+          ;; Add to evolved strategies if not present
+          (pushnew strat *evolved-strategies* :test #'string= :key #'strategy-name)
+          ;; Add to category pools
+          (let ((cat (categorize-strategy strat)))
+             ;; Ensure the category list exists or update it
+            (setf (gethash cat *category-pools*) 
+                  (cons strat (remove (strategy-name strat) (gethash cat *category-pools*) 
+                                    :key #'strategy-name :test #'string=))))
+          (format t "[L] 🎖️ Special Force Recruited: ~a~%" name)
+          t)
+        (format t "[L] ⚠️ Special Force NOT FOUND: ~a~%" name))))
+
+(defun recruit-special-forces ()
+  (force-recruit-strategy "T-Nakane-Gotobi"))
+
 (defun init-school ()
   (build-category-pools)
+  (recruit-special-forces) ; V7.0: Inject special forces
   (clrhash *category-positions*)
-  (format t "[SCHOOL] Swimmy School ready~%"))
+  (format t "[SCHOOL] Swimmy School ready (Special Forces Active)~%"))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V3.0: 4氏族シグナル関数を削除

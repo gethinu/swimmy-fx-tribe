@@ -70,6 +70,10 @@
            
            (format t "[BRAIN] 🚀 System active and running...~%")
            
+           ;; Connectivity Verification (Expert Panel Requirement)
+           (if (fboundp 'notify-discord)
+               (notify-discord "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993))
+           
            ;; MAIN LOOP - V41.7: Non-blocking with Timeout
            (loop 
              (handler-case 
@@ -83,6 +87,12 @@
                    (unless (search "Resource temporarily unavailable" err-str)
                       (format t "[L] 🚨 Main Loop Error: ~a~%" e)
                       (sleep 0.1))))) ; Small sleep on real error
+               
+             ;; V8.4: Periodic Maintenance (Decoupled from Ticks)
+             (handler-case
+                 (when (fboundp 'run-periodic-maintenance)
+                   (run-periodic-maintenance))
+               (error (e) (format t "[L] Maintenance Error: ~a~%" e)))
                
              ;; Always check heartbeat
              (when (fboundp 'send-heartbeat)

@@ -112,16 +112,21 @@
         0.5)))
 
 (defun should-take-trade-p (prediction)
-  "Decide whether to take trade based on prediction"
-  (let ((conf (trade-prediction-confidence prediction)))
+  "Decide whether to take trade based on prediction - P0 HARDENED VERSION"
+  (let ((conf (trade-prediction-confidence prediction))
+        (outcome (trade-prediction-predicted-outcome prediction)))
+    ;; P0: LOSS predictions are NEVER traded
+    (when (eq outcome :loss)
+      (format t "[L] 🚫 LOSS PREDICTION: Trade blocked (conf ~,0f%)~%" (* 100 conf))
+      (return-from should-take-trade-p nil))
+    ;; P0: Require 60%+ confidence (raised from 35%)
     (cond
-      ((< conf 0.35)
-       (format t "[L] ❌ PREDICTION TOO LOW: Skipping trade~%")
+      ((< conf 0.60)
+       (format t "[L] ❌ CONFIDENCE TOO LOW (~,0f%): Skipping trade~%" (* 100 conf))
        nil)
-      ((< conf 0.5)
-       (format t "[L] ⚠️ WEAK PREDICTION: Reducing size~%")
-       t)
-      (t t))))
+      (t 
+       (format t "[L] ✅ APPROVED: WIN prediction (~,0f% confidence)~%" (* 100 conf))
+       t))))
 
 ;;; ==========================================
 ;;; RISK PARITY SYSTEM

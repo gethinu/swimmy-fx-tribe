@@ -211,6 +211,18 @@
   (when strategy (format t "[L]   ├─ Strategy: ~a~%" strategy))
   (when tribe-cons (format t "[L]   ├─ Tribe Consensus: ~,0f%~%" (* 100 tribe-cons)))
   (when swarm-cons (format t "[L]   ├─ Swarm Consensus: ~,0f%~%" (* 100 swarm-cons)))
+  
+  ;; User Request: Log to memo2.txt
+  (with-open-file (stream "/home/swimmy/swimmy/doc/memo2.txt" 
+                          :direction :output 
+                          :if-exists :append 
+                          :if-does-not-exist :create)
+    (let ((sharpe (when strategy 
+                    (let ((s (find strategy *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+                      (if s (strategy-sharpe s) 0.0)))))
+      (format stream "[~a] ~a ~a (~a) Strategy:~a Sharpe:~,2f~%" 
+              (swimmy.core:get-jst-str) symbol direction category strategy (or sharpe 0.0))))
+              
   (when parallel-score (format t "[L]   ├─ Parallel Verification: ~d/3 PASS~%" parallel-score))
   (when elder-ok (format t "[L]   └─ Elder Approval: ~a~%" (if elder-ok "✅ YES" "❌ NO"))))
 

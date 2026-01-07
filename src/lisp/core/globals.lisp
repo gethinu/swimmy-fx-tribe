@@ -8,6 +8,14 @@
 (defstruct candle timestamp open high low close volume)
 (defstruct arm-state position entry-price sl tp streak)
 
+(defstruct elder
+  name              ; Strategy name
+  peak-pnl          ; Highest profit achieved
+  era               ; When they were active
+  speciality        ; What they were good at
+  wisdom            ; Lessons learned
+  vote-weight)      ; How much their vote counts
+
 ;;; STRATEGY STATE
 (defparameter *evolved-strategies* nil "List of evolved/generated strategies.")
 (defparameter *strategy-knowledge-base* nil "Master knowledge base of all strategies.")

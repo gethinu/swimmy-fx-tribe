@@ -2,6 +2,8 @@
 ;; V6.13: Unified risk management from school.lisp, school-fortress.lisp, brain.lisp
 ;; Taleb's Antifragility + Thorp's Kelly Criterion
 
+(in-package :swimmy.engine)
+
 ;;; ==========================================
 ;;; RISK MANAGER API
 ;;; ==========================================
@@ -36,10 +38,12 @@
           (push "SYMBOL_EXPOSURE_LIMIT" checks)
           (setf final-lot (* final-lot 0.5)))))
     
-    ;; 5. Daily loss limit check
-    (when (and (boundp '*daily-pnl*) (< *daily-pnl* -3000))
-      (push "DAILY_LOSS_WARNING" checks)
-      (setf final-lot (* final-lot 0.7)))
+    ;; 5. P0: Daily loss limit PRE-OPEN CHECK (BLOCK, not just warn)
+    ;; This prevents opening new positions after hitting loss limit
+    (when (and (boundp '*daily-pnl*) (< *daily-pnl* -5000))
+      (push "DAILY_LOSS_LIMIT_EXCEEDED" checks)
+      (format t "[L] 🛑 PRE-OPEN BLOCK: Daily loss ¥~,0f exceeds ¥-5000 limit~%" *daily-pnl*)
+      (setf approved nil))
     
     ;; 6. Gotobi adjustment (USDJPY only)
     (when (and (fboundp 'apply-gotobi-adjustment) (string= symbol "USDJPY"))
@@ -52,16 +56,14 @@
       (let ((adj (apply-london-edge symbol direction)))
         (when adj (setf final-lot (* final-lot adj)))))
     
-    ;; 8. Volatility check
+    ;; 8. Volatility check - V6.5: Just log, don't reduce further (already handled by school-volatility)
     (when (and (boundp '*current-volatility-state*) 
                (eq *current-volatility-state* :extreme))
-      (push "EXTREME_VOLATILITY" checks)
-      (setf final-lot (* final-lot 0.5)))
+      (push "EXTREME_VOLATILITY" checks))
       
-    ;; 9. TALEB'S GATEKEEPER (Absolute Limits)
+    ;; 9. TALEB'S GATEKEEPER - V6.5: Ensure minimum lot instead of rejecting
     (when (< final-lot 0.01)
-      (setf approved nil)
-      (push "LOT_TOO_SMALL" checks))
+      (setf final-lot 0.01))  ; Floor to minimum instead of rejecting
     
     ;; Return results
     (values approved 
@@ -86,7 +88,7 @@
                        (jsown:new-js 
                          ("action" action)
                          ("symbol" symbol)
-                         ("volume" adjusted-lot)
+                         ("lot" (read-from-string (format nil "~,2f" adjusted-lot)))
                          ("sl" sl)
                          ("tp" tp)
                          ("magic" magic)))))

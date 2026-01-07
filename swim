@@ -14,18 +14,18 @@ show_help() {
     echo "Usage: swim [command]"
     echo ""
     echo "Commands:"
-    echo "  (none)    Restart Swimmy and follow logs"
-    echo "  start     Start Swimmy"
-    echo "  stop      Stop Swimmy"
-    echo "  restart   Restart Swimmy"
-    echo "  status    Show Swimmy status"
-    echo "  logs      Follow Swimmy logs (Ctrl+C to exit)"
-    echo "  help      Show this help"
+    echo "  (none)      Run Swimmy locally (Dev Mode) - No Sudo"
+    echo "  local       Run Swimmy locally (same as default)"
+    echo "  svc-start   Start Swimmy Service (Systemd)"
+    echo "  svc-stop    Stop Swimmy Service (Systemd)"
+    echo "  svc-restart Restart Swimmy Service (Systemd)"
+    echo "  svc-status  Show Swimmy Service Status"
+    echo "  svc-logs    Follow Swimmy Service logs"
+    echo "  help        Show this help"
     echo ""
     echo "Examples:"
-    echo "  swim          # Restart and follow logs"
-    echo "  swim stop     # Stop Swimmy"
-    echo "  swim logs     # Follow logs only"
+    echo "  swim            # Run locally (calls make run)"
+    echo "  swim svc-status # Check systemd service"
 }
 
 case "$1" in
@@ -57,14 +57,20 @@ case "$1" in
     help|--help|-h)
         show_help
         ;;
-    "")
-        # Default: restart and follow logs
-        echo -e "${GREEN}[SWIM]${NC} 🐟 Swimmy Control Script (Systemd Mode)"
-        echo -e "${YELLOW}[SWIM]${NC} 🔄 Restarting Swimmy..."
+    local)
+        echo -e "${GREEN}[SWIM]${NC} 🏃 Running Swimmy Locally..."
+        make run
+        ;;
+    svc-restart)
+        echo -e "${YELLOW}[SWIM]${NC} 🔄 Restarting Swimmy Service (Requires Sudo)..."
         sudo systemctl restart swimmy
         sleep 2
-        echo -e "${GREEN}[SWIM]${NC} 📜 Following logs (Ctrl+C to exit)..."
-        journalctl -u swimmy -f
+        sudo systemctl status swimmy --no-pager
+        ;;
+    "")
+        # Default: Run locally (No Sudo)
+        echo -e "${GREEN}[SWIM]${NC} 🐟 Swimmy Control (Dev Mode)"
+        make run
         ;;
     *)
         echo -e "${RED}[SWIM]${NC} ❌ Unknown command: $1"

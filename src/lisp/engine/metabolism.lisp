@@ -22,6 +22,9 @@
 
 ;; Extract SMA params from indicator list (Legacy logic from Dreamer)
 (defun extract-sma-params-safe (indicators)
+  ;; Guard against non-list indicators
+  (unless (listp indicators)
+    (return-from extract-sma-params-safe '(5 20)))
   (let ((nums nil))
     (dolist (ind indicators)
       (when (listp ind)
@@ -47,9 +50,9 @@
 ;;; ==========================================
 
 (defun should-prune-p (stats)
-  "Determine if an arm should be pruned based on stats."
-  (let* ((wins (first stats))
-         (losses (second stats))
+  "Determine if an arm should be pruned based on stats (wins . losses)."
+  (let* ((wins (if (consp stats) (car stats) 0))
+         (losses (if (consp stats) (cdr stats) 0))
          (total (+ wins losses))
          (rate (if (> total 0) (/ wins total) 0.5)))
     (cond
@@ -73,12 +76,18 @@
     (loop for arm in *arms*
           for idx from 0
           for stats = (cdr arm)
-          do (if (should-prune-p stats)
-                 (progn
-                   (incf pruned-count)
-                   (format t "[METABOLISM] 💀 Pruned Arm ~d (Wins: ~a/~a)~%" 
-                           idx (first stats) (+ (first stats) (second stats))))
-                 (push (cons idx arm) survivors)))
+          do (cond
+               ;; Skip malformed arms
+               ((not (listp stats))
+                (push (cons idx arm) survivors))
+               ;; Check if should prune
+               ((should-prune-p stats)
+                (incf pruned-count)
+                (format t "[METABOLISM] 💀 Pruned Arm ~d (Wins: ~a/~a)~%" 
+                        idx (if (consp stats) (car stats) 0) 
+                        (+ (if (consp stats) (car stats) 0) (if (consp stats) (cdr stats) 0))))
+               ;; Keep survivor
+               (t (push (cons idx arm) survivors))))
     
     (setf survivors (nreverse survivors))
     
@@ -149,7 +158,10 @@
 (defun run-metabolism ()
   "Execute the metabolic cycle: Prune -> Replenish."
   (format t "[METABOLISM] 🍂 Cycle running...~%")
-  (prune-strategies)
-  (replenish-arms))
+  (handler-case (prune-strategies)
+    (error (e) (format t "[METABOLISM] Prune error: ~a~%" e)))
+  (handler-case (replenish-arms)
+    (error (e) (format t "[METABOLISM] Replenish error: ~a~%" e))))
 
 (format t "[ENGINE] metabolism.lisp loaded~%")
+

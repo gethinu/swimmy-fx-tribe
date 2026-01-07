@@ -153,6 +153,8 @@
    
    ;; Logger
    #:log-info
+   #:log-warn
+   #:log-debug
    #:log-error
    #:setup-logger
    
@@ -168,6 +170,9 @@
    #:notify-discord
    #:notify-discord-symbol
    #:notify-discord-daily
+   #:notify-backtest-summary
+   #:notify-discord-alert  ;; Exported for Circuit Breaker
+   #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
    ))
 
@@ -181,6 +186,10 @@
    #:safe-order
    #:get-risk-summary
    #:check-risk-limits
+   #:check-correlation-risk
+   #:get-symbol-exposure
+   #:apply-gotobi-adjustment
+   #:apply-london-edge
    
    ;; Portfolio
    #:update-portfolio
@@ -195,10 +204,32 @@
    
    ;; Learning
    #:load-hall-of-fame
+   #:train-neural
+   #:update-nn-threshold
+   
+   ;; Metrics
+   #:get-daily-risk-limit
+   #:get-performance-stats
    
    ;; Goals
    #:get-goal-progress
    #:get-daily-target
+   
+   ;; State Persistence
+   #:save-state
+   #:load-state
+   #:*state-file-path*
+   
+   ;; Positions
+   #:on-trade-opened
+   #:on-trade-closed
+   
+   ;; Danger
+   #:danger-cooldown-active-p
+   #:has-resigned-p
+   
+   ;; Strategy Struct (if defined here)
+   #:strategy-sharpe
    
    ;; Webhooks (tick-handler)
    #:process-msg
@@ -217,12 +248,32 @@
    ;; Learning
    #:record-trade-outcome
    #:extract-learned-patterns
+   #:learn-from-failure
+   #:store-memory
+   #:get-price-position
    
-   ;; Research
    ;; Research
    #:integrate-research-papers
    
-   ;; Missing Exports
+   ;; Indicators (used in tick-handler)
+   #:ind-rsi
+   #:ind-sma
+   #:ind-ema
+   #:ind-bb
+   #:ind-atr
+   #:calculate-atr
+   
+   ;; Meta Learning
+   #:get-best-strategy-for-regime
+   #:update-best-strategy-for-regime
+   #:extract-learned-patterns
+   
+   ;; Trading Session
+   #:current-trading-session
+   #:london-session-p
+   #:gotobi-day-p
+   
+   ;; Strategy Management
    #:initialize-clan-treasury
    #:assemble-team
    #:morning-ritual
@@ -232,6 +283,133 @@
    #:process-category-trades
    #:check-evolution
    #:evolve-population
+   #:batch-backtest-knowledge
+   #:adopt-proven-strategies
+   #:record-trade-result
+   #:update-leader-stats
+   
+   ;; Special Forces
+   #:force-recruit-strategy
+   #:recruit-special-forces
+   #:strategy-allowed-by-volatility-p
+   #:get-volatility-multiplier
+   
+   ;; Constitution
+   #:initialize-constitution
+   #:evaluate-constitution
+   #:*constitution*
+   
+   ;; Reputation
+   #:get-reputation
+   #:update-reputation
+   
+   ;; Strategy Struct Accessors
+   #:make-strategy
+   #:strategy-name
+   #:strategy-indicators
+   #:strategy-sl
+   #:strategy-tp
+   #:strategy-volume
+   #:strategy-entry
+   #:strategy-exit
+   #:strategy-sharpe
+   #:strategy-win-rate
+   #:strategy-trades
+   #:strategy-max-dd
+   #:strategy-benched-p
+   
+   ;; Clan Struct Accessors
+   #:make-clan
+   #:clan-id
+   #:clan-name
+   #:clan-title
+   #:clan-emoji
+   #:clan-philosophy
+   #:clan-persona
+   #:clan-battle-cry
+   #:get-clan
+   #:get-clan-display
+   
+   ;; Leader Info Struct Accessors
+   #:make-leader-info
+   #:leader-info-strategy-name
+   #:leader-info-sharpe
+   #:leader-info-pnl-as-leader
+   #:leader-info-trades-as-leader
+   
+   ;; Elder Struct Accessors
+   #:elder-name
+   #:elder-peak-pnl
+   #:elder-vote
+   
+   ;; Core Value Struct Accessors
+   #:core-value-name
+   #:core-value-description
+   #:core-value-priority
+   
+   ;; Reputation Struct Accessors
+   #:reputation-trust-score
+   #:reputation-reliability
+   #:reputation-profit-score
+   
+   ;; Trade Prediction Struct
+   #:make-trade-prediction
+   #:trade-prediction-symbol
+   #:trade-prediction-confidence
+   
+   ;; Danger/Risk
+   #:danger-cooldown-active-p
+   #:has-resigned-p
+   #:reset-danger-state
+   
+   ;; Hall of Fame
+   #:*hall-of-fame*
+   #:induct-to-hall-of-fame
+   
+   ;; Genome/State
+   #:save-genome
+   #:save-meta-learning
+   
+   ;; Pattern Matching
+   #:pattern-similarity
+   #:time-decay-weight
+   
+   ;; Learned Pattern Struct
+   #:learned-pattern-confidence
+   #:learned-pattern-description
+   
+   ;; Improvement Request Struct
+   #:improvement-request-category
+   #:improvement-request-description
+   #:improvement-request-status
+   
+   ;; Tribal Dialect
+   #:*tribal-dialect*
+   #:initialize-tribal-dialect
+   
+   ;; Walk Forward Validation
+   #:*wfv-pending-strategies*
+   #:start-walk-forward-validation
+   #:process-wfv-result
+   
+   ;; Meta Learning
+   #:get-best-strategy-for-regime
+   #:update-best-strategy-for-regime
+   #:on-trade-close-meta
+   #:record-proof-trade
+   
+   ;; Continuous Learning
+   #:continuous-learning-step
+   #:evaluate-strategy-performance
+   #:calculate-mutual-aid
+   
+   ;; Benching
+   #:weekly-unbench-all
+   #:should-weekly-unbench-p
+   
+   ;; Daily Report
+   #:get-daily-risk-limit
+   #:get-performance-stats
    ))
 
 ;;; ----------------------------------------------------------------------------
@@ -242,12 +420,17 @@
   (:export
    ;; Notification
    #:broadcast-event
+   #:notify-discord
+   #:notify-discord-symbol
    #:initialize-tribal-dialect
    #:setup-symbol-webhooks
    ;; Briefing
    #:report-goal-status
    #:send-periodic-status-report
    #:save-live-status
+   ;; Date/Time utilities
+   #:get-date-string
+   #:get-time-string
    ))
 
 ;;; ----------------------------------------------------------------------------
@@ -265,6 +448,8 @@
    #:update-candle
    #:send-heartbeat
    #:check-daily-narrative
+   ;; Utility functions
+   #:candles-to-json
    ))
 
 ;;; ----------------------------------------------------------------------------

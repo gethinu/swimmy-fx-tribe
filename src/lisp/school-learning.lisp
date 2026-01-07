@@ -302,7 +302,20 @@
     (handler-case
         (when (and (fboundp 'record-template-result) category)
           (record-template-result category won-p 0.0))
-      (error () nil))))
+      (error () nil))
+
+    ;; P1 LEARNING FEEDBACK LOOP
+    ;; Link actual outcome back to prediction history
+    (when (boundp '*prediction-history*)
+      (let ((pred (find-if (lambda (p) 
+                             (and (string= (trade-prediction-symbol p) symbol)
+                                  (eq (trade-prediction-direction p) direction)
+                                  (null (trade-prediction-actual-outcome p))))
+                           *prediction-history*)))
+        (when pred
+          (setf (trade-prediction-actual-outcome pred) (if won-p :win :loss))
+          (format t "[L] 🧠 FEEDBACK: Updated prediction for ~a ~a -> ~a~%" 
+                  symbol direction (if won-p :win :loss)))))))
 
 ;; Legacy compatibility
 (defun record-failure (symbol direction category strategy-name pnl)

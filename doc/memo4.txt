@@ -1,0 +1,74 @@
+# Reddit EA開発者の経験から学ぶ教訓
+# 作成日: 2026-01-07
+================================================================================
+## 参照リンク
+================================================================================
+1. https://www.reddit.com/r/IndiaAlgoTrading/comments/1ozcui5/did_my_ea_really_make_2000_in_45_days_heres_the/
+   → 45日で$2,000利益、ドローダウン18.62%のライブ結果共有
+2. https://www.reddit.com/r/Forexstrategy/comments/1kru3lo/3_weeks_of_live_trades_with_my_mt5_bot_heres_the/
+   → ML搭載トレンドフォローBot「Octo」、3週間でROI 36%、勝率96%、DD 3.4%
+3. https://www.reddit.com/r/Forexstrategy/comments/1nvh0js/help_i_coded_and_ea/
+   → 5年バックテストで$15,000→$300,000、しかし「良すぎて信じられない」問題
+4. https://www.reddit.com/r/algotrading/comments/1op7ooq/hi_everyone_i_finally_put_my_mt5_ea_on_a_funded/
+   → プログラマーのEA開発手順（最終的に口座破綻で終了）
+5. https://www.reddit.com/r/algotrading/comments/1gyl3ti/im_new_to_mt5_just_created_an_ea_but_the_results/
+   → MQLサーバーとExnessサーバーでバックテスト結果が全く異なる問題
+6. https://www.reddit.com/r/Forexstrategy/comments/1odu216/ea_algo_automated_trading/
+   → EA自動売買に関する議論
+7. https://www.reddit.com/r/Forexstrategy/comments/1pexerv/warning_worst_metatrader_5_mt5_expert_advisors/
+   → 口座を吹き飛ばした最悪のEA警告スレッド
+================================================================================
+## 抽出した7つの教訓
+================================================================================
+### 1. バックテストと実戦の乖離は避けられない
+   - スリッページ・手数料は必ずパフォーマンスを悪化させる
+   - Strategy Testerの結果は楽観的すぎる
+   → Swimmy対応済み: backtester.rsにentry/exit両方のスリッページ実装
+### 2. ブローカー間のデータ差異は致命的
+   - 同じEAでもブローカー/サーバーによって結果が大きく異なる
+   → 教訓: 複数のデータソースでバックテストを検証すべき
+### 3. 時間帯・曜日フィルターは効果的
+   - Win rate by hour, profit by day of week を分析
+   - 損失の多い時間帯を無効化するとドローダウンが劇的に減少
+   → Swimmy提案: T-Nakane-Gotobiのような時間ベース戦略をさらに発展
+### 4. 分散が鍵 (10-12ペア × 複数タイムフレーム)
+   - 各バリアントはドローダウン4.5%未満を維持
+   - 10-12ペアで運用することでリスク分散
+   → Swimmy提案: USDJPY, GBPJPY, USDCADなどへ展開検討
+### 5. 「良すぎる結果」は警告サイン
+   - 驚異的なバックテスト結果 = 過学習（オーバーフィット）の可能性大
+   → 教訓: Forward Testを50%確保、OOS検証を必ず実施
+### 6. Mean Reversionはボットに最適
+   - トレンドフォローだけでなくMean Reversion戦略も有効
+   - 特に金属（XAU等）で効果的
+   → Swimmy提案: strategies.lispにMean Reversion戦略追加検討
+### 7. 最終的な結末：口座破綻の可能性
+   - 「I blew the account. Learning was worth it.」
+   - 十分なテストと自信があっても、本番では失敗する可能性がある
+   → 教訓: Funded Accountでリスク限定しながら学習
+================================================================================
+## Swimmy FX-Tribe 具体的アクション提案
+================================================================================
+[高優先度]
+- 時間帯別パフォーマンス分析を追加 (brain.lisp, analytics)
+- Forward Test / OOS検証の自動化 (backtester.rs)
+[中優先度]
+- 通貨ペア拡大: USDJPY, GBPJPY, USDCAD
+- Mean Reversion戦略の追加 (strategies.lisp)
+[低優先度]
+- 複数ブローカーデータでの検証
+================================================================================
+## 成功した戦略例（Reddit投稿者より）
+================================================================================
+1. 20RR strategy (Chart Fanatics)
+2. Flag and Pole strategy
+3. ICT intraday strategies（勝率は主張ほど高くないが利益は出る）
+4. Multi EMA (8,13,21,55) + CCI (+-100) + ADX 25
+5. Mean reversion（ボットに最適、金属で特に有効）
+================================================================================
+## 失敗した戦略例
+================================================================================
+1. ORB (Opening Range Breakout) - 何を試しても機能しなかった
+2. シグナルグループ系のランダム戦略 - 1ヶ月も持たない
+3. 一部のReddit戦略 - 情報不足で完全実装できず
+================================================================================

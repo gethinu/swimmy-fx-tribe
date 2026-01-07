@@ -19,13 +19,13 @@
 
 (format t "[TEST RUNNER] Executing Test Suite...~%")
 
-(unless (find-package :swimmy-tests)
-  (format t "[FATAL] SWIMMY-TESTS package not found!~%")
+(unless (find-package :swimmy.tests)
+  (format t "[FATAL] SWIMMY.TESTS package not found!~%")
   (sb-ext:exit :code 1))
 
 ;; Run Tests and capture result
 (multiple-value-bind (passed failed)
-    (uiop:symbol-call :swimmy-tests :run-all-tests)
+    (uiop:symbol-call :swimmy.tests :run-all-tests)
   (declare (ignore passed))
   (format t "[TEST RUNNER] Passed: ~d, Failed: ~d~%" passed failed)
   (sb-ext:exit :code (if (> failed 0) 1 0)))

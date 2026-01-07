@@ -12,6 +12,7 @@
                
                ;; ENGINE
                (:file "src/lisp/engine/risk")
+               (:file "src/lisp/risk-manager")  ; V6.5: Added - contains safe-order
                (:file "src/lisp/engine/goals")
                (:file "src/lisp/engine/metrics")
                (:file "src/lisp/engine/experiments")

@@ -315,8 +315,8 @@
     
     (format t "[L] 📱 Grand Chieftain notified via Discord~%")))
 
-(defun convene-high-council (proposal proposer-clan &key (urgency :normal))
-  "Convene the High Council for an important decision"
+(defun convene-policy-council (proposal proposer-clan &key (urgency :normal))
+  "Convene the Policy Council for important strategic decisions (not for trade execution)"
   (format t "~%[L] ═══════════════════════════════════════~%")
   (format t "[L] 🏛️ HIGH COUNCIL CONVENED~%")
   (format t "[L] ═══════════════════════════════════════~%")

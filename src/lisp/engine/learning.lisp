@@ -16,13 +16,7 @@
 (defparameter *hall-of-fame* nil)
 (defparameter *hall-of-fame-path* "/home/swimmy/swimmy/.opus/hall_of_fame.lisp")
 
-(defstruct elder
-  name              ; Strategy name
-  peak-pnl          ; Highest profit achieved
-  era               ; When they were active
-  speciality        ; What they were good at
-  wisdom            ; Lessons learned
-  vote-weight)      ; How much their vote counts
+
 
 ;;; ==========================================
 ;;; FAILURE LEARNING

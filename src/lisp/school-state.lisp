@@ -2,6 +2,8 @@
 ;; V6.13: Extracted from school.lisp for modular architecture
 ;; All shared state variables are defined here and exported
 
+(in-package :swimmy.school)
+
 ;;; ==========================================
 ;;; FORWARD DECLARATIONS
 ;;; ==========================================
@@ -14,6 +16,32 @@
 (defvar *daily-pnl* 0)
 (defvar *accumulated-pnl* 0)
 (defvar *category-trades* 0)
+
+;;; ==========================================
+;;; P0 STARTUP SAFEGUARDS (Expert Panel 2026-01-07)
+;;; ==========================================
+;;; Prevent mass entries on history load
+(defparameter *system-state* :initializing 
+  "System state: :initializing, :warmup, :trading, :halted")
+(defparameter *warmup-end-time* 0 
+  "Universal time when warmup period ends (60s after history load)")
+(defparameter *last-entry-time* 0 
+  "Universal time of last entry (for rate limiting)")
+(defparameter *warmup-duration-seconds* 60 
+  "How long to wait after history load before trading")
+(defparameter *min-entry-interval-seconds* 1.0 
+  "Minimum seconds between entries (rate limit)")
+
+;;; ==========================================
+;;; P1 FAILURE SAFETY (Dynamic Circuit Breaker)
+;;; ==========================================
+(defparameter *circuit-breaker-active* nil "Is circuit breaker currently tripped?")
+(defparameter *breaker-cooldown-end* 0 "Time when breaker resets")
+(defparameter *recent-losses* nil 
+  "List of timestamps of recent losses. Used to detect failure cascades.")
+(defparameter *max-loss-window-seconds* 300 "Window to check for consecutive losses (5m)")
+(defparameter *consecutive-loss-threshold* 3 "Number of losses in window to trip breaker")
+(defparameter *breaker-cooldown-seconds* 900 "Duration to Halt trading (15m)")
 
 ;; Warrior System (school-danger.lisp)
 (defparameter *warrior-allocation* (make-hash-table :test 'equal) 

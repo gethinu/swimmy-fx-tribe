@@ -9,55 +9,23 @@
 ;;; Dependencies:
 ;;;   - src/lisp/engine/goals.lisp (for goal progress)
 ;;;   - src/lisp/core/config.lisp (for webhook URLs)
+;;;   - src/lisp/core/discord.lisp (for notify-discord, notify-discord-symbol)
 ;;; ============================================================================
 
-(defvar *discord-webhook-url* nil)
-;;; ==========================================
-;;; CORE DISCORD NOTIFICATION
-;;; ==========================================
-
-(defun notify-discord (msg &key (color 3447003))
-  "Send notification to main Discord webhook."
-  (when (and *discord-webhook-url* msg (not (equal msg "NIL")))
-    (handler-case
-        (dex:post *discord-webhook-url*
-                  :content (jsown:to-json
-                            (jsown:new-js
-                             ("embeds" (list (jsown:new-js
-                                              ("title" "🐟 Apex")
-                                              ("description" (format nil "~a" msg))
-                                              ("color" color))))))
-                  :headers '(("Content-Type" . "application/json"))
-                  :read-timeout 3)
-      (error (e) nil))))
+;;; Note: notify-discord and notify-discord-symbol are defined in core/discord.lisp
+;;; and inherited via (:use :swimmy.core) in the package definition.
 
 ;;; ==========================================
-;;; MULTI-CURRENCY DISCORD
+;;; MULTI-CURRENCY DISCORD SETUP
 ;;; ==========================================
 
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
 
 (defun setup-symbol-webhooks ()
   "Setup Discord webhooks for each currency pair."
-  (setf (gethash "USDJPY" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_USDJPY"))
-  (setf (gethash "EURUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_EURUSD"))
-  (setf (gethash "GBPUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_GBPUSD")))
-
-(defun notify-discord-symbol (symbol msg &key (color 3447003))
-  "Send Discord notification to symbol-specific channel."
-  (let ((webhook (or (gethash symbol *symbol-webhooks*) *discord-webhook-url*)))
-    (when (and webhook msg (not (equal msg "NIL")))
-      (handler-case
-          (dex:post webhook
-                    :content (jsown:to-json
-                              (jsown:new-js
-                               ("embeds" (list (jsown:new-js
-                                                ("title" (format nil "🐟 ~a" symbol))
-                                                ("description" (format nil "~a" msg))
-                                                ("color" color))))))
-                    :headers '(("Content-Type" . "application/json"))
-                    :read-timeout 3)
-        (error (e) nil)))))
+  (setf (gethash "USDJPY" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_USDJPY"))
+  (setf (gethash "EURUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_EURUSD"))
+  (setf (gethash "GBPUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD")))
 
 ;;; ==========================================
 ;;; TRADE NOTIFICATIONS (Hooks from Engine)

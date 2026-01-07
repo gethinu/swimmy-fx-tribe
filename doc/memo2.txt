@@ -1,185 +1,552 @@
-source /home/swimmy/swimmy/.venv/bin/activate
-swimmy@SERV870:~/swimmy$ source /home/swimmy/swimmy/.venv/bin/activate
-(.venv) swimmy@SERV870:~/swimmy$ make run
-sbcl --load brain.lisp
-This is SBCL 2.2.9.debian, an implementation of ANSI Common Lisp.
-More information about SBCL is available at <http://www.sbcl.org/>.
+• EMA-50 = 1.36
 
-SBCL is free software, provided as is, with absolutely no warranty.
-It is mostly in the public domain; some portions are provided under
-BSD-style licenses.  See the CREDITS and COPYING files in the
-distribution for more information.
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
 
-[LOADER] Loading Swimmy System via ASDF...
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-compat". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-test". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-examples". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-[PACKAGES] Importing symbols into CL-USER...
-[PACKAGES] Package Hierarchy Defined.
-[GLOBALS] Global variables defined in SWIMMY.GLOBALS
-[L] ⚙️ core/config.lisp loaded - System configuration
-[ENGINE] risk.lisp loaded (Taleb Rules Active)
-[RISK] 🛡️ Daily Loss Limit Set: ¥-228 (Tolerance: CONSERVATIVE)
-[ENGINE] goals.lisp loaded
-[ENGINE] metrics.lisp loaded
-[ENGINE] experiments.lisp loaded
-[ENGINE] learning.lisp loaded
-[ENGINE] signals.lisp loaded
-[ENGINE] positions.lisp loaded
-[ENGINE] portfolio.lisp loaded
-[ENGINE] metabolism.lisp loaded
-[ENGINE] ledger.lisp loaded
-[ENGINE] treasury.lisp loaded
-[ENGINE] failsafe.lisp loaded
-[L] ✅ Discord Async Queue loaded (V41.3)
-[ENGINE] heartbeat.lisp loaded - Mobile monitoring active
-[L] 💬 core/discord.lisp loaded - Discord notifications consolidated
-WARNING: redefining SWIMMY.CORE:NOTIFY-DISCORD in DEFUN
-WARNING: redefining SWIMMY.CORE:NOTIFY-DISCORD-SYMBOL in DEFUN
-[SHELL] notifications.lisp loaded
-[SHELL] briefing.lisp loaded
-[SHELL] narrative.lisp loaded
-[SHELL] interface.lisp loaded
-[SHELL] handoff.lisp loaded
-[DSL] Kalman Filter loaded (ArXiv:1808.03297)
-[DSL] Loaded with CCI support
-STYLE-WARNING:
-   LOG-PHILOSOPHY is being redefined as a macro when it was previously defined to be a function.
-WARNING: redefining SWIMMY.SCHOOL::LOG-PHILOSOPHY in DEFMACRO
-[DSL] Advanced Macros loaded (PG-style)
-[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)
-[VS] Verbalized Sampling loaded (ArXiv:2510.01171)
-[L] 📚 Knowledge base loaded: 61 strategies
-[STRATEGIES] Indicator types assigned:
-  sma: 15 strategies
-  ema: 15 strategies
-  macd: 6 strategies
-  rsi: 10 strategies
-  bb: 10 strategies
-  stoch: 5 strategies
-[STRATEGIES] 61 strategies loaded from Knowledge Base
-[L] 📦 school-state.lisp loaded - Shared state initialized
-[L] 🕐 Strategy TTL system enabled (max TTL: 7 days, min WR: 35.0%)
-[L] 🗜️ Context Compression enabled (Graham Agent Skills)
-[L] 🧠 Memory Systems enabled (Episodic + Semantic)
-[L] 🤝 Multi-Agent Patterns enabled (Blackboard + Voting)
-[L] 🦈 school-danger.lisp loaded - Danger Avoidance System active
-[L] 📜 school-constitution.lisp loaded - The Law is Active.
-[L] 🏳️ school-resignation.lisp loaded - Resignation Judgment active
-[SCHOOL] school-learning.lisp loaded - Failure Learning System
-[SCHOOL] school-volatility.lisp loaded - Volatility Detection System
-[SCHOOL] school-research.lisp loaded - Research Implementations
-[SCHOOL] Swimmy School ready
-WARNING: redefining SWIMMY.SCHOOL:CONVENE-HIGH-COUNCIL in DEFUN
-[FORTRESS] V6.1 features loaded (Paranoia + Japan Edge + Auto-Prune)
-[SCHOOL] 🏛️ Advisor Council (Unified) loaded
-[L] 🪵 logger.lisp loaded - Structured logging active
-[MIXSEEK] Competition System loaded
-[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders
-[RESEARCH] #13 Dual Trend Decomposition loaded
-[RESEARCH] #17 Volatility-Based Model Switch loaded
-[RESEARCH] #18 Volatility-Scaled Rewards loaded
-[RESEARCH] #16 Kalman+HMM Regime Detection loaded
-[RESEARCH] #11 Latent Parameter Estimation loaded
-[RESEARCH] #10/#27 Ensemble & Normalization loaded
-[RESEARCH] #4 Implementation Quality Checks loaded
-[RESEARCH] #9 Zero-Shot Caution loaded
+ 利確: +50 pips |  損切: -25 pips
 
-[RESEARCH] ════════════════════════════════════════════
-[RESEARCH] 📚 29 Research Paper Insights Integrated
-[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28...
-[RESEARCH] ════════════════════════════════════════════
-[LLM] #5 Trading-R1 Reasoning Structure loaded
-[LLM] #14 Text Feature Extraction loaded
-[LLM] #28 FinLlama Sentiment Integration loaded
-[LLM] #24 Logic-Guided DSL Extension loaded
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[13:10]2026年1月6日 火曜日 13:10
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
 
-[LLM] ════════════════════════════════════════════
-[LLM] 🧠 LLM Integration Preparation Complete
-[LLM] Papers: #5 Trading-R1, #14 PrimoGPT, #28 FinLlama, #24 SYENS
-[LLM] ════════════════════════════════════════════
-[EVOLUTION] Continuous evolution system loaded
-[ERRORS] Comprehensive error handling loaded
-[QUALITY] Code quality tools loaded
-[QUALITY] Run (swimmy-quality:analyze-code-quality) for analysis
-[REPL] Swimmy REPL interface loaded
-[REPL] Type (swimmy :help) for commands
-WARNING: redefining SWIMMY.CORE:GET-DATE-STRING in DEFUN
-WARNING: redefining SWIMMY.CORE:GET-TIME-STRING in DEFUN
-[TESTS] Test framework loaded (V7.0 - Expert Verified)
-[TESTS] Run (swimmy-tests:run-all-tests) to execute 22 tests
+ 発動戦略: Perfect-Order-SMA
 
-╔════════════════════════════════════════════════════════════╗
-║  🐟 SWIMMY Ver 41.5 - The Refactored Gardener              ║
-║     Powering Up via ASDF System Definition                 ║
-╚════════════════════════════════════════════════════════════╝
-[SYSTEM] Initializing subsystems...
-[L] 📚 Tribal Dialect initialized (Simplified)
+• SMA-20 = 1.36
+• SMA-50 = 1.36
+• SMA-100 = 1.35
 
-[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS (Refactored)
-[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders
-[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
 
-[L] ═══════════════════════════════════════
-[L] 🌅 MORNING RITUAL - The Clans Gather
-[L] ═══════════════════════════════════════
+ 利確: +90 pips |  損切: -30 pips
 
-[L] 📜 CONSTITUTION RECITATION:
-[L] 「勝とうとするな。ただ、生き残れ。
-[L]  そうすれば、最後に立っているのは我々だ。」
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[13:10]2026年1月6日 火曜日 13:10
+ GBPUSD
+═══════════════════════════════
+ 【Breakers】が戦場に立つ！
+═══════════════════════════════
 
-[L] 📜 CONSTITUTION INITIALIZED (v7.9++ (Graham/Taleb Hybrid))
-[L] 📜 5 Core Values loaded
-[L] 🏛️ THE FOUR GREAT CLANS STAND READY:
+ 発動戦略: Session-Breakout-Proxy
 
-[L] 🏹 Hunters (追跡者)「風が吹いている」
-[L] 🔮 Shamans (呪術師)「高すぎるものは落ちる」
-[L] ⚔️ Breakers (破壊者)「壁は壊された」
-[L] 🗡️ Raiders (盗賊)「隙あり」
+• SMA-5 = 1.36
 
-[L] 🎯 TODAY'S MISSION: 月間目標 ¥10,000 への道
-[L] 📈 現在の累積PnL: ¥0 / 目標 ¥10,000 (0.0%)
-[L] 📊 LEARNING SUMMARY: Overall win rate: 50.0% (0 wins, 0 losses)
-[L] 🕐 HOUR PATTERNS: #<HASH-TABLE :TEST EQL :COUNT 0 {1005023C13}>
-[L] 🐟 SWARM ACCURACY: 0.5
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
 
-[L] ═══════════════════════════════════════
-[L] 💰 CLAN TREASURIES
-[L] ═══════════════════════════════════════
-[L] 🏹 Hunters: ¥0
-[L] 🔮 Shamans: ¥0
-[L] ⚔️ Breakers: ¥0
-[L] 🗡️ Raiders: ¥0
-[L] ═══════════════════════════════════════
+ 利確: +40 pips |  損切: -20 pips
 
-[METABOLISM] 🍂 Cycle running...
-[L] ═══════════════════════════════════════
+ この条件で行く。
+═══════════════════════════════
+[13:10]2026年1月6日 火曜日 13:10
+ GBPUSD
+═══════════════════════════════
+ 【Breakers】が戦場に立つ！
+═══════════════════════════════
 
-[L] 📚 Strategies: 61 knowledge base + 0 evolved
-[L] ⚙️ Daily Limit: -228 | Max Losses: 3
-While evaluating the form starting at line 30, column 0
-  of #P"/home/swimmy/swimmy/brain.lisp":
+ 発動戦略: Low-Vol-Breakout
 
-debugger invoked on a PZMQ:EADDRINUSE in thread
-#<THREAD "main thread" RUNNING {1001358073}>:
-  C error EADDRINUSE: Address already in use.
+• SMA-20 = 1.36
 
-Type HELP for debugger help, or (SB-EXT:EXIT) to exit from SBCL.
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
 
-restarts (invokable by number or by possibly-abbreviated name):
-  0: [RETRY   ] Retry EVAL of current toplevel form.
-  1: [CONTINUE] Ignore error and continue loading file "/home/swimmy/swimmy/brain.lisp".
-  2: [ABORT   ] Abort loading file "/home/swimmy/swimmy/brain.lisp".
-  3:            Ignore runtime option --load "brain.lisp".
-  4:            Skip rest of --eval and --load options.
-  5:            Skip to toplevel READ/EVAL/PRINT loop.
-  6: [EXIT    ] Exit SBCL (calling #'EXIT, killing the process).
+ 利確: +60 pips |  損切: -20 pips
 
-(PZMQ:BIND #.(SB-SYS:INT-SAP #X64C21B15FBB0) "tcp://*:5555")
-   source: (DEFCFUN* BIND (:INT) "Accept connections on a socket.
+ この条件で行く。
+═══════════════════════════════
+[13:11]2026年1月6日 火曜日 13:11
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
 
-Only one socket may be bound to a particular endpoint.
-Bound socket may receive messages sent before it was bound.
-@arg[endpoint]{\"transport://address\"}"
-            (SOCKET :POINTER) (ENDPOINT :STRING))
-0] 
+ 発動戦略: Stoch-Overbought-Entry
+
+
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +40 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:11]2026年1月6日 火曜日 13:11
+ GBPUSD
+═══════════════════════════════
+ 【Raiders】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Fibonacci-EMA-Scalp
+
+• EMA-5 = 1.36
+• EMA-8 = 1.36
+• EMA-13 = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +20 pips |  損切: -10 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:11]2026年1月6日 火曜日 13:11
+ GBPUSD
+═══════════════════════════════
+ 【Raiders】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: MA-Ribbon-Scalp
+
+• SMA-5 = 1.36
+• SMA-8 = 1.36
+• SMA-13 = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +15 pips |  損切: -10 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:13]2026年1月6日 火曜日 13:13
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: RSI-Momentum-Break
+
+• RSI-14 = 52.25
+
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
+
+ 利確: +40 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[13:14]2026年1月6日 火曜日 13:14
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: RSI-Bull-Zone
+
+• RSI-14 = 47.57
+• SMA-50 = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +60 pips |  損切: -30 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[13:15]2026年1月6日 火曜日 13:15
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Holy-Grail-Proxy
+
+• EMA-20 = 1.36
+• SMA-50 = 1.36
+
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
+
+ 利確: +75 pips |  損切: -25 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:15]2026年1月6日 火曜日 13:15
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: BB-Lower-Bounce
+
+• BB-Mid = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +50 pips |  損切: -25 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:15]2026年1月6日 火曜日 13:15
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Extreme-Reversion-BB
+
+• BB-Mid = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +80 pips |  損切: -40 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:15]2026年1月6日 火曜日 13:15
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Aggressive-Reversal
+
+• BB-Mid = 1.36
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +50 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+
+swimmy-gbpusd
+アプリ
+ — 13:162026年1月6日 火曜日 13:16
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Perfect-Order-SMA
+
+• SMA-20 = 1.36
+• SMA-50 = 1.36
+• SMA-100 = 1.35
+
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
+
+ 利確: +90 pips |  損切: -30 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:16]2026年1月6日 火曜日 13:16
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: RSI-Fast-Break
+
+• RSI-5 = 83.33
+
+ GBPUSD @ 1.356
+ BUY - 上昇を狙う
+
+ 利確: +30 pips |  損切: -15 pips
+
+ この条件で行く。
+═══════════════════════════════
+[13:16]2026年1月6日 火曜日 13:16
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: RSI-Short-Reversion
+
+• RSI-5 = 83.33
+
+ GBPUSD @ 1.356
+ SELL - 下落を狙う
+
+ 利確: +20 pips |  損切: -15 pips
+
+ この条件で行く。
+═══════════════════════════════
+
+swimmy-gbpusd
+アプリ
+ — 22:382026年1月6日 火曜日 22:38
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Triple-EMA-Trend-Follow
+
+• EMA-10 = 1.35
+• EMA-20 = 1.35
+• EMA-50 = 1.35
+
+ GBPUSD @ 1.352
+ BUY - 上昇を狙う
+
+ 利確: +50 pips |  損切: -25 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:38]2026年1月6日 火曜日 22:38
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Perfect-Order-SMA
+
+• SMA-20 = 1.35
+• SMA-50 = 1.35
+• SMA-100 = 1.35
+
+ GBPUSD @ 1.352
+ BUY - 上昇を狙う
+
+ 利確: +90 pips |  損切: -30 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:38]2026年1月6日 火曜日 22:38
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Trend-Pullback-Entry
+
+• SMA-200 = 1.35
+• RSI-14 = 82.31
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +80 pips |  損切: -50 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:38]2026年1月6日 火曜日 22:38
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Conservative-Trend
+
+• SMA-200 = 1.35
+• RSI-7 = 92.38
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +80 pips |  損切: -40 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:41]2026年1月6日 火曜日 22:41
+ GBPUSD
+═══════════════════════════════
+ 【Breakers】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Session-Breakout-Proxy
+
+• SMA-5 = 1.35
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +40 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+新規
+[22:44]2026年1月6日 火曜日 22:44
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: MACD-Expansion
+
+• MACD = 0.00
+
+ GBPUSD @ 1.352
+ BUY - 上昇を狙う
+
+ 利確: +70 pips |  損切: -30 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:44]2026年1月6日 火曜日 22:44
+ GBPUSD
+═══════════════════════════════
+ 【Shamans】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: RSI-Short-Reversion
+
+• RSI-5 = 41.94
+
+ GBPUSD @ 1.352
+ BUY - 上昇を狙う
+
+ 利確: +20 pips |  損切: -15 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+
+swimmy-gbpusd
+アプリ
+ — 22:472026年1月6日 火曜日 22:47
+ GBPUSD
+═══════════════════════════════
+ 【Raiders】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Scalp-Cross-5-12
+
+• EMA-5 = 1.35
+• EMA-12 = 1.35
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +15 pips |  損切: -10 pips
+
+ この条件で行く。
+═══════════════════════════════
+[22:49]2026年1月6日 火曜日 22:49
+ GBPUSD
+═══════════════════════════════
+ 【Breakers】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: CCI-Trend-Breakout
+
+
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +50 pips |  損切: -25 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:50]2026年1月6日 火曜日 22:50
+ GBPUSD
+═══════════════════════════════
+ 【Raiders】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: Stoch-Pop
+
+
+
+ GBPUSD @ 1.352
+ SELL - 下落を狙う
+
+ 利確: +25 pips |  損切: -15 pips
+
+ この条件で行く。
+═══════════════════════════════[2026-01-06 23:04:12] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-06 23:04:14] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-06 23:04:16] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-06 23:04:33] EURUSD BUY (REVERSION) Strategy:Stoch-Pop Sharpe:0.00
+[2026-01-06 23:04:33] EURUSD BUY (REVERSION) Strategy:Stoch-Pop Sharpe:0.00
+[2026-01-06 23:11:02] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-06 23:17:01] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-06 23:55:26] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-06 23:55:29] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-06 23:55:30] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-06 23:55:32] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-06 23:55:34] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-06 23:55:35] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-06 23:55:42] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-07 00:24:10] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-07 00:27:07] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-07 00:27:09] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
+[2026-01-07 00:27:12] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-07 00:35:04] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
+[2026-01-07 01:05:01] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-07 01:08:02] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
+[2026-01-07 01:28:00] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
