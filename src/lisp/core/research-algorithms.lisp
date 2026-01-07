@@ -9,7 +9,7 @@
 ;; - Phase 3: Ensemble concepts, Indicator normalization
 ;; - Phase 4: LLM integration preparation
 
-(in-package :swimmy.school)
+(in-package :swimmy.core)
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  PAPER #13: DUAL TREND DECOMPOSITION (短期/長期トレンド分解)

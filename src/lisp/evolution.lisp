@@ -5,7 +5,7 @@
 
 ;; ===== EVOLUTION CONTROL =====
 
-(defparameter *evolution-interval* 1800)  ; Every 30 minutes
+(defparameter *evolution-interval* 300)  ; AGGRESSIVE: Every 5 minutes (was 1800)
 (defparameter *last-evolution-time* 0)
 (defparameter *evolution-generation* 0)
 (defparameter *top-strategies* nil)
@@ -67,18 +67,15 @@
     ((zerop (mod *learning-cycle* 300))
      (when (and *candle-history* (> (length *candle-history*) 200))
        (batch-backtest-knowledge)))
-    ;; Every 1800 cycles (~30 min): Evolution tournament
-    ((zerop (mod *learning-cycle* 1800))
+    ;; Every 300 cycles (~5 min): Evolution tournament (AGGRESSIVE)
+    ((zerop (mod *learning-cycle* 300))
      (check-evolution))
-    ;; V4.0: Every 1800 cycles (~30 min): Dream new strategy via Gemini
-    ((zerop (mod *learning-cycle* 1800))
-     (handler-case (dream-code) (error (e) nil)))
-    ;; V4.0: Every 1800 cycles (~30 min): Dream new strategy via Gemini
-    ((zerop (mod *learning-cycle* 1800))
+    ;; V4.0: Every 300 cycles (~5 min): Dream new strategy via Gemini
+    ((zerop (mod *learning-cycle* 300))
      (handler-case (dream-code) (error (e) nil)))
     
-    ;; V7.1: Every 600 cycles (~10 min): Evolve from Wisdom (Transfer Learning)
-    ((zerop (mod *learning-cycle* 600))
+    ;; V7.1: Every 100 cycles (~1.5 min): Evolve from Wisdom (Transfer Learning)
+    ((zerop (mod *learning-cycle* 100))
      (handler-case (evolve-from-wisdom) (error (e) (format t "[E] Wisdom evolution failed: ~a~%" e))))
 
     ;; Every 60 cycles (~1 min): Update school team
@@ -178,13 +175,15 @@
                     (learned-pattern-source-symbol pattern))
             
             ;; Apply mutation immediately to make it unique
-            (when (fboundp 'mutate-strategy)
-               ;; (mutate-strategy seed-strategy) ; Note: mutate-strategy needs implementation or we use raw seed
-               ;; For now, push raw seed then rely on next generation to mutate
-               nil)
-            
-            (push seed-strategy *evolved-strategies*)
-            seed-strategy))))))
+            (if (fboundp 'mutate-strategy)
+                (let ((mutated (mutate-strategy seed-strategy 0.5)))
+                   (format t "[EVOLUTION] 🧬 Mutated seed: ~a (Orig: ~a)~%" 
+                           (strategy-name mutated) (strategy-name seed-strategy))
+                   (push mutated *evolved-strategies*)
+                   mutated)
+                (progn
+                   (push seed-strategy *evolved-strategies*)
+                   seed-strategy))))))))
 
 ;; ===== FITNESS FUNCTIONS =====
 

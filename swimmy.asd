@@ -12,12 +12,10 @@
                (:file "src/lisp/core/profiling")
                
                ;; ENGINE
-               (:file "src/lisp/engine/risk")
-               (:file "src/lisp/risk-manager")  ; V6.5: Added - contains safe-order
+               (:file "src/lisp/risk-manager")  ; V6.5: Added - contains safe-order (Unified Authority)
                (:file "src/lisp/engine/goals")
                (:file "src/lisp/engine/metrics")
                (:file "src/lisp/engine/experiments")
-               (:file "src/lisp/engine/learning")
                (:file "src/lisp/engine/signals")
                (:file "src/lisp/engine/positions")
                (:file "src/lisp/engine/portfolio")
@@ -32,6 +30,7 @@
                (:file "src/lisp/core/evaluator")
                (:file "src/lisp/core/meta-learning")
                (:file "src/lisp/system/opus")
+               (:file "src/lisp/core/research-algorithms") ; CORE (Foundation Algorithm Library)
                
                ;; SHELL
                (:file "src/lisp/shell/notifications")
@@ -52,7 +51,7 @@
                (:file "src/lisp/school-resignation")
                (:file "src/lisp/school-learning")
                (:file "src/lisp/school-volatility")
-               (:file "src/lisp/school-research")
+               (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school")
                (:file "src/lisp/school-fortress") ; Added
                (:file "src/lisp/transfer-learning") ; Added V7.0
@@ -62,7 +61,7 @@
                (:file "src/lisp/logger")
                (:file "src/lisp/core/rituals")
                (:file "src/lisp/mixseek")
-               (:file "src/lisp/research")
+               ;; (:file "src/lisp/research") MOVED to CORE
                (:file "src/lisp/llm-integration")
                (:file "src/lisp/evolution")
                (:file "src/lisp/error-handling")

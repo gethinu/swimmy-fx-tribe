@@ -176,6 +176,13 @@
    #:notify-discord-alert  ;; Exported for Circuit Breaker
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
+   
+   ;; Research Algorithms (Migrated from School)
+   #:research-enhanced-analysis
+   #:detect-regime-hmm
+   #:dual-trend-signal
+   #:select-optimal-model
+   #:estimate-mean-reversion
    ))
 
 ;;; ----------------------------------------------------------------------------
@@ -186,6 +193,10 @@
   (:export
    ;; Risk
    #:safe-order
+   #:risk-check-all
+   #:trading-allowed-p
+   #:calculate-lot-size
+   #:update-drawdown
    #:get-risk-summary
    #:check-risk-limits
    #:check-correlation-risk
@@ -205,7 +216,6 @@
    #:start-heartbeat
    
    ;; Learning
-   #:load-hall-of-fame
    #:train-neural
    #:update-nn-threshold
    
@@ -369,6 +379,9 @@
    ;; Hall of Fame
    #:*hall-of-fame*
    #:induct-to-hall-of-fame
+   #:load-hall-of-fame
+   #:save-hall-of-fame
+   #:elder-vote
    
    ;; Genome/State
    #:save-genome

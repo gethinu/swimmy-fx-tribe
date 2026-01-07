@@ -264,8 +264,8 @@
       ;;   :exit '(cross-below ema-5 sma-75)
       ;;   :sl 0.30 :tp 0.50 :volume 0.01)
       (make-strategy :name "Holy-Grail-Proxy"
-        :indicators '((ema 20) (sma 50))
-        :entry '(and (> close sma-50) (cross-above close ema-20))
+        :indicators '((ema 20) (sma 50) (rsi 14))
+        :entry '(and (> close sma-50) (cross-above close ema-20) (< rsi-14 70))
         :exit '(cross-below close ema-20)
         :sl 0.25 :tp 0.75 :volume 0.01)
       ;; (make-strategy :name "Triple-Screen-Proxy"

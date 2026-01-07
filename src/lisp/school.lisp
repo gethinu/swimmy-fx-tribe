@@ -1331,7 +1331,29 @@
                        :key (lambda (s) (or (strategy-sharpe s) -999)))))
     (subseq sorted 0 (min n (length sorted)))))
 
+(defun recruit-from-evolution ()
+  "Promote evolved strategies from *evolved-strategies* to master knowledge base"
+  (when (and (boundp '*evolved-strategies*) *evolved-strategies*)
+    (let ((count 0))
+      (dolist (strat *evolved-strategies*)
+        ;; Avoid duplicates in knowledge base
+        (unless (find (strategy-name strat) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+          (push strat *strategy-knowledge-base*)
+          ;; Add to category pool for selection
+          (let ((cat (infer-strategy-category strat)))
+            (when (boundp '*category-pools*)
+               (push strat (gethash cat *category-pools*))))
+          (incf count)
+          (format t "[RECRUIT] 🛡️ Inducted: ~a (Category: ~a)~%" (strategy-name strat) (infer-strategy-category strat))))
+      
+      (when (> count 0)
+        (format t "[RECRUIT] 🔥 ~d strategies promoted from evolution!~%" count)
+        (notify-discord (format nil "🔥 Recruited ~d new strategies!" count) :color 3066993)
+        ;; Clear the waiting list so we don't re-add
+        (setf *evolved-strategies* nil)))))
+
 (defun assemble-team ()
+  (recruit-from-evolution) ; Check for new recruits first
   (detect-market-regime)
   (record-regime)          ; Track for pattern analysis
   (predict-next-regime)    ; Forecast next regime
@@ -1860,11 +1882,7 @@
    *warrior-allocation*))
 
 
-(defun trading-allowed-p ()
-  "Check if trading is globally allowed"
-  (if (boundp '*trading-enabled*)
-      *trading-enabled*
-      t))  ;; Default to true if not defined to avoid lockup, relying on other checks
+;; trading-allowed-p removed - now in risk-manager.lispenabled*
 
 (defun process-category-trades (symbol bid ask)
   "Process trades using Swarm Intelligence, Memory System, Danger Avoidance, AND Research Insights"

@@ -50,6 +50,74 @@
   hit-sl-or-tp)       ; :sl, :tp, :manual, :signal
 
 ;;; ==========================================
+;;; MIGRATED: HALL OF FAME (From engine/learning)
+;;; ==========================================
+
+(defparameter *hall-of-fame* nil "List of legendary strategies")
+(defparameter *hall-of-fame-path* "/home/swimmy/swimmy/.opus/hall_of_fame.lisp")
+
+(defun induct-to-hall-of-fame (strategy-name peak-pnl speciality wisdom)
+  "Induct a legendary strategy into the Hall of Fame.
+   Returns the created elder object."
+  (let ((elder (make-elder
+                :name strategy-name
+                :peak-pnl peak-pnl
+                :era (multiple-value-bind (s m h day month year)
+                         (decode-universal-time (get-universal-time))
+                       (declare (ignore s m h))
+                       (format nil "~d-~2,'0d-~2,'0d" year month day))
+                :speciality speciality
+                :wisdom wisdom
+                :vote-weight (min 3 (/ peak-pnl 1000)))))
+    (push elder *hall-of-fame*)
+    (format t "[SCHOOL] Elder inducted into HoF: ~a~%" strategy-name)
+    elder))
+
+(defun elder-vote (proposal context)
+  "Ask elders to vote on a proposal. Returns :approve, :caution, or :reject"
+  (let ((approve-votes 0)
+        (reject-votes 0)
+        (total-weight 0))
+    
+    (dolist (elder *hall-of-fame*)
+      (let ((weight (elder-vote-weight elder)))
+        (incf total-weight weight)
+        (cond
+          ((and (search "volatility" (string-downcase (elder-wisdom elder)))
+                (eq (getf context :volatility-state) :extreme))
+           (incf reject-votes weight))
+          ((and (search "patience" (string-downcase (elder-wisdom elder)))
+                (eq (getf context :regime) :ranging))
+           (incf reject-votes (* 0.5 weight)))
+          (t (incf approve-votes weight)))))
+    
+    (cond
+      ((> reject-votes (* 0.6 total-weight)) :reject)
+      ((> reject-votes (* 0.3 total-weight)) :caution)
+      (t :approve))))
+
+(defun save-hall-of-fame ()
+  "Save Hall of Fame to file."
+  (handler-case
+      (progn
+        (ensure-directories-exist *hall-of-fame-path*)
+        (with-open-file (out *hall-of-fame-path* :direction :output :if-exists :supersede)
+          (write *hall-of-fame* :stream out :pretty t)))
+    (error (e)
+      (format t "[SCHOOL] Failed to save Hall of Fame: ~a~%" e))))
+
+(defun load-hall-of-fame ()
+  "Load Hall of Fame from file."
+  (handler-case
+      (with-open-file (in *hall-of-fame-path* :direction :input :if-does-not-exist nil)
+        (when in
+          (setf *hall-of-fame* (read in))
+          (format t "[SCHOOL] Loaded ~d elders from Hall of Fame~%" (length *hall-of-fame*))))
+    (error (e)
+      (format t "[SCHOOL] Failed to load Hall of Fame: ~a~%" e))))
+
+
+;;; ==========================================
 ;;; SESSION & MOMENTUM DETECTION
 ;;; ==========================================
 

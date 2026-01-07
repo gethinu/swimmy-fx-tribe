@@ -118,4 +118,84 @@
           (if (boundp '*current-volatility-state*) *current-volatility-state* :?)
           (if (boundp '*daily-pnl*) *daily-pnl* 0)))
 
+;;; ==========================================
+;;; MIGRATED FROM engine/risk.lisp (Via Negativa)
+;;; ==========================================
+
+;; Hard Constraints (Taleb's Rules)
+(defparameter *max-daily-loss-percent* 1.0 "Hard stop: Max 1% equity loss per day")
+(defparameter *max-leverage* 10.0 "Hard stop: Max leverage")
+(defparameter *ruin-probability-threshold* 0.001 "Max acceptable ruin probability")
+(defparameter *risk-state-lock* (bt:make-lock) "Thread safety for risk updates")
+
+(defun trading-allowed-p ()
+  "AUTHORITATIVE check if trading is allowed."
+  (bt:with-lock-held (*risk-state-lock*)
+    (cond
+      ;; 1. Daily Loss Limit
+      ((and (boundp '*daily-pnl*) (boundp '*daily-loss-limit*)
+            (< *daily-pnl* *daily-loss-limit*))
+       (format t "[RISK] ⛔ DAILY LOSS LIMIT HIT: ¥~,0f < ¥~,0f~%" 
+               *daily-pnl* *daily-loss-limit*)
+       nil)
+      
+      ;; 2. Max Drawdown Hard Stop
+      ((and (boundp '*max-drawdown*) (boundp '*max-dd-percent*)
+            (> *max-drawdown* *max-dd-percent*))
+       (format t "[RISK] ⛔ MAX DRAWDOWN HIT: ~,2f% > ~,2f%~%" 
+               *max-drawdown* *max-dd-percent*)
+       nil)
+      
+      ;; 3. Resignation Logic (Psychological Stop)
+      ((and (fboundp 'has-resigned-p) (has-resigned-p))
+       (format t "[RISK] 🏳️ RESIGNED TODAY~%")
+       nil)
+      
+      ;; 4. Danger Level (Market Conditions)
+      ((and (boundp '*danger-level*) (> *danger-level* 3))
+       (format t "[RISK] ⚠️ EXTREME DANGER LEVEL: ~d~%" *danger-level*)
+       nil)
+      
+      (t t))))
+
+(defun update-drawdown (pnl)
+  "Update drawdown tracking. Returns current drawdown percentage."
+  (bt:with-lock-held (*risk-state-lock*)
+    (incf *current-equity* pnl)
+    (when (> *current-equity* *peak-equity*)
+      (setf *peak-equity* *current-equity*))
+    
+    (let ((dd (if (> *peak-equity* 0)
+                  (* 100 (/ (- *peak-equity* *current-equity*) *peak-equity*))
+                  0)))
+      (when (> dd *max-drawdown*)
+        (setf *max-drawdown* dd))
+      (when (> dd *max-dd-percent*)
+        (format t "[RISK] ⚠️ DRAWDOWN ALERT: ~,2f%~%" dd))
+      dd)))
+
+(defun calculate-lot-size ()
+  "Calculate safe lot size based on Taleb's conservative principles (Kelly/4)."
+  (let* ((win-rate (/ (max 1 *success-count*) (max 1 *total-trades*)))
+         (win-loss-ratio 1.5) ; Assumed conservative R:R
+         (kelly (- win-rate (/ (- 1 win-rate) win-loss-ratio)))
+         (half-kelly (* 0.5 (max 0 kelly))) ; Kelly/2
+         (quarter-kelly (* 0.5 half-kelly)) ; Kelly/4 (Taleb style)
+         
+         ;; Factors
+         (dd-factor (max 0.5 (- 1.0 (/ *max-drawdown* 100))))
+         (equity-factor (if (> *current-equity* 0) 
+                            (min 2.0 (+ 1.0 (/ *current-equity* 1000))) 
+                            1.0))
+         (base (if (boundp '*base-lot-size*) *base-lot-size* 0.01)))
+    
+    ;; Base sizing logic
+    (let ((size (max 0.01 (* base dd-factor equity-factor))))
+      
+      ;; Apply Kelly Constraint if valid statistics exist (>30 trades)
+      (when (> *total-trades* 30)
+        (setf size (* size (max 0.2 (min 1.5 (+ 0.5 quarter-kelly))))))
+        
+      size)))
+
 (format t "[L] 🛡️ risk-manager.lisp loaded - Unified risk management active~%")
