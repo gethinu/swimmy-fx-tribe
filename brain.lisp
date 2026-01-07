@@ -21,7 +21,9 @@
 
 ;; Load the System
 (handler-case
-    (asdf:load-system :swimmy)
+    (handler-bind ((style-warning #'muffle-warning)
+                   (warning #'muffle-warning))
+      (asdf:load-system :swimmy))
   (error (c)
     (format t "~%[FATAL] Failed to load system: ~a~%" c)
     (sb-ext:exit :code 1)))

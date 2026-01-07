@@ -55,6 +55,7 @@
                (:file "src/lisp/school-research")
                (:file "src/lisp/school")
                (:file "src/lisp/school-fortress") ; Added
+               (:file "src/lisp/transfer-learning") ; Added V7.0
                (:file "src/lisp/school/advisors")
                
                ;; SYSTEM & UTILS

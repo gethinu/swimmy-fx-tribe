@@ -24,17 +24,17 @@
       (push "RESIGNED" checks)
       (setf approved nil))
     
-    ;; 3. Correlation exposure check
+    ;; 3. Correlation exposure check (Relaxed V7.0: 0.8 -> 0.95)
     (when (fboundp 'check-correlation-risk)
       (let ((corr-risk (check-correlation-risk symbol direction)))
-        (when (> corr-risk 0.8)
+        (when (> corr-risk 0.95)
           (push "HIGH_CORRELATION" checks)
           (setf final-lot (* final-lot 0.5)))))
     
-    ;; 4. Symbol exposure check
+    ;; 4. Symbol exposure check (Relaxed V7.0: 0.15 -> 0.30)
     (when (fboundp 'get-symbol-exposure)
       (let ((exposure (get-symbol-exposure symbol)))
-        (when (> exposure (or *max-symbol-exposure* 0.15))
+        (when (> exposure (or *max-symbol-exposure* 0.30))
           (push "SYMBOL_EXPOSURE_LIMIT" checks)
           (setf final-lot (* final-lot 0.5)))))
     
@@ -61,13 +61,13 @@
                (eq *current-volatility-state* :extreme))
       (push "EXTREME_VOLATILITY" checks))
       
-    ;; 9. TALEB'S GATEKEEPER - V6.5: Ensure minimum lot instead of rejecting
-    (when (< final-lot 0.01)
-      (setf final-lot 0.01))  ; Floor to minimum instead of rejecting
+    ;; 9. TALEB'S GATEKEEPER - V7.0: Aggressive Floor
+    (when (< final-lot 0.02)
+      (setf final-lot 0.02))  ; Aggressive minimum
     
-    ;; Return results
+    ;; Return results (Max cap increased to 0.50)
     (values approved 
-            (max 0.01 (min 0.10 final-lot))
+            (max 0.02 (min 0.50 final-lot))
             (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
 
 (defun safe-order (action symbol lot sl tp &optional (magic 0))

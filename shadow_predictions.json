@@ -1789,10 +1789,80 @@
       "price_after": null,
       "pnl_ensemble": null,
       "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T06:42:00.421354760+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T06:54:00.311178930+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T06:56:01.622736333+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T07:32:02.285382387+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T07:45:24.085160214+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T07:49:21.611047421+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-07T07:49:24.185667672+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
     }
   ],
   "ensemble_total_pnl": 0.0,
   "actual_total_pnl": 0.0,
-  "matches": 179,
+  "matches": 186,
   "mismatches": 0
 }

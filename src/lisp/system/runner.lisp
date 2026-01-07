@@ -37,9 +37,27 @@
          ;; V41.1: Fix ZMQ topology - Brain BINDS, Guardian CONNECTS
          ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)  
          ;; Brain: PULL<-5555 (bind), PUB->5556 (bind)
-         (let ((pull (pzmq:socket ctx :pull)) (pub (pzmq:socket ctx :pub)))
-           (pzmq:bind pull "tcp://*:5555")  ; Receive market data from Guardian
-           (pzmq:bind pub "tcp://*:5556")    ; Send commands to Guardian
+         (let ((pull (pzmq:socket ctx :pull)) 
+               (pub (pzmq:socket ctx :pub))
+               (bind-success nil))
+           
+           ;; V7.1: Robust Bind with Retries (Prevents Debugger Hang)
+           (loop for i from 1 to 3 while (not bind-success) do
+             (handler-case
+                 (progn
+                   (pzmq:bind pull "tcp://*:5555")
+                   (pzmq:bind pub "tcp://*:5556")
+                   (setf bind-success t))
+               (error (e)
+                 (format t "[FATAL] Bind attempt ~d failed: ~a~%" i e)
+                 (if (< i 3)
+                     (progn 
+                       (format t "[RETRY] Waiting 5s for ports to clear...~%")
+                       (sleep 5))
+                     (progn
+                       (format t "[CRITICAL] All bind attempts failed. Exiting to prevent debugger hang.~%")
+                       (sb-ext:exit :code 1))))))
+
            (setf *cmd-publisher* pub)
 
            ;; V41.7: Set Receive Timeout to 100ms for non-blocking loop

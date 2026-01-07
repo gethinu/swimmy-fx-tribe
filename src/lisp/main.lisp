@@ -76,5 +76,8 @@
   
   (initialize-system)
   
+  ;; V7.2: Notify JSON log of startup for real-time sync verification
+  (log-info "SYSTEM_STARTUP: Swimmy is powering up (Attack Mode Active)")
+  
   ;; Start Runner (Infinite Loop)
   (start-brain))

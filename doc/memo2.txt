@@ -552,3 +552,10 @@ swimmy-gbpusd
 [2026-01-07 01:28:00] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
 [2026-01-07 13:00:22] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-16.21
 [2026-01-07 14:21:01] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:1.55
+[2026-01-07 15:42:00] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:0.00
+[2026-01-07 15:54:00] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
+[2026-01-07 15:56:01] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
+[2026-01-07 16:32:02] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.76
+[2026-01-07 16:45:23] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.88
+[2026-01-07 16:49:21] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91
+[2026-01-07 16:49:24] GBPUSD BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91

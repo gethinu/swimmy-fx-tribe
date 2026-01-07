@@ -73,6 +73,14 @@
     ;; V4.0: Every 1800 cycles (~30 min): Dream new strategy via Gemini
     ((zerop (mod *learning-cycle* 1800))
      (handler-case (dream-code) (error (e) nil)))
+    ;; V4.0: Every 1800 cycles (~30 min): Dream new strategy via Gemini
+    ((zerop (mod *learning-cycle* 1800))
+     (handler-case (dream-code) (error (e) nil)))
+    
+    ;; V7.1: Every 600 cycles (~10 min): Evolve from Wisdom (Transfer Learning)
+    ((zerop (mod *learning-cycle* 600))
+     (handler-case (evolve-from-wisdom) (error (e) (format t "[E] Wisdom evolution failed: ~a~%" e))))
+
     ;; Every 60 cycles (~1 min): Update school team
     ((zerop (mod *learning-cycle* 60))
      (assemble-team))
@@ -144,6 +152,39 @@
           (extract-learned-patterns symbol)
         (error () nil)))))
 
+
+;; ===== WISDOM-BASED EVOLUTION (Connecting to Memory) =====
+
+(defun evolve-from-wisdom ()
+  "Generate a new strategy using historical wisdom (Transfer Learning) as a seed.
+   Instead of random generation, we mutate a successful historical pattern."
+  (when (and (boundp '*learned-patterns*) *learned-patterns*)
+    ;; Pick a random symbol's patterns
+    (let* ((symbols (loop for k being the hash-keys of *learned-patterns* collect k))
+           (target-symbol (nth (random (length symbols)) symbols))
+           (patterns (gethash target-symbol *learned-patterns*)))
+      
+      (when patterns
+        ;; Pick a random pattern
+        (let* ((pattern (nth (random (length patterns)) patterns))
+               ;; Convert to strategy
+               (seed-strategy (if (fboundp 'swimmy.school::pattern-to-strategy-template)
+                                  (swimmy.school::pattern-to-strategy-template pattern "Wisdom")
+                                  nil)))
+          
+          (when seed-strategy
+            (format t "[EVOLUTION] 🧠 Evolving from wisdom: ~a (Source: ~a)~%" 
+                    (learned-pattern-pattern-type pattern)
+                    (learned-pattern-source-symbol pattern))
+            
+            ;; Apply mutation immediately to make it unique
+            (when (fboundp 'mutate-strategy)
+               ;; (mutate-strategy seed-strategy) ; Note: mutate-strategy needs implementation or we use raw seed
+               ;; For now, push raw seed then rely on next generation to mutate
+               nil)
+            
+            (push seed-strategy *evolved-strategies*)
+            seed-strategy))))))
 
 ;; ===== FITNESS FUNCTIONS =====
 

@@ -11,4 +11,5 @@
          (progn ,@body)
        (let* ((end (get-internal-real-time))
               (seconds (float (/ (- end start) internal-time-units-per-second))))
-         (format t "[PROFILING] ~a took ~,3f seconds~%" ,section-name seconds)))))
+         (when (> seconds 0.05)
+           (format t "[PROFILING] ~a took ~,3f seconds~%" ,section-name seconds))))))

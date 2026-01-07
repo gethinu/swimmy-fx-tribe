@@ -63,7 +63,7 @@
                                        :read-timeout 10) ; Allowed to take longer in bg thread
                            (error (e) 
                              (format t "[Thread] ⚠️ Discord post failed: ~a~%" e))))))
-                   ;; (format t "[Thread] 📤 Flushed ~d items~%" (length items))
+                   (format t "[Thread] 📤 Flushed ~d items~%" (length items))
                    )
                (error (e) (format t "[Thread] Critical Error: ~a~%" e))))
            :name "Discord-Worker"))))))

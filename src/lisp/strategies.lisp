@@ -379,7 +379,7 @@
           (length *strategy-knowledge-base*)))
 
 ;; ===== Sharpe フィルター;; Thresholds
-(defparameter *min-sharpe-threshold* 0.5 "Minimum Sharpe to be adopted/kept")
+(defparameter *min-sharpe-threshold* -0.5 "Minimum Sharpe to be adopted/kept (Aggressive Attack Mode)")
 (defparameter *min-win-rate-threshold* 0.4 "Minimum Win Rate")
 (defparameter *approved-strategies* nil)
 
@@ -520,13 +520,14 @@
          (when (strategy-volume strat)
            (setf (strategy-volume strat) (max 0.01 (* 0.8 (strategy-volume strat)))))
          (format t "[L] ⚙️ 📉 ~a: Tightening params (poor perf)~%" name))
-        ;; Good performance: widen TP, increase volume
+        ;; Good performance: widen TP, increase volume (Aggressive V7.0)
         ((and (> sharpe 1.0) (> win-rate 55))
          (when (strategy-tp strat)
            (setf (strategy-tp strat) (* 1.1 (strategy-tp strat))))
          (when (strategy-volume strat)
-           (setf (strategy-volume strat) (min 0.1 (* 1.2 (strategy-volume strat)))))
-         (format t "[L] ⚙️ 📈 ~a: Expanding params (good perf)~%" name))
+           ;; Scale faster: 1.2x -> 1.5x, Cap 0.1 -> 0.3
+           (setf (strategy-volume strat) (min 0.3 (* 1.5 (strategy-volume strat)))))
+         (format t "[L] ⚙️ 📈 🚀 ~a: Aggressive Expansion (Good Perf)~%" name))
         ;; Average: adjust SL/TP ratio for better risk/reward
         ((and (> sharpe 0.5) (> win-rate 45))
          (when (and (strategy-sl strat) (strategy-tp strat))

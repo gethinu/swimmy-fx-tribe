@@ -241,7 +241,7 @@
               (>= trades 50)
               (>= win-rate 0.50)
               (> pnl 500)
-              (> sharpe 0.5))
+              (> sharpe 0.2)) ; Reduced from 0.5
          (setf (strategy-rank-rank rank-data) :veteran)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Warrior" "Veteran")
@@ -449,9 +449,8 @@
          (base-weight 1.0))
     ;; Weight based on Sharpe ratio
     (cond
-      ((> sharpe 1.0) (* base-weight 2.0))
       ((> sharpe 0.5) (* base-weight 1.5))
-      ((> sharpe 0) (* base-weight 1.2))
+      ((> sharpe 0.1) (* base-weight 1.2)) ; Reduced from 0.5
       ((< sharpe -0.5) (* base-weight 0.5))
       (t base-weight))))
 

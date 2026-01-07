@@ -7,13 +7,16 @@ setup:
 	@echo "✅ Pre-commit hook installed"
 
 run:
-	@echo "🧹 Cleaning up old processes..."
-	@-pkill -9 sbcl 2>/dev/null || true
-	@-pkill -9 guardian 2>/dev/null || true
+	@echo "🧹 Cleaning up old processes (Hard Kill)..."
+	@-pkill -9 -f "brain.lisp" 2>/dev/null || true
+	@-pkill -9 -f "guardian" 2>/dev/null || true
+	@-pkill -9 -f "discord_bot.py" 2>/dev/null || true
 	@-fuser -k 5555/tcp 2>/dev/null || true
 	@-fuser -k 5556/tcp 2>/dev/null || true
 	@-fuser -k 5557/tcp 2>/dev/null || true
 	@-fuser -k 5560/tcp 2>/dev/null || true
+	@echo "⏳ Waiting for ports to clear..."
+	@sleep 5
 	@echo "🚀 Starting Guardian..."
 	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
 	@sleep 2

@@ -24,8 +24,31 @@
                 ("h" (or (candle-high c) close))
                 ("l" (or (candle-low c) close))
                 ("c" close))))
-          ;; Reverse to ensure chronological order if input is Newest-First (standard in this system)
           (reverse candles)))
+
+(defparameter *total-ticks-count* 0)
+
+(defun update-status-file ()
+  "Write system status to /tmp/swimmy_status"
+  (ignore-errors
+    (with-open-file (s "/tmp/swimmy_status" :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (format s "TIME: ~a~%" (swimmy.core:get-jst-str))
+      (format s "TICKS: ~d~%" *total-ticks-count*)
+      (format s "EQUITY: ~,2f~%" *current-equity*)
+      (format s "PNL: ~,2f~%" *daily-pnl*)
+      (format s "MT5: ~a~%" (if (> (- (get-universal-time) *last-guardian-heartbeat*) 60) "OFFLINE" "ONLINE")))))
+
+(defun pulse-check ()
+  "Print 1-line HUD pulse and update status file every 60 ticks"
+  (incf *total-ticks-count*)
+  (when (or (= (mod *total-ticks-count* 60) 0) (= *total-ticks-count* 1))
+    (format t "~%[💓] ~a | Ticks: ~d | MT5: ~a | Equity: ~,0f~%" 
+            (swimmy.core:get-jst-str) 
+            *total-ticks-count* 
+            (if (> (- (get-universal-time) *last-guardian-heartbeat*) 60) "OFFLINE" "ONLINE")
+            *current-equity*)
+    (force-output) ; Ensure pulse is visible
+    (update-status-file)))
 
 (defun train-nn-from-trade (symbol pnl direction)
   "Train NN from trade outcome - online learning"
@@ -132,7 +155,7 @@
     (when (and curr-candle (/= min-idx curr-minute))
       (push curr-candle (gethash symbol *candle-histories*))
       (setf *candle-history* (gethash symbol *candle-histories*))  ; Legacy compat
-      (format t "[~a] ~a." (get-jst-str) (subseq symbol 0 3)) (force-output)
+      (format t "[~a] ~a." (swimmy.core:get-jst-str) (subseq symbol 0 3)) (force-output)
       (processing-step symbol bid)
       (setf (gethash symbol *current-candles*) nil))
     ;; Update or create candle
@@ -166,32 +189,32 @@
          (wins *consecutive-wins*)
          (losses *consecutive-losses*)
          (tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
-         ;; Generate dynamic quotes based on situation
-         (hunter-quote (cond ((> pnl 0) "「獲物は十分に確保した。宴の準備を。」")
-                             ((> losses 2) "「風向きが悪い...一度森へ退くぞ。」")
-                             (t "「次の獲物を探して、矢を研いでおく。」")))
-         (breaker-quote (cond ((equal tribe-dir "BUY") "「壁はずっと叩けば壊れるもんだぜ！」")
-                              ((equal tribe-dir "SELL") "「崩れ落ちる足音を聞け！」")
-                              (t "「静かすぎる...嵐の前触れか？」")))
-         (raider-quote (cond ((> wins 0) "「いただいたぜ。追っ手が来る前にズラかるぞ。」")
-                             ((< pnl 0) "「チッ、今日のシノギは渋いな。」")
-                             (t "「隙を見せたら、いつでも頂くさ。」")))
-         (shaman-quote (cond ((> losses 0) "「精霊たちが怒っている...鎮めねばならぬ。」")
-                             ((> pnl 1000) "「星の巡りが良い。だが驕るなよ。」")
-                             (t "「まだその時ではない...耐え忍ぶのだ。」")))
-         (chief-quote (cond ((> pnl 0) "「今日も生き延びたか。だが、明日は明日の風が吹く。」")
-                            ((< pnl 0) "「傷を癒やせ。負けから学ぶことこそが、最強への近道だ。」")
-                            (t "「静寂もまた、戦略の一部である。」")))
+         ;; Generate dynamic quotes based on situation (AGGRESSIVE V7.0)
+         (hunter-quote (cond ((> pnl 0) "「血の匂いがする...群れで追い込め！」")
+                             ((> losses 2) "「手負いの獲物ほど危険だ。だが怯むな。」")
+                             (t "「守りは捨てた。矢を放て！」")))
+         (breaker-quote (cond ((equal tribe-dir "BUY") "「全ての抵抗帯を破壊し尽くせ！」")
+                              ((equal tribe-dir "SELL") "「底などない！叩き落とせ！」")
+                              (t "「壁を壊すのは今だ！突撃！」")))
+         (raider-quote (cond ((> wins 0) "「ごっつぁん！もっと奪えるぜ？」")
+                             ((< pnl 0) "「かすり傷だ。倍にして取り返してやる。」")
+                             (t "「俺たちのシマだ。好きにはさせねぇ。」")))
+         (shaman-quote (cond ((> losses 0) "「痛みは進化の糧...過去の知恵を使え。」")
+                             ((> pnl 1000) "「星々が並んだ。これが運命（さだめ）だ。」")
+                             (t "「10年の歴史が見える...今が決戦の時だ。」")))
+         (chief-quote (cond ((> pnl 0) "「見事だ。だが満足するな。全てを奪え。」")
+                            ((< pnl 0) "「後退ではない。助走だ。死ぬ気で取り返せ。」")
+                            (t "「地下壕から出ろ。世界を我らの色に染める時が来た。」")))
          ;; V5.6: Flood Status
          (flood-status (get-flood-status)))
     
     (notify-discord-daily (format nil "
-📜 **日刊・部族クロニクル**
+📜 **日刊・部族クロニクル (ATTACK MODE)**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 💰 昨日の戦果: ¥~,0f
 🔥 現在の戦況: ~d 連勝中 | ~d 連敗中
 🌊 **洪水警報 (Risk Level)**:
-%  ~a
+~a
 
 🗣️ **部族たちの焚き火会議**:
 🏹 Hunters: ~a
@@ -230,9 +253,11 @@ Sharpe   : ~,2f
       (when (fboundp 'swimmy.engine::save-state)
         (funcall 'swimmy.engine::save-state)))))
 
+;; V5.5: Heartbeat to MT5
 (defun send-heartbeat ()
-  (let ((now (get-internal-real-time)))
-    (when (> (- now *last-heartbeat-sent*) (* 5 internal-time-units-per-second)) ; Every 5s (V41.7)
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-heartbeat-sent*) 30)
+      (pulse-check) ; Added Pulse Check here
       (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
         (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT")))))
       (setf *last-heartbeat-sent* now))))
@@ -384,7 +409,7 @@ Sharpe   : ~,2f
                                     :open c :high c :low c :close c :volume 1) bars)))
              (setf (gethash symbol *candle-histories*) bars)
              (setf *candle-history* bars)  ; Legacy compat - use first symbol
-             (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))
+             ;; (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))
              
              ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
              (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
@@ -498,12 +523,12 @@ Sharpe   : ~,2f
     (send-heartbeat)        ; V5.5: Heartbeat to MT5
     (flush-discord-queue)   ; V41.3: Async Discord notifications
     (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))
-      (when (> duration 0.5) ; 0.5s threshold (Strict Mode)
+      (when (> duration 1.5) ; 1.5s threshold (Relaxed per Expert Panel)
         ;; V41.2: Structured logging for performance monitoring
         (log-warn (format nil "SLOW TICK: Processing took ~,3f seconds" duration) 
                   :data (jsown:new-js ("type" "slow_tick") 
                                       ("duration" duration) 
-                                      ("threshold" 0.5)))))))
+                                      ("threshold" 1.5)))))))
 
 (defun request-prediction ()
   "Request neural network prediction from Rust"
