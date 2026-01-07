@@ -490,6 +490,11 @@ CURRENT MARKET: Regime=~a, Volatility=~a
 
 
 ;; Helper to resample candles (M1 -> M5, etc)
+;; WARN: CRITICAL DATA ORDER ASSUMPTION (Recurrence Prevention)
+;; Input 'candles' MUST be Newest-First (Time: T_n, T_n-1, ... T_1).
+;; Since 'push' reverses the order, the 'chunk' variable becomes (Oldest ... Newest).
+;; - first chunk = Oldest Candle (Start of Period) -> Use for OPEN
+;; - last chunk  = Newest Candle (End of Period)   -> Use for CLOSE/TIMESTAMP
 (defun resample-candles (candles factor)
   (let ((result nil)
         (chunk nil)
@@ -498,22 +503,39 @@ CURRENT MARKET: Regime=~a, Volatility=~a
        (push c chunk)
        (incf count)
        (when (= count factor)
-         ;; chunk is (Newest ... Oldest) relative to batch
-         (let* ((oldest (car (last chunk)))
-                (newest (first chunk))
+         ;; Input candles are Newest-First (M5 M4 ...)
+         ;; Chunk build:
+         ;; 1. Push M5 -> (M5)
+         ;; 2. Push M4 -> (M4 M5)
+         ;; ...
+         ;; 5. Push M1 -> (M1 M2 M3 M4 M5)
+         ;; So 'chunk' is (Start/Oldest ... End/Newest)
+         
+         (let* ((start-candle (first chunk))      ; Oldest time (Open)
+                (end-candle (car (last chunk)))   ; Newest time (Close/Timestamp)
                 (high (loop for x in chunk maximize (candle-high x)))
                 (low (loop for x in chunk minimize (candle-low x)))
                 (vol (loop for x in chunk sum (candle-volume x))))
-            (push (make-candle :timestamp (candle-timestamp oldest)
-                               :open (candle-open oldest)
-                               :close (candle-close newest)
+            (push (make-candle :timestamp (candle-timestamp end-candle)
+                               :open (candle-open start-candle)
+                               :close (candle-close end-candle)
                                :high high :low low :volume vol)
                   result))
          (setf chunk nil)
          (setf count 0)))
-    ;; Result is now (OldestM5 ... NewestM5) because we pushed Future then Past
-    ;; Wait: 1st PUSH was Future. Result=(Future). 2nd PUSH was Past. Result=(Past Future).
-    ;; So we want (Future Past).
+    ;; Result was pushed as (Agg1 Agg2 ...). 
+    ;; Agg1 came from M5..M1 (Newest). So Agg1 is Newest.
+    ;; Result is (Newest ... Oldest).
+    ;; No need to reverse result if we want Newest-First output.
+    ;; Wait, original code did (nreverse result).
+    ;; Let's check:
+    ;; Input (M10...M1).
+    ;; Loop 1: M10..M6. Chunk -> Agg1 (Time M10). Push Agg1 -> (Agg1).
+    ;; Loop 2: M5..M1. Chunk -> Agg2 (Time M5). Push Agg2 -> (Agg2 Agg1).
+    ;; Result (Agg2 Agg1). Agg2 is M5 (Old), Agg1 is M10 (New).
+    ;; So result is (Old New).
+    ;; We want (New Old) -> (Agg1 Agg2).
+    ;; So yes, we need nreverse.
     (nreverse result)))
 
 ;; Request backtest from Rust
