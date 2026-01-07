@@ -61,18 +61,18 @@
                (eq *current-volatility-state* :extreme))
       (push "EXTREME_VOLATILITY" checks))
       
-    ;; 9. TALEB'S GATEKEEPER - V7.0: Aggressive Floor
-    (when (< final-lot 0.02)
-      (setf final-lot 0.02))  ; Aggressive minimum
+    ;; 9. TALEB'S GATEKEEPER - V8.5: Allow 0.01 for tiered sizing
+    (when (< final-lot 0.01)
+      (setf final-lot 0.01))  ; Minimum for proving ground strategies
     
     ;; 10. MUSK'S PANEL DECISION: Tiered lot sizing for low-Sharpe strategies
     ;; Sharpe 0.0 ~ 0.3 = cap at 0.01 lot (proving ground)
     ;; Sharpe > 0.3 = normal lot calculation allowed
     ;; Note: Strategy sharpe is not available here, this is handled in school.lisp
     
-    ;; Return results (Max cap increased to 0.50)
+    ;; Return results (Max cap increased to 0.50, min lowered to 0.01)
     (values approved 
-            (max 0.02 (min 0.50 final-lot))
+            (max 0.01 (min 0.50 final-lot))
             (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
 
 (defun safe-order (action symbol lot sl tp &optional (magic 0))

@@ -1576,13 +1576,15 @@
                    (t (mapcar #'transform-cross-calls expr)))))
         (let ((transformed-logic (transform-cross-calls entry-logic)))
           (handler-case
-              (let ((entry-result (eval `(let ,bindings ,transformed-logic))))
-                (cond
-                  (entry-result :buy)
-                  ;; 逆張り戦略の場合、exit条件をSELLシグナルとして使用
-                  ((and (strategy-exit strat)
-                        (eval `(let ,bindings ,(transform-cross-calls (strategy-exit strat))))) :sell)
-                  (t :hold)))
+              ;; V8.5: Muffle style-warnings from unused bindings
+              (locally (declare (sb-ext:muffle-conditions style-warning))
+                (let ((entry-result (eval `(let ,bindings ,transformed-logic))))
+                  (cond
+                    (entry-result :buy)
+                    ;; 逆張り戦略の場合、exit条件をSELLシグナルとして使用
+                    ((and (strategy-exit strat)
+                          (eval `(let ,bindings ,(transform-cross-calls (strategy-exit strat))))) :sell)
+                    (t :hold))))
             (error (e) (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e) :hold)))))))
 (defparameter *category-trades* 0)  ; Track category trade count for warmup
 
