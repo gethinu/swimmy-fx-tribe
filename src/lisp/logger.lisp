@@ -35,29 +35,36 @@
             (write-line (jsown:to-json entry) out)))
       (error (e) (format t "[LOG_ERROR] Failed to write log: ~a~%" e)))))
 
+(defun safe-format-t (control-string &rest args)
+  "Safely write to *standard-output*, ignoring broken pipe errors"
+  (handler-case
+      (apply #'format t control-string args)
+    (sb-int:broken-pipe () nil)
+    (stream-error () nil)))
+
 (defun log-info (message &rest args)
   "Log INFO level message. Use :data keyword arg for structured data."
   (let ((data (getf args :data)))
-    (format t "[L] [INFO] ~a~%" message)
-    (log-to-file :info message data)))
+    (log-to-file :info message data)
+    (safe-format-t "[L] [INFO] ~a~%" message)))
 
 (defun log-warn (message &rest args)
   "Log WARN level message. Use :data keyword arg for structured data."
   (let ((data (getf args :data)))
-    (format t "[L] [WARN] ⚠️ ~a~%" message)
-    (log-to-file :warn message data)))
+    (log-to-file :warn message data)
+    (safe-format-t "[L] [WARN] ⚠️ ~a~%" message)))
 
 (defun log-error (message &rest args)
   "Log ERROR level message. Use :data keyword arg for structured data."
   (let ((data (getf args :data)))
-    (format t "[L] [ERROR] 🚨 ~a~%" message)
-    (log-to-file :error message data)))
+    (log-to-file :error message data)
+    (safe-format-t "[L] [ERROR] 🚨 ~a~%" message)))
 
 (defun log-debug (message &rest args)
   "Log DEBUG level message (only if log level is debug)"
   (when (eq *log-level* :debug)
     (let ((data (getf args :data)))
-      (format t "[L] [DEBUG] ~a~%" message)
-      (log-to-file :debug message data))))
+      (log-to-file :debug message data)
+      (safe-format-t "[L] [DEBUG] ~a~%" message))))
 
 (format t "[L] 🪵 logger.lisp loaded - Structured logging active~%")

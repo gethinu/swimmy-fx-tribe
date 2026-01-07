@@ -1,55 +1,1260 @@
-backtest bot
-アプリ
- — 12:41
-📊 Backtest Summary (V6.9)
+source /home/swimmy/swimmy/.venv/bin/activate
+swimmy@SERV870:~/swimmy$ source /home/swimmy/swimmy/.venv/bin/activate
+(.venv) swimmy@SERV870:~/swimmy$ swim
+[SWIM] 🐟 Swimmy Control (Dev Mode)
+🧹 Cleaning up old processes...
+🚀 Starting Guardian...
+🚀 Starting Discord Bot...
+🚀 Starting Brain...
 
-TREND (Total: 29 | Pass: 0 | Avg Sharpe: -539.27)
-Top 5:
-Death-Cross-50-200 (S: -271.71)
-Golden-Cross-50-200 (S: -271.71)
-Silver-Cross-20-100 (S: -402.98)
-Holy-Grail-Proxy (S: -415.34)
-Perfect-Order-SMA (S: -415.34)
-Worst 5:
-T-Nakane-Gotobi (S: -763.06)
-Crossover-Plus-MACD (S: -756.48)
-Momentum-Burst (S: -711.71)
-Puria-Method-Proxy (S: -683.82)
-Elder-Impulse-Simulated (S: -646.60)
+[LOADER] Loading Swimmy System via ASDF...
+WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-compat". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
+WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-test". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
+WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-examples". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
+[PACKAGES] Importing symbols into CL-USER...
+[PACKAGES] Package Hierarchy Defined.
+[GLOBALS] Global variables defined in SWIMMY.GLOBALS
+[L] ⚙️ core/config.lisp loaded - System configuration
+[ENGINE] risk.lisp loaded (Taleb Rules Active)
+WARNING: redefining SWIMMY.ENGINE:GET-RISK-SUMMARY in DEFUN
+[L] 🛡️ risk-manager.lisp loaded - Unified risk management active
+[RISK] 🛡️ Daily Loss Limit Set: ¥-228 (Tolerance: CONSERVATIVE)
+[ENGINE] goals.lisp loaded
+[ENGINE] metrics.lisp loaded
+[ENGINE] experiments.lisp loaded
+[ENGINE] learning.lisp loaded
+[ENGINE] signals.lisp loaded
+[ENGINE] positions.lisp loaded
+[ENGINE] portfolio.lisp loaded
+[ENGINE] metabolism.lisp loaded
+[ENGINE] ledger.lisp loaded
+[ENGINE] treasury.lisp loaded
+[ENGINE] failsafe.lisp loaded
+[L] ✅ Discord Async Queue loaded (V41.3)
+[ENGINE] heartbeat.lisp loaded - Mobile monitoring active
+[L] 💬 core/discord.lisp loaded - Discord notifications consolidated
+[SHELL] notifications.lisp loaded
+[SHELL] briefing.lisp loaded
+[SHELL] narrative.lisp loaded
+[SHELL] interface.lisp loaded
+[SHELL] handoff.lisp loaded
+[DSL] Kalman Filter loaded (ArXiv:1808.03297)
+[DSL] Loaded with CCI support
+STYLE-WARNING:
+   LOG-PHILOSOPHY is being redefined as a macro when it was previously defined to be a function.
+WARNING: redefining SWIMMY.SCHOOL::LOG-PHILOSOPHY in DEFMACRO
+[DSL] Advanced Macros loaded (PG-style)
+[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)
+[VS] Verbalized Sampling loaded (ArXiv:2510.01171)
+[L] 📚 Knowledge base loaded: 7 strategies
+[STRATEGIES] Indicator types assigned:
+  ema: 2 strategies
+  sma: 3 strategies
+  bb: 1 strategies
+  rsi: 1 strategies
+[STRATEGIES] 7 strategies loaded from Knowledge Base
+[L] 📦 school-state.lisp loaded - Shared state initialized
+[L] 🕐 Strategy TTL system enabled (max TTL: 7 days, min WR: 35.0%)
+[L] 🗜️ Context Compression enabled (Graham Agent Skills)
+[L] 🧠 Memory Systems enabled (Episodic + Semantic)
+[L] 🤝 Multi-Agent Patterns enabled (Blackboard + Voting)
+[L] 🦈 school-danger.lisp loaded - Danger Avoidance System active
+[L] 📜 school-constitution.lisp loaded - The Law is Active.
+[L] 🏳️ school-resignation.lisp loaded - Resignation Judgment active
+[SCHOOL] school-learning.lisp loaded - Failure Learning System
+[SCHOOL] school-volatility.lisp loaded - Volatility Detection System
+[SCHOOL] school-research.lisp loaded - Research Implementations
+[L] 🎖️ Special Force Recruited: T-Nakane-Gotobi
+[SCHOOL] Swimmy School ready (Special Forces Active)
+[FORTRESS] V6.1 features loaded (Paranoia + Japan Edge + Auto-Prune)
+[SCHOOL] 🏛️ Advisor Council (Unified) loaded
+[L] 🪵 logger.lisp loaded - Structured logging active
+[MIXSEEK] Competition System loaded
+[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders
+[RESEARCH] #13 Dual Trend Decomposition loaded
+[RESEARCH] #17 Volatility-Based Model Switch loaded
+[RESEARCH] #18 Volatility-Scaled Rewards loaded
+[RESEARCH] #16 Kalman+HMM Regime Detection loaded
+[RESEARCH] #11 Latent Parameter Estimation loaded
+[RESEARCH] #10/#27 Ensemble & Normalization loaded
+[RESEARCH] #4 Implementation Quality Checks loaded
+[RESEARCH] #9 Zero-Shot Caution loaded
 
-REVERSION (Total: 20 | Pass: 0 | Avg Sharpe: -612.26)
-Top 5:
-RSI-Bull-Zone (S: -404.59)
-MACD-RSI-Confluence (S: -581.41)
-Aggressive-Reversal (S: -599.91)
-Extreme-Reversion-BB (S: -599.91)
-BB-RSI-Reversion-Combo (S: -599.91)
-Worst 5:
-Stoch-Oversold-Entry (S: -648.17)
-Stoch-Overbought-Entry (S: -648.17)
-Stoch-Extreme-Dip (S: -648.17)
-Stoch-Momentum-Cross (S: -648.17)
-Stoch-Pop (S: -648.17)
+[RESEARCH] ════════════════════════════════════════════
+[RESEARCH] 📚 29 Research Paper Insights Integrated
+[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28...
+[RESEARCH] ════════════════════════════════════════════
+[LLM] #5 Trading-R1 Reasoning Structure loaded
+[LLM] #14 Text Feature Extraction loaded
+[LLM] #28 FinLlama Sentiment Integration loaded
+[LLM] #24 Logic-Guided DSL Extension loaded
 
-BREAKOUT (Total: 9 | Pass: 0 | Avg Sharpe: -576.14)
-Top 5:
-ATR-Confirmed-Breakout (S: -451.57)
-Pullback-Breakout (S: -567.98)
-Low-Vol-Breakout (S: -567.98)
-Volatility-Trend-Follow (S: -567.98)
-BB-Squeeze-Expansion (S: -599.91)
-Worst 5:
-Session-Breakout-Proxy (S: -622.68)
-CCI-Trend-Breakout (S: -607.35)
-BB-Breakout-Upper (S: -599.91)
-BB-Breakout-Lower (S: -599.91)
-BB-Squeeze-Expansion (S: -599.91)
+[LLM] ════════════════════════════════════════════
+[LLM] 🧠 LLM Integration Preparation Complete
+[LLM] Papers: #5 Trading-R1, #14 PrimoGPT, #28 FinLlama, #24 SYENS
+[LLM] ════════════════════════════════════════════
+[EVOLUTION] Continuous evolution system loaded
+[ERRORS] Comprehensive error handling loaded
+[QUALITY] Code quality tools loaded
+[QUALITY] Run (swimmy-quality:analyze-code-quality) for analysis
+[REPL] Swimmy REPL interface loaded
+[REPL] Type (swimmy :help) for commands
+[TESTS] Test framework loaded (V7.0 - Expert Verified)
+[TESTS] Run (swimmy-tests:run-all-tests) to execute 22 tests
 
-SCALP (Total: 4 | Pass: 0 | Avg Sharpe: -662.41)
-Top 5:
-Trend-Scalp-1M (S: -614.12)
-Scalp-Cross-5-12 (S: -641.09)
-MA-Ribbon-Scalp (S: -697.22)
-Fibonacci-EMA-Scalp (S: -697.22)
+╔════════════════════════════════════════════════════════════╗
+║  🐟 SWIMMY Ver 41.5 - The Refactored Gardener              ║
+║     Powering Up via ASDF System Definition                 ║
+╚════════════════════════════════════════════════════════════╝
+[SYSTEM] Initializing subsystems...
+[L] 📚 Tribal Dialect initialized (Simplified)
+[LEDGER] 📂 State restored: 3 arms, portfolio (0), 12 strategies
 
-🔍 Only showing Top/Worst to reduce spam.
+[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS (Refactored)
+[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders
+[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect
+
+[L] ═══════════════════════════════════════
+[L] 🌅 MORNING RITUAL - The Clans Gather
+[L] ═══════════════════════════════════════
+
+[L] 📜 CONSTITUTION RECITATION:
+[L] 「勝とうとするな。ただ、生き残れ。
+[L]  そうすれば、最後に立っているのは我々だ。」
+
+[L] 📜 CONSTITUTION INITIALIZED (v7.9++ (Graham/Taleb Hybrid))
+[L] 📜 5 Core Values loaded
+[L] 📚 Tribal Dialect initialized (Simplified)
+[L] 🏛️ THE FOUR GREAT CLANS STAND READY:
+
+[L] 🏹 Hunters (追跡者)「風が吹いている」
+[L] 🔮 Shamans (呪術師)「高すぎるものは落ちる」
+[L] ⚔️ Breakers (破壊者)「壁は壊された」
+[L] 🗡️ Raiders (盗賊)「隙あり」
+
+[L] 🎯 TODAY'S MISSION: 月間目標 ¥10,000 への道
+[L] 📈 現在の累積PnL: ¥-21 / 目標 ¥10,000 (-0.2%)
+[L] 📊 LEARNING SUMMARY: Overall win rate: 0.0% (0 wins, 1 losses)
+[L] 🕐 HOUR PATTERNS: #<HASH-TABLE :TEST EQL :COUNT 0 {1005026C33}>
+[L] 🐟 SWARM ACCURACY: 0.5
+
+[L] ═══════════════════════════════════════
+[L] 💰 CLAN TREASURIES
+[L] ═══════════════════════════════════════
+[L] 🏹 Hunters: ¥0
+[L] 🔮 Shamans: ¥0
+[L] ⚔️ Breakers: ¥0
+[L] 🗡️ Raiders: ¥0
+[L] ═══════════════════════════════════════
+
+[METABOLISM] 🍂 Cycle running...
+[L] ═══════════════════════════════════════
+
+[L] 📚 Strategies: 7 knowledge base + 12 evolved
+[L] ⚙️ Daily Limit: -228 | Max Losses: 3
+[L] 🧹 Closing all existing positions...
+[L] 📊 Requesting history for all symbols...
+[L]    → Requesting USDJPY history...
+[L]    → Requesting EURUSD history...
+[L]    → Requesting GBPUSD history...
+[BRAIN] 🚀 System active and running...
+[SHELL] 📝 Live status saved
+[LEDGER] 💾 State saved atomically to /home/swimmy/.swimmy/state.sexp
+[L] 📤 Flushed 2 Discord notifications
+[L] [WARN] ⚠️ SLOW TICK: Processing took 1.289 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[L] 🌿 ECOSYSTEM: Health=46.%
+[L] 🌱 Running natural selection...
+[L] 🏞️ Population: 12 | Diversity: 0.80 | Balance: 7.% | Health: 46.%
+
+[L] ═══════════════════════════════════════
+[L] 🎯 GOAL STATUS: ¥-21 / ¥10,000 (-0.2%)
+[L] 📅 Day 1 | Expected: ¥455 | Actual: ¥-21
+[L] ⚠️ Pace: -5.% (BEHIND)
+[L] 📊 Today's target: ¥455 | Today's PnL: ¥0
+[L] ═══════════════════════════════════════
+
+[L] 🌿 Ecosystem: Ecosystem healthy - continue evolution (focus: NIL)
+[L] 🧬 Evolving (12 strategies in pool)
+[L] 🧬 Parents: Medium-EMA-Cross-20-50 × Pullback-Breakout
+[L]    P1 indicators: ((EMA 20) (EMA 50))
+[L]    P2 indicators: ((EMA 20) (RSI 14))
+[L] 🧬 Child: Medi×Pull (inherits: ((EMA 20) (RSI 14)))
+[L] 🧬 Mutant: Medi×Pull-M89
+[L] 🧬 Checking for clones...
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] Unknown msg type: CLONE_CHECK_RESULT
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...
+[L] 🧪 Batch testing 7 strategies...
+[L] 📊 Requesting backtest for Medium-EMA-Cross-20-50 (Candles: 5000)...
+[L] 📤 Sent 322842 bytes to Rust
+[L] 📊 Requesting backtest for Perfect-Order-SMA (Candles: 5000)...
+[L] 📤 Sent 322837 bytes to Rust
+[L] 📊 Requesting backtest for Holy-Grail-Proxy (Candles: 5000)...
+[L] 📤 Sent 322838 bytes to Rust
+[L] 📊 Requesting backtest for Aggressive-Reversal (Candles: 5000)...
+[L] 📤 Sent 322836 bytes to Rust
+[L] 📊 Requesting backtest for MA-Ribbon-Scalp (Candles: 5000)...
+[L] 📤 Sent 322834 bytes to Rust
+[L] 📊 Requesting backtest for RSI-Volatility-Break (Candles: 5000)...
+[L] 📤 Sent 322840 bytes to Rust
+[L] 📊 Requesting backtest for T-Nakane-Gotobi (Candles: 5000)...
+[L] 📤 Sent 322833 bytes to Rust
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] ⚙️ 📉 Medium-EMA-Cross-20-50: Tightening params (poor perf)
+[L] 📊 Updated Medium-EMA-Cross-20-50 sharpe=1.55
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] ⚙️ 📉 Perfect-Order-SMA: Tightening params (poor perf)
+[L] 📊 Updated Perfect-Order-SMA sharpe=1.55
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] ⚙️ 📉 Holy-Grail-Proxy: Tightening params (poor perf)
+[L] 📊 Updated Holy-Grail-Proxy sharpe=1.55
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 🚫 BENCHED: Aggressive-Reversal (Critical Failure: S=-8.93 WR=59.%)
+[L] 📊 Updated Aggressive-Reversal sharpe=-8.93 [BENCHED]
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 🚫 BENCHED: MA-Ribbon-Scalp (Critical Failure: S=-16.06 WR=29.%)
+[L] 📊 Updated MA-Ribbon-Scalp sharpe=-16.06 [BENCHED]
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 🚫 BENCHED: RSI-Volatility-Break (Critical Failure: S=-11.12 WR=47.%)
+[L] 📊 Updated RSI-Volatility-Break sharpe=-11.12 [BENCHED]
+[L] 🏆 Top strategies: Medium-EMA-Cross-20-50(1.5), Pullback-Breakout(-0.2), Sweet-Chariot-SMA-40(-0.2)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 🏁 Backtest Batch Complete! (Received 7/7)
+[L] 🔍 Filtered: 2/7 passed Sharpe > 0.5
+[L] ✅ Adopted 2 proven strategies
+[L] 🚫 BENCHED: T-Nakane-Gotobi (Critical Failure: S=-15.82 WR=28.%)
+[L] 📊 Updated T-Nakane-Gotobi sharpe=-15.82 [BENCHED]
+[L] 🏆 Top strategies: Holy-Grail-Proxy(1.5), Perfect-Order-SMA(1.5), Medium-EMA-Cross-20-50(1.5)
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 GBPUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 GBPUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 GBPUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 GBPUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 EURUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 GBPUSD: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[L] 📚 USDJPY: 5000 bars
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenance-section-1 took 0.000 seconds
+[PROFILING] maintenance-section-2 took 0.000 seconds
+[PROFILING] maintenance-section-3 took 0.000 seconds
+[PROFILING] maintenan
+
+
+
+42: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+43: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A8213}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+44: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A8213}> NIL)
+45: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+46: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A8213}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+47: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A8213}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+48: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A8213}>) #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+49: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+50: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+51: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8013B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+52: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+53: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+54: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+55: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+56: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+57: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+58: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+59: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+60: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A70BB}>)
+61: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E805AB}>)
+62: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+63: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+64: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+65: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+66: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+67: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+68: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+69: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+70: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+71: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> NIL)
+72: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+73: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+74: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+75: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>) #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+76: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+77: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+78: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E80DCB}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+79: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+80: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+81: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+82: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+83: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+84: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+85: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+86: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+87: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A5AEB}>)
+88: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8123B}>)
+89: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+90: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+91: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+92: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+93: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+94: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+95: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+96: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+97: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+98: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> NIL)
+99: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+100: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+101: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+102: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>) #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+103: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+104: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+105: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E81A5B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+106: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+107: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+108: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+109: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+110: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+111: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+112: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+113: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+114: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A451B}>)
+115: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E81ECB}>)
+116: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+117: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+118: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+119: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+120: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+121: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+122: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+123: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+124: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+125: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> NIL)
+126: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+127: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+128: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+129: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>) #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+130: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+131: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+132: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E826EB}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+133: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+134: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+135: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+136: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+137: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+138: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+139: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+140: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+141: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A2F4B}>)
+142: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E82B5B}>)
+143: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+144: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+145: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+146: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+147: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+148: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+149: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+150: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+151: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A2943}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+152: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A2943}> NIL)
+153: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+154: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A2943}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+155: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A2943}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+156: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A2943}>) #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+157: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+158: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+159: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8337B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+160: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+161: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+162: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+163: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+164: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+165: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+166: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+167: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+168: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A197B}>)
+169: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E837EB}>)
+170: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+171: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+172: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+173: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+174: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+175: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+176: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+177: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+178: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A1373}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+179: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A1373}> NIL)
+180: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+181: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A1373}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+182: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A1373}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+183: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A1373}>) #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+184: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+185: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+186: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8400B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+187: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+188: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+189: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+190: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+191: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+192: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+193: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+194: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+195: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A03AB}>)
+196: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8447B}>)
+197: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+198: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+199: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+200: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+201: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+202: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+203: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+204: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+205: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569FD93}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+206: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569FD93}> NIL)
+207: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+208: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569FD93}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+209: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569FD93}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+210: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {100569FD93}>) #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+211: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+212: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+213: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E84C9B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+214: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+215: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+216: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+217: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+218: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+219: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+220: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+221: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+222: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {100569EDCB}>)
+223: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8510B}>)
+224: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+225: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+226: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+227: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+228: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+229: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+230: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+231: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+232: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+233: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> NIL)
+234: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+235: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+236: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+237: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>) #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+238: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+239: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+240: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8592B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+241: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+242: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+243: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+244: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+245: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+246: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+247: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+248: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+249: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {100569D7FB}>)
+250: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E85D9B}>)
+251: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+252: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+253: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+254: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+255: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> "
+  of " 0 0 6)
+256: (SB-IMPL::FD-SOUT #<SB-SYS:FD-STREAM for "standard error" {1001468193}> "
+  of " 0 6)
+257: (SB-IMPL::%WRITE-STRING "
+  of " #<SB-SYS:FD-STREAM for "standard error" {1001468193}> 0 6)
+258: (SB-IMPL::%WRITE-STRING "
+  of " #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> 0 NIL)
+259: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~S> ":") (30 0 #P"/home/swimmy/swimmy/brain.lisp") (#P"/home/swimmy/swimmy/brain.lisp"))
+260: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" (30 0 #P"/home/swimmy/swimmy/brain.lisp") (30 0 #P"/home/swimmy/swimmy/brain.lisp"))
+261: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" 30 0 #P"/home/swimmy/swimmy/brain.lisp")
+262: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" 30 0 #P"/home/swimmy/swimmy/brain.lisp") [more]
+263: (SB-KERNEL::%SIGNAL #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D023}>)
+264: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard output" {100138BD73}>) "Broken pipe"))
+265: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+266: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> #\Newline)
+267: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> #\Newline)
+268: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+269: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+270: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #S(SB-PRETTY::NEWLINE :POSN 73 :DEPTH 1 :SECTION-END NIL :KIND :LINEAR))
+271: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569CD33}> NIL)
+272: (PPRINT-NEWLINE :LINEAR #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+273: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #<~_> (#<~A>) #<unused argument> ("Broken pipe"))
+274: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569CD33}> (#<~_> #<~A>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Broken pipe"))
+275: (SB-FORMAT::[-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #<~@[> (": " #<~2I> #<~_> #<~A> #<~]>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") NIL)
+276: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569CD33}> (#<~@[> ": " #<~2I> #<~_> #<~A> #<~]>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Broken pipe"))
+277: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) NIL (3 . #<SB-PRETTY:PRETTY-STREAM {100569CD33}>) #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+278: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+279: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+280: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E86B5B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "" NIL "" ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+281: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") "" NIL (#<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]>) "" T)
+282: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> #<~@<> (#<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]> #<~:>>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") #<unavailable argument>)
+283: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> (#<~@<> #<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]> #<~:>>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+284: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+285: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" "Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe")
+286: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" "Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") [more]
+287: ((LABELS SB-IMPL::HANDLE-IT :IN SB-KERNEL:OUTPUT-OBJECT) #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+288: (PRINC #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569B643}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+289: (START-BRAIN)
+290: (START-SYSTEM)
+291: (SB-INT:SIMPLE-EVAL-IN-LEXENV (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) #<NULL-LEXENV>)
+292: (EVAL-TLF (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) 6 NIL)
+293: ((LABELS SB-FASL::EVAL-FORM :IN SB-INT:LOAD-AS-SOURCE) (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) 6)
+294: ((LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE) (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) :CURRENT-INDEX 6)
+295: (SB-C::%DO-FORMS-FROM-INFO #<FUNCTION (LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE) {1002C9622B}> #<SB-C::SOURCE-INFO {1002C961F3}> SB-C::INPUT-ERROR-IN-LOAD)
+296: (SB-INT:LOAD-AS-SOURCE #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> :VERBOSE NIL :PRINT NIL :CONTEXT "loading")
+297: ((LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> NIL)
+298: (SB-FASL::CALL-WITH-LOAD-BINDINGS #<FUNCTION (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) {7CFE58E8797B}> #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> NIL #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}>)
+299: (LOAD #P"brain.lisp" :VERBOSE NIL :PRINT NIL :IF-DOES-NOT-EXIST :ERROR :EXTERNAL-FORMAT :DEFAULT)
+300: (SB-IMPL::PROCESS-EVAL/LOAD-OPTIONS ((:LOAD . "brain.lisp")))
+301: (SB-IMPL::TOPLEVEL-INIT)
+302: ((FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP))
+303: ((FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP))
+304: (SB-IMPL::%START-LISP)
+Help! ERROR-ERROR is 2 levels deep. Will try to reset the IO streams and disable debugger hooks.
+Help! 11 nested errors. SB-KERNEL:*MAXIMUM-ERROR-DEPTH* exceeded.
+Backtrace for: #<SB-THREAD:THREAD "main thread" RUNNING {1001480073}>
+0: ((FLET SB-IMPL::TRY-TO-INVOKE-DEBUGGER :IN SB-IMPL::ERROR-ERROR))
+1: ((FLET "THUNK" :IN SB-IMPL::ERROR-ERROR))
+2: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-IMPL::ERROR-ERROR) {7CFE58E7E67B}>)
+3: (SB-IMPL::ERROR-ERROR "Help! " 11 " nested errors. " "SB-KERNEL:*MAXIMUM-ERROR-DEPTH* exceeded.")
+4: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard output" {100138BD73}>) "Broken pipe"))
+5: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+6: (FORCE-OUTPUT #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+7: ((FLET SB-IMPL::FLUSH :IN SB-INT:FLUSH-STANDARD-OUTPUT-STREAMS) #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+8: (SB-INT:FLUSH-STANDARD-OUTPUT-STREAMS)
+9: (INVOKE-DEBUGGER #<SIMPLE-ERROR "Maximum error nesting depth exceeded" {10058CF1F3}>)
+10: ((FLET SB-IMPL::TRY-TO-INVOKE-DEBUGGER :IN SB-IMPL::ERROR-ERROR))
+11: ((FLET "THUNK" :IN SB-IMPL::ERROR-ERROR))
+12: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-IMPL::ERROR-ERROR) {7CFE58E7EA9B}>)
+13: (SB-IMPL::ERROR-ERROR "Help! " 11 " nested errors. " "SB-KERNEL:*MAXIMUM-ERROR-DEPTH* exceeded.")
+14: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+15: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+16: (FORCE-OUTPUT #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+17: ((FLET SB-IMPL::FLUSH :IN SB-INT:FLUSH-STANDARD-OUTPUT-STREAMS) #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+18: (SB-INT:FLUSH-STANDARD-OUTPUT-STREAMS)
+19: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A9BF3}>)
+20: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+21: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+22: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+23: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+24: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+25: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+26: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A97E3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+27: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A97E3}> NIL)
+28: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A97E3}>)
+29: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A97E3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+30: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A97E3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+31: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A97E3}>) #<SB-PRETTY:PRETTY-STREAM {10056A97E3}>)
+32: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+33: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A97E3}>)
+34: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E7F4AB}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+35: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+36: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+37: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+38: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+39: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+40: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+41: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A8623}>)
+42: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+43: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A881B}>)
+44: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E7F91B}>)
+45: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A8623}>)
+46: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A8623}>)
+47: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+48: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+49: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+50: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+51: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+52: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+53: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A8213}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+54: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A8213}> NIL)
+55: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+56: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A8213}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+57: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A8213}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+58: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A8213}>) #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+59: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+60: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A8213}>)
+61: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8013B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+62: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+63: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+64: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+65: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+66: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+67: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+68: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+69: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+70: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A70BB}>)
+71: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E805AB}>)
+72: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+73: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A6EC3}>)
+74: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+75: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+76: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+77: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+78: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+79: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+80: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+81: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> NIL)
+82: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+83: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+84: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+85: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>) #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+86: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+87: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A6AB3}>)
+88: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E80DCB}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+89: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+90: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+91: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+92: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+93: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+94: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+95: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+96: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+97: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A5AEB}>)
+98: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8123B}>)
+99: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+100: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A58F3}>)
+101: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+102: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+103: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+104: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+105: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+106: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+107: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+108: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> NIL)
+109: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+110: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+111: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A54E3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+112: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>) #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+113: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+114: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A54E3}>)
+115: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E81A5B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+116: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+117: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+118: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+119: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+120: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+121: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+122: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+123: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+124: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A451B}>)
+125: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E81ECB}>)
+126: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+127: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A4323}>)
+128: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+129: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+130: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+131: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+132: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+133: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+134: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+135: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> NIL)
+136: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+137: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+138: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A3F13}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+139: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>) #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+140: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+141: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A3F13}>)
+142: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E826EB}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+143: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+144: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+145: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+146: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+147: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+148: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+149: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+150: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+151: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A2F4B}>)
+152: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E82B5B}>)
+153: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+154: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A2D53}>)
+155: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+156: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+157: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+158: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+159: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+160: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+161: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A2943}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+162: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A2943}> NIL)
+163: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+164: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A2943}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+165: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A2943}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+166: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A2943}>) #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+167: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+168: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A2943}>)
+169: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8337B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+170: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+171: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+172: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+173: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+174: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+175: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+176: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+177: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+178: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A197B}>)
+179: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E837EB}>)
+180: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+181: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A1783}>)
+182: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+183: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+184: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+185: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+186: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+187: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+188: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {10056A1373}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+189: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {10056A1373}> NIL)
+190: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+191: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {10056A1373}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+192: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {10056A1373}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+193: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {10056A1373}>) #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+194: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+195: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {10056A1373}>)
+196: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8400B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+197: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+198: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+199: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+200: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+201: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+202: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+203: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+204: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+205: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {10056A03AB}>)
+206: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8447B}>)
+207: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+208: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {10056A01B3}>)
+209: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+210: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+211: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+212: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+213: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+214: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+215: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569FD93}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+216: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569FD93}> NIL)
+217: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+218: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569FD93}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+219: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569FD93}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+220: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {100569FD93}>) #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+221: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+222: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569FD93}>)
+223: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E84C9B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+224: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+225: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+226: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+227: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+228: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+229: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+230: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+231: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+232: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {100569EDCB}>)
+233: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E8510B}>)
+234: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+235: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569EBD3}>)
+236: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+237: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+238: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+239: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> #\Newline)
+240: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+241: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}>)
+242: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> #S(SB-PRETTY::NEWLINE :POSN 77 :DEPTH 1 :SECTION-END #S(SB-PRETTY::NEWLINE :POSN 86 :DEPTH 1 :SECTION-END NIL :KIND :FILL) :KIND :FILL))
+243: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> NIL)
+244: (PPRINT-NEWLINE :FILL #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+245: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> #<> ("the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " #<> ...) #<unused argument> (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+246: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569E7C3}> (#<> "the " #<> "debugger. " #<> "Printing " #<> "was " #<> "aborted " #<> "and " ...) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+247: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) (SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (2 . #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>) #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+248: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+249: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569E7C3}>)
+250: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E8592B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "" NIL "" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+251: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) "" NIL ("(A " #<> #<~S> " " #<> "was " #<> "caught " #<> "when " #<> "trying " ...) "" T)
+252: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> #<~@<> ("(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) #<unavailable argument>)
+253: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~@<> "(A " #<~S> " was caught when trying to print " #<~S> " when entering the debugger. Printing was aborted and the " #<~S> " was stored in " #<~S> ".)" #<~@:>> "
+") (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+254: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) (SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*))
+255: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*)
+256: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&~@<(A ~S was caught when trying to print ~S when entering the debugger. Printing was aborted and the ~S was stored in ~S.)~@:>
+" SB-INT:BROKEN-PIPE *DEBUG-CONDITION* SB-INT:BROKEN-PIPE SB-DEBUG::*NESTED-DEBUG-CONDITION*) [more]
+257: (SB-DEBUG::%INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+258: ((LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX))
+259: (SB-IMPL::CALL-WITH-SANE-IO-SYNTAX #<FUNCTION (LAMBDA NIL :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {100569D7FB}>)
+260: (SB-IMPL::%WITH-STANDARD-IO-SYNTAX #<FUNCTION (FLET "THUNK" :IN SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX) {7CFE58E85D9B}>)
+261: (SB-DEBUG::FUNCALL-WITH-DEBUG-IO-SYNTAX #<FUNCTION SB-DEBUG::%INVOKE-DEBUGGER> #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+262: (INVOKE-DEBUGGER #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D0B3}>)
+263: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard error" {1001468193}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+264: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard error" {1001468193}>)
+265: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard error" {1001468193}> "
+  of " 0 0 6)
+266: (SB-IMPL::FD-SOUT #<SB-SYS:FD-STREAM for "standard error" {1001468193}> "
+  of " 0 6)
+267: (SB-IMPL::%WRITE-STRING "
+  of " #<SB-SYS:FD-STREAM for "standard error" {1001468193}> 0 6)
+268: (SB-IMPL::%WRITE-STRING "
+  of " #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> 0 NIL)
+269: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> (#<~S> ":") (30 0 #P"/home/swimmy/swimmy/brain.lisp") (#P"/home/swimmy/swimmy/brain.lisp"))
+270: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" (30 0 #P"/home/swimmy/swimmy/brain.lisp") (30 0 #P"/home/swimmy/swimmy/brain.lisp"))
+271: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" 30 0 #P"/home/swimmy/swimmy/brain.lisp")
+272: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDERR* {1000009633}> "~&While evaluating the form starting at line ~D, column ~D
+  of ~S:" 30 0 #P"/home/swimmy/swimmy/brain.lisp") [more]
+273: (SB-KERNEL::%SIGNAL #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569D023}>)
+274: (ERROR SB-INT:BROKEN-PIPE :STREAM #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> :FORMAT-CONTROL "~@<~?~@[: ~2I~_~A~]~:>" :FORMAT-ARGUMENTS ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard output" {100138BD73}>) "Broken pipe"))
+275: (SB-IMPL::FLUSH-OUTPUT-BUFFER #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+276: (SB-IMPL::OUTPUT-CHAR-UTF-8-LINE-BUFFERED #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> #\Newline)
+277: ((LAMBDA (&REST REST) :IN SB-IMPL::GET-EXTERNAL-FORMAT) #<SB-SYS:FD-STREAM for "standard output" {100138BD73}> #\Newline)
+278: (WRITE-CHAR #\Newline #<SB-SYS:FD-STREAM for "standard output" {100138BD73}>)
+279: (WRITE-CHAR #\Newline #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+280: (SB-PRETTY::OUTPUT-LINE #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #S(SB-PRETTY::NEWLINE :POSN 73 :DEPTH 1 :SECTION-END NIL :KIND :LINEAR))
+281: (SB-PRETTY::MAYBE-OUTPUT #<SB-PRETTY:PRETTY-STREAM {100569CD33}> NIL)
+282: (PPRINT-NEWLINE :LINEAR #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+283: (SB-FORMAT::_-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #<~_> (#<~A>) #<unused argument> ("Broken pipe"))
+284: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569CD33}> (#<~_> #<~A>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Broken pipe"))
+285: (SB-FORMAT::[-FORMAT-DIRECTIVE-INTERPRETER #<SB-PRETTY:PRETTY-STREAM {100569CD33}> #<~@[> (": " #<~2I> #<~_> #<~A> #<~]>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") NIL)
+286: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SB-PRETTY:PRETTY-STREAM {100569CD33}> (#<~@[> ": " #<~2I> #<~_> #<~A> #<~]>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Broken pipe"))
+287: ((FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) NIL (3 . #<SB-PRETTY:PRETTY-STREAM {100569CD33}>) #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+288: ((LABELS #:BODY-NAME-3 :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER))
+289: ((FLET "WITH-PRETTY-STREAM0" :IN SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER) #<SB-PRETTY:PRETTY-STREAM {100569CD33}>)
+290: (SB-PRETTY::CALL-LOGICAL-BLOCK-PRINTER #<FUNCTION (FLET "PPRINT-BLOCK" :IN SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK) {7CFE58E86B5B}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "" NIL "" ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+291: (SB-FORMAT::INTERPRET-FORMAT-LOGICAL-BLOCK #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") "" NIL (#<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]>) "" T)
+292: (SB-FORMAT::<-FORMAT-DIRECTIVE-INTERPRETER #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> #<~@<> (#<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]> #<~:>>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") #<unavailable argument>)
+293: (SB-FORMAT::INTERPRET-DIRECTIVE-LIST #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> (#<~@<> #<~?> #<~@[> ": " #<~2I> #<~_> #<~A> #<~]> #<~:>>) ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+294: (SB-FORMAT::%FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") ("Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe"))
+295: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" "Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe")
+296: (FORMAT #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}> "~@<~?~@[: ~2I~_~A~]~:>" "Couldn't write to ~S" (#<SB-SYS:FD-STREAM for "standard error" {1001468193}>) "Broken pipe") [more]
+297: ((LABELS SB-IMPL::HANDLE-IT :IN SB-KERNEL:OUTPUT-OBJECT) #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+298: (PRINC #<SB-INT:BROKEN-PIPE "~@<~?~@[: ~2I~_~A~]~:>" {100569B643}> #<SYNONYM-STREAM :SYMBOL SB-SYS:*STDOUT* {100000B533}>)
+299: (START-BRAIN)
+300: (START-SYSTEM)
+301: (SB-INT:SIMPLE-EVAL-IN-LEXENV (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) #<NULL-LEXENV>)
+302: (EVAL-TLF (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) 6 NIL)
+303: ((LABELS SB-FASL::EVAL-FORM :IN SB-INT:LOAD-AS-SOURCE) (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) 6)
+304: ((LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE) (UIOP/PACKAGE:SYMBOL-CALL :SWIMMY.MAIN :START-SYSTEM) :CURRENT-INDEX 6)
+305: (SB-C::%DO-FORMS-FROM-INFO #<FUNCTION (LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE) {1002C9622B}> #<SB-C::SOURCE-INFO {1002C961F3}> SB-C::INPUT-ERROR-IN-LOAD)
+306: (SB-INT:LOAD-AS-SOURCE #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> :VERBOSE NIL :PRINT NIL :CONTEXT "loading")
+307: ((LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> NIL)
+308: (SB-FASL::CALL-WITH-LOAD-BINDINGS #<FUNCTION (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) {7CFE58E8797B}> #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}> NIL #<SB-INT:FORM-TRACKING-STREAM for "file /home/swimmy/swimmy/brain.lisp" {1002C95063}>)
+309: (LOAD #P"brain.lisp" :VERBOSE NIL :PRINT NIL :IF-DOES-NOT-EXIST :ERROR :EXTERNAL-FORMAT :DEFAULT)
+310: (SB-IMPL::PROCESS-EVAL/LOAD-OPTIONS ((:LOAD . "brain.lisp")))
+311: (SB-IMPL::TOPLEVEL-INIT)
+312: ((FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP))
+313: ((FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP))
+314: (SB-IMPL::%START-LISP)
+Help! ERROR-ERROR is 3 levels deep. Will try to THROW this thread to the toplevel.

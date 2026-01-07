@@ -20,7 +20,7 @@ run:
 	@echo "🚀 Starting Discord Bot..."
 	@nohup /bin/bash -c "source config/.env && .venv/bin/python3 src/python/discord_bot.py" > /tmp/discord_bot.log 2>&1 &
 	@echo "🚀 Starting Brain..."
-	@/bin/bash -c "source config/.env && sbcl --noinform --load brain.lisp 2>&1 | tee /tmp/brain.log"
+	@/bin/bash -c "source config/.env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
 
 test:
 	@echo "🧪 Running Swimmy Tests..."
@@ -33,7 +33,7 @@ quality-gate: test
 	@echo "✅ Quality Gate PASSED - Ready for deployment"
 
 clean:
-	rm -rf ~/.cache/common-lisp/
+	rm -rf ~/.cache/common-lisp/ || true
 	rm -f *.fasl
 
 # Benchmarks

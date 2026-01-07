@@ -25,6 +25,20 @@ SWIMMY_QUERY_FILE = "/home/swimmy/swimmy/.opus/query.txt"
 SWIMMY_RESPONSE_FILE = "/home/swimmy/swimmy/.opus/response.txt"
 SWIMMY_STATUS_FILE = "/home/swimmy/swimmy/.opus/live_status.json"
 
+# Singleton check
+import fcntl
+import sys
+
+PID_FILE = "/tmp/swimmy_discord_bot.pid"
+fp = open(PID_FILE, "w")
+try:
+    fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fp.write(str(os.getpid()))
+    fp.flush()
+except IOError:
+    print("❌ Another instance is already running. Exiting.")
+    sys.exit(0)
+
 # Bot setup with intents
 intents = discord.Intents.default()
 intents.message_content = True

@@ -435,9 +435,10 @@ Sharpe   : ~,2f
                     (weekly-unbench-all))
                   ;; Evaluate and bench poor performers (50+ trades required)
                   (evaluate-strategy-performance strat sharpe trades win-rate)
-                  ;; Always log performance
-                  (format t "[L] 📊 Updated ~a sharpe=~,2f~a~%" 
-                          name sharpe (if (strategy-benched-p name) " [BENCHED]" ""))
+                  ;; Always log performance IF it's decent
+                  (when (or (> sharpe 0.1) (> win-rate 55.0))
+                    (format t "[L] 📊 Updated ~a sharpe=~,2f~a~%" 
+                            name sharpe (if (strategy-benched-p name) " [BENCHED]" "")))
                   ;; Sort evolved strategies by sharpe (best first)
                   (setf *evolved-strategies* 
                         (sort *evolved-strategies* #'> :key #'strategy-sharpe))
@@ -497,7 +498,7 @@ Sharpe   : ~,2f
     (send-heartbeat)        ; V5.5: Heartbeat to MT5
     (flush-discord-queue)   ; V41.3: Async Discord notifications
     (let ((duration (/ (- (get-internal-real-time) start-time) internal-time-units-per-second)))
-      (when (> duration 0.5) ; 500ms threshold
+      (when (> duration 0.5) ; 0.5s threshold (Strict Mode)
         ;; V41.2: Structured logging for performance monitoring
         (log-warn (format nil "SLOW TICK: Processing took ~,3f seconds" duration) 
                   :data (jsown:new-js ("type" "slow_tick") 

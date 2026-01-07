@@ -29,37 +29,44 @@
   t)
 
 (defun flush-discord-queue ()
-  "Process queued notifications (call periodically from main loop)"
-  (let ((now (get-universal-time))
-        (items nil))
+  "Process queued notifications in a background thread to prevent blocking"
+  (let ((now (get-universal-time)))
     ;; Only flush every N seconds
     (when (> (- now *last-discord-flush*) *discord-flush-interval*)
       (setf *last-discord-flush* now)
-      ;; Grab all items and clear queue
-      (setf items (reverse *discord-queue*))
-      (setf *discord-queue* nil)
-      ;; Send each notification
-      (dolist (item items)
-        (let ((webhook (getf item :webhook))
-              (msg (getf item :msg))
-              (color (getf item :color))
-              (title (getf item :title)))
-          (when (and webhook msg (not (equal msg "NIL")))
-            (handler-case
-                (dex:post webhook
-                          :content (jsown:to-json 
-                                    (jsown:new-js 
-                                     ("embeds" (list (jsown:new-js 
-                                                      ("title" title)
-                                                      ("description" (format nil "~a" msg))
-                                                      ("color" color))))))
-                          :headers '(("Content-Type" . "application/json"))
-                          :read-timeout 3)
-              (error (e) 
-                (format t "[L] ⚠️ Discord post failed: ~a~%" e))))))
-      ;; Log flush result
-      (when items
-        (format t "[L] 📤 Flushed ~d Discord notifications~%" (length items))))))
+      ;; Grab all items and clear queue ATOMICALLY (in terms of main thread)
+      (let ((items (reverse *discord-queue*)))
+        (setf *discord-queue* nil)
+        
+        (when items
+          ;; Spawn a worker thread for this batch
+          ;; Note: SBCL threads are efficient enough for this frequency (every 3s)
+          (sb-thread:make-thread
+           (lambda ()
+             (handler-case
+                 (progn
+                   (dolist (item items)
+                     (let ((webhook (getf item :webhook))
+                           (msg (getf item :msg))
+                           (color (getf item :color))
+                           (title (getf item :title)))
+                       (when (and webhook msg (not (equal msg "NIL")))
+                         (handler-case
+                             (dex:post webhook
+                                       :content (jsown:to-json 
+                                                 (jsown:new-js 
+                                                  ("embeds" (list (jsown:new-js 
+                                                                   ("title" title)
+                                                                   ("description" (format nil "~a" msg))
+                                                                   ("color" color))))))
+                                       :headers '(("Content-Type" . "application/json"))
+                                       :read-timeout 10) ; Allowed to take longer in bg thread
+                           (error (e) 
+                             (format t "[Thread] ⚠️ Discord post failed: ~a~%" e))))))
+                   ;; (format t "[Thread] 📤 Flushed ~d items~%" (length items))
+                   )
+               (error (e) (format t "[Thread] Critical Error: ~a~%" e))))
+           :name "Discord-Worker"))))))
 
 (defun discord-queue-length ()
   "Get current queue length (for monitoring)"
