@@ -10,6 +10,8 @@
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
+               (:file "src/lisp/core/risk-client")  ; V8.0: Risk Gateway client
+               (:file "src/lisp/core/inference-client") ; V8.0: Inference client
                (:file "src/lisp/core/profiling")
                
                ;; ENGINE
@@ -50,6 +52,8 @@
                (:file "src/lisp/school-danger")
                (:file "src/lisp/school-constitution")
                (:file "src/lisp/school-resignation")
+               (:file "src/lisp/school-strategy")  ; V8.1: Strategy/Clan System
+               (:file "src/lisp/school-voting")    ; V8.1: Voting/Council System
                (:file "src/lisp/school-learning")
                (:file "src/lisp/school-volatility")
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp

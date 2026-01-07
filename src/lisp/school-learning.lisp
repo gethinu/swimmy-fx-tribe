@@ -450,4 +450,416 @@
     (format nil "Overall win rate: ~,1f% (~d wins, ~d losses)"
             overall-rate total-successes total-failures)))
 
-(format t "[SCHOOL] school-learning.lisp loaded - Failure Learning System~%")
+
+;;; ==========================================
+;;; MEMORY SYSTEM (記憶と想起) - Merged from school.lisp
+;;; ==========================================
+;;; Features:
+;;; - Store market patterns with outcomes
+;;; - Similarity-based pattern retrieval
+;;; - Experience-based decision making
+;;; - Episodic and semantic memory
+
+(defparameter *episodic-memory* nil)          ; Specific trade memories
+(defparameter *semantic-memory* nil)          ; Generalized patterns
+(defparameter *max-episodic-memory* 1000)
+(defparameter *max-semantic-memory* 100)
+(defparameter *memory-similarity-threshold* 0.7)
+
+(defstruct memory-episode
+  timestamp
+  symbol
+  ;; Pattern features
+  pattern-hash          ; Quick lookup key
+  regime
+  volatility
+  rsi-value
+  momentum-direction
+  sma-position
+  hour-of-day
+  day-of-week
+  consecutive-candles
+  price-range           ; High-low range as %
+  ;; What happened
+  trade-direction
+  outcome               ; :win :loss :breakeven
+  pnl
+  hold-time)
+
+(defstruct semantic-pattern
+  key                   ; Pattern identifier
+  occurrences           ; How many times seen
+  win-count
+  loss-count
+  total-pnl
+  avg-hold-time
+  best-direction        ; Most successful direction
+  last-seen)
+
+(defun create-pattern-hash (regime volatility rsi-zone momentum sma-pos hour)
+  "Create a hash key for pattern lookup"
+  (format nil "~a|~a|~a|~a|~a|~a" 
+          regime volatility rsi-zone momentum sma-pos 
+          (cond ((< hour 8) :asia)
+                ((< hour 16) :europe)
+                (t :america))))
+
+(defun capture-current-pattern (symbol)
+  "Capture current market pattern for memory"
+  (let* ((ctx (get-rich-market-context symbol))
+         (history (or (gethash symbol *candle-histories*) *candle-history*))
+         (range (if (and history (> (length history) 10))
+                    (let* ((highs (mapcar #'candle-high (subseq history 0 10)))
+                           (lows (mapcar #'candle-low (subseq history 0 10)))
+                           (max-h (reduce #'max highs))
+                           (min-l (reduce #'min lows)))
+                      (if (> min-l 0) (* 100 (/ (- max-h min-l) min-l)) 0))
+                    0))
+         (rsi-zone (getf ctx :rsi-zone))
+         (hour (getf ctx :hour-of-day)))
+    (list
+     :hash (create-pattern-hash (getf ctx :regime)
+                                (getf ctx :volatility)
+                                rsi-zone
+                                (getf ctx :momentum)
+                                (getf ctx :sma-position)
+                                (getf ctx :hour-of-day)) ; Use extracted hour
+     :regime (getf ctx :regime)
+     :volatility (getf ctx :volatility)
+     :rsi-value (getf ctx :rsi-value)
+     :momentum (getf ctx :momentum)
+     :sma-position (getf ctx :sma-position)
+     :hour hour
+     :day (getf ctx :day-of-week)
+     :consecutive (getf ctx :consecutive-candles)
+     :range range)))
+
+(defun store-memory (symbol direction outcome pnl hold-time)
+  "Store a trade experience in episodic memory"
+  (let* ((pattern (capture-current-pattern symbol))
+         (episode (make-memory-episode
+                   :timestamp (get-universal-time)
+                   :symbol symbol
+                   :pattern-hash (getf pattern :hash)
+                   :regime (getf pattern :regime)
+                   :volatility (getf pattern :volatility)
+                   :rsi-value (getf pattern :rsi-value)
+                   :momentum-direction (getf pattern :momentum)
+                   :sma-position (getf pattern :sma-position)
+                   :hour-of-day (getf pattern :hour)
+                   :day-of-week (getf pattern :day)
+                   :consecutive-candles (getf pattern :consecutive)
+                   :price-range (getf pattern :range)
+                   :trade-direction direction
+                   :outcome outcome
+                   :pnl pnl
+                   :hold-time hold-time)))
+    ;; Add to episodic memory
+    (push episode *episodic-memory*)
+    (when (> (length *episodic-memory*) *max-episodic-memory*)
+      (setf *episodic-memory* (subseq *episodic-memory* 0 *max-episodic-memory*)))
+    
+    ;; Update semantic memory (generalized patterns)
+    (update-semantic-memory episode)))
+
+(defun update-semantic-memory (episode)
+  "Update generalized pattern knowledge from episode"
+  (let* ((key (memory-episode-pattern-hash episode))
+         (existing (find key *semantic-memory* :key #'semantic-pattern-key :test #'string=)))
+    (if existing
+        (progn
+          (incf (semantic-pattern-occurrences existing))
+          (if (eq (memory-episode-outcome episode) :win)
+              (incf (semantic-pattern-win-count existing))
+              (incf (semantic-pattern-loss-count existing)))
+          (incf (semantic-pattern-total-pnl existing) (memory-episode-pnl episode))
+          (setf (semantic-pattern-last-seen existing) (get-universal-time)))
+        ;; Create new semantic pattern
+        (let ((new-pattern (make-semantic-pattern
+                            :key key
+                            :occurrences 1
+                            :win-count (if (eq (memory-episode-outcome episode) :win) 1 0)
+                            :loss-count (if (eq (memory-episode-outcome episode) :loss) 1 0)
+                            :total-pnl (memory-episode-pnl episode)
+                            :avg-hold-time (memory-episode-hold-time episode)
+                            :best-direction (memory-episode-trade-direction episode)
+                            :last-seen (get-universal-time))))
+          (push new-pattern *semantic-memory*)
+          (when (> (length *semantic-memory*) *max-semantic-memory*)
+            (setf *semantic-memory* 
+                  (subseq (sort *semantic-memory* #'> :key #'semantic-pattern-occurrences)
+                          0 *max-semantic-memory*)))))))
+
+(defun calculate-pattern-similarity (pattern1 pattern2)
+  "Calculate similarity between two patterns (0.0 to 1.0)"
+  (let ((score 0) (total 8))
+    (when (eq (getf pattern1 :regime) (memory-episode-regime pattern2))
+      (incf score 2))
+    (when (eq (getf pattern1 :volatility) (memory-episode-volatility pattern2))
+      (incf score 2))
+    (when (eq (getf pattern1 :sma-position) (memory-episode-sma-position pattern2))
+      (incf score 1))
+    (when (eq (getf pattern1 :momentum) (memory-episode-momentum-direction pattern2))
+      (incf score 1))
+    (when (< (abs (- (or (getf pattern1 :rsi-value) 50) 
+                     (or (memory-episode-rsi-value pattern2) 50))) 15)
+      (incf score 1))
+    (when (< (abs (- (or (getf pattern1 :hour) 12) 
+                     (or (memory-episode-hour-of-day pattern2) 12))) 4)
+      (incf score 1))
+    (/ score total)))
+
+(defun recall-similar-experiences (symbol &optional (limit 10))
+  "Retrieve similar past experiences from memory"
+  (let* ((current (capture-current-pattern symbol))
+         (matches nil))
+    ;; Search episodic memory for similar patterns
+    (dolist (episode *episodic-memory*)
+      (let ((sim (calculate-pattern-similarity current episode)))
+        (when (> sim *memory-similarity-threshold*)
+          (push (cons sim episode) matches))))
+    ;; Sort by similarity and return top matches
+    (mapcar #'cdr 
+            (subseq (sort matches #'> :key #'car)
+                    0 (min limit (length matches))))))
+
+(defun memory-suggests-direction (symbol)
+  "Use memory to suggest trading direction"
+  (let* ((similar (recall-similar-experiences symbol 20))
+         (buy-wins 0) (buy-losses 0)
+         (sell-wins 0) (sell-losses 0))
+    ;; Analyze outcomes of similar situations
+    (dolist (episode similar)
+      (case (memory-episode-trade-direction episode)
+        (:buy (if (eq (memory-episode-outcome episode) :win)
+                  (incf buy-wins)
+                  (incf buy-losses)))
+        (:sell (if (eq (memory-episode-outcome episode) :win)
+                   (incf sell-wins)
+                   (incf sell-losses)))))
+    
+    (let* ((buy-total (+ buy-wins buy-losses))
+           (sell-total (+ sell-wins sell-losses))
+           (buy-rate (if (> buy-total 0) (/ buy-wins buy-total) 0.5))
+           (sell-rate (if (> sell-total 0) (/ sell-wins sell-total) 0.5)))
+      
+      (when (> (+ buy-total sell-total) 5)
+        (format t "[L] 🧠 MEMORY: ~d similar patterns | BUY:~,0f% SELL:~,0f%~%"
+                (length similar) (* 100 buy-rate) (* 100 sell-rate)))
+      
+      (cond
+        ((and (> buy-rate 0.6) (> buy-total 3)) :buy)
+        ((and (> sell-rate 0.6) (> sell-total 3)) :sell)
+        (t nil)))))
+
+(defun get-memory-confidence (symbol direction)
+  "Get confidence level based on memory of similar situations"
+  (let* ((similar (recall-similar-experiences symbol 20))
+         (matching 0)
+         (winning 0))
+    (dolist (episode similar)
+      (when (eq (memory-episode-trade-direction episode) direction)
+        (incf matching)
+        (when (eq (memory-episode-outcome episode) :win)
+          (incf winning))))
+    (if (> matching 0)
+        (/ winning matching)
+        0.5)))
+
+(defun semantic-pattern-win-rate (key)
+  "Get win rate for a semantic pattern"
+  (let ((pattern (find key *semantic-memory* :key #'semantic-pattern-key :test #'string=)))
+    (if (and pattern (> (semantic-pattern-occurrences pattern) 0))
+        (/ (semantic-pattern-win-count pattern) (semantic-pattern-occurrences pattern))
+        0.5)))
+
+;;; ==========================================
+;;; ECOSYSTEM DYNAMICS (生態系ダイナミクス) - Merged from school.lisp
+;;; ==========================================
+;;; Features:
+;;; - Strategy diversity maintenance
+;;; - Niche management (category balance)
+;;; - Natural selection pressure
+;;; - Population health monitoring
+;;; - Symbiotic relationships
+
+(defparameter *min-diversity-score* 0.3)    ; Minimum acceptable diversity
+(defparameter *max-species-per-niche* 10)   ; Max strategies per category
+(defparameter *extinction-threshold* -0.5)  ; Sharpe below this = extinction risk
+(defparameter *reproduction-threshold* 0.5) ; Sharpe above this = reproduction chance
+
+(defstruct ecosystem-state
+  total-population
+  diversity-score
+  niche-balance
+  health-score
+  dominant-species
+  endangered-species
+  timestamp)
+
+(defun calculate-diversity-score ()
+  "Calculate Shannon diversity index of strategy population"
+  (let* ((categories '(:trend :reversion :breakout :scalp))
+         (counts (mapcar (lambda (cat) 
+                          (length (gethash cat *category-pools*)))
+                        categories))
+         (total (reduce #'+ counts)))
+    (if (> total 0)
+        (let ((proportions (mapcar (lambda (c) (if (> c 0) (/ c total) 0)) counts)))
+          ;; Shannon diversity: -sum(p * ln(p))
+          (- (reduce #'+ (mapcar (lambda (p) 
+                                  (if (> p 0) (* p (log p)) 0))
+                                proportions))))
+        0)))
+
+(defun calculate-niche-balance ()
+  "Calculate how balanced the niches (categories) are"
+  (let* ((categories '(:trend :reversion :breakout :scalp))
+         (counts (mapcar (lambda (cat) 
+                          (length (gethash cat *category-pools*)))
+                        categories))
+         (total (max 1 (reduce #'+ counts)))
+         (ideal (/ total 4.0))
+         (deviations (mapcar (lambda (c) (abs (- c ideal))) counts))
+         (avg-deviation (/ (reduce #'+ deviations) 4)))
+    ;; Return 0-1 where 1 is perfect balance
+    (max 0 (- 1 (/ avg-deviation ideal)))))
+
+(defun identify-endangered-species ()
+  "Find strategies at risk of extinction"
+  (let ((endangered nil))
+    (dolist (strat *evolved-strategies*)
+      (when (and (strategy-sharpe strat)
+                 (< (strategy-sharpe strat) *extinction-threshold*))
+        (push (strategy-name strat) endangered)))
+    endangered))
+
+(defun identify-dominant-species ()
+  "Find most successful strategies"
+  (let ((dominant nil))
+    (dolist (strat *evolved-strategies*)
+      (when (and (strategy-sharpe strat)
+                 (> (strategy-sharpe strat) *reproduction-threshold*))
+        (push (cons (strategy-name strat) (strategy-sharpe strat)) dominant)))
+    (sort dominant #'> :key #'cdr)))
+
+(defun calculate-ecosystem-health ()
+  "Calculate overall ecosystem health score"
+  (let* ((diversity (calculate-diversity-score))
+         (balance (calculate-niche-balance))
+         (endangered (length (identify-endangered-species)))
+         (dominant (length (identify-dominant-species)))
+         (total-pop (length *evolved-strategies*)))
+    ;; Health = diversity + balance - endangered ratio + dominant bonus
+    (let ((health (+ (* diversity 0.3)
+                     (* balance 0.3)
+                     (if (> total-pop 0) (* 0.2 (- 1 (/ endangered total-pop))) 0.2)
+                     (if (> total-pop 0) (* 0.2 (min 1 (/ dominant total-pop 0.5))) 0))))
+      (max 0 (min 1 health)))))
+
+;; Alias for brain.lisp compatibility
+(defun get-population-health ()
+  "Get overall ecosystem health score (alias)"
+  (calculate-ecosystem-health))
+
+(defun get-ecosystem-state ()
+  "Capture current ecosystem state"
+  (make-ecosystem-state
+   :total-population (length *evolved-strategies*)
+   :diversity-score (calculate-diversity-score)
+   :niche-balance (calculate-niche-balance)
+   :health-score (calculate-ecosystem-health)
+   :dominant-species (mapcar #'car (identify-dominant-species))
+   :endangered-species (identify-endangered-species)
+   :timestamp (get-universal-time)))
+
+(defun ecosystem-needs-diversity-p ()
+  "Check if ecosystem needs more diversity"
+  (< (calculate-diversity-score) *min-diversity-score*))
+
+(defun get-underpopulated-niche ()
+  "Find the category with fewest strategies"
+  (let* ((categories '(:trend :reversion :breakout :scalp))
+         (counts (mapcar (lambda (cat) 
+                          (cons cat (length (gethash cat *category-pools*))))
+                        categories))
+         (sorted (sort counts #'< :key #'cdr)))
+    (car (first sorted))))
+
+(defun apply-natural-selection ()
+  "Remove poor performers and allow good ones to reproduce"
+  (let ((endangered (identify-endangered-species))
+        (removed 0)
+        (reproduced 0))
+    
+    ;; Remove endangered species (poor performers) WITH FUNERAL RITES
+    (when endangered
+      (dolist (name endangered)
+        (let ((strat (find name *evolved-strategies* :key #'strategy-name :test #'string=)))
+          (when (and strat (> (random 1.0) 0.3))  ; 70% chance of extinction
+            (let ((final-pnl (or (strategy-sharpe strat) 0))
+                  (lessons (format nil "Strategy ~a failed in ~a regime" 
+                                   name (symbol-name (or *current-regime* :unknown)))))
+              ;; Hold funeral ceremony
+              (hold-funeral name final-pnl lessons)))))
+      (setf *evolved-strategies* 
+            (remove-if (lambda (s) 
+                        (and (member (strategy-name s) endangered :test #'string=)
+                             (> (random 1.0) 0.3)))
+                      *evolved-strategies*))
+      (setf removed (length endangered)))
+    
+    ;; Allow dominant species to reproduce (mutate)
+    (let ((dominant (identify-dominant-species)))
+      (when (and dominant (< (length *evolved-strategies*) 50))
+        (dolist (d (subseq dominant 0 (min 2 (length dominant))))
+          (let ((parent (find (car d) *evolved-strategies* 
+                             :key #'strategy-name :test #'string=)))
+            (when parent
+              ;; Mutation with small changes
+              (let ((child (mutate-strategy parent 0.2)))
+                (push child *evolved-strategies*)
+                (incf reproduced)))))))
+    
+    ;; Log ecosystem changes
+    (when (or (> removed 0) (> reproduced 0))
+      (format t "[L] 🌿 ECOSYSTEM: ~d extinct, ~d born | Health: ~,0f%~%"
+              removed reproduced (* 100 (calculate-ecosystem-health))))))
+
+(defun maintain-ecosystem-balance ()
+  "Periodic ecosystem maintenance"
+  ;; Apply natural selection pressure
+  (apply-natural-selection)
+  
+  ;; Check diversity and suggest focus for new strategies
+  (when (ecosystem-needs-diversity-p)
+    (let ((weak-niche (get-underpopulated-niche)))
+      (format t "[L] 🌱 Ecosystem needs ~a strategies for diversity~%" weak-niche)))
+  
+  ;; Report ecosystem state every N calls
+  (let ((state (get-ecosystem-state)))
+    (format t "[L] 🏞️ Population: ~d | Diversity: ~,2f | Balance: ~,0f% | Health: ~,0f%~%"
+            (ecosystem-state-total-population state)
+            (ecosystem-state-diversity-score state)
+            (* 100 (ecosystem-state-niche-balance state))
+            (* 100 (ecosystem-state-health-score state)))))
+
+(defun get-ecosystem-recommendation ()
+  "Get recommendation for new strategy generation"
+  (let ((weak-niche (get-underpopulated-niche))
+        (health (calculate-ecosystem-health)))
+    (cond
+      ((< health 0.3)
+       (list :action :diversify
+             :focus weak-niche
+             :message "Ecosystem unhealthy - need diverse strategies"))
+      ((ecosystem-needs-diversity-p)
+       (list :action :specialize
+             :focus weak-niche
+             :message (format nil "Focus on ~a category" weak-niche)))
+      (t
+       (list :action :evolve
+             :focus nil
+             :message "Ecosystem healthy - continue evolution")))))
+
+(format t "[SCHOOL] school-learning.lisp loaded - Failure Learning + Memory + Ecosystem~%")

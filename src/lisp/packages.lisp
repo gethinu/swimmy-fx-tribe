@@ -198,6 +198,12 @@
    #:get-history-from-keeper
    #:add-candle-to-keeper
    #:close-data-keeper-client
+   
+   ;; Risk Gateway Client (V8.0)
+   #:request-trade-approval
+   
+   ;; Inference Client (V8.0)
+   #:ask-ai
    ))
 
 ;;; ----------------------------------------------------------------------------

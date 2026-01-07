@@ -14,18 +14,10 @@
     (format nil "~D-~2,'0D-~2,'0D ~2,'0D:~2,'0D:~2,'0D" year month day hour min sec)))
 
 ;;; EXTERNAL SERVICES
+;;; EXTERNAL SERVICES
 (defun call-gemini (prompt)
-  (when (and (boundp 'cl-user::*gemini-api-key*) (symbol-value 'cl-user::*gemini-api-key*))
-    (handler-case
-        (let* ((key (symbol-value 'cl-user::*gemini-api-key*))
-               (url (format nil "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=~a" key))
-               (body (jsown:to-json (jsown:new-js
-                       ("contents" (list (jsown:new-js ("parts" (list (jsown:new-js ("text" prompt)))))))
-                       ("generationConfig" (jsown:new-js ("temperature" 0.5) ("maxOutputTokens" 512))))))
-               (resp (dex:post url :content body :headers '(("Content-Type" . "application/json")) :read-timeout 15))
-               (json (jsown:parse resp)))
-          (jsown:val (nth 0 (jsown:val (jsown:val (nth 0 (jsown:val json "candidates")) "content") "parts")) "text"))
-      (error (e) nil))))
+  "Legacy wrapper calling new Inference Worker"
+  (swimmy.core:ask-ai prompt))
 
 ;;; SHUTDOWN LOGIC
 (defun stop-brain ()

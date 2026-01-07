@@ -76,39 +76,50 @@
             (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
 
 (defun safe-order (action symbol lot sl tp &optional (magic 0))
-  "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks."
-  (multiple-value-bind (approved adjusted-lot reason)
-      (risk-check-all symbol action lot :standard)
-    (if approved
-        (progn
-          (log-info (format nil "RISK APPROVED: ~a ~a (Lot: ~,2f)" action symbol adjusted-lot)
-                    :data (jsown:new-js 
-                            ("type" "trade_approved")
-                            ("action" action)
-                            ("symbol" symbol)
-                            ("requested_lot" lot)
-                            ("adjusted_lot" adjusted-lot)
-                            ("reason" reason)))
-          (let ((msg (jsown:to-json 
-                       (jsown:new-js 
-                         ("action" action)
-                         ("symbol" symbol)
-                         ("lot" (read-from-string (format nil "~,2f" adjusted-lot)))
-                         ("sl" sl)
-                         ("tp" tp)
-                         ("magic" magic)))))
-            (pzmq:send *cmd-publisher* msg)
-            t))
-        (progn
-          (log-warn (format nil "RISK DENIED: ~a ~a Reason: ~a" action symbol reason)
-                    :data (jsown:new-js 
-                            ("type" "trade_denied")
-                            ("action" action)
-                            ("symbol" symbol)
-                            ("requested_lot" lot)
-                            ("reason" reason)))
-          (notify-discord (format nil "🛡️ Risk Manager Denied: ~a ~a (~a)" action symbol reason) :color 15158332)
-          nil))))
+  "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks via CENTRALIZED RISK GATEWAY."
+  (let ((daily-pnl (if (boundp '*daily-pnl*) *daily-pnl* 0.0))
+        (equity (if (boundp '*current-equity*) *current-equity* 0.0))
+        (cons-losses (if (boundp '*consecutive-losses*) *consecutive-losses* 0)))
+        
+    ;; 1. External Authority Check (Phase 3 Risk Gateway)
+    (multiple-value-bind (approved-p reason)
+        (request-trade-approval action symbol lot daily-pnl equity cons-losses)
+      
+      (if approved-p
+          ;; 2. Local Logic Checks (Correlation, etc.)
+          (multiple-value-bind (local-approved adjusted-lot local-reason)
+              (risk-check-all symbol action lot :standard)
+            
+            (if local-approved
+                (progn
+                  (log-info (format nil "RISK APPROVED: ~a ~a (Lot: ~,2f)" action symbol adjusted-lot)
+                            :data (jsown:new-js 
+                                    ("type" "trade_approved")
+                                    ("action" action)
+                                    ("symbol" symbol)
+                                    ("adjusted_lot" adjusted-lot)))
+                  (let ((msg (jsown:to-json 
+                               (jsown:new-js 
+                                 ("action" action)
+                                 ("symbol" symbol)
+                                 ("lot" (read-from-string (format nil "~,2f" adjusted-lot)))
+                                 ("sl" sl)
+                                 ("tp" tp)
+                                 ("magic" magic)))))
+                    (pzmq:send *cmd-publisher* msg)
+                    t))
+                (progn
+                  ;; Local Denial
+                  (log-warn (format nil "LOCAL RISK DENIED: ~a ~a Reason: ~a" action symbol local-reason)
+                            :data (jsown:new-js ("type" "trade_denied") ("reason" local-reason)))
+                  (notify-discord (format nil "🛡️ Local Risk Denied: ~a ~a (~a)" action symbol local-reason) :color 15158332)
+                  nil)))
+          (progn
+            ;; Gateway Denial (Taleb's Authority)
+            (log-warn (format nil "GATEWAY DENIED: ~a ~a Reason: ~a" action symbol reason)
+                      :data (jsown:new-js ("type" "gateway_denied") ("reason" reason)))
+            (notify-discord (format nil "🛡️ GATEKEEPER BLOCKED: ~a ~a (~a)" action symbol reason) :color 15158332)
+            nil)))))
 
 (defun get-risk-summary ()
   "Get current risk state summary for monitoring"

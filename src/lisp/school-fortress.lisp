@@ -298,44 +298,7 @@
 ;;;  HIGH COUNCIL
 ;;; ══════════════════════════════════════════════════════════════════
 
-(defun convene-high-council (proposal category &key (urgency 0))
-  "Evaluate trade proposal by the High Council. Returns t (approve) or nil (reject)."
-  (let* ((symbol (getf proposal :symbol))
-         (direction (getf proposal :direction))
-         (danger-level (if (boundp '*danger-level*) *danger-level* 0))
-         (tribe-consensus (if (boundp '*tribe-consensus*) *tribe-consensus* 0.5))
-         (swarm-consensus (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
-         (volatility-state (if (boundp '*current-volatility-state*) *current-volatility-state* :normal))
-         (approval nil)
-         (reason ""))
-    
-    (cond
-      ((>= urgency 10)
-       (setf approval t reason "🚨 EMERGENCY PROTOCOL Override"))
-      
-      ((>= danger-level 3)
-       (setf approval nil reason "🚫 REJECTED: FLEE MODE active."))
-      
-      ((>= danger-level 2)
-       (if (and (> tribe-consensus 0.7) (> swarm-consensus 0.7))
-           (setf approval t reason "⚠️ APPROVED: High consensus in Danger Lv2")
-           (setf approval nil reason "🛡️ REJECTED: Danger Lv2 requires 70%+ consensus")))
-           
-      ((eq volatility-state :extreme)
-       (if (member category '(:breakers :shamans))
-           (setf approval t reason "🌊 APPROVED: Extreme volatility fits Clan")
-           (setf approval nil reason "⛔ REJECTED: Too volatile for Clan")))
-           
-      (t (setf approval t reason "✅ APPROVED: Standard deployment")))
-       
-    (when (or (not approval) (>= danger-level 2) (eq volatility-state :extreme))
-      (let ((msg (format nil "🏛️ **HIGH COUNCIL**~%~a ~a (~a)~%~a" 
-                         category symbol direction reason)))
-        (format t "[L] ~a~%" msg)
-        (when (fboundp 'notify-discord-symbol)
-           (notify-discord-symbol symbol msg :color (if approval 3066993 15158332)))))
-           
-    approval))
+;; convene-high-council moved to school-voting.lisp
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V6.1 (Taleb): PARANOIA CHECKS - Be Paranoid, Stay Alive
