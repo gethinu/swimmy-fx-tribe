@@ -431,6 +431,19 @@ Sharpe   : ~,2f
                (format t "[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...~%")
                (swimmy.school:batch-backtest-knowledge)
                (setf *initial-backtest-done* t))))
+          ((string= type "SYSTEM_COMMAND")
+           (let ((action (jsown:val json "action")))
+             (cond
+               ((string= action "RELOAD_CONFIG")
+                (format t "[L] 🔄 Hot Reloading Configuration...~%")
+                (handler-case
+                    (progn
+                      ;; Reload configs - defvar protects state, defparameter updates settings
+                      (load #P"/home/swimmy/swimmy/src/lisp/core/globals.lisp")
+                      (load #P"/home/swimmy/swimmy/src/lisp/core/config.lisp")
+                      (format t "[L] ✅ Configuration Reloaded!~%"))
+                  (error (e) (format t "[L] ❌ Reload Failed: ~a~%" e))))
+               (t (format t "[L] ⚠️ Unknown System Command: ~a~%" action)))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))
                   (name (jsown:val result "strategy_name"))
