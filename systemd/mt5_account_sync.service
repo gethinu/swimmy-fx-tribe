@@ -1,0 +1,27 @@
+[Unit]
+Description=Swimmy MT5 Account Sync Service
+Documentation=https://github.com/gethinu/swimmy-fx-tribe
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/mt5_account_sync.py
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=append:/home/swimmy/swimmy/logs/mt5_account_sync.log
+StandardError=append:/home/swimmy/swimmy/logs/mt5_account_sync.log
+
+# Failure notification hook (sends to Discord via curl on failure)
+ExecStopPost=/bin/bash -c 'if [ "$$SERVICE_RESULT" != "success" ]; then curl -s -H "Content-Type: application/json" -d "{\"content\":\"🚨 **MT5 Account Sync CRASHED** ($SERVICE_RESULT)\\n再起動します...\"}" "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k"; fi'
+
+[Install]
+WantedBy=default.target

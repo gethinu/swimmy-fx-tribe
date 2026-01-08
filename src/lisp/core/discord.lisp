@@ -105,6 +105,11 @@
     (when webhook
       (queue-discord-notification webhook msg :color 15158332 :title "🚨 EMERGENCY 🚨"))))
 
+(defun notify-apex (msg &key (color 3066993))
+  "System status to Apex channel (Online, Recovery, Critical alerts)"
+  (when (and (boundp '*apex-webhook-url*) *apex-webhook-url*)
+    (queue-discord-notification *apex-webhook-url* msg :color color :title "🐟 Apex")))
+
 (defun notify-discord-backtest (msg &key (color 3447003))
   "Backtest results"
   (when *backtest-webhook-url*

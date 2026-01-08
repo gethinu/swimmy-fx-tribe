@@ -34,6 +34,10 @@
 (defparameter *alerts-webhook-url*
   "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH")
 
+;; Apex webhook - System status (Online, Recovery, Critical alerts)
+(defparameter *apex-webhook-url*
+  "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k")
+
 ;; Symbol-specific webhooks
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal)
   "Per-symbol Discord webhooks")
