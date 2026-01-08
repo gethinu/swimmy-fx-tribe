@@ -17,37 +17,37 @@
   vote-weight)      ; How much their vote counts
 
 ;;; STRATEGY STATE
-(defparameter *evolved-strategies* nil "List of evolved/generated strategies.")
-(defparameter *strategy-knowledge-base* nil "Master knowledge base of all strategies.")
-(defparameter *active-team* (make-hash-table :test 'equal) "Currently active trading team by category.")
+(defvar *evolved-strategies* nil "List of evolved/generated strategies.")
+(defvar *strategy-knowledge-base* nil "Master knowledge base of all strategies.")
+(defvar *active-team* (make-hash-table :test 'equal) "Currently active trading team by category.")
 
 ;;; MARKET STATE
-(defparameter *current-regime* :unknown)
-(defparameter *volatility-regime* :normal)
-(defparameter *candle-history* nil)
-(defparameter *candle-histories* (make-hash-table :test 'equal))
-(defparameter *current-candles* (make-hash-table :test 'equal))
-(defparameter *current-minutes* (make-hash-table :test 'equal))
+(defvar *current-regime* :unknown)
+(defvar *volatility-regime* :normal)
+(defvar *candle-history* nil)
+(defvar *candle-histories* (make-hash-table :test 'equal))
+(defvar *current-candles* (make-hash-table :test 'equal))
+(defvar *current-minutes* (make-hash-table :test 'equal))
 
 ;;; TRADING STATE
 (defparameter *trading-enabled* t)
-(defparameter *daily-trade-count* 0)
-(defparameter *accumulated-pnl* 0)
-(defparameter *locked-treasury* 0)
-(defparameter *last-regime* nil)
+(defvar *daily-trade-count* 0)
+(defvar *accumulated-pnl* 0)
+(defvar *locked-treasury* 0)
+(defvar *last-regime* nil)
 (defparameter *base-lot-size* 0.01)
-(defparameter *success-count* 0)
-(defparameter *total-trades* 0)
+(defvar *success-count* 0)
+(defvar *total-trades* 0)
 
 ;;; RISK STATE
-(defparameter *danger-level* 0)
-(defparameter *consecutive-losses* 0)
+(defvar *danger-level* 0)
+(defvar *consecutive-losses* 0)
 (defparameter *risk-tolerance* :balanced)
 (defparameter *daily-loss-limit* -5000)
-(defparameter *daily-pnl* 0.0)
-(defparameter *current-equity* 100000.0)
-(defparameter *peak-equity* 100000.0)
-(defparameter *max-drawdown* 0.0)
+(defvar *daily-pnl* 0.0)
+(defvar *current-equity* 100000.0)
+(defvar *peak-equity* 100000.0)
+(defvar *max-drawdown* 0.0)
 (defparameter *max-dd-percent* 5.0)
 
 ;;; AI/ML STATE

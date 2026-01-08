@@ -53,35 +53,35 @@
 ;;; ==========================================
 
 ;; Candle State
-(defparameter *candle-histories* (make-hash-table :test 'equal))  ; symbol -> history
-(defparameter *current-candles* (make-hash-table :test 'equal))   ; symbol -> candle
-(defparameter *current-minutes* (make-hash-table :test 'equal))   ; symbol -> minute
+(defvar *candle-histories* (make-hash-table :test 'equal))  ; symbol -> history
+(defvar *current-candles* (make-hash-table :test 'equal))   ; symbol -> candle
+(defvar *current-minutes* (make-hash-table :test 'equal))   ; symbol -> minute
 
 ;; Legacy single-currency compatibility
-(defparameter *candle-history* nil)
-(defparameter *current-candle* nil)
-(defparameter *current-minute* -1)
+(defvar *candle-history* nil)
+(defvar *current-candle* nil)
+(defvar *current-minute* -1)
 
 ;; Backtest Buffering
-(defparameter *backtest-results-buffer* nil)
-(defparameter *expected-backtest-count* 0)
-(defparameter *backtest-start-time* 0)
+(defvar *backtest-results-buffer* nil)
+(defvar *expected-backtest-count* 0)
+(defvar *backtest-start-time* 0)
 
 ;; Status Reporting State
-(defparameter *last-status-notification-time* (make-hash-table :test 'equal))
+(defvar *last-status-notification-time* (make-hash-table :test 'equal))
 (defparameter *status-notification-interval* 3600) ; Default 1 hour
-(defparameter *tribe-status* (make-hash-table :test 'eq))
+(defvar *tribe-status* (make-hash-table :test 'eq))
 
 ;;; ==========================================
 ;;; GLOBAL PLACEHOLDERS
 ;;; ==========================================
-(defparameter *tribal-dialect* (make-hash-table :test 'equal))
-(defparameter *reputation-scores* (make-hash-table :test 'equal))
-(defparameter *genome* nil)
-(defparameter *arms* nil)
-(defparameter *memory* nil)
-(defparameter *portfolio-indices* nil)
-(defparameter *arm-states* (make-hash-table))
+(defvar *tribal-dialect* (make-hash-table :test 'equal))
+(defvar *reputation-scores* (make-hash-table :test 'equal))
+(defvar *genome* nil)
+(defvar *arms* nil)
+(defvar *memory* nil)
+(defvar *portfolio-indices* nil)
+(defvar *arm-states* (make-hash-table))
 
 ;;; ==========================================
 ;;; API KEYS
@@ -129,20 +129,20 @@
   "Risk level: :conservative, :moderate, :aggressive")
 
 ;; *daily-risk-limit* removed - use *daily-loss-limit* instead
-(defparameter *daily-pnl* 0.0)
-(defparameter *total-trades* 0)
-(defparameter *benched-arms* nil)
+(defvar *daily-pnl* 0.0)
+(defvar *total-trades* 0)
+(defvar *benched-arms* nil)
 
-(defparameter *last-guardian-heartbeat* 0)
-(defparameter *all-time-win-rate* 50.0)
-(defparameter *portfolio-sharpe* 0.0)
+(defvar *last-guardian-heartbeat* 0)
+(defvar *all-time-win-rate* 50.0)
+(defvar *portfolio-sharpe* 0.0)
 
 ;;; ==========================================
 ;;; VOLATILITY & REGIME (Soros)
 ;;; ==========================================
-(defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
-(defparameter *current-volatility-state* :normal)
-(defparameter *market-regime* :ranging)
+(defvar *symbol-volatility-states* (make-hash-table :test 'equal))
+(defvar *current-volatility-state* :normal)
+(defvar *market-regime* :ranging)
 
 ;;; ==========================================
 ;;; EXECUTION & INFRASTRUCTURE
@@ -153,32 +153,32 @@
 ;;; ==========================================
 ;;; EVOLUTION & LEARNING STATE
 ;;; ==========================================
-(defparameter *dream-cycle* 0)
-(defparameter *initial-backtest-done* nil)
-(defparameter *last-narrative-day* -1)
+(defvar *dream-cycle* 0)
+(defvar *initial-backtest-done* nil)
+(defvar *last-narrative-day* -1)
 
 ;;; ==========================================
 ;;; TRADE TRACKING STATE
 ;;; ==========================================
-(defparameter *accumulated-pnl* 0.0 "Cumulative profit/loss")
-(defparameter *consecutive-wins* 0 "Current winning streak")
-(defparameter *consecutive-losses* 0 "Current losing streak")
-(defparameter *success-count* 0 "Total successful trades")
-(defparameter *tribe-direction* :hold "Current tribe consensus direction")
-(defparameter *tribe-consensus* 0.0 "Tribe agreement level 0-1")
-(defparameter *danger-level* 0 "Current danger level 0-5")
-(defparameter *last-swarm-consensus* nil "Last swarm voting result")
+(defvar *accumulated-pnl* 0.0 "Cumulative profit/loss")
+(defvar *consecutive-wins* 0 "Current winning streak")
+(defvar *consecutive-losses* 0 "Current losing streak")
+(defvar *success-count* 0 "Total successful trades")
+(defvar *tribe-direction* :hold "Current tribe consensus direction")
+(defvar *tribe-consensus* 0.0 "Tribe agreement level 0-1")
+(defvar *danger-level* 0 "Current danger level 0-5")
+(defvar *last-swarm-consensus* nil "Last swarm voting result")
 
 
 ;; School State
-(defparameter *trade-history* (make-hash-table :test 'equal))
-(defparameter *strategy-ranks* (make-hash-table :test 'equal))
-(defparameter *category-positions* (make-hash-table :test 'eq))
-(defparameter *pair-correlations* (make-hash-table :test 'equal))
-(defparameter *symbol-exposure* (make-hash-table :test 'equal))
+(defvar *trade-history* (make-hash-table :test 'equal))
+(defvar *strategy-ranks* (make-hash-table :test 'equal))
+(defvar *category-positions* (make-hash-table :test 'eq))
+(defvar *pair-correlations* (make-hash-table :test 'equal))
+(defvar *symbol-exposure* (make-hash-table :test 'equal))
 (defparameter *max-symbol-exposure* 3.0)
 (defparameter *max-total-exposure* 6.0)
-(defparameter *current-leader* nil)
+(defvar *current-leader* nil)
 
 ;; Risk State
 (defparameter *resignation-threshold* -2000.0)
