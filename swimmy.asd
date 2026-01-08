@@ -26,7 +26,6 @@
                (:file "src/lisp/engine/ledger")
                (:file "src/lisp/engine/treasury")
                (:file "src/lisp/engine/failsafe")
-               (:file "src/lisp/discord-async")
                (:file "src/lisp/engine/heartbeat")
                (:file "src/lisp/core/discord")
                (:file "src/lisp/core/governance")
@@ -79,6 +78,7 @@
                ;; TESTS
                (:file "src/lisp/tests")
                (:file "src/lisp/tests/school-split-tests")
+               (:file "src/lisp/tests/integration-tests")
                
                ;; RUNNER & MAIN
                (:file "src/lisp/system/runner")

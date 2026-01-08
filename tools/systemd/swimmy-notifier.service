@@ -1,0 +1,17 @@
+[Unit]
+Description=Swimmy Discord Notifier Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 tools/notifier.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/swimmy/swimmy/config/.env
+# Logs
+StandardOutput=append:/home/swimmy/swimmy/logs/notifier.log
+StandardError=append:/home/swimmy/swimmy/logs/notifier.log
+
+[Install]
+WantedBy=default.target

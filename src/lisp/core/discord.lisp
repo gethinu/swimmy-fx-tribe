@@ -35,9 +35,11 @@
                                                     ("title" title)
                                                     ("description" (format nil "~a" msg))
                                                     ("color" color)))))))))
-          (pzmq:send *notifier-socket* (jsown:to-json payload)))
+          (pzmq:send *notifier-socket* (jsown:to-json payload))
+          t)
       (error (e)
-        (format t "[DISCORD] Failed to send ZMQ msg: ~a~%" e)))))
+        (format t "[DISCORD] Failed to send ZMQ msg: ~a~%" e)
+        nil))))
 
 (defun queue-raw-discord-message (webhook payload)
   "Send raw JSON payload to Notifier"
@@ -47,9 +49,11 @@
         (let ((msg (jsown:new-js 
                      ("webhook" webhook)
                      ("data" payload))))
-          (pzmq:send *notifier-socket* (jsown:to-json msg)))
+          (pzmq:send *notifier-socket* (jsown:to-json msg))
+          t)
       (error (e)
-        (format t "[DISCORD] Failed to send raw ZMQ msg: ~a~%" e)))))
+        (format t "[DISCORD] Failed to send raw ZMQ msg: ~a~%" e)
+        nil))))
 
 ;;; ==========================================
 ;;; PUBLIC API (Backward Compatible)

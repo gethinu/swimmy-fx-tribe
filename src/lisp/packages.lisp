@@ -28,6 +28,7 @@
    #:*publisher*
    #:*subscriber*
    #:*cmd-publisher*
+   #:*backtest-requester*
    #:*last-heartbeat-sent*
    
    ;; Trading State
@@ -494,7 +495,8 @@
 ;;; 7. TESTS (Unit Tests)
 ;;; ----------------------------------------------------------------------------
 (defpackage :swimmy.tests
-  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell))
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
+  (:export #:run-all-tests #:run-integration-tests))
 
 ;;; ----------------------------------------------------------------------------
 ;;; COMPATIBILITY (CL-USER)

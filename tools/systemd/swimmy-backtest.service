@@ -1,0 +1,17 @@
+[Unit]
+Description=Swimmy Backtest Service (Naval Modularization)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 tools/backtest_service.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/swimmy/swimmy/config/.env
+# Logs
+StandardOutput=append:/home/swimmy/swimmy/logs/backtest.log
+StandardError=append:/home/swimmy/swimmy/logs/backtest.log
+
+[Install]
+WantedBy=default.target

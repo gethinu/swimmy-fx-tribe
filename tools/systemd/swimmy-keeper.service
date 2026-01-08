@@ -1,0 +1,17 @@
+[Unit]
+Description=Swimmy Data Keeper Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 tools/data_keeper.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/swimmy/swimmy/config/.env
+# Logs
+StandardOutput=append:/home/swimmy/swimmy/logs/keeper.log
+StandardError=append:/home/swimmy/swimmy/logs/keeper.log
+
+[Install]
+WantedBy=default.target
