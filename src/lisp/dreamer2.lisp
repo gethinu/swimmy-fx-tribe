@@ -560,19 +560,27 @@ CURRENT MARKET: Regime=~a, Volatility=~a
          (target-candles (if (> timeframe 1) 
                              (resample-candles candles timeframe) 
                              candles))
-         (len (length target-candles)))
+         (len (length target-candles))
+         (msg nil)) ;; Initialize msg
     
     (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d / TF: M~d)...~%" 
             (strategy-name strat) suffix len timeframe)
     
-    (let ((msg (jsown:to-json 
-                 (jsown:new-js 
-                   ("action" "BACKTEST")
-                   ("strategy" (strategy-to-json strat :name-suffix suffix))
-                   ("candles" (swimmy.main:candles-to-json target-candles))))))
-      (pzmq:send *cmd-publisher* msg)
-      (format t "[L] 📤 Sent ~d bytes to Rust (TF: M~d)~%" (length msg) timeframe))))
+    ;; Construct JSON payload
+    (setf msg (jsown:to-json 
+                (jsown:new-js 
+                  ("action" "BACKTEST")
+                  ("strategy" (strategy-to-json strat :name-suffix suffix))
+                  ("candles" (swimmy.main:candles-to-json target-candles)))))
 
+    ;; Send to appropriate service
+    (if (and (boundp '*backtest-requester*) *backtest-requester*)
+        (progn
+          (pzmq:send *backtest-requester* msg)
+          (format t "[L] 📤 Sent ~d bytes to Backtest Service (TF: M~d)~%" (length msg) timeframe))
+        (progn
+          (format t "[L] ⚠️ Backtest Service unavailable, using legacy channel~%")
+          (pzmq:send *cmd-publisher* msg)))))
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
 ;;; ══════════════════════════════════════════════════════════════════

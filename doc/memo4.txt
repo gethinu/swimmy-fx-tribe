@@ -1,46 +1,46 @@
  Backtest Summary (V6.9)
 
-TREND (Total: 26 | Pass: 0 | Avg Sharpe: -0.16)
+TREND (Total: 444 | Pass: 0 | Avg Sharpe: -0.21)
 Top 5:
-Conservative-Trend (S: 0.00)
-Trend-Pullback-Entry (S: 0.00),
-Perfect-Order-SMA (S: 0.00),
+Perfect-Order-SMA (S: 0.00)
 Golden-Cross (S: 0.00),
-MACD-Zero-Reject (S: -0.17),
+Conservative-Trend (S: -0.10),
+Trend-Pullback-Entry (S: -0.10),
+MACD-Zero-Reject (S: -0.18),
 Worst 5:
-BB-Upper-Rejection (S: -0.19),
-T-Nakane-Gotobi (S: -0.19),
-Bollinger-Band-Walk (S: -0.19),
-Double-Bollinger-Trend (S: -0.19),
-Crossover-Plus-MACD (S: -0.19),
+Wisdom-GBPUSD-Trend-3976816273-M55 (S: -0.21),
+Wisdom-GBPUSD-Trend-3976808373-M31 (S: -0.21),
+Wisdom-USDJPY-Trend-3976802438-M56 (S: -0.21),
+Wisdom-GBPUSD-Trend-3976800239-M32 (S: -0.21),
+Wisdom-GBPUSD-Trend-3976795473-M35 (S: -0.21),
 ,
 
-REVERSION (Total: 18 | Pass: 0 | Avg Sharpe: -0.19)
+REVERSION (Total: 254 | Pass: 0 | Avg Sharpe: -0.21)
 Top 5:
-RSI-Volatility-Break (S: -0.19)
-RSI-Stoch-Reversal (S: -0.19),
-RSI-Overbought-Reversal (S: -0.19),
-RSI-Oversold-Reversal (S: -0.19),
-RSI-Momentum-Break (S: -0.19),
+RSI-Volatility-Break (S: -0.20)
+RSI-Stoch-Reversal (S: -0.20),
+RSI-Overbought-Reversal (S: -0.20),
+RSI-Oversold-Reversal (S: -0.20),
+RSI-Momentum-Break (S: -0.20),
 Worst 5:
-RSI-Bull-Zone (S: -0.19),
-BB-Lower-Bounce (S: -0.19),
-BB-RSI-Reversion-Combo (S: -0.19),
-Extreme-Reversion-BB (S: -0.19),
-Aggressive-Reversal (S: -0.19),
+Wisdom-USDJPY-Reversal-3976802371-M0 (S: -0.21),
+Wisdom-USDJPY-Reversal-3976785672-M26 (S: -0.21),
+Wisdom-USDJPY-Reversal-3976785172-M65 (S: -0.21),
+Aggressive-Reversal (S: -0.21),
+Wisdom-USDJPY-Reversal-3976815538-M6 (S: -0.21),
 ,
 
-BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.19)
+BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.20)
 Top 5:
-Pullback-Breakout (S: -0.19)
-CCI-Trend-Breakout (S: -0.19),
+CCI-Trend-Breakout (S: -0.20)
+Pullback-Breakout (S: -0.21),
 ,
 
-SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.19)
+SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.21)
 Top 5:
-Trend-Scalp-1M (S: -0.19)
-MA-Ribbon-Scalp (S: -0.19),
-Fibonacci-EMA-Scalp (S: -0.19),
+Trend-Scalp-1M (S: -0.21)
+MA-Ribbon-Scalp (S: -0.21),
+Fibonacci-EMA-Scalp (S: -0.21),
 ,
 
  Only showing Top/Worst to reduce spam.

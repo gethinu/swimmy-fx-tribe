@@ -70,6 +70,7 @@
 (defparameter *publisher* nil)
 (defparameter *subscriber* nil)
 (defparameter *cmd-publisher* nil)
+(defparameter *backtest-requester* nil)
 
 ;;; MISSING GLOBALS (Package Migration)
 (defparameter *current-leader* nil)
@@ -95,7 +96,7 @@
 (defparameter *discord-weekly-webhook* nil)
 (defparameter *discord-emergency-url* nil)
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
-(defparameter *discord-recruit-webhook* "https://discord.com/api/webhooks/1458463482788708478/mLUKaJb9ZuEdhnWIMaXdF0hMZVFY-udSKfu5W_Qvsm6NB-SE3Jhz_cGWvNCOog0V-pfB")
+(defparameter *discord-recruit-webhook* "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
 
 ;;; MISSING GLOBALS (Engine/Manager)
 (defparameter *benched-arms* nil)

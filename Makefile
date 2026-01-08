@@ -10,18 +10,14 @@ run:
 	@echo "🧹 Cleaning up old processes (Hard Kill)..."
 	@-pkill -9 -f "brain.lisp" 2>/dev/null || true
 	@-pkill -9 -f "guardian" 2>/dev/null || true
-	@-pkill -9 -f "discord_bot.py" 2>/dev/null || true
 	@-fuser -k 5555/tcp 2>/dev/null || true
 	@-fuser -k 5556/tcp 2>/dev/null || true
 	@-fuser -k 5557/tcp 2>/dev/null || true
 	@-fuser -k 5560/tcp 2>/dev/null || true
 	@echo "⏳ Waiting for ports to clear..."
-	@sleep 5
+	@sleep 2
 	@echo "🚀 Starting Guardian..."
 	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
-	@sleep 2
-	@echo "🚀 Starting Discord Bot..."
-	@nohup /bin/bash -c "source config/.env && .venv/bin/python3 src/python/discord_bot.py" > /tmp/discord_bot.log 2>&1 &
 	@echo "🚀 Starting Brain..."
 	@/bin/bash -c "source config/.env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
 
@@ -34,6 +30,12 @@ test:
 # Quality Gate: Must pass before any deployment (memo3.txt Section 5)
 quality-gate: test
 	@echo "✅ Quality Gate PASSED - Ready for deployment"
+
+# Integration Tests (Naval Modularization)
+integration-test:
+	@echo "🔗 Running Integration Tests..."
+	@sbcl --noinform --load swimmy.asd --eval '(asdf:load-system :swimmy)' \
+		--eval '(swimmy.tests:run-integration-tests)' --quit
 
 clean:
 	rm -rf ~/.cache/common-lisp/ || true
