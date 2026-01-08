@@ -137,6 +137,66 @@
                                   current-dd *max-daily-loss* pnl)))))))))))
 
 (format t "[L] 📜 school-constitution.lisp loaded - The Law is Active.~%")
+(format t "[L] 📜 Article 5 (Service Resilience) is ENFORCED.~%")
+
+;;; ============================================================
+;;; ARTICLE 5: SERVICE RESILIENCE CONSTITUTION (V41.6)
+;;; ============================================================
+;;; 「倒れない杜（もり）」- The Unfaltering Forest
+;;; All new services MUST implement these resilience patterns.
+;;; This is CONSTITUTIONAL LAW - not optional guidelines.
+;;;
+;;; ■ Section 5.1: AUTO-RESTART (自動再起動)
+;;;   All services MUST restart automatically after crash.
+;;;   Implementation: systemd Restart=always, RestartSec=10
+;;;
+;;; ■ Section 5.2: CRASH ALERTING (障害通知)
+;;;   All services MUST send Discord alert on crash or repeated failure.
+;;;   Pattern: MAX_CONSECUTIVE_FAILURES = 5, then alert
+;;;
+;;; ■ Section 5.3: RECOVERY NOTIFICATION (復旧通知)
+;;;   All services MUST notify when recovered from failure.
+;;;
+;;; ■ Section 5.4: EXCEPTION HANDLING (例外処理)
+;;;   All main loops MUST catch exceptions and continue.
+;;;
+;;; ■ Section 5.5: SYSTEMD COMPATIBILITY (systemd対応)
+;;;   All independent services MUST have a systemd service file.
+;;;
+;;; ■ Section 5.6: STARTUP NOTIFICATION (起動通知)
+;;;   All services MUST notify Apex on successful startup.
+;;;
+;;; COMPLIANCE CHECKLIST (新サービス作成時):
+;;; □ systemd service file with Restart=always
+;;; □ MAX_CONSECUTIVE_FAILURES constant defined
+;;; □ send_discord_alert / notify-apex integration
+;;; □ try/except or handler-case in main loop
+;;; □ Recovery notification on success after failure  
+;;; □ Startup notification to Apex webhook
+;;;
+;;; REFERENCE: tools/mt5_account_sync.py (canonical example)
+
+(defparameter *article-5-enabled* t
+  "Article 5: Service Resilience Constitution is ACTIVE")
+
+(defparameter *max-failure-threshold* 5
+  "Maximum consecutive failures before alerting (Article 5.2)")
+
+(defparameter *resilience-checklist*
+  '(:auto-restart :crash-alert :recovery-notification 
+    :exception-handling :systemd-service :startup-notification)
+  "Required resilience features for all new services (Article 5)")
+
+(defun validate-service-resilience (service-name features)
+  "Validate that a service implements all required resilience features."
+  (let ((missing (set-difference *resilience-checklist* features)))
+    (if missing
+        (progn
+          (format t "[C] UNCONSTITUTIONAL: ~a missing ~a~%" service-name missing)
+          (values nil missing))
+        (progn
+          (format t "[C] ~a complies with Article 5~%" service-name)
+          (values t nil)))))
 
 ;;; ============================================================
 ;;; V7.9+: UNIT TESTS (Graham Critique #1: Test your business logic)
