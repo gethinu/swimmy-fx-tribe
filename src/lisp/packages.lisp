@@ -182,6 +182,7 @@
    #:notify-discord-weekly
    #:notify-discord-emergency
    #:notify-discord-backtest
+   #:notify-apex            ;; V41.6: Apex webhook for system status
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
    
