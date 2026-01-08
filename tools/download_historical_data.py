@@ -8,9 +8,19 @@ Requires MT5 Python package: pip install MetaTrader5
 Usage:
     python3 tools/download_historical_data.py
 
-This script will download 1 year of M1 data for USDJPY, EURUSD, GBPUSD.
-Total candles: ~525,600 per symbol (365 days * 24 hours * 60 minutes)
-This is enough for Monthly timeframe analysis (12+ monthly candles).
+Data Requirements by Timeframe (for 200 SMA):
+┌────────────┬─────────────────────┬──────────────────┐
+│ Timeframe  │ M1 Candles Needed   │ Years of Data    │
+├────────────┼─────────────────────┼──────────────────┤
+│ M15        │ 3,000               │ ~2 days          │
+│ H1         │ 12,000              │ ~8 days          │
+│ D1 (Daily) │ 288,000             │ ~200 days        │
+│ W1 (Weekly)│ 2,016,000           │ ~4 years         │
+│ MN (Month) │ 8,640,000           │ ~16 years        │
+└────────────┴─────────────────────┴──────────────────┘
+
+This script downloads 4 years of M1 data (~2.1M candles per symbol).
+This enables Weekly timeframe analysis with 200+ period indicators.
 """
 
 import os
@@ -30,7 +40,7 @@ except ImportError:
 
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 OUTPUT_DIR = Path(__file__).parent.parent / "data" / "historical"
-DAYS_TO_DOWNLOAD = 365  # 1 year of data
+DAYS_TO_DOWNLOAD = 1460  # 4 years of data for Weekly timeframe support
 
 
 def download_from_mt5():
