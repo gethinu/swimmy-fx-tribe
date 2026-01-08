@@ -866,6 +866,9 @@
 
 ;; trading-allowed-p removed - now in risk-manager.lispenabled*
 
+;; Global consensus tracker
+(defvar *last-swarm-consensus* 0)
+
 (defun process-category-trades (symbol bid ask)
   "Process trades using Swarm Intelligence, Memory System, Danger Avoidance, AND Research Insights"
   (when (and (trading-allowed-p) *candle-history* (> (length *candle-history*) 100))
@@ -914,7 +917,6 @@
                 (if trend-agrees "✓ agrees" "⚠ diverges")))
       
       ;; Store consensus for trade execution (NEW)
-      (defvar *last-swarm-consensus* 0)
       (setf *last-swarm-consensus* consensus)
       
       (when memory-suggestion
