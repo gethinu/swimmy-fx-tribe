@@ -110,10 +110,12 @@
 (defparameter *max-portfolio-size* 3
   "Maximum concurrent positions")
 
-(defparameter *peak-equity* 0.0)
-(defparameter *max-drawdown* 0.0)
-(defparameter *current-drawdown* 0.0)
-(defparameter *current-equity* 0.0)
+;; Equity tracking - Uses defvar to preserve state on hot-reload
+;; Values will be updated by MT5 ACCOUNT_INFO sync when available
+(defvar *peak-equity* 1000000.0 "Peak equity for drawdown calculation (MT5 synced)")
+(defvar *max-drawdown* 0.0 "Maximum drawdown percentage observed")
+(defvar *current-drawdown* 0.0 "Current drawdown percentage")
+(defvar *current-equity* 1000000.0 "Current account equity (MT5 synced)")
 
 ;;; ==========================================
 ;;; TRADING PARAMETERS

@@ -10,10 +10,21 @@ run:
 	@echo "🧹 Cleaning up old processes (Hard Kill)..."
 	@-pkill -9 -f "brain.lisp" 2>/dev/null || true
 	@-pkill -9 -f "guardian" 2>/dev/null || true
+	@-pkill -9 -f "data_keeper.py" 2>/dev/null || true
+	@-pkill -9 -f "notifier.py" 2>/dev/null || true
+	@-pkill -9 -f "risk_gateway.py" 2>/dev/null || true
+	@-pkill -9 -f "backtest_service.py" 2>/dev/null || true
+	@-pkill -9 -f "inference_worker.py" 2>/dev/null || true
 	@-fuser -k 5555/tcp 2>/dev/null || true
 	@-fuser -k 5556/tcp 2>/dev/null || true
 	@-fuser -k 5557/tcp 2>/dev/null || true
+	@-fuser -k 5559/tcp 2>/dev/null || true
 	@-fuser -k 5560/tcp 2>/dev/null || true
+	@-fuser -k 5561/tcp 2>/dev/null || true
+	@-fuser -k 5562/tcp 2>/dev/null || true
+	@-fuser -k 5563/tcp 2>/dev/null || true
+	@-fuser -k 5564/tcp 2>/dev/null || true
+	@-fuser -k 5580/tcp 2>/dev/null || true
 	@echo "⏳ Waiting for ports to clear..."
 	@sleep 2
 	@echo "🚀 Starting Guardian..."

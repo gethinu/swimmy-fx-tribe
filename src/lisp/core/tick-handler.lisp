@@ -408,6 +408,21 @@ Sharpe   : ~,2f
           ((string= type "HEARTBEAT")
            (unless (numberp *last-guardian-heartbeat*) (setf *last-guardian-heartbeat* 0))
            (setf *last-guardian-heartbeat* (get-universal-time)))
+          ;; V41.6: MT5 Account Sync - Update equity from MT5
+          ((string= type "ACCOUNT_INFO")
+           (handler-case
+               (let ((equity (if (jsown:keyp json "equity") (jsown:val json "equity") nil))
+                     (balance (if (jsown:keyp json "balance") (jsown:val json "balance") nil)))
+                 (when (and equity (numberp equity) (> equity 0))
+                   (setf *current-equity* (float equity))
+                   (when (> *current-equity* *peak-equity*)
+                     (setf *peak-equity* *current-equity*))
+                   ;; Calculate current drawdown
+                   (when (> *peak-equity* 0)
+                     (setf *current-drawdown* (* 100 (/ (- *peak-equity* *current-equity*) *peak-equity*))))
+                   (format t "[L] 💰 MT5 Sync: Equity=¥~,0f Peak=¥~,0f DD=~,1f%~%"
+                           *current-equity* *peak-equity* *current-drawdown*)))
+             (error (e) (format t "[L] Account sync error: ~a~%" e))))
           ((string= type "HISTORY")
            ;; Self-healing: Ensure *candle-histories* is initialized
            (unless (and (boundp '*candle-histories*) *candle-histories*)
