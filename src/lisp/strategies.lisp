@@ -421,7 +421,7 @@
           (length *strategy-knowledge-base*)))
 
 ;; ===== Sharpe フィルター;; Thresholds
-(defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Panel Decision: Block negative EV)")
+(defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Taleb's Rule: Block negative EV)")
 (defparameter *min-win-rate-threshold* 0.4 "Minimum Win Rate")
 (defparameter *approved-strategies* nil)
 
