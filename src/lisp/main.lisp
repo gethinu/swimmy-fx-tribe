@@ -87,7 +87,7 @@
   (log-info "SYSTEM_STARTUP: Swimmy is powering up (Attack Mode Active)")
   
   ;; V41.6: Notify Apex webhook of system online status
-  (notify-apex "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993)
+  (swimmy.core:notify-apex "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993)
   
   ;; Start Runner (Infinite Loop)
   (start-brain))
