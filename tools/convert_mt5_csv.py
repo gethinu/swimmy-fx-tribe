@@ -31,7 +31,7 @@ def parse_mt5_datetime(date_str, time_str):
     try:
         dt = datetime.strptime(dt_str, "%Y.%m.%d %H:%M:%S")
         return int(dt.timestamp()) + OFFSET_SEC
-    except:
+    except ValueError:
         return None
 
 
