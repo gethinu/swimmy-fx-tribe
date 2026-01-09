@@ -29,6 +29,10 @@ run:
 	@sleep 2
 	@echo "🚀 Starting Guardian..."
 	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
+	@echo "🚀 Starting Data Keeper..."
+	@nohup .venv/bin/python3 tools/data_keeper.py > /tmp/data_keeper.log 2>&1 &
+	@echo "⏳ Waiting for Data Keeper to load..."
+	@sleep 5
 	@echo "🚀 Starting Brain..."
 	@/bin/bash -c "source config/.env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
 
