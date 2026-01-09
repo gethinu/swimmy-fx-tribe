@@ -36,7 +36,7 @@ from collections import defaultdict, deque
 
 # === REQUIRED CONSTANTS (Article 5) ===
 MAX_CONSECUTIVE_FAILURES = 5
-APEX_WEBHOOK = "https://discord.com/api/webhooks/1325656360699760701/OQn8-t-uKy282dC3-2K_l7lhj6R_e3k8D-XoPZ8-LpW2-M0-NqY3-OrS4-PsT5"  # Using existing webhook URL logic or variable if available
+APEX_WEBHOOK = "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k"
 
 # Configuration
 ZMQ_PORT = 5561
@@ -161,13 +161,13 @@ def handle_get_history(parts):
         timeframe = "M1"
         try:
             count = int(parts[2])
-        except:
+        except ValueError:
             return {"error": "Invalid count"}
     else:
         timeframe = parts[2].upper()
         try:
             count = int(parts[3])
-        except:
+        except ValueError:
             return {"error": "Invalid count"}
 
     if symbol not in SUPPORTED_SYMBOLS:
@@ -306,9 +306,11 @@ def main():
 
             time.sleep(5)  # Backoff
 
-        if consecutive_failures > 0 and not alert_sent:
-            # If we recovered without sending alert, reset
-            consecutive_failures = 0
+        # Recovery detection: if we had failures but recovered
+        if consecutive_failures > 0 and alert_sent:
+            send_discord_alert("✅ Data Keeper Recovered", is_error=False)
+        consecutive_failures = 0
+        alert_sent = False
 
 
 if __name__ == "__main__":
