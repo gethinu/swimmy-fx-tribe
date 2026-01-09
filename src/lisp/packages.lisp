@@ -70,6 +70,7 @@
    #:*current-minutes*
    #:*last-regime*
    #:*symbol-volatility-states*
+   #:*candle-histories-tf*  ;; V41.6: Nested hash for multi-timeframe data: symbol -> timeframe -> candles
    
    ;; Strategy State
    #:*strategy-knowledge-base*

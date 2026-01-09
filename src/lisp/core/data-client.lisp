@@ -73,15 +73,20 @@
   "Get Data Keeper service status."
   (data-keeper-query "STATUS"))
 
-(defun get-history-from-keeper (symbol count)
+(defun get-history-from-keeper (symbol count &optional (timeframe "M1"))
   "Get historical candles from Data Keeper.
    Returns list of candle structs, newest first (matching *candle-history* format).
-   Falls back to local history if Data Keeper is unavailable."
+   Falls back to local history if Data Keeper is unavailable.
+   If TIMEFRAME is not M1, stores/retrieves from *candle-histories-tf*."
   (if *data-keeper-available*
-      (let ((response (data-keeper-query 
-                        (format nil "GET_HISTORY:~a:~d" symbol count))))
+      ;; Determine query format based on timeframe
+      (let* ((query (if (string= timeframe "M1")
+                        (format nil "GET_HISTORY:~a:~d" symbol count) ;; Legacy
+                        (format nil "GET_HISTORY:~a:~a:~d" symbol timeframe count))) ;; New
+             (response (data-keeper-query query)))
         (if (and response (not (jsown:keyp response "error")))
             (let ((candles (jsown:val response "candles")))
+              ;; Convert JSON candles to structs
               (mapcar (lambda (c)
                         (make-candle 
                           :timestamp (jsown:val c "timestamp")
@@ -93,10 +98,15 @@
                       candles))
             ;; Fallback to local
             (progn
-              (format t "[DATA-CLIENT] Keeper returned error, using local history~%")
-              (gethash symbol *candle-histories*))))
+              (if (string= timeframe "M1")
+                  (gethash symbol *candle-histories*)
+                  (let ((tf-hash (gethash symbol *candle-histories-tf*)))
+                    (if tf-hash (gethash timeframe tf-hash) nil))))))
       ;; Data Keeper not available, use local
-      (gethash symbol *candle-histories*)))
+      (if (string= timeframe "M1")
+          (gethash symbol *candle-histories*)
+          (let ((tf-hash (gethash symbol *candle-histories-tf*)))
+            (if tf-hash (gethash timeframe tf-hash) nil)))))
 
 (defun add-candle-to-keeper (symbol candle)
   "Push a new candle to Data Keeper for persistence."

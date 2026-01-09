@@ -141,10 +141,25 @@
 (defun swarm-trade-decision (symbol history)
   "Get swarm's collective trading decision (Multi-Timeframe V8.0)"
   ;; V8.0: Prepare Multi-Timeframe Data (M1, M5, M15, H1)
-  ;; Only resample if we have enough data (min 5 for M5, 15 for M15, 60 for H1)
-  (let* ((h-m5 (if (> (length history) 20) (resample-candles history 5) history))
-         (h-m15 (if (> (length history) 60) (resample-candles history 15) history))
-         (h-h1 (if (> (length history) 240) (resample-candles history 60) history))
+  ;; Priority: 1. *candle-histories-tf* (Pre-loaded CSV) 2. Resample from M1
+  (let* ((tf-hash (gethash symbol *candle-histories-tf*))
+         
+         ;; Helper to get or resample
+         (get-tf-data (lambda (tf-name factor min-len)
+                        (or (and tf-hash (gethash tf-name tf-hash))
+                            (if (> (length history) min-len) 
+                                (resample-candles history factor) 
+                                nil))))
+         
+         (h-m5 (funcall get-tf-data "M5" 5 20))
+         (h-m15 (funcall get-tf-data "M15" 15 60))
+         (h-h1 (funcall get-tf-data "H1" 60 240))
+         
+         ;; Fallback for base history if nil (shouldn't happen but safe)
+         (h-m5 (or h-m5 history))
+         (h-m15 (or h-m15 history))
+         (h-h1 (or h-h1 history))
+
          (tf-map (list (cons 1 history) 
                        (cons 5 h-m5) 
                        (cons 15 h-m15) 

@@ -547,6 +547,19 @@ CURRENT MARKET: Regime=~a, Volatility=~a
     (nreverse result)))
 
 ;; Request backtest from Rust
+;; Helper to convert numeric timeframe to string suffix
+(defun get-tf-string (tf)
+  (cond ((= tf 1) "M1")
+        ((= tf 5) "M5")
+        ((= tf 15) "M15")
+        ((= tf 30) "M30")
+        ((= tf 60) "H1")
+        ((= tf 240) "H4")
+        ((= tf 1440) "D1")
+        ((= tf 10080) "W1")
+        ((= tf 43200) "MN")
+        (t "M1")))
+
 ;; Request backtest from Rust
 (defun request-backtest (strat &key (candles *candle-history*) (suffix ""))
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe."
@@ -555,11 +568,27 @@ CURRENT MARKET: Regime=~a, Volatility=~a
   ;; Strategy decides its own destiny (timeframe)
   (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
          (timeframe (if (numberp tf-slot) tf-slot 1))
+         (tf-str (get-tf-string timeframe))
          
-         ;; Resample if needed
-         (target-candles (if (> timeframe 1) 
-                             (resample-candles candles timeframe) 
-                             candles))
+         ;; Data Selection Logic (V41.6):
+         ;; 1. Try specific timeframe data for USDJPY (default assumption for generic backtest)
+         ;;    FIXME: *candle-history* implies USDJPY. If we want other symbols, we need symbol arg.
+         ;;    For now, assume if candles==*candle-history*, we check USDJPY tf data.
+         (tf-candles 
+           (if (and (> timeframe 1) 
+                    (eq candles *candle-history*) 
+                    (gethash "USDJPY" *candle-histories-tf*)
+                    (gethash tf-str (gethash "USDJPY" *candle-histories-tf*)))
+               (progn
+                 (format t "[L] 🎯 Using pre-loaded ~a data for backtest (Speed++)~%" tf-str)
+                 (gethash tf-str (gethash "USDJPY" *candle-histories-tf*)))
+               nil))
+         
+         ;; Resample if no specific data found
+         (target-candles (or tf-candles
+                             (if (> timeframe 1) 
+                                 (resample-candles candles timeframe) 
+                                 candles)))
          (len (length target-candles))
          (msg nil)) ;; Initialize msg
     

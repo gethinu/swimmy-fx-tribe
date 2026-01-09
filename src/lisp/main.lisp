@@ -63,15 +63,28 @@
   (init-data-keeper-client)
   (format t "[SYSTEM] Loading historical data from Data Keeper...~%")
   (dolist (sym *supported-symbols*)
-    (let ((history (get-history-from-keeper sym 5000)))
+    ;; Load M1 Base (Legacy key: symbol -> list)
+    (let ((history (get-history-from-keeper sym 50000 "M1")))
       (if history
           (progn
             (setf (gethash sym *candle-histories*) history)
-            (format t "[SYSTEM] Loaded ~d candles for ~a~%" (length history) sym)
+            (format t "[SYSTEM] Loaded ~d candles for ~a (M1)~%" (length history) sym)
             ;; Legacy compat for main symbol
             (when (string= sym "USDJPY")
               (setf *candle-history* history)))
-          (format t "[SYSTEM] ⚠️ No history available for ~a~%" sym)))))
+          (format t "[SYSTEM] ⚠️ No M1 history available for ~a~%" sym)))
+    
+    ;; Load Other Timeframes (Nested key: symbol -> tf -> list)
+    (let ((timeframes '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN")))
+      (dolist (tf timeframes)
+        (let ((tf-hist (get-history-from-keeper sym 20000 tf)))
+          (when (and tf-hist (> (length tf-hist) 0))
+             ;; Ensure nested hash exists
+             (unless (gethash sym *candle-histories-tf*)
+                (setf (gethash sym *candle-histories-tf*) (make-hash-table :test 'equal)))
+             (setf (gethash tf (gethash sym *candle-histories-tf*)) tf-hist)
+             (format t "[SYSTEM] Loaded ~d candles for ~a (~a)~%" (length tf-hist) sym tf))))))
+  (format t "[SYSTEM] Initialization complete.~%"))
 
 ;;; MAIN ENTRY POINT
 (defun start-system ()
