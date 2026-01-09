@@ -20,12 +20,17 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
 
 
 def parse_mt5_datetime(date_str, time_str):
-    """Parse MT5 datetime format to Unix timestamp."""
+    """Parse MT5 datetime format to Unix timestamp with JST adjustment."""
+    # Assuming MT5 is GMT+2 (Standard), JST is GMT+9. Offset = +7 hours.
+    # We want the timestamp to represent JST so that 'hour' extraction works for Nakane.
+    # Note: DST makes this +6 sometimes. Fixed +7 is a close approximation.
+    OFFSET_SEC = 7 * 3600
+
     # Format: 2025.10.01  08:14:00
     dt_str = f"{date_str} {time_str}"
     try:
         dt = datetime.strptime(dt_str, "%Y.%m.%d %H:%M:%S")
-        return int(dt.timestamp())
+        return int(dt.timestamp()) + OFFSET_SEC
     except:
         return None
 
