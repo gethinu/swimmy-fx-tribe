@@ -133,5 +133,6 @@
 (defparameter *market-data* nil)
 (defparameter *last-tick-time* 0)
 (defparameter *candle-histories* (make-hash-table :test 'equal))
+(defparameter *candle-histories-tf* (make-hash-table :test 'equal)) ; V41.6: Nested hash table for multi-timeframe support
 
 (format t "[GLOBALS] Global variables defined in SWIMMY.GLOBALS~%")
