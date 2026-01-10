@@ -6,35 +6,26 @@ setup:
 	@chmod +x .git/hooks/pre-commit
 	@echo "✅ Pre-commit hook installed"
 
+# Systemd Management
+# Run = Restart to ensure changes are applied
 run:
-	@echo "🧹 Cleaning up old processes (Hard Kill)..."
-	@-pkill -9 -f "brain.lisp" 2>/dev/null || true
-	@-pkill -9 -f "guardian" 2>/dev/null || true
-	@-pkill -9 -f "data_keeper.py" 2>/dev/null || true
-	@-pkill -9 -f "notifier.py" 2>/dev/null || true
-	@-pkill -9 -f "risk_gateway.py" 2>/dev/null || true
-	@-pkill -9 -f "backtest_service.py" 2>/dev/null || true
-	@-pkill -9 -f "inference_worker.py" 2>/dev/null || true
-	@-fuser -k 5555/tcp 2>/dev/null || true
-	@-fuser -k 5556/tcp 2>/dev/null || true
-	@-fuser -k 5557/tcp 2>/dev/null || true
-	@-fuser -k 5559/tcp 2>/dev/null || true
-	@-fuser -k 5560/tcp 2>/dev/null || true
-	@-fuser -k 5561/tcp 2>/dev/null || true
-	@-fuser -k 5562/tcp 2>/dev/null || true
-	@-fuser -k 5563/tcp 2>/dev/null || true
-	@-fuser -k 5564/tcp 2>/dev/null || true
-	@-fuser -k 5580/tcp 2>/dev/null || true
-	@echo "⏳ Waiting for ports to clear..."
-	@sleep 2
-	@echo "🚀 Starting Guardian..."
-	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
-	@echo "🚀 Starting Data Keeper..."
-	@nohup .venv/bin/python3 tools/data_keeper.py > /tmp/data_keeper.log 2>&1 &
-	@echo "⏳ Waiting for Data Keeper to load..."
-	@sleep 5
-	@echo "🚀 Starting Brain..."
-	@/bin/bash -c "source .env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
+	@echo "🔄 Restarting Swimmy System (via systemd)..."
+	@systemctl --user daemon-reload
+	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper
+	@echo "✅ System restarted. Use 'make status' to check health."
+
+stop:
+	@echo "🛑 Stopping Swimmy System..."
+	@systemctl --user stop swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper
+	@echo "✅ System stopped."
+
+status:
+	@systemctl --user status swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper
+
+# Logs (Tail all logs)
+logs:
+	@echo "📜 Tailing logs (Ctrl+C to exit)..."
+	@journalctl --user -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier
 
 test:
 	@echo "🧪 Running Swimmy Tests..."

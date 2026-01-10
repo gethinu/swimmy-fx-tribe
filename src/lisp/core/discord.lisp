@@ -65,11 +65,17 @@
     (queue-discord-notification *discord-webhook-url* msg :color color :title "🐟 Apex")))
 
 (defun notify-discord-symbol (symbol msg &key (color 3447003))
-  "Symbol-specific channel"
+  "Symbol-specific channel (with Fallback for errors)"
   (let* ((looked-up (gethash symbol *symbol-webhooks*))
-         (webhook (or looked-up *discord-webhook-url*)))
+         ;; Priority: Specific -> Fallback (STOP there)
+         (webhook (or looked-up *discord-fallback-webhook*))
+         (is-fallback (and (null looked-up) webhook))
+         (final-msg (if is-fallback (format nil "⚠️ [FALLBACK] ~a" msg) msg))
+         (final-title (if is-fallback 
+                          (format nil "⚠️ ~a [UNKNOWN]" symbol) 
+                          (format nil "🐟 ~a" symbol))))
     (when webhook
-      (queue-discord-notification webhook msg :color color :title (format nil "🐟 ~a" symbol)))))
+      (queue-discord-notification webhook final-msg :color color :title final-title))))
 
 (defun notify-discord-alert (msg &key (color 15158332))
   "Alerts channel"

@@ -17,7 +17,6 @@ auto_journal/data/
 # Secrets & Tokens
 .opus/
 .env
-config/.env.systemd
 
 # IDE
 .vscode/

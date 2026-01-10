@@ -35,8 +35,10 @@
 (defparameter *discord-weekly-webhook* (get-discord-webhook "weekly"))
 (defparameter *backtest-webhook-url* (get-discord-webhook "backtest"))
 (defparameter *status-webhook-url* (get-discord-webhook "recruit"))
+(defparameter *discord-recruit-webhook* *status-webhook-url*) ; Alias for compatibility
 (defparameter *alerts-webhook-url* (get-discord-webhook "alerts"))
 (defparameter *apex-webhook-url* (get-discord-webhook "apex"))
+(defparameter *discord-fallback-webhook* (get-discord-webhook "fallback")) ; Routing failures
 (defparameter *heartbeat-webhook-url* (get-discord-webhook "heartbeat"))
 
 ;; Symbol-specific webhooks

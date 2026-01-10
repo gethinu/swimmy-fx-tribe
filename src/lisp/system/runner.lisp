@@ -115,7 +115,7 @@
                (error (e) (format t "[L] Maintenance Error: ~a~%" e)))
                
              ;; Always check heartbeat
-             (when (fboundp 'send-heartbeat)
-               (send-heartbeat))))
+             (when (fboundp 'swimmy.engine::check-discord-heartbeat)
+               (swimmy.engine::check-discord-heartbeat))))
       
       (pzmq:ctx-term ctx))))
