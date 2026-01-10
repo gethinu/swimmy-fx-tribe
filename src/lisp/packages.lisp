@@ -219,6 +219,8 @@
    #:ask-ai
    ))
 
+
+
 ;;; ----------------------------------------------------------------------------
 ;;; 3. ENGINE (Logic Layer)
 ;;; ----------------------------------------------------------------------------
@@ -488,10 +490,31 @@
    ))
 
 ;;; ----------------------------------------------------------------------------
-;;; 6. MAIN (Entry Point)
+;;; 6. EXECUTOR (Execution Layer) NOT MAIN
+;;; ----------------------------------------------------------------------------
+(defpackage :swimmy.executor
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
+  (:export
+   ;; Heartbeat & Status
+   #:send-heartbeat
+   #:send-heartbeat-to-guardian
+   #:check-guardian-connection
+   #:update-status-file
+   #:pulse-check
+   
+   ;; Trade Processing
+   #:process-trade-closed
+   #:process-account-info
+   
+   ;; Metrics
+   #:get-system-metrics
+   ))
+
+;;; ----------------------------------------------------------------------------
+;;; 7. MAIN (Entry Point)
 ;;; ----------------------------------------------------------------------------
 (defpackage :swimmy.main
-  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell :swimmy.executor)
   (:export 
    #:start-system
    #:start-brain
