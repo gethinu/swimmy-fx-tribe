@@ -1879,10 +1879,90 @@
       "price_after": null,
       "pnl_ensemble": null,
       "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:00:01.534859871+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:01:01.742484084+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:03:00.412373693+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:05:02.293372653+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:10:01.557957442+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:11:02.303968384+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:17:01.900213154+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-10T05:23:01.406753013+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
     }
   ],
   "ensemble_total_pnl": 0.0,
   "actual_total_pnl": 0.0,
-  "matches": 188,
+  "matches": 196,
   "mismatches": 0
 }

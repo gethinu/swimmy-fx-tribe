@@ -158,6 +158,7 @@
    
    ;; Utils
    #:get-jst-str
+   #:get-jst-timestamp
    #:get-time-string
    #:get-date-string
    
@@ -409,6 +410,8 @@
    #:danger-cooldown-active-p
    #:has-resigned-p
    #:reset-danger-state
+   #:debug-reset-warriors
+   #:debug-warrior-status
    
    ;; Hall of Fame
    #:*hall-of-fame*
