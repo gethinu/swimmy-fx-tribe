@@ -14,14 +14,14 @@ systemctl --user start swimmy-brain swimmy-guardian
 # 全サービス停止
 systemctl --user stop swimmy-brain swimmy-guardian
 
-# 状態確認
-systemctl --user status 'swimmy-*'
+# ステータス確認 (CLI Dashboard)
+make dashboard
 
-# ログ確認 (リアルタイム)
-journalctl --user -u swimmy-brain -f
+# 日々のログ確認 (Systemd Status)
+make status
 
-# 全サービス再起動
-systemctl --user restart swimmy-brain swimmy-guardian
+# リアルタイムログ監視
+make logs
 ```
 
 > ⚠️ `make run` は開発用です。本番では systemd を使用してください。
@@ -49,13 +49,14 @@ systemctl --user restart swimmy-brain swimmy-guardian
 
 | サービス | systemd name | 役割 |
 |----------|--------------|------|
+| サービス | systemd name | 役割 |
+|----------|--------------|------|
 | Brain | `swimmy-brain` | シグナル生成、学習 |
 | Guardian | `swimmy-guardian` | MT5通信、注文執行 |
-| Data Keeper | `swimmy-keeper` | ヒストリカルデータ |
+| Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ |
 | Notifier | `swimmy-notifier` | Discord通知 |
-| Risk Gateway | `swimmy-risk` | リスクチェック |
 | Backtest | `swimmy-backtest` | バックテスト |
-| Watchdog | `swimmy-watchdog` | ログ監視 |
+| Watchdog | `swimmy-watchdog` | ログ監視 (エラー検知) |
 
 詳細: [doc/port_map.md](file:///home/swimmy/swimmy/doc/port_map.md)
 

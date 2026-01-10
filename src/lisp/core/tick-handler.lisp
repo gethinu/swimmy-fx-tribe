@@ -606,6 +606,21 @@ Sharpe   : ~,2f
                        (format t "[L] 📉 ~a volume reduced to ~,3f~%" name (strategy-volume strat))))))
              (error (e) (format t "[L] Walk-forward result error: ~a~%" e))))
           ;; ══════════════════════════════════════
+          ;; CLONE CHECK RESULT (V8.9)
+          ;; ══════════════════════════════════════
+          ((string= type "CLONE_CHECK_RESULT")
+           (let* ((result (jsown:val json "result"))
+                  (is-clone (jsown:val result "is_clone"))
+                  (similar (jsown:val result "most_similar"))
+                  (sim (jsown:val result "similarity")))
+             (if is-clone
+                 (format t "[L] 🚫 CLONE REJECTED: ~a% similar to ~a~%" (* 100 sim) similar)
+                 (format t "[L] ✅ UNIQUE STRATEGY CONFIRMED (max sim: ~a%)~%" (* 100 sim)))
+             ;; Delegate if function exists (evolution.lisp)
+             (when (fboundp 'process-clone-check-result)
+               (funcall 'process-clone-check-result is-clone similar sim))))
+
+          ;; ══════════════════════════════════════
           ;; TRADE CLOSED - 葬儀 / Victory Ceremony
           ;; ══════════════════════════════════════
           ((string= type "TRADE_CLOSED")
