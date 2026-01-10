@@ -8,6 +8,9 @@
 ;;; RISK MANAGER API
 ;;; ==========================================
 
+(defvar *risk-alert-throttle* (make-hash-table :test 'equal)
+  "Timestamp of last alert for (symbol action reason) to prevent spam")
+
 (defun risk-check-all (symbol direction lot category)
   "Unified risk check before trade execution. Returns (approved-p adjusted-lot reason)"
   (let ((checks nil)
@@ -118,7 +121,14 @@
             ;; Gateway Denial (Taleb's Authority)
             (log-warn (format nil "GATEWAY DENIED: ~a ~a Reason: ~a" action symbol reason)
                       :data (jsown:new-js ("type" "gateway_denied") ("reason" reason)))
-            (notify-discord (format nil "🛡️ GATEKEEPER BLOCKED: ~a ~a (~a)" action symbol reason) :color 15158332)
+            
+            ;; Throttling Logic for Discord (5 minutes = 300 seconds)
+            (let* ((alert-key (format nil "~a-~a-~a" symbol action reason))
+                   (last-time (gethash alert-key *risk-alert-throttle*))
+                   (now (get-universal-time)))
+              (when (or (null last-time) (> (- now last-time) 300))
+                (setf (gethash alert-key *risk-alert-throttle*) now)
+                (notify-discord (format nil "🛡️ GATEKEEPER BLOCKED: ~a ~a (~a)" action symbol reason) :color 15158332)))
             nil)))))
 
 (defun get-risk-summary ()

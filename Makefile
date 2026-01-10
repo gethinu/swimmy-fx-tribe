@@ -22,6 +22,10 @@ stop:
 status:
 	@systemctl --user status swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper
 
+# CLI Dashboard (Expert Panel 2026-01-10)
+dashboard:
+	@python3 tools/dashboard.py
+
 # Logs (Tail all logs)
 logs:
 	@echo "📜 Tailing logs (Ctrl+C to exit)..."
