@@ -38,13 +38,17 @@ echo ""
 
 # Run tests and capture output
 START_TIME=$(date +%s)
-TEST_OUTPUT=$(sbcl --non-interactive --load src/lisp/test.lisp 2>&1) || true
+TEST_OUTPUT=$(sbcl --non-interactive \
+  --eval '(require :asdf)' \
+  --eval '(load "swimmy.asd")' \
+  --eval '(ql:quickload :swimmy :silent t)' \
+  --eval '(swimmy.tests:run-all-tests)' 2>&1) || true
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 # Count results
 PASS_COUNT=$(echo "$TEST_OUTPUT" | grep -c "✓\|PASS\|passed" || true)
-FAIL_COUNT=$(echo "$TEST_OUTPUT" | grep -c "✗\|FAIL\|failed" || true)
+FAIL_COUNT=$(echo "$TEST_OUTPUT" | grep -c "❌ FAILED" || true)
 TOTAL_COUNT=$((PASS_COUNT + FAIL_COUNT))
 
 echo "$TEST_OUTPUT"

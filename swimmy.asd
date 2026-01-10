@@ -53,6 +53,7 @@
                (:file "src/lisp/school-resignation")
                (:file "src/lisp/school-strategy")  ; V8.1: Strategy/Clan System
                (:file "src/lisp/school-voting")    ; V8.1: Voting/Council System
+               (:file "src/lisp/school-evolution") ; V8.0: Genetic Mutation
                (:file "src/lisp/school-learning")
                (:file "src/lisp/school-volatility")
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
@@ -77,7 +78,9 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+
                (:file "src/lisp/tests/school-split-tests")
+               (:file "src/lisp/tests/evolution-tests")
                (:file "src/lisp/tests/integration-tests")
                
                ;; RUNNER & MAIN

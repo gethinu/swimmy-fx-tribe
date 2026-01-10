@@ -12,45 +12,20 @@
   "Active trading symbols for multi-currency support")
 
 ;;; ==========================================
-;;; DISCORD WEBHOOKS (集約設定: config/discord_webhooks.json)
+;;; DISCORD WEBHOOKS (Environment Variables)
 ;;; ==========================================
 
-;; JSON設定ファイルのパス
-(defparameter *discord-webhooks-config-path* 
-  (merge-pathnames "config/discord_webhooks.json" 
-                   (asdf:system-source-directory :swimmy)))
-
-;; キャッシュ用ハッシュテーブル
-(defvar *discord-webhooks-cache* (make-hash-table :test 'equal))
-
-(defun load-discord-webhooks ()
-  "config/discord_webhooks.json からWebhook設定を読み込む"
-  (handler-case
-      (let* ((json-string (uiop:read-file-string *discord-webhooks-config-path*))
-             (json-data (jsown:parse json-string))
-             (webhooks (jsown:val json-data "webhooks")))
-        (when webhooks
-          (dolist (key-val (cdr webhooks)) ; jsown returns (:obj ("key" . val) ...)
-            (let* ((key (car key-val))
-                   (val (cdr key-val))
-                   (url (jsown:val val "url")))
-              (when url
-                (setf (gethash key *discord-webhooks-cache*) url)))))
-        (format t "[CONFIG] 📱 Discord Webhooks loaded from JSON (~d entries)~%" 
-                (hash-table-count *discord-webhooks-cache*))
-        *discord-webhooks-cache*)
-    (error (e)
-      (format t "[CONFIG] ⚠️ Failed to load discord_webhooks.json: ~a~%" e)
-      nil)))
+;; Note: Access via environment variables is now the standard (2026-01-10)
 
 (defun get-discord-webhook (key)
-  "Webhook URLを取得 (キー: apex, heartbeat, daily, alerts, backtest, recruit, usdjpy, etc.)"
-  (or (gethash key *discord-webhooks-cache*)
-      ;; フォールバック: 環境変数
-      (uiop:getenv (format nil "SWIMMY_DISCORD_~a" (string-upcase key)))))
+  "Webhook URLを取得 (キー: apex, heartbeat, daily, alerts, backtest, recruit, usdjpy, etc.)
+   Reads from SWIMMY_DISCORD_<KEY> environment variable."
+  (let ((env-key (format nil "SWIMMY_DISCORD_~a" (string-upcase key))))
+    (uiop:getenv env-key)))
 
-;; 初期ロード
-(load-discord-webhooks)
+;; フォールバックなしでシンプルに取得
+;; (Legacy variables initialization below remains valid)
+
 
 ;; 後方互換性のため既存変数も設定
 (defparameter *discord-webhook-url* (get-discord-webhook "usdjpy"))

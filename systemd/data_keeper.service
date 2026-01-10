@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 Type=simple
-User=swimmy
 WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/data_keeper.py
 Restart=always
@@ -12,6 +11,7 @@ RestartSec=10
 StartLimitIntervalSec=300
 StartLimitBurst=5
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/swimmy/swimmy/.env
 StandardOutput=append:/home/swimmy/swimmy/logs/data_keeper.log
 StandardError=append:/home/swimmy/swimmy/logs/data_keeper.log
 
