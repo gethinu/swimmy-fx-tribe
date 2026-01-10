@@ -334,19 +334,23 @@
 (defparameter *active-team* (make-hash-table :test 'eq))
 
 (defun categorize-strategy (strat)
-  ;; Priority 1: Explicit Category Property (if set)
-  (if (and (fboundp 'strategy-category) (strategy-category strat))
-      (strategy-category strat)
-      ;; Priority 2: Name Inference (Specific -> Generic)
-      (let ((name (string-downcase (strategy-name strat))))
-        (cond
-          ;; Specific Types First (Scalp/Breakout/Reversion)
-          ((or (search "scalp" name) (search "fast" name)) :scalp)
-          ((or (search "break" name) (search "atr" name) (search "volatility" name) (search "walk" name)) :breakout)
-          ((or (search "reversion" name) (search "bounce" name) (search "stoch" name) (search "rsi" name)) :reversion)
-          ;; Generic Types Last (Trend/MA/Cross)
-          ((or (search "cross" name) (search "ema" name) (search "sma" name) (search "macd" name) (search "trend" name)) :trend)
-          (t :trend)))))
+  ;; Priority 1: Explicit Specific Category (Overrides inference)
+  (let ((cat (if (and (fboundp 'strategy-category) (strategy-category strat))
+                 (strategy-category strat)
+                 nil)))
+    (if (and cat (not (eq cat :trend)))
+        cat
+        ;; Priority 2: Name Inference (Specific -> Generic)
+        (let ((name (string-downcase (strategy-name strat))))
+          (cond
+            ;; Specific Types First (Scalp/Breakout/Reversion)
+            ((or (search "scalp" name) (search "fast" name)) :scalp)
+            ((or (search "break" name) (search "atr" name) (search "volatility" name) (search "walk" name)) :breakout)
+            ((or (search "reversion" name) (search "bounce" name) (search "stoch" name) (search "rsi" name)) :reversion)
+            ;; Generic Types Last (Trend/MA/Cross)
+            ;; If explicit was :trend, and we fall through here, we confirm it's :trend
+            ((or (search "cross" name) (search "ema" name) (search "sma" name) (search "macd" name) (search "trend" name)) :trend)
+            (t :trend))))))
 
 (defun build-category-pools ()
   (clrhash *category-pools*)
