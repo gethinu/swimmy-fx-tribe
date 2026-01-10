@@ -273,6 +273,14 @@ Sharpe   : ~,2f
       (pulse-check) ; Added Pulse Check here
       (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
         (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT")))))
+      ;; V8.5: ACCOUNT_INFO Monitoring (Expert Panel P1)
+      (when (and (> *last-account-info-time* 0)
+                 (> (- now *last-account-info-time*) 60)
+                 (not *account-info-alert-sent*))
+        (notify-discord-alert 
+         (format nil "⚠️ ACCOUNT_INFO Timeout - MT5同期が~d秒間途絶" (- now *last-account-info-time*))
+         :color 16776960) ; Yellow
+        (setf *account-info-alert-sent* t))
       (setf *last-heartbeat-sent* now))))
 
 (defun process-trade-closed (json msg)
@@ -413,6 +421,12 @@ Sharpe   : ~,2f
            (handler-case
                (let ((equity (if (jsown:keyp json "equity") (jsown:val json "equity") nil))
                      (balance (if (jsown:keyp json "balance") (jsown:val json "balance") nil)))
+                 ;; V8.5: Track last ACCOUNT_INFO time for monitoring
+                 (setf *last-account-info-time* (get-universal-time))
+                 ;; V8.5: Recovery notification
+                 (when *account-info-alert-sent*
+                   (notify-discord-alert "✅ ACCOUNT_INFO Recovered - MT5同期復旧" :color 3066993)
+                   (setf *account-info-alert-sent* nil))
                  (when (and equity (numberp equity) (> equity 0))
                    (setf *current-equity* (float equity))
                    (when (> *current-equity* *peak-equity*)
