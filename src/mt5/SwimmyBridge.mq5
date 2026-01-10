@@ -515,6 +515,9 @@ void OnTimer() {
       SendTick();
    }
    
+   // V8.5: Send ACCOUNT_INFO (30秒ごと、Expert Panel P0)
+   SendAccountInfo();
+   
    // Receive and process commands
    if(g_sub_connected) {
       uchar data_rcv[8192];
@@ -525,3 +528,37 @@ void OnTimer() {
    }
 }
 //+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ACCOUNT_INFO送信 (V8.5: Expert Panel P0)                          |
+//+------------------------------------------------------------------+
+datetime g_last_account_info = 0;
+const int ACCOUNT_INFO_INTERVAL = 30; // 30秒ごとに送信
+
+void SendAccountInfo() {
+   if(!g_pub_connected) return;
+   
+   datetime now = TimeCurrent();
+   if((now - g_last_account_info) < ACCOUNT_INFO_INTERVAL) return;
+   g_last_account_info = now;
+   
+   // JSON形式でACCOUNT_INFOを構築
+   string json = StringFormat(
+       "{\"type\":\"ACCOUNT_INFO\",\"timestamp\":%d,\"equity\":%.2f,\"balance\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"profit\":%.2f,\"leverage\":%d}",
+       (int)now,
+       AccountInfoDouble(ACCOUNT_EQUITY),
+       AccountInfoDouble(ACCOUNT_BALANCE),
+       AccountInfoDouble(ACCOUNT_MARGIN),
+       AccountInfoDouble(ACCOUNT_MARGIN_FREE),
+       AccountInfoDouble(ACCOUNT_MARGIN_LEVEL),
+       AccountInfoDouble(ACCOUNT_PROFIT),
+       (int)AccountInfoInteger(ACCOUNT_LEVERAGE)
+   );
+   
+   // 既存のPUBソケットで送信
+   uchar data[];
+   StringToCharArray(json, data);
+   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   
+   LogDebug("[ACCOUNT] Equity=" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 0));
+}
