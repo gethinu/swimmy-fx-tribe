@@ -123,6 +123,8 @@
 (defparameter *dream-interval* 3600)
 (defparameter *last-dream-time* 0)
 (defparameter *last-guardian-heartbeat* 0)
+(defparameter *last-account-info-time* 0)  ; V8.5: ACCOUNT_INFO monitoring (Expert Panel P1)
+(defparameter *account-info-alert-sent* nil) ; V8.5: Prevent duplicate alerts
 (defparameter *all-time-win-rate* 0.5)
 (defparameter *portfolio-sharpe* 0.0)
 (defparameter *initial-backtest-done* nil)
