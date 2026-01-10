@@ -1,0 +1,55 @@
+{
+  "_comment": "Discord Webhook設定ファイル - このファイルを直接編集できます",
+  "_updated": "2026-01-10",
+  
+  "webhooks": {
+    "apex": {
+      "url": "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k",
+      "description": "システム状態（Online/Offline/Critical）- Apexチャンネル"
+    },
+    "heartbeat": {
+      "url": "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k",
+      "description": "定期ハートビート（System Online等）- ★変更するとSystem Online通知先が変わります"
+    },
+    "daily": {
+      "url": "https://discord.com/api/webhooks/1453383955943264389/avYUiSlTgA0LuywFI2OHVzwiIbwiqAc1SYDP_UjxAK-Ins9nLPbIfiLUwj6-F1tr4Xwh",
+      "description": "日報チャンネル"
+    },
+    "weekly": {
+      "url": "https://discord.com/api/webhooks/1453384086079930603/A84uh_Kgb9MpUWuyw6ojhhc7F-BbBZPt3B4IQ7uYieVaI6PC7MQWFRLBp72yQAKeWC73",
+      "description": "週報チャンネル"
+    },
+    "journal": {
+      "url": "https://discord.com/api/webhooks/1454099590117724303/6rMLCwGiSiSwHN1PF8T5WsCrCuK-FnICSQ6HSA408xYZu8UUYj8lM8HuAx_IirZjEZrk",
+      "description": "トレードジャーナル"
+    },
+    "emergency": {
+      "url": "https://discord.com/api/webhooks/1453383670810546264/ZZiDVTbD7iwzv3Ozxtsawos-WFlMIxkra4eq0BqTLg_nO6odrd6Kx58HIScagheBF8WU",
+      "description": "緊急通知（High Council）"
+    },
+    "alerts": {
+      "url": "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH",
+      "description": "アラート通知"
+    },
+    "backtest": {
+      "url": "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy",
+      "description": "バックテスト結果"
+    },
+    "recruit": {
+      "url": "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW",
+      "description": "新戦略リクルート通知"
+    },
+    "usdjpy": {
+      "url": "https://discord.com/api/webhooks/1455548858921652442/pxCwnTnnMVd8-X8LIO3NrwtxQ0T2dm31GiS-SaHAkqQ0AAR5G5ABVcfKKJ0awKnGhnLk",
+      "description": "USDJPY取引通知"
+    },
+    "eurusd": {
+      "url": "https://discord.com/api/webhooks/1457280740004728897/kD2xpMzdKVwa1gBgi8eHQKo36GxQKzWt0-UxLWj5P3-2iXRthO-ZJGUVZ7OXvraIZLjc",
+      "description": "EURUSD取引通知"
+    },
+    "gbpusd": {
+      "url": "https://discord.com/api/webhooks/1455558971367882762/gOf_SFW0JvQd7tX1CqSGZbtGMcOz5wcwAiVgPhvCzEp7QAkl1g8u1dNx9qhfXbt5lAyB",
+      "description": "GBPUSD取引通知"
+    }
+  }
+}

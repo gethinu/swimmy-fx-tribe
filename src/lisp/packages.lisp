@@ -205,6 +205,11 @@
    ;; Risk Gateway Client (V8.0)
    #:request-trade-approval
    
+   ;; Helper for Kalman
+   #:ind-kalman
+   #:ind-kalman-velocity
+   #:ind-kalman-trend
+
    ;; Inference Client (V8.0)
    #:ask-ai
    ))
