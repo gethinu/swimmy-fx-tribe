@@ -552,7 +552,7 @@
                                         (,(intern "STOCH-D" pkg) 50) (,(intern "STOCH-D-PREV" pkg) 50))))
                               (t 
                                (format t "[L] ⚠️ Unknown indicator type in ~a: ~a~%" (strategy-name strat) type)
-                               nil)))))))
+                               nil))))))
       (let ((pkg (find-package :swimmy.school)))
         (push `(,(intern "CLOSE" pkg) ,(candle-close (first history))) bindings)
         (push `(,(intern "CLOSE-PREV" pkg) ,(candle-close (second history))) bindings)
@@ -584,7 +584,7 @@
                   (t :hold))))
           (error (e) 
             (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e)
-            :hold)))))
+            :hold))))))
 ;; V5.2: Warrior ID System - 16 Global Slots (4 clans x 4 warriors)
 ;; V6.2 (Graham): Gotobi/Kelly/WhyLog moved to school-fortress.lisp
 ;; ============================================================

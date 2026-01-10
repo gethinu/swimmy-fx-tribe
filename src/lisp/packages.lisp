@@ -129,6 +129,10 @@
    #:*last-status-notification-time*
    #:*status-notification-interval*
    
+   ;; Account Info (Expert Panel P1)
+   #:*last-account-info-time*
+   #:*account-info-alert-sent*
+   
    ;; Discord Webhooks
    #:*alerts-webhook-url*
    #:*status-webhook-url*
