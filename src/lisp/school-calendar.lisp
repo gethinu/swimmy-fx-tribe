@@ -47,6 +47,28 @@
   "Get current hour (JST)"
   (nth-value 2 (decode-universal-time (get-universal-time) -9)))
 
+(defun get-current-day-of-week ()
+  "Get current day of week (0=Mon, ... 6=Sun) - Note: standard CL is 0=Mon or 6=Sun depending on implementation?
+   Wait, decode-universal-time returns 0-6 where 6 is Sunday? No, 0-6 where 0 is Monday... let's verify.
+   CLHS: 6th value is Day of week. 0=Monday, 1=Tuesday... 6=Sunday."
+  (nth-value 6 (decode-universal-time (get-universal-time) -9)))
+
+(defun market-open-p ()
+  "Check if Forex market is open (JST).
+   Open: Monday 06:00 JST to Saturday 06:00 JST."
+  (let ((dow (get-current-day-of-week))
+        (hour (get-current-hour)))
+    (cond
+      ;; Sunday (6) is always Closed
+      ((= dow 6) nil)
+      ;; Saturday (5) is Closed after 06:00
+      ((and (= dow 5) (>= hour 6)) nil)
+      ;; Monday (0) is Closed before 06:00
+      ((and (= dow 0) (< hour 6)) nil)
+      ;; Otherwise Open
+      (t t))))
+
+
 (defun first-thursday-p ()
   "Check if today is the first Thursday of the month"
   (multiple-value-bind (s m h day month year)

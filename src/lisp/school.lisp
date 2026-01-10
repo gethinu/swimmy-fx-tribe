@@ -739,6 +739,12 @@
             (format t "[L] 🛡️ P0 STARTUP LIMIT: Max 1 position during startup~%")
             (return-from execute-category-trade nil)))
             
+        ;; P0-4: MARKET HOURS CHECK - Block weekend trades to prevent ghost entries
+        (unless (market-open-p)
+          (format t "[L] 💤 MARKET CLOSED: Weekend/Holiday hours. Trade skipped.~%")
+          (return-from execute-category-trade nil))
+
+            
         ;; ════════════════════════════════════════════════════════════════════
         ;; P1 FAILURE SAFETY (Dynamic Circuit Breaker)
         ;; ════════════════════════════════════════════════════════════════════
