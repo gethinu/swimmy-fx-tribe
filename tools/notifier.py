@@ -62,12 +62,15 @@ def process_queue():
             if response.status_code == 429:
                 # Rate limited - requeue and backoff
                 retry_after = response.json().get("retry_after", 1)
-                print(f"[NOTIFIER] Rate limited. Waiting {retry_after}s...")
+                print(f"[NOTIFIER] Rate limited. Waiting {retry_after}s...", flush=True)
                 time.sleep(retry_after)
                 message_queue.appendleft((webhook_url, payload))
 
             elif response.status_code >= 400:
-                print(f"[NOTIFIER] Error {response.status_code}: {response.text}")
+                print(
+                    f"[NOTIFIER] Error {response.status_code}: {response.text}",
+                    flush=True,
+                )
 
             else:
                 pass
@@ -76,7 +79,7 @@ def process_queue():
             time.sleep(0.2)  # Basic global rate limit safety
 
         except Exception as e:
-            print(f"[NOTIFIER] Delivery failed: {e}")
+            print(f"[NOTIFIER] Delivery failed: {e}", flush=True)
 
 
 def main():
@@ -108,7 +111,8 @@ def main():
                 if webhook and payload:
                     message_queue.append((webhook, payload))
                     print(
-                        f"[NOTIFIER] Queued: {payload.get('embeds', [{}])[0].get('title', 'Message')}"
+                        f"[NOTIFIER] Queued: {payload.get('embeds', [{}])[0].get('title', 'Message')}",
+                        flush=True,
                     )
                 else:
                     print(f"[NOTIFIER] Invalid message format")

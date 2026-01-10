@@ -34,7 +34,7 @@ run:
 	@echo "⏳ Waiting for Data Keeper to load..."
 	@sleep 5
 	@echo "🚀 Starting Brain..."
-	@/bin/bash -c "source config/.env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
+	@/bin/bash -c "source .env && sbcl --noinform --load brain.lisp > /tmp/brain.log 2>&1 & PID=\$$!; echo \"Brain PID: \$$PID\"; tail -f /tmp/brain.log --pid=\$$PID"
 
 test:
 	@echo "🧪 Running Swimmy Tests..."

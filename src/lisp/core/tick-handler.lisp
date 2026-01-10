@@ -498,21 +498,22 @@ Sharpe   : ~,2f
                        (format t "[L] ✅ Warriors Reset Complete!~%"))
                   (error (e) (format t "[L] ❌ Reset Warriors Failed: ~a~%" e))))
                ((string= action "DEBUG_ENTRY")
-                (format t "[L] 🧪 DEBUG_ENTRY command received. Triggering test entry...~%")
-                (handler-case
-                    (let ((symbol "USDJPY")
-                          (magic 999999)
-                          (lot 0.01))
-                      ;; 1. Send Test Order to MT5
-                      (swimmy.engine:safe-order "BUY" symbol lot 130.00 160.00 magic)
-                      ;; 2. Send Test Notification to Discord
-                      (swimmy.shell:notify-discord-symbol symbol 
-                        (format nil "🧪 **DEBUG TEST ENTRY** (🕐 ~a)~%Strategy: MANUAL_TEST~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
-                                (swimmy.core:get-jst-timestamp)
-                                symbol lot magic)
-                        :color 3066993)
-                      (format t "[L] ✅ DEBUG ENTRY triggered! Check Discord and MT5.~%"))
-                  (error (e) (format t "[L] ❌ DEBUG ENTRY Failed: ~a~%" e))))
+                (let ((target-symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))
+                  (format t "[L] 🧪 DEBUG_ENTRY command received for ~a. Triggering test entry...~%" target-symbol)
+                  (handler-case
+                      (let ((symbol target-symbol)
+                            (magic 999999)
+                            (lot 0.01))
+                        ;; 1. Send Test Order to MT5
+                        (swimmy.engine:safe-order "BUY" symbol lot 130.00 160.00 magic)
+                        ;; 2. Send Test Notification to Discord
+                        (swimmy.shell:notify-discord-symbol symbol 
+                          (format nil "🧪 **DEBUG TEST ENTRY** (🕐 ~a)~%Strategy: MANUAL_TEST~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
+                                  (swimmy.core:get-jst-timestamp)
+                                  symbol lot magic)
+                          :color 3066993)
+                        (format t "[L] ✅ DEBUG ENTRY (~a) triggered! Check Discord.~%" symbol))
+                    (error (e) (format t "[L] ❌ DEBUG ENTRY Failed: ~a~%" e)))))
                (t (format t "[L] ⚠️ Unknown System Command: ~a~%" action)))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))

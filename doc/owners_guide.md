@@ -99,7 +99,16 @@ pkill -9 guardian
 
 # その後、正常に再起動
 systemctl --user restart swimmy-brain swimmy-guardian
+
+# リスクリミット（ドローダウン等）の即時リセット
+systemctl --user restart swimmy-risk
 ```
+
+> [!NOTE]
+> **最大ドローダウン (MAX_DRAWDOWN) について**
+> `swimmy-risk` サービスが起動した時点の口座残高を基準に計算されます。
+> 今日取引をしていなくても、過去の含み損や前日以前の確定損が基準（デフォルト5%）を超えている場合、新規エントリーが自動的にブロックされます。
+> 必要に応じてサービスを再起動することで、現在の残高を基準に再設定（リセット）できます。
 
 > ⚠️ `pkill -9` は状態保存なしで強制終了します。緊急時のみ使用。
 

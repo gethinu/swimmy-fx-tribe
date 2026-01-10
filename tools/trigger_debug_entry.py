@@ -23,9 +23,16 @@ def main():
         socket = context.socket(zmq.PUSH)
         socket.connect(f"tcp://localhost:{BRAIN_PORT}")
 
-        payload = {"type": "SYSTEM_COMMAND", "action": "DEBUG_ENTRY"}
+        target_symbol = sys.argv[1] if len(sys.argv) > 1 else "USDJPY"
+        payload = {
+            "type": "SYSTEM_COMMAND",
+            "action": "DEBUG_ENTRY",
+            "symbol": target_symbol,
+        }
 
-        print(f"🧪 Sending DEBUG_ENTRY to Brain (Port {BRAIN_PORT})...")
+        print(
+            f"🧪 Sending DEBUG_ENTRY ({target_symbol}) to Brain (Port {BRAIN_PORT})..."
+        )
         socket.send_json(payload)
 
         # Give ZMQ a moment to flush
