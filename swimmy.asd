@@ -74,6 +74,7 @@
                (:file "src/lisp/repl")
                
                ;; TICK HANDLER (loads last to access all packages)
+               (:file "src/lisp/core/executor")
                (:file "src/lisp/core/tick-handler")
                
                ;; TESTS
