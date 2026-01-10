@@ -31,12 +31,29 @@
 ;;; ==========================================
 
 (defun get-system-summary ()
-  "Create a brief system status summary."
-  (format nil "~a~%~a~%~a~%~a"
-          (format nil "📊 PnL: ¥~:d" (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0))
-          (format nil "🏦 Treasury: ¥~:d" (if (boundp '*locked-treasury*) *locked-treasury* 0))
-          (format nil "📈 Trades today: ~d" (if (boundp '*daily-trade-count*) *daily-trade-count* 0))
-          (format nil "⏰ Uptime: ~d min" (floor (/ (- (get-universal-time) *last-heartbeat-sent*) 60)))))
+  "Create a detailed system status summary with monitoring metrics."
+  (let* (;; Basic stats
+         (pnl (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0))
+         (treasury (if (boundp '*locked-treasury*) *locked-treasury* 0))
+         (trades (if (boundp '*daily-trade-count*) *daily-trade-count* 0))
+         (uptime-min (floor (/ (- (get-universal-time) *last-heartbeat-sent*) 60)))
+         ;; Strategy stats
+         (active-count (if (and (boundp '*strategy-knowledge-base*) *strategy-knowledge-base*)
+                           (length *strategy-knowledge-base*) 0))
+         (benched-count (if (and (boundp '*benched-strategies*) (hash-table-p *benched-strategies*))
+                            (hash-table-count *benched-strategies*) 0))
+         ;; Last tick info
+         (last-tick-ago (if (and (boundp '*last-tick-time*) (numberp *last-tick-time*) (> *last-tick-time* 0))
+                            (floor (/ (- (get-universal-time) *last-tick-time*) 60))
+                            -1)))
+    (format nil "~{~a~^~%~}"
+            (list
+             (format nil "📊 PnL: ¥~:d | Treasury: ¥~:d" pnl treasury)
+             (format nil "📈 Trades: ~d | Uptime: ~d min" trades uptime-min)
+             (format nil "🎯 Strategies: ~d active / ~d benched" active-count benched-count)
+             (if (>= last-tick-ago 0)
+                 (format nil "📡 Last TICK: ~d min ago" last-tick-ago)
+                 "📡 Last TICK: ⚠️ No data (market closed?)")))))
 
 (defun send-discord-heartbeat ()
   "Send heartbeat notification to dedicated Discord channel."
