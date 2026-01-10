@@ -1077,10 +1077,19 @@
   (force-recruit-strategy "T-Nakane-Gotobi"))
 
 (defun init-school ()
-  (build-category-pools)
+  ;; V8.7: Reclassify ALL strategies (KB + Evolved) to fix category bugs
+  (build-category-pools) ; Clears pools and adds *strategy-knowledge-base*
+  
+  ;; Add Evolved/Recruited strategies to pools with NEW categorization logic
+  (when (boundp '*evolved-strategies*)
+    (dolist (strat *evolved-strategies*)
+      (let ((cat (categorize-strategy strat)))
+        (setf (strategy-category strat) cat) ; Update the slot permanently
+        (push strat (gethash cat *category-pools* nil)))))
+        
   (recruit-special-forces) ; V7.0: Inject special forces
   (clrhash *category-positions*)
-  (format t "[SCHOOL] Swimmy School ready (Special Forces Active)~%"))
+  (format t "[SCHOOL] Swimmy School ready (Strategies Reclassified & Pools Built)~%"))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V3.0: 4氏族シグナル関数を削除
