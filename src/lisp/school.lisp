@@ -469,17 +469,20 @@
   "Check if current time is safe for trading (JST)"
   (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
     (declare (ignore s d mo y))
-    ;; Exempt specific time-based strategies
+
+    ;; [V9.3] WEEKEND PROTECTION (Absolute Priority - Blocks Gotobi too)
+    (cond
+      ((= dow 6) (return-from is-safe-trading-time-p nil))                 ; Sunday = CLOSED
+      ((and (= dow 5) (>= h 7)) (return-from is-safe-trading-time-p nil))  ; Saturday after 7:00 = CLOSED
+      ((and (= dow 0) (< h 5)) (return-from is-safe-trading-time-p nil)))   ; Monday before 5:00 = CLOSED
+
+    ;; Exempt specific time-based strategies (Must be AFTER weekend check)
     (when (search "Gotobi" strategy-name)
       (return-from is-safe-trading-time-p t))
       
     (cond
-      ;; [V9.2] WEEKEND PROTECTION (JST)
-      ((= dow 6) nil)                 ; Sunday = CLOSED
-      ((and (= dow 5) (>= h 7)) nil)  ; Saturday after 7:00 = CLOSED
-      ((and (= dow 0) (< h 5)) nil)   ; Monday before 5:00 = CLOSED
-
       ;; 1. ROLLOVER (Spread widen): 6:55 - 7:05
+
       ((= h 6) nil) 
       ((and (= h 7) (< m 5)) nil)
       
