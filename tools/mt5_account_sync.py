@@ -29,8 +29,27 @@ ZMQ_PORT = 5580  # Dedicated port for account sync
 MAX_CONSECUTIVE_FAILURES = 5  # Alert after 5 consecutive failures
 MT5_RECONNECT_INTERVAL = 60  # Retry MT5 connection every 60s
 
-# Apex webhook for crash alerts
-APEX_WEBHOOK = "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k"
+
+# Load webhook from config file
+def load_apex_webhook():
+    """Load apex webhook URL from config/discord_webhooks.json"""
+    import os
+
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "discord_webhooks.json"
+    )
+    try:
+        with open(config_path, "r") as f:
+            import json as _json
+
+            config = _json.load(f)
+        return config.get("webhooks", {}).get("apex", {}).get("url", "")
+    except Exception as e:
+        print(f"[WARN] Could not load discord_webhooks.json: {e}")
+        return ""
+
+
+APEX_WEBHOOK = load_apex_webhook()
 
 # Try to import dependencies
 try:

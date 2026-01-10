@@ -49,9 +49,11 @@
   (multiple-value-bind (s m h day month year) (decode-universal-time (get-universal-time))
     (declare (ignore s m h))
     (let ((last-day (days-in-month month year)))
-      (or (member day '(5 10 15 20 25))
-          (= day last-day)
-          (and (> day 25) (member (day-of-week year month day) '(5 6)))))))
+      (if (or (member day '(5 10 15 20 25))
+              (= day last-day)
+              (and (> day 25) (member (day-of-week year month day) '(5 6))))
+          t
+          nil))))
 
 (defun gotobi-usdjpy-bias ()
   "Return Gotobi trading bias for USDJPY (Japanese importers buy USD)"

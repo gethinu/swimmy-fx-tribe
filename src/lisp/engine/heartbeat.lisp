@@ -21,8 +21,10 @@
   "Enable/disable heartbeat notifications.")
 
 (defparameter *heartbeat-webhook-url* 
-  "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW"
-  "Dedicated webhook URL for heartbeat notifications.")
+  (or (and (fboundp 'swimmy.core::get-discord-webhook)
+           (funcall 'swimmy.core::get-discord-webhook "heartbeat"))
+      "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k")
+  "Heartbeat webhook - loaded from config/discord_webhooks.json")
 
 ;;; ==========================================
 ;;; HEARTBEAT LOGIC

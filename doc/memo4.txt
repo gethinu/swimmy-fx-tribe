@@ -1,49 +1,4 @@
- Backtest Summary (V6.9)
-
-TREND (Total: 444 | Pass: 0 | Avg Sharpe: -0.21)
-Top 5:
-Perfect-Order-SMA (S: 0.00)
-Golden-Cross (S: 0.00),
-Conservative-Trend (S: -0.10),
-Trend-Pullback-Entry (S: -0.10),
-MACD-Zero-Reject (S: -0.18),
-Worst 5:
-Wisdom-GBPUSD-Trend-3976816273-M55 (S: -0.21),
-Wisdom-GBPUSD-Trend-3976808373-M31 (S: -0.21),
-Wisdom-USDJPY-Trend-3976802438-M56 (S: -0.21),
-Wisdom-GBPUSD-Trend-3976800239-M32 (S: -0.21),
-Wisdom-GBPUSD-Trend-3976795473-M35 (S: -0.21),
-,
-
-REVERSION (Total: 254 | Pass: 0 | Avg Sharpe: -0.21)
-Top 5:
-RSI-Volatility-Break (S: -0.20)
-RSI-Stoch-Reversal (S: -0.20),
-RSI-Overbought-Reversal (S: -0.20),
-RSI-Oversold-Reversal (S: -0.20),
-RSI-Momentum-Break (S: -0.20),
-Worst 5:
-Wisdom-USDJPY-Reversal-3976802371-M0 (S: -0.21),
-Wisdom-USDJPY-Reversal-3976785672-M26 (S: -0.21),
-Wisdom-USDJPY-Reversal-3976785172-M65 (S: -0.21),
-Aggressive-Reversal (S: -0.21),
-Wisdom-USDJPY-Reversal-3976815538-M6 (S: -0.21),
-,
-
-BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.20)
-Top 5:
-CCI-Trend-Breakout (S: -0.20)
-Pullback-Breakout (S: -0.21),
-,
-
-SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.21)
-Top 5:
-Trend-Scalp-1M (S: -0.21)
-MA-Ribbon-Scalp (S: -0.21),
-Fibonacci-EMA-Scalp (S: -0.21),
-,
-
- Only showing Top/Worst to reduce spam.
+[L] Eval error Triple-Screen-Proxy: Execution of a form compiled with errors.
 :fire:
 クリックしてリアクション
 :100:
@@ -54,5 +9,334 @@ Fibonacci-EMA-Scalp (S: -0.21),
 返信
 転送
 その他
-
-#fx-tribe-backtestへメッセージを送信
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error MACD-Zero-Reject: Execution of a form compiled with errors.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error Simple-Momentum-Sync: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error Aggressive-Reversal: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error Double-Bollinger-Trend: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error Sweet-Chariot-SMA-40: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error CCI-Trend-Breakout: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-14
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+[L] Eval error Trend-Pullback-Entry-M60: Execution of a form compiled with errors.
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+Compile-time error:
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-7
+[0:19]2026年1月10日 土曜日 0:19
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-7-PREV
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::SMA-200
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Conservative-Trend-M58: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Extreme-Reversion-BB: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error BB-Lower-Bounce: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error CCI-Trend-Breakout: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error MA-Ribbon-Scalp: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-14
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Trend-Pullback-Entry-M60: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-7
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-7-PREV
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::SMA-200
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Conservative-Trend-M58: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Golden-Cross: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error Medium-EMA-Cross-20-50: Execution of a form compiled with errors.
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+Compile-time error:
+[0:20]2026年1月10日 土曜日 0:20
+ Swimmy System Alert 
+[L] Eval error TF-10-50: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Triple-EMA-Trend-Follow: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Perfect-Order-SMA: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Trend-Pullback-Entry: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error MACD-Zero-Cross-Long: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error MACD-Signal-Cross: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error MACD-Above-Zero-Cross: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error MACD-Expansion: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error RSI-Bull-Zone: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Extreme-Reversion-BB: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Bollinger-Band-Walk: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+[L] Eval error Puria-Method-Proxy: Execution of a form compiled with errors.
+[0:21]2026年1月10日 土曜日 0:21
+ Swimmy System Alert 
+Compile-time error:
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error Triple-Screen-Proxy: Execution of a form compiled with errors.
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error MACD-Zero-Reject: Execution of a form compiled with errors.
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error Simple-Momentum-Sync: Execution of a form compiled with errors.
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error Aggressive-Reversal: Execution of a form compiled with errors.
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error Double-Bollinger-Trend: Execution of a form compiled with errors.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error Sweet-Chariot-SMA-40: Execution of a form compiled with errors.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+新規
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+[L] Eval error CCI-Trend-Breakout: Execution of a form compiled with errors.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+Compile-time error:
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:22]2026年1月10日 土曜日 0:22
+ Swimmy System Alert 
+;   undefined variable: SWIMMY.SCHOOL::RSI-14

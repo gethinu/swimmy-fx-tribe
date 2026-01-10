@@ -3,31 +3,27 @@
 # Monitors logs for critical errors and alerts Discord
 
 # Config
-LOG_BRAIN="/tmp/brain.log"
-LOG_GUARDIAN="/tmp/guardian.log"
+LOG_BRAIN="/home/swimmy/swimmy/logs/brain.log"
+LOG_GUARDIAN="/home/swimmy/swimmy/logs/guardian.log"
 CONFIG_FILE="src/lisp/core/config.lisp"
 CHECK_INTERVAL=1  # Seconds between checks (tail -f is continuous, this is for loop safety if restart needed)
 
 echo "🛡️ Starting Swimmy Sentinel..."
 
-# 1. Extract Webhook URL from config.lisp
-# Looks for: (defparameter *discord-webhook-url* (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")
-# But since env var might be missing in shell, we try to grab the fallback or hardcoded ones if possible.
-# Actually, the user environment seems to lack the env vars in the shell session.
-# Let's try to extract the hardcoded *status-webhook-url* or similar if the main one fails, 
-# or just rely on the fact that config.lisp had some hardcoded URLs in comments or legacy params.
-# In the file view, *discord-webhook-url* uses uiop:getenv. 
-# However, lines 31-33 have hardcoded URLs for legacy webhooks.
-# Let's try to grab the *status-webhook-url* which seems reliable.
+# Load webhook from JSON config file
+CONFIG_JSON="/home/swimmy/swimmy/config/discord_webhooks.json"
+if [ -f "$CONFIG_JSON" ]; then
+    # Extract alerts webhook URL using jq or python
+    if command -v jq &> /dev/null; then
+        WEBHOOK_URL=$(jq -r '.webhooks.alerts.url' "$CONFIG_JSON")
+    else
+        WEBHOOK_URL=$(python3 -c "import json; print(json.load(open('$CONFIG_JSON'))['webhooks']['alerts']['url'])" 2>/dev/null)
+    fi
+fi
 
-# Extract URL between quotes for *discord-webhook-url* or *status-webhook-url*
-# We'll use a simple grep approach.
-WEBHOOK_URL=$(grep -A 2 "*status-webhook-url*" "$CONFIG_FILE" | grep -oP '"\Khttps://discord[^"]+')
-
+# Fallback to environment variable if JSON loading failed
 if [ -z "$WEBHOOK_URL" ]; then
-    echo "⚠️ Failed to extract Webhook URL from config. Using emergency fallback."
-    # Fallback to the one seen in config.lisp line 33
-    WEBHOOK_URL="https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW"
+    WEBHOOK_URL="${SWIMMY_DISCORD_ALERTS:-$SWIMMY_DISCORD_WEBHOOK}"
 fi
 
 echo "🔗 Webhook Target: ${WEBHOOK_URL:0:40}..."

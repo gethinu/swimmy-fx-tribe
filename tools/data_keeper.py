@@ -36,7 +36,24 @@ from collections import defaultdict, deque
 
 # === REQUIRED CONSTANTS (Article 5) ===
 MAX_CONSECUTIVE_FAILURES = 5
-APEX_WEBHOOK = "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k"
+
+
+# Load webhook from config file
+def load_apex_webhook():
+    """Load apex webhook URL from config/discord_webhooks.json"""
+    config_path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "discord_webhooks.json"
+    )
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        return config.get("webhooks", {}).get("apex", {}).get("url", "")
+    except Exception as e:
+        print(f"[WARN] Could not load discord_webhooks.json: {e}")
+        return ""
+
+
+APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
 ZMQ_PORT = 5561

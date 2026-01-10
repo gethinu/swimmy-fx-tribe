@@ -1,7 +1,7 @@
 ;; research.lisp - Research Paper Insights Implementation
 ;; 
 ;; 論文知見統合モジュール
-;; Based on 29 research papers (2024-2025)
+;; Based on 31 research papers (2024-2026)
 ;;
 ;; Architecture:
 ;; - Phase 1: Dual Trend, Volatility Model Switch, Vol-Scaled Rewards
@@ -10,6 +10,79 @@
 ;; - Phase 4: LLM integration preparation
 
 (in-package :swimmy.core)
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  KALMAN FILTER (ArXiv:1808.03297 - "Trend without hiccups")
+;;; ══════════════════════════════════════════════════════════════════
+;;; Optimal smoothing with minimal lag. Outperforms SMA/EMA for trend detection.
+;;; 
+;;; Key parameters:
+;;; - process-noise (Q): How much the true price changes between observations
+;;; - measurement-noise (R): How noisy the observed prices are
+;;; - Lower Q/R ratio = more smoothing, higher = more responsive
+
+(defun ind-kalman (history &key (process-noise 0.01) (measurement-noise 0.1))
+  "Kalman Filter for price smoothing. Returns filtered price estimate.
+   Based on ArXiv:1808.03297 'Trend without hiccups'"
+  (when (>= (length history) 2)
+    (let* ((closes (reverse (mapcar #'candle-close history)))
+           ;; Initialize state
+           (x (first closes))           ; State estimate (filtered price)
+           (p 1.0)                       ; Estimation error covariance
+           (q process-noise)             ; Process noise
+           (r measurement-noise))        ; Measurement noise
+      ;; Run Kalman filter through all observations
+      (dolist (z (rest closes))
+        ;; Prediction step
+        (let* ((x-pred x)                ; State prediction (random walk model)
+               (p-pred (+ p q)))         ; Covariance prediction
+          ;; Update step
+          (let* ((k (/ p-pred (+ p-pred r)))  ; Kalman gain
+                 (x-new (+ x-pred (* k (- z x-pred))))  ; State update
+                 (p-new (* (- 1 k) p-pred)))            ; Covariance update
+            (setf x x-new)
+            (setf p p-new))))
+      x)))
+
+(defun ind-kalman-velocity (history &key (process-noise 0.01) (measurement-noise 0.1))
+  "Kalman Filter with velocity estimation. Returns (price, velocity).
+   Velocity indicates trend direction and strength."
+  (when (>= (length history) 3)
+    (let* ((closes (reverse (mapcar #'candle-close history)))
+           ;; Initialize state [price, velocity]
+           (x (first closes))
+           (v 0.0)
+           (p-x 1.0)
+           (p-v 1.0)
+           (q process-noise)
+           (r measurement-noise))
+      (dolist (z (rest closes))
+        ;; Prediction step (constant velocity model)
+        (let* ((x-pred (+ x v))
+               (v-pred v)
+               (p-x-pred (+ p-x p-v q))
+               (p-v-pred (+ p-v q)))
+          ;; Update step
+          (let* ((k-x (/ p-x-pred (+ p-x-pred r)))
+                 (innovation (- z x-pred))
+                 (x-new (+ x-pred (* k-x innovation)))
+                 (v-new (+ v-pred (* 0.1 innovation)))  ; Velocity adjustment
+                 (p-x-new (* (- 1 k-x) p-x-pred))
+                 (p-v-new (* 0.95 p-v-pred)))  ; Velocity uncertainty decay
+            (setf x x-new v v-new p-x p-x-new p-v p-v-new))))
+      (values x v))))
+
+(defun ind-kalman-trend (history &key (process-noise 0.01) (measurement-noise 0.1) (threshold 0.0001))
+  "Kalman Filter trend detector. Returns :UP, :DOWN, or :FLAT based on velocity."
+  (multiple-value-bind (price velocity) 
+      (ind-kalman-velocity history :process-noise process-noise :measurement-noise measurement-noise)
+    (declare (ignore price))
+    (cond
+      ((> velocity threshold) :UP)
+      ((< velocity (- threshold)) :DOWN)
+      (t :FLAT))))
+
+(format t "[CORE] Kalman Filter loaded (ArXiv:1808.03297)~%")
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  PAPER #13: DUAL TREND DECOMPOSITION (短期/長期トレンド分解)
@@ -375,6 +448,18 @@
 (format t "[RESEARCH] #9 Zero-Shot Caution loaded~%")
 
 ;;; ══════════════════════════════════════════════════════════════════
+;;;  PAPER #29: CONVEX CO-INTEGRATION (PENDING)
+;;; ══════════════════════════════════════════════════════════════════
+;;; ArXiv:2601.03927 - Index Tracking / Co-integration
+;;; Insight: Statistical mean reversion (Safe Shaman)
+
+;;; ══════════════════════════════════════════════════════════════════
+;;;  PAPER #30: RRE-PPO4Pred (PENDING)
+;;; ══════════════════════════════════════════════════════════════════
+;;; ArXiv:2601.03683 - Reinforcement Learning for RNN Architecture
+;;; Insight: Dreamer V3 candidate (Naval's favorite)
+
+;;; ══════════════════════════════════════════════════════════════════
 ;;;  MASTER INTEGRATION FUNCTION
 ;;; ══════════════════════════════════════════════════════════════════
 
@@ -412,6 +497,6 @@
             :mean-reversion mean-rev))))
 
 (format t "~%[RESEARCH] ════════════════════════════════════════════~%")
-(format t "[RESEARCH] 📚 29 Research Paper Insights Integrated~%")
-(format t "[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28...~%")
+(format t "[RESEARCH] 📚 31 Research Paper Insights Integrated (2 Pending)~%")
+(format t "[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28,#29,#30...~%")
 (format t "[RESEARCH] ════════════════════════════════════════════~%")

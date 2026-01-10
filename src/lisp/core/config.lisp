@@ -12,43 +12,63 @@
   "Active trading symbols for multi-currency support")
 
 ;;; ==========================================
-;;; DISCORD WEBHOOKS
+;;; DISCORD WEBHOOKS (集約設定: config/discord_webhooks.json)
 ;;; ==========================================
 
-(defparameter *discord-webhook-url* (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")
-  "Main Discord webhook for notifications")
+;; JSON設定ファイルのパス
+(defparameter *discord-webhooks-config-path* 
+  (merge-pathnames "config/discord_webhooks.json" 
+                   (asdf:system-source-directory :swimmy)))
 
-(defparameter *discord-emergency-url* (uiop:getenv "SWIMMY_DISCORD_EMERGENCY")
-  "Emergency Discord webhook for High Council alerts")
+;; キャッシュ用ハッシュテーブル
+(defvar *discord-webhooks-cache* (make-hash-table :test 'equal))
 
-;; Aliases for multi-channel support (unify variables)
+(defun load-discord-webhooks ()
+  "config/discord_webhooks.json からWebhook設定を読み込む"
+  (handler-case
+      (let* ((json-string (uiop:read-file-string *discord-webhooks-config-path*))
+             (json-data (jsown:parse json-string))
+             (webhooks (jsown:val json-data "webhooks")))
+        (when webhooks
+          (dolist (key-val (cdr webhooks)) ; jsown returns (:obj ("key" . val) ...)
+            (let* ((key (car key-val))
+                   (val (cdr key-val))
+                   (url (jsown:val val "url")))
+              (when url
+                (setf (gethash key *discord-webhooks-cache*) url)))))
+        (format t "[CONFIG] 📱 Discord Webhooks loaded from JSON (~d entries)~%" 
+                (hash-table-count *discord-webhooks-cache*))
+        *discord-webhooks-cache*)
+    (error (e)
+      (format t "[CONFIG] ⚠️ Failed to load discord_webhooks.json: ~a~%" e)
+      nil)))
+
+(defun get-discord-webhook (key)
+  "Webhook URLを取得 (キー: apex, heartbeat, daily, alerts, backtest, recruit, usdjpy, etc.)"
+  (or (gethash key *discord-webhooks-cache*)
+      ;; フォールバック: 環境変数
+      (uiop:getenv (format nil "SWIMMY_DISCORD_~a" (string-upcase key)))))
+
+;; 初期ロード
+(load-discord-webhooks)
+
+;; 後方互換性のため既存変数も設定
+(defparameter *discord-webhook-url* (get-discord-webhook "usdjpy"))
+(defparameter *discord-emergency-url* (get-discord-webhook "emergency"))
 (defparameter *discord-emergency-webhook* *discord-emergency-url*)
-(defparameter *discord-daily-webhook* (uiop:getenv "SWIMMY_DISCORD_DAILY"))
-(defparameter *discord-weekly-webhook* (uiop:getenv "SWIMMY_DISCORD_WEEKLY"))
-
-;; Legacy/Specific webhooks (hardcoded preservation)
-(defparameter *backtest-webhook-url* 
-  "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy")
-(defparameter *status-webhook-url* 
-  "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
-(defparameter *alerts-webhook-url*
-  "https://discord.com/api/webhooks/1455549266301812849/r5Rv8rQrwgVsppGS0qIDJPNyz2KphVIzwshu6vTPABC-E6OSFrS89tZ9xAGQJEzmRqBH")
-
-;; Apex webhook - System status (Online, Recovery, Critical alerts)
-(defparameter *apex-webhook-url*
-  "https://discord.com/api/webhooks/1458820892623634686/Nv_POY_W0E_iD130bTQM1eDJyTJmU5ZweDOEOpMvEW6ZnEmMCSoconLlxqd5bUuug72k")
+(defparameter *discord-daily-webhook* (get-discord-webhook "daily"))
+(defparameter *discord-weekly-webhook* (get-discord-webhook "weekly"))
+(defparameter *backtest-webhook-url* (get-discord-webhook "backtest"))
+(defparameter *status-webhook-url* (get-discord-webhook "recruit"))
+(defparameter *alerts-webhook-url* (get-discord-webhook "alerts"))
+(defparameter *apex-webhook-url* (get-discord-webhook "apex"))
+(defparameter *heartbeat-webhook-url* (get-discord-webhook "heartbeat"))
 
 ;; Symbol-specific webhooks
-(defparameter *symbol-webhooks* (make-hash-table :test 'equal)
-  "Per-symbol Discord webhooks")
-
-;; Initialize symbol webhooks
-(setf (gethash "USDJPY" *symbol-webhooks*) 
-      (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_USDJPY") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
-(setf (gethash "EURUSD" *symbol-webhooks*) 
-      (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_EURUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
-(setf (gethash "GBPUSD" *symbol-webhooks*) 
-      (or (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD") (uiop:getenv "SWIMMY_DISCORD_WEBHOOK")))
+(defparameter *symbol-webhooks* (make-hash-table :test 'equal))
+(setf (gethash "USDJPY" *symbol-webhooks*) (get-discord-webhook "usdjpy"))
+(setf (gethash "EURUSD" *symbol-webhooks*) (get-discord-webhook "eurusd"))
+(setf (gethash "GBPUSD" *symbol-webhooks*) (get-discord-webhook "gbpusd"))
 
 
 
