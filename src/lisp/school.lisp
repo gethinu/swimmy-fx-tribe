@@ -441,7 +441,7 @@
 
 ~{~a~^~%~}
 
-📍 ~a @ ~,3f
+📍 ~a @ ~,3f (🕐 ~a)
 ~a
 
 🎯 利確: +~d pips | 🛡️ 損切: -~d pips
@@ -452,7 +452,8 @@
             (if clan (clan-name clan) "Unknown")
             name
             (mapcar (lambda (iv) (format nil "• ~a = ~,2f" (first iv) (second iv))) ind-vals)
-            symbol price
+            symbol price 
+            (swimmy.core:get-jst-timestamp)
             (if (eq direction :buy) "🟢 BUY - 上昇を狙う" "🔴 SELL - 下落を狙う")
             (round (* 100 tp)) (round (* 100 sl)))))
 
@@ -606,6 +607,22 @@
         for key = (format nil "~a-~d" category i)
         when (null (gethash key *warrior-allocation*))
         return i))
+
+(defun debug-warrior-status ()
+  "Debug: Show all active warriors"
+  (format t "=== WARRIOR STATUS ===~%")
+  (if (= (hash-table-count *warrior-allocation*) 0)
+      (format t "No active warriors.~%")
+      (maphash (lambda (k v)
+                 (format t "Slot ~a: ~a (~a) Magic:~d~%" 
+                         k (getf v :symbol) (getf v :category) (getf v :magic)))
+               *warrior-allocation*))
+  (format t "Total: ~d/16~%" (hash-table-count *warrior-allocation*)))
+
+(defun debug-reset-warriors ()
+  "EMERGENCY: Clear all warrior allocations"
+  (clrhash *warrior-allocation*)
+  (format t "[DEBUG] 🧹 CLEARED *warrior-allocation* hash table. System reset.~%"))
 
 
 (defun close-opposing-clan-positions (category new-direction symbol price reason)
@@ -832,7 +849,8 @@
                              (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)
                              ;; V8.1: Discord Notification
                              (swimmy.shell:notify-discord-symbol symbol 
-                               (format nil "⚔️ **WARRIOR DEPLOYED**~%Strategy: ~a~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
+                               (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
+                                       (swimmy.core:get-jst-timestamp)
                                        lead-name symbol lot magic)
                                :color 3066993))))
                         ((eq direction :sell)
@@ -848,7 +866,8 @@
                              (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)
                              ;; V8.1: Discord Notification
                              (swimmy.shell:notify-discord-symbol symbol 
-                               (format nil "⚔️ **WARRIOR DEPLOYED**~%Strategy: ~a~%Action: SELL ~a~%Lot: ~,2f~%Magic: ~d" 
+                               (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: SELL ~a~%Lot: ~,2f~%Magic: ~d" 
+                                       (swimmy.core:get-jst-timestamp)
                                        lead-name symbol lot magic)
                                :color 15158332))))))
                     ;; Clan is full (4/4 warriors deployed)

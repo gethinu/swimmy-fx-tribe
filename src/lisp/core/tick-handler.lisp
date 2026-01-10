@@ -297,8 +297,25 @@ Sharpe   : ~,2f
              (direction (if (jsown:keyp json "type") (jsown:val json "type") ""))
              (is-win (> pnl 0)))
         ;; Update PnL tracking
+        ;; Update PnL tracking
         (incf *daily-pnl* pnl)
         (incf *accumulated-pnl* pnl)
+        
+        ;; V9.0 FIX: Cleanup warrior allocation on external close (TP/SL)
+        ;; Iterate and remove matching warriors to free slots
+        (when (boundp 'swimmy.school::*warrior-allocation*)
+          (let ((dir-key (if (search "BUY" (string-upcase direction)) :long :short))
+                (removed-count 0))
+            (maphash (lambda (key warrior)
+                       (when (and (equal (getf warrior :symbol) symbol)
+                                  (eq (getf warrior :direction) dir-key))
+                         ;; Found matching warrior - remove it
+                         (remhash key swimmy.school::*warrior-allocation*)
+                         (incf removed-count)
+                         (format t "[L] 🧹 WARRIOR CLEANUP: Slot ~a freed (External Close: ~a ~a)~%" key symbol direction)))
+                     swimmy.school::*warrior-allocation*)
+            (when (> removed-count 0)
+              (format t "[L] 🧹 Freed ~d warrior slots total~%" removed-count))))
         
         ;; Record result for danger tracking
         (swimmy.school:record-trade-result (if is-win :win :loss))
@@ -472,6 +489,30 @@ Sharpe   : ~,2f
                       (load #P"/home/swimmy/swimmy/src/lisp/core/config.lisp")
                       (format t "[L] ✅ Configuration Reloaded!~%"))
                   (error (e) (format t "[L] ❌ Reload Failed: ~a~%" e))))
+               ((string= action "RESET_WARRIORS")
+                (format t "[L] 🧹 RESET_WARRIORS command received. Clearing warrior allocation...~%")
+                (handler-case
+                    (progn
+                      (when (fboundp 'swimmy.school:debug-reset-warriors)
+                        (funcall 'swimmy.school:debug-reset-warriors))
+                       (format t "[L] ✅ Warriors Reset Complete!~%"))
+                  (error (e) (format t "[L] ❌ Reset Warriors Failed: ~a~%" e))))
+               ((string= action "DEBUG_ENTRY")
+                (format t "[L] 🧪 DEBUG_ENTRY command received. Triggering test entry...~%")
+                (handler-case
+                    (let ((symbol "USDJPY")
+                          (magic 999999)
+                          (lot 0.01))
+                      ;; 1. Send Test Order to MT5
+                      (swimmy.engine:safe-order "BUY" symbol lot 130.00 160.00 magic)
+                      ;; 2. Send Test Notification to Discord
+                      (swimmy.shell:notify-discord-symbol symbol 
+                        (format nil "🧪 **DEBUG TEST ENTRY** (🕐 ~a)~%Strategy: MANUAL_TEST~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
+                                (swimmy.core:get-jst-timestamp)
+                                symbol lot magic)
+                        :color 3066993)
+                      (format t "[L] ✅ DEBUG ENTRY triggered! Check Discord and MT5.~%"))
+                  (error (e) (format t "[L] ❌ DEBUG ENTRY Failed: ~a~%" e))))
                (t (format t "[L] ⚠️ Unknown System Command: ~a~%" action)))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))
