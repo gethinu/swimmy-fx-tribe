@@ -318,7 +318,11 @@
                   ;; V8.4: Characterization Tests (memo3.txt)
                   test-maintenance-throttle-60s
                   test-dream-cycle-self-throttle
-                  test-processing-step-no-maintenance))
+                  test-processing-step-no-maintenance
+                  ;; V8.5: Evolution Tests (Genetic Mutation)
+                  test-rewrite-logic-symbols-sma
+                  test-mutate-strategy-structure
+                  test-mutate-param-sl-tp))
     (format t "Running ~a... " test)
     (if (funcall test)
         (format t "✅ PASSED~%")

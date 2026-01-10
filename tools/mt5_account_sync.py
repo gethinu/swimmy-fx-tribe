@@ -30,26 +30,17 @@ MAX_CONSECUTIVE_FAILURES = 5  # Alert after 5 consecutive failures
 MT5_RECONNECT_INTERVAL = 60  # Retry MT5 connection every 60s
 
 
-# Load webhook from config file
-def load_apex_webhook():
-    """Load apex webhook URL from config/discord_webhooks.json"""
-    import os
+# Load webhook from environment variable
+import os
 
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", "config", "discord_webhooks.json"
-    )
-    try:
-        with open(config_path, "r") as f:
-            import json as _json
+APEX_WEBHOOK = os.getenv("SWIMMY_DISCORD_APEX", "")
 
-            config = _json.load(f)
-        return config.get("webhooks", {}).get("apex", {}).get("url", "")
-    except Exception as e:
-        print(f"[WARN] Could not load discord_webhooks.json: {e}")
-        return ""
+if not APEX_WEBHOOK:
+    # Fallback to general alerts if specific apex webhook is not set
+    APEX_WEBHOOK = os.getenv("SWIMMY_DISCORD_ALERTS", "")
 
-
-APEX_WEBHOOK = load_apex_webhook()
+if not APEX_WEBHOOK:
+    print("[WARN] SWIMMY_DISCORD_APEX not set in environment")
 
 # Try to import dependencies
 try:
@@ -159,11 +150,14 @@ def main():
 
     # Check MT5
     if not HAS_MT5:
-        print("\n❌ Cannot run without MT5 Python API.")
-        print("   Install: pip install MetaTrader5")
-        print("   Note: Only works on Windows with MT5 terminal installed.")
-        send_discord_alert("❌ MT5 Account Sync cannot start: MT5 API not installed")
-        sys.exit(1)
+        print("\n⚠️ MT5 Python API not installed (Linux detected).")
+        print("   Entering STUB MODE to prevent service restart loop.")
+        send_discord_alert(
+            "⚠️ MT5 Account Sync: Entering STUB MODE (No MT5 API)", is_error=False
+        )
+        # Stub loop to keep service alive but idle
+        while True:
+            time.sleep(3600)
 
     # Initialize MT5 with retry
     mt5_connected = False

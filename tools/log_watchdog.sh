@@ -11,19 +11,16 @@ CHECK_INTERVAL=1  # Seconds between checks (tail -f is continuous, this is for l
 echo "🛡️ Starting Swimmy Sentinel..."
 
 # Load webhook from JSON config file
-CONFIG_JSON="/home/swimmy/swimmy/config/discord_webhooks.json"
-if [ -f "$CONFIG_JSON" ]; then
-    # Extract alerts webhook URL using jq or python
-    if command -v jq &> /dev/null; then
-        WEBHOOK_URL=$(jq -r '.webhooks.alerts.url' "$CONFIG_JSON")
-    else
-        WEBHOOK_URL=$(python3 -c "import json; print(json.load(open('$CONFIG_JSON'))['webhooks']['alerts']['url'])" 2>/dev/null)
-    fi
+# Load .env if exists
+if [ -f "/home/swimmy/swimmy/.env" ]; then
+    export $(grep -v '^#' /home/swimmy/swimmy/.env | xargs)
 fi
 
-# Fallback to environment variable if JSON loading failed
+# Webhook URL Selection
+WEBHOOK_URL="${SWIMMY_DISCORD_ALERTS:-${SWIMMY_DISCORD_APEX}}"
+
 if [ -z "$WEBHOOK_URL" ]; then
-    WEBHOOK_URL="${SWIMMY_DISCORD_ALERTS:-$SWIMMY_DISCORD_WEBHOOK}"
+    echo "⚠️  No Webhook URL found (Env: SWIMMY_DISCORD_ALERTS/APEX unused)"
 fi
 
 echo "🔗 Webhook Target: ${WEBHOOK_URL:0:40}..."

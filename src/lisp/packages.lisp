@@ -325,6 +325,7 @@
    #:process-category-trades
    #:check-evolution
    #:evolve-population
+   #:mutate-strategy
    #:batch-backtest-knowledge
    #:adopt-proven-strategies
    #:record-trade-result

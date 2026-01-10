@@ -3,6 +3,11 @@
 
 cd /home/swimmy/swimmy
 
+# Load Environment Variables
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 # Create log directory
 mkdir -p logs
 

@@ -38,19 +38,10 @@ from collections import defaultdict, deque
 MAX_CONSECUTIVE_FAILURES = 5
 
 
-# Load webhook from config file
 def load_apex_webhook():
-    """Load apex webhook URL from config/discord_webhooks.json"""
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", "config", "discord_webhooks.json"
-    )
-    try:
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        return config.get("webhooks", {}).get("apex", {}).get("url", "")
-    except Exception as e:
-        print(f"[WARN] Could not load discord_webhooks.json: {e}")
-        return ""
+    """Load apex webhook URL from Environment Variable."""
+    # 1. Environment Variable
+    return os.getenv("SWIMMY_DISCORD_APEX", "")
 
 
 APEX_WEBHOOK = load_apex_webhook()

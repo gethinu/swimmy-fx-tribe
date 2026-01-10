@@ -607,7 +607,47 @@
         when (null (gethash key *warrior-allocation*))
         return i))
 
+
+(defun close-opposing-clan-positions (category new-direction symbol price reason)
+  "Close positions in the opposite direction for Doten (Stop and Reverse) logic"
+  (let ((opposing-direction (if (eq new-direction :buy) :short :long))
+        (closed-count 0))
+    (maphash 
+     (lambda (key warrior)
+       (when (and warrior 
+                  (eq (getf warrior :category) category)
+                  (eq (getf warrior :direction) opposing-direction)
+                  (equal (getf warrior :symbol) symbol))
+         ;; Close it
+         (let* ((magic (getf warrior :magic))
+                (entry (getf warrior :entry))
+                (lot (or (getf warrior :lot) 0.01))
+                (pnl (if (eq opposing-direction :long)
+                         (- price entry)
+                         (- entry price))))
+           ;; Send CLOSE command
+           (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
+           ;; Free slot
+           (remhash key *warrior-allocation*)
+           (update-symbol-exposure symbol lot :close)
+           ;; Logging & Recording (copied from close-category-positions)
+           (format t "[L] 🔄 DOTEN: Closing ~a ~a for ~a signal (PnL: ~5f)~%" category opposing-direction new-direction pnl)
+           (incf *daily-pnl* (round (* pnl 1000 100)))
+           (record-trade-result (if (> pnl 0) :win :loss))
+           (record-trade-outcome symbol (if (eq opposing-direction :long) :buy :sell) category "Doten" pnl)
+           ;; Record logic for strategy stats
+           (let ((lead-strat (first (gethash category *active-team*))))
+               (when lead-strat
+                 (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl)))
+           ;; Discord Notification
+           (notify-discord-symbol symbol (format nil "🔄 **DOTEN** ~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
+                                  :color (if (> pnl 0) 3066993 15158332))
+           (incf closed-count))))
+     *warrior-allocation*)
+    closed-count))
+
 (defun execute-category-trade (category direction symbol bid ask)
+
   (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
   (format t "[TRACE] Conditions: numberp-bid=~a numberp-ask=~a exposure-ok=~a~%" (numberp bid) (numberp ask) (total-exposure-allowed-p))
   (handler-case
@@ -750,8 +790,12 @@
                  (format t "[L] ⚔️ SUN TZU: Operation Mist - Feint executed (Trade skipped)~%")
                  (return-from execute-category-trade nil))
               
+              ;; V9.1 DOTEN: Check for and close opposing positions ("Stop and Reverse")
+              (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+
               ;; V5.2: Warrior Allocation - Find free slot (0-3) for this clan
               (let ((slot-index (find-free-warrior-slot category)))
+
                 (if slot-index
                      ;; Execute trade with unique Magic Number
                     (let* ((magic (get-warrior-magic category slot-index))
