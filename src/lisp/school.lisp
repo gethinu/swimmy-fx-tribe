@@ -316,21 +316,25 @@
 (defun recruit-from-evolution ()
   "Promote evolved strategies from *evolved-strategies* to master knowledge base"
   (when (and (boundp '*evolved-strategies*) *evolved-strategies*)
-    (let ((count 0))
+    (let ((count 0)
+          (new-names nil))
       (dolist (strat *evolved-strategies*)
         ;; Avoid duplicates in knowledge base
         (unless (find (strategy-name strat) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
           (push strat *strategy-knowledge-base*)
           ;; Add to category pool for selection
-          (let ((cat (infer-strategy-category strat)))
+          (let ((cat (categorize-strategy strat))) ; V8.7: Use correct categorization
             (when (boundp '*category-pools*)
                (push strat (gethash cat *category-pools*))))
           (incf count)
-          (format t "[RECRUIT] 🛡️ Inducted: ~a (Category: ~a)~%" (strategy-name strat) (infer-strategy-category strat))))
+          (push (strategy-name strat) new-names)
+          (format t "[RECRUIT] 🛡️ Inducted: ~a (Category: ~a)~%" (strategy-name strat) (categorize-strategy strat))))
       
       (when (> count 0)
         (format t "[RECRUIT] 🔥 ~d strategies promoted from evolution!~%" count)
-        (notify-discord-recruit (format nil "🔥 Recruited ~d new strategies!" count) :color 3066993)
+        (notify-discord-recruit 
+         (format nil "🔥 Recruited ~d new strategies!~%~{~a~%~}" count (reverse new-names)) 
+         :color 3066993)
         ;; Clear the waiting list so we don't re-add
         (setf *evolved-strategies* nil)))))
 
