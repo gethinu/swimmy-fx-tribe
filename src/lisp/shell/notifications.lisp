@@ -22,10 +22,12 @@
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
 
 (defun setup-symbol-webhooks ()
-  "Setup Discord webhooks for each currency pair."
-  (setf (gethash "USDJPY" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_USDJPY"))
-  (setf (gethash "EURUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_EURUSD"))
-  (setf (gethash "GBPUSD" *symbol-webhooks*) (uiop:getenv "SWIMMY_DISCORD_WEBHOOK_GBPUSD")))
+  "Setup Discord webhooks for each currency pair. (Consolidated 2026-01-10)"
+  ;; All symbols now route to LIVE_FEED
+  (let ((live-feed (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED")))
+    (setf (gethash "USDJPY" *symbol-webhooks*) live-feed)
+    (setf (gethash "EURUSD" *symbol-webhooks*) live-feed)
+    (setf (gethash "GBPUSD" *symbol-webhooks*) live-feed)))
 
 ;;; ==========================================
 ;;; TRADE NOTIFICATIONS (Hooks from Engine)

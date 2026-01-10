@@ -18,10 +18,33 @@
 ;; Note: Access via environment variables is now the standard (2026-01-10)
 
 (defun get-discord-webhook (key)
-  "Webhook URLを取得 (キー: apex, heartbeat, daily, alerts, backtest, recruit, usdjpy, etc.)
-   Reads from SWIMMY_DISCORD_<KEY> environment variable."
-  (let ((env-key (format nil "SWIMMY_DISCORD_~a" (string-upcase key))))
-    (uiop:getenv env-key)))
+  "Webhook URLを取得 (Consolidated 2026-01-10)
+   Maps logical keys to consolidated environmental variables.
+   
+   - LIVE_FEED: usdjpy, eurusd, gbpusd
+   - SYSTEM_LOGS: status, backtest, recruit, fallback
+   - REPORTS: daily, weekly, journal
+   - ALERTS: emergency, apex, alerts"
+  (let ((k (string-downcase (string key))))
+    (cond
+      ;; [MICRO] Live Feed
+      ((member k '("usdjpy" "eurusd" "gbpusd") :test #'equal)
+       (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED"))
+      
+      ;; [MESO] System Logs
+      ((member k '("status" "backtest" "recruit" "fallback") :test #'equal)
+       (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
+      
+      ;; [MACRO] Reports
+      ((member k '("daily" "weekly" "journal") :test #'equal)
+       (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
+      
+      ;; [URGENT] Alerts
+      ((member k '("emergency" "apex" "alerts" "heartbeat") :test #'equal)
+       (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+       
+      ;; Default to Alerts if unknown
+      (t (uiop:getenv "SWIMMY_DISCORD_ALERTS")))))
 
 ;; フォールバックなしでシンプルに取得
 ;; (Legacy variables initialization below remains valid)
