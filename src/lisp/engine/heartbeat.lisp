@@ -20,6 +20,44 @@
 (defparameter *heartbeat-enabled* t
   "Enable/disable heartbeat notifications.")
 
+;;; ==========================================
+;;; SYSTEM SUMMARY (Expert Panel P0 - 20260110)
+;;; ==========================================
+
+(defun get-system-summary ()
+  "Generate system status summary for heartbeat notification.
+   Includes: TICK time, strategy counts, equity."
+  (let* ((now (get-universal-time))
+         ;; Last TICK time (from globals)
+         (last-tick (if (boundp 'swimmy.globals::*last-guardian-heartbeat*)
+                        swimmy.globals::*last-guardian-heartbeat* 0))
+         (tick-age (- now last-tick))
+         (tick-status (cond
+                        ((= last-tick 0) "❓ No data")
+                        ((< tick-age 60) "🟢 LIVE")
+                        ((< tick-age 300) "🟡 Delayed")
+                        (t "🔴 OFFLINE")))
+         ;; Strategy counts
+         (active-count (if (boundp 'swimmy.globals::*evolved-strategies*)
+                           (length swimmy.globals::*evolved-strategies*) 0))
+         (kb-count (if (boundp 'swimmy.globals::*strategy-knowledge-base*)
+                       (length swimmy.globals::*strategy-knowledge-base*) 0))
+         (benched-count (if (and (boundp 'swimmy.school::*benched-strategies*)
+                                 (hash-table-p swimmy.school::*benched-strategies*))
+                            (hash-table-count swimmy.school::*benched-strategies*) 0))
+         ;; Equity
+         (equity (if (boundp 'swimmy.globals::*current-equity*)
+                     swimmy.globals::*current-equity* 0))
+         (daily-pnl (if (boundp 'swimmy.globals::*daily-pnl*)
+                        swimmy.globals::*daily-pnl* 0)))
+    (format nil "📊 **Status**
+MT5: ~a (~d秒前)
+💼 Equity: ¥~,0f | Today: ~a¥~,0f
+📈 Strategies: ~d active + ~d KB | 🪑 ~d benched"
+            tick-status tick-age
+            equity (if (>= daily-pnl 0) "+" "") daily-pnl
+            active-count kb-count benched-count)))
+
 ;; V8.6: Using shared config from core/config.lisp (Environment Variables)
 ;; (defparameter *heartbeat-webhook-url* ... removed to avoid shadowing)
 
