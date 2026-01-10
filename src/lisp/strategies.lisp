@@ -359,25 +359,25 @@
         :entry '(and (cross-above stoch-k stoch-d) (> stoch-k 50))
         :exit '(cross-below stoch-k stoch-d)
         :sl 0.20 :tp 0.30 :volume 0.01
-        :timeframe 5) ; M5 Stoch Cross
+        :category :scalp :timeframe 5) ; M5 Stoch Cross
       (make-strategy :name "Stoch-Pop"
         :indicators '((stoch 14 3 3))
         :entry '(cross-above stoch-k 50)
         :exit '(cross-below stoch-k 50)
         :sl 0.15 :tp 0.25 :volume 0.01
-        :timeframe 5) ; M5 Stoch Pop
+        :category :scalp :timeframe 5) ; M5 Stoch Pop
       (make-strategy :name "RSI-Volatility-Break"
         :indicators '((rsi 14))
         :entry '(cross-above rsi-14 60)
         :exit '(cross-below rsi-14 40)
         :sl 0.25 :tp 0.50 :volume 0.01
-        :timeframe 5) ; M5 Volatility
+        :category :breakout :timeframe 5) ; M5 Volatility
       (make-strategy :name "Pullback-Breakout"
         :indicators '((ema 20) (rsi 14))
         :entry '(and (cross-above close ema-20) (> rsi-14 50))
         :exit '(cross-below close ema-20)
         :sl 0.30 :tp 0.60 :volume 0.01
-        :timeframe 5) ; M5 Pullback
+        :category :breakout :timeframe 5) ; M5 Pullback
       
       ;; ===== 7. ADDITIONAL FROM GEMINI =====
       
