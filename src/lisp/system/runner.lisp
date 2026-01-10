@@ -91,9 +91,8 @@
            
            (format t "[BRAIN] 🚀 System active and running...~%")
            
-           ;; Connectivity Verification (Expert Panel Requirement)
-           (if (fboundp 'notify-discord)
-               (notify-discord "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993))
+           ;; Connectivity Verification - REMOVED: Already sent from main.lisp via notify-apex
+           ;; (notify-discord is deprecated for system notifications)
            
            ;; MAIN LOOP - V41.7: Non-blocking with Timeout
            (loop 
