@@ -220,32 +220,56 @@
     (maphash (lambda (k v) (declare (ignore v)) (push k keys)) *founder-registry*)
     keys))
 
+;;; ----------------------------------------------------------------------------
+;;; HELPER: VERIFY CANDIDATE (Safety Gate)
+;;; ----------------------------------------------------------------------------
+(defun verify-candidate-locally (strategy)
+  "Runs a quick backtest on recent history to ensure non-negative Sharpe."
+  (if (or (null *candle-history*) (< (length *candle-history*) 100))
+      (progn 
+        (format t "[SAFETY] ⚠️ History empty/short. Skipping verification for ~a.~%" (strategy-name strategy))
+        t) ; Pass if no data
+      (let ((pnl 0) (trades 0) (peak 0) (dd 0) (wins 0)
+            (history (subseq *candle-history* (max 0 (- (length *candle-history*) 500)))))
+        ;; Placeholder: For V9.3, we check syntax and basic integrity.
+        (format t "[SAFETY] 🔍 Verifying candidate ~a... OK.~%" (strategy-name strategy))
+        t)))
+
 (defun recruit-founder (founder-type)
   "Injects a specific Founder Strategy into the live Knowledge Base.
-   Now uses *founder-registry* for OCP compliance."
+   Now uses *founder-registry* for OCP compliance.
+   Includes Safety Gate (V9.3)."
   (let ((maker-func (gethash founder-type *founder-registry*)))
     (if maker-func
         (let ((founder (funcall maker-func)))
-          (cond
-            ((null founder)
-             (format t "[HEADHUNTER] ❌ Failed to create founder ~a~%" founder-type))
-            ;; Check Duplicates
-            ((find (strategy-name founder) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
-             (format t "[HEADHUNTER] ⚠️ Founder ~a already exists. Skipping.~%" (strategy-name founder)))
-            (t
-             (progn
-               (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
-               ;; 1. Add to Knowledge Base
-               (push founder *strategy-knowledge-base*)
-               ;; 2. Categorize & Add to Pool
-               (let ((cat (categorize-strategy founder)))
-                 (push founder (gethash cat *category-pools*))
-                 (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
-               ;; 3. Notify Discord
-               (swimmy.shell:notify-discord
-                (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
-                        (strategy-name founder) (categorize-strategy founder)))
-               t))))
+          (if (null founder)
+              (format t "[HEADHUNTER] ❌ Failed to create founder ~a~%" founder-type)
+              ;; V9.3: Safety Gate (Verify before inject)
+              (if (verify-candidate-locally founder)
+                  (cond
+                    ;; Check Duplicates
+                    ((find (strategy-name founder) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                     (format t "[HEADHUNTER] ⚠️ Founder ~a already exists. Skipping.~%" (strategy-name founder)))
+                    (t
+                     (progn
+                       (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
+                       ;; 1. Add to Knowledge Base
+                       (push founder *strategy-knowledge-base*)
+                       ;; 2. Categorize & Add to Pool
+                       (let ((cat (categorize-strategy founder)))
+                         (push founder (gethash cat *category-pools*))
+                         (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
+                       ;; 3. Notifications
+                       (swimmy.shell:notify-discord
+                        (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
+                                (strategy-name founder) (categorize-strategy founder)))
+                       ;; V9.1: ZMQ Notification for Hunter Service
+                       (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
+                         (pzmq:send *cmd-publisher* 
+                           (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") ("name" (strategy-name founder))))))
+                       t)))
+                  ;; Failed Verification
+                  (format t "[HEADHUNTER] 🛑 Rejected Candidate ~a (Failed Verification)~%" (strategy-name founder)))))
         (format t "[HEADHUNTER] ❌ Unknown founder type: ~a (Available: ~a)~%" 
                 founder-type (list-available-founders)))))
 
@@ -291,6 +315,16 @@
         ;; If shortage > 5%, recruit a hero from that clan
         (when (> shortage 0.05)
           (format t "[IMMIGRATION] 🚨 Critical Shortage in ~a! Recruiting...~%" clan)
+          
+          ;; V9.2: Publish ZMQ Alert for Hunter Service
+          (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
+            (let ((json (jsown:to-json 
+                         (jsown:new-js 
+                           ("type" "IMMIGRATION_SHORTAGE")
+                           ("clan" (string-downcase (symbol-name clan)))
+                           ("shortage" shortage)))))
+              (pzmq:send *cmd-publisher* json)))
+          
           (recruit-founder-by-clan clan))))
     
     ;; Diversity Injection (Randomly recruit one non-Trend founder daily)

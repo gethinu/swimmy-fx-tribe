@@ -118,10 +118,11 @@
 
 (defparameter *allowed* '(+ - * / < > <= >= = and or not if 
                           ind-sma ind-ema ind-rsi ind-macd ind-bb ind-stoch ind-atr ind-cci
+                          ind-ichimoku ind-donchian
                           ind-session-high ind-session-low
                           ind-kalman ind-kalman-velocity ind-kalman-trend
                           cross-above cross-below defstrategy sma ema rsi macd bb stoch atr cci kalman close high low open
-                          session-high session-low))
+                          session-high session-low ichimoku donchian))
 
 (defun indicator-ref-p (sym)
   (let ((name (symbol-name sym)))
@@ -237,6 +238,38 @@
      (lambda (history)
        (declare (ignorable history))
        ,@detection-body)))
+
+;;; ----------------------------------------------------------------------------
+;;; ICHIMOKU KINKO HYO (Equilibrium Chart)
+;;; ----------------------------------------------------------------------------
+
+(defun ind-ichimoku (tenkan-n kijun-n senkou-b-n history)
+  "Calculates Ichimoku Kinko Hyo components. Returns (values tenkan kijun senkou-a senkou-b)."
+  (if (> (length history) senkou-b-n)
+      (let* ((get-hl (lambda (n)
+                       (let ((slice (subseq history 0 n)))
+                         (values (loop for c in slice maximize (candle-high c))
+                                 (loop for c in slice minimize (candle-low c))))))
+             (tenkan (multiple-value-bind (h l) (funcall get-hl tenkan-n) (/ (+ h l) 2.0)))
+             (kijun (multiple-value-bind (h l) (funcall get-hl kijun-n) (/ (+ h l) 2.0)))
+             (senkou-a (/ (+ tenkan kijun) 2.0))
+             (senkou-b (multiple-value-bind (h l) (funcall get-hl senkou-b-n) (/ (+ h l) 2.0))))
+        (values tenkan kijun senkou-a senkou-b))
+      (values 0 0 0 0)))
+
+;;; ----------------------------------------------------------------------------
+;;; DONCHIAN CHANNELS (Price Action Structure)
+;;; ----------------------------------------------------------------------------
+
+(defun ind-donchian (n history)
+  "Calculates Donchian Channel High/Low/Mid."
+  (if (> (length history) n)
+      (let* ((slice (subseq history 0 n))
+             (upper (loop for c in slice maximize (candle-high c)))
+             (lower (loop for c in slice minimize (candle-low c)))
+             (middle (/ (+ upper lower) 2.0)))
+        (values upper lower middle))
+      (values 0 0 0)))
 
 ;;; ─────────────────────────────────────────
 ;;; MACRO: with-tribe-context
