@@ -30,6 +30,7 @@ import json
 import time
 import os
 import sys
+import fcntl
 import requests
 from datetime import datetime
 from collections import defaultdict, deque
@@ -280,6 +281,14 @@ def run_server():
 
 def main():
     """Article 5 Compliant Main Loop."""
+    # Singleton Check
+    lock_file = open("/tmp/swimmy_data_keeper.lock", "w")
+    try:
+        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("[DATA-KEEPER] Another instance is already running. Exiting.")
+        sys.exit(0)
+
     send_discord_alert("✅ Data Keeper Service Started", is_error=False)
 
     consecutive_failures = 0
