@@ -14,6 +14,8 @@ import sys
 import random
 import time
 import os
+import cleanup_hunter
+import argparse  # Added for argparsing futureproof
 
 
 # Templates for each clan
@@ -142,6 +144,10 @@ def inject_code(code):
 
 
 def main():
+    # Naval Ravikant's Auto-Funeral: Clean dead strategies first
+    print("[Agent] 🧹 Running Auto-Funeral cleanup...")
+    cleanup_hunter.main()
+
     if len(sys.argv) < 2:
         print("Usage: trigger_hunt.py <clan>")
         sys.exit(1)
