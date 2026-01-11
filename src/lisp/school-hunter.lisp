@@ -8,10 +8,17 @@
 ;;; collective intelligence (PineScript, MQL4, GitHub, Reddit).
 ;;; ============================================================================
 
-(in-package :swimmy.school)
-
 ;;; ----------------------------------------------------------------------------
-;;; HUNTED #1: SCALP HUNT (Source: PineScript / TradingView)
+;;; HELPER: ROBUST HUNTER LOADING (Taleb/Antifragility)
+;;; ----------------------------------------------------------------------------
+;;; TODO(Fowler): Architecture Warning
+;;; This file (`school-hunter.lisp`) is an Append-Only Log.
+;;; It will eventually grow too large.
+;;; TRIGGERS FOR REFACTOR (V10):
+;;; 1. File size > 1MB
+;;; 2. Load time > 500ms
+;;; 3. Syntax errors freq > 1/week
+;;; SOLUTION: Split into `strategies/hunted/*.lisp` or use SQLite/DuckDB.
 ;;; ----------------------------------------------------------------------------
 ;;; Logic:
 ;;; 1. Trend Filter: EMA 20 > EMA 50 (Uptrend) / EMA 20 < EMA 50 (Downtrend)
