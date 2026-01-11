@@ -37,8 +37,13 @@ test:
 	@echo "🦀 Running Rust Tests..."
 	cd guardian && cargo test --release
 
+# System Integrity Check (Quality Gate 2.0)
+integrity:
+	@echo "🛡️ Running System Integrity Checks..."
+	@./tools/check_integrity.sh
+
 # Quality Gate: Must pass before any deployment (memo3.txt Section 5)
-quality-gate: test
+quality-gate: test integrity
 	@echo "✅ Quality Gate PASSED - Ready for deployment"
 
 # Integration Tests (Naval Modularization)

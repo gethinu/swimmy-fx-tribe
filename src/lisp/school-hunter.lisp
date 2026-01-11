@@ -1012,3 +1012,79 @@
    :entry '(and (> close ema) (> rsi 70))
    :exit '(or (> pnl tp) (< rsi 50))
    ))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Auto-Scalp-1768126518
+;;; Logic: MOMENTUM_SCALP_EMA(10)_RSI(7) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :auto-scalp-1768126518 "Auto-Scalp-1768126518"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Auto-Scalp-1768126518"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 10) (rsi 7))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   ))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA10-RSI8-1768126846
+;;; Logic: MOMENTUM_SCALP_EMA(10)_RSI(8) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema10-rsi8-1768126846 "Scalp-MOMENTUM-SCALP-EMA10-RSI8-1768126846"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA10-RSI8-1768126846"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 10) (rsi 6))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA9-RSI7-Gen0-1768130621
+;;; Logic: MOMENTUM_SCALP_EMA(9)_RSI(7) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema9-rsi7-gen0-1768130621 "Scalp-MOMENTUM-SCALP-EMA9-RSI7-Gen0-1768130621"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA9-RSI7-Gen0-1768130621"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 10) (rsi 7))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA9-RSI8-Gen0-2601112027
+;;; Logic: MOMENTUM_SCALP_EMA(9)_RSI(8) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema9-rsi8-gen0-2601112027 "Scalp-MOMENTUM-SCALP-EMA9-RSI8-Gen0-2601112027"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA9-RSI8-Gen0-2601112027"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 8) (rsi 8))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))

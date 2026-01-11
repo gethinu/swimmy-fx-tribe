@@ -43,7 +43,6 @@
                
                ;; LEGACY / DSL
                (:file "src/lisp/dsl")
-               (:file "src/lisp/dreamer2")
                (:file "src/lisp/strategies")
                
                ;; SCHOOL
@@ -53,7 +52,13 @@
                (:file "src/lisp/school-resignation")
                (:file "src/lisp/school-strategy")  ; V8.1: Strategy/Clan System
                (:file "src/lisp/school-voting")    ; V8.1: Voting/Council System
-               (:file "src/lisp/school-evolution") ; V8.0: Genetic Mutation
+               
+               ;; REFACTORED DREAMER MIGRATION (Phase 11)
+               (:file "src/lisp/school-analytics") ; Metrics & Analysis
+               (:file "src/lisp/school-backtest")  ; Backtesting & WFV
+               (:file "src/lisp/school-templates") ; Template Generation
+               (:file "src/lisp/school-evolution") ; Genetic & LLM Generation (Dreamer)
+
                (:file "src/lisp/school-learning")
                (:file "src/lisp/school-volatility")
 

@@ -102,22 +102,34 @@
        :timeframe (strategy-timeframe strategy)
        :generation new-gen))))
 
+;;; ==========================================
+;;; SAFETY LOGIC (Graham / Article 5)
+;;; ==========================================
+
+(defun ensure-safety-cap (sl tp)
+  "Enforce maximum risk parameters (Graham Rule)"
+  (values (min sl 0.10)   ; Max Stop Loss 10% (was uncapped)
+          (min tp 0.50))) ; Max Take Profit 50%
+
 (defun evolve-strategy (strategy)
-  "Attempt to evolve a strategy by mutating one of its parameters. Returns new strategy or nil."
+  "Attempt to evolve a strategy by mutating one of its parameters."
   (let ((indicators (strategy-indicators strategy)))
     (when indicators
       ;; Pick random indicator to mutate
       (let* ((target (nth (random (length indicators)) indicators))
              (type (string-upcase (symbol-name (car target))))
-             (param (second target))) ; Assumes first param is the period (sma 50)
+             (param (second target))) 
         
         (when (numberp param)
           ;; Mutate by +/- 10-20%
-          (let* ((mutation-factor (+ 0.8 (random 0.4))) ; 0.8 to 1.2
+          (let* ((mutation-factor (+ 0.8 (random 0.4))) 
                  (new-val (round (* param mutation-factor))))
             
             ;; Ensure change
             (when (= new-val param) (incf new-val))
+            
+            ;; Safety Cap Check for SL/TP mutation
+            ;; (Not mutating SL/TP here, but if we did, we'd clip them)
             
             (format t "[EVOLUTION] 🧬 Mutating ~a: ~a ~d -> ~d~%" 
                     (strategy-name strategy) type param new-val)
@@ -125,36 +137,102 @@
             (mutate-strategy-param strategy type param new-val)))))))
 
 (defun mutate-strategy (parent &optional (rate 0.2))
-  "Wrapper for school-learning compatibility. Rate is currently unused in favor of internal logic."
+  "Wrapper for school-learning compatibility."
   (declare (ignore rate))
   (evolve-strategy parent))
 
-(defun print-lineage ()
-  "Print the strategy family tree (Genealogy Report)"
-  (let ((families (make-hash-table :test #'equal))
-        (strategies (append *strategy-knowledge-base* 
-                            (when (boundp '*evolved-strategies*) *evolved-strategies*))))
-    ;; Group by root
-    (dolist (strat strategies)
-      (let ((root (get-root-name (strategy-name strat))))
-        (push strat (gethash root families))))
-    
-    (format t "~%~%╔════════════════════════════════════╗~%")
-    (format t "║     🏰 STRATEGY GENEALOGY 🏰       ║~%")
-    (format t "╚════════════════════════════════════╝~%")
-    
-    (maphash (lambda (root members)
-               (let ((sorted (sort (copy-list members) #'< 
-                                 :key (lambda (s) (if (slot-exists-p s 'generation) (strategy-generation s) 0)))))
-                 ;; Show all families, even single members (Founders)
-                 (format t "~%👑 House of ~a (~d members)~%" root (length members))
-                 (dolist (m sorted)
-                   (let ((gen (if (slot-exists-p m 'generation) (strategy-generation m) 0))
-                         (sharpe (or (strategy-sharpe m) 0.0)))
-                     (format t "   ~a Gen ~d: ~a (S: ~,2f)~%" 
-                             (if (= gen 0) "├─" "└─")
-                             gen 
-                             (strategy-name m)
-                             sharpe)))))
-             families)
-    (format t "~%======================================~%")))
+;;; ==========================================
+;;; VERBALIZED SAMPLING & LLM GENERATION
+;;; ==========================================
+
+(defparameter *vs-candidate-count* 5)
+(defparameter *vs-temperature* 1.0)
+
+(defun generate-vs-prompt (strategy-type context)
+  "Generate a Verbalized Sampling prompt with deep context."
+  (let ((analysis (or (getf context :analysis) "No analysis available")))
+    (format nil "You are an expert algorithmic trading strategist.
+
+TASK: Generate ~d distinct trading strategies of type '~a'.
+
+MARKET CONTEXT:
+~a
+
+OUTPUT FORMAT (JSON):
+{
+  \"strategies\": [
+    {
+      \"name\": \"Strategy-Name\",
+      \"probability\": 0.85,
+      \"indicators\": [[\"sma\", 20], [\"rsi\", 14]],
+      \"entry\": \"(cross-above open sma-20)\",
+      \"exit\": \"(cross-below close sma-20)\",
+      \"sl\": 0.05,
+      \"tp\": 0.10,
+      \"reasoning\": \"Explanation...\"
+    }
+  ]
+}
+
+RULES:
+1. Names must be unique (include Gen0 suffix).
+2. SL must NOT exceed 0.10 (10%).
+3. Logic must be valid Lisp s-expressions.
+4. Output ONLY valid JSON.
+
+Generate strategies now:"
+            *vs-candidate-count*
+            strategy-type
+            analysis)))
+
+(defun evolve-via-llm (&optional requested-type)
+  "Driver function: Auto-generate strategies using Verbalized Sampling.
+   If requested-type is provided (e.g. 'scalp'), focuses on that."
+  (format t "~%[L] 🧠 Evolving via LLM (Verbalized Sampling)...~%")
+  
+  ;; 1. Gather Context
+  (let* ((analysis (if (fboundp 'get-structured-self-analysis) 
+                       (get-structured-self-analysis) 
+                       "Initializing..."))
+         (context (list :analysis analysis))
+         ;; Map keyword niche to string description
+         (type-map '((:trend . "Trend Following")
+                     (:reversion . "Mean Reversion") 
+                     (:breakout . "Breakout")
+                     (:scalp . "Volatility Scalp")))
+         (target-type (or (cdr (assoc requested-type type-map))
+                          requested-type
+                          (let ((types '("Trend Following" "Mean Reversion" "Breakout" "Volatility Scalp")))
+                            (nth (random (length types)) types))))
+         (prompt (generate-vs-prompt target-type context)))
+
+    ;; 2. Call LLM
+    (format t "[L] 📤 Prompting Gemini for ~a...~%" target-type)
+    (let ((resp (swimmy.main:call-gemini prompt)))
+      (when resp
+        ;; 3. Parse JSON
+        (let ((start (search "{" resp))
+              (end (search "}" resp :from-end t)))
+          (when (and start end)
+            (let* ((json-str (subseq resp start (1+ end)))
+                   (strategies (parse-vs-response json-str)))
+              
+              (format t "[L] 📥 Received ~d candidates.~%" (length strategies))
+              
+              ;; 4. Process Candidates
+              (dolist (pair strategies)
+                (let ((strat (car pair))
+                      (conf (cdr pair)))
+                  ;; Enforce Safety Caps
+                  (setf (strategy-sl strat) (min (strategy-sl strat) 0.10))
+                  (setf (strategy-tp strat) (min (strategy-tp strat) 0.50))
+                  
+                  (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f)~%" (strategy-name strat) conf)
+                  
+                  ;; 5. Register (Check for Clones logic is in backtest)
+                  (if (and *evolved-strategies* (> (length *evolved-strategies*) 0))
+                       (request-clone-check strat nil)
+                       (progn
+                         (push strat *evolved-strategies*)
+                         (request-backtest strat))))))))))))
+
