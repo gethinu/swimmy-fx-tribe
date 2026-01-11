@@ -2,6 +2,8 @@
 ;;; ============================================================================
 ;;; STRATEGY HUNTER PIPELINE (Automation Receiver)
 ;;; ============================================================================
+(in-package :swimmy.school)
+
 ;;; This file contains strategies "hunted" from the web by the Agent.
 ;;; It serves as the landing zone for the /hunter workflow.
 ;;; Strategies here are structurally diverse and originate from external

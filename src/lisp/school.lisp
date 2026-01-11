@@ -1109,6 +1109,23 @@
         (progn
           (load path)
           (format t "[HUNTER] ✅ Successfully loaded strategies from ~a~%" path)
+          
+          ;; V9.3: Onboard Hunted Strategies to Knowledge Base (Persistence Fix)
+          (when (boundp '*founder-registry*)
+            (let ((count 0))
+              (maphash (lambda (key maker-fn)
+                         (declare (ignore key))
+                         (handler-case
+                             (let ((strat (funcall maker-fn)))
+                               (unless (find (strategy-name strat) *strategy-knowledge-base* 
+                                             :key #'strategy-name :test #'string=)
+                                 (push strat *strategy-knowledge-base*)
+                                 (incf count)))
+                           (error (e) 
+                             (format t "[HUNTER] ⚠️ Failed to instantiate ~a: ~a~%" key e))))
+                       *founder-registry*)
+              (when (> count 0)
+                (format t "[HUNTER] ➕ Onboarded ~d new strategies from Registry to KB~%" count))))
           t)
       (error (e)
         (format t "
