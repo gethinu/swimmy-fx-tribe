@@ -830,10 +830,22 @@
         (when candidates
           ;; Pick the best of the minority
           (let ((parent (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))
-            (format t "[L] 🧬 DIVERSITY INJECTION: Breeding ~a to fill ~a niche~%" (strategy-name parent) weak-niche)
-            (let ((child (mutate-strategy parent 0.3))) ; Higher mutation rate
-               (push child *evolved-strategies*)
-               (incf reproduced))))))
+             (format t "[L] 🧬 DIVERSITY INJECTION: Need ~a strategies~%" weak-niche)
+             
+             ;; Attempt LLM Generation (Verbalized Sampling)
+             (if (and (fboundp 'evolve-via-llm)
+                      (boundp 'swimmy.main::*gemini-api-key*)
+                      swimmy.main::*gemini-api-key*)
+                 (progn
+                   (format t "[L] 🧠 Triggering LLM Evolution (VS) for ~a...~%" weak-niche)
+                   (evolve-via-llm weak-niche)
+                   ;; evolve-via-llm manages strategy creation/pushing internally
+                   (incf reproduced))
+                 
+                 ;; Fallback to simple mutation if LLM unavailable
+                 (let ((child (mutate-strategy parent 0.3))) 
+                   (push child *evolved-strategies*)
+                   (incf reproduced)))))))
     
     ;; Log ecosystem changes
     (when (or (> removed 0) (> reproduced 0))

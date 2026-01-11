@@ -9,7 +9,9 @@ This workflow runs quality gate tests and auto-commits if everything passes.
 
 // turbo-all
 
-1. **Run Quality Gate**
+1. **Run Quality Gate (Tests + Integrity Check)**
+   - Runs Unit Tests (Lisp/Rust)
+   - Runs System Integrity Checks (Lisp/Python/Env/JSON/Systemd)
 ```bash
 cd /home/swimmy/swimmy && make quality-gate
 ```
