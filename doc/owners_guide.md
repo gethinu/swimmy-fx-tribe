@@ -1,6 +1,6 @@
-# 🐟 Swimmy Ver 8.6 オーナーズガイド
+# 🐟 Swimmy Ver 9.2 オーナーズガイド
 
-**最終版:** 2026-01-10 (V8.6 - Systemd & ACCOUNT_INFO Monitoring)
+**最終版:** 2026-01-11 (V9.2 - Strategy Immigration & Hunter Service)
 **リーダー判断:** Elon Musk (Deploy & Iterate)
 
 ---
@@ -9,10 +9,10 @@
 
 ```bash
 # 全サービス起動
-systemctl --user start swimmy-brain swimmy-guardian
+systemctl --user start swimmy-brain swimmy-guardian strategy_hunter
 
 # 全サービス停止
-systemctl --user stop swimmy-brain swimmy-guardian
+systemctl --user stop swimmy-brain swimmy-guardian strategy_hunter
 
 # ステータス確認 (CLI Dashboard)
 make dashboard
@@ -24,15 +24,13 @@ make status
 make logs
 ```
 
-
-
 ---
 
-## 📋 システム構成 (7サービス)
+## 📋 システム構成 (8サービス)
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  BRAIN (Lisp)           Port 5555/5556              │
+│  BRAIN (Lisp)           Port 5555/5556 (PUB)        │
 │  - シグナル生成、学習、Heartbeat                     │
 ├─────────────────────────────────────────────────────┤
 │  GUARDIAN (Rust)        Port 5557/5559/5560         │
@@ -42,6 +40,9 @@ make logs
 │  (Python)        │  (Python)      │  (Python)      │
 │  Port 5561       │  Port 5562     │  Port 5563     │
 ├──────────────────┴──────────────────────────────────┤
+│  HUNTER SERVICE (Python)    Port 5556 (SUB)        │
+│  - 不足検知・自動補充 (Immigration Bureau)           │
+├─────────────────────────────────────────────────────┤
 │  BACKTEST SERVICE (Python)  Port 5564              │
 │  WATCHDOG (Bash)  - ログ監視・Discord通知           │
 └─────────────────────────────────────────────────────┘
@@ -49,16 +50,35 @@ make logs
 
 | サービス | systemd name | 役割 |
 |----------|--------------|------|
-| サービス | systemd name | 役割 |
-|----------|--------------|------|
 | Brain | `swimmy-brain` | シグナル生成、学習 |
 | Guardian | `swimmy-guardian` | MT5通信、注文執行 |
+| Hunter | `strategy_hunter` | **自動狩猟・不足検知 (V9.2)** |
 | Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ |
 | Notifier | `swimmy-notifier` | Discord通知 |
 | Backtest | `swimmy-backtest` | バックテスト |
 | Watchdog | `swimmy-watchdog` | ログ監視 (エラー検知) |
 
 詳細: [doc/port_map.md](file:///home/swimmy/swimmy/doc/port_map.md)
+
+---
+
+## 🏹 Strategy Immigration (戦略移民局) V9.2
+
+システムは多様性を維持するために、自律的に外部から戦略を取り込みます。
+
+### 1. 監視と検知 (Active Census)
+- **Hunter Service** (`strategy_hunter.py`) が `IMMIGRATION_SHORTAGE` イベント（ZMQ Port 5556）を常時監視しています。
+- 特定の Clan (Trend, Scalp, etc) が不足すると、自動的に補填プロセスが回ります。
+
+### 2. 手動トリガー (Agentic Hunt)
+エージェントによる自動生成を手動で試す場合：
+
+```bash
+# クラン名を指定して狩猟 (scalp, trend, reversion, breakout)
+python3 tools/trigger_hunt.py scalp
+```
+
+> **Safety Gate**: 生成された戦略は、登録前に自動的に「簡易バックテスト」を受けます。品質基準（Sharpe > 0 等）を満たさない場合は破棄されます。
 
 ---
 
@@ -80,13 +100,14 @@ MT5 EA が30秒ごとに口座情報を送信します。
 cd /home/swimmy/swimmy && make quality-gate
 
 # 2. サービス状態確認
-systemctl --user status 'swimmy-*'
+systemctl --user status 'swimmy-*' strategy_hunter
 
 # 3. ポート確認
 ss -tlnp | grep -E "555|556"
 
 # 4. 最新ログ確認
 tail -20 /home/swimmy/swimmy/logs/swimmy.log
+tail -20 /home/swimmy/swimmy/logs/strategy_hunter.log
 ```
 
 ---
@@ -97,9 +118,10 @@ tail -20 /home/swimmy/swimmy/logs/swimmy.log
 # ゾンビプロセス発見時のみ使用
 pkill -9 -f "sbcl.*brain.lisp"
 pkill -9 guardian
+pkill -9 -f "strategy_hunter.py"
 
 # その後、正常に再起動
-systemctl --user restart swimmy-brain swimmy-guardian
+systemctl --user restart swimmy-brain swimmy-guardian strategy_hunter
 
 # リスクリミット（ドローダウン等）の即時リセット
 systemctl --user restart swimmy-risk

@@ -227,8 +227,8 @@
   "Runs a quick backtest on recent history to ensure non-negative Sharpe."
   (if (or (null *candle-history*) (< (length *candle-history*) 100))
       (progn 
-        (format t "[SAFETY] ⚠️ History empty/short. Skipping verification for ~a.~%" (strategy-name strategy))
-        t) ; Pass if no data
+        (format t "[SAFETY] 🛑 REJECTED: History empty/short. ~a~%" (strategy-name strategy))
+        nil) ; Strict Fail (Graham)
       (let ((pnl 0) (trades 0) (peak 0) (dd 0) (wins 0)
             (history (subseq *candle-history* (max 0 (- (length *candle-history*) 500)))))
         ;; Placeholder: For V9.3, we check syntax and basic integrity.
@@ -263,15 +263,14 @@
                        (swimmy.shell:notify-discord
                         (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
                                 (strategy-name founder) (categorize-strategy founder)))
-                       ;; V9.1: ZMQ Notification for Hunter Service
-                       (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
-                         (pzmq:send *cmd-publisher* 
-                           (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") ("name" (strategy-name founder))))))
+                       (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
+                          (pzmq:send swimmy.globals::*cmd-publisher* 
+                                     (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
+                                                                  ("name" (strategy-name founder))))))
                        t)))
-                  ;; Failed Verification
-                  (format t "[HEADHUNTER] 🛑 Rejected Candidate ~a (Failed Verification)~%" (strategy-name founder)))))
-        (format t "[HEADHUNTER] ❌ Unknown founder type: ~a (Available: ~a)~%" 
-                founder-type (list-available-founders)))))
+                  ;; Else: Safety Gate Failed (Graham)
+                  (format t "[HEADHUNTER] 🛡️ Safety Gate Blocked: ~a (Verification Failed)~%" (strategy-name founder)))))
+        (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; IMMIGRATION BUREAU (Census & Active Recruitment)

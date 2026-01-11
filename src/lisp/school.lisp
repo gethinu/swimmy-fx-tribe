@@ -1092,16 +1092,39 @@
 
 (defun recruit-special-forces ()
   (force-recruit-strategy "T-Nakane-Gotobi")
-  ;; V8.9: Recruit External Founders (Diversity Injection)
-  (recruit-founder :volvo)
-  (recruit-founder :london)
-  ;; V9.0: Auto-Immigration (Andrew Ng)
-  (immigration-census)
-  ;; V9.1: Hunter Pipeline (Force Inject Latest Hunt)
-  (recruit-founder :hunted-scalp-hunt)
-  (recruit-founder :hunted-ichimoku-cloud))
+  ;; V9.1: Recruit ALL Founders in Registry (Auto-Hunted included)
+  (maphash (lambda (key val)
+             (declare (ignore val))
+             (recruit-founder key))
+           *founder-registry*))
+
+;;; ----------------------------------------------------------------------------
+;;; HELPER: ROBUST HUNTER LOADING (Taleb/Antifragility)
+;;; ----------------------------------------------------------------------------
+(defun safely-load-hunter-strategies ()
+  "Loads the hunter strategy file safely. If it contains syntax errors (from LLM),
+   it catches the error, logs it, and prevents a system crash."
+  (let ((path (merge-pathnames "src/lisp/school-hunter.lisp" (uiop:getcwd))))
+    (handler-case
+        (progn
+          (load path)
+          (format t "[HUNTER] ✅ Successfully loaded strategies from ~a~%" path)
+          t)
+      (error (e)
+        (format t "
+[HUNTER] 🚨 CRITICAL LOAD ERROR 🚨
+---------------------------------------------------
+The Agent (Hunter) produced invalid Lisp code.
+File: ~a
+Error: ~a
+Action: Logic skipped. System integrity preserved.
+---------------------------------------------------~%" path e)
+        nil))))
 
 (defun init-school ()
+  ;; V9.2: Taleb's Antifragility (Safe Load)
+  (safely-load-hunter-strategies)
+
   ;; V8.7: Reclassify ALL strategies (KB + Evolved) to fix category bugs
   (build-category-pools) ; Clears pools and adds *strategy-knowledge-base*
   
@@ -1245,7 +1268,8 @@
     (maphash (lambda (k v) (format t "[L]   ~a: ~d~%" k v)) counts)
     counts))
 
-(init-school)
+;; Initialize School on Load (REMOVED: Moved to main.lisp initialize-system for correct load order)
+;; (init-school)
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  V6.0: Load Fortress Module (Graham's Simplicity)
 ;;;  Features: V5.5 (Global Panic, Unlearning), V5.6 (Parallel Verification)

@@ -15,59 +15,76 @@ import random
 import time
 import os
 
+
 # Templates for each clan
-TEMPLATES = {
-    "scalp": [
-        {
-            "logic": "RSI + Bollinger Squeeze",
-            "code": """
-   :indicators '((rsi 14) (bb 20 2.0))
-   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0)) ; Volatility Squeeze Breakout
+# Templates for each clan (Dynamic Generators)
+def get_templates(clan):
+    if clan == "scalp":
+        p_rsi = random.randint(12, 16)
+        p_bb = random.randint(18, 22)
+        p_bb_dev = round(random.uniform(1.8, 2.2), 1)
+        return [
+            {
+                "logic": f"RSI({p_rsi}) + Bollinger({p_bb}, {p_bb_dev}) Squeeze",
+                "code": f"""
+   :indicators '((rsi {p_rsi}) (bb {p_bb} {p_bb_dev}))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
    :exit '(> pnl tp)""",
-        },
-        {
-            "logic": "MOMENTUM_SCALP",
-            "code": """
-   :indicators '((ema 9) (rsi 7))
+            },
+            {
+                "logic": f"MOMENTUM_SCALP_EMA({random.randint(8,10)})_RSI({random.randint(6,8)})",
+                "code": f"""
+   :indicators '((ema {random.randint(8,10)}) (rsi {random.randint(6,8)}))
    :entry '(and (> close ema) (> rsi 70))
    :exit '(or (> pnl tp) (< rsi 50))""",
-        },
-    ],
-    "trend": [
-        {
-            "logic": "MACD_CROSS",
-            "code": """
-   :indicators '((macd 12 26 9))
+            },
+        ]
+    elif clan == "trend":
+        p_fast = random.randint(10, 14)
+        p_slow = random.randint(24, 28)
+        p_sig = random.randint(8, 10)
+        return [
+            {
+                "logic": f"MACD_CROSS({p_fast},{p_slow},{p_sig})",
+                "code": f"""
+   :indicators '((macd {p_fast} {p_slow} {p_sig}))
    :entry '(> macd-main macd-signal)
    :exit '(< macd-main macd-signal)""",
-        }
-    ],
-    "reversion": [
-        {
-            "logic": "RSI_OVERSOLD",
-            "code": """
-   :indicators '((rsi 14))
+            }
+        ]
+    elif clan == "reversion":
+        p_rsi = random.randint(12, 16)
+        return [
+            {
+                "logic": f"RSI_OVERSOLD({p_rsi})",
+                "code": f"""
+   :indicators '((rsi {p_rsi}))
    :entry '(< rsi 30)
    :exit '(> rsi 50)""",
-        }
-    ],
-    "breakout": [
-        {
-            "logic": "DONCHIAN_BREAK",
-            "code": """
-   :indicators '((donchian 20))
+            }
+        ]
+    elif clan == "breakout":
+        p_don = random.randint(18, 25)
+        return [
+            {
+                "logic": f"DONCHIAN_BREAK({p_don})",
+                "code": f"""
+   :indicators '((donchian {p_don}))
    :entry '(> close donchian-upper)
    :exit '(< close donchian-mid)""",
-        }
-    ],
-}
+            }
+        ]
+    return []
+
 
 TARGET_FILE = "/home/swimmy/swimmy/src/lisp/school-hunter.lisp"
 
 
 def generate_lisp_code(clan, strategy_name):
     # Select template
-    templates = TEMPLATES.get(clan, TEMPLATES["scalp"])  # Default to scalp if unknown
+    templates = get_templates(clan)
+    if not templates:
+        templates = get_templates("scalp")  # Default fallback
     template = random.choice(templates)
 
     lisp_code = f"""
