@@ -466,6 +466,9 @@
    ;; Daily Report
    #:get-daily-risk-limit
    #:get-performance-stats
+   
+   ;; Visualization
+   #:print-lineage
    ))
 
 ;;; ----------------------------------------------------------------------------

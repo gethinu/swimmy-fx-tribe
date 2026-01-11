@@ -27,7 +27,8 @@
     (let ((child (swimmy.school:mutate-strategy parent)))
       (assert-not-nil child "Mutated child should not be nil")
       (assert-true (string/= (swimmy.school:strategy-name child) "ParentStrat") "Child name should differ")
-      (assert-equal "ParentStrat-mut" (subseq (swimmy.school:strategy-name child) 0 15) "Child should inherit name prefix"))))
+      (assert-true (search "ParentStrat" (swimmy.school:strategy-name child)) "Child should preserve Root Name")
+      (assert-true (search "-Gen" (swimmy.school:strategy-name child)) "Child should track Generation"))))
 
 (deftest test-mutate-param-sl-tp
   "Test that SL and TP can be mutated"

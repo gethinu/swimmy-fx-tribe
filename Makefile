@@ -68,3 +68,7 @@ run-benchmarks:
 	@./ci-test.sh
 	@echo "🧪 Running Lisp Benchmarks..."
 	@sbcl --noinform --load brain.lisp --load src/lisp/benchmark.lisp --eval '(swimmy.school:run-all-benchmarks)' --quit
+
+# Strategies Lineage (Genealogy)
+lineage:
+	@sbcl --noinform --load tools/show_lineage.lisp

@@ -24,7 +24,7 @@ make status
 make logs
 ```
 
-> ⚠️ `make run` は開発用です。本番では systemd を使用してください。
+
 
 ---
 
