@@ -128,3 +128,33 @@
   "Wrapper for school-learning compatibility. Rate is currently unused in favor of internal logic."
   (declare (ignore rate))
   (evolve-strategy parent))
+
+(defun print-lineage ()
+  "Print the strategy family tree (Genealogy Report)"
+  (let ((families (make-hash-table :test #'equal))
+        (strategies (append *strategy-knowledge-base* 
+                            (when (boundp '*evolved-strategies*) *evolved-strategies*))))
+    ;; Group by root
+    (dolist (strat strategies)
+      (let ((root (get-root-name (strategy-name strat))))
+        (push strat (gethash root families))))
+    
+    (format t "~%~%╔════════════════════════════════════╗~%")
+    (format t "║     🏰 STRATEGY GENEALOGY 🏰       ║~%")
+    (format t "╚════════════════════════════════════╝~%")
+    
+    (maphash (lambda (root members)
+               (let ((sorted (sort (copy-list members) #'< 
+                                 :key (lambda (s) (if (slot-exists-p s 'generation) (strategy-generation s) 0)))))
+                 ;; Show all families, even single members (Founders)
+                 (format t "~%👑 House of ~a (~d members)~%" root (length members))
+                 (dolist (m sorted)
+                   (let ((gen (if (slot-exists-p m 'generation) (strategy-generation m) 0))
+                         (sharpe (or (strategy-sharpe m) 0.0)))
+                     (format t "   ~a Gen ~d: ~a (S: ~,2f)~%" 
+                             (if (= gen 0) "├─" "└─")
+                             gen 
+                             (strategy-name m)
+                             sharpe)))))
+             families)
+    (format t "~%======================================~%")))
