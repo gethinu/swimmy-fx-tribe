@@ -16,6 +16,9 @@
   wisdom            ; Lessons learned
   vote-weight)      ; How much their vote counts
 
+;;; SYSTEM STATE
+(defvar *system-start-time* (get-universal-time) "Universal time when the system started.")
+
 ;;; STRATEGY STATE
 (defvar *evolved-strategies* nil "List of evolved/generated strategies.")
 (defvar *strategy-knowledge-base* nil "Master knowledge base of all strategies.")
