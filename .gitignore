@@ -36,3 +36,4 @@ guardian/target/
 
 # Guardian has its own git repo
 guardian/
+config/.env.systemd
