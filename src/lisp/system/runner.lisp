@@ -95,27 +95,34 @@
            ;; (notify-discord is deprecated for system notifications)
            
            ;; MAIN LOOP - V41.7: Non-blocking with Timeout
+           ;; V9.7: Gene Kim - Latency Monitoring
            (loop 
-             (handler-case 
-                 (let ((msg (pzmq:recv-string pull)))
-                   (process-msg msg))
-               ;; Ignore timeout errors (EAGAIN) - proceed to heartbeat
-               (error (e) 
-                 ;; Only log if NOT a timeout (how to detect? usually message contains "Resource temporarily unavailable")
-                 ;; For now, suppress log during timeout loops to avoid flood, or check string
-                 (let ((err-str (format nil "~a" e)))
-                   (unless (search "Resource temporarily unavailable" err-str)
-                      (format t "[L] 🚨 Main Loop Error: ~a~%" e)
-                      (sleep 0.1))))) ; Small sleep on real error
+             (let ((loop-start-time (get-internal-real-time)))
+               (handler-case 
+                   (let ((msg (pzmq:recv-string pull)))
+                     (process-msg msg))
+                 ;; Ignore timeout errors (EAGAIN)
+                 (error (e) 
+                   (let ((err-str (format nil "~a" e)))
+                     (unless (search "Resource temporarily unavailable" err-str)
+                        (format t "[L] 🚨 Main Loop Error: ~a~%" e)
+                        (sleep 0.1)))))
                
-             ;; V8.4: Periodic Maintenance (Decoupled from Ticks)
-             (handler-case
-                 (when (fboundp 'run-periodic-maintenance)
-                   (run-periodic-maintenance))
-               (error (e) (format t "[L] Maintenance Error: ~a~%" e)))
+               ;; Periodic Maintenance
+               (handler-case
+                   (when (fboundp 'run-periodic-maintenance)
+                     (run-periodic-maintenance))
+                 (error (e) (format t "[L] Maintenance Error: ~a~%" e)))
                
-             ;; Always check heartbeat
-             (when (fboundp 'swimmy.engine::check-discord-heartbeat)
-               (swimmy.engine::check-discord-heartbeat))))
+               ;; Heartbeat
+               (when (fboundp 'swimmy.engine::check-discord-heartbeat)
+                 (swimmy.engine::check-discord-heartbeat))
+               
+               ;; Latency Check
+               (let* ((loop-end-time (get-internal-real-time))
+                      (duration (- loop-end-time loop-start-time))
+                      (duration-ms (* (/ duration internal-time-units-per-second) 1000.0)))
+                 (when (> duration-ms 500) ; Alert if loop takes > 500ms
+                   (format t "[LATENCY] 🐢 Slow Tick detected: ~,2f ms~%" duration-ms))))))
       
       (pzmq:ctx-term ctx))))
