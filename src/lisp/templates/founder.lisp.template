@@ -1,0 +1,16 @@
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: {{STRATEGY_NAME}}
+;;; Logic: {{LOGIC_DESC}} (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :{{STRATEGY_KEY}} "{{STRATEGY_NAME}}"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "{{STRATEGY_NAME}}"
+   :category :{{CLAN}}
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   {{INDICATORS_AND_ENTRY}}
+   :exit '(or (> pnl tp) (< pnl (- sl)))))

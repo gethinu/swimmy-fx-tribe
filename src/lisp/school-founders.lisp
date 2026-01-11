@@ -269,7 +269,14 @@
                                                                   ("name" (strategy-name founder))))))
                        t)))
                   ;; Else: Safety Gate Failed (Graham)
-                  (format t "[HEADHUNTER] 🛡️ Safety Gate Blocked: ~a (Verification Failed)~%" (strategy-name founder)))))
+                  (progn
+                    (format t "[HEADHUNTER] 🛡️ Safety Gate Blocked: ~a (Verification Failed)~%" (strategy-name founder))
+                    ;; V9.4: López de Prado (Pending Pool) - Notify Pending Manager
+                    (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
+                      (pzmq:send swimmy.globals::*cmd-publisher* 
+                                 (jsown:to-json (jsown:new-js ("type" "SAFETY_GATE_BLOCKED") 
+                                                              ("name" (strategy-name founder))
+                                                              ("reason" "Insufficient History")))))))))
         (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
 ;;; ----------------------------------------------------------------------------

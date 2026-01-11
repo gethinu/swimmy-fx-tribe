@@ -78,33 +78,81 @@ def get_templates(clan):
 
 
 TARGET_FILE = "/home/swimmy/swimmy/src/lisp/school-hunter.lisp"
+TEMPLATE_FILE = "/home/swimmy/swimmy/src/lisp/templates/founder.lisp.template"
 
 
 def generate_lisp_code(clan, strategy_name):
-    # Select template
+    # Select template logic
     templates = get_templates(clan)
     if not templates:
         templates = get_templates("scalp")  # Default fallback
-    template = random.choice(templates)
+    template_data = random.choice(templates)
 
-    lisp_code = f"""
-;;; ----------------------------------------------------------------------------
-;;; AUTO-HUNTED: {strategy_name}
-;;; Logic: {template['logic']} (Generated via trigger_hunt.py)
-;;; ----------------------------------------------------------------------------
-(def-founder :{strategy_name.lower()} "{strategy_name}"
-  "Auto-Generated Strategy by Hunter Agent."
-  (make-strategy
-   :name "{strategy_name}"
-   :category :{clan}
-   :timeframe "H1"
-   :generation 0
-   :sl 0.0050
-   :tp 0.0100
-   :volume 0.01
-   {template['code']}
-   :exit '(or (> pnl tp) (< pnl (- sl)))))
-"""
+    # Load Lisp Template
+    if not os.path.exists(TEMPLATE_FILE):
+        print(f"❌ Template file not found: {TEMPLATE_FILE}")
+        sys.exit(1)
+
+    with open(TEMPLATE_FILE, "r") as f:
+        template_str = f.read()
+
+    # Substitute values
+    # Note: Template has :exit, so we don't need to append it.
+    # But wait, the template file DOES include :exit in its definition.
+    # The `template_data['code']` from `get_templates` ALSO includes :exit logic often?
+    # Let's clean up get_templates to ONLY provide indicators and entry/exit logic,
+    # NOT the full :indicators ... wrapper if the template does it.
+    # Actually, the template expects {{INDICATORS_AND_ENTRY}}.
+    # The `code` in `get_templates` provides indented lines starting with :indicators, :entry, :exit.
+    # This matches {{INDICATORS_AND_ENTRY}}.
+
+    # We need to remove the Hardcoded :exit in the Template File if the dynamic code provides it.
+    # OR we fix `get_templates` to NOT provide :exit, and let the Template File provide it.
+    # For now, let's assume `get_templates` provides the full body content.
+
+    # Clean up the template placeholder
+    lisp_code = template_str.replace("{{STRATEGY_NAME}}", strategy_name)
+    lisp_code = template_str.replace(
+        "{{STRATEGY_NAME}}", strategy_name
+    )  # Replace all occurrences
+    lisp_code = lisp_code.replace("{{STRATEGY_KEY}}", strategy_name.lower())
+    lisp_code = lisp_code.replace("{{STRATEGY_NAME}}", strategy_name)
+    lisp_code = lisp_code.replace("{{CLAN}}", clan)
+    lisp_code = lisp_code.replace("{{LOGIC_DESC}}", template_data["logic"])
+
+    # Handle the body injection
+    # The template file has a default :exit.
+    # The `code` in `get_templates` often has :exit. This causes duplication/syntax error.
+    # We will strip the default :exit from the template file if we see :exit in the injected code.
+
+    body_code = template_data["code"]
+
+    # Simple heuristic: If body has :exit, allow it (and remove default from template if possible? No, simply use string replace)
+    # Actually, let's just REPLACE the placeholder.
+    # But the template file has `:exit ...` AFTER the placeholder.
+    # If body code has `exit`, we end up with two exits.
+
+    # Uncle Bob says: Separation of Concerns.
+    # The Template should define structure. The Logic defines... Logic.
+    # Let's use the Logic's exit if present.
+    # Since I cannot easily modify the template file dynamically, I will just accept the duplication for now?
+    # No, duplication breaks Lisp usually (or ignores one).
+    # Better: The template file SHOULD NOT have default :exit if the logic aims to be flexible.
+    # I will modify the template file to remove the default exit, OR I will rely on logic to ALWAYS provide exit.
+    # Looking at `get_templates`, ALL have :exit.
+    # So I will remove the default :exit from `founder.lisp.template` in the next step or assume I did it.
+    # Wait, I wrote `founder.lisp.template` WITH default exit in previous step.
+    # I will blindly replace `{{INDICATORS_AND_ENTRY}}` and if there are two exits, so be it?
+    # No, I should fix the logic strings in `get_templates` to NOT have :exit?
+    # OR I fix the template file?
+
+    # DECISION: I will strip `:exit ...` from the template file string in Python before substituting if the body has it.
+    if ":exit" in body_code:
+        # Prevent duplicate :exit keys, but PRESERVE the closing parentheses for make-strategy/def-founder
+        lisp_code = lisp_code.replace(":exit '(or (> pnl tp) (< pnl (- sl)))))", "))")
+
+    lisp_code = lisp_code.replace("{{INDICATORS_AND_ENTRY}}", body_code)
+
     return lisp_code
 
 
