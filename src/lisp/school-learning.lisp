@@ -809,9 +809,20 @@
                       *evolved-strategies*))
       (setf removed (length endangered)))
     
-    ;; Allow dominant species to reproduce (mutate)
+    ;; Allow dominant species to reproduce (Sexual & Asexual)
     (let ((dominant (identify-dominant-species)))
       (when (and dominant (< (length *evolved-strategies*) 50))
+        ;; Sexual Reproduction (The Genome Engine)
+        (when (and (>= (length dominant) 2) (> (random 1.0) 0.3)) ; 70% chance of sex if partners exist
+          (let ((dad (find (car (first dominant)) *evolved-strategies* :key #'strategy-name :test #'string=))
+                (mom (find (car (second dominant)) *evolved-strategies* :key #'strategy-name :test #'string=)))
+            (when (and dad mom)
+              (format t "[L] 💕 Sexual Reproduction: ~a + ~a~%" (strategy-name dad) (strategy-name mom))
+              (let ((child (crossover-strategy dad mom))) ; Genome Engine V14.0
+                (push child *evolved-strategies*)
+                (incf reproduced)))))
+
+        ;; Asexual Mutation (Fallback & Maintenance)
         (dolist (d (subseq dominant 0 (min 2 (length dominant))))
           (let ((parent (find (car d) *evolved-strategies* 
                              :key #'strategy-name :test #'string=)))

@@ -474,6 +474,12 @@
    #:recruit-founder
    #:immigration-census
    #:list-available-founders
+    
+    ;; Genome Engine (V14.0)
+    #:crossover-strategy
+    #:extract-genome
+    #:implant-genome
+    #:perform-structural-mutation
    ))
 
 ;;; ----------------------------------------------------------------------------
