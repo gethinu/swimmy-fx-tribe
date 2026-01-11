@@ -44,33 +44,28 @@
 
 (defun crossover-genes (genome-a genome-b)
   "Mix genes from two parents (Uniform Crossover)"
-  (let ((child-genome nil))
-    ;; Indicators: Strict inheritance (All from A or All from B to maintain consistency)
-    ;; Mixing indicators (e.g. RSI from A, BB from B) breaks logic references like 'rsi-14'.
-    ;; So we inherit the Indicator Set + Logic as a BLOCK usually.
-    ;; BUT, to be radical, let's try to mix? No, too dangerous for V1.
-    ;; Logic Block Approach:
-    ;; - Block 1: Indicators + Entry Logic + Timeframe (The "Eye" and "Trigger")
-    ;; - Block 2: Exit Logic + SL + TP + Volume (The "Discipline")
+  (let ((child-genome nil)
+        ;; V14.1 FIX (Taleb's Warning): Merge indicators to prevent Lethal Genes.
+        ;; If Child inherits Exit Logic from B, it MUST have B's indicators.
+        (all-indicators (remove-duplicates (append (getf genome-a :indicators) 
+                                                   (getf genome-b :indicators)) 
+                                           :test #'equal)))
     
     (if (> (random 1.0) 0.5)
         ;; Inherit Block 1 from A, Block 2 from B
         (setf child-genome 
-              (list :indicators (getf genome-a :indicators)
+              (list :indicators all-indicators ; SAFETY FIX
                     :entry (getf genome-a :entry)
                     :timeframe (getf genome-a :timeframe)
                     :category (getf genome-a :category)
-                    :exit (getf genome-b :exit) ; Danger: Exit might ref indicators not in A?
-                    ;; Fix: Exit usually refs PnL or simple indicators. If it refs 'rsi' but A doesn't have it -> Crash.
-                    ;; Safe Crossover V1: Only crossover PARAMETERS (SL/TP/Volume). 
-                    ;; Logic Crossover is Phase 14.5.
+                    :exit (getf genome-b :exit) 
                     :sl (getf genome-b :sl)
                     :tp (getf genome-b :tp)
                     :volume (getf genome-b :volume)))
         
         ;; Inherit Block 1 from B, Block 2 from A
         (setf child-genome 
-              (list :indicators (getf genome-b :indicators)
+              (list :indicators all-indicators ; SAFETY FIX
                     :entry (getf genome-b :entry)
                     :timeframe (getf genome-b :timeframe)
                     :category (getf genome-b :category)
