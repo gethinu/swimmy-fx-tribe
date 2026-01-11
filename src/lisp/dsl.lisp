@@ -92,10 +92,36 @@
         (and (>= ap bp) (< a b))
         (< a b))))
 
+
+(defun get-hour-jst (timestamp)
+  (nth 2 (multiple-value-list (decode-universal-time timestamp -9))))
+
+(defun ind-session-high (start-h end-h history)
+  "Get Highest High of the most recent session window (start-h to end-h JST)"
+  (let ((max-h 0.0)
+        (found nil))
+    (dolist (c history)
+      (let ((h (get-hour-jst (candle-timestamp c))))
+        (if (and (>= h start-h) (< h end-h))
+            (progn (setf found t) (setf max-h (max max-h (candle-high c)))))))
+    (if found max-h (candle-close (first history)))))
+
+(defun ind-session-low (start-h end-h history)
+  "Get Lowest Low of the most recent session window (start-h to end-h JST)"
+  (let ((min-l 1000000.0)
+        (found nil))
+    (dolist (c history)
+      (let ((h (get-hour-jst (candle-timestamp c))))
+        (if (and (>= h start-h) (< h end-h))
+            (progn (setf found t) (setf min-l (min min-l (candle-low c)))))))
+    (if found min-l (candle-close (first history)))))
+
 (defparameter *allowed* '(+ - * / < > <= >= = and or not if 
                           ind-sma ind-ema ind-rsi ind-macd ind-bb ind-stoch ind-atr ind-cci
+                          ind-session-high ind-session-low
                           ind-kalman ind-kalman-velocity ind-kalman-trend
-                          cross-above cross-below defstrategy sma ema rsi macd bb stoch atr cci kalman close high low open))
+                          cross-above cross-below defstrategy sma ema rsi macd bb stoch atr cci kalman close high low open
+                          session-high session-low))
 
 (defun indicator-ref-p (sym)
   (let ((name (symbol-name sym)))
