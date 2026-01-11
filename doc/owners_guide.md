@@ -137,12 +137,13 @@ journalctl --user -u swimmy-brain | grep "🏆 Top strategies" | tail -5
 ### 1. ネーミングルール (Naming Convention)
 戦略名は、その出自と性質を表しています。
 
-`[ParentName]-mut-[Param][Value]`
+`[RootName]-Gen[N]-mut-[Param][Value]`
 
-- **例**: `Wisdom-USDJPY-Trend-3977-mut-RSI23`
-- **ParentName**: 親となった戦略の名前 (例: `Wisdom-USDJPY-Trend-3977`)
+- **例**: `Wisdom-USDJPY-Trend-3977-Gen1-mut-RSI23`
+- **RootName**: 家系図の祖となる戦略名
+- **Gen[N]**: 世代数 (Generation)。`Gen1` は初代変異、`Gen2` はその子供。
 - **mut**: 変異 (Mutation) したことを示す
-- **Param**: 変更されたパラメータ (例: `RSI`=RSI期間, `SMA`=SMA期間)
+- **Param**: 変更されたパラメータ (例: `RSI`, `SMA`)
 - **Value**: 新しい値 (例: `23`)
 
 ### 2. 進化のサイクル (Metabolism)
