@@ -299,11 +299,42 @@
                     (strategy-category strat) (strategy-name strat)))))
     counts))
 
+(defun get-clan-performance ()
+  "Returns an alist of (clan . avg-sharpe) for the current population."
+  (let ((stats (list (cons :trend (list 0 0))      ; (sum-sharpe count)
+                     (cons :reversion (list 0 0))
+                     (cons :breakout (list 0 0))
+                     (cons :scalp (list 0 0)))))
+    (dolist (strat *strategy-knowledge-base*)
+      (let ((pair (assoc (strategy-category strat) stats))
+            (sharpe (or (strategy-sharpe strat) 0.0)))
+        (when pair
+          (incf (first (cdr pair)) sharpe)
+          (incf (second (cdr pair))))))
+    
+    (mapcar (lambda (entry)
+              (let ((sum (first (cdr entry)))
+                    (cnt (second (cdr entry))))
+                (cons (car entry) (if (> cnt 0) (/ sum cnt) 0.0))))
+            stats)))
+
+(defun trigger-autohunt (clan mode)
+  "Calls the automated hunter agent to generate a fresh strategy.
+   Mode: :shortage or :performance"
+  (format t "[IMMIGRATION] 🏹 Triggering Auto-Hunt for ~a (~a)...~%" clan mode)
+  (handler-case
+      (uiop:run-program (list "python3" "tools/trigger_hunt.py" (string-downcase (symbol-name clan)))
+                        :output :interactive
+                        :error-output :interactive)
+    (error (e)
+      (format t "[IMMIGRATION] ❌ Auto-Hunt Failed: ~a~%" e))))
+
 (defun immigration-census ()
-  "Conducts a census and recruits founders if imbalance is detected.
-   Target Ratio: Trend 30%, Reversion 25%, Breakout 20%, Scalp 25%"
-  (format t "~%[IMMIGRATION] 📊 Conducting Census...~%")
+  "Conducts a census (Demographics + Performance) and recruits accordingly.
+   Active Learning (Andrew Ng): Sample where uncertain or winning."
+  (format t "~%[IMMIGRATION] 📊 Conducting Active Learning Census...~%")
   (let* ((counts (get-clan-counts))
+         (perf   (get-clan-performance))
          (total (reduce #'+ counts :key #'cdr))
          (target-ratios '((:trend . 0.30)
                           (:reversion . 0.25)
@@ -314,29 +345,35 @@
     (loop for (clan . count) in counts do
       (let* ((ratio (if (> total 0) (/ count total) 0))
              (target (cdr (assoc clan target-ratios)))
-             (shortage (- target ratio)))
-        (format t " - ~a: ~d (~,1f%) vs Target ~,1f%~%" 
-                clan count (* 100 ratio) (* 100 target))
+             (shortage (- target ratio))
+             (avg-sharpe (cdr (assoc clan perf))))
         
-        ;; If shortage > 5%, recruit a hero from that clan
-        (when (> shortage 0.05)
-          (format t "[IMMIGRATION] 🚨 Critical Shortage in ~a! Recruiting...~%" clan)
+        (format t " - ~a: Count ~d (~,1f%) | Avg Sharpe: ~,2f~%" 
+                clan count (* 100 ratio) avg-sharpe)
+        
+        (cond
+          ;; 1. Critical Shortage (Exploration needed)
+          ((> shortage 0.05)
+           (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" clan)
+           (trigger-autohunt clan :shortage))
           
-          ;; V9.2: Publish ZMQ Alert for Hunter Service
-          (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
-            (let ((json (jsown:to-json 
-                         (jsown:new-js 
-                           ("type" "IMMIGRATION_SHORTAGE")
-                           ("clan" (string-downcase (symbol-name clan)))
-                           ("shortage" shortage)))))
-              (pzmq:send *cmd-publisher* json)))
-          
-          (recruit-founder-by-clan clan))))
-    
-    ;; Diversity Injection (Randomly recruit one non-Trend founder daily)
-    (when (> (random 1.0) 0.5)
-      (let ((minority-clans '(:scalp :breakout :reversion)))
-        (recruit-founder-by-clan (nth (random (length minority-clans)) minority-clans))))))
+          ;; 2. High Performance (Exploitation - Reinforce Success)
+          ((> avg-sharpe 1.0)
+           (when (> (random 1.0) 0.7) ; 30% chance to stack winners
+             (format t "[IMMIGRATION] ⭐ ~a is Winning! Recruiting more...~%" clan)
+             (trigger-autohunt clan :performance)))
+             
+          ;; 3. Poor Performance (Evolution needed - try new variants)
+          ((< avg-sharpe 0.0)
+           (when (> (random 1.0) 0.8) ; 20% chance to try fixing
+             (format t "[IMMIGRATION] 📉 ~a is Struggling. Hunting fresh blood...~%" clan)
+             (trigger-autohunt clan :recovery))))))
+             
+    ;; 4. Random Diversity Injection (Noise)
+    (when (> (random 1.0) 0.9)
+      (format t "[IMMIGRATION] 🎲 Random Diversity Injection...~%")
+      (let ((clans '(:scalp :breakout :trend :reversion)))
+        (trigger-autohunt (nth (random (length clans)) clans) :diversity)))))
 
 (defun recruit-founder-by-clan (target-clan)
   "Finds a founder in the registry that matches the target clan and recruits it."
