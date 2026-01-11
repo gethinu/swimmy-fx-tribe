@@ -332,6 +332,10 @@
 (defun immigration-census ()
   "Conducts a census (Demographics + Performance) and recruits accordingly.
    Active Learning (Andrew Ng): Sample where uncertain or winning."
+  ;; V9.5: Gene Kim Telemetry Hook
+  (when (fboundp 'collect-system-metrics)
+    (collect-system-metrics))
+  
   (format t "~%[IMMIGRATION] 📊 Conducting Active Learning Census...~%")
   (let* ((counts (get-clan-counts))
          (perf   (get-clan-performance))
