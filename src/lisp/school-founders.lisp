@@ -223,14 +223,14 @@
 ;;; ----------------------------------------------------------------------------
 ;;; HELPER: VERIFY CANDIDATE (Safety Gate)
 ;;; ----------------------------------------------------------------------------
-(defun verify-candidate-locally (strategy)
-  "Runs a quick backtest on recent history to ensure non-negative Sharpe."
-  (if (or (null *candle-history*) (< (length *candle-history*) 100))
+(defun verify-candidate-locally (strategy history)
+  "Runs a quick backtest on provided history. Pure function (Hickey)."
+  (if (or (null history) (< (length history) 100))
       (progn 
         (format t "[SAFETY] 🛑 REJECTED: History empty/short. ~a~%" (strategy-name strategy))
         nil) ; Strict Fail (Graham)
       (let ((pnl 0) (trades 0) (peak 0) (dd 0) (wins 0)
-            (history (subseq *candle-history* (max 0 (- (length *candle-history*) 500)))))
+            (sub-history (subseq history (max 0 (- (length history) 500)))))
         ;; Placeholder: For V9.3, we check syntax and basic integrity.
         (format t "[SAFETY] 🔍 Verifying candidate ~a... OK.~%" (strategy-name strategy))
         t)))
@@ -245,7 +245,7 @@
           (if (null founder)
               (format t "[HEADHUNTER] ❌ Failed to create founder ~a~%" founder-type)
               ;; V9.3: Safety Gate (Verify before inject)
-              (if (verify-candidate-locally founder)
+              (if (verify-candidate-locally founder *candle-history*)
                   (cond
                     ;; Check Duplicates
                     ((find (strategy-name founder) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
