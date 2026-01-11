@@ -84,6 +84,10 @@
                 (setf (gethash sym *candle-histories-tf*) (make-hash-table :test 'equal)))
              (setf (gethash tf (gethash sym *candle-histories-tf*)) tf-hist)
              (format t "[SYSTEM] Loaded ~d candles for ~a (~a)~%" (length tf-hist) sym tf))))))
+             
+  ;; V9.2: Init School Strategy System (AFTER History Load for Safety Gate)
+  (swimmy.school::init-school)
+  
   (format t "[SYSTEM] Initialization complete.~%"))
 
 ;;; MAIN ENTRY POINT
