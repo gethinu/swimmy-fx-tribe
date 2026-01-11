@@ -57,6 +57,7 @@
                (:file "src/lisp/school-analytics") ; Metrics & Analysis
                (:file "src/lisp/school-backtest")  ; Backtesting & WFV
                (:file "src/lisp/school-templates") ; Template Generation
+               (:file "src/lisp/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
                (:file "src/lisp/school-evolution") ; Genetic & LLM Generation (Dreamer)
 
                (:file "src/lisp/school-learning")
