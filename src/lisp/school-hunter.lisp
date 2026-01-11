@@ -839,3 +839,60 @@
    :entry '(and (> close ema) (> rsi 70))
    :exit '(or (> pnl tp) (< rsi 50))
    ))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Auto-Reversion-1768117681
+;;; Logic: RSI_OVERSOLD(16) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :auto-reversion-1768117681 "Auto-Reversion-1768117681"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Auto-Reversion-1768117681"
+   :category :reversion
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 16))
+   :entry '(< rsi 30)
+   :exit '(> rsi 50)
+   ))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Auto-Breakout-1768117681
+;;; Logic: DONCHIAN_BREAK(21) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :auto-breakout-1768117681 "Auto-Breakout-1768117681"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Auto-Breakout-1768117681"
+   :category :breakout
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((donchian 21))
+   :entry '(> close donchian-upper)
+   :exit '(< close donchian-mid)
+   ))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Auto-Scalp-1768117681
+;;; Logic: MOMENTUM_SCALP_EMA(8)_RSI(8) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :auto-scalp-1768117681 "Auto-Scalp-1768117681"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Auto-Scalp-1768117681"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 9) (rsi 6))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   ))
