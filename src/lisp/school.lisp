@@ -563,6 +563,10 @@
                                            (pk (ind-stoch (first p) (second p) rest-hist)))
                                       `((,(intern "STOCH-K" pkg) ,k) (,(intern "STOCH-K-PREV" pkg) ,pk) 
                                         (,(intern "STOCH-D" pkg) 50) (,(intern "STOCH-D-PREV" pkg) 50))))
+                              (session-high `((,(intern (format nil "SESSION-HIGH-~d-~d" (first p) (second p)) pkg) 
+                                               ,(ind-session-high (first p) (second p) history))))
+                              (session-low `((,(intern (format nil "SESSION-LOW-~d-~d" (first p) (second p)) pkg) 
+                                              ,(ind-session-low (first p) (second p) history))))
                               (t 
                                (format t "[L] ⚠️ Unknown indicator type in ~a: ~a~%" (strategy-name strat) type)
                                nil))))))
@@ -1078,7 +1082,12 @@
         (format t "[L] ⚠️ Special Force NOT FOUND: ~a~%" name))))
 
 (defun recruit-special-forces ()
-  (force-recruit-strategy "T-Nakane-Gotobi"))
+  (force-recruit-strategy "T-Nakane-Gotobi")
+  ;; V8.9: Recruit External Founders (Diversity Injection)
+  (recruit-founder :volvo)
+  (recruit-founder :london)
+  ;; V9.0: Auto-Immigration (Andrew Ng)
+  (immigration-census))
 
 (defun init-school ()
   ;; V8.7: Reclassify ALL strategies (KB + Evolved) to fix category bugs

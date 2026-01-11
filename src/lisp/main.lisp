@@ -102,5 +102,12 @@
   ;; V41.6: Notify Apex webhook of system online status
   (swimmy.core:notify-apex "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993)
   
+  ;; V8.9: Signal Handling for Graceful Shutdown (Save State on SIGTERM)
+  (sb-sys:enable-interrupt sb-unix:sigterm 
+                           (lambda (signal code scp)
+                             (declare (ignore signal code scp))
+                             (format t "~%[SYSTEM] 🛑 SIGTERM received. Saving state before exit...~%")
+                             (stop-brain)))
+
   ;; Start Runner (Infinite Loop)
   (start-brain))

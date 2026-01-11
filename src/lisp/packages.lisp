@@ -469,6 +469,11 @@
    
    ;; Visualization
    #:print-lineage
+   
+   ;; Headhunting
+   #:recruit-founder
+   #:immigration-census
+   #:list-available-founders
    ))
 
 ;;; ----------------------------------------------------------------------------

@@ -56,6 +56,7 @@
                (:file "src/lisp/school-evolution") ; V8.0: Genetic Mutation
                (:file "src/lisp/school-learning")
                (:file "src/lisp/school-volatility")
+               (:file "src/lisp/school-founders") ; Headhunting Protocol
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school")
                (:file "src/lisp/school-fortress") ; Added
