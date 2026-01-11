@@ -12,6 +12,50 @@
 (in-package :swimmy.school)
 
 ;;; ==========================================
+;;; GENETIC DISTANCE & SIMILARITY
+;;; ==========================================
+
+(defun calculate-genetic-distance (genome-a genome-b)
+  "Calculate genetic distance (0.0 = Clone, 1.0 = Alien) between two genomes."
+  (let ((dist 0.0)
+        (total-weight 0.0))
+    
+    ;; 1. Indicator Set Similarity (Jaccard Distance)
+    (let* ((inds-a (getf genome-a :indicators))
+           (inds-b (getf genome-b :indicators))
+           (union (remove-duplicates (append inds-a inds-b) :test #'equal))
+           (intersection (remove-if-not (lambda (i) (member i inds-b :test #'equal)) inds-a)))
+      (incf total-weight 2.0)
+      (when union
+        (let ((jaccard (/ (length intersection) (length union))))
+          (incf dist (* 2.0 (- 1.0 jaccard))))))
+    
+    ;; 2. Entry Logic Similarity (Tree Depth/Size difference?) -> Hard.
+    ;; Let's simplify: Same Category?
+    (incf total-weight 1.0)
+    (unless (eq (getf genome-a :category) (getf genome-b :category))
+      (incf dist 1.0))
+
+    ;; 3. Parameter Similarity (Euclidean-ish)
+    (let ((sl-a (getf genome-a :sl)) (sl-b (getf genome-b :sl))
+          (tp-a (getf genome-a :tp)) (tp-b (getf genome-b :tp)))
+      (incf total-weight 1.0)
+      (when (and sl-a sl-b)
+        (let ((diff (abs (- sl-a sl-b))))
+          (incf dist (min 1.0 diff))))
+      (incf total-weight 1.0)
+      (when (and tp-a tp-b)
+        (let ((diff (abs (- tp-a tp-b))))
+          (incf dist (min 1.0 diff)))))
+
+    (/ dist total-weight)))
+
+(defun genetic-compatibility-p (genome-a genome-b &key (min-dist 0.2) (max-dist 0.8))
+  "Check if two genomes are compatible for breeding (Sweet Spot)."
+  (let ((dist (calculate-genetic-distance genome-a genome-b)))
+    (and (>= dist min-dist) (<= dist max-dist))))
+
+;;; ==========================================
 ;;; GENOME INTERFACE
 ;;; ==========================================
 
@@ -151,4 +195,36 @@
     (format t "[GENOME] 🧬 Structural Mutation performed on ~a~%" (strategy-name strategy))
     mutant))
 
-(format t "[GENOME] 🧬 The Genome Engine v1.0 Loaded.~%")
+;;; ==========================================
+;;; SELECTION MECHANISMS (INCEST PREVENTION)
+;;; ==========================================
+
+(defun select-parent-tournament (population &key (k 3))
+  "Select a parent using Tournament Selection (K-way).
+   Prevents 'Top 2' dominance and maintains diversity."
+  (let ((candidates (loop repeat k 
+                          collect (nth (random (length population)) population))))
+    ;; Return the one with highest sharpe (or 0 if nil)
+    (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))
+
+(defun select-tribal-pair (population)
+  "Select two parents from DIFFERENT clans/categories.
+   Promotes 'Hybrid Vigor' and innovation."
+  (let* ((categories (remove-duplicates (mapcar #'strategy-category population)))
+         (cat-a (nth (random (length categories)) categories))
+         ;; Force cat-b to be different if possible
+         (cat-b (if (> (length categories) 1)
+                    (loop for c = (nth (random (length categories)) categories)
+                          until (not (eq c cat-a))
+                          return c)
+                    cat-a))
+         ;; Get best of each tribe (or random elite)
+         ;; Actually, let's use Tournament within the Tribe to pick the representative
+         (tribe-a (remove-if-not (lambda (s) (eq (strategy-category s) cat-a)) population))
+         (tribe-b (remove-if-not (lambda (s) (eq (strategy-category s) cat-b)) population))
+         (parent-a (select-parent-tournament tribe-a :k 2))
+         (parent-b (select-parent-tournament tribe-b :k 2)))
+    
+    (cons parent-a parent-b)))
+
+(format t "[GENOME] 🧬 The Genome Engine v14.1 (Incest Prevention) Loaded.~%")

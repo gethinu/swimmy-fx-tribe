@@ -786,82 +786,119 @@
          (sorted (sort counts #'< :key #'cdr)))
     (car (first sorted))))
 
-(defun apply-natural-selection ()
-  "Remove poor performers and allow good ones to reproduce"
+(defun perform-extinction ()
+  "Remove poor performers (Sharpe < -0.5) with a 70% chance."
   (let ((endangered (identify-endangered-species))
-        (removed 0)
-        (reproduced 0))
-    
-    ;; Remove endangered species (poor performers) WITH FUNERAL RITES
+        (removed-count 0))
     (when endangered
       (dolist (name endangered)
         (let ((strat (find name *evolved-strategies* :key #'strategy-name :test #'string=)))
-          (when (and strat (> (random 1.0) 0.3))  ; 70% chance of extinction
+          (when (and strat (> (random 1.0) 0.3)) ; 70% chance of death
             (let ((final-pnl (or (strategy-sharpe strat) 0))
                   (lessons (format nil "Strategy ~a failed in ~a regime" 
                                    name (symbol-name (or *current-regime* :unknown)))))
-              ;; Hold funeral ceremony
               (hold-funeral name final-pnl lessons)))))
+      
       (setf *evolved-strategies* 
             (remove-if (lambda (s) 
                         (and (member (strategy-name s) endangered :test #'string=)
                              (> (random 1.0) 0.3)))
                       *evolved-strategies*))
-      (setf removed (length endangered)))
+      (setf removed-count (length endangered)))
+    removed-count))
+
+(defun perform-reproduction ()
+  "Allow dominant species to reproduce using Tournament Selection and Tribal Crossover."
+  (let* ((population *evolved-strategies*)
+         (current-count (length population))
+         (max-population 50)
+         (slots-available (- max-population current-count))
+         (born-count 0))
     
-    ;; Allow dominant species to reproduce (Sexual & Asexual)
-    (let ((dominant (identify-dominant-species)))
-      (when (and dominant (< (length *evolved-strategies*) 50))
-        ;; Sexual Reproduction (The Genome Engine)
-        (when (and (>= (length dominant) 2) (> (random 1.0) 0.3)) ; 70% chance of sex if partners exist
-          (let ((dad (find (car (first dominant)) *evolved-strategies* :key #'strategy-name :test #'string=))
-                (mom (find (car (second dominant)) *evolved-strategies* :key #'strategy-name :test #'string=)))
-            (when (and dad mom)
-              (format t "[L] 💕 Sexual Reproduction: ~a + ~a~%" (strategy-name dad) (strategy-name mom))
-              (let ((child (crossover-strategy dad mom))) ; Genome Engine V14.0
-                (push child *evolved-strategies*)
-                (incf reproduced)))))
+    (when (> slots-available 0)
+      (dotimes (i (min slots-available 5))
+        (let ((roll (random 1.0))
+              (child nil))
+          
+          (cond
+            ;; 30% Tribal Crossover (Generative / AI-Driven)
+            ((< roll 0.30)
+             ;; Optimized Tribal Selection (Naval's O(1) Fix)
+             (let* ((cats (loop for k being the hash-keys of *category-pools* collect k))
+                    (cat-a (if cats (nth (random (length cats)) cats) :trend))
+                    (cat-b (if (> (length cats) 1)
+                               (loop for c = (nth (random (length cats)) cats)
+                                     until (not (eq c cat-a))
+                                     return c)
+                               cat-a)))
+               ;; Pick best from each tribe
+               (let ((tribe-a (gethash cat-a *category-pools*))
+                     (tribe-b (gethash cat-b *category-pools*)))
+                 (when (and tribe-a tribe-b)
+                   (let ((p1 (select-parent-tournament tribe-a :k 2))
+                         (p2 (select-parent-tournament tribe-b :k 2)))
+                     ;; GENETIC DISTANCE CHECK (Musk's Sweet Spot)
+                     (when (and p1 p2 (genetic-compatibility-p (extract-genome p1) (extract-genome p2)))
+                       (format t "[L] 🧬 Tribal Crossover: ~a + ~a~%" (strategy-name p1) (strategy-name p2))
+                       
+                       ;; V17: Generative Crossover 
+                       (if (and (boundp 'swimmy.main::*gemini-api-key*) 
+                                swimmy.main::*gemini-api-key*)
+                           (setf child (crossover-strategy-generative p1 p2))
+                           (setf child (crossover-strategy p1 p2)))))))))
+            
+            ;; 40% Tournament Crossover (Meritocracy)
+            ((< roll 0.70)
+             (let ((p1 (select-parent-tournament population))
+                   (p2 (select-parent-tournament population)))
+               (when (and p1 p2)
+                 ;; GENETIC DISTANCE CHECK
+                 (when (genetic-compatibility-p (extract-genome p1) (extract-genome p2))
+                   (format t "[L] ⚔️ Tournament Crossover: ~a + ~a~%" (strategy-name p1) (strategy-name p2))
+                   (setf child (crossover-strategy p1 p2))))))
+            
+            ;; 30% Asexual Mutation (Local Optimization)
+            (t
+             (let ((p (select-parent-tournament population)))
+               (when p
+                 (setf child (mutate-strategy p 0.2))))))
+          
+          (when child
+            (push child *evolved-strategies*)
+            (incf born-count)))))
+    born-count))
 
-        ;; Asexual Mutation (Fallback & Maintenance)
-        (dolist (d (subseq dominant 0 (min 2 (length dominant))))
-          (let ((parent (find (car d) *evolved-strategies* 
-                             :key #'strategy-name :test #'string=)))
-            (when parent
-              ;; Mutation with small changes
-              (let ((child (mutate-strategy parent 0.2)))
-                (push child *evolved-strategies*)
-                (incf reproduced)))))))
-
-    ;; V8.8: DIVERSITY INJECTION (Affirmative Action for Minorities)
+(defun perform-immigration ()
+  "Inject diverse strategies if ecosystem is unbalanced."
+  (let ((immigrant-count 0))
     (when (ecosystem-needs-diversity-p)
       (let* ((weak-niche (get-underpopulated-niche))
-             ;; Find potential parents in this niche (even if not dominant)
              (candidates (remove-if-not (lambda (s) (eq (strategy-category s) weak-niche))
                                       *evolved-strategies*)))
         (when candidates
-          ;; Pick the best of the minority
           (let ((parent (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))
              (format t "[L] 🧬 DIVERSITY INJECTION: Need ~a strategies~%" weak-niche)
-             
-             ;; Attempt LLM Generation (Verbalized Sampling)
              (if (and (fboundp 'evolve-via-llm)
                       (boundp 'swimmy.main::*gemini-api-key*)
                       swimmy.main::*gemini-api-key*)
                  (progn
                    (format t "[L] 🧠 Triggering LLM Evolution (VS) for ~a...~%" weak-niche)
                    (evolve-via-llm weak-niche)
-                   ;; evolve-via-llm manages strategy creation/pushing internally
-                   (incf reproduced))
-                 
-                 ;; Fallback to simple mutation if LLM unavailable
+                   (incf immigrant-count))
                  (let ((child (mutate-strategy parent 0.3))) 
                    (push child *evolved-strategies*)
-                   (incf reproduced)))))))
+                   (incf immigrant-count)))))))
+    immigrant-count))
+
+(defun apply-natural-selection ()
+  "Orchestrate Evolution (Extinction -> Reproduction -> Immigration)"
+  (let ((removed (perform-extinction))
+        (born (perform-reproduction))
+        (immigrated (perform-immigration)))
     
-    ;; Log ecosystem changes
-    (when (or (> removed 0) (> reproduced 0))
-      (format t "[L] 🌿 ECOSYSTEM: ~d extinct, ~d born | Health: ~,0f%~%"
-              removed reproduced (* 100 (calculate-ecosystem-health))))))
+    (when (or (> removed 0) (> born 0) (> immigrated 0))
+      (format t "[L] 🌿 ECOSYSTEM: ~d extinction, ~d reproduction, ~d immigration | Health: ~,0f%~%"
+              removed born immigrated (* 100 (calculate-ecosystem-health))))))
 
 (defun maintain-ecosystem-balance ()
   "Periodic ecosystem maintenance"

@@ -480,6 +480,8 @@
     #:extract-genome
     #:implant-genome
     #:perform-structural-mutation
+    #:select-parent-tournament
+    #:select-tribal-pair
    ))
 
 ;;; ----------------------------------------------------------------------------
