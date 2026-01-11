@@ -33,20 +33,21 @@
     (format stream "  \"uptime_seconds\": ~d~%" (- (get-universal-time) swimmy.globals::*system-start-time*))
     (format stream "}~%")))
 
+
 (defun check-memory-health (heap-bytes)
-  "Checks if memory usage is critical and alerts Discord"
+  "Checks if memory usage is critical. Returns alert string or NIL."
   (when (> heap-bytes *memory-warning-threshold*)
     (format t "[TELEMETRY] 🚨 High Memory Usage: ~,2f MB~%" (/ heap-bytes 1024.0 1024.0))
-    (swimmy.shell:notify-discord
-     (format nil "⚠️ **Memory Warning**~%Heap Usage: ~,2f MB~%Threshold: 1024 MB" 
-             (/ heap-bytes 1024.0 1024.0)))))
+    (format nil "⚠️ **Memory Warning**~%Heap Usage: ~,2f MB~%Threshold: 1024 MB" 
+             (/ heap-bytes 1024.0 1024.0))))
 
 (defun collect-system-metrics ()
-  "Collects, logs, and saves system telemetry"
+  "Collects, logs, and saves system telemetry. Returns (values metrics alert-message)."
   (format t "~%[TELEMETRY] 📡 Collecting System Metrics...~%")
   (let* ((heap (get-heap-usage))
          (strat-count (length *strategy-knowledge-base*))
-         (metrics (list :heap heap :strategy-count strat-count)))
+         (metrics (list :heap heap :strategy-count strat-count))
+         (alert (check-memory-health heap)))
     
     ;; 1. Console Log
     (format t "[TELEMETRY] Heap: ~,2f MB | Strategies: ~d~%" 
@@ -55,7 +56,4 @@
     ;; 2. JSON Dump (Observability)
     (save-telemetry-json metrics)
     
-    ;; 3. Health Check (Alerting)
-    (check-memory-health heap)
-    
-    metrics))
+    (values metrics alert)))

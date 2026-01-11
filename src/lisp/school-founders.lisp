@@ -319,22 +319,28 @@
             stats)))
 
 (defun trigger-autohunt (clan mode)
-  "Calls the automated hunter agent to generate a fresh strategy.
+  "Calls the automated hunter agent asynchronously (Naval's Non-blocking).
    Mode: :shortage or :performance"
-  (format t "[IMMIGRATION] 🏹 Triggering Auto-Hunt for ~a (~a)...~%" clan mode)
+  (format t "[IMMIGRATION] 🏹 Triggering Async Auto-Hunt for ~a (~a)...~%" clan mode)
   (handler-case
-      (uiop:run-program (list "python3" "tools/trigger_hunt.py" (string-downcase (symbol-name clan)))
-                        :output :interactive
-                        :error-output :interactive)
+      (let ((process (uiop:launch-program (list "python3" "tools/trigger_hunt.py" (string-downcase (symbol-name clan)))
+                                          :output :interactive
+                                          :error-output :interactive)))
+        (if (uiop:process-alive-p process)
+            (format t "[IMMIGRATION] 🚀 Hunter Process launched (PID TBD)~%")
+            (format t "[IMMIGRATION] ⚠️ Hunter Process finished immediately~%")))
     (error (e)
-      (format t "[IMMIGRATION] ❌ Auto-Hunt Failed: ~a~%" e))))
+      (format t "[IMMIGRATION] ❌ Auto-Hunt Launch Failed: ~a~%" e))))
 
 (defun immigration-census ()
   "Conducts a census (Demographics + Performance) and recruits accordingly.
    Active Learning (Andrew Ng): Sample where uncertain or winning."
-  ;; V9.5: Gene Kim Telemetry Hook
+  ;; V9.5: Gene Kim Telemetry Hook (Decoupled V10)
   (when (fboundp 'collect-system-metrics)
-    (collect-system-metrics))
+    (multiple-value-bind (metrics alert) (collect-system-metrics)
+      (declare (ignore metrics))
+      (when alert
+        (swimmy.shell:notify-discord alert))))
   
   (format t "~%[IMMIGRATION] 📊 Conducting Active Learning Census...~%")
   (let* ((counts (get-clan-counts))
@@ -357,9 +363,13 @@
         
         (cond
           ;; 1. Critical Shortage (Exploration needed)
+          ;; V9.6: Taleb's Risk filter - Don't fill quotas if performance is catastrophic
           ((> shortage 0.05)
-           (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" clan)
-           (trigger-autohunt clan :shortage))
+           (if (> avg-sharpe -0.5)
+               (progn
+                 (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" clan)
+                 (trigger-autohunt clan :shortage))
+               (format t "[IMMIGRATION] 🛡️ Shortage in ~a, but Sharpe ~,2f is too low. Skipping recruit to avoid Ruin.~%" clan avg-sharpe)))
           
           ;; 2. High Performance (Exploitation - Reinforce Success)
           ((> avg-sharpe 1.0)
@@ -368,13 +378,13 @@
              (trigger-autohunt clan :performance)))
              
           ;; 3. Poor Performance (Evolution needed - try new variants)
-          ((< avg-sharpe 0.0)
+          ((< avg-sharpe -0.2) ; Tightened threshold
            (when (> (random 1.0) 0.8) ; 20% chance to try fixing
-             (format t "[IMMIGRATION] 📉 ~a is Struggling. Hunting fresh blood...~%" clan)
+             (format t "[IMMIGRATION] 📉 ~a is Struggling. Hunting fresh blood (Mutation)...~%" clan)
              (trigger-autohunt clan :recovery))))))
              
-    ;; 4. Random Diversity Injection (Noise)
-    (when (> (random 1.0) 0.9)
+    ;; 4. Random Diversity Injection (Noise) - Reduced frequency per Taleb
+    (when (> (random 1.0) 0.95)
       (format t "[IMMIGRATION] 🎲 Random Diversity Injection...~%")
       (let ((clans '(:scalp :breakout :trend :reversion)))
         (trigger-autohunt (nth (random (length clans)) clans) :diversity)))))
