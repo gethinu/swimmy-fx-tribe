@@ -1,32 +1,61 @@
+ Backtest Result
+ Backtest Summary (V7.0/Async)
 
-╔════════════════════════════════════════════════════════════╗
-║               🦅 SWIMMY SYSTEM DASHBOARD                   ║
-╚════════════════════════════════════════════════════════════╝
-Timestamp: 2026-01-10 23:14:24
+TREND (Total: 308 | Pass: 0 | Avg Sharpe: -0.19)
+Top 5:
+Golden-Cross (S: 0.00)
+Conservative-Trend (S: -0.10),
+Trend-Pullback-Entry (S: -0.10),
+Trend-Pullback-Entry-mut-R17 (S: -0.10),
+Perfect-Order-SMA (S: -0.14),
+Worst 5:
+Wisdom-GBPUSD-Trend-3977077390-mut-R16 (S: -0.20),
+Wisdom-GBPUSD-Trend-3977073892-mut-R16 (S: -0.20),
+Wisdom-GBPUSD-Trend-3977072592-mut-R16 (S: -0.20),
+Wisdom-GBPUSD-Trend-3977067126-mut-R16 (S: -0.20),
+Wisdom-GBPUSD-Trend-3977064625-mut-R16 (S: -0.20),
+,
 
-CORE SERVICES:
-  🧠 Brain:      ● Active
-  🛡️  Guardian:   ● Active
-  🔔 Notifier:   ● Active
-  💾 DataKeeper: ● Active
+REVERSION (Total: 222 | Pass: 0 | Avg Sharpe: -0.15)
+Top 5:
+Wisdom-USDJPY-Reversal-3977053590-mut-B23 (S: -0.15)
+Wisdom-USDJPY-Reversal-3977053623-mut-B23 (S: -0.15),
+Wisdom-USDJPY-Reversal-3977053690-mut-R8 (S: -0.15),
+Wisdom-USDJPY-Reversal-3977053724-mut-B21 (S: -0.15),
+Wisdom-USDJPY-Reversal-3977053825-mut-B19 (S: -0.15),
+Worst 5:
+RSI-Bull-Zone (S: -0.20),
+Aggressive-Reversal (S: -0.19),
+RSI-Momentum-Break (S: -0.19),
+RSI-Oversold-Reversal (S: -0.19),
+RSI-Overbought-Reversal (S: -0.19),
+,
 
-MARKET INSIGHTS:
-  🌍 Regime:     Unknown
-  🌊 Volatility: Unknown
+BREAKOUT (Total: 2 | Pass: 0 | Avg Sharpe: -0.19)
+Top 5:
+CCI-Trend-Breakout (S: -0.19)
+Pullback-Breakout (S: -0.19),
+,
 
-RECENT BRAIN LOGS:
-  [L] 🏁 Backtest Batch Complete! (Received 57/57)
-  [L] 🔍 Filtered: 0/57 passed Sharpe > 0.0
-  [L] 🚫 BENCHED: T-Nakane-Gotobi (Critical Failure: S=-0.19 WR=0.%)
-  [L] 🏆 Top strategies: 
-  [SHELL] 📝 Live status saved
+SCALP (Total: 3 | Pass: 0 | Avg Sharpe: -0.19)
+Top 5:
+Trend-Scalp-1M (S: -0.19)
+MA-Ribbon-Scalp (S: -0.19),
+Fibonacci-EMA-Scalp (S: -0.19),
+,
 
-RECENT GUARDIAN LOGS:
-  🚫 CLONE: Wisd×Wisd-mut-S23 is ~100% similar to Wisdom-GBPUSD-Trend-3977043080...
-  🧠 BRAIN ACTION: {"action":"HEARTBEAT"}
-  🧠 BRAIN ACTION: {"action":"HEARTBEAT"}
-  🧠 BRAIN ACTION: {"action":"HEARTBEAT"}
-  🧠 BRAIN ACTION: {"action":"HEARTBEAT"}
-
-Run 'make logs' for realtime feed.
-(.venv) swimmy@SERV870:~/swimmy$ 
+ Async Delivery via Notifier Service.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[8:55]2026年1月11日 日曜日 8:55
+ Apex
+ Recruited 1 new strategies!
+Wisdom-GBPUSD-Trend-3977078091-mut-R15

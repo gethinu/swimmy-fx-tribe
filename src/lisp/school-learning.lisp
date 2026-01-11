@@ -820,6 +820,20 @@
               (let ((child (mutate-strategy parent 0.2)))
                 (push child *evolved-strategies*)
                 (incf reproduced)))))))
+
+    ;; V8.8: DIVERSITY INJECTION (Affirmative Action for Minorities)
+    (when (ecosystem-needs-diversity-p)
+      (let* ((weak-niche (get-underpopulated-niche))
+             ;; Find potential parents in this niche (even if not dominant)
+             (candidates (remove-if-not (lambda (s) (eq (strategy-category s) weak-niche))
+                                      *evolved-strategies*)))
+        (when candidates
+          ;; Pick the best of the minority
+          (let ((parent (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))
+            (format t "[L] 🧬 DIVERSITY INJECTION: Breeding ~a to fill ~a niche~%" (strategy-name parent) weak-niche)
+            (let ((child (mutate-strategy parent 0.3))) ; Higher mutation rate
+               (push child *evolved-strategies*)
+               (incf reproduced))))))
     
     ;; Log ecosystem changes
     (when (or (> removed 0) (> reproduced 0))

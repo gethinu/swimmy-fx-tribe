@@ -51,7 +51,9 @@
 (defun mutate-strategy-param (strategy param-type old-val new-val)
   "Create a new strategy with a specific parameter mutated"
   (let* ((name (strategy-name strategy))
-         (new-name (format nil "~a-mut-~a~d" name (subseq param-type 0 1) new-val))
+         ;; Use 3 chars for clarity (e.g. RSI, SMA, EMA) instead of just B/R/S
+         (clean-type (if (> (length param-type) 3) (subseq param-type 0 3) param-type))
+         (new-name (format nil "~a-mut-~a~d" name clean-type new-val))
          (indicators (copy-tree (strategy-indicators strategy)))
          (entry (copy-tree (strategy-entry strategy)))
          (exit (copy-tree (strategy-exit strategy))))
