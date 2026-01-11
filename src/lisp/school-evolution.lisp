@@ -107,9 +107,10 @@
 ;;; ==========================================
 
 (defun ensure-safety-cap (sl tp)
-  "Enforce maximum risk parameters (Graham Rule)"
-  (values (min sl 0.10)   ; Max Stop Loss 10% (was uncapped)
-          (min tp 0.50))) ; Max Take Profit 50%
+  "Enforce maximum risk parameters (Graham Rule)
+   Updated V42.1: Relaxed caps to support JPY pairs (e.g. SL 50 pips = 0.50)"
+  (values (min sl 5.00)    ; Max SL 5.00 (500 pips JPY / 50000 pips EUR - Backtest handles EUR)
+          (min tp 10.00))) ; Max TP 10.00
 
 (defun evolve-strategy (strategy)
   "Attempt to evolve a strategy by mutating one of its parameters."
@@ -223,9 +224,12 @@ Generate strategies now:"
               (dolist (pair strategies)
                 (let ((strat (car pair))
                       (conf (cdr pair)))
-                  ;; Enforce Safety Caps
-                  (setf (strategy-sl strat) (min (strategy-sl strat) 0.10))
-                  (setf (strategy-tp strat) (min (strategy-tp strat) 0.50))
+                  ;; Enforce Safety Caps (Graham Rule - Relaxed for JPY Scaling)
+                  ;; OLD: SL 0.10 (10 pips on JPY) -> Ponkotsu Guillotine
+                  ;; NEW: SL 5.00 (500 pips on JPY), TP 10.00 (1000 pips on JPY)
+                  ;; Let backtest filter out the crazy ones for EURUSD.
+                  (setf (strategy-sl strat) (min (strategy-sl strat) 5.00))
+                  (setf (strategy-tp strat) (min (strategy-tp strat) 10.00))
                   
                   (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f)~%" (strategy-name strat) conf)
                   
