@@ -11,7 +11,7 @@ setup:
 run:
 	@echo "🔄 Restarting Swimmy System (via systemd)..."
 	@systemctl --user daemon-reload
-	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper
+	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper strategy_hunter
 	@echo "✅ System restarted. Use 'make status' to check health."
 
 stop:
@@ -59,7 +59,9 @@ run-benchmarks:
 	@-fuser -k 5555/tcp 2>/dev/null || true
 	@-fuser -k 5556/tcp 2>/dev/null || true
 	@-fuser -k 5557/tcp 2>/dev/null || true
+	@-fuser -k 5557/tcp 2>/dev/null || true
 	@-fuser -k 5560/tcp 2>/dev/null || true
+	@-pkill -9 -f "strategy_hunter.py" 2>/dev/null || true
 	@truncate -s 0 /tmp/guardian.log
 	@echo "🚀 Starting Guardian (Release)..."
 	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &
