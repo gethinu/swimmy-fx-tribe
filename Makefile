@@ -62,6 +62,7 @@ run-benchmarks:
 	@-fuser -k 5557/tcp 2>/dev/null || true
 	@-fuser -k 5560/tcp 2>/dev/null || true
 	@-pkill -9 -f "strategy_hunter.py" 2>/dev/null || true
+	@-pkill -9 -f "pending_manager.py" 2>/dev/null || true
 	@truncate -s 0 /tmp/guardian.log
 	@echo "🚀 Starting Guardian (Release)..."
 	@nohup ./guardian/target/release/guardian > /tmp/guardian.log 2>&1 &

@@ -819,3 +819,23 @@
    :entry '(> close donchian-upper)
    :exit '(< close donchian-mid)
    :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Auto-Scalp-1768100857
+;;; Logic: MOMENTUM_SCALP_EMA(10)_RSI(7) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :auto-scalp-1768100857 "Auto-Scalp-1768100857"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Auto-Scalp-1768100857"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 9) (rsi 7))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   ))
