@@ -48,12 +48,28 @@
 ;;; MUTATION LOGIC
 ;;; ==========================================
 
+;; Helper to extract root name
+(defun get-root-name (name)
+  "Extract root name, removing generation and mutation suffixes.
+   Ex: 'Strat-Gen1-mut-RSI' -> 'Strat'"
+  (let ((gen-pos (search "-Gen" name))
+        (mut-pos (search "-mut" name)))
+    (subseq name 0 (or gen-pos mut-pos (length name)))))
+
 (defun mutate-strategy-param (strategy param-type old-val new-val)
   "Create a new strategy with a specific parameter mutated"
-  (let* ((name (strategy-name strategy))
+  (let* ((old-name (strategy-name strategy))
+         (root (get-root-name old-name))
+         ;; Handle generation tracking (Default to 0 if slot missing in old structs)
+         (gen (if (slot-exists-p strategy 'generation) (strategy-generation strategy) 0))
+         (new-gen (1+ gen))
+         
          ;; Use 3 chars for clarity (e.g. RSI, SMA, EMA) instead of just B/R/S
          (clean-type (if (> (length param-type) 3) (subseq param-type 0 3) param-type))
-         (new-name (format nil "~a-mut-~a~d" name clean-type new-val))
+         
+         ;; New format: Root-GenN-mut-ParamVal
+         (new-name (format nil "~a-Gen~d-mut-~a~d" root new-gen clean-type new-val))
+         
          (indicators (copy-tree (strategy-indicators strategy)))
          (entry (copy-tree (strategy-entry strategy)))
          (exit (copy-tree (strategy-exit strategy))))
@@ -83,7 +99,8 @@
        :volume (strategy-volume strategy)
        :category (strategy-category strategy)
        :indicator-type (strategy-indicator-type strategy)
-       :timeframe (strategy-timeframe strategy)))))
+       :timeframe (strategy-timeframe strategy)
+       :generation new-gen))))
 
 (defun evolve-strategy (strategy)
   "Attempt to evolve a strategy by mutating one of its parameters. Returns new strategy or nil."
