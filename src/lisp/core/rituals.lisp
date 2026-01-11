@@ -128,4 +128,14 @@
   (format t "[L] 📊 Final record: ¥~,2f~%" final-pnl)
   (format t "[L] 📖 Lessons learned: ~a~%" lessons-learned)
   (format t "[L] 🙏 May the wisdom live on in the tribe.~%")
-  (format t "[L] ═══════════════════════════════════════~%~%"))
+  (format t "[L] ═══════════════════════════════════════~%~%")
+  
+  ;; V42.0: Naval Ravikant's Auto-Funeral (File Cleanup request)
+  (handler-case
+      (with-open-file (out "data/graveyard.txt" 
+                           :direction :output 
+                           :if-exists :append 
+                           :if-does-not-exist :create)
+        (write-line strategy-name out))
+    (error (e)
+      (format t "[L] ⚠️ Failed to issue death certificate: ~a~%" e))))
