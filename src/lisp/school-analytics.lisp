@@ -136,6 +136,37 @@
         (format nil "~{- ~a~^~%~}" insights)
         "No strong patterns detected yet. Continue gathering data.")))
 
+(defun get-failure-summary-for-llm ()
+  "Generate Negative Constraints based on recent failures (Andrew Ng's Feedback Loop)"
+  (let ((constraints nil))
+    ;; 1. Analyze Graveyard Volume
+    (let ((graveyard-count 0))
+      (handler-case
+          (with-open-file (in "data/graveyard.txt" :direction :input :if-does-not-exist nil)
+            (when in
+              (loop for line = (read-line in nil)
+                    while line do (incf graveyard-count))))
+        (error (e) (declare (ignore e))))
+      (when (> graveyard-count 0)
+        (push (format nil "RECENT DEATHS: ~d strategies have died recently. Avoid repeating their logic." graveyard-count) constraints)))
+
+    ;; 2. Analyze Failure Log by Category
+    (let ((cat-stats (analyze-by-category)))
+       (maphash (lambda (cat val)
+                  (let* ((wins (first val)) 
+                         (losses (second val))
+                         (total (+ wins losses))
+                         (win-rate (if (> total 0) (/ wins total) 0)))
+                    (when (and (> total 3) (< win-rate 0.30))
+                      (push (format nil "CRITICAL WEAKNESS: ~a strategies are failing (Win Rate ~,0f%). DO NOT GENERATE MORE ~a." 
+                                    cat (* 100 win-rate) cat) constraints))))
+                cat-stats))
+    
+    (if constraints
+        (format nil "~%NEGATIVE CONSTRAINTS (LEARN FROM FAILURES):~%~{- ~a~^~%~}" constraints)
+        "")))
+
+
 (defun get-top-strategies (n)
   "Get top N performing strategies by Sharpe ratio"
   (when *evolved-strategies*
@@ -149,7 +180,8 @@
          (session-stats (analyze-by-session))
          (regime-stats (analyze-by-regime))
          (top-strats (get-top-strategies 3))
-         (insights (generate-actionable-insights)))
+         (insights (generate-actionable-insights))
+         (failures (get-failure-summary-for-llm))) ; Andrew Ng's Feedback Loop
     (format nil "
 === SELF-ANALYSIS REPORT ===
 
@@ -168,6 +200,8 @@ TOP STRATEGIES:
 ACTIONABLE INSIGHTS:
 ~a
 
+~a
+
 CURRENT MARKET: Regime=~a, Volatility=~a
 "
             (format-stats-summary category-stats)
@@ -179,5 +213,6 @@ CURRENT MARKET: Regime=~a, Volatility=~a
                       collect (or (strategy-sharpe s) 0))
                 (list "None" 0))
             insights
+            failures ; Inject Negative Constraints
             *current-regime*
             *volatility-regime*)))
