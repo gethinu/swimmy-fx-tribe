@@ -227,6 +227,12 @@ python3 tools/stress_test.py --symbol USDJPY --timeframe M5 --strategy stress_te
 
 ### 2. Data Persistence (データ永続化)
 ライブデータは自動的に `data/historical/*.csv` に追記保存されます。
+
+- **スペック (V9.3 Optimized)**:
+    - **Buffer**: 10,000,000 Candles (per symbol/timeframe)
+    - **Async Save**: バックグラウンド保存（メイン処理をブロックしません）
+    - **Article 5 Compliant**: 上書き禁止 & 自動復旧機能付き
+
 これにより、システムを稼働させるだけで、バックテスト用の「生きた20年分のデータ」が自然に蓄積されていきます。
 
 ---

@@ -1,39 +1,14 @@
-#!/usr/bin/env python3
-"""
-data_keeper.py - Persistent Historical Data Service (Article 5 Compliant)
-========================================================================
-Expert Panel Approved (V2: 2026-01-09)
-
-Purpose:
-    Hold historical candle data persistently, allowing Swimmy to restart
-    without losing data. Provides ZMQ REP socket for queries.
-
-Architecture:
-    [Broker/MT5] --> [data_keeper.py] --> [ZMQ] --> [Swimmy (Lisp)]
-                          |
-                    (Redis or Memory)
-
-Usage:
-    python3 tools/data_keeper.py
-
-Commands (via ZMQ):
-    GET_HISTORY:USDJPY:1000  -> Returns last 1000 M1 candles for USDJPY
-    ADD_CANDLE:USDJPY:JSON   -> Adds a new candle to USDJPY history
-    STATUS                   -> Returns service status
-    SAVE_ALL                 -> Save data to CSV immediately
-
-Author: Swimmy Team (Article 5 Compliant)
-"""
-
-import zmq
-import json
-import time
+import threading
 import os
 import sys
+import time
+import json
+import zmq
 import fcntl
 import requests
 from datetime import datetime
 from collections import defaultdict, deque
+
 
 # === REQUIRED CONSTANTS (Article 5) ===
 MAX_CONSECUTIVE_FAILURES = 5
@@ -49,8 +24,8 @@ APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
 ZMQ_PORT = 5561
-# Deep Validation Support: Increased buffer to 1M candles (approx 10 years of M5)
-MAX_CANDLES_PER_SYMBOL = 1_000_000
+# Deep Validation Support: Increased buffer to 10M candles (approx 20 years of M1)
+MAX_CANDLES_PER_SYMBOL = 10_000_000
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
 
@@ -58,6 +33,9 @@ TIMEOUT_SEC = 5
 candle_histories = defaultdict(
     lambda: defaultdict(lambda: deque(maxlen=MAX_CANDLES_PER_SYMBOL))
 )
+
+# Lock for thread safety during save
+save_lock = threading.Lock()
 
 
 def send_discord_alert(message: str, is_error: bool = True):
@@ -131,7 +109,13 @@ def load_historical_data():
                 print(f"[DATA-KEEPER] No M1 historical data for {symbol}")
 
 
-def save_historical_data():
+def save_historical_data_worker():
+    """Worker function for async saving."""
+    with save_lock:
+        save_historical_data_sync()
+
+
+def save_historical_data_sync():
     """Save in-memory data back to CSV files (Append-Only Safe Mode)."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
     os.makedirs(data_dir, exist_ok=True)
@@ -150,19 +134,12 @@ def save_historical_data():
                 last_file_ts = 0
                 if os.path.exists(filepath):
                     with open(filepath, "r") as f:
-                        # Efficiently read last line?
-                        # For now, just seek to end and backtrack is hard in text text.
-                        # Simple robust way: read all? No, too slow.
-                        # Just trust memory? No, memory is partial.
-                        # We only want to append candles NEWER than file's last modified?
-                        # Or safer: just read the last few lines using seek?
                         try:
                             f.seek(0, os.SEEK_END)
                             pos = f.tell()
-                            if pos > 100:
-                                f.seek(pos - 100)  # Go back 100 bytes
-                            else:
-                                f.seek(0)
+                            # Safe seek: Ensure we don't go before start
+                            seek_back = min(pos, 100)
+                            f.seek(pos - seek_back)
                             lines = f.readlines()
                             if lines:
                                 last_line = lines[-1].strip()
@@ -176,7 +153,12 @@ def save_historical_data():
                             pass  # If fail, assume 0 (or risk dupes)
 
                 # 2. Filter candles to append
-                new_candles = [c for c in candles if c["timestamp"] > last_file_ts]
+                # Make a shallow copy for thread safety during iteration if needed,
+                # though we are just reading.
+                candles_snapshot = list(candles)
+                new_candles = [
+                    c for c in candles_snapshot if c["timestamp"] > last_file_ts
+                ]
 
                 if not new_candles:
                     continue
@@ -201,12 +183,20 @@ def save_historical_data():
 
             except Exception as e:
                 print(f"[DATA-KEEPER] Error saving {filename}: {e}")
+
+    print("[DATA-KEEPER] ✅ Async Save Complete.")
     return saved_count
 
 
+def save_historical_data():
+    """Wrapper to start save in a thread."""
+    threading.Thread(target=save_historical_data_worker).start()
+    return 1  # Return dummy count, actual count unknown immediately
+
+
 def handle_save_all():
-    count = save_historical_data()
-    return {"status": "ok", "files_saved": count}
+    save_historical_data()
+    return {"status": "ok", "message": "Saving started in background"}
 
 
 def handle_get_history(parts):
@@ -271,7 +261,8 @@ def handle_add_candle(parts):
 
     try:
         candle = json.loads(json_str)
-        candle_histories[symbol][timeframe].append(candle)
+        with save_lock:  # Protect append vs save reading
+            candle_histories[symbol][timeframe].append(candle)
         return {"status": "ok", "symbol": symbol, "timeframe": timeframe}
     except Exception as e:
         return {"error": f"Error adding candle: {e}"}
@@ -302,8 +293,8 @@ def handle_get_file_path(parts):
 
 def run_server():
     """Main server loop with proper setup."""
-    print("🐙 Swimmy Data Keeper Service (Multi-Timeframe + Persistence)")
-    print("=============================================================")
+    print("🐙 Swimmy Data Keeper Service (Multi-Timeframe + Persistence + Async)")
+    print("===================================================================")
 
     context = zmq.Context()
     socket = context.socket(zmq.REP)
@@ -317,39 +308,48 @@ def run_server():
     last_save_time = time.time()
 
     while True:
-        # Check for message with timeout to allow periodic tasks
-        if socket.poll(timeout=1000):
-            message = socket.recv_string()
-            parts = message.split(":", 2)
-            command = parts[0].upper()
-            response = {}
+        try:
+            # Check for message with timeout to allow periodic tasks
+            if socket.poll(timeout=1000):
+                message = socket.recv_string()
+                parts = message.split(":", 2)
+                command = parts[0].upper()
+                response = {}
 
-            if command == "GET_HISTORY":
-                response = handle_get_history(parts)
-            elif command == "GET_FILE_PATH":
-                response = handle_get_file_path(parts)
-            elif command == "ADD_CANDLE":
-                response = handle_add_candle(parts)
-            elif command == "SAVE_ALL":
-                response = handle_save_all()
-            elif command == "STATUS":
-                stats = {
-                    sym: {
-                        tf: len(candle_histories[sym][tf])
-                        for tf in candle_histories[sym]
+                if command == "GET_HISTORY":
+                    response = handle_get_history(parts)
+                elif command == "GET_FILE_PATH":
+                    response = handle_get_file_path(parts)
+                elif command == "ADD_CANDLE":
+                    response = handle_add_candle(parts)
+                elif command == "SAVE_ALL":
+                    response = handle_save_all()
+                elif command == "STATUS":
+                    stats = {
+                        sym: {
+                            tf: len(candle_histories[sym][tf])
+                            for tf in candle_histories[sym]
+                        }
+                        for sym in SUPPORTED_SYMBOLS
                     }
-                    for sym in SUPPORTED_SYMBOLS
-                }
-                response = {"status": "running", "symbols": stats}
-            else:
-                response = {"error": f"Unknown command: {command}"}
+                    response = {"status": "running", "symbols": stats}
+                else:
+                    response = {"error": f"Unknown command: {command}"}
 
-            socket.send_string(json.dumps(response))
-        else:
-            # Auto-save every hour
-            if time.time() - last_save_time > 3600:
-                save_historical_data()
-                last_save_time = time.time()
+                socket.send_string(json.dumps(response))
+            else:
+                # Auto-save every hour
+                if time.time() - last_save_time > 3600:
+                    save_historical_data()
+                    last_save_time = time.time()
+
+        except zmq.ZMQError as e:
+            print(f"[ZMQ ERROR] {e}")
+            # Recreate socket? ZMQ usually recovers.
+            # If fatal, main loop catches it.
+        except Exception as e:
+            print(f"[LOOP ERROR] {e}")
+            # Do NOT break main loop, just continue
 
 
 def main():
@@ -362,7 +362,7 @@ def main():
         print("[DATA-KEEPER] Another instance is already running. Exiting.")
         sys.exit(0)
 
-    send_discord_alert("✅ Data Keeper Service Started", is_error=False)
+    send_discord_alert("✅ Data Keeper Service Started (Optimized)", is_error=False)
 
     consecutive_failures = 0
     alert_sent = False
