@@ -415,6 +415,61 @@
                    (< close sma-5))  ; Trend broken
         :sl 0.20 :tp 0.25 :volume 0.05 ; Realistic TP for Nakane
         :category :time-based :timeframe 5) ; M5 Nakane
+        
+      ;; ===== 8. MTF VERIFICATION STRATEGIES =====
+      
+      ;; 8.1 Control Strategy (M5 - Expert Panel Adjusted)
+      (make-strategy :name "SCALP-BASE"
+        :indicators '((ema 5) (ema 12))
+        :entry '(cross-above ema-5 ema-12)
+        :exit '(cross-below ema-5 ema-12)
+        :sl 0.10 :tp 0.15 :volume 0.01
+        :category :scalp :timeframe 5)
+
+      ;; 8.2 MTF Filtered Strategy (M5 with H1 Trend - Expert Panel Adjusted)
+      (with-trend-filter ("H1" "PRICE_ABOVE_SMA" 50)
+        (make-strategy :name "SCALP-MTF-MACRO"
+          :indicators '((ema 5) (ema 12))
+          :entry '(cross-above ema-5 ema-12)
+          :exit '(cross-below ema-5 ema-12)
+          :sl 0.10 :tp 0.15 :volume 0.01
+          :category :scalp :timeframe 5))
+          
+      ;; 8.3 Breakout MTF (Bollinger Walk with H1 Trend)
+      (with-trend-filter ("H1" "PRICE_ABOVE_SMA" 50)
+        (make-strategy :name "BB-Walk-Trend"
+          :indicators '((bb 20 1))
+          :entry '(> close bb-upper)
+          :exit '(< close bb-middle)
+          :sl 0.30 :tp 1.00 :volume 0.01
+          :category :breakout :timeframe 15))
+          
+      ;; 8.4 Reversion MTF (RSI Dip Buy in H1 Uptrend)
+      (with-trend-filter ("H1" "PRICE_ABOVE_SMA" 50)
+        (make-strategy :name "RSI-Dip-Trend"
+          :indicators '((rsi 14))
+          :entry '(cross-above rsi-14 30)
+          :exit '(> rsi-14 70)
+          :sl 0.30 :tp 0.50 :volume 0.01
+          :category :reversion :timeframe 5))
+          
+      ;; 8.5 Trend MTF (MACD Cross aligned with H1 Trend)
+      (with-trend-filter ("H1" "PRICE_ABOVE_SMA" 50)
+        (make-strategy :name "MACD-Trend-Trend"
+          :indicators '((macd 12 26 9))
+          :entry '(cross-above macd-line signal-line)
+          :exit '(cross-below macd-line signal-line)
+          :sl 0.50 :tp 1.00 :volume 0.01
+          :category :trend :timeframe 15))
+
+      ;; 8.6 Advanced Reversion (M5: RSI + BB Confluence)
+      (with-trend-filter ("H1" "PRICE_ABOVE_SMA" 50)
+        (make-strategy :name "Advanced-M5-Reversion"
+          :indicators '((rsi 14) (bb 20 2))
+          :entry '(and (< rsi-14 30) (< close bb-lower))
+          :exit '(or (> rsi-14 50) (> close bb-middle))
+          :sl 0.20 :tp 0.40 :volume 0.01
+          :category :reversion :timeframe 5))
     ))  
 
   (format t "[L] 📚 Knowledge base loaded: ~d strategies~%" 

@@ -83,7 +83,11 @@
       ("sl" (strategy-sl strat))
       ("tp" (strategy-tp strat))
       ("volume" (strategy-volume strat))
-      ("indicator_type" (detect-indicator-type (strategy-indicators strat))))))
+      ("indicator_type" (detect-indicator-type (strategy-indicators strat)))
+      ("filter_enabled" (if (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat) nil))
+      ("filter_tf" (if (slot-exists-p strat 'filter-tf) (strategy-filter-tf strat) ""))
+      ("filter_period" (if (slot-exists-p strat 'filter-period) (strategy-filter-period strat) 0))
+      ("filter_logic" (if (slot-exists-p strat 'filter-logic) (strategy-filter-logic strat) "")))))
 
 
 ;; Helper to resample candles (M1 -> M5, etc)
@@ -187,8 +191,28 @@
                                  (resample-candles candles timeframe) 
                                  candles)))
          (len (length target-candles))
+         (aux-candles-json (jsown:new-js))  ;; Initialize aux candles
          (msg nil)) ;; Initialize msg
     
+    ;; V8.10: Fetch Aux Candles for MTF
+    (when (and (slot-exists-p strat 'filter-enabled)
+               (strategy-filter-enabled strat)
+               (strategy-filter-tf strat))
+      (let* ((ftf (strategy-filter-tf strat))
+             (ftf-str (cond ((stringp ftf) ftf)
+                            ((numberp ftf) (get-tf-string ftf)) 
+                            (t "D1")))
+             ;; FIXME: Symbol hardcoded to USDJPY
+             (usdjpy-hist (if (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
+                              (gethash "USDJPY" *candle-histories-tf*)
+                              nil))
+             (hist (if usdjpy-hist
+                       (gethash ftf-str usdjpy-hist)
+                       nil)))
+        (when hist
+           (format t "[L] 🧩 Attaching ~a Filter Data (~d bars)~%" ftf-str (length hist))
+           (push (cons ftf-str (swimmy.main:candles-to-json hist)) (cdr aux-candles-json)))))
+
     (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d / TF: M~d)...~%" 
             (strategy-name strat) suffix len timeframe)
     
@@ -197,7 +221,8 @@
                 (jsown:new-js 
                   ("action" "BACKTEST")
                   ("strategy" (strategy-to-json strat :name-suffix suffix))
-                  ("candles" (swimmy.main:candles-to-json target-candles)))))
+                  ("candles" (swimmy.main:candles-to-json target-candles))
+                  ("aux_candles" aux-candles-json))))
 
     ;; Send to appropriate service
     (if (and (boundp '*backtest-requester*) *backtest-requester*)
@@ -308,6 +333,13 @@
 ;; Clone check threshold (0.85 = 85% similar = reject, more diversity)
 (defparameter *clone-threshold* 0.85)
 
+;; V8.11: Pending Clone Checks Table (Async handling)
+;; Key: Candidate Name, Value: Strategy Object
+(defparameter *pending-clone-checks* (make-hash-table :test 'equal))
+
+;; Track consecutive clones for stagnation warning
+(defparameter *consecutive-clone-count* 0)
+
 ;; Convert existing evolved strategies to JSON for clone check
 (defun evolved-strategies-to-json ()
   "Convert evolved strategies list to JSON for clone check"
@@ -316,8 +348,13 @@
 ;; Request clone check from Rust
 (defun request-clone-check (new-strat callback)
   "Check if new strategy is a clone of existing ones"
+  (declare (ignore callback)) ; Callback handled async via process-clone-check-result
   (when (and *evolved-strategies* (> (length *evolved-strategies*) 0))
-    (format t "[L] 🧬 Checking for clones...~%")
+    (format t "[L] 🧬 Checking for clones: ~a...~%" (strategy-name new-strat))
+    
+    ;; Register in pending table
+    (setf (gethash (strategy-name new-strat) *pending-clone-checks*) new-strat)
+    
     (let ((msg (jsown:to-json 
                  (jsown:new-js 
                    ("action" "CHECK_CLONE")
@@ -325,3 +362,37 @@
                    ("existing_strategies" (evolved-strategies-to-json))
                    ("threshold" *clone-threshold*)))))
       (pzmq:send *cmd-publisher* msg))))
+
+(defun process-clone-check-result (candidate-name is-clone similar sim)
+  "Handle async clone check result from Guardian"
+  (let ((strat (gethash candidate-name *pending-clone-checks*)))
+    (if strat
+        (progn
+          ;; Remove from pending
+          (remhash candidate-name *pending-clone-checks*)
+          
+          (if is-clone
+              (progn
+                (incf *consecutive-clone-count*)
+                (format t "[L] 🚫 CLONE REJECTED: ~a is ~d% similar to ~a (Streak: ~d)~%" 
+                        candidate-name (round (* sim 100)) similar *consecutive-clone-count*)
+                
+                ;; Stagnation Warning (Every 10 clones)
+                (when (zerop (mod *consecutive-clone-count* 10))
+                  (notify-discord-alert 
+                    (format nil "⚠️ Evolution Stagnation: ~d consecutive clones rejected." *consecutive-clone-count*)
+                    :color 16776960)))
+              
+              (progn
+                ;; UNIQUE STRATEGY FOUND!
+                (setf *consecutive-clone-count* 0)
+                (format t "[L] ✅ UNIQUE: ~a (Max Sim: ~d%) - Promoted to Backtest!~%" 
+                        candidate-name (round (* sim 100)))
+                
+                ;; 1. Add to population
+                (push strat *evolved-strategies*)
+                
+                ;; 2. Trigger Backtest (notification happens after backtest)
+                (request-backtest strat))))
+        
+        (format t "[L] ⚠️ Received clone result for unknown candidate: ~a~%" candidate-name))))

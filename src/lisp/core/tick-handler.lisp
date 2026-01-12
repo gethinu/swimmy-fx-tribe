@@ -74,7 +74,7 @@
         (when (zerop (mod *dream-cycle* 3))
           (report-goal-status))
         (check-evolution)
-        (evolve-population)
+        (evolve-population-via-mutation)
         (incf *dream-cycle*)
         (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
           (funcall 'save-state))))
@@ -116,6 +116,12 @@
     (when (and curr-candle (/= min-idx curr-minute))
       (push curr-candle (gethash symbol *candle-histories*))
       (setf *candle-history* (gethash symbol *candle-histories*))  ; Legacy compat
+      
+      ;; V9.2: Data Persistence (Article 5 Compliant)
+      ;; Save finalized candle to Data Keeper for 20-year archive
+      (when (fboundp 'swimmy.core:add-candle-to-keeper)
+        (swimmy.core:add-candle-to-keeper symbol curr-candle))
+      
       (format t "[~a] ~a." (swimmy.core:get-jst-str) (subseq symbol 0 3)) (force-output)
       (processing-step symbol bid)
       (setf (gethash symbol *current-candles*) nil))
@@ -255,24 +261,57 @@ Sharpe   : ~,2f
            (unless (and (boundp '*candle-histories*) *candle-histories*)
              (setf *candle-histories* (make-hash-table :test 'equal))
              (format t "[L] 🩹 Patched NIL *candle-histories*~%"))
+             
+           ;; Initialize MTF storage if needed
+           (unless (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
+             (setf *candle-histories-tf* (make-hash-table :test 'equal))
+             (format t "[L] 🩹 Patched NIL *candle-histories-tf*~%"))
            
            (let ((bars nil)
-                 (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY")))
+                 (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY"))
+                 (tf (if (jsown:keyp json "tf") 
+                         (jsown:val json "tf") 
+                         ;; Heuristic: Detect TF from data
+                         (let ((data (jsown:val json "data")))
+                           (if (and data (> (length data) 1))
+                               (let* ((t1 (jsown:val (first data) "t"))
+                                      (t2 (jsown:val (second data) "t"))
+                                      (diff (abs (- t1 t2))))
+                                 (cond 
+                                   ((>= diff 600000) "W1")
+                                   ((>= diff 86000) "D1")
+                                   ((>= diff 43000) "H12")
+                                   ((>= diff 14000) "H4")
+                                   ((>= diff 3500) "H1")
+                                   ((>= diff 1700) "M30")
+                                   ((>= diff 800) "M15")
+                                   ((>= diff 250) "M5")
+                                   (t "M1")))
+                               "M1"))))) ;; Default to M1 if no data
+                 
              (dolist (b (jsown:val json "data"))
                (let ((c (jsown:val b "c")))
                  (push (make-candle :timestamp (jsown:val b "t") 
                                     :open c :high c :low c :close c :volume 1) bars)))
-             (setf (gethash symbol *candle-histories*) bars)
-             (setf *candle-history* bars)  ; Legacy compat - use first symbol
-             ;; (format t "[L] 📚 ~a: ~d bars~%" symbol (length bars))
-             
-             ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
-             (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
-                        (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
-                        (> (length bars) 100))
-               (format t "[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...~%")
-               (swimmy.school:batch-backtest-knowledge)
-               (setf *initial-backtest-done* t))))
+                                    
+             ;; Store in MTF structure
+             (unless (gethash symbol *candle-histories-tf*)
+               (setf (gethash symbol *candle-histories-tf*) (make-hash-table :test 'equal)))
+             (setf (gethash tf (gethash symbol *candle-histories-tf*)) bars)
+             (format t "[L] 📚 Loaded ~a ~a data: ~d bars~%" symbol tf (length bars))
+
+             ;; If M1, also store in legacy/default locations
+             (when (or (string= tf "M1") (string= tf "Default"))
+                 (setf (gethash symbol *candle-histories*) bars)
+                 (setf *candle-history* bars)  ; Legacy compat - use first symbol
+              
+                 ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
+                 (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
+                            (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
+                            (> (length bars) 100))
+                   (format t "[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...~%")
+                   (swimmy.school:batch-backtest-knowledge)
+                   (setf *initial-backtest-done* t)))))
           ((string= type "SYSTEM_COMMAND")
            (let ((action (jsown:val json "action")))
              (cond
@@ -331,8 +370,12 @@ Sharpe   : ~,2f
                  ;; Normal Batch Processing
                  (progn
                    ;; V6.8: Buffer results instead of spamming
-                   (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
-                         *backtest-results-buffer*)
+                   (when (and name (not (string= name "unknown")) (not (string= name "")))
+                     ;; Remove existing result for same strategy if present (update)
+                     (setf *backtest-results-buffer* 
+                           (remove name *backtest-results-buffer* :key #'car :test #'string=))
+                     (push (cons name (list :sharpe sharpe :win-rate win-rate :trades trades :pnl pnl))
+                           *backtest-results-buffer*))
                    
                    (when (>= (length *backtest-results-buffer*) *expected-backtest-count*)
                       (format t "[L] 🏁 Backtest Batch Complete! (Received ~d/~d)~%" 
@@ -408,13 +451,12 @@ Sharpe   : ~,2f
            (let* ((result (jsown:val json "result"))
                   (is-clone (jsown:val result "is_clone"))
                   (similar (jsown:val result "most_similar"))
-                  (sim (jsown:val result "similarity")))
-             (if is-clone
-                 (format t "[L] 🚫 CLONE REJECTED: ~a% similar to ~a~%" (* 100 sim) similar)
-                 (format t "[L] ✅ UNIQUE STRATEGY CONFIRMED (max sim: ~a%)~%" (* 100 sim)))
-             ;; Delegate if function exists (evolution.lisp)
+                  (sim (jsown:val result "similarity"))
+                  (candidate-name (if (jsown:keyp result "candidate_name") (jsown:val result "candidate_name") "Unknown")))
+             
+             ;; Delegate to school-backtest.lisp handler
              (when (fboundp 'process-clone-check-result)
-               (funcall 'process-clone-check-result is-clone similar sim))))
+               (funcall 'process-clone-check-result candidate-name is-clone similar sim))))
 
           ;; ══════════════════════════════════════
           ;; TRADE CLOSED - 葬儀 / Victory Ceremony

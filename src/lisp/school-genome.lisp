@@ -202,10 +202,12 @@
 (defun select-parent-tournament (population &key (k 3))
   "Select a parent using Tournament Selection (K-way).
    Prevents 'Top 2' dominance and maintains diversity."
-  (let ((candidates (loop repeat k 
-                          collect (nth (random (length population)) population))))
-    ;; Return the one with highest sharpe (or 0 if nil)
-    (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))
+  (let ((len (length population)))
+    (when (plusp len)
+      (let ((candidates (loop repeat k 
+                              collect (nth (random len) population))))
+        ;; Return the one with highest sharpe (or 0 if nil)
+        (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))))
 
 (defun select-tribal-pair (population)
   "Select two parents from DIFFERENT clans/categories.

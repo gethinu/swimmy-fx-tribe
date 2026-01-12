@@ -77,10 +77,14 @@
            
            ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)
            (format t "[L] 📊 Requesting history for all symbols...~%")
-           (dolist (sym *supported-symbols*)
-             (format t "[L]    → Requesting ~a history...~%" sym)
-             (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("volume" 0))))
-             (sleep 0.5))  ; Stagger requests to avoid overwhelming MT5
+           (let ((tfs '("M1" "M5" "M15" "M30" "H1" "H4" "H12" "D1" "W1")))
+             (dolist (sym *supported-symbols*)
+               (format t "[L] 📊 Requesting history for ~a...~%" sym)
+               (dolist (tf tfs)
+                 (format t "[L]    → Requesting ~a ~a history...~%" sym tf)
+                 (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("volume" 2000) ("tf" tf))))
+                 (sleep 0.2))  ; Stagger requests
+               (sleep 0.5)))   ; Stagger symbols
            
            ;; Initial setup
            (if (fboundp 'assemble-team)

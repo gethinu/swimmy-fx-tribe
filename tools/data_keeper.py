@@ -49,7 +49,8 @@ APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
 ZMQ_PORT = 5561
-MAX_CANDLES_PER_SYMBOL = 50000
+# Deep Validation Support: Increased buffer to 1M candles (approx 10 years of M5)
+MAX_CANDLES_PER_SYMBOL = 1_000_000
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
 
@@ -131,10 +132,10 @@ def load_historical_data():
 
 
 def save_historical_data():
-    """Save in-memory data back to CSV files."""
+    """Save in-memory data back to CSV files (Append-Only Safe Mode)."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
     os.makedirs(data_dir, exist_ok=True)
-    print("[DATA-KEEPER] 💾 Saving data to disk...")
+    print("[DATA-KEEPER] 💾 Saving data (Append-Only)...")
     saved_count = 0
 
     for symbol in SUPPORTED_SYMBOLS:
@@ -143,14 +144,61 @@ def save_historical_data():
                 continue
             filename = f"{symbol}_{tf}.csv"
             filepath = os.path.join(data_dir, filename)
+
             try:
-                sorted_candles = sorted(list(candles), key=lambda c: c["timestamp"])
-                with open(filepath, "w") as f:
-                    f.write("timestamp,open,high,low,close,volume\n")
-                    for c in sorted_candles:
+                # 1. Determine last timestamp in file
+                last_file_ts = 0
+                if os.path.exists(filepath):
+                    with open(filepath, "r") as f:
+                        # Efficiently read last line?
+                        # For now, just seek to end and backtrack is hard in text text.
+                        # Simple robust way: read all? No, too slow.
+                        # Just trust memory? No, memory is partial.
+                        # We only want to append candles NEWER than file's last modified?
+                        # Or safer: just read the last few lines using seek?
+                        try:
+                            f.seek(0, os.SEEK_END)
+                            pos = f.tell()
+                            if pos > 100:
+                                f.seek(pos - 100)  # Go back 100 bytes
+                            else:
+                                f.seek(0)
+                            lines = f.readlines()
+                            if lines:
+                                last_line = lines[-1].strip()
+                                parts = last_line.split(",")
+                                if (
+                                    len(parts) >= 1
+                                    and parts[0].replace(".", "", 1).isdigit()
+                                ):
+                                    last_file_ts = int(float(parts[0]))
+                        except Exception:
+                            pass  # If fail, assume 0 (or risk dupes)
+
+                # 2. Filter candles to append
+                new_candles = [c for c in candles if c["timestamp"] > last_file_ts]
+
+                if not new_candles:
+                    continue
+
+                sorted_new = sorted(new_candles, key=lambda c: c["timestamp"])
+
+                # 3. Append
+                mode = "a" if os.path.exists(filepath) else "w"
+                with open(filepath, mode) as f:
+                    if mode == "w":
+                        f.write("timestamp,open,high,low,close,volume\n")
+
+                    for c in sorted_new:
                         line = f"{c['timestamp']},{c['open']},{c['high']},{c['low']},{c['close']},{c['volume']}\n"
                         f.write(line)
+
                 saved_count += 1
+                if saved_count % 5 == 0:
+                    print(
+                        f"[DATA-KEEPER] Appended {len(sorted_new)} candles to {filename}"
+                    )
+
             except Exception as e:
                 print(f"[DATA-KEEPER] Error saving {filename}: {e}")
     return saved_count
@@ -229,6 +277,29 @@ def handle_add_candle(parts):
         return {"error": f"Error adding candle: {e}"}
 
 
+def get_csv_path(symbol, tf):
+    """Deep Validation: Helper to find CSV path."""
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
+    candidates = [f"{symbol}_{tf}.csv", f"{symbol}.a_{tf}.csv"]
+    for c in candidates:
+        p = os.path.join(data_dir, c)
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
+def handle_get_file_path(parts):
+    if len(parts) < 3:
+        return {"error": "Usage: GET_FILE_PATH:SYMBOL:TF"}
+    symbol = parts[1].upper()
+    tf = parts[2].upper()
+    path = get_csv_path(symbol, tf)
+    if path:
+        return {"status": "ok", "path": path}
+    else:
+        return {"error": "File not found"}
+
+
 def run_server():
     """Main server loop with proper setup."""
     print("🐙 Swimmy Data Keeper Service (Multi-Timeframe + Persistence)")
@@ -255,6 +326,8 @@ def run_server():
 
             if command == "GET_HISTORY":
                 response = handle_get_history(parts)
+            elif command == "GET_FILE_PATH":
+                response = handle_get_file_path(parts)
             elif command == "ADD_CANDLE":
                 response = handle_add_candle(parts)
             elif command == "SAVE_ALL":

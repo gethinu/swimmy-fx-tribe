@@ -119,30 +119,62 @@
   (values (min sl *safety-cap-sl*)
           (min tp *safety-cap-tp*)))
 
+(defun mutate-timeframe-param (strategy old-tf new-tf)
+  "Create a new strategy with mutated timeframe"
+  (let* ((old-name (strategy-name strategy))
+         (root (get-root-name old-name))
+         (gen (if (slot-exists-p strategy 'generation) (strategy-generation strategy) 0))
+         (new-gen (1+ gen))
+         (new-name (format nil "~a-Gen~d-mut-TF~d" root new-gen new-tf)))
+    
+    (make-strategy 
+      :name new-name
+      :indicators (copy-tree (strategy-indicators strategy))
+      :entry (copy-tree (strategy-entry strategy))
+      :exit (copy-tree (strategy-exit strategy))
+      :sl (strategy-sl strategy)
+      :tp (strategy-tp strategy)
+      :volume (strategy-volume strategy)
+      :category (strategy-category strategy)
+      :indicator-type (strategy-indicator-type strategy)
+      :timeframe new-tf
+      :generation new-gen)))
+
 (defun evolve-strategy (strategy)
   "Attempt to evolve a strategy by mutating one of its parameters."
-  (let ((indicators (strategy-indicators strategy)))
-    (when indicators
-      ;; Pick random indicator to mutate
-      (let* ((target (nth (random (length indicators)) indicators))
-             (type (string-upcase (symbol-name (car target))))
-             (param (second target))) 
-        
-        (when (numberp param)
-          ;; Mutate by +/- 10-20%
-          (let* ((mutation-factor (+ 0.8 (random 0.4))) 
-                 (new-val (round (* param mutation-factor))))
+  ;; 10% Chance to mutate Timeframe (Expert Panel Recommendation)
+  (if (< (random 10) 1)
+      (let* ((raw-tf (strategy-timeframe strategy))
+             (current-tf (if (numberp raw-tf) raw-tf 0)) ; Handle "H1" strings
+             (options '(5 15 60 240)) ; M5, M15, H1, H4
+             (new-tf (nth (random (length options)) options)))
+        (if (= new-tf current-tf)
+            ;; If same, force change
+            (evolve-strategy strategy) ; Retry
+            (progn
+              (format t "[EVOLUTION] 🧬 Mutating Timeframe: ~a M~d -> M~d~%" (strategy-name strategy) current-tf new-tf)
+              (mutate-timeframe-param strategy current-tf new-tf))))
+
+      ;; 90% Chance to mutate Indicators
+      (let ((indicators (strategy-indicators strategy)))
+        (when indicators
+          ;; Pick random indicator to mutate
+          (let* ((target (nth (random (length indicators)) indicators))
+                 (type (string-upcase (symbol-name (car target))))
+                 (param (second target))) 
             
-            ;; Ensure change
-            (when (= new-val param) (incf new-val))
-            
-            ;; Safety Cap Check for SL/TP mutation
-            ;; (Not mutating SL/TP here, but if we did, we'd clip them)
-            
-            (format t "[EVOLUTION] 🧬 Mutating ~a: ~a ~d -> ~d~%" 
-                    (strategy-name strategy) type param new-val)
-            
-            (mutate-strategy-param strategy type param new-val)))))))
+            (when (numberp param)
+              ;; Mutate by +/- 10-20%
+              (let* ((mutation-factor (+ 0.8 (random 0.4))) 
+                     (new-val (round (* param mutation-factor))))
+                
+                ;; Ensure change
+                (when (= new-val param) (incf new-val))
+                
+                (format t "[EVOLUTION] 🧬 Mutating ~a: ~a ~d -> ~d~%" 
+                        (strategy-name strategy) type param new-val)
+                
+                (mutate-strategy-param strategy type param new-val))))))))
 
 (defun mutate-strategy (parent &optional (rate 0.2))
   "Wrapper for school-learning compatibility."
@@ -177,6 +209,7 @@ OUTPUT FORMAT (JSON):
       \"exit\": \"(cross-below close sma-20)\",
       \"sl\": 0.05,
       \"tp\": 0.10,
+      \"timeframe\": 15,
       \"reasoning\": \"Explanation...\"
     }
   ]
@@ -186,7 +219,8 @@ RULES:
 1. Names must be unique (include Gen0 suffix).
 2. SL must NOT exceed 0.10 (10%).
 3. Logic must be valid Lisp s-expressions.
-4. Output ONLY valid JSON.
+4. Timeframe MUST be one of: 5 (M5), 15 (M15), 60 (H1), 240 (H4). DO NOT USE 1 (M1).
+5. Output ONLY valid JSON.
 
 Generate strategies now:"
             *vs-candidate-count*
@@ -194,8 +228,7 @@ Generate strategies now:"
             analysis)))
 
 (defun evolve-via-llm (&optional requested-type)
-  "Driver function: Auto-generate strategies using Verbalized Sampling.
-   If requested-type is provided (e.g. 'scalp'), focuses on that."
+  "Driver function: Auto-generate strategies using Verbalized Sampling."
   (format t "~%[L] 🧠 Evolving via LLM (Verbalized Sampling)...~%")
   
   ;; 1. Gather Context
@@ -203,7 +236,6 @@ Generate strategies now:"
                        (get-structured-self-analysis) 
                        "Initializing..."))
          (context (list :analysis analysis))
-         ;; Map keyword niche to string description
          (type-map '((:trend . "Trend Following")
                      (:reversion . "Mean Reversion") 
                      (:breakout . "Breakout")
@@ -231,13 +263,12 @@ Generate strategies now:"
               (dolist (pair strategies)
                 (let ((strat (car pair))
                       (conf (cdr pair)))
-                  ;; Enforce Safety Caps (Refactored)
+                  ;; Enforce Safety Caps
                   (setf (strategy-sl strat) (min (strategy-sl strat) *safety-cap-sl*))
                   (setf (strategy-tp strat) (min (strategy-tp strat) *safety-cap-tp*))
                   
-                  (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f)~%" (strategy-name strat) conf)
+                  (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f) TF: ~d~%" (strategy-name strat) conf (strategy-timeframe strat))
                   
-                  ;; 5. Register (Check for Clones logic is in backtest)
                   (if (and *evolved-strategies* (> (length *evolved-strategies*) 0))
                        (request-clone-check strat nil)
                        (progn
@@ -250,14 +281,10 @@ Generate strategies now:"
 ;;; ==========================================
 
 (defun parse-json-safely (json-str)
-  "Parse JSON string safely using built-in or simple parser.
-   Deprecated in favor of parse-vs-response delegating to Python."
   nil)
 
-;; Refactored V42.3: Fix Python invocation quoting (Martin Fowler Fix 2)
 (defun parse-vs-response (json-str)
-  "Parse Gemini JSON response by transpiling JSON to Lisp S-Exps via Python.
-   This eliminates fragile regex parsing and handles types correctly."
+  "Parse Gemini JSON response via Python, extracting timeframe."
   (let ((strategies nil))
     (with-open-file (out "/tmp/swimmy_llm_response.json" :direction :output :if-exists :supersede)
       (write-line json-str out))
@@ -275,13 +302,13 @@ try:
         print(f'    :exit \"{s.get(\"exit\", \"\")}\"')
         print(f'    :sl {s.get(\"sl\", 1.0)}')
         print(f'    :tp {s.get(\"tp\", 2.0)}')
+        print(f'    :timeframe {s.get(\"timeframe\", 15)}')
         print(f'    :probability {s.get(\"probability\", 0.5)}')
         print('  )')
     print(')')
 except Exception as e:
     print('NIL')
 "))
-      ;; Use list logic to avoid shell quoting hell
       (let ((lisp-code-str 
              (uiop:run-program 
               (list "python3" "-c" script)
@@ -297,9 +324,9 @@ except Exception as e:
                         (exit-str (getf item :exit))
                         (sl (getf item :sl))
                         (tp (getf item :tp))
+                        (tf (getf item :timeframe))
                         (prob (getf item :probability)))
                     
-                    ;; Parse internal lisp strings
                     (let ((entry (if (string= entry-str "") nil (read-from-string entry-str)))
                           (exit (if (string= exit-str "") nil (read-from-string exit-str))))
                       
@@ -309,6 +336,7 @@ except Exception as e:
                                                     :exit exit 
                                                     :sl sl :tp tp 
                                                     :category :trend
+                                                    :timeframe (if (numberp tf) tf 15) ; Default M15
                                                     :generation 0)
                                      prob)
                                strategies))))))
@@ -395,3 +423,12 @@ Generate only the Lisp code:"
             
             (format t "[L] 👶 AI-Child Born: ~a~%" (strategy-name child))
             child))))))
+
+(defun evolve-population-via-mutation ()
+  "Evolve population by applying random mutations (Genetic Algorithm).
+   FIX: 2026-01-12 (Ponkotsu Repair)"
+  (format t "[EVOLUTION] 🧬 Running Genetic Mutation Cycle...~%")
+  (dolist (strat *strategy-knowledge-base*)
+    ;; 5% Mutation Rate per cycle
+    (when (< (random 1.0) 0.05)
+      (mutate-strategy strat))))

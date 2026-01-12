@@ -187,3 +187,63 @@ journalctl --user -u swimmy-brain | grep "🏆 Top strategies" | tail -5
 - **Evolution (進化論的学習)**:
     - **Backtest**: バックテストの結果は、戦略の「生存競争」に使われます。
     - 弱い戦略は淘汰され、強い戦略が子孫を残すことで、システム全体が市場に適応していきます。
+
+---
+
+## 🧭 Swimmy Philosophy (技術的信条)
+
+ユーザーからの問い「なぜ Lisp と Rust なのか？」に対する回答。
+
+### 1. Speed = Survival (速度は生存能力)
+Rustのバックテスト速度（50,000本/ms）は、高頻度取引で勝つためではなく、**「失敗を高速に捨てる」** ために使われます。
+市場環境は刻一刻と変化します。Pythonで数日かかる検証を数分で終えることで、Swimmyは「今の市場に合わない戦略」を即座に見限り、次の仮説へ移行できます。
+
+### 2. Hot Reloading = Adaptation (柔軟性は適応能力)
+Lispの真価は、システムを停止せずに脳外科手術（関数の書き換え・進化）ができる点にあります。
+市場が急変したその瞬間に、システムを止めずにロジックを修正・適応させることができる。これが不確実性への最大の防御です。
+
+### 3. "Fail Fast, Evolve Faster"
+Swimmyは完璧な戦略を一つ作るのではなく、**「大量の失敗（死）を高速に繰り返す」** ことで、生き残る種を見つけ出します。
+M1スキャルピングの失敗も、高速な検証があったからこそ即座に結論が出せました。
+
+> **"It is not the strongest of the species that survives, nor the most intelligent; it is the one most adaptable to change."** — Charles Darwin
+
+---
+
+## 🛠️ Stress Testing & Validation (V10.0+)
+
+システムの堅牢性と戦略の品質を検証するためのツール群です。
+
+### 1. Deep Validation Campaign (ストレス耐性テスト)
+4年分以上のティックデータを再現し、メモリリークや長時間運用の安定性をテストします。
+
+```bash
+# クイック実行 (USDJPY M5)
+python3 tools/stress_test.py --symbol USDJPY --timeframe M5 --strategy stress_test_strategy.json
+
+# キャンペーン実行 (全通貨ペア・長時間)
+./run_validation_campaign.sh
+```
+
+### 2. Data Persistence (データ永続化)
+ライブデータは自動的に `data/historical/*.csv` に追記保存されます。
+これにより、システムを稼働させるだけで、バックテスト用の「生きた20年分のデータ」が自然に蓄積されていきます。
+
+---
+
+## ❓ トラブルシューティング
+
+### Q. Discordで "Brain Silence Detected" (Dead Man's Switch) が出た
+**A. 高負荷時の正常な挙動の可能性があります。**
+`stress_test.py` や `Backtest` などの重い処理を実行中、詳細なログ出力やCPU負荷により、Brainのハートビート（生存信号）が一時的に遅延することがあります。
+`make status` で `swimmy-brain` が `active (running)` であれば、システムは生きています。
+
+### Q. トレードがエントリーされない
+1. 市場がオープンしているか確認 (`is-safe-trading-time-p`)
+2. 十分なヒストリカルデータがあるか確認 (ログに `REJECTED: History empty/short` がないか)
+3. **[Resolved 2026-01-12]** 過去に `BINDINGS unbound` エラーがありましたが、修正済みです。
+
+### Q. メモリ不足 (OOM) でクラッシュする
+最新の Guardian は、巨大なCSV (3GB+) をディスクから直接ストリーミング読み込み (`Stream loading`) するよう最適化されています。
+それでも落ちる場合は、WSLの割当メモリを確認してください。
+

@@ -1,120 +1,179 @@
-source /home/swimmy/swimmy/.venv/bin/activate
-swimmy@SERV870:~/swimmy$ source /home/swimmy/swimmy/.venv/bin/activate
-(.venv) swimmy@SERV870:~/swimmy$ make lineage
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-compat". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-test". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-WARNING: System definition file #P"/home/swimmy/quicklisp/dists/quicklisp/software/pzmq-20210531-git/pzmq.asd" contains definition for system "pzmq-examples". Please only define "pzmq" and secondary systems with a name starting with "pzmq/" (e.g. "pzmq/test") in that file.
-[PACKAGES] Importing symbols into CL-USER...
-[PACKAGES] Package Hierarchy Defined.
-[GLOBALS] Global variables defined in SWIMMY.GLOBALS
-[L] ⚙️ core/config.lisp loaded - System configuration
-[DATA-CLIENT] Data Keeper client loaded (Phase 7)
-[RISK-CLIENT] Risk Gateway client loaded (Phase 3)
-[AI-CLIENT] Inference client loaded (Phase 4)
-[L] 🛡️ risk-manager.lisp loaded - Unified risk management active
-[ENGINE] goals.lisp loaded
-[ENGINE] metrics.lisp loaded
-[ENGINE] experiments.lisp loaded
-[ENGINE] signals.lisp loaded
-[ENGINE] positions.lisp loaded
-[ENGINE] portfolio.lisp loaded
-[ENGINE] metabolism.lisp loaded
-[ENGINE] ledger.lisp loaded
-[ENGINE] treasury.lisp loaded
-[ENGINE] failsafe.lisp loaded
-[ENGINE] heartbeat.lisp loaded - Mobile monitoring active
-[L] 💬 core/discord.lisp loaded - V42.0 (Phase 2 Notifier)
-[CORE] Kalman Filter loaded (ArXiv:1808.03297)
-[RESEARCH] #13 Dual Trend Decomposition loaded
-[RESEARCH] #17 Volatility-Based Model Switch loaded
-[RESEARCH] #18 Volatility-Scaled Rewards loaded
-[RESEARCH] #16 Kalman+HMM Regime Detection loaded
-[RESEARCH] #11 Latent Parameter Estimation loaded
-[RESEARCH] #10/#27 Ensemble & Normalization loaded
-[RESEARCH] #4 Implementation Quality Checks loaded
-[RESEARCH] #9 Zero-Shot Caution loaded
 
-[RESEARCH] ════════════════════════════════════════════
-[RESEARCH] 📚 31 Research Paper Insights Integrated (2 Pending)
-[RESEARCH] Papers: #4,#5,#9,#10,#11,#13,#14,#16,#17,#18,#27,#28,#29,#30...
-[RESEARCH] ════════════════════════════════════════════
-[SHELL] notifications.lisp loaded
-[SHELL] briefing.lisp loaded
-[SHELL] narrative.lisp loaded
-[SHELL] interface.lisp loaded
-[SHELL] handoff.lisp loaded
-[DSL] Loaded with CCI support
-STYLE-WARNING:
-   LOG-PHILOSOPHY is being redefined as a macro when it was previously defined to be a function.
-WARNING: redefining SWIMMY.SCHOOL::LOG-PHILOSOPHY in DEFMACRO
-[DSL] Advanced Macros loaded (PG-style)
-[DREAMER2] Loaded (with Backtester + Clone Detection + Genetic Programming)
-[VS] Verbalized Sampling loaded (ArXiv:2510.01171)
-[L] 📚 Knowledge base loaded: 43 strategies
-[STRATEGIES] Indicator types assigned:
-  sma: 8 strategies
-  ema: 12 strategies
-  macd: 5 strategies
-  rsi: 6 strategies
-  bb: 7 strategies
-  stoch: 5 strategies
-[STRATEGIES] 43 strategies loaded from Knowledge Base
-[L] 📦 school-state.lisp loaded - Shared state initialized
-[L] 🕐 Strategy TTL system enabled (max TTL: 7 days, min WR: 35.0%)
-[L] 🗜️ Context Compression enabled (Graham Agent Skills)
-[L] 🧠 Memory Systems enabled (Episodic + Semantic)
-[L] 🤝 Multi-Agent Patterns enabled (Blackboard + Voting)
-[L] 🦈 school-danger.lisp loaded - Danger Avoidance System active
-[L] 📜 school-constitution.lisp loaded - The Law is Active.
-[L] 📜 Article 5 (Service Resilience) is ENFORCED.
-[L] 🏳️ school-resignation.lisp loaded - Resignation Judgment active
-WARNING: redefining SWIMMY.SCHOOL:MUTATE-STRATEGY in DEFUN
-[SCHOOL] school-learning.lisp loaded - Failure Learning + Memory + Ecosystem
-[SCHOOL] school-volatility.lisp loaded - Volatility Detection System
-[SCHOOL] school-research.lisp loaded - Research Implementations
-[L] 🎖️ Special Force Recruited: T-Nakane-Gotobi
-[SCHOOL] Swimmy School ready (Strategies Reclassified & Pools Built)
-[FORTRESS] V6.1 features loaded (Paranoia + Japan Edge + Auto-Prune)
-[L] 🔄 transfer-learning.lisp loaded - Naval transfer learning active
-[L] 📤 Use (setup-transfer-learning) to initialize
-[L] 💾 Downloading 10-Year Market Wisdom... 0%
-[L] 💾 Processing 'The Great Volatility' (2015-2016)... 33%
-[L] 💾 Processing 'Pandemic Pivot' (2020)... 66%
-[L] 🧠 Transfer Learning complete: Injected 10 years of synthetic experience (2015-2025)
-[L] ⚔️ System is now battle-hardened.
-[SCHOOL] 🏛️ Advisor Council (Unified) loaded
-[L] 🪵 logger.lisp loaded - Structured logging active
-[MIXSEEK] Competition System loaded
-[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders
-[LLM] #5 Trading-R1 Reasoning Structure loaded
-[LLM] #14 Text Feature Extraction loaded
-[LLM] #28 FinLlama Sentiment Integration loaded
-[LLM] #24 Logic-Guided DSL Extension loaded
+alerts
+アプリ
+ — 21:582026年1月12日 月曜日 21:58
+ Validation Campaign
+ Swimmy Validation Monitoring Test (Retrying)
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[21:58]2026年1月12日 月曜日 21:58
+ Validation Campaign
+ Started Stress Test: USDJPY M5
+Swimmy Deep Validation Service
+[21:58]2026年1月12日 月曜日 21:58
+ Validation Campaign
+ Passed: USDJPY M5
+Swimmy Deep Validation Service
+[21:58]2026年1月12日 月曜日 21:58
+ Validation Campaign
+ Started Stress Test: EURUSD M5
+Swimmy Deep Validation Service
+[22:02]2026年1月12日 月曜日 22:02
+ Validation Campaign
+ Started Stress Test: USDJPY M5
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:02]2026年1月12日 月曜日 22:02
+ Validation Campaign
+ Passed: USDJPY M5
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:02]2026年1月12日 月曜日 22:02
+ Validation Campaign
+ Started Stress Test: USDJPY M1
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
 
-[LLM] ════════════════════════════════════════════
-[LLM] 🧠 LLM Integration Preparation Complete
-[LLM] Papers: #5 Trading-R1, #14 PrimoGPT, #28 FinLlama, #24 SYENS
-[LLM] ════════════════════════════════════════════
-[EVOLUTION] Continuous evolution system loaded
-[ERRORS] Comprehensive error handling loaded
-[QUALITY] Code quality tools loaded
-[QUALITY] Run (swimmy-quality:analyze-code-quality) for analysis
-[REPL] Swimmy REPL interface loaded
-[REPL] Type (swimmy :help) for commands
-[TESTS] Test framework loaded (V7.0 - Expert Verified)
-[TESTS] Run (swimmy-tests:run-all-tests) to execute 22 tests
-[TESTS] Integration tests loaded (Naval Modularization)
+alerts
+アプリ
+ — 22:162026年1月12日 月曜日 22:16
+ Validation Campaign
+ USDJPY M1 Progress: 1e+01%
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:17]2026年1月12日 月曜日 22:17
+ Validation Campaign
+ Started Stress Test: USDJPY M5
+Swimmy Deep Validation Service
+[22:17]2026年1月12日 月曜日 22:17
+ Validation Campaign
+ Passed: USDJPY M5
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:17]2026年1月12日 月曜日 22:17
+ Validation Campaign
+ Started Stress Test: USDJPY M1
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+新規
 
-[Lineage] Loaded 1 evolved strategies from state.
+alerts
+アプリ
+ — 22:302026年1月12日 月曜日 22:30
+ Heartbeat
+ Swimmy Heartbeat 2026/01/12 22:30
 
+ Status
+MT5:  OFFLINE (3570秒前)
+ Equity: ¥100000. | Today: +¥0.
+ Strategies: 0 active + 110 KB |  0 benched
 
-╔════════════════════════════════════╗
-║     🏰 STRATEGY GENEALOGY 🏰       ║
-╚════════════════════════════════════╝
+System is running normally.
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
 
-👑 House of T-Nakane-Gotobi (2 members)
-   ├─ Gen 0: T-Nakane-Gotobi (S: 0.00)
-   ├─ Gen 0: T-Nakane-Gotobi (S: 0.00)
-
-======================================
-(.venv) swimmy@SERV870:~/swimmy$ 
+alerts
+アプリ
+ — 22:442026年1月12日 月曜日 22:44
+ Validation Campaign
+ Started Stress Test: USDJPY M5
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:44]2026年1月12日 月曜日 22:44
+ Validation Campaign
+ Passed: USDJPY M5
+Swimmy Deep Validation Service
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:44]2026年1月12日 月曜日 22:44
+ Validation Campaign
+ Started Stress Test: USDJPY M1
+Swimmy Deep Validation Service

@@ -1,0 +1,13 @@
+{
+  "name": "Validation-MACD-Standard",
+  "sma_short": 12,
+  "sma_long": 26,
+  "sl": 0.50,
+  "tp": 1.00,
+  "volume": 0.1,
+  "indicator_type": "macd",
+  "filter_enabled": true,
+  "filter_tf": "H1",
+  "filter_period": 200,
+  "filter_logic": "PRICE_ABOVE_SMA"
+}

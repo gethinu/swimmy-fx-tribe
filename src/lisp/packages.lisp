@@ -331,7 +331,7 @@
    #:get-population-health
    #:process-category-trades
    #:check-evolution
-   #:evolve-population
+   #:evolve-population-via-mutation
    #:mutate-strategy
    #:batch-backtest-knowledge
    #:adopt-proven-strategies

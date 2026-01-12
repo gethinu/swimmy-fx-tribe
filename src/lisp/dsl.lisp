@@ -141,10 +141,26 @@
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.9: Strategy Lineage Tracking (Pedigree)
-(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend) (indicator-type "sma") (pnl-history nil) (timeframe 1) (generation 0))
+(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend) (indicator-type "sma") (pnl-history nil) (timeframe 1) (generation 0)
+            (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic ""))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0))
-  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation))
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic ""))
+  `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
+                  :filter-enabled ,filter-enabled :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic))
+
+(defmacro with-trend-filter ((tf logic period) strategy-form)
+  "Wraps a strategy definition with MTF trend filter parameters.
+   Usage: (with-trend-filter (\"H1\" \"PRICE_ABOVE_SMA\" 50) (make-strategy ...))"
+  (let ((strat-sym (gensym)))
+    `(let ((,strat-sym ,strategy-form))
+       (setf (strategy-filter-enabled ,strat-sym) t)
+       (setf (strategy-filter-tf ,strat-sym) ,tf)
+       (setf (strategy-filter-logic ,strat-sym) ,logic)
+       (setf (strategy-filter-period ,strat-sym) ,period)
+       ;; Append suffix to name to distinguish filtered version
+       (setf (strategy-name ,strat-sym) 
+             (format nil "~a-~a" (strategy-name ,strat-sym) ,tf))
+       ,strat-sym)))
 
 (defun validate (e) 
   (cond 
