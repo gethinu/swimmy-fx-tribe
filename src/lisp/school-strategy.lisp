@@ -357,3 +357,89 @@
   (dolist (strat *strategy-knowledge-base*)
     (let ((cat (categorize-strategy strat)))
       (push strat (gethash cat *category-pools* nil)))))
+
+;;; ============================================================================
+;;; TEAM SELECTION & RECRUITMENT (Moved from school-execution.lisp for SRP)
+;;; ============================================================================
+
+(defun get-regime-weights ()
+  ;; Use predicted regime if available for proactive positioning
+  (let* ((effective-regime (or *predicted-regime* *current-regime*))
+         (effective-volatility (or *predicted-volatility* *volatility-regime*))
+         (base-weights 
+           (case effective-regime
+             (:trending   '((:trend . 0.50) (:reversion . 0.20) (:breakout . 0.20) (:scalp . 0.10)))
+             (:ranging    '((:trend . 0.20) (:reversion . 0.50) (:breakout . 0.10) (:scalp . 0.20)))
+             (otherwise   *category-allocation*))))
+    ;; Adjust for volatility
+    (case effective-volatility
+      (:high  ; High volatility: reduce all, favor scalping
+       (mapcar (lambda (cw) (cons (car cw) (* (cdr cw) 0.5))) base-weights))
+      (:low   ; Low volatility: increase positions
+       (mapcar (lambda (cw) (cons (car cw) (* (cdr cw) 1.2))) base-weights))
+      (otherwise base-weights))))
+
+(defun select-best-from-pool (category n)
+  (let* ((pool (gethash category *category-pools*))
+         (sorted (sort (copy-list pool) #'> 
+                       :key (lambda (s) (or (strategy-sharpe s) -999)))))
+    (subseq sorted 0 (min n (length sorted)))))
+
+(defun infer-strategy-category (strat)
+  "Infer clan category from strategy name/indicators AND TP/SL values"
+  (let ((name (string-downcase (strategy-name strat)))
+        (tp (strategy-tp strat))
+        (sl (strategy-sl strat)))
+    (cond
+      ;; Breakout strategies
+      ((or (search "breakout" name) (search "squeeze" name) (search "low-vol" name)) :breakout)
+      ;; Reversion strategies
+      ((or (search "oversold" name) (search "overbought" name) (search "reversal" name) 
+           (search "bounce" name) (search "reversion" name)) :reversion)
+      ;; Scalp: tight TP (under 0.30 = 30 pips) and specific keywords
+      ((and (<= tp 0.30) (or (search "scalp" name) (search "pop" name) (search "1m" name))) :scalp)
+      ;; Everything else is trend
+      (t :trend))))
+
+(defun recruit-from-evolution ()
+  "Promote evolved strategies from *evolved-strategies* to master knowledge base"
+  (when (and (boundp '*evolved-strategies*) *evolved-strategies*)
+    (let ((count 0)
+          (new-names nil))
+      (dolist (strat *evolved-strategies*)
+        ;; Avoid duplicates in knowledge base
+        (unless (find (strategy-name strat) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+          (push strat *strategy-knowledge-base*)
+          ;; Add to category pool for selection
+          (let ((cat (categorize-strategy strat))) ; V8.7: Use correct categorization
+            (when (boundp '*category-pools*)
+               (push strat (gethash cat *category-pools*))))
+          (incf count)
+          (push (strategy-name strat) new-names)
+          (format t "[RECRUIT] 🛡️ Inducted: ~a (Category: ~a)~%" (strategy-name strat) (categorize-strategy strat))))
+      
+      (when (> count 0)
+        (format t "[RECRUIT] 🔥 ~d strategies promoted from evolution!~%" count)
+        (safe-notify-discord-recruit 
+         (format nil "🔥 Recruited ~d new strategies!~%~{~a~%~}" count (reverse new-names)) 
+         :color 3066993)
+        ;; Clear the waiting list so we don't re-add
+        (setf *evolved-strategies* nil)))))
+
+(defun assemble-team ()
+  (recruit-from-evolution) ; Check for new recruits first
+  (detect-market-regime)
+  (record-regime)          ; Track for pattern analysis
+  (predict-next-regime)    ; Forecast next regime
+  (let ((weights (get-regime-weights)))
+    (clrhash *active-team*)
+    (dolist (cat-weight weights)
+      (let* ((cat (car cat-weight))
+             (slots (cdr (assoc cat *slots-per-category*)))
+             (best (select-best-from-pool cat slots)))
+        (setf (gethash cat *active-team*) best)))))
+
+(defun safe-notify-discord-recruit (msg &key color)
+  (if (fboundp 'notify-discord-recruit)
+      (notify-discord-recruit msg :color color)
+      (format t "[DISCORD] ~a~%" msg)))

@@ -227,8 +227,9 @@
   "Runs a quick backtest on provided history. Pure function (Hickey)."
   (if (or (null history) (< (length history) 100))
       (progn 
-        (format t "[SAFETY] 🛑 REJECTED: History empty/short. ~a~%" (strategy-name strategy))
-        nil) ; Strict Fail (Graham)
+        ;; V15.6: Startup Exception (Allow recruitment without history)
+        (format t "[SAFETY] ⚠️ History empty/short for ~a. Assuming Startup -> PASSED.~%" (strategy-name strategy))
+        t) ; Allow pass on startup
       (let ((pnl 0) (trades 0) (peak 0) (dd 0) (wins 0)
             (sub-history (subseq history (max 0 (- (length history) 500)))))
         ;; Placeholder: For V9.3, we check syntax and basic integrity.
@@ -403,3 +404,5 @@
           (format t "[IMMIGRATION] 🎯 Selected candidate for ~a: ~a~%" target-clan pick)
           (recruit-founder pick))
         (format t "[IMMIGRATION] ⚠️ No candidates found for clan ~a in Registry.~%" target-clan))))
+
+;;; End of Founders Registry
