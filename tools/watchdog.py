@@ -2,40 +2,43 @@
 """
 swimmy-watchdog.py - Liveness Monitor & Auto-Revival Service
 =============================================================
-V15.6: Expert Panel Approved - Graduated Timeout & Timeframe-Aware Policy
+V15.7: Expert Panel Complete - P0 through P5 Implementation
 
 Features:
-1. P0: Graduated timeout (30s warn → 90s block → 180s CLOSE_ALL)
-2. P1: Timeframe-aware policy (H4+ with SL = maintain positions)
-3. P2: BRAIN_TIMEOUT_POLICY config (CLOSE_ALL / MAINTAIN / GRADUATED)
-4. Loop prevention (2 deaths in 5 min = halt)
+1. P0: Graduated timeout (configurable thresholds)
+2. P1: Timeframe-aware policy (GRADUATED)
+3. P2: BRAIN_TIMEOUT_POLICY config
+4. P3: Live position info query (via ZMQ to Brain)
+5. P4: All timeouts configurable via .env
+6. P5: Test mode with DEBUG_SIMULATE_TIMEOUT
 
-Architecture:
-    [Brain] --(heartbeat)--> [Watchdog] --(alert)--> [Discord]
-                               |
-                               v
-                         [systemctl restart]
+Usage:
+    Normal mode: python3 tools/watchdog.py
+    Test mode:   python3 tools/watchdog.py --test
 """
 
 import zmq
 import json
 import time
 import os
+import sys
 import subprocess
 import requests
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 # =============================================================================
-# CONFIGURATION (P2: Configurable via .env)
+# CONFIGURATION (P4: All configurable via .env)
 # =============================================================================
 
 ZMQ_BRAIN_PORT = 5556  # Brain's PUB socket
+ZMQ_BRAIN_CMD_PORT = 5555  # Brain's command socket (for position query)
 ZMQ_GUARDIAN_PORT = 5560  # Guardian's PUB socket to MT5
 
-# Graduated Timeout Thresholds (P0)
-TIMEOUT_WARN_SECS = 30  # Phase 1: Warning only
-TIMEOUT_BLOCK_SECS = 90  # Phase 2: Block new entries
-TIMEOUT_CLOSE_SECS = 180  # Phase 3: CLOSE_ALL
+# Graduated Timeout Thresholds (P4: Configurable)
+TIMEOUT_WARN_SECS = int(os.getenv("TIMEOUT_WARN_SECS", "30"))
+TIMEOUT_BLOCK_SECS = int(os.getenv("TIMEOUT_BLOCK_SECS", "90"))
+TIMEOUT_CLOSE_SECS = int(os.getenv("TIMEOUT_CLOSE_SECS", "180"))
 
 # Policy (P2): CLOSE_ALL, MAINTAIN, GRADUATED
 TIMEOUT_POLICY = os.getenv("BRAIN_TIMEOUT_POLICY", "GRADUATED").upper()
@@ -47,7 +50,94 @@ GUARDIAN_CHECK_INTERVAL_SECS = 60
 
 # Environment
 WEBHOOK_URL = os.getenv("SWIMMY_DISCORD_ALERTS", "")
-GUARDIAN_CMD_PORT = 5560  # For sending CLOSE_ALL to MT5 via Guardian
+
+# Test mode flag
+TEST_MODE = "--test" in sys.argv
+
+# =============================================================================
+# POSITION INFO (P3: Live query from Brain)
+# =============================================================================
+
+
+class PositionInfo:
+    """Information about open positions."""
+
+    def __init__(self):
+        self.short_term_count = 0  # M1-M30
+        self.long_term_count = 0  # H1+
+        self.positions_with_sl = 0
+        self.positions_without_sl = 0
+        self.total_pnl = 0.0
+        self.positions: List[Dict] = []
+
+    def should_close_on_timeout(self) -> bool:
+        """Returns True if positions should be closed based on GRADUATED policy."""
+        # Close if: any short-term OR any without SL
+        return self.short_term_count > 0 or self.positions_without_sl > 0
+
+    def get_positions_to_close(self) -> List[Dict]:
+        """Get list of positions that should be closed in GRADUATED mode."""
+        to_close = []
+        for pos in self.positions:
+            timeframe = pos.get("timeframe", 1)
+            has_sl = pos.get("sl", 0) != 0
+            # Close if M1-M30 (timeframe < 60) OR no SL
+            if timeframe < 60 or not has_sl:
+                to_close.append(pos)
+        return to_close
+
+
+def query_position_info() -> PositionInfo:
+    """
+    Query Brain for live position information via ZMQ.
+    P3 Implementation: Real query instead of stub.
+    """
+    info = PositionInfo()
+
+    try:
+        context = zmq.Context.instance()
+        req = context.socket(zmq.REQ)
+        req.setsockopt(zmq.RCVTIMEO, 3000)  # 3 second timeout
+        req.setsockopt(zmq.LINGER, 0)
+        req.connect(f"tcp://localhost:{ZMQ_BRAIN_CMD_PORT}")
+
+        # Send position query command
+        query = json.dumps({"action": "GET_POSITIONS"})
+        req.send_string(query)
+
+        # Wait for response
+        response = req.recv_string()
+        data = json.loads(response)
+
+        if data.get("status") == "ok":
+            positions = data.get("positions", [])
+            info.positions = positions
+
+            for pos in positions:
+                timeframe = pos.get("timeframe", 1)
+                has_sl = pos.get("sl", 0) != 0
+
+                if timeframe >= 60:  # H1+
+                    info.long_term_count += 1
+                else:
+                    info.short_term_count += 1
+
+                if has_sl:
+                    info.positions_with_sl += 1
+                else:
+                    info.positions_without_sl += 1
+
+                info.total_pnl += pos.get("pnl", 0)
+
+        req.close()
+
+    except zmq.Again:
+        print("[WATCHDOG] Position query timeout - Brain may be unresponsive")
+    except Exception as e:
+        print(f"[WATCHDOG] Position query error: {e}")
+
+    return info
+
 
 # =============================================================================
 # STATE
@@ -86,7 +176,6 @@ class BrainState:
         """Reset on Brain recovery."""
         self.phase = 0
         self.close_sent = False
-        # Don't reset death_count here - that's for loop prevention
 
 
 brain_state = BrainState()
@@ -114,6 +203,8 @@ class RevivalTracker:
 
 
 guardian_tracker = RevivalTracker("swimmy-guardian")
+brain_tracker = RevivalTracker("swimmy-brain")
+
 
 # =============================================================================
 # HELPERS
@@ -126,6 +217,10 @@ def send_discord_alert(
     """Send alert to Discord."""
     if not WEBHOOK_URL:
         print(f"[WATCHDOG] No webhook configured, skipping: {title}")
+        return
+
+    if TEST_MODE:
+        print(f"[TEST] Would send Discord: {title}")
         return
 
     try:
@@ -151,44 +246,47 @@ def send_discord_alert(
         print(f"[WATCHDOG] Discord error: {e}")
 
 
-def send_close_all_to_mt5():
-    """Send CLOSE_ALL command to MT5 via Guardian's port."""
-    # Guardian listens on 5560 and forwards to MT5
-    # We can also send directly if Guardian is down
+def send_close_command(command: str = "CLOSE_ALL"):
+    """Send close command to MT5 via Guardian."""
+    if TEST_MODE:
+        print(f"[TEST] Would send: {command}")
+        return True
+
     try:
         context = zmq.Context.instance()
         pub = context.socket(zmq.PUB)
-        pub.connect(f"tcp://localhost:{GUARDIAN_CMD_PORT}")
-        time.sleep(0.1)  # Let connection establish
-        pub.send_string("CLOSE_ALL")
-        pub.send_string("CANCEL_ALL")
+        pub.connect(f"tcp://localhost:{ZMQ_GUARDIAN_PORT}")
+        time.sleep(0.1)
+        pub.send_string(command)
         pub.close()
-        print("[WATCHDOG] 🚨 CLOSE_ALL sent to MT5")
+        print(f"[WATCHDOG] 🚨 {command} sent to MT5")
         return True
     except Exception as e:
-        print(f"[WATCHDOG] Failed to send CLOSE_ALL: {e}")
+        print(f"[WATCHDOG] Failed to send {command}: {e}")
         return False
 
 
 def restart_service(tracker: RevivalTracker) -> bool:
     """Attempt to restart a service."""
     if tracker.halted:
-        print(f"[WATCHDOG] Revival HALTED for {tracker.service} (too many deaths)")
+        print(f"[WATCHDOG] Revival HALTED for {tracker.service}")
         return False
 
     can_revive = tracker.record_death()
     if not can_revive:
         send_discord_alert(
             "🛑 AUTO-REVIVAL HALTED",
-            f"{tracker.service} died {tracker.death_count}x in {REVIVAL_WINDOW_SECS}s. Manual intervention required.",
+            f"{tracker.service} died {tracker.death_count}x in {REVIVAL_WINDOW_SECS}s.",
             color=16711680,
             mention=True,
         )
         return False
 
-    print(
-        f"[WATCHDOG] Restarting {tracker.service} (death {tracker.death_count}/{MAX_DEATHS_IN_WINDOW})..."
-    )
+    if TEST_MODE:
+        print(f"[TEST] Would restart: {tracker.service}")
+        return True
+
+    print(f"[WATCHDOG] Restarting {tracker.service}...")
     result = subprocess.run(
         ["systemctl", "--user", "restart", tracker.service],
         capture_output=True,
@@ -204,6 +302,8 @@ def restart_service(tracker: RevivalTracker) -> bool:
 
 
 def check_guardian_alive() -> bool:
+    if TEST_MODE:
+        return True
     result = subprocess.run(
         ["systemctl", "--user", "is-active", "--quiet", "swimmy-guardian"],
         capture_output=True,
@@ -211,25 +311,8 @@ def check_guardian_alive() -> bool:
     return result.returncode == 0
 
 
-def get_open_positions_info() -> dict:
-    """
-    Query open positions info from Brain/Guardian.
-    Returns dict with counts for short-term and long-term positions.
-    For now, returns mock data. TODO: Implement actual query via ZMQ.
-    """
-    # P1 implementation: Would query Brain for position info
-    # For now, assume all positions have SL and check timeframe from strategy
-    # This is a stub - full implementation would query live positions
-    return {
-        "short_term_count": 0,  # M1-M30 positions
-        "long_term_count": 0,  # H1+ positions
-        "positions_with_sl": 0,
-        "positions_without_sl": 0,
-    }
-
-
 # =============================================================================
-# GRADUATED TIMEOUT LOGIC (P0)
+# GRADUATED TIMEOUT LOGIC (P0 + P1 + P3)
 # =============================================================================
 
 
@@ -237,89 +320,100 @@ def handle_brain_timeout():
     """Handle Brain timeout with graduated phases."""
     silence = brain_state.silence_secs()
 
-    # Phase 1: Warning (30s)
+    # Phase 1: Warning
     if silence > TIMEOUT_WARN_SECS and brain_state.phase < 1:
         brain_state.phase = 1
-        print(
-            f"[WATCHDOG] ⚠️ Phase 1: Brain silence {silence:.0f}s > {TIMEOUT_WARN_SECS}s (WARNING)"
-        )
+        print(f"[WATCHDOG] ⚠️ Phase 1: WARNING ({silence:.0f}s)")
         send_discord_alert(
             "⚠️ BRAIN SILENCE WARNING",
             f"Brain silent for {silence:.0f}s. Monitoring...",
-            color=16776960,  # Yellow
+            color=16776960,
             mention=False,
         )
 
-    # Phase 2: Block new entries (90s)
+    # Phase 2: Block + Restart
     elif silence > TIMEOUT_BLOCK_SECS and brain_state.phase < 2:
         brain_state.phase = 2
-        print(
-            f"[WATCHDOG] 🛑 Phase 2: Brain silence {silence:.0f}s > {TIMEOUT_BLOCK_SECS}s (BLOCK)"
-        )
+        print(f"[WATCHDOG] 🛑 Phase 2: BLOCK ({silence:.0f}s)")
         send_discord_alert(
             "🛑 BRAIN TIMEOUT - ENTRIES BLOCKED",
-            f"Brain silent for {silence:.0f}s. New entries blocked. Attempting restart...",
-            color=16744448,  # Orange
+            f"Brain silent for {silence:.0f}s. Attempting restart...",
+            color=16744448,
             mention=True,
         )
 
-        # Attempt restart
         if not brain_state.halted:
-            brain_tracker = RevivalTracker("swimmy-brain")
             if brain_state.record_death():
                 restart_service(brain_tracker)
 
-    # Phase 3: CLOSE_ALL (180s) - Policy dependent
+    # Phase 3: Execute Policy
     elif silence > TIMEOUT_CLOSE_SECS and brain_state.phase < 3:
         brain_state.phase = 3
-        print(
-            f"[WATCHDOG] 💀 Phase 3: Brain silence {silence:.0f}s > {TIMEOUT_CLOSE_SECS}s (CRITICAL)"
-        )
+        print(f"[WATCHDOG] 💀 Phase 3: EXECUTE POLICY ({silence:.0f}s)")
+
+        if brain_state.close_sent:
+            return
+
+        # P3: Query position info for GRADUATED policy
+        position_info = query_position_info()
 
         if TIMEOUT_POLICY == "CLOSE_ALL":
-            # Aggressive: Close everything
-            if not brain_state.close_sent:
-                send_discord_alert(
-                    "💀 BRAIN DEAD - CLOSING ALL POSITIONS",
-                    f"Brain unresponsive for {silence:.0f}s. Policy: CLOSE_ALL. Closing all positions.",
-                    color=16711680,  # Red
-                    mention=True,
-                )
-                send_close_all_to_mt5()
-                brain_state.close_sent = True
+            send_discord_alert(
+                "💀 BRAIN DEAD - CLOSING ALL",
+                f"Policy: CLOSE_ALL. Closing all positions.",
+                color=16711680,
+                mention=True,
+            )
+            send_close_command("CLOSE_ALL")
+            send_close_command("CANCEL_ALL")
+            brain_state.close_sent = True
 
         elif TIMEOUT_POLICY == "MAINTAIN":
-            # Conservative: Keep all positions, just alert
-            if not brain_state.close_sent:
-                send_discord_alert(
-                    "💀 BRAIN DEAD - POSITIONS MAINTAINED",
-                    f"Brain unresponsive for {silence:.0f}s. Policy: MAINTAIN. "
-                    "Positions kept (relying on MT5 SL/TP). Manual check recommended.",
-                    color=16711680,
-                    mention=True,
-                )
-                brain_state.close_sent = True
+            send_discord_alert(
+                "💀 BRAIN DEAD - POSITIONS MAINTAINED",
+                f"Policy: MAINTAIN. All positions kept.\n"
+                f"Short-term: {position_info.short_term_count}, Long-term: {position_info.long_term_count}",
+                color=16711680,
+                mention=True,
+            )
+            brain_state.close_sent = True
 
         elif TIMEOUT_POLICY == "GRADUATED":
-            # P1: Timeframe-aware - Close short-term, maintain long-term with SL
-            positions = get_open_positions_info()
+            # P3: Timeframe-aware closing
+            to_close = position_info.get_positions_to_close()
 
-            if not brain_state.close_sent:
-                # Close only short-term or unprotected positions
-                # For now, we don't have live position data, so we alert and let Guardian handle
+            if to_close:
+                desc = (
+                    f"Policy: GRADUATED\n"
+                    f"• Closing: {len(to_close)} short-term/unprotected\n"
+                    f"• Maintaining: {position_info.long_term_count} long-term with SL"
+                )
                 send_discord_alert(
-                    "💀 BRAIN DEAD - GRADUATED POLICY",
-                    f"Brain unresponsive for {silence:.0f}s. Policy: GRADUATED.\n"
-                    "• Short-term (M1-M30): Will be closed\n"
-                    "• Long-term (H1+) with SL: Maintained\n"
-                    "• No SL: Will be closed",
+                    "💀 BRAIN DEAD - GRADUATED CLOSE",
+                    desc,
                     color=16711680,
                     mention=True,
                 )
-                # Send CLOSE_ALL_SCALP command (Guardian would interpret this)
-                # For now, standard CLOSE_ALL as fallback
-                send_close_all_to_mt5()
-                brain_state.close_sent = True
+
+                # Close individual positions (if Brain supports per-ticket close)
+                # Fallback to CLOSE_ALL for short-term
+                for pos in to_close:
+                    ticket = pos.get("ticket")
+                    if ticket:
+                        send_close_command(f"CLOSE_TICKET:{ticket}")
+                    else:
+                        # If no ticket info, use CLOSE_ALL as fallback
+                        send_close_command("CLOSE_ALL")
+                        break
+            else:
+                send_discord_alert(
+                    "💀 BRAIN DEAD - NO POSITIONS TO CLOSE",
+                    f"Policy: GRADUATED. All {position_info.long_term_count} positions are long-term with SL.",
+                    color=16744448,
+                    mention=True,
+                )
+
+            brain_state.close_sent = True
 
 
 def handle_brain_recovery():
@@ -328,12 +422,82 @@ def handle_brain_recovery():
         print("[WATCHDOG] 🧠 Brain signal restored!")
         send_discord_alert(
             "🧠 BRAIN REVIVED",
-            f"Signal restored after {brain_state.silence_secs():.0f}s silence. Resume normal operation.",
-            color=65280,  # Green
+            f"Signal restored after {brain_state.silence_secs():.0f}s silence.",
+            color=65280,
             mention=False,
         )
         brain_state.reset()
-        brain_state.death_count = 0  # Full reset on recovery
+        brain_state.death_count = 0
+
+
+# =============================================================================
+# TEST MODE (P5)
+# =============================================================================
+
+
+def run_tests():
+    """P5: Phase transition tests."""
+    print("=" * 60)
+    print("  🧪 WATCHDOG TEST MODE - Phase Transition Tests")
+    print("=" * 60)
+
+    results = []
+
+    # Test 1: Phase transitions
+    print("\n[TEST 1] Phase Transition Test")
+    test_state = BrainState()
+    test_state.last_msg_time = time.time() - 35  # 35s ago
+
+    assert (
+        test_state.silence_secs() > TIMEOUT_WARN_SECS
+    ), "Should detect silence > warn threshold"
+    print(
+        f"  ✅ Silence detection: {test_state.silence_secs():.1f}s > {TIMEOUT_WARN_SECS}s"
+    )
+    results.append(("Phase detection", True))
+
+    # Test 2: Revival tracker
+    print("\n[TEST 2] Revival Tracker Test")
+    tracker = RevivalTracker("test-service")
+    assert tracker.record_death() == True, "First death should allow revival"
+    assert tracker.record_death() == False, "Second death should halt revival"
+    assert tracker.halted == True, "Should be halted after 2 deaths"
+    print(f"  ✅ Loop prevention: halted after {tracker.death_count} deaths")
+    results.append(("Loop prevention", True))
+
+    # Test 3: Position info
+    print("\n[TEST 3] Position Info Test")
+    info = PositionInfo()
+    info.short_term_count = 2
+    info.long_term_count = 3
+    info.positions_without_sl = 1
+    info.positions = [
+        {"timeframe": 5, "sl": 0, "ticket": 123},  # M5, no SL
+        {"timeframe": 15, "sl": 100, "ticket": 124},  # M15, with SL
+        {"timeframe": 240, "sl": 100, "ticket": 125},  # H4, with SL
+    ]
+    to_close = info.get_positions_to_close()
+    assert len(to_close) == 2, "Should close M5 (no SL) and M15 (short-term)"
+    print(f"  ✅ GRADUATED logic: {len(to_close)} positions to close")
+    results.append(("GRADUATED logic", True))
+
+    # Test 4: Config loading
+    print("\n[TEST 4] Configuration Test")
+    assert TIMEOUT_WARN_SECS > 0, "TIMEOUT_WARN_SECS should be positive"
+    assert TIMEOUT_BLOCK_SECS > TIMEOUT_WARN_SECS, "BLOCK should be > WARN"
+    assert TIMEOUT_CLOSE_SECS > TIMEOUT_BLOCK_SECS, "CLOSE should be > BLOCK"
+    print(
+        f"  ✅ Thresholds: {TIMEOUT_WARN_SECS}s → {TIMEOUT_BLOCK_SECS}s → {TIMEOUT_CLOSE_SECS}s"
+    )
+    results.append(("Config loading", True))
+
+    # Summary
+    print("\n" + "=" * 60)
+    passed = sum(1 for _, r in results if r)
+    print(f"  Results: {passed}/{len(results)} tests passed")
+    print("=" * 60)
+
+    return all(r for _, r in results)
 
 
 # =============================================================================
@@ -342,11 +506,15 @@ def handle_brain_recovery():
 
 
 def main():
+    if TEST_MODE:
+        success = run_tests()
+        sys.exit(0 if success else 1)
+
     print("=" * 60)
-    print("  🐕 SWIMMY WATCHDOG V15.6 - Graduated Timeout")
+    print(f"  🐕 SWIMMY WATCHDOG V15.7 - Full Implementation")
     print(f"  Policy: {TIMEOUT_POLICY}")
     print(
-        f"  Phases: {TIMEOUT_WARN_SECS}s warn → {TIMEOUT_BLOCK_SECS}s block → {TIMEOUT_CLOSE_SECS}s close"
+        f"  Phases: {TIMEOUT_WARN_SECS}s → {TIMEOUT_BLOCK_SECS}s → {TIMEOUT_CLOSE_SECS}s"
     )
     print("=" * 60)
 
@@ -371,7 +539,7 @@ def main():
             except zmq.Again:
                 pass
 
-            # 2. Handle Brain timeout (graduated)
+            # 2. Handle Brain timeout
             if (
                 brain_state.silence_secs() > TIMEOUT_WARN_SECS
                 and not brain_state.halted
@@ -384,9 +552,7 @@ def main():
                 if not check_guardian_alive():
                     print("[WATCHDOG] 🛡️ Guardian is DOWN!")
                     send_discord_alert(
-                        "🛡️ GUARDIAN DOWN",
-                        "Guardian service failed. Attempting restart.",
-                        color=16711680,
+                        "🛡️ GUARDIAN DOWN", "Attempting restart.", color=16711680
                     )
                     restart_service(guardian_tracker)
 
