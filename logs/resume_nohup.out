@@ -1,0 +1,38 @@
+nohup: ignoring input
+📝 Resuming Campaign. Logging to logs/resume_campaign_20260113_075738.log
+---------------------------------------------------
+🧪 Testing USDJPY M1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ USDJPY M1 failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD M5...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ EURUSD M5 failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD M1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ EURUSD M1 failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD M5...
+---------------------------------------------------
+✅ Discord Alert Sent.
+./tools/resume_campaign.sh: line 10: 193601 Killed                  timeout 4h python3 tools/stress_test.py --symbol $SYMBOL --timeframe $TF --strategy $STRATEGY
+❌ GBPUSD M5 failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD M1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ GBPUSD M1 failed or timed out!
+✅ Discord Alert Sent.
+🎉 Resume Complete.

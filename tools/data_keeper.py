@@ -24,7 +24,8 @@ APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
 ZMQ_PORT = 5561
-# Deep Validation Support: Increased buffer to 10M candles (approx 20 years of M1)
+# buffer to 10M candles (approx 20 years of M1, but now strictly for M5+)
+# M1 is DISABLED to prevent OOM.
 MAX_CANDLES_PER_SYMBOL = 10_000_000
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
@@ -55,7 +56,8 @@ def send_discord_alert(message: str, is_error: bool = True):
 def load_historical_data():
     """Load historical data from CSV files for all timeframes."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
-    timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]
+    # V9.4 Optimization: M1 disabled to save RAM. Focusing on M5+ (20 years)
+    timeframes = ["M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]
 
     for symbol in SUPPORTED_SYMBOLS:
         for tf in timeframes:

@@ -30,7 +30,7 @@ def get_data_file_path(symbol, timeframe):
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
 
-    if poller.poll(5000):  # 5s timeout
+    if poller.poll(30000):  # 30s timeout (Increased for Deep Load)
         msg = socket.recv_string()
         resp = json.loads(msg)
         if "path" in resp:

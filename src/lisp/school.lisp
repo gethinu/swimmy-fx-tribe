@@ -581,39 +581,39 @@
                                (format t "[L] ⚠️ Unknown indicator type in ~a: ~a~%" (strategy-name strat) type)
                                nil))))))
       
-      ;; Define strat-bindings in body of let*, initialized with base-bindings
-      (let ((strat-bindings base-bindings)
+      ;; Define bindings in body of let*, initialized with base-bindings
+      (let ((bindings base-bindings)
             (pkg (find-package :swimmy.school)))
         
         ;; Add common bindings (OHLCV)
-        (push `(,(intern "CLOSE" pkg) ,(candle-close (first history))) strat-bindings)
-        (push `(,(intern "CLOSE-PREV" pkg) ,(candle-close (second history))) strat-bindings)
-        (push `(,(intern "HIGH" pkg) ,(candle-high (first history))) strat-bindings)
-        (push `(,(intern "HIGH-PREV" pkg) ,(candle-high (second history))) strat-bindings)
-        (push `(,(intern "LOW" pkg) ,(candle-low (first history))) strat-bindings)
-        (push `(,(intern "LOW-PREV" pkg) ,(candle-low (second history))) strat-bindings)
+        (push `(,(intern "CLOSE" pkg) ,(candle-close (first history))) bindings)
+        (push `(,(intern "CLOSE-PREV" pkg) ,(candle-close (second history))) bindings)
+        (push `(,(intern "HIGH" pkg) ,(candle-high (first history))) bindings)
+        (push `(,(intern "HIGH-PREV" pkg) ,(candle-high (second history))) bindings)
+        (push `(,(intern "LOW" pkg) ,(candle-low (first history))) bindings)
+        (push `(,(intern "LOW-PREV" pkg) ,(candle-low (second history))) bindings)
         
         (multiple-value-bind (sec min hour day month year dow) (decode-universal-time (get-universal-time))
           (declare (ignore sec day month year dow))
-          (push `(,(intern "HOUR" pkg) ,hour) strat-bindings)
-          (push `(,(intern "MINUTE" pkg) ,min) strat-bindings)
+          (push `(,(intern "HOUR" pkg) ,hour) bindings)
+          (push `(,(intern "MINUTE" pkg) ,min) bindings)
           (let ((is-gotobi (if (fboundp (intern "GOTOBI-DAY-P" pkg))
                                (if (funcall (intern "GOTOBI-DAY-P" pkg)) t nil)
                                nil)))
-            (push `(,(intern "GOTOBI-P" pkg) ,is-gotobi) strat-bindings)))
+            (push `(,(intern "GOTOBI-P" pkg) ,is-gotobi) bindings)))
       
         ;; Remove duplicates (standard cleanup)
-        (setf strat-bindings (remove-duplicates strat-bindings :key #'car :from-end t))
+        (setf bindings (remove-duplicates bindings :key #'car :from-end t))
       
         (let* ((pkg (find-package :swimmy.school))
                (transformed-logic (transform-cross-calls-helper entry-logic pkg)))
           (handler-case
               (locally (declare (sb-ext:muffle-conditions style-warning))
-                (let ((entry-result (eval `(let ,strat-bindings ,transformed-logic))))
+                (let ((entry-result (eval `(let ,bindings ,transformed-logic))))
                   (cond
                     (entry-result :buy)
                     ((and (strategy-exit strat)
-                          (eval `(let ,strat-bindings ,(transform-cross-calls-helper (strategy-exit strat) pkg)))) :sell)
+                          (eval `(let ,bindings ,(transform-cross-calls-helper (strategy-exit strat) pkg)))) :sell)
                     (t :hold))))
             (error (e) 
               (format t "[L] Eval error ~a: ~a~%" (strategy-name strat) e)

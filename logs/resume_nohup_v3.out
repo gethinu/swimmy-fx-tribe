@@ -1,0 +1,107 @@
+nohup: ignoring input
+📝 Resuming Campaign. Logging to logs/resume_campaign_20260113_083011.log
+---------------------------------------------------
+🧪 Testing EURUSD M5...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on EURUSD M5
+=========================================
+[STRESS] Checking for auxiliary Timeframes for EURUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/EURUSD_M5.csv + 5 aux files...
+PROGRESS: Processed 100000 / 1485262 candles (6.7%)
+PROGRESS: Processed 200000 / 1485262 candles (13.5%)
+PROGRESS: Processed 300000 / 1485262 candles (20.2%)
+PROGRESS: Processed 400000 / 1485262 candles (26.9%)
+PROGRESS: Processed 500000 / 1485262 candles (33.7%)
+PROGRESS: Processed 600000 / 1485262 candles (40.4%)
+PROGRESS: Processed 700000 / 1485262 candles (47.1%)
+PROGRESS: Processed 800000 / 1485262 candles (53.9%)
+PROGRESS: Processed 900000 / 1485262 candles (60.6%)
+PROGRESS: Processed 1000000 / 1485262 candles (67.3%)
+PROGRESS: Processed 1100000 / 1485262 candles (74.1%)
+PROGRESS: Processed 1200000 / 1485262 candles (80.8%)
+PROGRESS: Processed 1300000 / 1485262 candles (87.5%)
+PROGRESS: Processed 1400000 / 1485262 candles (94.3%)
+{"result":{"adjusted_sharpe":0.0,"losses":50648,"max_drawdown":2.6243983839999387,"pnl":-508.60020999995686,"sharpe":-11.646548859095171,"sharpe_ci_lower":-11.84633593078543,"sortino":-6.273179161046952,"strategy_name":"Validation-MACD-Standard","trades":50805,"win_rate":0.3090247022930814,"wins":157},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 1485262 candles from /home/swimmy/swimmy/data/historical/EURUSD_M5.csv
+  ➕ Loaded 5201 aux candles for D1
+  ➕ Loaded 124082 aux candles for H1
+  ➕ Loaded 31136 aux candles for H4
+  ➕ Loaded 495745 aux candles for M15
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 50648,
+    "max_drawdown": 2.6243983839999387,
+    "pnl": -508.60020999995686,
+    "sharpe": -11.646548859095171,
+    "sharpe_ci_lower": -11.84633593078543,
+    "sortino": -6.273179161046952,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 50805,
+    "win_rate": 0.3090247022930814,
+    "wins": 157
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ EURUSD M5 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD M5...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on GBPUSD M5
+=========================================
+[STRESS] Checking for auxiliary Timeframes for GBPUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/GBPUSD_M5.csv + 5 aux files...
+PROGRESS: Processed 100000 / 1484023 candles (6.7%)
+PROGRESS: Processed 200000 / 1484023 candles (13.5%)
+PROGRESS: Processed 300000 / 1484023 candles (20.2%)
+PROGRESS: Processed 400000 / 1484023 candles (27.0%)
+PROGRESS: Processed 500000 / 1484023 candles (33.7%)
+PROGRESS: Processed 600000 / 1484023 candles (40.4%)
+PROGRESS: Processed 700000 / 1484023 candles (47.2%)
+PROGRESS: Processed 800000 / 1484023 candles (53.9%)
+PROGRESS: Processed 900000 / 1484023 candles (60.6%)
+PROGRESS: Processed 1000000 / 1484023 candles (67.4%)
+PROGRESS: Processed 1100000 / 1484023 candles (74.1%)
+PROGRESS: Processed 1200000 / 1484023 candles (80.9%)
+PROGRESS: Processed 1300000 / 1484023 candles (87.6%)
+PROGRESS: Processed 1400000 / 1484023 candles (94.3%)
+{"result":{"adjusted_sharpe":0.0,"losses":51882,"max_drawdown":2.6928035459999418,"pnl":-522.0495899999667,"sharpe":-11.620215929418173,"sharpe_ci_lower":-11.819502402195312,"sortino":-6.297733359398377,"strategy_name":"Validation-MACD-Standard","trades":52133,"win_rate":0.4814608789058754,"wins":251},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 1484023 candles from /home/swimmy/swimmy/data/historical/GBPUSD_M5.csv
+  ➕ Loaded 5200 aux candles for D1
+  ➕ Loaded 124059 aux candles for H1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495610 aux candles for M15
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 51882,
+    "max_drawdown": 2.6928035459999418,
+    "pnl": -522.0495899999667,
+    "sharpe": -11.620215929418173,
+    "sharpe_ci_lower": -11.819502402195312,
+    "sortino": -6.297733359398377,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 52133,
+    "win_rate": 0.4814608789058754,
+    "wins": 251
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ GBPUSD M5 passed.
+✅ Discord Alert Sent.
+🎉 Resume Complete.

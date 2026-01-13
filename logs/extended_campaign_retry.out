@@ -1,0 +1,369 @@
+nohup: ignoring input
+📝 Extended Campaign (H1+). Logging to logs/extended_campaign_20260113_113846.log
+---------------------------------------------------
+🧪 Testing USDJPY H1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on USDJPY H1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for USDJPY...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/USDJPY_H1.csv + 5 aux files...
+PROGRESS: Processed 100000 / 124063 candles (80.6%)
+{"result":{"adjusted_sharpe":0.41284479036129734,"losses":4440,"max_drawdown":0.2427544965683379,"pnl":90.47300000006769,"sharpe":0.41284479036129734,"sharpe_ci_lower":0.07825908976028852,"sortino":0.3521852436287219,"strategy_name":"Validation-MACD-Standard","trades":7425,"win_rate":40.2020202020202,"wins":2985},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 124063 candles from /home/swimmy/swimmy/data/historical/USDJPY_H1.csv
+  ➕ Loaded 5201 aux candles for D1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495615 aux candles for M15
+  ➕ Loaded 1485215 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.41284479036129734,
+    "losses": 4440,
+    "max_drawdown": 0.2427544965683379,
+    "pnl": 90.47300000006769,
+    "sharpe": 0.41284479036129734,
+    "sharpe_ci_lower": 0.07825908976028852,
+    "sortino": 0.3521852436287219,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 7425,
+    "win_rate": 40.2020202020202,
+    "wins": 2985
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ USDJPY H1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing USDJPY D1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on USDJPY D1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for USDJPY...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/USDJPY_D1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.0611245126437894,"losses":103,"max_drawdown":0.1015123516849332,"pnl":4.1200000000017525,"sharpe":0.0611245126437894,"sharpe_ci_lower":-0.2400983452337782,"sortino":0.011530316432519807,"strategy_name":"Validation-MACD-Standard","trades":185,"win_rate":44.32432432432433,"wins":82},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 5201 candles from /home/swimmy/swimmy/data/historical/USDJPY_D1.csv
+  ➕ Loaded 124063 aux candles for H1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495615 aux candles for M15
+  ➕ Loaded 1485215 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0611245126437894,
+    "losses": 103,
+    "max_drawdown": 0.1015123516849332,
+    "pnl": 4.1200000000017525,
+    "sharpe": 0.0611245126437894,
+    "sharpe_ci_lower": -0.2400983452337782,
+    "sortino": 0.011530316432519807,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 185,
+    "win_rate": 44.32432432432433,
+    "wins": 82
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ USDJPY D1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing USDJPY W1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on USDJPY W1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for USDJPY...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/USDJPY_W1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.5885292704817714,"losses":8,"max_drawdown":0.00792280780016043,"pnl":38.62300000000032,"sharpe":0.6597861776701472,"sharpe_ci_lower":0.5075563020097804,"sortino":0.0943233611089188,"strategy_name":"Validation-MACD-Standard","trades":32,"win_rate":75.0,"wins":24},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 1046 candles from /home/swimmy/swimmy/data/historical/USDJPY_W1.csv
+  ➕ Loaded 5201 aux candles for D1
+  ➕ Loaded 124063 aux candles for H1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495615 aux candles for M15
+  ➕ Loaded 1485215 aux candles for M5
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.5885292704817714,
+    "losses": 8,
+    "max_drawdown": 0.00792280780016043,
+    "pnl": 38.62300000000032,
+    "sharpe": 0.6597861776701472,
+    "sharpe_ci_lower": 0.5075563020097804,
+    "sortino": 0.0943233611089188,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 32,
+    "win_rate": 75.0,
+    "wins": 24
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ USDJPY W1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing USDJPY MN...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ USDJPY MN failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD H1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on EURUSD H1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for EURUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/EURUSD_H1.csv + 5 aux files...
+PROGRESS: Processed 100000 / 124082 candles (80.6%)
+{"result":{"adjusted_sharpe":0.0,"losses":7278,"max_drawdown":0.3843101539999885,"pnl":-76.1317399999986,"sharpe":-10.19559997195404,"sharpe_ci_lower":-10.38729480108082,"sortino":-5.9750677878158,"strategy_name":"Validation-MACD-Standard","trades":7623,"win_rate":4.525777253049981,"wins":345},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 124082 candles from /home/swimmy/swimmy/data/historical/EURUSD_H1.csv
+  ➕ Loaded 5201 aux candles for D1
+  ➕ Loaded 31136 aux candles for H4
+  ➕ Loaded 495745 aux candles for M15
+  ➕ Loaded 1485262 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 7278,
+    "max_drawdown": 0.3843101539999885,
+    "pnl": -76.1317399999986,
+    "sharpe": -10.19559997195404,
+    "sharpe_ci_lower": -10.38729480108082,
+    "sortino": -5.9750677878158,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 7623,
+    "win_rate": 4.525777253049981,
+    "wins": 345
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ EURUSD H1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD D1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on EURUSD D1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for EURUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/EURUSD_D1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.0,"losses":119,"max_drawdown":0.0033433893256770526,"pnl":-1.1103399999999706,"sharpe":-0.7082874151440381,"sharpe_ci_lower":-0.9879324037620502,"sortino":-0.11747989190810681,"strategy_name":"Validation-MACD-Standard","trades":145,"win_rate":17.93103448275862,"wins":26},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 5201 candles from /home/swimmy/swimmy/data/historical/EURUSD_D1.csv
+  ➕ Loaded 124082 aux candles for H1
+  ➕ Loaded 31136 aux candles for H4
+  ➕ Loaded 495745 aux candles for M15
+  ➕ Loaded 1485262 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 119,
+    "max_drawdown": 0.0033433893256770526,
+    "pnl": -1.1103399999999706,
+    "sharpe": -0.7082874151440381,
+    "sharpe_ci_lower": -0.9879324037620502,
+    "sortino": -0.11747989190810681,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 145,
+    "win_rate": 17.93103448275862,
+    "wins": 26
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ EURUSD D1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD W1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on EURUSD W1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for EURUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/EURUSD_W1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.1020485711784046,"losses":14,"max_drawdown":0.0005275830906676275,"pnl":0.20970000000000488,"sharpe":0.12354548568814117,"sharpe_ci_lower":-0.36115704794816483,"sortino":0.017370453347605078,"strategy_name":"Validation-MACD-Standard","trades":21,"win_rate":33.33333333333333,"wins":7},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 1046 candles from /home/swimmy/swimmy/data/historical/EURUSD_W1.csv
+  ➕ Loaded 5201 aux candles for D1
+  ➕ Loaded 124082 aux candles for H1
+  ➕ Loaded 31136 aux candles for H4
+  ➕ Loaded 495745 aux candles for M15
+  ➕ Loaded 1485262 aux candles for M5
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.1020485711784046,
+    "losses": 14,
+    "max_drawdown": 0.0005275830906676275,
+    "pnl": 0.20970000000000488,
+    "sharpe": 0.12354548568814117,
+    "sharpe_ci_lower": -0.36115704794816483,
+    "sortino": 0.017370453347605078,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 21,
+    "win_rate": 33.33333333333333,
+    "wins": 7
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ EURUSD W1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing EURUSD MN...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ EURUSD MN failed or timed out!
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD H1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on GBPUSD H1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for GBPUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/GBPUSD_H1.csv + 5 aux files...
+PROGRESS: Processed 100000 / 124059 candles (80.6%)
+{"result":{"adjusted_sharpe":0.0,"losses":6971,"max_drawdown":0.3698929699999888,"pnl":-73.63384999999845,"sharpe":-9.722714776884466,"sharpe_ci_lower":-9.955280313320447,"sortino":-5.734180018681626,"strategy_name":"Validation-MACD-Standard","trades":7445,"win_rate":6.366689053055742,"wins":474},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 124059 candles from /home/swimmy/swimmy/data/historical/GBPUSD_H1.csv
+  ➕ Loaded 5200 aux candles for D1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495610 aux candles for M15
+  ➕ Loaded 1484023 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 6971,
+    "max_drawdown": 0.3698929699999888,
+    "pnl": -73.63384999999845,
+    "sharpe": -9.722714776884466,
+    "sharpe_ci_lower": -9.955280313320447,
+    "sortino": -5.734180018681626,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 7445,
+    "win_rate": 6.366689053055742,
+    "wins": 474
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ GBPUSD H1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD D1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on GBPUSD D1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for GBPUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/GBPUSD_D1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.0,"losses":116,"max_drawdown":0.003395991999999569,"pnl":-1.6546399999999684,"sharpe":-0.8980548204472321,"sharpe_ci_lower":-1.1859046333564747,"sortino":-0.1401056483716222,"strategy_name":"Validation-MACD-Standard","trades":148,"win_rate":21.62162162162162,"wins":32},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 5200 candles from /home/swimmy/swimmy/data/historical/GBPUSD_D1.csv
+  ➕ Loaded 124059 aux candles for H1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495610 aux candles for M15
+  ➕ Loaded 1484023 aux candles for M5
+  ➕ Loaded 1046 aux candles for W1
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.0,
+    "losses": 116,
+    "max_drawdown": 0.003395991999999569,
+    "pnl": -1.6546399999999684,
+    "sharpe": -0.8980548204472321,
+    "sharpe_ci_lower": -1.1859046333564747,
+    "sortino": -0.1401056483716222,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 148,
+    "win_rate": 21.62162162162162,
+    "wins": 32
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ GBPUSD D1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD W1...
+---------------------------------------------------
+✅ Discord Alert Sent.
+=========================================
+🚀 STRESS TEST: Validation-MACD-Standard on GBPUSD W1
+=========================================
+[STRESS] Checking for auxiliary Timeframes for GBPUSD...
+[STRESS] Invoking Guardian with main file: /home/swimmy/swimmy/data/historical/GBPUSD_W1.csv + 5 aux files...
+{"result":{"adjusted_sharpe":0.01660489732494502,"losses":12,"max_drawdown":0.0009696652193834365,"pnl":0.03532000000000468,"sharpe":0.02010278126506661,"sharpe_ci_lower":-0.3297187858007178,"sortino":0.0016555282246787087,"strategy_name":"Validation-MACD-Standard","trades":21,"win_rate":42.857142857142854,"wins":9},"type":"BACKTEST_RESULT"}
+[STDERR] 📂 Loaded 1046 candles from /home/swimmy/swimmy/data/historical/GBPUSD_W1.csv
+  ➕ Loaded 5200 aux candles for D1
+  ➕ Loaded 124059 aux candles for H1
+  ➕ Loaded 31132 aux candles for H4
+  ➕ Loaded 495610 aux candles for M15
+  ➕ Loaded 1484023 aux candles for M5
+
+
+📊 RESULT REPORT
+-----------------
+{
+  "result": {
+    "adjusted_sharpe": 0.01660489732494502,
+    "losses": 12,
+    "max_drawdown": 0.0009696652193834365,
+    "pnl": 0.03532000000000468,
+    "sharpe": 0.02010278126506661,
+    "sharpe_ci_lower": -0.3297187858007178,
+    "sortino": 0.0016555282246787087,
+    "strategy_name": "Validation-MACD-Standard",
+    "trades": 21,
+    "win_rate": 42.857142857142854,
+    "wins": 9
+  },
+  "type": "BACKTEST_RESULT"
+}
+✅ GBPUSD W1 passed.
+✅ Discord Alert Sent.
+---------------------------------------------------
+🧪 Testing GBPUSD MN...
+---------------------------------------------------
+✅ Discord Alert Sent.
+[ERROR] Could not locate historical data. Ensure Data Keeper has data.
+❌ GBPUSD MN failed or timed out!
+✅ Discord Alert Sent.
+🎉 Extended Campaign Complete.
