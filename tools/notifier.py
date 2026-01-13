@@ -42,21 +42,22 @@ message_queue = deque()
 
 
 def process_queue():
-    """Worker thread to process the message queue with rate limiting."""
+    """Worker thread to process the message queue with rate limiting and retry."""
+    failed_count = {}  # Track retry count per message
+
     while True:
         if not message_queue:
             time.sleep(0.1)
             continue
 
         webhook_url, payload = message_queue.popleft()
+        msg_id = id(payload)  # Unique ID for tracking retries
+        retry_count = failed_count.get(msg_id, 0)
 
         try:
-            # Simple rate limiting enforcement
-            # (In a real pro system, we'd track per-webhook buckets)
-
             headers = {"Content-Type": "application/json"}
             response = requests.post(
-                webhook_url, json=payload, headers=headers, timeout=5
+                webhook_url, json=payload, headers=headers, timeout=10
             )
 
             if response.status_code == 429:
@@ -71,15 +72,44 @@ def process_queue():
                     f"[NOTIFIER] Error {response.status_code}: {response.text}",
                     flush=True,
                 )
+                # Don't retry HTTP errors (webhook invalid, etc)
+                if msg_id in failed_count:
+                    del failed_count[msg_id]
 
             else:
-                pass
-                # Success - silent
+                # Success - cleanup
+                if msg_id in failed_count:
+                    del failed_count[msg_id]
 
             time.sleep(0.2)  # Basic global rate limit safety
 
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+        ) as e:
+            # Network/DNS failure - retry with exponential backoff
+            retry_count += 1
+            failed_count[msg_id] = retry_count
+
+            if retry_count <= RETRY_LIMIT:
+                backoff = min(30, 2**retry_count)  # 2, 4, 8... max 30s
+                print(
+                    f"[NOTIFIER] Network error (retry {retry_count}/{RETRY_LIMIT}). "
+                    f"Backoff {backoff}s: {type(e).__name__}",
+                    flush=True,
+                )
+                time.sleep(backoff)
+                message_queue.appendleft((webhook_url, payload))  # Requeue
+            else:
+                print(
+                    f"[NOTIFIER] DROPPED after {RETRY_LIMIT} retries: {type(e).__name__}",
+                    flush=True,
+                )
+                del failed_count[msg_id]
+
         except Exception as e:
-            print(f"[NOTIFIER] Delivery failed: {e}", flush=True)
+            print(f"[NOTIFIER] Unexpected error: {e}", flush=True)
 
 
 def main():

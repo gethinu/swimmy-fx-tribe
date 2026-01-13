@@ -67,6 +67,7 @@
                (:file "src/lisp/school-evolution") ; Genetic & LLM Generation (Dreamer)
 
                (:file "src/lisp/school-learning")
+               (:file "src/lisp/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school-volatility")
 
                (:file "src/lisp/school-founders") ; Headhunting Protocol

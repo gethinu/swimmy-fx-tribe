@@ -81,8 +81,8 @@
     ;; PROFILE SECTION 3
     (with-profiling "maintenance-section-3"
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
-      (when (fboundp 'check-discord-heartbeat)
-        (check-discord-heartbeat)))))
+      (when (fboundp 'swimmy.engine::check-discord-heartbeat)
+        (swimmy.engine::check-discord-heartbeat)))))
 
 (defun process-tick-round-robin (symbol bid)
   "Optimize tick processing by handling one symbol per tick"
@@ -306,12 +306,17 @@ Sharpe   : ~,2f
                  (setf *candle-history* bars)  ; Legacy compat - use first symbol
               
                  ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
-                 (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
-                            (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
-                            (> (length bars) 100))
-                   (format t "[L] 🧪 P1: Data loaded. Starting Batch Backtest Verification...~%")
-                   (swimmy.school:batch-backtest-knowledge)
-                   (setf *initial-backtest-done* t)))))
+                 ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
+                 ;; V11.0: Data Gap Check (Expert Panel P0)
+                 ;; Verify no gaps before running backtest
+                 (if (swimmy.core:check-data-gap symbol bars)
+                     (format t "[L] ⏳ Backtest deferred: Waiting for Gap Backfill...~%")
+                     (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
+                                (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
+                                (> (length bars) 100))
+                       (format t "[L] 🧪 P1: Data loaded (No Gaps). Starting Batch Backtest Verification...~%")
+                       (swimmy.school:batch-backtest-knowledge)
+                       (setf *initial-backtest-done* t))))))
           ((string= type "SYSTEM_COMMAND")
            (let ((action (jsown:val json "action")))
              (cond
@@ -348,7 +353,14 @@ Sharpe   : ~,2f
                                   symbol lot magic)
                           :color 3066993)
                         (format t "[L] ✅ DEBUG ENTRY (~a) triggered! Check Discord.~%" symbol))
-                    (error (e) (format t "[L] ❌ DEBUG ENTRY Failed: ~a~%" e)))))
+                      (error (e) (format t "[L] ❌ DEBUG ENTRY Failed: ~a~%" e)))))
+               ((string= action "DEBUG_FORCE_EVAL")
+                (let ((target (if (jsown:keyp json "target") (jsown:val json "target") "ALL")))
+                  (format t "[L] 🧪 FORCE EVAL: Clearing execution history for ~a~%" target)
+                  (if (string= target "ALL")
+                      (clrhash swimmy.school::*processed-candle-time*)
+                      (remhash target swimmy.school::*processed-candle-time*))
+                  (format t "[L] ✅ Cleared. Next tick will trigger re-evaluation.~%")))
                (t (format t "[L] ⚠️ Unknown System Command: ~a~%" action)))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))

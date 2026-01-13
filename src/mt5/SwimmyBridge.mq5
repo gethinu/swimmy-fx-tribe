@@ -1,17 +1,17 @@
 //+------------------------------------------------------------------+
 //|                                          SwimmyBridge_v15.mq5    |
 //|                                  Copyright 2025, Project Swimmy  |
-//|                  Ver 15.1 - Multi-Instance + Improvements        |
+//|                  Ver 15.2 - Multi-Timeframe History Support      |
 //+------------------------------------------------------------------+
 #property copyright "Project Swimmy"
-#property version   "15.10"
+#property version   "15.20"
 #include <Trade\Trade.mqh>
 
-// V15.1: Improvements
+// V15.2: Improvements
 // - Connection retry logic
 // - Log level control
 // - OnTick() for high-frequency tick sending
-// - Empty symbol = broadcast comment
+// - Multi-Timeframe History Support
 
 // ★ User-configurable parameters
 input string InpWSL_IP = "172.18.199.122";  // WSL IP Address
@@ -180,7 +180,7 @@ void TryReconnect() {
 //| Initialization                                                    |
 //+------------------------------------------------------------------+
 int OnInit() {
-   LogInfo("🚀 Swimmy Bridge Ver 15.1 - Multi-Instance Mode");
+   LogInfo("🚀 Swimmy Bridge Ver 15.2 - Multi-TF Support");
    LogInfo("📊 This EA handles: " + _Symbol + " only");
    LogInfo("📝 Verbose logging: " + (InpVerboseLog ? "ON" : "OFF"));
    LogInfo("⚡ High-freq OnTick: " + (InpUseOnTick ? "ON" : "OFF"));
@@ -294,7 +294,27 @@ int RegisterWarrior(ulong magic, ulong ticket, string symbol) {
 //+------------------------------------------------------------------+
 //| History data                                                      |
 //+------------------------------------------------------------------+
-void SendHistoryData(string symbol) {
+//+------------------------------------------------------------------+
+//| Helper to map string TF to ENUM_TIMEFRAMES                        |
+//+------------------------------------------------------------------+
+ENUM_TIMEFRAMES StringToTimeframe(string tf) {
+   if(tf == "M1") return PERIOD_M1;
+   if(tf == "M5") return PERIOD_M5;
+   if(tf == "M15") return PERIOD_M15;
+   if(tf == "M30") return PERIOD_M30;
+   if(tf == "H1") return PERIOD_H1;
+   if(tf == "H4") return PERIOD_H4;
+   if(tf == "H12") return PERIOD_H12;
+   if(tf == "D1") return PERIOD_D1;
+   if(tf == "W1") return PERIOD_W1;
+   if(tf == "MN") return PERIOD_MN1;
+   return PERIOD_M1; // Default
+}
+
+//+------------------------------------------------------------------+
+//| History data                                                      |
+//+------------------------------------------------------------------+
+void SendHistoryData(string symbol, string tf) {
    // Only send history for THIS chart's symbol
    // Note: Empty symbol ("") or "ALL" = broadcast to all EAs
    if(symbol != "" && symbol != "ALL" && symbol != _Symbol) {
@@ -307,23 +327,30 @@ void SendHistoryData(string symbol) {
       return;
    }
    
+   ENUM_TIMEFRAMES period = StringToTimeframe(tf);
+   
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
    
-   int copied = CopyRates(_Symbol, PERIOD_M1, 0, 100000, rates);
+   // Load more data for higher TFs to ensure deep history
+   int count = 100000;
+   if(period == PERIOD_W1 || period == PERIOD_D1) count = 5000; // 5000 weeks ~ 100 years
+   
+   int copied = CopyRates(_Symbol, period, 0, count, rates);
    
    if(copied > 0) {
-      LogInfo("📊 Sending " + IntegerToString(copied) + " M1 candles for " + _Symbol + "...");
+      LogInfo("📊 Sending " + IntegerToString(copied) + " " + tf + " candles for " + _Symbol + "...");
       
       int batch_size = 5000;
       for(int batch = 0; batch < copied; batch += batch_size) {
          int end = MathMin(batch + batch_size, copied);
          
-         string json = StringFormat("{\"type\":\"HISTORY\",\"symbol\":\"%s\",\"batch\":%d,\"total\":%d,\"data\":[", 
-                                    _Symbol, batch / batch_size, (copied / batch_size) + 1);
+         // V15.2: Include "tf" in JSON response so Brain knows what it received
+         string json = StringFormat("{\"type\":\"HISTORY\",\"symbol\":\"%s\",\"tf\":\"%s\",\"batch\":%d,\"total\":%d,\"data\":[", 
+                                    _Symbol, tf, batch / batch_size, (copied / batch_size) + 1);
          
          for(int i = end - 1; i >= batch; i--) {
-            json += StringFormat("{\"t\":%d,\"o\":%.5f,\"h\":%.5f,\"l\":%.5f,\"c\":%.5f}",
+            json += StringFormat("{\"t\":%I64d,\"o\":%.5f,\"h\":%.5f,\"l\":%.5f,\"c\":%.5f}",
                                  rates[i].time, rates[i].open, rates[i].high, 
                                  rates[i].low, rates[i].close);
             if(i > batch) json += ",";
@@ -334,9 +361,11 @@ void SendHistoryData(string symbol) {
          StringToCharArray(json, data);
          zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
          
-         Sleep(100);
+         Sleep(50); // Small delay between batches
       }
-      LogInfo("✅ History Sent: " + IntegerToString(copied) + " bars (M1) for " + _Symbol);
+      LogInfo("✅ History Sent: " + IntegerToString(copied) + " bars (" + tf + ") for " + _Symbol);
+   } else {
+      LogError("Failed to copy rates for " + _Symbol + " " + tf + ". Error: " + IntegerToString(GetLastError()));
    }
 }
 
@@ -443,7 +472,9 @@ void ExecuteCommand(string cmd) {
       }
    }
    else if(StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
-      SendHistoryData(cmd_symbol);
+      string tf = GetStringFromJson(cmd, "tf");
+      if(tf == "") tf = "M1";
+      SendHistoryData(cmd_symbol, tf);
    }
    else if(StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
       g_last_heartbeat = TimeCurrent();

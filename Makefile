@@ -6,9 +6,18 @@ setup:
 	@chmod +x .git/hooks/pre-commit
 	@echo "✅ Pre-commit hook installed"
 
+# Kill all swimmy-related processes to prevent zombies
+kill-zombies:
+	@echo "🧟 Killing zombie processes..."
+	@-pkill -9 -u $(USER) -f "sbcl" 2>/dev/null || true
+	@-pkill -9 -u $(USER) -f "guardian" 2>/dev/null || true
+	@-pkill -9 -u $(USER) -f "data_keeper.py" 2>/dev/null || true
+	@-pkill -9 -u $(USER) -f "notifier.py" 2>/dev/null || true
+	@systemctl --user reset-failed
+
 # Systemd Management
 # Run = Restart to ensure changes are applied
-run:
+run: kill-zombies
 	@echo "🔄 Restarting Swimmy System (via systemd)..."
 	@systemctl --user daemon-reload
 	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper strategy_hunter

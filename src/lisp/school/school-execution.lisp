@@ -190,13 +190,37 @@
                               (session-low `((,(intern (format nil "SESSION-LOW-~d-~d" (first p) (second p)) pkg) 
                                               ,(ind-session-low (first p) (second p) history))))
                               (t nil))))))
-      (let ((pkg (find-package :swimmy.school)))
-        (push `(,(intern "CLOSE" pkg) ,(candle-close (first history))) bindings)
-        (push `(,(intern "CLOSE-PREV" pkg) ,(candle-close (second history))) bindings)
+      (let ((pkg (find-package :swimmy.school))
+            (current-close (candle-close (first history)))
+            (prev-close (candle-close (second history)))
+            (vol (candle-volume (first history))))
+        (push `(,(intern "CLOSE" pkg) ,current-close) bindings)
+        (push `(,(intern "CLOSE-PREV" pkg) ,prev-close) bindings)
         (push `(,(intern "HIGH" pkg) ,(candle-high (first history))) bindings)
         (push `(,(intern "HIGH-PREV" pkg) ,(candle-high (second history))) bindings)
         (push `(,(intern "LOW" pkg) ,(candle-low (first history))) bindings)
         (push `(,(intern "LOW-PREV" pkg) ,(candle-low (second history))) bindings)
+        (push `(,(intern "OPEN" pkg) ,(candle-open (first history))) bindings)
+        
+        ;; V15.2: Fix undefined variables (RSI, EMA, VOLUME, PNL, HISTORY, TP, SL)
+        ;; Bind defaults for generic variable names used in generated strategies
+        (push `(,(intern "VOLUME" pkg) ,vol) bindings)
+        (push `(,(intern "HISTORY" pkg) ,history) bindings)
+        (push `(,(intern "PNL" pkg) 0.0) bindings) ; Placeholder as PnL is strategy-specific
+        (push `(,(intern "TP" pkg) ,(strategy-tp strat)) bindings)
+        (push `(,(intern "SL" pkg) ,(strategy-sl strat)) bindings)
+        
+        ;; Default indicator bindings (alias to standard params if not specified)
+        ;; Note: These are rough defaults to preventing crashing. 
+        ;; Ideal fix is to re-generate strategies with correct params.
+        (when (fboundp 'ind-rsi)
+          (push `(,(intern "RSI" pkg) ,(ind-rsi 14 history)) bindings))
+        (when (fboundp 'ind-ema)
+          (push `(,(intern "EMA" pkg) ,(ind-ema 20 history)) bindings))
+        (when (fboundp 'ind-bb)
+           (multiple-value-bind (m u l) (ind-bb 20 2.0 history)
+             (push `(,(intern "BB-WIDTH" pkg) ,(- u l)) bindings)))
+        
         (multiple-value-bind (sec min hour day month year dow) (decode-universal-time (get-universal-time))
           (declare (ignore sec day month year dow))
           (push `(,(intern "HOUR" pkg) ,hour) bindings)
@@ -325,34 +349,82 @@
      *warrior-allocation*)
     closed-count))
 
+
+(defparameter *processed-candle-time* (make-hash-table :test 'equal)
+  "Tracks the timestamp of the last processed candle for each strategy/symbol pair.")
+
 (defun execute-category-trade (category direction symbol bid ask)
   (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
   (handler-case
     (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
-    (let* ((strategies (gethash category *active-team*))
-           (lead-strat (first strategies))
-           (lead-name (when lead-strat (strategy-name lead-strat)))
-           (rank-data (when lead-name (get-strategy-rank lead-name)))
-           (rank (if rank-data (strategy-rank-rank rank-data) :scout))
-           (rank-mult (calculate-rank-multiplier rank))
-           (base-lot (get-category-lot category))
-           (history (gethash symbol *candle-histories*))
-           (vol-scaled-lot (if (and (fboundp 'volatility-scaled-lot) history)
-                               (volatility-scaled-lot base-lot history)
-                               base-lot))
-           (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
-           (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
-           (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot) (error () base-lot)))
-           (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot))
-           (lot (max 0.01 (* rank-mult vol-mult 
-                             (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot hdrl-lot kelly-adj))))
-           (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
-           (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
-           (sl-pips 0.15) (tp-pips 0.40)
-           (warmup-p (< *category-trades* 50))
-           (large-lot-p (> lot 0.05))
-           (high-rank-p (member rank '(:veteran :legend)))
-           (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))
+      (let* ((strategies (gethash category *active-team*))
+             (lead-strat (first strategies))
+             (lead-name (when lead-strat (strategy-name lead-strat)))
+             ;; V15.3: Respect Strategy Timeframe (Fix M1 Spam)
+             (timeframe (if lead-strat (strategy-timeframe lead-strat) 1))
+             (timeframe-key (cond ((= timeframe 5) "M5")
+                                 ((= timeframe 15) "M15")
+                                 ((= timeframe 30) "M30")
+                                 ((= timeframe 60) "H1")
+                                 ((= timeframe 240) "H4")
+                                 ((= timeframe 1440) "D1")
+                                 (t "M1")))
+             
+             (rank-data (when lead-name (get-strategy-rank lead-name)))
+             (rank (if rank-data (strategy-rank-rank rank-data) :scout))
+             (rank-mult (calculate-rank-multiplier rank))
+             (base-lot (get-category-lot category))
+             
+             ;; Fetch correct history for timeframe
+             ;; V15.4: Fallback Synthesis for H1 from M1 (Fixes Silence/Dead Air)
+             (history (if (= timeframe 1)
+                          (gethash symbol *candle-histories*)
+                          (let ((tf-map (gethash symbol *candle-histories-tf*)))
+                            (or (and tf-map (gethash timeframe-key tf-map))
+                                ;; Synthesis Fallback
+                                (when (and (= timeframe 60) (gethash symbol *candle-histories*))
+                                   (format t "[L] ⚠️ Synthesizing H1 from M1 (~d bars)...~%" (length (gethash symbol *candle-histories*)))
+                                   (resample-candles (gethash symbol *candle-histories*) 60))))))
+             
+             (latest-candle (and history (first history)))
+             (latest-ts (if latest-candle (candle-timestamp latest-candle) 0))
+             (idempotency-key (format nil "~a-~a-~a" category symbol timeframe-key))
+             (last-processed (gethash idempotency-key *processed-candle-time* 0))
+
+             ;; Logic wrapped in binding to maintain let* structure
+             (guard-check (progn
+                            ;; Guard 1: Missing Data
+                            (unless history
+                              (format t "[L] ⚠️ Skipping ~a (~a) - No history found~%" lead-name timeframe-key)
+                              (return-from execute-category-trade nil))
+                            
+                            ;; Guard 2: Idempotency
+                            (when (<= latest-ts last-processed)
+                              ;; (format t "[TRACE] Skipping ~a (~a) - Candle ~a already processed~%" lead-name timeframe-key latest-ts)
+                              (return-from execute-category-trade nil))
+                            
+                            ;; Update processed time (Commit execution)
+                            (setf (gethash idempotency-key *processed-candle-time*) latest-ts)
+                            (format t "[L] 🕰️ New Candle Detected: ~a (~a) TS=~d. Analysing...~%" 
+                                    symbol timeframe-key latest-ts)
+                            t))
+
+             (vol-scaled-lot (if (and (fboundp 'volatility-scaled-lot) history)
+                                 (volatility-scaled-lot base-lot history)
+                                 base-lot))
+                    (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
+                    (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
+                    (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot) (error () base-lot)))
+                    (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot))
+                    (lot (max 0.01 (* rank-mult vol-mult 
+                                      (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot hdrl-lot kelly-adj))))
+                    (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
+                    (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
+                    (sl-pips 0.15) (tp-pips 0.40)
+                    (warmup-p (< *category-trades* 50))
+                    (large-lot-p (> lot 0.05))
+                    (high-rank-p (member rank '(:veteran :legend)))
+                    (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))
       
       (setf conf (if (numberp conf) conf 0.0))
       
@@ -382,7 +454,9 @@
       
       (unless (should-block-trade-p symbol direction category)
         (let* ((prediction (handler-case (predict-trade-outcome symbol direction) (error (e) nil)))
-               (should-trade (if prediction (should-take-trade-p prediction) nil)))
+               ;; V15.2 FIX: Default to t (allow trade) when prediction is unavailable
+               ;; Previously this was nil, which blocked ALL trades when ML model wasn't loaded
+               (should-trade (if prediction (should-take-trade-p prediction) t)))
           
           (when (global-panic-active-p) (format t "[L] 💉 SOROS: Elevated volatility~%"))
           (when (should-unlearn-p symbol) (setf should-trade nil))

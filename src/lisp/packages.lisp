@@ -206,6 +206,7 @@
    #:get-history-from-keeper
    #:add-candle-to-keeper
    #:close-data-keeper-client
+   #:check-data-gap
    
    ;; Risk Gateway Client (V8.0)
    #:request-trade-approval

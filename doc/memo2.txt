@@ -588,3 +588,6 @@ swimmy-gbpusd
 [2026-01-10 20:36:12] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.14
 [2026-01-10 20:37:03] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.12
 [2026-01-10 20:38:02] USDJPY BUY (TREND) Strategy:TF-10-50 Sharpe:0.14
+[2026-01-13 23:29:06] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:-8.17
+[2026-01-13 23:37:04] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977303795-Gen1-mut-SMA48 Sharpe:0.00
+[2026-01-13 23:38:00] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977303828-Gen1-mut-SMA24 Sharpe:0.00

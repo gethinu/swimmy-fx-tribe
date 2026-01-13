@@ -74,9 +74,12 @@ MT5: ~a (~d秒前)
                            emoji
                            (get-time-string-full)
                            (get-system-summary)))
-           (webhook (if (boundp 'swimmy.core::*heartbeat-webhook-url*)
-                        swimmy.core::*heartbeat-webhook-url*
-                        nil)))
+           ;; V15.2: Dynamic lookup to avoid load-order issues
+           (webhook (or (and (boundp 'swimmy.core::*heartbeat-webhook-url*)
+                             swimmy.core::*heartbeat-webhook-url*)
+                        (and (fboundp 'swimmy.core::get-discord-webhook)
+                             (swimmy.core::get-discord-webhook "alerts"))
+                        (uiop:getenv "SWIMMY_DISCORD_ALERTS"))))
       (if webhook
           (handler-case
               (progn

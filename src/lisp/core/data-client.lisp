@@ -122,6 +122,38 @@
            (command (format nil "ADD_CANDLE:~a:~a" symbol candle-json)))
       (data-keeper-query command))))
 
+(defun check-data-gap (symbol history)
+  "Check for data gaps at the end of history and request backfill if needed.
+   Returns T if a gap was detected and backfill requested, NIL otherwise."
+  (if (and history (> (length history) 0))
+      (let* ((last-candle (first history)) ; newest first
+             (last-ts (candle-timestamp last-candle))
+             (now (get-universal-time))
+             ;; V15.5 Fix: MT5 sends Unix Time (1970), Lisp uses Universal (1900).
+             ;; Universal = Unix + 2208988800.
+             ;; So convert Now(Universal) to Unix for comparison.
+             (now-unix (- now 2208988800))
+             (gap (- now-unix last-ts))
+             (threshold 180)) ; 3 minutes tolerance for M1 (Relaxed for latency)
+        
+        (if (> gap threshold)
+            (let ((missing-min (floor gap 60)))
+               (format t "[L] ⚠️ DATA GAP DETECTED for ~a: Gap is ~d seconds (~d bars). Last: ~a, Now: ~a~%" 
+                       symbol gap missing-min last-ts now)
+               
+               (when (and (> missing-min 0) (< missing-min 14400)) ; Cap at 10 days (14400 min) - wait 14400 is 10 days? 60*24*10 = 14400. Yes.
+                 (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" (+ missing-min 10))
+                 (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+                   (let ((cmd (jsown:to-json
+                               (jsown:new-js
+                                ("action" "REQ_HISTORY")
+                                ("symbol" symbol)
+                                ("tf" "M1")))))
+                     (pzmq:send swimmy.globals:*cmd-publisher* cmd)))
+                 t)) ; Return T (Gap detected)
+            nil)) ; No gap
+      nil))
+
 (defun close-data-keeper-client ()
   "Clean up Data Keeper connection."
   (when *data-keeper-socket*
