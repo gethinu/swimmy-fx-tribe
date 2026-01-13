@@ -16,7 +16,14 @@ This workflow runs quality gate tests and auto-commits if everything passes.
 cd /home/swimmy/swimmy && make quality-gate
 ```
 
-2. **If tests pass, stage all changes**
+
+2. **Run SRP/Complexity check**
+   - Scans for God Classes (>600 lines)
+```bash
+cd /home/swimmy/swimmy && python3 tools/check_srp.py
+```
+
+3. **If tests pass, stage all changes**
 ```bash
 cd /home/swimmy/swimmy && git add -A
 ```

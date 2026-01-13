@@ -43,6 +43,10 @@
                
                ;; LEGACY / DSL
                (:file "src/lisp/dsl")
+               (:file "src/lisp/strategies-trend")
+               (:file "src/lisp/strategies-reversion")
+               (:file "src/lisp/strategies-breakout")
+               (:file "src/lisp/strategies-scalp")
                (:file "src/lisp/strategies")
                
                ;; SCHOOL
@@ -57,6 +61,8 @@
                (:file "src/lisp/school-analytics") ; Metrics & Analysis
                (:file "src/lisp/school-backtest")  ; Backtesting & WFV
                (:file "src/lisp/school-templates") ; Template Generation
+               (:file "src/lisp/school/school-memory")
+               (:file "src/lisp/school/school-ecosystem")
                (:file "src/lisp/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
                (:file "src/lisp/school-evolution") ; Genetic & LLM Generation (Dreamer)
 
@@ -67,7 +73,11 @@
                (:file "src/lisp/school-telemetry") ; V9.5: Gene Kim Telemetry
                ;; (:file "src/lisp/school-hunter") ; V9.2: Loaded dynamically for safety (safely-load-hunter-strategies)
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
-               (:file "src/lisp/school")
+               (:file "src/lisp/school/school-risk")      ; SRP Refactor
+               (:file "src/lisp/school/school-market")    ; SRP Refactor
+               (:file "src/lisp/school/school-narrative") ; SRP Refactor
+               (:file "src/lisp/school/school-execution") ; SRP Refactor
+               (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school-fortress") ; Added
                (:file "src/lisp/transfer-learning") ; Added V7.0
                (:file "src/lisp/school/advisors")
