@@ -32,13 +32,38 @@
     approved))
 
 (defun batch-backtest-knowledge ()
-  "Backtest all knowledge base strategies"
+  "Backtest all knowledge base strategies (with persistence)"
+  ;; V15.9: Persistence & Notifications (Expert Panel 2026-01-14)
+  (load-backtest-cache) 
   (setf *backtest-results-buffer* nil)
   (setf *expected-backtest-count* (length *strategy-knowledge-base*))
-  (format t "[L] 🧪 Batch testing ~d strategies...~%" *expected-backtest-count*)
-  (dolist (strat *strategy-knowledge-base*)
-    (when (and *candle-history* (> (length *candle-history*) 100))
-      (request-backtest strat))))
+  
+  (let ((cached-count 0)
+        (requested-count 0)
+        (total (length *strategy-knowledge-base*)))
+        
+    (format t "[L] 🧪 Batch testing ~d strategies...~%" total)
+    ;; Notify Discord of Startup (Blue)
+    (notify-discord-alert (format nil "🚀 Startup Check Initiated: ~d Strategies" total) :color 3447003)
+    
+    (dolist (strat *strategy-knowledge-base*)
+      (when (and *candle-history* (> (length *candle-history*) 100))
+        (let ((cached (get-cached-backtest (strategy-name strat))))
+          (if cached
+              (progn
+                (incf cached-count)
+                ;; If cached, we might want to minimally update runtime state if needed
+                ;; For now, just skip the heavy backtest request
+                )
+              (progn 
+                (incf requested-count)
+                (request-backtest strat))))))
+                
+    (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Requested: ~d~%" cached-count requested-count)
+    ;; Notify Discord of Queue Status (Green)
+    (notify-discord-alert 
+      (format nil "✅ Startup Check Queued:\n- Cached: ~d (Skipped)\n- Testing: ~d" cached-count requested-count) 
+      :color 3066993)))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

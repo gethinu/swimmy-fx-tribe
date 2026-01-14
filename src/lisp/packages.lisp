@@ -141,6 +141,7 @@
    
    ;; New Prediction Cache
    #:*prediction-cache*
+   #:*history-process-cache*  ;; V15.8: Throttle HISTORY processing
    ))
 
 
@@ -338,6 +339,12 @@
    #:adopt-proven-strategies
    #:record-trade-result
    #:update-leader-stats
+   
+   ;; Persistence
+   #:cache-backtest-result
+   #:save-backtest-cache
+   #:load-backtest-cache
+   #:get-cached-backtest
    
    ;; Special Forces
    #:force-recruit-strategy

@@ -101,6 +101,7 @@
                                           (,(intern (format nil "BB-UPPER-~d-PREV" dev) pkg) ,pu)
                                           (,(intern (format nil "BB-LOWER-~d-PREV" dev) pkg) ,pl)
                                           (,(intern "BB-MIDDLE" pkg) ,m) (,(intern "BB-UPPER" pkg) ,u) (,(intern "BB-LOWER" pkg) ,l)
+                                          (,(intern "BB-WIDTH" pkg) (- u l))
                                           (,(intern "BB-MIDDLE-PREV" pkg) ,pm) (,(intern "BB-UPPER-PREV" pkg) ,pu) (,(intern "BB-LOWER-PREV" pkg) ,pl))))))
                               (stoch (let ((k (ind-stoch (first p) (second p) history))
                                            (pk (ind-stoch (first p) (second p) rest-hist)))
@@ -110,6 +111,20 @@
                                                ,(ind-session-high (first p) (second p) history))))
                               (session-low `((,(intern (format nil "SESSION-LOW-~d-~d" (first p) (second p)) pkg) 
                                               ,(ind-session-low (first p) (second p) history))))
+                              ;; Placeholder bindings for unimplemented indicators (prevent compile errors)
+                              (ichimoku `((,(intern "SENKOU-A" pkg) ,(candle-close (first history)))
+                                          (,(intern "SENKOU-B" pkg) ,(candle-close (first history)))
+                                          (,(intern "TENKAN" pkg) ,(candle-close (first history)))
+                                          (,(intern "KIJUN" pkg) ,(candle-close (first history)))))
+                              (donchian (let* ((period (first p))
+                                               (highs (mapcar #'candle-high (subseq history 0 (min period (length history)))))
+                                               (lows (mapcar #'candle-low (subseq history 0 (min period (length history)))))
+                                               (upper (if highs (apply #'max highs) 0))
+                                               (lower (if lows (apply #'min lows) 0))
+                                               (mid (/ (+ upper lower) 2)))
+                                          `((,(intern "DONCHIAN-UPPER" pkg) ,upper)
+                                            (,(intern "DONCHIAN-LOWER" pkg) ,lower)
+                                            (,(intern "DONCHIAN-MID" pkg) ,mid))))
                               (t nil))))))
       (let ((pkg (find-package :swimmy.school))
             (current-close (candle-close (first history)))
@@ -126,7 +141,7 @@
         ;; V15.2: Fix undefined variables (RSI, EMA, VOLUME, PNL, HISTORY, TP, SL)
         ;; Bind defaults for generic variable names used in generated strategies
         (push `(,(intern "VOLUME" pkg) ,vol) bindings)
-        (push `(,(intern "HISTORY" pkg) ,history) bindings)
+        (push `(,(intern "HISTORY" pkg) ',history) bindings)
         (push `(,(intern "PNL" pkg) 0.0) bindings) ; Placeholder as PnL is strategy-specific
         (push `(,(intern "TP" pkg) ,(strategy-tp strat)) bindings)
         (push `(,(intern "SL" pkg) ,(strategy-sl strat)) bindings)
@@ -259,6 +274,8 @@
            (format t "[L] 🔄 DOTEN: Closing ~a ~a for ~a signal (PnL: ~5f)~%" category opposing-direction new-direction pnl)
            (incf *daily-pnl* (round (* pnl 1000 100)))
            (record-trade-result (if (> pnl 0) :win :loss))
+           ;; V17: Record prediction outcome for feedback loop (Issue 2)
+           (record-prediction-outcome symbol (if (eq opposing-direction :long) :buy :sell) (if (> pnl 0) :win :loss))
            (record-trade-outcome symbol (if (eq opposing-direction :long) :buy :sell) category "Doten" pnl)
            (when (fboundp 'record-strategy-trade)
              (let ((lead-strat (first (gethash category *active-team*))))
@@ -413,7 +430,8 @@
                              (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)
                              (swimmy.shell:notify-discord-symbol symbol 
                                (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
-                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 3066993))))
+                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 3066993)
+                             (return-from execute-category-trade t))))
                         ((eq direction :sell)
                          (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                            (when (safe-order "SELL" symbol lot sl tp magic)
@@ -425,7 +443,8 @@
                              (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)
                              (swimmy.shell:notify-discord-symbol symbol 
                                (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: SELL ~a~%Lot: ~,2f~%Magic: ~d" 
-                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 15158332))))))
+                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 15158332)
+                             (return-from execute-category-trade t))))))
                     (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category))))))))
     (error (e) (format t "[TRACE] 🚨 ERROR in execute-category-trade: ~a~%" e))))
 
@@ -457,6 +476,8 @@
              (update-symbol-exposure symbol lot :close)
              (incf *daily-pnl* (round (* pnl 1000 100)))
              (record-trade-result (if (> pnl 0) :win :loss))
+             ;; V17: Record prediction outcome for feedback loop (Issue 2)
+             (record-prediction-outcome symbol (if (eq pos :long) :buy :sell) (if (> pnl 0) :win :loss))
              (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Warriors" pnl)
              (when (fboundp 'record-strategy-trade)
                 (let ((lead-strat (first (gethash category *active-team*))))
@@ -511,12 +532,15 @@
                                    (direction (getf sig :direction))
                                    (strat-key (intern (format nil "~a-~a" category strat-name) :keyword)))
                               (when (can-clan-trade-p strat-key)
-                                (let ((narrative (generate-dynamic-narrative sig symbol bid)))
-                                  (format t "~a~%" narrative)
-                                  (handler-case (swimmy.shell:notify-discord-symbol symbol narrative :color (if (eq direction :buy) 3066993 15158332)) (error (e) nil))
-                                  (record-clan-trade-time strat-key)
-                                  (execute-category-trade category direction symbol bid ask)
-                                  (when (fboundp 'record-strategy-trade) (record-strategy-trade strat-name :trade 0)))))))))))))))
+                                ;; V15.5 FIX: Only send Discord notification AFTER trade is approved and executed
+                                ;; Previously notification was sent before execute-category-trade, causing false alerts
+                                (let* ((narrative (generate-dynamic-narrative sig symbol bid))
+                                       (trade-executed (execute-category-trade category direction symbol bid ask)))
+                                  (when trade-executed
+                                    (format t "~a~%" narrative)
+                                    (handler-case (swimmy.shell:notify-discord-symbol symbol narrative :color (if (eq direction :buy) 3066993 15158332)) (error (e) nil))
+                                    (record-clan-trade-time strat-key)
+                                    (when (fboundp 'record-strategy-trade) (record-strategy-trade strat-name :trade 0))))))))))))))))
         (error (e) nil))))))
 
 ;;; ==========================================

@@ -84,6 +84,10 @@
              (let ((local-data (swimmy.core:get-history-from-keeper sym 100000 "M1")))
                (when (and local-data (> (length local-data) 0))
                  (setf (gethash sym *candle-histories*) local-data)
+                 ;; Also populate MTF structure for tick-handler merging
+                 (unless (gethash sym *candle-histories-tf*)
+                   (setf (gethash sym *candle-histories-tf*) (make-hash-table :test 'equal)))
+                 (setf (gethash "M1" (gethash sym *candle-histories-tf*)) local-data)
                  (format t "[L] ✅ Pre-loaded ~a M1: ~d bars from Data Keeper~%" sym (length local-data)))))
            
            ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)

@@ -257,39 +257,29 @@ Sharpe   : ~,2f
            ((string= type "ACCOUNT_INFO")
             (swimmy.executor:process-account-info json))
           ((string= type "HISTORY")
+           ;; V15.8: Throttle HISTORY processing to prevent tick blocking
+           ;; Only process HISTORY once per 60 seconds per symbol
+           (let* ((symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY"))
+                  (tf (if (jsown:keyp json "tf") (jsown:val json "tf") "M1"))
+                  (cache-key (format nil "~a-~a" symbol tf))
+                  (now (get-universal-time))
+                  (last-process (gethash cache-key *history-process-cache* 0)))
+             (when (> (- now last-process) 60) ; Only process every 60 seconds
+               (setf (gethash cache-key *history-process-cache*) now)
+               
            ;; Self-healing: Ensure *candle-histories* is initialized
            (unless (and (boundp '*candle-histories*) *candle-histories*)
              (setf *candle-histories* (make-hash-table :test 'equal))
              (format t "[L] 🩹 Patched NIL *candle-histories*~%"))
-             
+              
            ;; Initialize MTF storage if needed
            (unless (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
              (setf *candle-histories-tf* (make-hash-table :test 'equal))
              (format t "[L] 🩹 Patched NIL *candle-histories-tf*~%"))
-           
-           (let ((bars nil)
-                 (symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "USDJPY"))
-                 (tf (if (jsown:keyp json "tf") 
-                         (jsown:val json "tf") 
-                         ;; Heuristic: Detect TF from data
-                         (let ((data (jsown:val json "data")))
-                           (if (and data (> (length data) 1))
-                               (let* ((t1 (jsown:val (first data) "t"))
-                                      (t2 (jsown:val (second data) "t"))
-                                      (diff (abs (- t1 t2))))
-                                 (cond 
-                                   ((>= diff 600000) "W1")
-                                   ((>= diff 86000) "D1")
-                                   ((>= diff 43000) "H12")
-                                   ((>= diff 14000) "H4")
-                                   ((>= diff 3500) "H1")
-                                   ((>= diff 1700) "M30")
-                                   ((>= diff 800) "M15")
-                                   ((>= diff 250) "M5")
-                                   (t "M1")))
-                               "M1"))))) ;; Default to M1 if no data
-                 
-             (dolist (b (jsown:val json "data"))
+            
+           (let ((bars nil))
+                  
+              (dolist (b (jsown:val json "data"))
                (let ((c (jsown:val b "c")))
                  (push (make-candle :timestamp (jsown:val b "t") 
                                     :open c :high c :low c :close c :volume 1) bars)))
@@ -304,10 +294,13 @@ Sharpe   : ~,2f
                                                        :key #'candle-timestamp
                                                        :test #'=)
                                     #'> :key #'candle-timestamp))
-                   (setf bars (sort bars #'> :key #'candle-timestamp))))
+                   (setf bars (sort bars #'> :key #'candle-timestamp)))
+               ;; V15.7: Limit to 50k bars to prevent slow merge operations
+               (when (> (length bars) 50000)
+                 (setf bars (subseq bars 0 50000))))
                    
              (setf (gethash tf (gethash symbol *candle-histories-tf*)) bars)
-             (format t "[L] 📚 Loaded ~a ~a data: ~d bars (Merged)~%" symbol tf (length bars))
+             (format t "[L] 📚 Loaded ~a ~a data: ~d bars (Merged, capped at 50k)~%" symbol tf (length bars))
 
              ;; If M1, also store in legacy/default locations
              (when (or (string= tf "M1") (string= tf "Default"))
@@ -315,17 +308,21 @@ Sharpe   : ~,2f
                  (setf *candle-history* bars)  ; Legacy compat - use first symbol
               
                  ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
-                 ;; V11.0: Data Gap Check (Expert Panel P0)
-                 ;; Verify no gaps before running backtest
-                 (if (swimmy.core:check-data-gap symbol bars)
-                     (format t "[L] ⏳ Backtest deferred: Waiting for Gap Backfill...~%")
-                     (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
-                                (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
-                                (> (length bars) 100))
-                       (format t "[L] 🧪 P1: Data loaded (No Gaps). Starting Batch Backtest Verification...~%")
-                       (swimmy.school:batch-backtest-knowledge)
-                       (setf *initial-backtest-done* t))))))
-          ((string= type "SYSTEM_COMMAND")
+             ;; V11.0: Data Gap Check (Expert Panel P0) + Resilience (P1)
+             ;; Verify no gaps, but DO NOT BLOCK startup check (Taleb's Resilience)
+             ;; Even if gap exists, we request backfill (internally in check-data-gap) 
+             ;; and proceed to check cache.
+             (let ((has-gap (swimmy.core:check-data-gap symbol bars)))
+               (when has-gap
+                 (format t "[L] ⚠️ Data Gap detected in ~a, but proceeding with Startup Check (Taleb's Resilience)...~%" symbol))
+                   
+               (when (and (fboundp 'swimmy.school:batch-backtest-knowledge)
+                          (not (and (boundp '*initial-backtest-done*) *initial-backtest-done*))
+                          (> (length bars) 100))
+                 (format t "[L] 🧪 Starting Batch Backtest Verification...~%")
+                 (swimmy.school:batch-backtest-knowledge)
+                 (setf *initial-backtest-done* t)))))))) ; Close let bars, when throttle, let*, clause
+           ((string= type "SYSTEM_COMMAND")
            (let ((action (jsown:val json "action")))
              (cond
                ((string= action "RELOAD_CONFIG")
@@ -378,7 +375,11 @@ Sharpe   : ~,2f
                   (trades (or (handler-case (jsown:val result "trades") (error () 0)) 0))
                   (pnl (float (or (handler-case (jsown:val result "pnl") (error () 0.0)) 0.0)))
                   (win-rate (float (or (handler-case (jsown:val result "win_rate") (error () 0.0)) 0.0))))
-             
+              
+             ;; V15.9: Persistence - Cache the result immediately! (Expert Panel)
+             (when (and name (not (string= name "unknown")) (fboundp 'cache-backtest-result))
+               (cache-backtest-result name result))
+
              ;; V8.0: Redirect WFV results (Walk-Forward Validation)
              (if (or (search "_IS" name :from-end t) (search "_OOS" name :from-end t))
                  (handler-case

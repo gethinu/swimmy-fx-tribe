@@ -24,9 +24,9 @@ APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
 ZMQ_PORT = 5561
-# buffer to 10M candles (approx 20 years of M1, but now strictly for M5+)
-# M1 is DISABLED to prevent OOM.
-MAX_CANDLES_PER_SYMBOL = 10_000_000
+# buffer to 300k candles (Sufficient for live trading/indicators)
+# M1 was causing OOM with 10M limit.
+MAX_CANDLES_PER_SYMBOL = 300_000
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
 

@@ -122,9 +122,13 @@
            (command (format nil "ADD_CANDLE:~a:~a" symbol candle-json)))
       (data-keeper-query command))))
 
+(defvar *last-backfill-time* (make-hash-table :test 'equal)
+  "Throttle backfill requests per symbol to prevent infinite loop")
+
 (defun check-data-gap (symbol history)
   "Check for data gaps at the end of history and request backfill if needed.
-   Returns T if a gap was detected and backfill requested, NIL otherwise."
+   Returns T if a gap was detected and backfill requested, NIL otherwise.
+   V15.6: Added 60s throttle per symbol to prevent request spam."
   (if (and history (> (length history) 0))
       (let* ((last-candle (first history)) ; newest first
              (last-ts (candle-timestamp last-candle))
@@ -134,14 +138,18 @@
              ;; So convert Now(Universal) to Unix for comparison.
              (now-unix (- now 2208988800))
              (gap (- now-unix last-ts))
-             (threshold 180)) ; 3 minutes tolerance for M1 (Relaxed for latency)
+             (threshold 180) ; 3 minutes tolerance for M1 (Relaxed for latency)
+             ;; V15.6: Throttle - only request once per 60 seconds per symbol
+             (last-request (gethash symbol *last-backfill-time* 0))
+             (throttle-elapsed (> (- now last-request) 60)))
         
-        (if (> gap threshold)
+        (if (and (> gap threshold) throttle-elapsed)
             (let ((missing-min (floor gap 60)))
-               (format t "[L] ⚠️ DATA GAP DETECTED for ~a: Gap is ~d seconds (~d bars). Last: ~a, Now: ~a~%" 
-                       symbol gap missing-min last-ts now)
+               (format t "[L] ⚠️ DATA GAP DETECTED for ~a: Gap is ~d seconds (~d bars). Last: ~a~%" 
+                       symbol gap missing-min last-ts)
                
                (when (> missing-min 0)
+                 (setf (gethash symbol *last-backfill-time*) now) ; Update throttle
                  (let ((request-bars (if (> missing-min 14400) 14400 (+ missing-min 10))))
                    (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" request-bars)
                    (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
@@ -154,7 +162,7 @@
                                  ("start" now-unix))))) ; Force start from NOW to get latest data
                      (pzmq:send swimmy.globals:*cmd-publisher* cmd))))
                  t)) ; Return T (Gap detected)
-            nil)) ; No gap
+            nil)) ; No gap or throttled
       nil))
 
 (defun close-data-keeper-client ()

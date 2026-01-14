@@ -7,6 +7,83 @@
 ;;; UTILS
 ;;; ==========================================
 
+(defvar *backtest-cache* (make-hash-table :test 'equal)
+  "In-memory cache of backtest results. Key: STRATEGY-NAME, Value: RESULT-PLIST")
+
+(defvar *backtest-cache-file* "data/backtest_cache.json"
+  "Path to the persistent backtest cache file.")
+
+(defvar *backtest-cache-validity* (* 24 3600)
+  "Validity period for backtest results (24 hours).")
+
+;;; ----------------------------------------------------------------------------
+;;; Persistence (Expert Panel 2026-01-14)
+;;; ----------------------------------------------------------------------------
+
+(defun load-backtest-cache ()
+  "Load backtest results from disk."
+  (handler-case
+      (when (probe-file *backtest-cache-file*)
+        (let ((content (uiop:read-file-string *backtest-cache-file*)))
+          (when (> (length content) 0)
+            (let ((json (jsown:parse content)))
+              (clrhash *backtest-cache*)
+              (dolist (obj json)
+                (let ((name (jsown:val obj "name"))
+                      (timestamp (jsown:val obj "timestamp"))
+                      (result (jsown:val obj "result")))
+                  (setf (gethash name *backtest-cache*)
+                        (list :timestamp timestamp :result result))))
+              (format t "[BACKTEST] 📂 Loaded ~d cached results.~%" (hash-table-count *backtest-cache*))))))
+    (error (e)
+      (format t "[BACKTEST] ⚠️ Failed to load cache: ~a~%" e))))
+
+(defun save-backtest-cache ()
+  "Save backtest results to disk."
+  (handler-case
+      (let ((list nil))
+        (maphash (lambda (k v)
+                   (push (jsown:new-js
+                           ("name" k)
+                           ("timestamp" (getf v :timestamp))
+                           ("result" (getf v :result)))
+                         list))
+                 *backtest-cache*)
+        (ensure-directories-exist *backtest-cache-file*)
+        (with-open-file (stream *backtest-cache-file*
+                                :direction :output
+                                :if-exists :supersede
+                                :if-does-not-exist :create)
+          (write-string (jsown:to-json list) stream))
+        (format t "[BACKTEST] 💾 Saved ~d results to cache.~%" (length list)))
+    (error (e)
+      (format t "[BACKTEST] ❌ Failed to save cache: ~a~%" e))))
+
+(defun cache-backtest-result (strategy-name result)
+  "Cache a backtest result."
+  (setf (gethash strategy-name *backtest-cache*)
+        (list :timestamp (get-universal-time)
+              :result result))
+  ;; Save on every update (low volume)
+  (save-backtest-cache))
+
+(defun get-cached-backtest (strategy-name)
+  "Get a valid cached backtest result. Returns NIL if expired or missing."
+  (let ((cached (gethash strategy-name *backtest-cache*)))
+    (when cached
+      (let ((timestamp (getf cached :timestamp))
+            (now (get-universal-time)))
+        (if (< (- now timestamp) *backtest-cache-validity*)
+            (getf cached :result)
+            (progn
+              ;; remhash? No, keep logic simple.
+              nil))))))
+
+(defun initialize-backtest-system ()
+  "Initialize the backtest system."
+  (load-backtest-cache))
+
+
 (defun find-balanced-end (str start)
   "Find the end of a balanced s-expression starting at position start"
   (let ((depth 0) (in-string nil))
@@ -93,17 +170,6 @@
 ;; Helper to resample candles (M1 -> M5, etc)
 ;; WARN: CRITICAL DATA ORDER ASSUMPTION (Recurrence Prevention)
 ;; Input 'candles' MUST be Newest-First (Time: T_n, T_n-1, ... T_1).
-;; Since 'push' reverses the order, the 'chunk' variable becomes (Oldest ... Newest).
-;; - first chunk = Oldest Candle (Start of Period) -> Use for OPEN
-;; - last chunk  = Newest Candle (End of Period)   -> Use for CLOSE/TIMESTAMP
-;;
-;; [V8.2] Expert Panel Audit (Andrew Ng):
-;;   LOOK-AHEAD BIAS CHECK: PASSED
-;;   - Open price: Uses start-candle (oldest in chunk) → Correct
-;;   - Close price: Uses end-candle (newest in chunk) → Correct
-;;   - Timestamp: Uses end-candle timestamp → Correct (represents bar close time)
-;;   ⚠️ CAVEAT: Caller must ensure the LATEST candle is COMPLETE before calling.
-;;              If called mid-bar, the newest candle contains partial data.
 (defun resample-candles (candles factor)
   (let ((result nil)
         (chunk nil)
@@ -113,13 +179,7 @@
        (incf count)
        (when (= count factor)
          ;; Input candles are Newest-First (M5 M4 ...)
-         ;; Chunk build:
-         ;; 1. Push M5 -> (M5)
-         ;; 2. Push M4 -> (M4 M5)
-         ;; ...
-         ;; 5. Push M1 -> (M1 M2 M3 M4 M5)
          ;; So 'chunk' is (Start/Oldest ... End/Newest)
-         
          (let* ((start-candle (first chunk))      ; Oldest time (Open)
                 (end-candle (car (last chunk)))   ; Newest time (Close/Timestamp)
                 (high (loop for x in chunk maximize (candle-high x)))
@@ -132,19 +192,6 @@
                   result))
          (setf chunk nil)
          (setf count 0)))
-    ;; Result was pushed as (Agg1 Agg2 ...). 
-    ;; Agg1 came from M5..M1 (Newest). So Agg1 is Newest.
-    ;; Result is (Newest ... Oldest).
-    ;; No need to reverse result if we want Newest-First output.
-    ;; Wait, original code did (nreverse result).
-    ;; Let's check:
-    ;; Input (M10...M1).
-    ;; Loop 1: M10..M6. Chunk -> Agg1 (Time M10). Push Agg1 -> (Agg1).
-    ;; Loop 2: M5..M1. Chunk -> Agg2 (Time M5). Push Agg2 -> (Agg2 Agg1).
-    ;; Result (Agg2 Agg1). Agg2 is M5 (Old), Agg1 is M10 (New).
-    ;; So result is (Old New).
-    ;; We want (New Old) -> (Agg1 Agg2).
-    ;; So yes, we need nreverse.
     (nreverse result)))
 
 ;; Request backtest from Rust

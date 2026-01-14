@@ -1,16 +1,13 @@
-live-feed
-アプリ
- — 23:122026年1月13日 火曜日 23:12
- USDJPY
+ GBPUSD
 ═══════════════════════════════
  【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
  発動戦略: T-Nakane-Gotobi
 
-• SMA-5 = 158.89
+• SMA-5 = 1.34
 
- USDJPY @ 158.889 ( 01/13 23:12 JST)
+ GBPUSD @ 1.344 ( 01/14 12:42 JST)
  SELL - 下落を狙う
 
  利確: +25 pips |  損切: -20 pips
@@ -27,412 +24,322 @@ live-feed
 返信
 転送
 その他
-[23:12]2026年1月13日 火曜日 23:12
- USDJPY
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
 
- 発動戦略: Wisdom-USDJPY-Reversal-3977302291-Gen1-mut-RSI6
-
-• BB-Mid = 158.88
-• RSI-6 = 68.39
-
- USDJPY @ 158.889 ( 01/13 23:12 JST)
- SELL - 下落を狙う
-
- 利確: +25 pips |  損切: -8 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- USDJPY
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: BB-Lower-Bounce
-
-• BB-Mid = 158.88
-
- USDJPY @ 158.889 ( 01/13 23:12 JST)
- SELL - 下落を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- USDJPY
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: BB-RSI-Reversion-Combo
-
-• BB-Mid = 158.88
-• RSI-14 = 50.00
-
- USDJPY @ 158.889 ( 01/13 23:12 JST)
- SELL - 下落を狙う
-
- 利確: +60 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- USDJPY
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Extreme-Reversion-BB
-
-• BB-Mid = 158.88
-
- USDJPY @ 158.889 ( 01/13 23:12 JST)
- SELL - 下落を狙う
-
- 利確: +80 pips |  損切: -40 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- USDJPY
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Fibonacci-EMA-Scalp
-
-• EMA-5 = 158.89
-• EMA-8 = 158.88
-• EMA-13 = 158.87
-
- USDJPY @ 158.889 ( 01/13 23:12 JST)
- BUY - 上昇を狙う
-
- 利確: +20 pips |  損切: -10 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
+live-feed
+アプリ
+ — 12:472026年1月14日 水曜日 12:47
  GBPUSD
 ═══════════════════════════════
  【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
- 発動戦略: Triple-EMA-Trend-Follow
+ 発動戦略: T-Nakane-Gotobi
 
-• EMA-10 = 1.33
-• EMA-20 = 1.33
-• EMA-50 = 1.33
+• SMA-5 = 1.34
 
- GBPUSD @ 1.347 ( 01/13 23:12 JST)
+ GBPUSD @ 1.344 ( 01/14 12:47 JST)
  SELL - 下落を狙う
 
- 利確: +50 pips |  損切: -25 pips
+ 利確: +25 pips |  損切: -20 pips
 
  この条件で行く。
 ═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- GBPUSD
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-MA-Cross-20-50
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-RSI-Reversal
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-BB-Bounce
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-Breakout-Donchian
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-MACD-Trend
+Origin: External Registry
+Clan: TREND
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-Stoch-Cross
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-Triple-EMA
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-CCI-Explosion
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-ATR-Trend
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-H4-Parabolic
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-Golden-Cross
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-Connors-RSI2
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-Turtle-20
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-Turtle-55
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-MACD-Zero
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-BB-Walk
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-EMA-Ribbon
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-ADX-Trend
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-Williams-R
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-D1-SMA-Break
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Weinstein
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-MACD
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-RSI-Bull
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Donchian-4W
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-EMA-Trend
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-BB-Break
+Origin: External Registry
+Clan: BREAKOUT
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Stoch-Long
+Origin: External Registry
+Clan: REVERSION
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Pullback
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Long-Hold
+Origin: External Registry
+Clan: TREND
+[12:49]2026年1月14日 水曜日 12:49
+ Apex
+ New Founder Recruited!
+Name: Hunted-W1-Volume-Trend
+Origin: External Registry
+Clan: TREND
+[12:51]2026年1月14日 水曜日 12:51
+ EURUSD
 ═══════════════════════════════
  【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
- 発動戦略: MACD-Expansion
+ 発動戦略: T-Nakane-Gotobi-Gen1-mut-SMA6
 
-• MACD = 0.00
+• SMA-6 = 1.16
 
- GBPUSD @ 1.347 ( 01/13 23:12 JST)
- BUY - 上昇を狙う
-
- 利確: +70 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Crossover-Plus-MACD
-
-• EMA-10 = 1.33
-• EMA-20 = 1.33
-• MACD = 0.00
-
- GBPUSD @ 1.347 ( 01/13 23:12 JST)
+ EURUSD @ 1.165 ( 01/14 12:51 JST)
  SELL - 下落を狙う
 
- 利確: +50 pips |  損切: -25 pips
+ 利確: +25 pips |  損切: -20 pips
 
  この条件で行く。
 ═══════════════════════════════
-[23:12]2026年1月13日 火曜日 23:12
+[12:51]2026年1月14日 水曜日 12:51
+ EURUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: T-Nakane-Gotobi
+
+• SMA-5 = 1.16
+
+ EURUSD @ 1.165 ( 01/14 12:51 JST)
+ SELL - 下落を狙う
+
+ 利確: +25 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+
+live-feed
+アプリ
+ — 12:572026年1月14日 水曜日 12:57
  GBPUSD
 ═══════════════════════════════
  【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
- 発動戦略: Simple-Momentum-Sync
+ 発動戦略: T-Nakane-Gotobi-Gen1-mut-SMA6
 
-• EMA-50 = 1.33
-• RSI-14 = 57.00
+• SMA-6 = 1.34
 
- GBPUSD @ 1.347 ( 01/13 23:12 JST)
- BUY - 上昇を狙う
+ GBPUSD @ 1.345 ( 01/14 12:57 JST)
+ SELL - 下落を狙う
 
- 利確: +60 pips |  損切: -30 pips
+ 利確: +25 pips |  損切: -20 pips
 
  この条件で行く。
 ═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[12:57]2026年1月14日 水曜日 12:57
+ GBPUSD
+═══════════════════════════════
+ 【Hunters】が戦場に立つ！
+═══════════════════════════════
+
+ 発動戦略: T-Nakane-Gotobi
+
+• SMA-5 = 1.34
+
+ GBPUSD @ 1.345 ( 01/14 12:57 JST)
+ SELL - 下落を狙う
+
+ 利確: +25 pips |  損切: -20 pips
+
+ この条件で行く。
+═══════════════════════════════
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
 新規
-[23:13]2026年1月13日 火曜日 23:13
+[13:03]2026年1月14日 水曜日 13:03
  USDJPY
 ═══════════════════════════════
  【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
- 発動戦略: MACD-Cross-Gen0
+ 発動戦略: T-Nakane-Gotobi-Gen1-mut-SMA6
 
-• MACD = 0.45
+• SMA-6 = 159.15
 
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +1 pips |  損切: -0 pips
-
- この条件で行く。
-═══════════════════════════════
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Medium-EMA-Cross-20-50
-
-• EMA-20 = 153.56
-• EMA-50 = 153.26
-• RSI-14 = 95.42
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +80 pips |  損切: -40 pips
-
- この条件で行く。
-═══════════════════════════════
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: TF-10-50
-
-• SMA-10 = 153.51
-• SMA-50 = 153.16
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +40 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Oversold-Reversal
-
-• RSI-14 = 95.42
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +50 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Pullback-Breakout
-
-• EMA-20 = 153.56
-• RSI-14 = 95.42
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +60 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: CCI-Trend-Breakout
-
-
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Trend-Scalp-1M
-
-• EMA-9 = 154.17
-• EMA-21 = 153.53
-• RSI-14 = 95.42
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +20 pips |  損切: -10 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: MA-Ribbon-Scalp
-
-• EMA-5 = 155.02
-• EMA-13 = 153.83
-• RSI-14 = 95.42
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +25 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- USDJPY
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Stoch-Pop
-
-
-
- USDJPY @ 158.923 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +25 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- EURUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Perfect-Order-SMA
-
-• SMA-20 = 1.16
-• SMA-50 = 1.16
-• SMA-200 = 1.16
-
- EURUSD @ 1.167 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
-
- 利確: +100 pips |  損切: -50 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- EURUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Trend-Pullback-Entry
-
-• SMA-200 = 1.16
-• RSI-14 = 90.97
-
- EURUSD @ 1.167 ( 01/13 23:13 JST)
+ USDJPY @ 159.154 ( 01/14 13:03 JST)
  SELL - 下落を狙う
 
- 利確: +80 pips |  損切: -50 pips
-
- この条件で行く。
-═══════════════════════════════
-[23:13]2026年1月13日 火曜日 23:13
- EURUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Conservative-Trend
-
-• SMA-200 = 1.16
-• RSI-7 = 95.08
-
- EURUSD @ 1.167 ( 01/13 23:13 JST)
- SELL - 下落を狙う
-
- 利確: +80 pips |  損切: -40 pips
+ 利確: +25 pips |  損切: -20 pips
 
  この条件で行く。
 ═══════════════════════════════
@@ -446,21 +353,20 @@ live-feed
 返信
 転送
 その他
-[23:13]2026年1月13日 火曜日 23:13
- EURUSD
+[13:03]2026年1月14日 水曜日 13:03
+ USDJPY
 ═══════════════════════════════
- 【Raiders】が戦場に立つ！
+ 【Hunters】が戦場に立つ！
 ═══════════════════════════════
 
- 発動戦略: SCALP-BASE
+ 発動戦略: T-Nakane-Gotobi
 
-• EMA-5 = 1.17
-• EMA-12 = 1.16
+• SMA-5 = 159.15
 
- EURUSD @ 1.167 ( 01/13 23:13 JST)
- BUY - 上昇を狙う
+ USDJPY @ 159.154 ( 01/14 13:03 JST)
+ SELL - 下落を狙う
 
- 利確: +15 pips |  損切: -10 pips
+ 利確: +25 pips |  損切: -20 pips
 
  この条件で行く。
 ═══════════════════════════════

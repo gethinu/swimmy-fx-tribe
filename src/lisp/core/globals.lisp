@@ -55,6 +55,7 @@
 
 ;;; AI/ML STATE
 (defparameter *prediction-cache* (make-hash-table :test 'equal))
+(defparameter *history-process-cache* (make-hash-table :test 'equal) "V15.8: Throttle HISTORY msg processing")
 (defparameter *last-prediction* nil)
 (defparameter *last-confidence* 0.5)
 (defparameter *last-swarm-consensus* 0.5)

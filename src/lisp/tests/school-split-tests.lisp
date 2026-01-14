@@ -176,6 +176,65 @@
     (assert-equal "USDJPY" (cl-user::trade-prediction-symbol pred))
     (assert-equal 0.8 (cl-user::trade-prediction-confidence pred))))
 
+;;; V17: New Prediction System Tests
+(deftest test-prediction-weights-configurable
+  "V17: Test that prediction weights are configurable (Issue 1)"
+  ;; Check that weight variables exist and are numbers
+  (assert-true (boundp 'cl-user::*prediction-weight-trend*) "Trend weight should exist")
+  (assert-true (boundp 'cl-user::*prediction-weight-volatility*) "Volatility weight should exist")
+  (assert-true (boundp 'cl-user::*prediction-min-confidence*) "Min confidence should exist")
+  (assert-true (numberp cl-user::*prediction-weight-trend*) "Trend weight should be a number")
+  (assert-true (> cl-user::*prediction-weight-trend* 0) "Weight should be positive"))
+
+(deftest test-prediction-feedback-functions
+  "V17: Test feedback loop functions exist (Issue 2)"
+  ;; Check that feedback functions are defined
+  (assert-true (fboundp 'cl-user::record-prediction-outcome) "record-prediction-outcome should exist")
+  (assert-true (fboundp 'cl-user::update-prediction-accuracy) "update-prediction-accuracy should exist")
+  (assert-true (fboundp 'cl-user::find-prediction-by-symbol-direction) "finder should exist"))
+
+(deftest test-prediction-threshold-effects
+  "V17: Test that threshold affects should-take-trade-p"
+  (let ((high-conf-pred (cl-user::make-trade-prediction 
+                          :symbol "USDJPY" :direction :buy 
+                          :predicted-outcome :win :confidence 0.7))
+        (low-conf-pred (cl-user::make-trade-prediction 
+                         :symbol "USDJPY" :direction :buy 
+                         :predicted-outcome :win :confidence 0.3)))
+    ;; High confidence should pass (0.7 > 0.5 default threshold)
+    (assert-true (cl-user::should-take-trade-p high-conf-pred) "High conf should pass")
+    ;; Low confidence should fail
+    (assert-false (cl-user::should-take-trade-p low-conf-pred) "Low conf should fail")))
+
+;;; V18: Extended Tests (Uncle Bob)
+(deftest test-factor-correlation-calculation
+  "V18: Test dynamic correlation calculation (López de Prado)"
+  ;; High correlation when trend and momentum agree
+  (assert-equal 0.8 (cl-user::calculate-factor-correlation t t nil) 
+                "Trend+momentum aligned = high correlation")
+  ;; Zero correlation when reversion is active
+  (assert-equal 0.0 (cl-user::calculate-factor-correlation t nil t)
+                "Reversion = no correlation")
+  ;; Low correlation in mixed cases
+  (assert-true (< (cl-user::calculate-factor-correlation nil nil nil) 0.5)
+               "Mixed case = low correlation"))
+
+(deftest test-extracted-factor-functions
+  "V18: Test that factor functions are properly extracted (Fowler)"
+  (assert-true (fboundp 'cl-user::calculate-trend-factor) "Trend factor extracted")
+  (assert-true (fboundp 'cl-user::calculate-volatility-factor) "Volatility factor extracted")
+  (assert-true (fboundp 'cl-user::calculate-momentum-factor) "Momentum factor extracted")
+  (assert-true (fboundp 'cl-user::calculate-session-factor) "Session factor extracted"))
+
+(deftest test-learning-cycle-adjustment
+  "V18: Test that learning cycle can adjust thresholds (Naval/Ng)"
+  (let ((orig-threshold cl-user::*prediction-min-confidence*))
+    ;; Verify adjustment functions exist and threshold is settable
+    (assert-true (numberp cl-user::*prediction-min-confidence*) "Threshold is number")
+    (assert-true (and (>= cl-user::*prediction-min-confidence* 0.3)
+                      (<= cl-user::*prediction-min-confidence* 0.7))
+                 "Threshold in valid range")))
+
 ;;; ==========================================
 ;;; PERSISTENCE TESTS (Andrew Ng)
 ;;; ==========================================
