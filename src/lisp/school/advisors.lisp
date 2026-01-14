@@ -22,10 +22,11 @@
                        (t "🚨 CRITICAL ( Turkey? )"))))
     
     ;; CIRCUIT BREAKER (Musk/Taleb Request)
-    (when (>= fragility-score 60)
-      (format t "[TALEB] 🛑 CIRCUIT BREAKER TRIGGERED! Fragility: ~d. Disabling Trading.~%" fragility-score)
-      (when (boundp '*trading-enabled*)
-        (setf *trading-enabled* nil)))
+    ;; V44.0: DEPRECATED - Unified into school-danger.lisp (Tiered Cooldown)
+    ;; (when (>= fragility-score 60)
+    ;;   (format t "[TALEB] 🛑 CIRCUIT BREAKER TRIGGERED! Fragility: ~d. Disabling Trading.~%" fragility-score)
+    ;;   (when (boundp '*trading-enabled*)
+    ;;     (setf *trading-enabled* nil)))
     
     (format nil "🛡️ **Taleb's Risk Report**~%~
                  - Condition: ~a~%~

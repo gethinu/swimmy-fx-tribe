@@ -200,6 +200,10 @@ Lispでシステム停止なしにロジック修正可能。
 1. EA Ver 15.2 が適用されているか確認
 2. 市場がオープンしているか確認
 3. ログに `🧪 Batch testing` が出ているか確認
+4. **MT5ログに `[auto trading disabled by client]` と出る場合:**
+   - **全体の許可**: Toolbarの「Algo Trading」が **ON (緑)** であること。
+   - **個別の許可**: チャート右上の帽子マークが **青色** であること。
+     - **灰色** の場合: チャート上で右クリック → `Expert List` → `Properties` → `Common` → `Allow Algo Trading` にチェック。
 
 ### Q. HISTORY データが来ない
 1. EA ログに `📊 Sending ... candles` が出ているか確認

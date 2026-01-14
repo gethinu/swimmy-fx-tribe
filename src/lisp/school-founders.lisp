@@ -260,8 +260,8 @@
                        (let ((cat (categorize-strategy founder)))
                          (push founder (gethash cat *category-pools*))
                          (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
-                       ;; 3. Notifications
-                       (swimmy.shell:notify-discord
+                       ;; 3. Notifications (Route to SYSTEM_LOGS, not LIVE_FEED)
+                       (swimmy.core:notify-discord-recruit
                         (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
                                 (strategy-name founder) (categorize-strategy founder)))
                        (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)

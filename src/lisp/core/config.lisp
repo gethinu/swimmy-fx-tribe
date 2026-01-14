@@ -32,7 +32,7 @@
        (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED"))
       
       ;; [MESO] System Logs
-      ((member k '("status" "backtest" "recruit" "fallback") :test #'equal)
+      ((member k '("status" "backtest" "recruit" "fallback" "apex") :test #'equal)
        (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
       
       ;; [MACRO] Reports
@@ -40,7 +40,7 @@
        (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
       
       ;; [URGENT] Alerts
-      ((member k '("emergency" "apex" "alerts" "heartbeat") :test #'equal)
+      ((member k '("emergency" "alerts" "heartbeat") :test #'equal)
        (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
        
       ;; Default to Alerts if unknown
@@ -122,7 +122,7 @@
   "Maximum drawdown percentage before warning")
 
 
-(defparameter *daily-loss-limit* -500
+(defparameter *daily-loss-limit* -5000
   "Daily loss limit in yen (Updated by goals/risk)")
 
 (defparameter *max-streak-losses* 3

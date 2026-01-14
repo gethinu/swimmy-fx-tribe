@@ -134,6 +134,28 @@
 (defparameter *initial-backtest-done* nil)
 (defparameter *arms* (make-hash-table :test 'equal))
 (defparameter *arm-states* (make-hash-table :test 'equal))
+;; V8.0: Risk Management (Updated V19.8: Period-Based Limits)
+(defparameter *max-drawdown* 0.0)
+(defparameter *peak-equity* 100000)
+
+;; Tiered Risk Limits (Expert Panel 2026-01-14)
+(defvar *daily-loss-limit-pct* -5.0)    ; Stop trading for the day
+(defvar *weekly-loss-limit-pct* -10.0)  ; Stop trading for the week
+(defvar *monthly-loss-limit-pct* -20.0) ; Stop trading for the month
+
+;; Base capital for Tiered Risk Limits (V19.8)
+(defvar *total-capital* 1000000.0 "Base capital for risk calculations")
+(defvar *min-safe-capital* 100000.0 "Conservative fallback capital when equity is unknown")
+
+;; Equity tracking - Uses defvar to preserve state on hot-reload
+(defparameter *hard-deck-drawdown-pct* 50.0)  ; Permanent System Stop (Ruin Prevention)
+
+;; Risk Metrics
+(defparameter *accumulated-pnl* 0.0)  ; Life-time PnL
+(defparameter *daily-pnl* 0.0)        ; Resets daily 00:00
+(defparameter *weekly-pnl* 0.0)       ; Resets Monday 00:00
+(defparameter *monthly-pnl* 0.0)      ; Resets 1st of Month 00:00
+(defvar *processed-tickets* (make-hash-table :test 'equal) "V44.0: Deduplication for TRADE_CLOSED events")
 (defparameter *portfolio-indices* nil)
 (defparameter *clans* nil)
 (defparameter *market-data* nil)
@@ -142,3 +164,4 @@
 (defparameter *candle-histories-tf* (make-hash-table :test 'equal)) ; V41.6: Nested hash table for multi-timeframe support
 
 (format t "[GLOBALS] Global variables defined in SWIMMY.GLOBALS~%")
+

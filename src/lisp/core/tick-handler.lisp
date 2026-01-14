@@ -209,7 +209,7 @@ Sharpe   : ~,2f
 (defun check-scheduled-tasks (&optional (now (get-universal-time)))
   (multiple-value-bind (s m h date month year day-of-week dst-p tz)
       (decode-universal-time now)
-    (declare (ignore s m month year day-of-week dst-p tz))
+    (declare (ignore s m month year dst-p tz)) ;; Don't ignore day-of-week
     
     ;; 1. New Day Processing (Reset Logic)
     (when (and *last-narrative-day* (/= date *last-narrative-day*))
@@ -219,23 +219,28 @@ Sharpe   : ~,2f
       (setf *has-resigned-today* nil)
       
       ;; Reset daily counters
-      (setf *daily-pnl* 0)
+      (setf *daily-pnl* 0.0)
       (setf *daily-trade-count* 0)
+      (format t "[RISK] 🌅 New Day: Daily PnL Reset.~%")
+      
+      ;; V19.8: Period-Based Risk Reset (Expert Panel)
+      
+      ;; Weekly Reset (Monday = 0)
+      (when (= day-of-week 0)
+        (format t "[RISK] 🔄 Weekly Risk Reset (Monday)~%")
+        (setf *weekly-pnl* 0.0)
+        (notify-discord "🔄 **Weekly Risk Reset**\nWeekly PnL counter reset." :color 3066993))
+      
+      ;; Monthly Reset (1st of Month)
+      (when (= date 1)
+        (format t "[RISK] 🗓️ Monthly Risk Reset (1st)~%")
+        (setf *monthly-pnl* 0.0)
+        (notify-discord "🗓️ **Monthly Risk Reset**\nMonthly PnL counter reset." :color 3066993))
       
       ;; Persist reset
       (when (fboundp 'swimmy.engine::save-state)
-        (funcall 'swimmy.engine::save-state))
+        (funcall 'swimmy.engine::save-state)))
         
-      ;; V19.4: Weekly Risk Reset (User Request: Period-based DD)
-      ;; Execute on Monday (0)
-      (when (= day-of-week 0)
-        (format t "[RISK] 🔄 Weekly Risk Reset (Monday)~%")
-        (setf swimmy.globals::*max-drawdown* 0.0)
-        ;; Reset Peak to current Equity effectively starts a new period stats
-        (when (boundp 'swimmy.globals::*current-equity*)
-           (setf swimmy.globals::*peak-equity* swimmy.globals::*current-equity*))
-        (notify-discord "🔄 **Weekly Risk Reset**\nDrawdown counter reset for new week." :color 3066993)))
-
     ;; 2. Scheduled Report (23:00 Trigger)
     (when (and (>= h 23) (not *daily-report-sent-today*))
       (format t "[SCHEDULER] ⏰ 23:00 Trigger - Sending Daily Report...~%")
@@ -335,7 +340,19 @@ Sharpe   : ~,2f
            ((string= type "SYSTEM_COMMAND")
            (let ((action (jsown:val json "action")))
              (cond
-               ((string= action "RELOAD_CONFIG")
+               ((string= action "REPORT_STATUS")
+       (format t "[L] 🏰 REPORT_STATUS command received.~%")
+       (swimmy.school:report-active-positions))
+
+               ((string= action "DAILY_REPORT")
+                (format t "[L] 📊 DAILY_REPORT command received.~%")
+                (send-daily-tribal-narrative))
+
+               ((string= action "BACKTEST_SUMMARY")
+                (format t "[L] 📊 BACKTEST_SUMMARY command received.~%")
+                (notify-backtest-summary))
+
+      ((string= action "RELOAD_CONFIG")
                 (format t "[L] 🔄 Hot Reloading Configuration...~%")
                 (handler-case
                     (progn
@@ -509,12 +526,30 @@ Sharpe   : ~,2f
             (swimmy.executor:process-trade-closed json msg))
           
            ;; V19: Position Sync - Reconcile warrior-allocation with MT5 positions
+           ;; V44.0: Entry Confirmation (Taleb: "Only celebrate when deal closes")
            ((string= type "POSITIONS")
             (handler-case
                 (when (fboundp 'swimmy.school:reconcile-with-mt5-positions)
                   (let ((symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "UNKNOWN"))
                         (positions (if (jsown:keyp json "data") (jsown:val json "data") nil)))
                     (format t "[L] 📊 POSITIONS received: ~a has ~d positions~%" symbol (length positions))
+                    ;; V44.0: Check for newly confirmed entries
+                    (when (and positions (boundp 'swimmy.school::*pending-orders*))
+                      (dolist (pos positions)
+                        (let* ((magic (if (jsown:keyp pos "magic") (jsown:val pos "magic") 0))
+                               (pending (gethash magic swimmy.school::*pending-orders*)))
+                          (when pending
+                            (let ((strat-name (getf pending :strategy))
+                                  (direction (getf pending :direction))
+                                  (entry-price (if (jsown:keyp pos "price") (jsown:val pos "price") 0))
+                                  (lot (if (jsown:keyp pos "volume") (jsown:val pos "volume") 0.01)))
+                              (format t "[L] ✅ ENTRY CONFIRMED: ~a ~a @~,3f (Magic ~d)~%" symbol direction entry-price magic)
+                              (notify-discord-symbol symbol
+                                (format nil "✅ **ENTRY CONFIRMED**~%Strategy: ~a~%~a ~a @ ~,3f~%Lot: ~,2f | Magic: ~d"
+                                        strat-name (if (eq direction :long) "BUY" "SELL") symbol entry-price lot magic)
+                                :color (if (eq direction :long) 3066993 15158332))
+                              ;; Remove from pending (now confirmed)
+                              (remhash magic swimmy.school::*pending-orders*))))))
                     (funcall 'swimmy.school:reconcile-with-mt5-positions symbol positions)))
               (error (e) (format t "[L] Position reconcile error: ~a~%" e))))
           

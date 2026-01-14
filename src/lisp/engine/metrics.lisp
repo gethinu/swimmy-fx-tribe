@@ -77,7 +77,9 @@
            (total-pnl 0.0)
            (wins 0)
            (losses 0)
-           (peak-pnl 0.0)
+           (peak-pnl (if (boundp 'swimmy.globals::*min-safe-capital*) 
+                         swimmy.globals::*min-safe-capital* 
+                         100000.0))
            (max-dd 0.0)
            (pnls nil))
       
@@ -86,17 +88,21 @@
       
       ;; 2. Replay history
       (dolist (trade all-trades)
-        (let ((pnl (swimmy.school::trade-record-pnl trade)))
           (incf total-pnl pnl)
           (push pnl pnls)
           (if (> pnl 0) (incf wins) (incf losses))
           
-          ;; Track Drawdown
-          (when (> total-pnl peak-pnl) (setf peak-pnl total-pnl))
-          (let ((dd (if (> peak-pnl 0) 
-                        (* 100 (/ (- peak-pnl total-pnl) peak-pnl))
-                        0.0)))
-            (when (> dd max-dd) (setf max-dd dd)))))
+          ;; Track Drawdown (Proper reconstruction using System Base Capital)
+          ;; Uses *min-safe-capital* (100k) as the baseline for history reconstruction
+          (let* ((base-cap (if (boundp 'swimmy.globals::*min-safe-capital*) 
+                               swimmy.globals::*min-safe-capital* 
+                               100000.0))
+                 (sim-equity (+ base-cap total-pnl)))
+            (when (> sim-equity peak-pnl) (setf peak-pnl sim-equity))
+            (let ((dd (if (> peak-pnl 0) 
+                          (* 100 (/ (- peak-pnl sim-equity) peak-pnl))
+                          0.0)))
+              (when (> dd max-dd) (setf max-dd dd)))))
       
       ;; 3. Update Globals
       (when (> (length all-trades) 0)

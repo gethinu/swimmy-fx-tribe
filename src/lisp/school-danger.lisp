@@ -34,31 +34,22 @@
       (execute-tactical-retreat))))
 
 (defun record-trade-result (result)
-  "Record trade result and update danger level"
+  "V44.0: Record trade result and escalate/reset tier"
   (setf *last-trade-result* result)
   (if (eq result :loss)
       (progn
         (incf *consecutive-losses*)
         (setf *consecutive-wins* 0)
-        
-        ;; P1: Dynamic Circuit Breaker Tracking
-        (push (get-universal-time) *recent-losses*)
-        (check-dynamic-circuit-breaker)
-        
-        ;; Legacy Danger Logic (keep as fallback)
-        (when (>= *consecutive-losses* 5) ; Increased from 2 to 5 to prefer Circuit Breaker
-          (activate-danger-cooldown)))
+        ;; V44.0: Unified Tiered Cooldown - escalate on every loss
+        (activate-danger-cooldown))
       (progn
         (incf *consecutive-wins*)
         (setf *consecutive-losses* 0)
-        ;; Clear recent losses on WIN (Dynamic Breaker only cares about CONSECUTIVE losses?)
-        ;; User requirement: "3 consecutive losses". So a WIN breaks the chain.
-        (setf *recent-losses* nil) 
-        
-        ;; Recovery from danger
-        (when (> *danger-level* 0)
-          (decf *danger-level*)
-          (format t "[L] 🩹 RECOVERY: Danger level decreased to ~d~%" *danger-level*)))))
+        ;; V44.0: Reset tier on WIN (recovery)
+        (when (> *cooldown-tier* 0)
+          (setf *cooldown-tier* (max 0 (1- *cooldown-tier*)))
+          (format t "[L] 🩹 RECOVERY: Cooldown tier decreased to ~d/~d~%" 
+                  *cooldown-tier* (1- (length *cooldown-durations*)))))))
 
 (defun get-current-price (symbol type)
   "Get current price from candle history or brain state"
@@ -97,20 +88,42 @@
     (when (> closed-count 0)
       (notify-discord-alert (format nil "⚔️ TACTICAL RETREAT: Closed ~d losing positions." closed-count)))))
 
+(defun format-duration (seconds)
+  "Format seconds as human-readable duration"
+  (cond
+    ((< seconds 60) (format nil "~ds" seconds))
+    ((< seconds 3600) (format nil "~dm" (floor seconds 60)))
+    (t (format nil "~dh" (floor seconds 3600)))))
+
 (defun activate-danger-cooldown ()
-  "Activate cooldown based on consecutive losses"
-  (let* ((losses *consecutive-losses*)
-         (cooldown-entry (or (assoc losses *cooldown-durations* :test #'<=)
-                             (cons 5 1800)))
-         (duration (cdr cooldown-entry)))
-    (setf *danger-level* (min 3 (- losses 1)))
-    (setf *danger-cooldown-until* (+ (get-universal-time) duration))
-    (format t "~%[L] 🦈🦈🦈 DANGER DETECTED! ~d consecutive losses~%" losses)
-    (format t "[L] 🏃 FLEE MODE: Trading suspended for ~d seconds~%" duration)
-    (format t "[L] 🐟 School retreating to safety...~%~%")
-    (when (fboundp 'notify-discord-alert)
-      (notify-discord-alert (format nil "🦈 DANGER: ~d consecutive losses. FLEE MODE activated for ~ds." losses duration)))
-    (execute-tactical-retreat)))
+  "V44.0: Unified Tiered Cooldown System (Expert Panel Approved)
+   Tiers: 3m→5m→10m→15m→30m→45m→1h→2h→3h→4h→EOD"
+  (let* ((max-tier (1- (length *cooldown-durations*)))
+         (new-tier (min max-tier (1+ *cooldown-tier*)))
+         (duration-entry (nth new-tier *cooldown-durations*)))
+    (setf *cooldown-tier* new-tier)
+    
+    ;; Handle :eod (End of Day) as special case
+    (if (eq duration-entry :eod)
+        (progn
+          ;; Set cooldown to end of day (23:59:59)
+          (setf *has-resigned-today* t)
+          (setf *danger-cooldown-until* (+ (get-universal-time) 86400)) ; effectively EOD
+          (format t "~%[L] 🏳️ RESIGNATION: Trading ended for today (Tier ~d/~d reached)~%" new-tier max-tier)
+          (when (fboundp 'notify-discord-alert)
+            (notify-discord-alert 
+             (format nil "🏳️ **TRADING ENDED FOR TODAY**~%~d consecutive cooldowns exhausted.~%Final tier: ~d/~d"
+                     new-tier new-tier max-tier))))
+        (progn
+          ;; Normal tier cooldown
+          (setf *danger-cooldown-until* (+ (get-universal-time) duration-entry))
+          (format t "~%[L] ⏸️ COOLDOWN TIER ~d/~d: Pausing for ~a~%" new-tier max-tier (format-duration duration-entry))
+          (when (fboundp 'notify-discord-alert)
+            (notify-discord-alert 
+             (format nil "⏸️ **COOLDOWN TIER ~d/~d**~%Pausing trading for ~a.~%Next tier: ~a"
+                     new-tier max-tier 
+                     (format-duration duration-entry)
+                     (if (= new-tier max-tier) "EOD" (format-duration (nth (1+ new-tier) *cooldown-durations*))))))))))
 
 (defun danger-cooldown-active-p ()
   "Check if we're in danger cooldown mode"

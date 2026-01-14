@@ -11,7 +11,7 @@
 (defparameter *category-positions* (make-hash-table :test 'eq))
 (defparameter *total-capital* 0.10)
 (defparameter *lstm-threshold* 0.60)
-(defparameter *warrior-allocation* (make-hash-table :test 'equal))
+
 (defparameter *last-clan-trade-time* (make-hash-table :test 'eq))
 (defparameter *min-trade-interval* 300)  ; 5 min cooldown to reduce Discord spam
 (defvar *last-swarm-consensus* 0)
@@ -238,11 +238,9 @@
 ;;; EXECUTION & WARRIORS
 ;;; ==========================================
 
-(defun get-clan-id (category)
-  (case category (:hunters 10) (:shamans 20) (:breakers 30) (:raiders 40) (t 90)))
 
-(defun get-warrior-magic (category index)
-  (+ 123456 (* (get-clan-id category) 10) index))
+;; NOTE: get-warrior-magic is defined in school-allocation.lisp
+;; Do not duplicate here - it uses deterministic format: 1[CatID][Slot] (e.g., 110000)
 
 (defun find-free-warrior-slot (category)
   (loop for i from 0 to 3
@@ -292,6 +290,7 @@
 
 (defparameter *processed-candle-time* (make-hash-table :test 'equal)
   "Tracks the timestamp of the last processed candle for each strategy/symbol pair.")
+
 
 (defun execute-category-trade (category direction symbol bid ask)
   (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
@@ -386,68 +385,72 @@
               (progn (setf *circuit-breaker-active* nil) (setf *recent-losses* nil))
               (return-from execute-category-trade nil))))
       
-      (when (and (not warmup-p) (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
-        (let* ((proposal (format nil "~a ~a ~,2f lot (~a戦略: ~a)" symbol direction lot rank lead-name))
-               (urgency (cond (danger-p :critical) (large-lot-p :high) (t :normal)))
-               (council-result (convene-high-council proposal category :urgency urgency)))
-          (when (eq council-result :rejected) (return-from execute-category-trade nil))))
-      
-      (unless (should-block-trade-p symbol direction category)
-        (let* ((prediction (handler-case (predict-trade-outcome symbol direction) (error (e) nil)))
-               ;; V15.2 FIX: Default to t (allow trade) when prediction is unavailable
-               ;; Previously this was nil, which blocked ALL trades when ML model wasn't loaded
-               (should-trade (if prediction (should-take-trade-p prediction) t)))
-          
-          (when (global-panic-active-p) (format t "[L] 💉 SOROS: Elevated volatility~%"))
-          (when (should-unlearn-p symbol) (setf should-trade nil))
-          (when should-trade
-            (unless (verify-parallel-scenarios symbol direction category) (setf should-trade nil)))
-              
-            (when should-trade
-              (sleep (/ (random 2000) 1000.0))
-              (when (< (random 100) 5) (return-from execute-category-trade nil))
-              (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+      ;; V44.2: ATOMIC RESERVATION (Expert Panel Approved)
+      ;; Reserve slot BEFORE any heavy lifting to prevent race conditions.
+      (multiple-value-bind (slot-index magic) 
+          (try-reserve-warrior-slot category lead-name symbol direction)
+        
+        (unless slot-index 
+          (format t "[ALLOC] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)
+          (return-from execute-category-trade nil))
+        
+        ;; CRITICAL SECTION: We hold the reservation. Must ensure cleanup or commit.
+        (let ((trade-committed nil))
+          (unwind-protect
+               (progn
+                 (when (and (not warmup-p) (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
+                   (let* ((proposal (format nil "~a ~a ~,2f lot (~a戦略: ~a)" symbol direction lot rank lead-name))
+                          (urgency (cond (danger-p :critical) (large-lot-p :high) (t :normal)))
+                          (council-result (convene-high-council proposal category :urgency urgency)))
+                     (when (eq council-result :rejected) (return-from execute-category-trade nil))))
 
-              (let ((slot-index (find-free-warrior-slot category)))
-                (if slot-index
-                    (let* ((magic (get-warrior-magic category slot-index))
-                           (key (format nil "~a-~d" category slot-index))
-                           (strat (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
-                                      (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-                           (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
-                           (lot (if (and (>= sharpe 0.0) (< sharpe 0.3)) 0.01 lot)))
-                      (cond
-                        ((eq direction :buy)
-                         (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
-                           (log-why-trade symbol :buy category :strategy lead-name 
-                                         :tribe-cons (if (boundp '*tribe-consensus*) *tribe-consensus* 0)
-                                         :swarm-cons swarm-consensus :parallel-score 2
-                                         :elder-ok (not (should-block-trade-p symbol :buy category)))
-                           (when (safe-order "BUY" symbol lot sl tp magic)
-                             (setf (gethash key *warrior-allocation*) 
-                                   (list :symbol symbol :category category :direction :long :entry bid :magic magic :lot lot :start-time (get-universal-time)))
-                             (update-symbol-exposure symbol lot :open)
-                             (incf *category-trades*)
-                             (setf *last-entry-time* (get-universal-time))
-                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a BUY (Magic ~d)~%" (1+ slot-index) category symbol magic)
-                             (swimmy.shell:notify-discord-symbol symbol 
-                               (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: BUY ~a~%Lot: ~,2f~%Magic: ~d" 
-                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 3066993)
-                             (return-from execute-category-trade t))))
-                        ((eq direction :sell)
-                         (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                           (when (safe-order "SELL" symbol lot sl tp magic)
-                             (setf (gethash key *warrior-allocation*) 
-                                   (list :symbol symbol :category category :direction :short :entry ask :magic magic :lot lot :start-time (get-universal-time)))
-                             (update-symbol-exposure symbol lot :open)
-                             (incf *category-trades*)
-                             (setf *last-entry-time* (get-universal-time))
-                             (format t "[L] ⚔️ WARRIOR #~d DEPLOYED: ~a -> ~a SELL (Magic ~d)~%" (1+ slot-index) category symbol magic)
-                             (swimmy.shell:notify-discord-symbol symbol 
-                               (format nil "⚔️ **WARRIOR DEPLOYED** (🕐 ~a)~%Strategy: ~a~%Action: SELL ~a~%Lot: ~,2f~%Magic: ~d" 
-                                       (swimmy.core:get-jst-timestamp) lead-name symbol lot magic) :color 15158332)
-                             (return-from execute-category-trade t))))))
-                    (format t "[L] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category))))))))
+                 (unless (should-block-trade-p symbol direction category)
+                   (let* ((prediction (handler-case (predict-trade-outcome symbol direction) (error (e) nil)))
+                          (should-trade (if prediction (should-take-trade-p prediction) t)))
+                     
+                     (when (global-panic-active-p) (format t "[L] 💉 SOROS: Elevated volatility~%"))
+                     (when (should-unlearn-p symbol) (setf should-trade nil))
+                     (when should-trade
+                       (unless (verify-parallel-scenarios symbol direction category) (setf should-trade nil)))
+                         
+                     (when should-trade
+                       (sleep (/ (random 2000) 1000.0))
+                       (when (< (random 100) 5) (return-from execute-category-trade nil))
+                       (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+
+                       (let* ((strat (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
+                                         (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+                              (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
+                              (lot (if (and (>= sharpe 0.0) (< sharpe 0.3)) 0.01 lot)))
+                         (cond
+                           ((eq direction :buy)
+                            (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
+                              (log-why-trade symbol :buy category :strategy lead-name 
+                                            :tribe-cons (if (boundp '*tribe-consensus*) *tribe-consensus* 0)
+                                            :swarm-cons swarm-consensus :parallel-score 2
+                                            :elder-ok (not (should-block-trade-p symbol :buy category)))
+                              (when (safe-order "BUY" symbol lot sl tp magic lead-name)
+                                (setf trade-committed t) ;; LEGALLY COMMITTED
+                                (update-symbol-exposure symbol lot :open)
+                                (incf *category-trades*)
+                                (setf *last-entry-time* (get-universal-time))
+                                (format t "[L] ⏳ ORDER PENDING: ~a -> ~a BUY (Magic ~d)~%" category symbol magic)
+                                (request-mt5-positions)
+                                (return-from execute-category-trade t))))
+                           ((eq direction :sell)
+                            (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
+                              (when (safe-order "SELL" symbol lot sl tp magic lead-name)
+                                (setf trade-committed t) ;; LEGALLY COMMITTED
+                                (update-symbol-exposure symbol lot :open)
+                                (incf *category-trades*)
+                                (setf *last-entry-time* (get-universal-time))
+                                (format t "[L] ⏳ ORDER PENDING: ~a -> ~a SELL (Magic ~d)~%" category symbol magic)
+                                (request-mt5-positions)
+                                (return-from execute-category-trade t))))))))))
+            ;; UNWIND-PROTECT CLEANUP
+            (unless trade-committed
+              (remhash magic *pending-orders*)
+              (format t "[ALLOC] ♻️ Reservation Cancelled: Slot ~d (Magic ~d) Released~%" slot-index magic)))))))
     (error (e) (format t "[TRACE] 🚨 ERROR in execute-category-trade: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)
@@ -537,19 +540,22 @@
                                    (strat-key (intern (format nil "~a-~a" category strat-name) :keyword)))
                               (when (can-clan-trade-p strat-key)
                                 ;; V15.5 FIX: Only send Discord notification AFTER trade is approved and executed
-                                ;; Previously notification was sent before execute-category-trade, causing false alerts
-                                (let* ((narrative (generate-dynamic-narrative sig symbol bid))
-                                       (trade-executed (execute-category-trade category direction symbol bid ask)))
+                                ;; V42.0 FIX: Generate narrative AFTER execution so the Battlefield footer includes the new trade
+                                (let ((trade-executed (execute-category-trade category direction symbol bid ask)))
                                   (when trade-executed
-                                    (format t "~a~%" narrative)
-                                    (handler-case (swimmy.shell:notify-discord-symbol symbol narrative :color (if (eq direction :buy) 3066993 15158332)) (error (e) nil))
-                                    (record-clan-trade-time strat-key)
-                                    (when (fboundp 'record-strategy-trade) (record-strategy-trade strat-name :trade 0))))))))))))))))
+                                    (let ((narrative (generate-dynamic-narrative sig symbol bid)))
+                                      (format t "~a~%" narrative)
+                                      ;; V44.0: Narrative notification moved to POSITIONS handler (after MT5 confirms)
+                                      ;; Discord notification removed here to prevent false positives
+                                      (record-clan-trade-time strat-key)
+                                      (when (fboundp 'record-strategy-trade) (record-strategy-trade strat-name :trade 0)))))))))))))))))
         (error (e) nil))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING
 ;;; ==========================================
+
+
 
 (defun force-recruit-strategy (name)
   (let ((strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))

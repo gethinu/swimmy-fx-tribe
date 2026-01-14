@@ -78,7 +78,7 @@
             (max 0.01 (min 0.50 final-lot))
             (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
 
-(defun safe-order (action symbol lot sl tp &optional (magic 0))
+(defun safe-order (action symbol lot sl tp &optional (magic 0) (comment nil))
   "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks via CENTRALIZED RISK GATEWAY."
   (let ((daily-pnl (if (boundp '*daily-pnl*) *daily-pnl* 0.0))
         (equity (if (boundp '*current-equity*) *current-equity* 0.0))
@@ -108,7 +108,8 @@
                                  ("lot" (read-from-string (format nil "~,2f" adjusted-lot)))
                                  ("sl" sl)
                                  ("tp" tp)
-                                 ("magic" magic)))))
+                                 ("magic" magic)
+                                 ("comment" (or comment ""))))))
                     (pzmq:send *cmd-publisher* msg)
                     t))
                 (progn
@@ -149,35 +150,70 @@
 (defparameter *ruin-probability-threshold* 0.001 "Max acceptable ruin probability")
 (defparameter *risk-state-lock* (bt:make-lock) "Thread safety for risk updates")
 
+(defun get-effective-risk-capital ()
+  "Calculate effective capital for risk limits.
+   Returns *current-equity* if valid, otherwise *min-safe-capital* with a WARNING.
+   (Refactored V19.8 for Expert Panel Feedback)"
+  (if (and (boundp '*current-equity*) (numberp *current-equity*) (> *current-equity* 0))
+      *current-equity*
+      (progn
+        (when (boundp '*min-safe-capital*)
+          (format t "[RISK] ⚠️ EQUITY UNKNOWN OR ZERO. Using Conservative Fallback: ¥~,0f~%" *min-safe-capital*)
+          *min-safe-capital*))))
+
 (defun trading-allowed-p ()
-  "AUTHORITATIVE check if trading is allowed."
+  "AUTHORITATIVE check if trading is allowed (Tiered Risk V19.8 - Equity Dynamic)."
   (bt:with-lock-held (*risk-state-lock*)
-    (cond
-      ;; 1. Daily Loss Limit
-      ((and (boundp '*daily-pnl*) (boundp '*daily-loss-limit*)
-            (< *daily-pnl* *daily-loss-limit*))
-       (format t "[RISK] ⛔ DAILY LOSS LIMIT HIT: ¥~,0f < ¥~,0f~%" 
-               *daily-pnl* *daily-loss-limit*)
-       nil)
-      
-      ;; 2. Max Drawdown Hard Stop
-      ((and (boundp '*max-drawdown*) (boundp '*max-dd-percent*)
-            (> *max-drawdown* *max-dd-percent*))
-       (format t "[RISK] ⛔ MAX DRAWDOWN HIT: ~,2f% > ~,2f%~%" 
-               *max-drawdown* *max-dd-percent*)
-       nil)
-      
-      ;; 3. Resignation Logic (Psychological Stop)
-      ((and (fboundp 'has-resigned-p) (has-resigned-p))
-       (format t "[RISK] 🏳️ RESIGNED TODAY~%")
-       nil)
-      
-      ;; 4. Danger Level (Market Conditions)
-      ((and (boundp '*danger-level*) (> *danger-level* 3))
-       (format t "[RISK] ⚠️ EXTREME DANGER LEVEL: ~d~%" *danger-level*)
-       nil)
-      
-      (t t))))
+    (let ((capital (get-effective-risk-capital)))
+      (unless capital
+        (format t "[RISK] ⛔ CRITICAL: Capital definition missing! Trading Blocked.~%")
+        (return-from trading-allowed-p nil))
+        
+      (cond
+        ;; 0. HARD DECK (Ruin Prevention)
+        ((and (boundp '*max-drawdown*) (boundp '*hard-deck-drawdown-pct*)
+              (> *max-drawdown* *hard-deck-drawdown-pct*))
+         (format t "[RISK] ⛔ HARD DECK HIT: DD~,2f% > ~,2f%~%" *max-drawdown* *hard-deck-drawdown-pct*)
+         nil)
+         
+        ;; 1. Monthly Limit
+        ((and (boundp '*monthly-pnl*) (boundp '*monthly-loss-limit-pct*)
+              (< *monthly-pnl* 0)
+              (< (/ *monthly-pnl* capital) (/ *monthly-loss-limit-pct* 100.0)))
+         (format t "[RISK] 🗓️ Monthly Limit Hit: PnL ~,2f < ~a%~%" *monthly-pnl* *monthly-loss-limit-pct*)
+         nil)
+         
+        ;; 2. Weekly Limit
+        ((and (boundp '*weekly-pnl*) (boundp '*weekly-loss-limit-pct*)
+              (< *weekly-pnl* 0)
+              (< (/ *weekly-pnl* capital) (/ *weekly-loss-limit-pct* 100.0)))
+         (format t "[RISK] 🔄 Weekly Limit Hit: PnL ~,2f < ~a%~%" *weekly-pnl* *weekly-loss-limit-pct*)
+         nil)
+         
+        ;; 3. Daily Limit (Percentage based)
+        ((and (boundp '*daily-pnl*) (boundp '*daily-loss-limit-pct*)
+              (< *daily-pnl* 0)
+              (< (/ *daily-pnl* capital) (/ *daily-loss-limit-pct* 100.0)))
+         (format t "[RISK] 🌅 Daily Limit Hit: PnL ~,2f < ~a%~%" *daily-pnl* *daily-loss-limit-pct*)
+         nil)
+         
+        ;; 4. Legacy Daily Fixed Limit (Fallback)
+        ((and (boundp '*daily-pnl*) (boundp '*daily-loss-limit*)
+              (< *daily-pnl* *daily-loss-limit*))
+         (format t "[RISK] ⛔ DAILY LOSS LIMIT HIT: ¥~,0f < ¥~,0f~%" *daily-pnl* *daily-loss-limit*)
+         nil)
+        
+        ;; 5. Resignation Logic
+        ((and (fboundp 'has-resigned-p) (has-resigned-p))
+         (format t "[RISK] 🏳️ RESIGNED TODAY~%")
+         nil)
+        
+        ;; 6. Danger Level
+        ((and (boundp '*danger-level*) (> *danger-level* 3))
+         (format t "[RISK] ⚠️ EXTREME DANGER LEVEL: ~d~%" *danger-level*)
+         nil)
+        
+        (t t)))))
 
 (defun update-drawdown (pnl)
   "Update drawdown tracking. Returns current drawdown percentage."

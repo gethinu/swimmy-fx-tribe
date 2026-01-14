@@ -23,10 +23,12 @@
                            (round *daily-pnl*) *resignation-threshold*)))
     
     ;; Condition 2: Too many consecutive losses
-    (when (>= *consecutive-losses* *resignation-loss-count*)
-      (setf should-resign t)
-      (setf reason (format nil "~d consecutive losses - strategy mismatch" 
-                           *consecutive-losses*)))
+    ;; V44.0: DEPRECATED - Unified into school-danger.lisp (Tiered Cooldown)
+    ;; Consecutive losses trigger tiered cooldowns, eventually hitting EOD (:eod)
+    ;; (when (>= *consecutive-losses* *resignation-loss-count*)
+    ;;   (setf should-resign t)
+    ;;   (setf reason (format nil "~d consecutive losses - strategy mismatch" 
+    ;;                        *consecutive-losses*)))
     
     ;; Condition 3: Daily goal already met (positive resignation)
     (when (and (> *daily-pnl* 0) 

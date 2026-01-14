@@ -211,12 +211,12 @@
 (defparameter *danger-cooldown-until* 0)
 (defparameter *danger-level* 0)
 
+;; V44.0: Unified 11-Tier Cooldown System (Expert Panel Approved)
+;; Tiers: 3min → 5min → 10min → 15min → 30min → 45min → 1h → 2h → 3h → 4h → EOD
+(defvar *cooldown-tier* 0 "Current cooldown tier (0-10). Escalates on each loss.")
 (defparameter *cooldown-durations*
-  '((1 . 0)
-    (2 . 120)
-    (3 . 300)
-    (4 . 600)
-    (5 . 1800)))
+  '(180 300 600 900 1800 2700 3600 7200 10800 14400 :eod)
+  "Cooldown durations in seconds. :eod = end of day (no more trading)")
 
 ;;; ==========================================
 ;;; RESIGNATION JUDGMENT

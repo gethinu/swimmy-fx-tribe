@@ -57,7 +57,18 @@
    #:*max-total-exposure*
    #:*has-resigned-today*
    #:*resignation-threshold*
+   #:*has-resigned-today*
+   #:*resignation-threshold*
    #:*danger-cooldown-until*
+   
+   ;; Tiered Risk (V19.8)
+   #:*weekly-pnl*
+   #:*monthly-pnl*
+   #:*daily-loss-limit-pct*
+   #:*weekly-loss-limit-pct*
+   #:*monthly-loss-limit-pct*
+   #:*hard-deck-drawdown-pct*
+   #:*min-safe-capital*
    
    ;; Market State
    #:*current-regime*
@@ -433,6 +444,7 @@
    ;; Position Sync (V19)
    #:reconcile-with-mt5-positions
    #:request-mt5-positions
+   #:report-active-positions
    
    ;; Genome/State
    #:save-genome

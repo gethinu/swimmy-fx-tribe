@@ -1,12 +1,7 @@
-• EMA-50 = 1.36
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
+ ALERT
+ CIRCUIT BREAKER TRIPPED
+3 losses in 5min.
+Halting trading for 15min.
 :fire:
 クリックしてリアクション
 :100:
@@ -17,25 +12,11 @@
 返信
 転送
 その他
-[13:10]2026年1月6日 火曜日 13:10
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Perfect-Order-SMA
-
-• SMA-20 = 1.36
-• SMA-50 = 1.36
-• SMA-100 = 1.35
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +90 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ CIRCUIT BREAKER TRIPPED
+4 losses in 5min.
+Halting trading for 15min.
 :fire:
 クリックしてリアクション
 :100:
@@ -46,112 +27,14 @@
 返信
 転送
 その他
-[13:10]2026年1月6日 火曜日 13:10
- GBPUSD
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Session-Breakout-Proxy
-
-• SMA-5 = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +40 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:10]2026年1月6日 火曜日 13:10
- GBPUSD
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Low-Vol-Breakout
-
-• SMA-20 = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +60 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:11]2026年1月6日 火曜日 13:11
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Stoch-Overbought-Entry
-
-
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +40 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:11]2026年1月6日 火曜日 13:11
- GBPUSD
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Fibonacci-EMA-Scalp
-
-• EMA-5 = 1.36
-• EMA-8 = 1.36
-• EMA-13 = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +20 pips |  損切: -10 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:11]2026年1月6日 火曜日 13:11
- GBPUSD
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: MA-Ribbon-Scalp
-
-• SMA-5 = 1.36
-• SMA-8 = 1.36
-• SMA-13 = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +15 pips |  損切: -10 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:13]2026年1月6日 火曜日 13:13
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Momentum-Break
-
-• RSI-14 = 52.25
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +40 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ CIRCUIT BREAKER TRIPPED
+5 losses in 5min.
+Halting trading for 15min.
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ DANGER: 5 consecutive losses. FLEE MODE activated for 1800s.
 :fire:
 クリックしてリアクション
 :100:
@@ -162,24 +45,19 @@
 返信
 転送
 その他
-[13:14]2026年1月6日 火曜日 13:14
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Bull-Zone
-
-• RSI-14 = 47.57
-• SMA-50 = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +60 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ CIRCUIT BREAKER TRIPPED
+6 losses in 5min.
+Halting trading for 15min.
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ DANGER: 6 consecutive losses. FLEE MODE activated for 1800s.
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ CIRCUIT BREAKER TRIPPED
+7 losses in 5min.
+Halting trading for 15min.
 :fire:
 クリックしてリアクション
 :100:
@@ -190,75 +68,9 @@
 返信
 転送
 その他
-[13:15]2026年1月6日 火曜日 13:15
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Holy-Grail-Proxy
-
-• EMA-20 = 1.36
-• SMA-50 = 1.36
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +75 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:15]2026年1月6日 火曜日 13:15
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: BB-Lower-Bounce
-
-• BB-Mid = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:15]2026年1月6日 火曜日 13:15
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Extreme-Reversion-BB
-
-• BB-Mid = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +80 pips |  損切: -40 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:15]2026年1月6日 火曜日 13:15
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Aggressive-Reversal
-
-• BB-Mid = 1.36
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +50 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:25]2026年1月14日 水曜日 22:25
+ ALERT
+ DANGER: 7 consecutive losses. FLEE MODE activated for 1800s.
 :fire:
 クリックしてリアクション
 :100:
@@ -269,191 +81,10 @@
 返信
 転送
 その他
-
-swimmy-gbpusd
-アプリ
- — 13:162026年1月6日 火曜日 13:16
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Perfect-Order-SMA
-
-• SMA-20 = 1.36
-• SMA-50 = 1.36
-• SMA-100 = 1.35
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +90 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:16]2026年1月6日 火曜日 13:16
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Fast-Break
-
-• RSI-5 = 83.33
-
- GBPUSD @ 1.356
- BUY - 上昇を狙う
-
- 利確: +30 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════
-[13:16]2026年1月6日 火曜日 13:16
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Short-Reversion
-
-• RSI-5 = 83.33
-
- GBPUSD @ 1.356
- SELL - 下落を狙う
-
- 利確: +20 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════
-
-swimmy-gbpusd
-アプリ
- — 22:382026年1月6日 火曜日 22:38
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Triple-EMA-Trend-Follow
-
-• EMA-10 = 1.35
-• EMA-20 = 1.35
-• EMA-50 = 1.35
-
- GBPUSD @ 1.352
- BUY - 上昇を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:38]2026年1月6日 火曜日 22:38
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Perfect-Order-SMA
-
-• SMA-20 = 1.35
-• SMA-50 = 1.35
-• SMA-100 = 1.35
-
- GBPUSD @ 1.352
- BUY - 上昇を狙う
-
- 利確: +90 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:38]2026年1月6日 火曜日 22:38
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Trend-Pullback-Entry
-
-• SMA-200 = 1.35
-• RSI-14 = 82.31
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +80 pips |  損切: -50 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:38]2026年1月6日 火曜日 22:38
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Conservative-Trend
-
-• SMA-200 = 1.35
-• RSI-7 = 92.38
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +80 pips |  損切: -40 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:41]2026年1月6日 火曜日 22:41
- GBPUSD
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Session-Breakout-Proxy
-
-• SMA-5 = 1.35
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +40 pips |  損切: -20 pips
-
- この条件で行く。
-═══════════════════════════════
-新規
-[22:44]2026年1月6日 火曜日 22:44
- GBPUSD
-═══════════════════════════════
- 【Hunters】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: MACD-Expansion
-
-• MACD = 0.00
-
- GBPUSD @ 1.352
- BUY - 上昇を狙う
-
- 利確: +70 pips |  損切: -30 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:44]2026年1月6日 火曜日 22:44
- GBPUSD
-═══════════════════════════════
- 【Shamans】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: RSI-Short-Reversion
-
-• RSI-5 = 41.94
-
- GBPUSD @ 1.352
- BUY - 上昇を狙う
-
- 利確: +20 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:26]2026年1月14日 水曜日 22:26
+ ALERT
+ RESIGNATION: Trading ended for today.
+Reason: 7 consecutive losses - strategy mismatch
 :fire:
 クリックしてリアクション
 :100:
@@ -464,44 +95,10 @@ swimmy-gbpusd
 返信
 転送
 その他
-
-swimmy-gbpusd
-アプリ
- — 22:472026年1月6日 火曜日 22:47
- GBPUSD
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Scalp-Cross-5-12
-
-• EMA-5 = 1.35
-• EMA-12 = 1.35
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +15 pips |  損切: -10 pips
-
- この条件で行く。
-═══════════════════════════════
-[22:49]2026年1月6日 火曜日 22:49
- GBPUSD
-═══════════════════════════════
- 【Breakers】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: CCI-Trend-Breakout
-
-
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +50 pips |  損切: -25 pips
-
- この条件で行く。
-═══════════════════════════════
+[22:26]2026年1月14日 水曜日 22:26
+ BRAIN SILENCE WARNING
+Brain silent for 31s. Monitoring...
+今日 22:26
 :fire:
 クリックしてリアクション
 :100:
@@ -512,93 +109,21 @@ swimmy-gbpusd
 返信
 転送
 その他
-[22:50]2026年1月6日 火曜日 22:50
- GBPUSD
-═══════════════════════════════
- 【Raiders】が戦場に立つ！
-═══════════════════════════════
-
- 発動戦略: Stoch-Pop
-
-
-
- GBPUSD @ 1.352
- SELL - 下落を狙う
-
- 利確: +25 pips |  損切: -15 pips
-
- この条件で行く。
-═══════════════════════════════[2026-01-06 23:04:12] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-06 23:04:14] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-06 23:04:16] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-06 23:04:33] EURUSD BUY (REVERSION) Strategy:Stoch-Pop Sharpe:0.00
-[2026-01-06 23:04:33] EURUSD BUY (REVERSION) Strategy:Stoch-Pop Sharpe:0.00
-[2026-01-06 23:11:02] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-06 23:17:01] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-06 23:55:26] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-06 23:55:29] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-06 23:55:30] GBPUSD BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-06 23:55:32] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-06 23:55:34] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-06 23:55:35] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-06 23:55:42] GBPUSD BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-07 00:24:10] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-07 00:27:07] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-07 00:27:09] USDJPY BUY (BREAKOUT) Strategy:CCI-Trend-Breakout Sharpe:0.00
-[2026-01-07 00:27:12] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-07 00:35:04] USDJPY BUY (SCALP) Strategy:MA-Ribbon-Scalp Sharpe:0.00
-[2026-01-07 01:05:01] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-07 01:08:02] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-07 01:28:00] USDJPY BUY (TREND) Strategy:Sweet-Chariot-SMA-40 Sharpe:0.00
-[2026-01-07 13:00:22] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-16.21
-[2026-01-07 14:21:01] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:1.55
-[2026-01-07 15:42:00] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:0.00
-[2026-01-07 15:54:00] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
-[2026-01-07 15:56:01] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
-[2026-01-07 16:32:02] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.76
-[2026-01-07 16:45:23] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.88
-[2026-01-07 16:49:21] USDJPY BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91
-[2026-01-07 16:49:24] GBPUSD BUY (TREND) Strategy:T-Nakane-Gotobi Sharpe:-15.91
-[2026-01-07 17:42:02] USDJPY BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
-[2026-01-07 17:42:05] GBPUSD BUY (TREND) Strategy:Holy-Grail-Proxy Sharpe:0.00
-[2026-01-10 15:49:01] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:49:03] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:49:05] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:55:01] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:55:01] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:58:04] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 15:59:01] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 16:02:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977017286-mut-R15 Sharpe:0.00
-[2026-01-10 16:04:00] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977017386-mut-R15 Sharpe:0.00
-[2026-01-10 16:11:00] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977017819-mut-R13 Sharpe:-0.19
-[2026-01-10 16:12:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977017886-mut-S58 Sharpe:0.00
-[2026-01-10 16:14:00] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977018020-mut-S52 Sharpe:0.00
-[2026-01-10 16:24:01] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 16:25:02] USDJPY BUY (TREND) Strategy:Trend-Pullback-Entry Sharpe:2.91
-[2026-01-10 16:27:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977018795-mut-R15 Sharpe:0.00
-[2026-01-10 16:28:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977018862-mut-S19 Sharpe:0.00
-[2026-01-10 20:30:02] USDJPY BUY (TREND) Strategy:MACD-Expansion Sharpe:0.13
-[2026-01-10 20:31:03] USDJPY BUY (TREND) Strategy:Triple-EMA-Trend-Follow Sharpe:0.14
-[2026-01-10 20:31:04] USDJPY BUY (TREND) Strategy:Triple-EMA-Trend-Follow Sharpe:0.14
-[2026-01-10 20:31:04] USDJPY BUY (TREND) Strategy:Triple-EMA-Trend-Follow Sharpe:0.14
-[2026-01-10 20:35:04] USDJPY BUY (TREND) Strategy:Triple-EMA-Trend-Follow Sharpe:0.12
-[2026-01-10 20:36:09] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.14
-[2026-01-10 20:36:10] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.14
-[2026-01-10 20:36:11] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.14
-[2026-01-10 20:36:12] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.14
-[2026-01-10 20:37:03] USDJPY BUY (TREND) Strategy:MACD-Zero-Reject Sharpe:0.12
-[2026-01-10 20:38:02] USDJPY BUY (TREND) Strategy:TF-10-50 Sharpe:0.14
-[2026-01-13 23:29:06] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:-8.17
-[2026-01-13 23:37:04] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977303795-Gen1-mut-SMA48 Sharpe:0.00
-[2026-01-13 23:38:00] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977303828-Gen1-mut-SMA24 Sharpe:0.00
-[2026-01-14 11:56:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977348134-Gen1-mut-SMA51 Sharpe:0.00
-[2026-01-14 11:56:04] GBPUSD BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977348104-Gen1-mut-RSI13 Sharpe:0.00
-[2026-01-14 14:02:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977355711-Gen1-mut-SMA22 Sharpe:0.00
-[2026-01-14 14:14:09] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:0.00
-[2026-01-14 14:16:02] GBPUSD BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977356492-Gen1-mut-RSI11 Sharpe:0.00
-[2026-01-14 14:16:17] GBPUSD BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977356492-Gen1-mut-RSI11 Sharpe:0.00
-[2026-01-14 14:17:04] EURUSD BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977356492-Gen1-mut-RSI11 Sharpe:0.00
-[2026-01-14 14:18:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977356593-Gen1-mut-SMA21 Sharpe:0.00
-[2026-01-14 15:30:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977360891-Gen1-mut-SMA21 Sharpe:0.00
-[2026-01-14 15:30:04] GBPUSD BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977360891-Gen1-mut-SMA21 Sharpe:0.00
-[2026-01-14 15:31:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977360891-Gen1-mut-SMA21 Sharpe:0.00
+[22:26]2026年1月14日 水曜日 22:26
+ BRAIN REVIVED
+Signal restored after 0s silence.
+今日 22:26
+:fire:
+クリックしてリアクション
+:100:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[22:27]2026年1月14日 水曜日 22:27
+ ALERT
+ Backtest Batch Queued (RR)n- Requested: 5 / 139n- Cursor: 5 / 139[2026-01-14 22:33:07] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:0.00
+[2026-01-14 22:37:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977386510-Gen1-mut-SMA17 Sharpe:0.00
