@@ -314,7 +314,7 @@ ENUM_TIMEFRAMES StringToTimeframe(string tf) {
 //+------------------------------------------------------------------+
 //| History data                                                      |
 //+------------------------------------------------------------------+
-void SendHistoryData(string symbol, string tf) {
+void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
    // Only send history for THIS chart's symbol
    // Note: Empty symbol ("") or "ALL" = broadcast to all EAs
    if(symbol != "" && symbol != "ALL" && symbol != _Symbol) {
@@ -332,11 +332,21 @@ void SendHistoryData(string symbol, string tf) {
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
    
-   // Load more data for higher TFs to ensure deep history
-   int count = 100000;
-   if(period == PERIOD_W1 || period == PERIOD_D1) count = 5000; // 5000 weeks ~ 100 years
+   // Load more data for higher TFs to ensure deep history, unless count is specified
+   if(count <= 0) {
+       count = 100000;
+       if(period == PERIOD_W1 || period == PERIOD_D1) count = 5000; // 5000 weeks ~ 100 years
+   }
    
-   int copied = CopyRates(_Symbol, period, 0, count, rates);
+   int copied = 0;
+   // V15.5: Use start_time if provided (Brain sends "start" for gap filling)
+   if(start_time > 0) {
+       copied = CopyRates(_Symbol, period, start_time, count, rates);
+       LogDebug("📊 CopyRates from " + TimeToString(start_time) + " (" + IntegerToString(count) + " bars)");
+   } else {
+       copied = CopyRates(_Symbol, period, 0, count, rates);
+       LogDebug("📊 CopyRates from LATEST (" + IntegerToString(count) + " bars)");
+   }
    
    if(copied > 0) {
       LogInfo("📊 Sending " + IntegerToString(copied) + " " + tf + " candles for " + _Symbol + "...");
@@ -474,7 +484,11 @@ void ExecuteCommand(string cmd) {
    else if(StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
       string tf = GetStringFromJson(cmd, "tf");
       if(tf == "") tf = "M1";
-      SendHistoryData(cmd_symbol, tf);
+      // V15.5: Parse start and count
+      datetime start = (datetime)GetValueFromJson(cmd, "start");
+      int count = (int)GetValueFromJson(cmd, "count");
+      
+      SendHistoryData(cmd_symbol, tf, start, count);
    }
    else if(StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
       g_last_heartbeat = TimeCurrent();

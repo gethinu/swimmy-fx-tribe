@@ -141,15 +141,18 @@
                (format t "[L] ⚠️ DATA GAP DETECTED for ~a: Gap is ~d seconds (~d bars). Last: ~a, Now: ~a~%" 
                        symbol gap missing-min last-ts now)
                
-               (when (and (> missing-min 0) (< missing-min 14400)) ; Cap at 10 days (14400 min) - wait 14400 is 10 days? 60*24*10 = 14400. Yes.
-                 (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" (+ missing-min 10))
-                 (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-                   (let ((cmd (jsown:to-json
-                               (jsown:new-js
-                                ("action" "REQ_HISTORY")
-                                ("symbol" symbol)
-                                ("tf" "M1")))))
-                     (pzmq:send swimmy.globals:*cmd-publisher* cmd)))
+               (when (> missing-min 0)
+                 (let ((request-bars (if (> missing-min 14400) 14400 (+ missing-min 10))))
+                   (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" request-bars)
+                   (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+                     (let ((cmd (jsown:to-json
+                                (jsown:new-js
+                                 ("action" "REQ_HISTORY")
+                                 ("symbol" symbol)
+                                 ("tf" "M1")
+                                 ("count" request-bars)
+                                 ("start" now-unix))))) ; Force start from NOW to get latest data
+                     (pzmq:send swimmy.globals:*cmd-publisher* cmd))))
                  t)) ; Return T (Gap detected)
             nil)) ; No gap
       nil))

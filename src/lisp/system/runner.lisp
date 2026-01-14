@@ -75,7 +75,19 @@
            
            (sleep 1)
            
+           ;; V9.5: Pre-load from Data Keeper (Expert Panel 2026-01-14)
+           ;; This primes the cache with local M1 data before MT5 requests
+           (format t "[L] 📦 Pre-loading history from Data Keeper (local cache)...~%")
+           (when (fboundp 'swimmy.core:init-data-keeper-client)
+             (swimmy.core:init-data-keeper-client))
+           (dolist (sym *supported-symbols*)
+             (let ((local-data (swimmy.core:get-history-from-keeper sym 100000 "M1")))
+               (when (and local-data (> (length local-data) 0))
+                 (setf (gethash sym *candle-histories*) local-data)
+                 (format t "[L] ✅ Pre-loaded ~a M1: ~d bars from Data Keeper~%" sym (length local-data)))))
+           
            ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)
+           ;; Now only fills the gap between Data Keeper's latest and NOW
            (format t "[L] 📊 Requesting history for all symbols...~%")
            (let ((tfs '("M1" "M5" "M15" "M30" "H1" "H4" "H12" "D1" "W1")))
              (dolist (sym *supported-symbols*)

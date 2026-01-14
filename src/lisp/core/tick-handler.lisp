@@ -294,18 +294,26 @@ Sharpe   : ~,2f
                  (push (make-candle :timestamp (jsown:val b "t") 
                                     :open c :high c :low c :close c :volume 1) bars)))
                                     
-             ;; Store in MTF structure
+             ;; Store in MTF structure (Merge Strategy)
              (unless (gethash symbol *candle-histories-tf*)
                (setf (gethash symbol *candle-histories-tf*) (make-hash-table :test 'equal)))
+             
+             (let ((existing (gethash tf (gethash symbol *candle-histories-tf*))))
+               (if existing
+                   (setf bars (sort (remove-duplicates (append bars existing)
+                                                       :key #'candle-timestamp
+                                                       :test #'=)
+                                    #'> :key #'candle-timestamp))
+                   (setf bars (sort bars #'> :key #'candle-timestamp))))
+                   
              (setf (gethash tf (gethash symbol *candle-histories-tf*)) bars)
-             (format t "[L] 📚 Loaded ~a ~a data: ~d bars~%" symbol tf (length bars))
+             (format t "[L] 📚 Loaded ~a ~a data: ~d bars (Merged)~%" symbol tf (length bars))
 
              ;; If M1, also store in legacy/default locations
              (when (or (string= tf "M1") (string= tf "Default"))
                  (setf (gethash symbol *candle-histories*) bars)
                  (setf *candle-history* bars)  ; Legacy compat - use first symbol
               
-                 ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
                  ;; P1: Trigger Backtest after history load (Moved from runner.lisp)
                  ;; V11.0: Data Gap Check (Expert Panel P0)
                  ;; Verify no gaps before running backtest

@@ -56,8 +56,9 @@ def send_discord_alert(message: str, is_error: bool = True):
 def load_historical_data():
     """Load historical data from CSV files for all timeframes."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
-    # V9.4 Optimization: M1 disabled to save RAM. Focusing on M5+ (20 years)
-    timeframes = ["M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]
+    # V9.5 Fix: Re-enable M1 for fast startup (Expert Panel 2026-01-14)
+    # M1 CSVs are ~300MB each, but loading avoids slow MT5 backfill loop
+    timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]
 
     for symbol in SUPPORTED_SYMBOLS:
         for tf in timeframes:
