@@ -574,7 +574,7 @@
   (maphash (lambda (key val) (declare (ignore val)) (recruit-founder key)) *founder-registry*))
 
 (defun safely-load-hunter-strategies ()
-  (let ((path (merge-pathnames "src/lisp/school-hunter.lisp" (uiop:getcwd))))
+  (let ((path (merge-pathnames "src/lisp/school/school-hunter.lisp" (uiop:getcwd))))
     (handler-case
         (progn
           (load path)

@@ -65,9 +65,9 @@
     (format t "~%")
     
     ;; Goal Status
-    (format t "[L] 🎯 GOAL STATUS:~%")
+    (format t "[L] 🎯 GOAL STATUS (Lifetime):~%")
     (format t "[L]    Monthly target: ¥~:d~%" *monthly-goal*)
-    (format t "[L]    Current progress: ¥~:d (~,1f%)~%" (round actual-pnl) (getf progress :progress-pct))
+    (format t "[L]    Cumulative PnL: ¥~:d (~,1f%)~%" (round actual-pnl) (getf progress :progress-pct))
     (format t "[L]    Remaining: ¥~:d over ~d trading days~%" (round remaining) trading-days-left)
     (format t "~%")
     

@@ -10,7 +10,7 @@ import os
 import re
 
 GRAVEYARD_FILE = "data/graveyard.txt"
-HUNTER_FILE = "src/lisp/school-hunter.lisp"
+HUNTER_FILE = "src/lisp/school/school-hunter.lisp"
 
 
 def main():

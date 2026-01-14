@@ -6,7 +6,7 @@ import sys
 MAX_LINES = 600
 MAX_FUNCTIONS = 25
 EXCLUDELIST = [
-    "src/lisp/school-hunter.lisp",
+    "src/lisp/school/school-hunter.lisp",
     "src/lisp/dsl.lisp",
 ]  # Generated/Legacy files allowed
 

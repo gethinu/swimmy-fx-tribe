@@ -32,7 +32,7 @@
     (exit-error (format nil "Failed to load base system: ~a" e))))
 
 ;; 2. Verify Hunter File Exists
-(defparameter *hunter-file* (merge-pathnames "src/lisp/school-hunter.lisp" (uiop:getcwd)))
+(defparameter *hunter-file* (merge-pathnames "src/lisp/school/school-hunter.lisp" (uiop:getcwd)))
 (unless (probe-file *hunter-file*)
   (format t "[WARN] Hunter file not found at ~a. Skipping check (Clean install?).~%" *hunter-file*)
   (exit-success))

@@ -43,36 +43,36 @@
                
                ;; LEGACY / DSL
                (:file "src/lisp/dsl")
-               (:file "src/lisp/strategies-trend")
-               (:file "src/lisp/strategies-reversion")
-               (:file "src/lisp/strategies-breakout")
-               (:file "src/lisp/strategies-scalp")
-               (:file "src/lisp/strategies")
+               (:file "src/lisp/strategies/strategies-trend")
+               (:file "src/lisp/strategies/strategies-reversion")
+               (:file "src/lisp/strategies/strategies-breakout")
+               (:file "src/lisp/strategies/strategies-scalp")
+               (:file "src/lisp/strategies/strategies")
                
                ;; SCHOOL
-               (:file "src/lisp/school-state")
-               (:file "src/lisp/school-danger")
-               (:file "src/lisp/school-constitution")
-               (:file "src/lisp/school-resignation")
-               (:file "src/lisp/school-strategy")  ; V8.1: Strategy/Clan System
-               (:file "src/lisp/school-voting")    ; V8.1: Voting/Council System
+               (:file "src/lisp/school/school-state")
+               (:file "src/lisp/school/school-danger")
+               (:file "src/lisp/school/school-constitution")
+               (:file "src/lisp/school/school-resignation")
+               (:file "src/lisp/school/school-strategy")  ; V8.1: Strategy/Clan System
+               (:file "src/lisp/school/school-voting")    ; V8.1: Voting/Council System
                
                ;; REFACTORED DREAMER MIGRATION (Phase 11)
-               (:file "src/lisp/school-analytics") ; Metrics & Analysis
-               (:file "src/lisp/school-backtest")  ; Backtesting & WFV
-               (:file "src/lisp/school-templates") ; Template Generation
+               (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
+               (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+               (:file "src/lisp/school/school-templates") ; Template Generation
                (:file "src/lisp/school/school-memory")
                (:file "src/lisp/school/school-ecosystem")
-               (:file "src/lisp/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
-               (:file "src/lisp/school-evolution") ; Genetic & LLM Generation (Dreamer)
+               (:file "src/lisp/school/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
+               (:file "src/lisp/school/school-evolution") ; Genetic & LLM Generation (Dreamer)
 
-               (:file "src/lisp/school-learning")
-               (:file "src/lisp/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
-               (:file "src/lisp/school-volatility")
+               (:file "src/lisp/school/school-learning")
+               (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
+               (:file "src/lisp/school/school-volatility")
 
-               (:file "src/lisp/school-founders") ; Headhunting Protocol
-               (:file "src/lisp/school-founders-hunted") ; Hunted Strategies
-               (:file "src/lisp/school-telemetry") ; V9.5: Gene Kim Telemetry
+               (:file "src/lisp/school/school-founders") ; Headhunting Protocol
+               (:file "src/lisp/school/school-founders-hunted") ; Hunted Strategies
+               (:file "src/lisp/school/school-telemetry") ; V9.5: Gene Kim Telemetry
                ;; (:file "src/lisp/school-hunter") ; V9.2: Loaded dynamically for safety (safely-load-hunter-strategies)
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school/school-risk")      ; SRP Refactor
@@ -81,7 +81,7 @@
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
-               (:file "src/lisp/school-fortress") ; Added
+               (:file "src/lisp/school/school-fortress") ; Added
                (:file "src/lisp/transfer-learning") ; Added V7.0
                (:file "src/lisp/school/advisors")
                

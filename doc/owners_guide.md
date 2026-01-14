@@ -1,7 +1,7 @@
 # 🐟 Swimmy Ver 18 オーナーズガイド
 
-**最終版:** 2026-01-14 (V18 - Prediction System Refactoring)
-**リーダー判断:** Elon Musk (9/10 Expert Panel Score)
+**最終版:** 2026-01-14 (V44.2 - Atomic Allocation Era)
+**リーダー判断:** Elon Musk (Expert Panel Verified)
 
 ---
 
@@ -26,27 +26,32 @@ make logs
 
 ---
 
-## 🔮 予測システム (V18)
+## 🔒 アトミック予約システム (Atomic Allocation)
 
-V18で予測システムが大幅改善されました。
+V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました。
+戦略は、トレード判断の **計算前** にスロットを物理的に確保します。
 
-**学習サイクル:**
-```
-精度 < 45% → 閾値 +5% (保守化)
-精度 > 70% → 閾値 -3% (積極化)
-```
+**フロー:**
+1. `try-reserve-warrior-slot` が空きスロットを探す。
+2. 空いていれば **即時予約** (Pending登録)。
+3. 確保できた場合のみ、AI予測などの計算に進む。
+4. 最終的にトレードしなかった場合、予約は即時解除される。
 
-**設定変更可能な変数:**
-```lisp
-*prediction-weight-trend*      ; トレンド重み (3.0)
-*prediction-weight-volatility* ; ボラティリティ重み (2.0)
-*prediction-min-confidence*    ; 最小信頼度 (0.50)
-*prediction-block-threshold*   ; ブロック閾値 (0.30)
-```
+これにより、Magic Numberの衝突は物理的に発生しません。
 
-**ログタグ:**
-- `[PREDICT]` - 予測結果
-- `[LEARN]` - 閾値自動調整
+---
+
+## 🛑 段階的リスク冷却 (Tiered Cooldown)
+
+以前の「Circuit Breaker」「Resignation」は統合されました。
+損失が出るたびに、冷却期間（休止時間）が段階的に長くなります。
+
+**ティア構成:**
+`3m → 5m → 10m → 15m → 30m → 45m → 1h → 2h → 3h → 4h → EOD (強制終了)`
+
+- **ペナルティ**: 負けるたびにティアが 1 上がり、冷却時間が伸びる。
+- **回復**: 勝つとティアが 1 下がる。
+- **EOD**: 最大ティアに達すると、その日は強制終了（辞表提出）。
 
 ---
 
@@ -57,7 +62,7 @@ V18で予測システムが大幅改善されました。
 │  MT5 EA (SwimmyBridge Ver 15.2)                     │
 │  - 3通貨ペア (USDJPY, EURUSD, GBPUSD)              │
 │  - Multi-TF History Support                         │
-│  - BUY/SELL/CLOSE/REQ_HISTORY                       │
+│  - Strategy Transparency (Comment Field)            │
 ├─────────────────────────────────────────────────────┤
 │  GUARDIAN (Rust)        Port 5557/5559/5560         │
 │  - MT5通信、注文執行、バックテスト、RiskGate        │
@@ -78,28 +83,18 @@ V18で予測システムが大幅改善されました。
 
 ---
 
-## 🧬 SRP モジュール構成 (V15.2)
+## 🧬 SRP モジュール構成 (V44.2)
 
-`school.lisp` は1,226行から**33行**に分割されました（God Class解消）。
+`school-execution.lisp` もリファクタリングされ、全ファイルがSRP準拠（600行以下）です。
 
 ```
 src/lisp/
 ├── school.lisp                    (33行) オーケストレーター
 ├── school/
-│   ├── school-execution.lisp     (570行) 売買ロジック
-│   ├── school-market.lisp        (216行) 市場分析
-│   ├── school-risk.lisp          (159行) リスク管理
-│   ├── school-ecosystem.lisp     (136行) 生態系シミュレーション
-│   ├── school-memory.lisp        (227行) 記憶・学習
-│   └── school-narrative.lisp      (41行) Discord文言
-├── school-evolution.lisp         (568行) 進化・突然変異
-├── school-hunter.lisp           (1090行) 戦略レジストリ
-├── school-learning.lisp          (451行) 失敗学習
-├── strategies.lisp               (177行) 戦略ベース
-├── strategies-trend.lisp          (99行) トレンド戦略
-├── strategies-reversion.lisp      (65行) リバージョン戦略
-├── strategies-breakout.lisp       (13行) ブレイクアウト戦略
-└── strategies-scalp.lisp         (196行) スキャルプ戦略
+│   ├── school-allocation.lisp    (Atomic Allocation)
+│   ├── school-execution.lisp     (Atomic Execution)
+│   ├── school-danger.lisp        (Tiered Cooldown)
+│   └── ...
 ```
 
 ---
@@ -111,7 +106,7 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 **新機能:**
 - ✅ マルチタイムフレーム履歴対応 (`REQ_HISTORY` + `tf` パラメータ)
 - ✅ W1, D1, H4, H1, M30, M15, M5, M1 対応
-- ✅ BUY/SELL/CLOSE ロジック完備
+- ✅ 戦略名 (Comment) 対応
 
 **ログで確認:**
 ```
@@ -120,8 +115,6 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 ✅ PUB connected to Guardian
 ✅ SUB connected to Guardian
 ```
-
-> ⚠️ Ver 15.1 以前は `REQ_HISTORY` のタイムフレーム対応がありません。必ず更新してください。
 
 ---
 
@@ -157,23 +150,6 @@ make kill-zombies
 systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper
 ```
 
-> ⚠️ Systemd の `ExecStartPre` が自動でゾンビを処理します。通常は `make run` で十分です。
-
----
-
-## 📊 戦略パフォーマンス確認
-
-```bash
-# Heartbeat 確認
-grep "💓" logs/swimmy.log | tail -3
-
-# Backtest 結果確認
-grep "�" logs/swimmy.log | tail -10
-
-# Evolution 確認
-grep "🧬" logs/swimmy.log | tail -10
-```
-
 ---
 
 ## 🧭 Swimmy Philosophy
@@ -185,30 +161,4 @@ Rustのバックテスト速度（50,000本/ms）で「失敗を高速に捨て�
 Lispでシステム停止なしにロジック修正可能。
 
 ### 3. SRP = Antifragility
-28モジュールに分割することで、1箇所の障害が全体を殺さない。
-
-> **"Don't fix what isn't broken. Ship it."** — Elon Musk
-
----
-
-## ❓ トラブルシューティング
-
-### Q. EA が Ver 15.1 のまま
-**A.** `src/mt5/SwimmyBridge.mq5` をMT5にコピーし、MetaEditorでコンパイル。
-
-### Q. トレードがエントリーされない
-1. EA Ver 15.2 が適用されているか確認
-2. 市場がオープンしているか確認
-3. ログに `🧪 Batch testing` が出ているか確認
-4. **MT5ログに `[auto trading disabled by client]` と出る場合:**
-   - **全体の許可**: Toolbarの「Algo Trading」が **ON (緑)** であること。
-   - **個別の許可**: チャート右上の帽子マークが **青色** であること。
-     - **灰色** の場合: チャート上で右クリック → `Expert List` → `Properties` → `Common` → `Allow Algo Trading` にチェック。
-
-### Q. HISTORY データが来ない
-1. EA ログに `📊 Sending ... candles` が出ているか確認
-2. Brain ログに `[DATA-CLIENT] Data Keeper is ONLINE` があるか確認
-3. Protocol: Brain は `REQ_HISTORY` を送信する必要あり（`GET_HISTORY` は非対応）
-
-### Q. メモリ不足 (OOM)
-Data Keeper は 10M Candle Buffer を使用。M1 は無効化されています。
+細かいモジュール分割により、1箇所の障害が全体を殺さない。

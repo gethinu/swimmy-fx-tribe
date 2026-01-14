@@ -79,7 +79,7 @@ def get_templates(clan):
     return []
 
 
-TARGET_FILE = "/home/swimmy/swimmy/src/lisp/school-hunter.lisp"
+TARGET_FILE = "/home/swimmy/swimmy/src/lisp/school/school-hunter.lisp"
 TEMPLATE_FILE = "/home/swimmy/swimmy/src/lisp/templates/founder.lisp.template"
 
 
