@@ -3,16 +3,18 @@ import json
 import time
 
 CONTEXT = zmq.Context()
-# PUSH socket to Brain (5555)
+# Correct: PUSH socket to speak to Brain's PULL socket
 SOCKET = CONTEXT.socket(zmq.PUSH)
+# Brain binds to *:5555
 SOCKET.connect("tcp://127.0.0.1:5555")
 
 print("Connect to Brain (PUSH 5555)...")
 time.sleep(1)
 
-command = {"type": "SYSTEM_COMMAND", "action": "DEBUG_RESET_WARRIORS"}
+command = {"type": "SYSTEM_COMMAND", "action": "RESET_RISK"}
 
-print("Sending DEBUG_RESET_WARRIORS command...")
+print("Sending RESET_RISK command...")
+# No need for burst, PUSH/PULL is reliable queue
 SOCKET.send_string(json.dumps(command))
 print("✅ Command sent.")
 time.sleep(1)

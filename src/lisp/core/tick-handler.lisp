@@ -224,7 +224,17 @@ Sharpe   : ~,2f
       
       ;; Persist reset
       (when (fboundp 'swimmy.engine::save-state)
-        (funcall 'swimmy.engine::save-state)))
+        (funcall 'swimmy.engine::save-state))
+        
+      ;; V19.4: Weekly Risk Reset (User Request: Period-based DD)
+      ;; Execute on Monday (0)
+      (when (= day-of-week 0)
+        (format t "[RISK] 🔄 Weekly Risk Reset (Monday)~%")
+        (setf swimmy.globals::*max-drawdown* 0.0)
+        ;; Reset Peak to current Equity effectively starts a new period stats
+        (when (boundp 'swimmy.globals::*current-equity*)
+           (setf swimmy.globals::*peak-equity* swimmy.globals::*current-equity*))
+        (notify-discord "🔄 **Weekly Risk Reset**\nDrawdown counter reset for new week." :color 3066993)))
 
     ;; 2. Scheduled Report (23:00 Trigger)
     (when (and (>= h 23) (not *daily-report-sent-today*))
@@ -366,6 +376,19 @@ Sharpe   : ~,2f
                       (clrhash swimmy.school::*processed-candle-time*)
                       (remhash target swimmy.school::*processed-candle-time*))
                   (format t "[L] ✅ Cleared. Next tick will trigger re-evaluation.~%")))
+               ;; V19 Emergency: Manual Risk State Reset
+               ((string= action "RESET_RISK")
+                (format t "[L] 🚨 RESET_RISK command received. Resetting drawdown and equity...~%")
+                (handler-case
+                    (progn
+                      (setf swimmy.globals::*max-drawdown* 0.0)
+                      (setf swimmy.globals::*daily-pnl* 0.0)
+                      (setf swimmy.globals::*consecutive-losses* 0)
+                      ;; Let MT5 sync handle equity, but reset peak to unlock DD calculation
+                      (when (boundp 'swimmy.globals::*current-equity*)
+                        (setf swimmy.globals::*peak-equity* swimmy.globals::*current-equity*))
+                      (format t "[L] ✅ Risk State Reset! DD=0, PnL=0. Peak adjusted.~%"))
+                  (error (e) (format t "[L] ❌ Reset Risk Failed: ~a~%" e))))
                (t (format t "[L] ⚠️ Unknown System Command: ~a~%" action)))))
           ((string= type "BACKTEST_RESULT")
            (let* ((result (jsown:val json "result"))
@@ -484,6 +507,16 @@ Sharpe   : ~,2f
           ;; ══════════════════════════════════════
            ((string= type "TRADE_CLOSED")
             (swimmy.executor:process-trade-closed json msg))
+          
+           ;; V19: Position Sync - Reconcile warrior-allocation with MT5 positions
+           ((string= type "POSITIONS")
+            (handler-case
+                (when (fboundp 'swimmy.school:reconcile-with-mt5-positions)
+                  (let ((symbol (if (jsown:keyp json "symbol") (jsown:val json "symbol") "UNKNOWN"))
+                        (positions (if (jsown:keyp json "data") (jsown:val json "data") nil)))
+                    (format t "[L] 📊 POSITIONS received: ~a has ~d positions~%" symbol (length positions))
+                    (funcall 'swimmy.school:reconcile-with-mt5-positions symbol positions)))
+              (error (e) (format t "[L] Position reconcile error: ~a~%" e))))
           
           (t (format t "[L] Unknown msg type: ~a~%" type))))
     (error (e) (format t "[L] Err: ~a~%" e))))

@@ -16,6 +16,8 @@
 (defparameter *min-trade-interval* 300)  ; 5 min cooldown to reduce Discord spam
 (defvar *last-swarm-consensus* 0)
 (defparameter *category-entries* (make-hash-table :test 'eq))
+;;; V19: Stale Allocation Detection and Cleanup - MOVED TO school-allocation.lisp
+;;; V19: MT5 Position Synchronization - MOVED TO school-allocation.lisp
 
 
 ;;; ==========================================
@@ -488,6 +490,8 @@
    *warrior-allocation*))
 
 (defun process-category-trades (symbol bid ask)
+  ;; V19: Periodic stale allocation cleanup
+  (cleanup-stale-allocations)
   (when (and (trading-allowed-p) *candle-history* (> (length *candle-history*) 100))
     (close-category-positions symbol bid ask)
     (unless (is-safe-to-trade-p) (return-from process-category-trades nil))

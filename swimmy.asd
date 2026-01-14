@@ -78,6 +78,7 @@
                (:file "src/lisp/school/school-risk")      ; SRP Refactor
                (:file "src/lisp/school/school-market")    ; SRP Refactor
                (:file "src/lisp/school/school-narrative") ; SRP Refactor
+               (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school-fortress") ; Added

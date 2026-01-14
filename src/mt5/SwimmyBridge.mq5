@@ -494,6 +494,10 @@ void ExecuteCommand(string cmd) {
       g_last_heartbeat = TimeCurrent();
       LogDebug("💓 Heartbeat received");
    }
+   // V19: GET_POSITIONS - Return open positions for allocation sync
+   else if(StringFind(cmd, "\"GET_POSITIONS\"") >= 0) {
+      SendOpenPositions();
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -573,6 +577,42 @@ void OnTimer() {
    }
 }
 //+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| V19: Send open positions for allocation sync                      |
+//+------------------------------------------------------------------+
+void SendOpenPositions() {
+   if(!g_pub_connected) return;
+   
+   string json = "{\"type\":\"POSITIONS\",\"symbol\":\"" + _Symbol + "\",\"data\":[";
+   bool first = true;
+   int pos_count = 0;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket)) {
+         // Only include positions for THIS symbol with Swimmy magic
+         if(PositionGetString(POSITION_SYMBOL) == _Symbol && 
+            PositionGetInteger(POSITION_MAGIC) >= MAGIC_BASE) {
+            if(!first) json += ",";
+            first = false;
+            pos_count++;
+            
+            json += StringFormat("{\"ticket\":%I64u,\"magic\":%I64d,\"type\":\"%s\",\"volume\":%.2f}",
+               ticket,
+               PositionGetInteger(POSITION_MAGIC),
+               (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL",
+               PositionGetDouble(POSITION_VOLUME));
+         }
+      }
+   }
+   json += "]}";
+   
+   uchar data[];
+   StringToCharArray(json, data);
+   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   LogInfo("📊 POSITIONS sent: " + IntegerToString(pos_count) + " positions for " + _Symbol);
+}
 
 //+------------------------------------------------------------------+
 //| ACCOUNT_INFO送信 (V8.5: Expert Panel P0)                          |

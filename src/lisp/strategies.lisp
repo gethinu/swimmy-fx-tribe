@@ -31,39 +31,52 @@
             (length approved) (length strategies) *min-sharpe-threshold*)
     approved))
 
+;; V19.2: Round-Robin Backtest Cursor (Musk's Decision)
+(defparameter *backtest-cursor* 0 "Cursor for round-robin backtesting")
+
 (defun batch-backtest-knowledge ()
-  "Backtest all knowledge base strategies (with persistence)"
-  ;; V15.9: Persistence & Notifications (Expert Panel 2026-01-14)
+  "Backtest knowledge base strategies with Round-Robin Pagination (V19.2)"
   (load-backtest-cache) 
   (setf *backtest-results-buffer* nil)
   (setf *expected-backtest-count* (length *strategy-knowledge-base*))
   
-  (let ((cached-count 0)
-        (requested-count 0)
-        (total (length *strategy-knowledge-base*)))
-        
-    (format t "[L] 🧪 Batch testing ~d strategies...~%" total)
-    ;; Notify Discord of Startup (Blue)
-    (notify-discord-alert (format nil "🚀 Startup Check Initiated: ~d Strategies" total) :color 3447003)
+  (let* ((max-batch-size 20) ; Limit concurrent requests
+         (total (length *strategy-knowledge-base*))
+         (start-idx (mod *backtest-cursor* total))
+         (end-idx (min total (+ start-idx max-batch-size)))
+         (batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
+         ;; Handle wrap-around if needed
+         (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
+                              (subseq *strategy-knowledge-base* 0 (min total (- max-batch-size (- end-idx start-idx))))
+                              nil))
+         (final-batch (append batch-strategies wrap-strategies))
+         (cached-count 0)
+         (requested-count 0))
     
-    (dolist (strat *strategy-knowledge-base*)
+    ;; Update cursor for next time
+    (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
+        
+    (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
+            (length final-batch) start-idx (mod (+ start-idx (length final-batch)) total))
+    
+    (dolist (strat final-batch)
       (when (and *candle-history* (> (length *candle-history*) 100))
         (let ((cached (get-cached-backtest (strategy-name strat))))
           (if cached
-              (progn
-                (incf cached-count)
-                ;; If cached, we might want to minimally update runtime state if needed
-                ;; For now, just skip the heavy backtest request
-                )
+              (incf cached-count)
               (progn 
                 (incf requested-count)
                 (request-backtest strat))))))
                 
-    (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Requested: ~d~%" cached-count requested-count)
-    ;; Notify Discord of Queue Status (Green)
-    (notify-discord-alert 
-      (format nil "✅ Startup Check Queued:\n- Cached: ~d (Skipped)\n- Testing: ~d" cached-count requested-count) 
-      :color 3066993)))
+    (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
+            cached-count requested-count *backtest-cursor*)
+    
+    ;; Notify Discord only if actual requests were made
+    (when (> requested-count 0)
+      (notify-discord-alert 
+        (format nil "🧪 **Backtest Batch Queued (RR)**\n- Requested: ~d / ~d\n- Cursor: ~d / ~d" 
+                requested-count total *backtest-cursor* total) 
+        :color 3066993))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

@@ -430,6 +430,10 @@
    #:save-hall-of-fame
    #:elder-vote
    
+   ;; Position Sync (V19)
+   #:reconcile-with-mt5-positions
+   #:request-mt5-positions
+   
    ;; Genome/State
    #:save-genome
    #:save-meta-learning
