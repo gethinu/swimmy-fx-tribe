@@ -216,3 +216,29 @@ CURRENT MARKET: Regime=~a, Volatility=~a
             failures ; Inject Negative Constraints
             *current-regime*
             *volatility-regime*)))
+
+(defun update-global-stats ()
+  "V44.3: Recalculate global statistics (PnL, Win Rate) from logs"
+  (let ((wins 0)
+        (losses 0)
+        (total-pnl 0.0))
+    ;; Count Successes
+    (when (boundp '*success-log*)
+      (dolist (rec *success-log*)
+        (incf wins)
+        (incf total-pnl (or (trade-record-pnl rec) 0.0))))
+        
+    ;; Count Failures
+    (when (boundp '*failure-log*)
+      (dolist (rec *failure-log*)
+        (incf losses)
+        (incf total-pnl (or (trade-record-pnl rec) 0.0))))
+        
+    (let ((total (+ wins losses)))
+      (setf *total-wins* wins)
+      (setf *total-trades-count* total)
+      (setf *accumulated-pnl* total-pnl)
+      (setf *all-time-win-rate* (if (> total 0) (* 100.0 (/ wins total)) 50.0))
+      
+      (format t "[STATS] 📊 Global Stats Updated: ~d wins / ~d total (~,1f%), PnL: ¥~,0f~%"
+              wins total *all-time-win-rate* total-pnl))))

@@ -184,33 +184,33 @@
                 (when (fboundp 'swimmy.school:store-memory) (swimmy.school:store-memory symbol dir-keyword (if is-win :win :loss) pnl 0))))
           (error (e) (format t "[L] Leader/Memory error: ~a~%" e)))
         
-        ;; Funeral/Victory Ceremony
-        (if is-win
-            ;; VICTORY
-            (let ((msg (format nil "
-⚔️ ═══════════════════════════════ ⚔️
-  🎉 戦士凱旋！
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 ~a | ~a
-💰 利益: +¥~,0f
-
-🏆 「勝利は準備の結果である」
-⚔️ ═══════════════════════════════ ⚔️" symbol direction pnl)))
-              (format t "[L] ~a~%" msg)
-              (queue-discord-notification (gethash symbol *symbol-webhooks*) msg :color 3066993))
-            
-            ;; FUNERAL
-            (let ((msg (format nil "
-🕯️ ═══════════════════════════════ 🕯️
-  ⚰️ 戦士追悼
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📉 ~a | ~a
-💸 損失: ¥~,0f
-
-🙏 「敗北もまた師である」
-🕯️ ═══════════════════════════════ 🕯️" symbol direction (abs pnl))))
-              (format t "[L] ~a~%" msg)
-              (queue-discord-notification (gethash symbol *symbol-webhooks*) msg :color 15158332)))
+        ;; Victory/Funeral Ceremony using RICH narrative (P9 Fix)
+        (handler-case
+            (let* ((entry-price (if (jsown:keyp json "entry_price") (jsown:val json "entry_price") 0.0))
+                   (exit-price (if (jsown:keyp json "exit_price") (jsown:val json "exit_price") 0.0))
+                   (lot (if (jsown:keyp json "lot") (jsown:val json "lot") 0.01))
+                   (strategy-name (if (jsown:keyp json "strategy") (jsown:val json "strategy") "Unknown"))
+                   (open-time (if (jsown:keyp json "open_time") (jsown:val json "open_time") 0))
+                   (category (if (jsown:keyp json "category") 
+                                (intern (string-upcase (jsown:val json "category")) :keyword)
+                                :trend))
+                   (duration-seconds (if (and (numberp open-time) (> open-time 0))
+                                        (- (get-universal-time) open-time)
+                                        0))
+                   (dir-keyword (if (search "BUY" (string-upcase direction)) :buy :sell))
+                   (narrative (swimmy.school:generate-trade-result-narrative 
+                               symbol dir-keyword pnl pnl entry-price exit-price lot strategy-name duration-seconds category)))
+              (format t "[L] ~a~%" narrative)
+              (queue-discord-notification (gethash symbol *symbol-webhooks*) narrative 
+                                         :color (if is-win 3066993 15158332)))
+          (error (e) 
+            ;; Fallback to simple notification if narrative generation fails
+            (format t "[L] Narrative generation error: ~a. Using fallback.~%" e)
+            (if is-win
+                (queue-discord-notification (gethash symbol *symbol-webhooks*) 
+                                           (format nil "🎉 WIN: ~a ~a +¥~,0f" symbol direction pnl) :color 3066993)
+                (queue-discord-notification (gethash symbol *symbol-webhooks*)
+                                           (format nil "💀 LOSS: ~a ~a ¥~,0f" symbol direction (abs pnl)) :color 15158332))))
         
         ;; Persist state immediately after trade close
         (when (fboundp 'swimmy.engine:save-state)
@@ -232,11 +232,31 @@
           (setf *current-equity* (float equity))
           (when (> *current-equity* *peak-equity*)
             (setf *peak-equity* *current-equity*))
-          ;; Calculate current drawdown
+            
+          ;; V44.5: Dynamic (Session) DD Logic
+          (when (zerop *monitoring-peak-equity*)
+            (setf *monitoring-peak-equity* *current-equity*))
+            
+          (when (> *current-equity* *monitoring-peak-equity*)
+            (setf *monitoring-peak-equity* *current-equity*)
+            (setf *monitoring-alert-sent-20* nil))
+            
+          (setf *monitoring-drawdown* 
+                (* 100 (/ (- *monitoring-peak-equity* *current-equity*) *monitoring-peak-equity*)))
+                
+          ;; Alert Logic (20% Threshold)
+          (when (and (>= *monitoring-drawdown* 20.0)
+                     (not *monitoring-alert-sent-20*))
+            (notify-discord-alert (format nil "⚠️ DYNAMIC DRAWDOWN WARNING: ~,1f% (Peak: ¥~,0f)" 
+                                        *monitoring-drawdown* *monitoring-peak-equity*)
+                                :color 16776960)
+            (setf *monitoring-alert-sent-20* t))
+
+          ;; Legacy Stats
           (when (> *peak-equity* 0)
             (setf *current-drawdown* (* 100 (/ (- *peak-equity* *current-equity*) *peak-equity*))))
-          (format t "[L] 💰 MT5 Sync: Equity=¥~,0f Peak=¥~,0f DD=~,1f%~%"
-                  *current-equity* *peak-equity* *current-drawdown*)))
+          (format t "[L] 💰 MT5 Sync: Equity=¥~,0f DynPK=¥~,0f DynDD=~,1f% (LegacyDD=~,1f%)~%"
+                  *current-equity* *monitoring-peak-equity* *monitoring-drawdown* *current-drawdown*)))
     (error (e) (format t "[L] Account sync error: ~a~%" e))))
 
 ;;; --------------------------------------

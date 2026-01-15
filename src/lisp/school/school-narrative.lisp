@@ -41,6 +41,78 @@
              (round (* 100 tp)) (round (* 100 sl))
              (get-clan-positions-summary))))
 
+
+(defun generate-trade-result-narrative (symbol direction pnl pnl-currency entry-price exit-price lot strategy duration-seconds category)
+  "Generate natural language explanation for trade RESULT (Win/Loss)"
+  (let* ((clan (get-clan category))
+         (roi (if (> pnl 0) 
+                  (if (> pnl-currency 0) (/ pnl-currency (* lot 100000)) 0) ;; Simple ROI estimate
+                  0)) ;; ROI is tricky without exact margin, using pips/price approx? No, user wants ROI.
+         ;; Actually user asked for "利益率" (Profit Rate).
+         ;; Pips based? Or Money/Margin?
+         ;; For simplicty and robustness, let's show Pips and Raw Amount first.
+         ;; "利益率" usually means PnL / Margin. Since Margin is dynamic, let's use PnL/Capital risk or just show Pips as primary "Rate".
+         ;; Let's try to calculate ROI if possible. Margin ~ Price * Lot * 100000 / Leverage(25).
+         ;; Margin = (Entry * Lot * 100000) / 25
+         (leverage 25)
+         (margin (if (> entry-price 0) (/ (* entry-price lot 100000) leverage) 1))
+         (roi-percent (if (> margin 0) (* 100 (/ pnl-currency margin)) 0))
+         (clan-emoji (if clan (clan-emoji clan) "🏛️"))
+         (clan-name (if clan (clan-name clan) "Unknown"))
+         (win-p (> pnl 0))
+         (pips pnl))
+
+    (format nil "
+═══════════════════════════════
+~a 【~a】 ~a
+═══════════════════════════════
+~a
+📈 戦略: **~a** (~a)
+🏳️ 部族: ~a ~a
+
+💴 PnL: **~,0@f JPY** (~,1@f pips)
+📊 ROI: **~,2@f%**
+
+⏱️ Time:
+  Entry: ~a (@ ~,3f)
+  Exit : ~a (@ ~,3f)
+  拘束: ~a
+
+💪 ~a
+═══════════════════════════════"
+            clan-emoji
+            clan-name
+            (if win-p "凱旋！(WIN)" "戦死... (LOSS)")
+            (if win-p "🎉 勝鬨を上げよ！" "💀 屍を越えてゆけ...")
+            strategy category
+            clan-emoji clan-name
+            pnl-currency
+            pips
+            roi-percent
+            (format-timestamp (- (get-universal-time) duration-seconds)) entry-price
+            (format-timestamp (get-universal-time)) exit-price
+            (format-duration duration-seconds)
+            (if win-p "ナイス・トレード。" "次、取り返そう。"))))
+
+(defun format-timestamp (u-time)
+  "Format timestamp showing both JST (local) and UTC for MT5 cross-reference"
+  (multiple-value-bind (s m h d mo y) (decode-universal-time u-time)
+    (declare (ignore s y))
+    ;; JST is UTC+9, so calculate UTC by subtracting 9 hours
+    (multiple-value-bind (us um uh ud umo uy) (decode-universal-time u-time 0) ; 0 = UTC
+      (declare (ignore us uy))
+      (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST (~2,'0d:~2,'0d UTC)" 
+              mo d h m uh um))))
+
+(defun format-duration (seconds)
+  (let* ((days (floor seconds 86400))
+         (hours (floor (mod seconds 86400) 3600))
+         (mins (floor (mod seconds 3600) 60)))
+    (cond
+      ((> days 0) (format nil "~dd ~dh ~dm" days hours mins))
+      ((> hours 0) (format nil "~dh ~dm" hours mins))
+      (t (format nil "~dm" mins)))))
+
 (defun get-clan-positions-summary ()
   "Generate a compact summary of active positions for all clans"
   (if (hash-table-p *warrior-allocation*)
@@ -76,3 +148,4 @@
                 (if raiders (format nil "~{~a~^, ~}" raiders) "-")
                 (if shamans (format nil "~{~a~^, ~}" shamans) "-")))
       ""))
+

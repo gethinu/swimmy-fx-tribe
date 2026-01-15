@@ -198,8 +198,8 @@ Win Rate : ~,1f%
 Drawdown : ~,2f%
 Sharpe   : ~,2f
 ━━━━━━━━━━━━━━━━━━━━━━━━━━" pnl wins losses flood-status hunter-quote breaker-quote raider-quote shaman-quote chief-quote
-                    (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0.0)
-                    (if (boundp '*all-time-win-rate*) *all-time-win-rate* 50.0)
+                    (if (boundp 'swimmy.school::*accumulated-pnl*) swimmy.school::*accumulated-pnl* 0.0)
+                    (if (boundp 'swimmy.school::*all-time-win-rate*) swimmy.school::*all-time-win-rate* 50.0)
                     (if (boundp '*max-drawdown*) *max-drawdown* 0.0)
                     (if (boundp '*portfolio-sharpe*) *portfolio-sharpe* 0.0))
      :color (cond ((>= (if (boundp '*danger-level*) *danger-level* 0) 3) 15158332) ; Red
@@ -219,6 +219,7 @@ Sharpe   : ~,2f
       (setf *has-resigned-today* nil)
       
       ;; Reset daily counters
+      (setf swimmy.school::*yesterday-pnl* *daily-pnl*) ;; Save for reporting if checked after reset
       (setf *daily-pnl* 0.0)
       (setf *daily-trade-count* 0)
       (format t "[RISK] 🌅 New Day: Daily PnL Reset.~%")
@@ -523,7 +524,10 @@ Sharpe   : ~,2f
           ;; TRADE CLOSED - 葬儀 / Victory Ceremony
           ;; ══════════════════════════════════════
            ((string= type "TRADE_CLOSED")
-            (swimmy.executor:process-trade-closed json msg))
+            (swimmy.executor:process-trade-closed json msg)
+            ;; V44.3: Update Global Stats Immediately
+            (when (fboundp 'swimmy.school:update-global-stats)
+              (swimmy.school:update-global-stats)))
           
            ;; V19: Position Sync - Reconcile warrior-allocation with MT5 positions
            ;; V44.0: Entry Confirmation (Taleb: "Only celebrate when deal closes")

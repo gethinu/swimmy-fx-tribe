@@ -127,3 +127,36 @@ Signal restored after 0s silence.
  ALERT
  Backtest Batch Queued (RR)n- Requested: 5 / 139n- Cursor: 5 / 139[2026-01-14 22:33:07] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:0.00
 [2026-01-14 22:37:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977386510-Gen1-mut-SMA17 Sharpe:0.00
+[2026-01-15 00:08:03] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392038-Gen1-mut-SMA42 Sharpe:0.00
+[2026-01-15 00:11:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392239-Gen1-mut-SMA22 Sharpe:0.00
+[2026-01-15 00:13:17] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392339-Gen1-mut-SMA17 Sharpe:0.00
+[2026-01-15 00:15:22] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392339-Gen1-mut-SMA17 Sharpe:0.00
+[2026-01-15 00:17:03] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392339-Gen1-mut-SMA17 Sharpe:0.00
+[2026-01-15 00:18:29] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392639-Gen1-mut-SMA44 Sharpe:0.00
+[2026-01-15 00:20:32] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392639-Gen1-mut-SMA44 Sharpe:0.00
+[2026-01-15 00:25:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392939-Gen1-mut-SMA58 Sharpe:0.00
+[2026-01-15 00:26:01] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392939-Gen1-mut-SMA58 Sharpe:0.00
+[2026-01-15 00:27:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977392939-Gen1-mut-SMA58 Sharpe:0.00
+[2026-01-15 00:48:02] USDJPY BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977394338-Gen1-mut-RSI11 Sharpe:0.00
+[2026-01-15 00:56:46] USDJPY BUY (REVERSION) Strategy:Wisdom-GBPUSD-Trend-3977394939-Gen1-mut-RSI13 Sharpe:0.00
+[2026-01-15 01:00:01] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977394740-Gen1-mut-BB21 Sharpe:0.00
+[2026-01-15 01:03:15] USDJPY SELL (TREND) Strategy:Wisdom-GBPUSD-Trend-3977395339-Gen1-mut-SMA24 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:06:01] USDJPY SELL (REVERSION) Strategy:Advanced-M5-Reversion-H1 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:06:34] USDJPY SELL (TREND) Strategy:Wisdom-USDJPY-Reversal-3977395558-Gen1-mut-TF60 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:08:02] USDJPY SELL (TREND) Strategy:Wisdom-USDJPY-Reversal-3977395658-Gen1-mut-TF5 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:13:02] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977395958-Gen1-mut-SMA19 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:16:03] USDJPY SELL (TREND) Strategy:Wisdom-GBPUSD-Trend-3977395958-Gen1-mut-SMA19 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 01:17:33] USDJPY SELL (REVERSION) Strategy:Wisdom-USDJPY-Reversal-3977396158-Gen1-mut-RSI6 Sharpe:0.00 Outcome:SUCCESS Reason:Executed
+[2026-01-15 08:59:02] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977423876-Gen1-mut-SMA17 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:07:50] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:39:02] USDJPY BUY (TREND) Strategy:MACD-Trend-Trend-H1 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:43:14] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977426518-Gen1-mut-SMA17 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:45:03] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977426518-Gen1-mut-SMA17 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:48:25] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977426820-Gen1-mut-TF5 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 09:54:03] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977427120-Gen1-mut-SMA44 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 10:38:02] USDJPY BUY (REVERSION) Strategy:Wisdom-USDJPY-Reversal-3977429518-Gen1-mut-RSI6 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 10:39:02] USDJPY BUY (REVERSION) Strategy:Wisdom-USDJPY-Reversal-3977429518-Gen1-mut-RSI6 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 10:41:26] USDJPY BUY (REVERSION) Strategy:Wisdom-USDJPY-Reversal-3977429518-Gen1-mut-RSI6 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 10:59:02] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977430920-Gen1-mut-BB21 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 11:01:03] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977430920-Gen1-mut-BB21 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-15 14:00:01] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977441881-Gen1-mut-BB19 Sharpe:0.00 Outcome:PENDING Reason:

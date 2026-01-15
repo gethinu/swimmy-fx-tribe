@@ -322,7 +322,13 @@
                   ;; V8.5: Evolution Tests (Genetic Mutation)
                   test-rewrite-logic-symbols-sma
                   test-mutate-strategy-structure
-                  test-mutate-param-sl-tp))
+                  test-mutate-param-sl-tp
+                  ;; Expert Panel P1: Symbol Mismatch Tests
+                  test-check-symbol-mismatch-blocks-cross-trading
+                  test-check-symbol-mismatch-allows-correct-pair
+                  test-check-symbol-mismatch-allows-generic
+                  test-check-symbol-mismatch-blocks-eurusd-on-gbpusd
+                  test-check-symbol-mismatch-case-insensitive))
     (format t "Running ~a... " test)
     (if (funcall test)
         (format t "✅ PASSED~%")

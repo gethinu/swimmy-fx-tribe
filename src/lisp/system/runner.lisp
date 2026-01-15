@@ -111,8 +111,12 @@
            
            (format t "[BRAIN] 🚀 System active and running...~%")
            
-           ;; Connectivity Verification - REMOVED: Already sent from main.lisp via notify-apex
-           ;; (notify-discord is deprecated for system notifications)
+           ;; V44.5: Brain Restart Notification (Expert Panel P3)
+           (handler-case
+               (notify-discord-alert 
+                "🔄 **Brain Restarted** - System is now active and running." 
+                :color 3447003)  ; Blue
+             (error (e) (format t "[L] ⚠️ Restart notification failed: ~a~%" e)))
            
            ;; MAIN LOOP - V41.7: Non-blocking with Timeout
            ;; V9.7: Gene Kim - Latency Monitoring

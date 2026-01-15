@@ -14,8 +14,20 @@
 (defvar *last-swarm-consensus* 0)
 (defvar *category-positions* nil)
 (defvar *daily-pnl* 0)
+(defvar *yesterday-pnl* 0 "PnL from the previous trading day (for reporting)")
 (defvar *accumulated-pnl* 0)
 (defvar *category-trades* 0)
+
+;; Global Analytics State
+(defvar *all-time-win-rate* 50.0 "Global win rate percentage")
+(defvar *total-wins* 0 "Total winning trades count")
+(defvar *total-trades-count* 0 "Total trades count")
+
+;; V44.4: Strategy Cooldown State (P12.5 - Prevent Rapid Entries)
+(defvar *strategy-cooldowns* (make-hash-table :test 'equal) 
+  "Hash table mapping 'strategy-symbol' to last-trade universal-time")
+(defparameter *strategy-symbol-cooldown-seconds* 300 
+  "Minimum seconds between trades for same strategy on same symbol (5 min)")
 
 ;;; ==========================================
 ;;; P0 STARTUP SAFEGUARDS (Expert Panel 2026-01-07)

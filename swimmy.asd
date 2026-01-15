@@ -79,6 +79,7 @@
                (:file "src/lisp/school/school-market")    ; SRP Refactor
                (:file "src/lisp/school/school-narrative") ; SRP Refactor
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
+               (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
@@ -104,6 +105,7 @@
                (:file "src/lisp/tests")
 
                (:file "src/lisp/tests/school-split-tests")
+               (:file "src/lisp/tests/school-mismatch-tests")
                (:file "src/lisp/tests/evolution-tests")
                (:file "src/lisp/tests/integration-tests")
                

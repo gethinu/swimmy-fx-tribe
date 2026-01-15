@@ -143,13 +143,14 @@
                    (key (format nil "~a-~d" cat slot)))
               
               ;; PROMOTE TO WARRIOR
-              (setf (gethash key *warrior-allocation*)
-                    (append pending 
-                            (list :ticket ticket 
-                                  :start-time (get-universal-time))))
-              (remhash magic *pending-orders*)
-              (incf promoted-count)
-              (format t "[ALLOC] ✅ TRADE CONFIRMED: ~a (Magic ~d) Promoted to Warrior!~%" key magic))))
+              (let ((strat-name (getf pending :strategy)))
+                (setf (gethash key *warrior-allocation*)
+                      (append pending 
+                              (list :ticket ticket 
+                                    :start-time (get-universal-time))))
+                (remhash magic *pending-orders*)
+                (incf promoted-count)
+                (format t "[ALLOC] ✅ TRADE CONFIRMED: ~a (Magic ~d) Promoted to Warrior! Strategy: ~a~%" key magic strat-name)))))
         
         ;; Check if this Magic is NOT allocated (Adoption)
         ;; Logic: Decode Magic, check if slot is empty. If so, adopt.
@@ -157,15 +158,19 @@
           (unless (eq cat :unknown)
             (let ((key (format nil "~a-~d" cat slot)))
               (unless (gethash key *warrior-allocation*)
-                ;; Adopt Orphan
-                (setf (gethash key *warrior-allocation*)
-                      (list :strategy "Restored-Warrior"
-                            :symbol symbol
-                            :category cat
-                            :magic magic
-                            :ticket ticket
-                            :start-time (get-universal-time)))
-                (format t "[ALLOC] 🍼 ORPHAN ADOPTED: ~a (Magic ~d) restored from MT5.~%" key magic)))))))
+                ;; Adopt Orphan - Try to find active strategy for category as best guess
+                (let ((best-guess-strat (if (boundp '*active-team*) 
+                                          (let ((leader (first (gethash cat *active-team*))))
+                                            (if leader (strategy-name leader) "Restored-Warrior"))
+                                          "Restored-Warrior")))
+                  (setf (gethash key *warrior-allocation*)
+                        (list :strategy best-guess-strat
+                              :symbol symbol
+                              :category cat
+                              :magic magic
+                              :ticket ticket
+                              :start-time (get-universal-time)))
+                  (format t "[ALLOC] 🍼 ORPHAN ADOPTED: ~a (Magic ~d) restored from MT5. Strategy: ~a~%" key magic best-guess-strat))))))))
 
     ;; --- 2. Find Ghosts (Brain says yes, MT5 says no) ---
     (maphash (lambda (key warrior)

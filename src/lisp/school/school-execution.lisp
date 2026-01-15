@@ -19,13 +19,10 @@
 ;;; V19: Stale Allocation Detection and Cleanup - MOVED TO school-allocation.lisp
 ;;; V19: MT5 Position Synchronization - MOVED TO school-allocation.lisp
 
-
 ;;; ==========================================
 ;;; STRATEGY SELECTION & RECRUITMENT
 ;;; ==========================================
-
 ;;; Logic moved to school-strategy.lisp for SRP
-
 
 ;;; ==========================================
 ;;; SIGNALS & EVALUATION
@@ -180,14 +177,18 @@
                   (t :hold))))
           (error (e) :hold))))))
 
+;; V44.4: check-symbol-mismatch moved to school-guards.lisp for SRP
+
+
 (defun collect-strategy-signals (symbol history)
   "Evaluate ALL strategies and return triggered signals"
   (let ((signals nil))
     (dolist (strat *strategy-knowledge-base*)
       (handler-case
           (let* ((name (strategy-name strat))
-                 (benched (and (fboundp 'strategy-benched-p) (strategy-benched-p name))))
-            (unless benched
+                 (benched (and (fboundp 'strategy-benched-p) (strategy-benched-p name)))
+                 (mismatch (check-symbol-mismatch name symbol)))  ; V44.4: Check mismatch
+            (unless (or benched mismatch)  ; V44.4: Skip if benched OR mismatch
               (let ((sig (evaluate-strategy-signal strat history)))
                 (when (member sig '(:buy :sell))
                   (record-strategy-signal name sig (get-universal-time))

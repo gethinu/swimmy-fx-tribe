@@ -17,6 +17,13 @@
         (final-lot lot)
         (approved t))
     
+    ;; 0. PRIORITY GUARD: Dynamic Drawdown Check (Hard Stop at 25%)
+    (when (and (boundp '*monitoring-drawdown*) 
+               (>= *monitoring-drawdown* 25.0))
+      (push "DYNAMIC_DD_LIMIT_25%" checks)
+      (format t "[L] 🛑 BLOCKED: Dynamic DD ~,1f% exceeds 25% limit~%" *monitoring-drawdown*)
+      (setf approved nil))
+
     ;; 1. Danger cooldown check
     (when (and (fboundp 'danger-cooldown-active-p) (danger-cooldown-active-p))
       (push "DANGER_COOLDOWN" checks)

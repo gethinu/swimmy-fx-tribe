@@ -53,6 +53,11 @@
 (defvar *max-drawdown* 0.0)
 (defparameter *max-dd-percent* 5.0)
 
+;; V44.5: Dynamic (Session) Drawdown Monitoring (Expert Panel P2)
+(defvar *monitoring-peak-equity* 0.0 "Peak equity for this monitoring session (reset on restart)")
+(defvar *monitoring-drawdown* 0.0 "Dynamic drawdown relative to monitoring peak")
+(defvar *monitoring-alert-sent-20* nil "Toggle for 20% alert")
+
 ;;; AI/ML STATE
 (defparameter *prediction-cache* (make-hash-table :test 'equal))
 (defparameter *history-process-cache* (make-hash-table :test 'equal) "V15.8: Throttle HISTORY msg processing")

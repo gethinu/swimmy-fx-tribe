@@ -350,6 +350,7 @@
    #:adopt-proven-strategies
    #:record-trade-result
    #:update-leader-stats
+   #:generate-trade-result-narrative
    
    ;; Persistence
    #:cache-backtest-result
@@ -506,6 +507,9 @@
     #:perform-structural-mutation
     #:select-parent-tournament
     #:select-tribal-pair
+    
+    ;; Reporting (V44.3)
+    #:update-global-stats
    ))
 
 ;;; ----------------------------------------------------------------------------
