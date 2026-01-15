@@ -1,32 +1,16 @@
-;;; school-execution.lisp - Trade Execution & Strategy Management
-;;; Part of the Swimmy School System
-;;; Extracted from school.lisp to comply with SRP (Expert Panel 2026-01-13)
-
+;;; school-execution.lisp - Trade Execution & Strategy Management (SRP)
 (in-package :swimmy.school)
 
-;;; ==========================================
-;;; PARAMETERS & STATE
-;;; ==========================================
-
+;;; PARAMETERS
 (defparameter *category-positions* (make-hash-table :test 'eq))
 (defparameter *total-capital* 0.10)
 (defparameter *lstm-threshold* 0.60)
-
 (defparameter *last-clan-trade-time* (make-hash-table :test 'eq))
-(defparameter *min-trade-interval* 300)  ; 5 min cooldown to reduce Discord spam
+(defparameter *min-trade-interval* 300)
 (defvar *last-swarm-consensus* 0)
 (defparameter *category-entries* (make-hash-table :test 'eq))
-;;; V19: Stale Allocation Detection and Cleanup - MOVED TO school-allocation.lisp
-;;; V19: MT5 Position Synchronization - MOVED TO school-allocation.lisp
 
-;;; ==========================================
-;;; STRATEGY SELECTION & RECRUITMENT
-;;; ==========================================
-;;; Logic moved to school-strategy.lisp for SRP
-
-;;; ==========================================
 ;;; SIGNALS & EVALUATION
-;;; ==========================================
 
 (defun get-indicator-values (strat history)
   "Calculate current indicator values for display"
@@ -534,22 +518,34 @@
                   (dolist (category '(:trend :reversion :breakout :scalp))
                     (let ((cat-sigs (gethash category by-category)))
                       (when cat-sigs
-                        (let ((top-sigs (subseq cat-sigs 0 (min 4 (length cat-sigs)))))
-                          (dolist (sig top-sigs)
-                            (let* ((strat-name (getf sig :strategy-name))
-                                   (direction (getf sig :direction))
-                                   (strat-key (intern (format nil "~a-~a" category strat-name) :keyword)))
+                        ;; V44.6: Sort by Sharpe (Expert Panel P0) - Highest first
+                        (let* ((sorted-sigs 
+                                (sort (copy-list cat-sigs)
+                                      (lambda (a b)
+                                        (let* ((name-a (getf a :strategy-name))
+                                               (name-b (getf b :strategy-name))
+                                               (cache-a (get-cached-backtest name-a))
+                                               (cache-b (get-cached-backtest name-b))
+                                               (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                               (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                          (> sharpe-a sharpe-b)))))
+                               ;; V44.6: Select ONLY top 1 (Expert Panel P0)
+                               (top-sig (first sorted-sigs))
+                               (top-name (when top-sig (getf top-sig :strategy-name)))
+                               (top-cache (when top-name (get-cached-backtest top-name)))
+                               (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                          (when top-sig
+                            (format t "[L] 🎯 ~a Selected: ~a (Sharpe: ~,2f) from ~d~%"
+                                    category top-name top-sharpe (length cat-sigs))
+                            (let* ((direction (getf top-sig :direction))
+                                   (strat-key (intern (format nil "~a-~a" category top-name) :keyword)))
                               (when (can-clan-trade-p strat-key)
-                                ;; V15.5 FIX: Only send Discord notification AFTER trade is approved and executed
-                                ;; V42.0 FIX: Generate narrative AFTER execution so the Battlefield footer includes the new trade
                                 (let ((trade-executed (execute-category-trade category direction symbol bid ask)))
                                   (when trade-executed
-                                    (let ((narrative (generate-dynamic-narrative sig symbol bid)))
-                                      (format t "~a~%" narrative)
-                                      ;; V44.0: Narrative notification moved to POSITIONS handler (after MT5 confirms)
-                                      ;; Discord notification removed here to prevent false positives
-                                      (record-clan-trade-time strat-key)
-                                      (when (fboundp 'record-strategy-trade) (record-strategy-trade strat-name :trade 0)))))))))))))))))
+                                    (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
+                                    (record-clan-trade-time strat-key)
+                                    (when (fboundp 'record-strategy-trade) 
+                                      (record-strategy-trade top-name :trade 0))))))))))))))))
         (error (e) nil))))))
 
 ;;; ==========================================
