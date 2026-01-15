@@ -189,7 +189,13 @@
             (let* ((entry-price (if (jsown:keyp json "entry_price") (jsown:val json "entry_price") 0.0))
                    (exit-price (if (jsown:keyp json "exit_price") (jsown:val json "exit_price") 0.0))
                    (lot (if (jsown:keyp json "lot") (jsown:val json "lot") 0.01))
-                   (strategy-name (if (jsown:keyp json "strategy") (jsown:val json "strategy") "Unknown"))
+                   (magic (if (jsown:keyp json "magic") (jsown:val json "magic") nil))
+                   ;; V44.8: Try to resolve Unknown strategy using Magic Number
+                   (strategy-name 
+                    (let ((raw-name (if (jsown:keyp json "strategy") (jsown:val json "strategy") "Unknown")))
+                      (if (or (string= raw-name "Unknown") (string= raw-name "") (search "Swimmy" raw-name))
+                          (or (swimmy.school:lookup-strategy-by-magic magic) "Unknown")
+                          raw-name)))
                    (open-time (if (jsown:keyp json "open_time") (jsown:val json "open_time") 0))
                    (category (if (jsown:keyp json "category") 
                                 (intern (string-upcase (jsown:val json "category")) :keyword)

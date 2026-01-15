@@ -1,13 +1,18 @@
 Swimmy Notification
- ═══════════════════════════════ 
- 戦士凱旋！
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- USDJPY | TRADE_CLOSED
- 利益: +¥389.
+═══════════════════════════════
+ 【Hunters】 戦死... (LOSS)
+═══════════════════════════════
+ 屍を越えてゆけ...
+ 戦略: Unknown (TREND)
+ 部族:  Hunters
 
- 「勝利は準備の結果である」
- ═══════════════════════════════ 
+ PnL: -132. JPY (-132.0 pips)
+ ROI: -13200.00%
 
- 🚨 ALERT
-🏳️ RESIGNATION: Trading ended for today.
-Reason: Daily goal 150%% achieved: ¥1,726
+ Time:
+Entry: 01/15 22:40 JST (13:40 UTC) (@ 0.000)
+Exit : 01/15 22:40 JST (13:40 UTC) (@ 0.000)
+拘束: 0m
+
+ 次、取り返そう。
+══════════

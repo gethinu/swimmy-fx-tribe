@@ -41,22 +41,25 @@
     (4 :scalp)
     (t :unknown)))
 
-(defun get-warrior-magic (category slot-index)
-  "Generate deterministic and reversible magic number.
-   Format: 1[Category_ID][Slot_Index] (e.g., Trend Slot 0 -> 110000)"
-  ;; Base: 100,000
-  ;; Cat:  10,000 * ID
-  ;; Slot: 1 * Slot
-  (+ 100000 
-     (* (get-category-id category) 10000) 
-     slot-index))
+(defun get-warrior-magic (category slot-index &optional (strategy-name "Unknown"))
+  "Generate deterministic magic number combining Slot and Strategy Hash.
+   Format: 1[CatID][Slot][Hash(5)] (9 digits total)
+   e.g. Trend(1) Slot(0) Hash(12345) -> 110012345"
+  (let ((cat-id (get-category-id category))
+        (hash-part (mod (sxhash (string strategy-name)) 100000)))
+    (+ 100000000                  ; Base 9 digits
+       (* cat-id 10000000)        ; Category
+       (* slot-index 1000000)     ; Slot
+       hash-part)))               ; Strategy Uniqueness
 
 (defun decode-warrior-magic (magic)
-  "Decode magic number to extract Category and Slot"
-  (if (and (>= magic 100000) (< magic 200000))
-      (let* ((val (- magic 100000))
-             (cat-id (floor val 10000))
-             (slot (mod val 10000)))
+  "Decode magic number to extract Category and Slot.
+   Ignores the unique hash suffix."
+  (if (and (>= magic 100000000) (< magic 200000000))
+      (let* ((val (- magic 100000000))
+             (cat-id (floor val 10000000))
+             (rem (mod val 10000000))
+             (slot (floor rem 1000000)))
         (values (get-id-category cat-id) slot))
       (values :unknown 0)))
 
@@ -67,8 +70,15 @@
    This prevents the 'Musical Chairs' race condition."
   (dotimes (i 4)
     (let* ((key (format nil "~a-~d" category i))
-           (magic (get-warrior-magic category i))
+           ;; V44.8: Unique Magic Hash
+           (magic (get-warrior-magic category i strategy-name))
            (active (gethash key *warrior-allocation*))
+           ;; Check if ANY magic exists for this slot/category pattern?
+           ;; But simpler: if slot is free (active nil), we can take it.
+           ;; Pending orders are keyed by Magic. Since Magic is now unique per strategy,
+           ;; we risk multiple strategies claiming same slot if we don't check slot usage carefully.
+           ;; However, active checked by KEY (cat-slot), so that is safe.
+           ;; We just need to ensure we don't overwrite a pending order (unlikely with unique magic).
            (pending (gethash magic *pending-orders*)))
       (unless (or active pending)
         ;; ATOMIC RESERVATION: Immediately register pending order
@@ -245,3 +255,22 @@
             (swimmy.shell:notify-discord "🏰 **Status Report**: No active positions." :color 15158332))
         (format t "[L] 🏰 Status Report sent (~d positions)~%" count))
     (error (e) (format t "[L] Report Error: ~a~%" e))))
+
+;;; ==========================================
+;;; QUERY HELPER
+;;; ==========================================
+
+(defun lookup-strategy-by-magic (magic)
+  "Find strategy name from magic number (checking Pending and Active Warriors)"
+  (when magic
+    ;; 1. Check Pending
+    (let ((pending (gethash magic *pending-orders*)))
+      (when pending (return-from lookup-strategy-by-magic (getf pending :strategy))))
+    
+    ;; 2. Check Active Warriors
+    (maphash (lambda (key warrior)
+               (declare (ignore key))
+               (when (eql (getf warrior :magic) magic)
+                 (return-from lookup-strategy-by-magic (getf warrior :strategy))))
+             *warrior-allocation*))
+  nil)

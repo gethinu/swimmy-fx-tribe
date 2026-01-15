@@ -55,8 +55,8 @@
          ;; Let's try to calculate ROI if possible. Margin ~ Price * Lot * 100000 / Leverage(25).
          ;; Margin = (Entry * Lot * 100000) / 25
          (leverage 25)
-         (margin (if (> entry-price 0) (/ (* entry-price lot 100000) leverage) 1))
-         (roi-percent (if (> margin 0) (* 100 (/ pnl-currency margin)) 0))
+         (margin (if (> entry-price 0) (/ (* entry-price lot 100000) leverage) 0)) ;; Return 0 if invalid
+         (roi-percent (if (> margin 0) (* 100 (/ pnl-currency margin)) 0.0))
          (clan-emoji (if clan (clan-emoji clan) "🏛️"))
          (clan-name (if clan (clan-name clan) "Unknown"))
          (win-p (> pnl 0))

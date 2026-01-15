@@ -153,6 +153,11 @@
    ;; New Prediction Cache
    #:*prediction-cache*
    #:*history-process-cache*  ;; V15.8: Throttle HISTORY processing
+   
+   ;; V44.5 Dynamic Drawdown
+   #:*monitoring-peak-equity*
+   #:*monitoring-drawdown*
+   #:*monitoring-alert-sent-20*
    ))
 
 
@@ -350,6 +355,8 @@
    #:adopt-proven-strategies
    #:record-trade-result
    #:update-leader-stats
+   #:update-global-stats ;; V44.3: Moved from Reporting
+   #:lookup-strategy-by-magic  ;; V44.8: Resolving Unknown strategy names
    #:generate-trade-result-narrative
    
    ;; Persistence

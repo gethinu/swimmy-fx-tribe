@@ -66,9 +66,14 @@
          
          ;; Use 3 chars for clarity (e.g. RSI, SMA, EMA) instead of just B/R/S
          (clean-type (if (> (length param-type) 3) (subseq param-type 0 3) param-type))
+
+         ;; V44.8: Use Human Readable Timestamp (YYMMDD-HHMMSS)
+         (ts-str (multiple-value-bind (s m h d mo y) (decode-universal-time (get-universal-time))
+                   (format nil "~2,'0d~2,'0d~2,'0d-~2,'0d~2,'0d~2,'0d" (mod y 100) mo d h m s)))
+         (rand-suffix (random 1000))
          
-         ;; New format: Root-GenN-mut-ParamVal
-         (new-name (format nil "~a-Gen~d-mut-~a~d" root new-gen clean-type new-val))
+         ;; New format: Root-GenN-mut-ParamVal-TS
+         (new-name (format nil "~a-Gen~d-mut-~a~d-~a-~3,'0d" root new-gen clean-type new-val ts-str rand-suffix))
          
          (indicators (copy-tree (strategy-indicators strategy)))
          (entry (copy-tree (strategy-entry strategy)))
@@ -125,7 +130,11 @@
          (root (get-root-name old-name))
          (gen (if (slot-exists-p strategy 'generation) (strategy-generation strategy) 0))
          (new-gen (1+ gen))
-         (new-name (format nil "~a-Gen~d-mut-TF~d" root new-gen new-tf)))
+         ;; V44.8: Readable Timestamp
+         (ts-str (multiple-value-bind (s m h d mo y) (decode-universal-time (get-universal-time))
+                   (format nil "~2,'0d~2,'0d~2,'0d-~2,'0d~2,'0d~2,'0d" (mod y 100) mo d h m s)))
+         
+         (new-name (format nil "~a-Gen~d-mut-TF~d-~a" root new-gen new-tf ts-str)))
     
     (make-strategy 
       :name new-name
