@@ -512,40 +512,34 @@
               (setf any-strong-signal (and strat-signals t))
               (when strat-signals
                 (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                (let ((by-category (make-hash-table :test 'eq)))
-                  (dolist (sig strat-signals)
-                    (let ((cat (getf sig :category))) (push sig (gethash cat by-category))))
-                  (dolist (category '(:trend :reversion :breakout :scalp))
-                    (let ((cat-sigs (gethash category by-category)))
-                      (when cat-sigs
-                        ;; V44.6: Sort by Sharpe (Expert Panel P0) - Highest first
-                        (let* ((sorted-sigs 
-                                (sort (copy-list cat-sigs)
-                                      (lambda (a b)
-                                        (let* ((name-a (getf a :strategy-name))
-                                               (name-b (getf b :strategy-name))
-                                               (cache-a (get-cached-backtest name-a))
-                                               (cache-b (get-cached-backtest name-b))
-                                               (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                               (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                          (> sharpe-a sharpe-b)))))
-                               ;; V44.6: Select ONLY top 1 (Expert Panel P0)
-                               (top-sig (first sorted-sigs))
-                               (top-name (when top-sig (getf top-sig :strategy-name)))
-                               (top-cache (when top-name (get-cached-backtest top-name)))
-                               (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                          (when top-sig
-                            (format t "[L] 🎯 ~a Selected: ~a (Sharpe: ~,2f) from ~d~%"
-                                    category top-name top-sharpe (length cat-sigs))
-                            (let* ((direction (getf top-sig :direction))
-                                   (strat-key (intern (format nil "~a-~a" category top-name) :keyword)))
-                              (when (can-clan-trade-p strat-key)
-                                (let ((trade-executed (execute-category-trade category direction symbol bid ask)))
-                                  (when trade-executed
-                                    (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                                    (record-clan-trade-time strat-key)
-                                    (when (fboundp 'record-strategy-trade) 
-                                      (record-strategy-trade top-name :trade 0))))))))))))))))
+                ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                (let* ((all-sorted 
+                        (sort (copy-list strat-signals)
+                              (lambda (a b)
+                                (let* ((name-a (getf a :strategy-name))
+                                       (name-b (getf b :strategy-name))
+                                       (cache-a (get-cached-backtest name-a))
+                                       (cache-b (get-cached-backtest name-b))
+                                       (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                       (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                  (> sharpe-a sharpe-b)))))
+                       (top-sig (first all-sorted))
+                       (top-name (when top-sig (getf top-sig :strategy-name)))
+                       (top-cat (when top-sig (getf top-sig :category)))
+                       (top-cache (when top-name (get-cached-backtest top-name)))
+                       (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                  (when top-sig
+                    (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                            top-name top-cat top-sharpe (length strat-signals))
+                    (let* ((direction (getf top-sig :direction))
+                           (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                      (when (can-clan-trade-p strat-key)
+                        (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
+                          (when trade-executed
+                            (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
+                            (record-clan-trade-time strat-key)
+                            (when (fboundp 'record-strategy-trade) 
+                              (record-strategy-trade top-name :trade 0))))))))))))
         (error (e) nil))))))
 
 ;;; ==========================================
