@@ -5,9 +5,7 @@
 
 (in-package :cl-user)
 
-;;; ----------------------------------------------------------------------------
-;;; 1. GLOBALS (Base Layer)
-;;; ----------------------------------------------------------------------------
+;;; 1. GLOBALS (Base Layer) ------------------------------------------------------
 (defpackage :swimmy.globals
   (:use :cl)
   (:export 
@@ -55,8 +53,6 @@
    #:*max-portfolio-size*
    #:*max-symbol-exposure*
    #:*max-total-exposure*
-   #:*has-resigned-today*
-   #:*resignation-threshold*
    #:*has-resigned-today*
    #:*resignation-threshold*
    #:*danger-cooldown-until*
@@ -161,9 +157,7 @@
    ))
 
 
-;;; ----------------------------------------------------------------------------
-;;; 2. CORE (Infrastructure)
-;;; ----------------------------------------------------------------------------
+;;; 2. CORE (Infrastructure) -----------------------------------------------------
 (defpackage :swimmy.core
   (:use :cl :swimmy.globals)
   (:export
@@ -215,7 +209,6 @@
    #:dual-trend-signal
    #:select-optimal-model
    #:estimate-mean-reversion
-   #:estimate-mean-reversion
    
    ;; Data Keeper Client (V8.0)
    #:init-data-keeper-client
@@ -239,9 +232,7 @@
 
 
 
-;;; ----------------------------------------------------------------------------
-;;; 3. ENGINE (Logic Layer)
-;;; ----------------------------------------------------------------------------
+;;; 3. ENGINE (Logic Layer) ----------------------------------------------------
 (defpackage :swimmy.engine
   (:use :cl :swimmy.globals :swimmy.core)
   (:export
@@ -296,14 +287,20 @@
    
    ;; Strategy Struct (if defined here)
    #:strategy-sharpe
+
+   ;; Candle Struct (V10.0 Export)
+   #:make-candle
+   #:candle-open
+   #:candle-high
+   #:candle-low
+   #:candle-close
+   #:candle-timestamp
    
    ;; Webhooks (tick-handler)
    #:process-msg
    ))
 
-;;; ----------------------------------------------------------------------------
-;;; 4. SCHOOL (Strategy Layer)
-;;; ----------------------------------------------------------------------------
+;;; 4. SCHOOL (Strategy Layer) ---------------------------------------------------
 (defpackage :swimmy.school
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine)
   (:export
@@ -519,9 +516,7 @@
     #:update-global-stats
    ))
 
-;;; ----------------------------------------------------------------------------
-;;; 5. SHELL (Interface Layer)
-;;; ----------------------------------------------------------------------------
+;;; 5. SHELL (Interface Layer) ---------------------------------------------------
 (defpackage :swimmy.shell
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school)
   (:export
@@ -540,9 +535,7 @@
    #:get-time-string
    ))
 
-;;; ----------------------------------------------------------------------------
-;;; 6. EXECUTOR (Execution Layer) NOT MAIN
-;;; ----------------------------------------------------------------------------
+;;; 6. EXECUTOR (Execution Layer) ------------------------------------------------
 (defpackage :swimmy.executor
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
   (:export
@@ -561,9 +554,7 @@
    #:get-system-metrics
    ))
 
-;;; ----------------------------------------------------------------------------
-;;; 7. MAIN (Entry Point)
-;;; ----------------------------------------------------------------------------
+;;; 7. MAIN (Entry Point) --------------------------------------------------------
 (defpackage :swimmy.main
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell :swimmy.executor)
   (:export 
@@ -580,9 +571,7 @@
    #:candles-to-json
    ))
 
-;;; ----------------------------------------------------------------------------
-;;; 7. TESTS (Unit Tests)
-;;; ----------------------------------------------------------------------------
+;;; 8. TESTS (Unit Tests) --------------------------------------------------------
 (defpackage :swimmy.tests
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
   (:export #:run-all-tests #:run-integration-tests))

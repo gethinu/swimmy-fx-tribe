@@ -186,10 +186,20 @@
         
         ;; Victory/Funeral Ceremony using RICH narrative (P9 Fix)
         (handler-case
-            (let* ((entry-price (if (jsown:keyp json "entry_price") (jsown:val json "entry_price") 0.0))
-                   (exit-price (if (jsown:keyp json "exit_price") (jsown:val json "exit_price") 0.0))
+            (let* ((magic (if (jsown:keyp json "magic") (jsown:val json "magic") nil))
                    (lot (if (jsown:keyp json "lot") (jsown:val json "lot") 0.01))
-                   (magic (if (jsown:keyp json "magic") (jsown:val json "magic") nil))
+                   
+                   ;; V44.10: Price Fallback Logic (Fix for 0.0 notification)
+                   ;; If MT5 sends 0, use current market price for Exit, and Exit for Entry default.
+                   (curr-candle (gethash symbol swimmy.school::*current-candles*))
+                   (curr-close (if curr-candle (swimmy.school::candle-close curr-candle) 0.0))
+                   
+                   (raw-exit (if (jsown:keyp json "exit_price") (jsown:val json "exit_price") 0.0))
+                   (exit-price (if (> raw-exit 0.00001) raw-exit curr-close))
+                   
+                   (raw-entry (if (jsown:keyp json "entry_price") (jsown:val json "entry_price") 0.0))
+                   (entry-price (if (> raw-entry 0.00001) raw-entry exit-price)) ;; Use exit as approx for margin if missing
+                   
                    ;; V44.8: Try to resolve Unknown strategy using Magic Number
                    (strategy-name 
                     (let ((raw-name (if (jsown:keyp json "strategy") (jsown:val json "strategy") "Unknown")))

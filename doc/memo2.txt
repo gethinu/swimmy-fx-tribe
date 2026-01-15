@@ -171,3 +171,5 @@ Signal restored after 0s silence.
 [2026-01-15 22:21:01] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977471933-Gen1-mut-SMA19 Sharpe:0.00 Outcome:PENDING Reason:
 [2026-01-15 22:31:06] USDJPY BUY (TREND) Strategy:Wisdom-USDJPY-Trend-3977471933-Gen1-mut-SMA19 Sharpe:0.00 Outcome:PENDING Reason:
 [2026-01-15 22:37:15] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977472833-Gen1-mut-SMA56 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-16 00:04:50] USDJPY BUY (REVERSION) Strategy:Advanced-M5-Reversion-H1 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-16 00:14:43] USDJPY BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977478851-Gen1-mut-TF5-260116-001411 Sharpe:0.00 Outcome:PENDING Reason:

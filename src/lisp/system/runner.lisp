@@ -39,7 +39,6 @@
          ;; Brain: PULL<-5555 (bind), PUB->5556 (bind), PUSH->5580 (connect)
          (let ((pull (pzmq:socket ctx :pull)) 
                (pub (pzmq:socket ctx :pub))
-               (bt-req (pzmq:socket ctx :push))
                (bind-success nil))
            
            ;; V7.1: Robust Bind with Retries (Prevents Debugger Hang)
@@ -48,7 +47,7 @@
                  (progn
                    (pzmq:bind pull "tcp://*:5555")
                    (pzmq:bind pub "tcp://*:5556")
-                   (pzmq:connect bt-req "tcp://localhost:5580")
+                   ;; V44.9: Removed dead port 5580 (bt-req). Backtest now uses pub channel (5556).
                    (setf bind-success t))
                (error (e)
                  (format t "[FATAL] Bind attempt ~d failed: ~a~%" i e)
@@ -61,7 +60,7 @@
                        (sb-ext:exit :code 1))))))
 
            (setf *cmd-publisher* pub)
-           (setf *backtest-requester* bt-req)
+           ;; *backtest-requester* remains nil, triggering fallback to *cmd-publisher* in school-backtest.lisp
 
            ;; V41.7: Set Receive Timeout to 100ms for non-blocking loop
            (pzmq:setsockopt pull :rcvtimeo 100)

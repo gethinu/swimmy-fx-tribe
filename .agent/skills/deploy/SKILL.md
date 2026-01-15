@@ -3,43 +3,27 @@ name: deploy
 description: Safely deploys the system using systemd (restart Brain/Guardian).
 ---
 
-# Deploy Skill
+# Deploy Skill (Systemd Edition)
 
-Updates the running services with the latest code changes.
+This skill safely restarts the Swimmy Brain and Guardian services using `systemctl`. It ensures zero downtime for critical components like Data Keeper where possible, but Brain/Guardian updates require restart.
 
-## When to use
-- After commiting changes (via `quality-check`).
-- When the user asks to "deploy" or "restart".
-- After fixing a bug (e.g. "Ghost Positions").
+## Procedure
 
-## Steps
+1. **Pre-Flight Check**
+   - Run unit tests (`./ci-test.sh`).
 
-### 1. Verification
-Run quality checks if not already done. (Skip if just done)
+2. **Backup (Optional)**
+   - Backup `brain.lisp` if critical code changes were made.
 
-```bash
-cd /home/swimmy/swimmy && make quality-gate
-```
+3. **Restart Services**
+   - Use `systemctl --user restart swimmy-brain`
+   - Use `systemctl --user restart swimmy-guardian`
 
-### 2. Restart Services
-Restart the systemd user services. Both Brain and Guardian should be restarted to ensure clean state.
+4. **Verification**
+   - Check status: `systemctl --user status swimmy-brain`
+   - Check logs: `msg follow` (alias for tailing logs)
 
-```bash
-systemctl --user restart swimmy-brain
-systemctl --user restart swimmy-guardian
-```
-
-### 3. Verify Status
-Check if services are running correctly. Active state should be `active (running)`.
-
-```bash
-systemctl --user status swimmy-brain --no-pager
-systemctl --user status swimmy-guardian --no-pager
-```
-
-### 4. Log Check
-Ensure no immediate startup errors. Look for "Initialization complete" or similar success messages.
-
-```bash
-journalctl --user -u swimmy-brain -n 50 --no-pager
-```
+## Rollback
+If deployment fails (services don't start):
+- Restore backup code.
+- Restart services again.

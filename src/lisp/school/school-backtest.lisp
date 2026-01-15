@@ -17,6 +17,30 @@
   "Validity period for backtest results (24 hours).")
 
 ;;; ----------------------------------------------------------------------------
+;;; Data Caching (Expert Panel 2026-01-16)
+;;; ----------------------------------------------------------------------------
+(defvar *sent-data-ids* (make-hash-table :test 'equal)
+  "Tracks sent data IDs to avoid redundant transfer.")
+
+(defun generate-data-id (candles &optional (suffix ""))
+  "Generate ID for candle dataset."
+  (if (and candles (listp candles))
+      (let ((len (length candles))
+            (first (car (last candles)))  ; Oldest (Newest is car)
+            (last (first candles)))       ; Newest
+        (format nil "DATA-~A-~A-~A~A" len 
+                (if first (swimmy.engine:candle-timestamp first) 0)
+                (if last (swimmy.engine:candle-timestamp last) 0)
+                suffix))
+      (format nil "EMPTY-~A" suffix)))
+
+(defun send-zmq-msg (msg)
+  "Helper to send ZMQ message"
+  (if (and (boundp '*backtest-requester*) *backtest-requester*)
+      (pzmq:send *backtest-requester* msg)
+      (pzmq:send *cmd-publisher* msg)))
+
+;;; ----------------------------------------------------------------------------
 ;;; Persistence (Expert Panel 2026-01-14)
 ;;; ----------------------------------------------------------------------------
 
@@ -263,22 +287,36 @@
     (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d / TF: M~d)...~%" 
             (strategy-name strat) suffix len timeframe)
     
-    ;; Construct JSON payload
-    (setf msg (jsown:to-json 
-                (jsown:new-js 
-                  ("action" "BACKTEST")
-                  ("strategy" (strategy-to-json strat :name-suffix suffix))
-                  ("candles" (swimmy.main:candles-to-json target-candles))
-                  ("aux_candles" aux-candles-json))))
-
-    ;; Send to appropriate service
-    (if (and (boundp '*backtest-requester*) *backtest-requester*)
-        (progn
-          (pzmq:send *backtest-requester* msg)
-          (format t "[L] 📤 Sent ~d bytes to Backtest Service (TF: M~d)~%" (length msg) timeframe))
-        (progn
-          (format t "[L] ⚠️ Backtest Service unavailable, using legacy channel~%")
-          (pzmq:send *cmd-publisher* msg)))))
+    (let* ((base-id (generate-data-id target-candles))
+           (ftf-str (if (and (slot-exists-p strat 'filter-enabled)
+                             (strategy-filter-enabled strat)
+                             (strategy-filter-tf strat))
+                        (get-tf-string (strategy-filter-tf strat))
+                        "NONE"))
+           (data-id (format nil "~a-AUX~a-~a" base-id ftf-str suffix)))
+           
+      ;; CACHE MISS: Send Data
+      (unless (gethash data-id *sent-data-ids*)
+        (format t "[L] 💾 Caching Data ID: ~a~%" data-id)
+        (let ((cache-msg (jsown:to-json 
+                           (jsown:new-js 
+                             ("action" "CACHE_DATA")
+                             ("data_id" data-id)
+                             ("candles" (swimmy.main:candles-to-json target-candles))
+                             ("aux_candles" aux-candles-json)))))
+          (send-zmq-msg cache-msg)
+          (setf (gethash data-id *sent-data-ids*) t)))
+          
+      ;; BACKTEST REQUEST (Lightweight)
+      (setf msg (jsown:to-json 
+                  (jsown:new-js 
+                    ("action" "BACKTEST")
+                    ("strategy" (strategy-to-json strat :name-suffix suffix))
+                    ("data_id" data-id))))
+                    ;; Do not send "candles" or "aux_candles" here to save BW
+      
+      (send-zmq-msg msg)
+      (format t "[L] 📤 Sent Backtest Request (ID: ~a)~%" data-id))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
