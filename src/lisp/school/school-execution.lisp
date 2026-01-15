@@ -12,6 +12,13 @@
 
 ;;; SIGNALS & EVALUATION
 
+(defun shuffle-list (sequence)
+  "Fisher-Yates shuffle for randomization"
+  (let ((vec (coerce sequence 'vector)))
+    (loop for i from (1- (length vec)) downto 1
+          do (rotatef (aref vec i) (aref vec (random (1+ i)))))
+    (coerce vec 'list)))
+
 (defun get-indicator-values (strat history)
   "Calculate current indicator values for display"
   (let ((values nil))
@@ -513,8 +520,9 @@
               (when strat-signals
                 (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
                 ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
                 (let* ((all-sorted 
-                        (sort (copy-list strat-signals)
+                        (sort (shuffle-list strat-signals)
                               (lambda (a b)
                                 (let* ((name-a (getf a :strategy-name))
                                        (name-b (getf b :strategy-name))
