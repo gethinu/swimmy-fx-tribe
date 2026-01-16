@@ -254,21 +254,26 @@
                     (t
                      (progn
                        (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
-                       ;; 1. Add to Knowledge Base
-                       (push founder *strategy-knowledge-base*)
-                       ;; 2. Categorize & Add to Pool
-                       (let ((cat (categorize-strategy founder)))
-                         (push founder (gethash cat *category-pools*))
-                         (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
-                       ;; 3. Notifications (Route to SYSTEM_LOGS, not LIVE_FEED)
-                       (swimmy.core:notify-discord-recruit
-                        (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
-                                (strategy-name founder) (categorize-strategy founder)))
-                       (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                          (pzmq:send swimmy.globals::*cmd-publisher* 
-                                     (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
-                                                                  ("name" (strategy-name founder))))))
-                       t)))
+                       ;; Tournament Gate: Must beat a weaker rival (Expert Panel 2026-01-16)
+                       (if (compete-for-slot founder)
+                           (progn
+                             ;; 1. Add to Knowledge Base
+                             (push founder *strategy-knowledge-base*)
+                             ;; 2. Categorize & Add to Pool
+                             (let ((cat (categorize-strategy founder)))
+                               (push founder (gethash cat *category-pools*))
+                               (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
+                             ;; 3. Notifications (Route to SYSTEM_LOGS, not LIVE_FEED)
+                             (swimmy.core:notify-discord-recruit
+                              (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
+                                      (strategy-name founder) (categorize-strategy founder)))
+                             (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
+                                (pzmq:send swimmy.globals::*cmd-publisher* 
+                                           (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
+                                                                        ("name" (strategy-name founder))))))
+                             t)
+                           ;; Tournament failed - not added
+                           (format t "[HEADHUNTER] 🛡️ Tournament Gate Blocked: ~a too weak~%" (strategy-name founder))))))
                   ;; Else: Safety Gate Failed (Graham)
                   (progn
                     (format t "[HEADHUNTER] 🛡️ Safety Gate Blocked: ~a (Verification Failed)~%" (strategy-name founder))

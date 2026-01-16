@@ -421,7 +421,8 @@
                                             :tribe-cons (if (boundp '*tribe-consensus*) *tribe-consensus* 0)
                                             :swarm-cons swarm-consensus :parallel-score 2
                                             :elder-ok (not (should-block-trade-p symbol :buy category)))
-                              (when (safe-order "BUY" symbol lot sl tp magic lead-name)
+                              (when (safe-order "BUY" symbol lot sl tp magic 
+                                                (format nil "~a|~a" lead-name timeframe-key))
                                 (setf trade-committed t) ;; LEGALLY COMMITTED
                                 (update-symbol-exposure symbol lot :open)
                                 (incf *category-trades*)
@@ -431,7 +432,8 @@
                                 (return-from execute-category-trade t))))
                            ((eq direction :sell)
                             (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                              (when (safe-order "SELL" symbol lot sl tp magic lead-name)
+                              (when (safe-order "SELL" symbol lot sl tp magic 
+                                                (format nil "~a|~a" lead-name timeframe-key))
                                 (setf trade-committed t) ;; LEGALLY COMMITTED
                                 (update-symbol-exposure symbol lot :open)
                                 (incf *category-trades*)

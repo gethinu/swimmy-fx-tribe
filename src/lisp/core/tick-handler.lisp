@@ -418,18 +418,29 @@ Sharpe   : ~,2f
                   (sharpe (float (or (handler-case (jsown:val result "sharpe") (error () 0.0)) 0.0)))
                   (trades (or (handler-case (jsown:val result "trades") (error () 0)) 0))
                   (pnl (float (or (handler-case (jsown:val result "pnl") (error () 0.0)) 0.0)))
-                  (win-rate (float (or (handler-case (jsown:val result "win_rate") (error () 0.0)) 0.0))))
+                  (win-rate (float (or (handler-case (jsown:val result "win_rate") (error () 0.0)) 0.0)))
+                  ;; V8.13: Profit Factor for Kodoku check
+                  (profit-factor (float (or (handler-case (jsown:val result "profit_factor") (error () 0.0)) 0.0))))
               
              ;; V15.9: Persistence - Cache the result immediately! (Expert Panel)
              (when (and name (not (string= name "unknown")) (fboundp 'cache-backtest-result))
-               (cache-backtest-result name result))
+               (cache-backtest-result name result)
+               ;; P5: Log to file for traceability (Expert Panel 2026-01-16)
+               (handler-case
+                   (with-open-file (log "logs/backtest.log" 
+                                        :direction :output 
+                                        :if-exists :append 
+                                        :if-does-not-exist :create)
+                     (format log "~a | ~a | S:~,2f | T:~d | PnL:~,2f | WR:~,1f% | PF:~,2f~%"
+                             (swimmy.core:get-jst-str) name sharpe trades pnl win-rate profit-factor))
+                 (error () nil)))
 
              ;; V8.0: Redirect WFV results (Walk-Forward Validation)
              (if (or (search "_IS" name :from-end t) (search "_OOS" name :from-end t))
                  (handler-case
                      (when (fboundp 'process-wfv-result)
                        (funcall 'process-wfv-result name 
-                                (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate)))
+                                (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)))
                    (error (e) (format t "[L] WFV Process Error: ~a~%" e)))
                  
                  ;; Normal Batch Processing
@@ -461,7 +472,8 @@ Sharpe   : ~,2f
                   (when (should-weekly-unbench-p)
                     (weekly-unbench-all))
                   ;; Evaluate and bench poor performers (50+ trades required)
-                  (evaluate-strategy-performance strat sharpe trades win-rate)
+                  ;; Evaluate and bench poor performers (50+ trades required)
+                  (evaluate-strategy-performance strat sharpe trades win-rate profit-factor)
                   ;; Always log performance IF it's decent
                   (when (or (> sharpe 0.1) (> win-rate 55.0))
                     (format t "[L] 📊 Updated ~a sharpe=~,2f~a~%" 

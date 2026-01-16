@@ -488,9 +488,16 @@
    #:evaluate-strategy-performance
    #:calculate-mutual-aid
    
-   ;; Benching
+   ;; Benching & Killing (P0/P1 Expert Panel 2026-01-16)
    #:weekly-unbench-all
    #:should-weekly-unbench-p
+   #:kill-strategy
+   #:get-kill-count
+   #:reset-all-kill-counters
+   #:prune-similar-strategies
+   #:strategy-distance
+   #:strategies-similar-p
+   #:compete-for-slot
    
    ;; Daily Report
    #:get-daily-risk-limit

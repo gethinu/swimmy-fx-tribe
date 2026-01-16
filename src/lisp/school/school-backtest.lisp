@@ -132,7 +132,8 @@
     ;; Collect all numeric parameters from all indicators
     (dolist (ind indicators)
       (when (listp ind)
-        (let ((nums (remove-if-not #'numberp (cdr ind))))
+        ;; Only collect INTEGER parameters (filter out floats like BB deviation 2.0)
+        (let ((nums (remove-if-not (lambda (n) (and (numberp n) (integerp n))) (cdr ind))))
           (dolist (n nums)
             (push n all-params)))))
     ;; If we have at least 2 params, use them as short/long
@@ -185,9 +186,10 @@
       ("tp" (strategy-tp strat))
       ("volume" (strategy-volume strat))
       ("indicator_type" (detect-indicator-type (strategy-indicators strat)))
-      ("filter_enabled" (if (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat) nil))
-      ("filter_tf" (if (slot-exists-p strat 'filter-tf) (strategy-filter-tf strat) ""))
-      ("filter_period" (if (slot-exists-p strat 'filter-period) (strategy-filter-period strat) 0))
+      ;; V8.0 Fix: filter_enabled must be bool (true/false), not nil
+      ("filter_enabled" (if (and (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat)) :true :false))
+      ("filter_tf" (if (slot-exists-p strat 'filter-tf) (or (strategy-filter-tf strat) "") ""))
+      ("filter_period" (if (slot-exists-p strat 'filter-period) (or (strategy-filter-period strat) 0) 0))
       ("filter_logic" (if (slot-exists-p strat 'filter-logic) (strategy-filter-logic strat) "")))))
 
 

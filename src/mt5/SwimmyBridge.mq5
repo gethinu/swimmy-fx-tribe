@@ -422,6 +422,46 @@ void CloseAllPositions(string symbol) {
 }
 
 //+------------------------------------------------------------------+
+//| V17: Close only short timeframe positions (H4 and below)          |
+//| Protects D1, W1, MN positions during emergency close              |
+//+------------------------------------------------------------------+
+void CloseShortTimeframePositions(string symbol) {
+   if(symbol != "ALL" && symbol != _Symbol) {
+      return;
+   }
+   
+   int closed = 0;
+   int protected_tf = 0;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket)) {
+         string pos_symbol = PositionGetString(POSITION_SYMBOL);
+         long pos_magic = PositionGetInteger(POSITION_MAGIC);
+         string comment = PositionGetString(POSITION_COMMENT);
+         
+         if((symbol == "ALL" || pos_symbol == _Symbol) && pos_magic >= MAGIC_BASE) {
+            // Check if comment contains D1, W1, or MN (protected timeframes)
+            bool is_protected = (StringFind(comment, "|D1") >= 0 ||
+                                 StringFind(comment, "|W1") >= 0 ||
+                                 StringFind(comment, "|MN") >= 0);
+            
+            if(is_protected) {
+               protected_tf++;
+               LogInfo("🛡️ PROTECTED (D1+): Ticket " + IntegerToString(ticket) + " [" + comment + "]");
+            } else {
+               if(g_trade.PositionClose(ticket)) {
+                  closed++;
+                  LogDebug("🧹 Closed (short TF): " + IntegerToString(ticket) + " [" + comment + "]");
+               }
+            }
+         }
+      }
+   }
+   LogInfo("🧹 CLOSE_SHORT_TF: Closed " + IntegerToString(closed) + ", Protected D1+: " + IntegerToString(protected_tf));
+}
+
+//+------------------------------------------------------------------+
 //| Command execution                                                 |
 //+------------------------------------------------------------------+
 void ExecuteCommand(string cmd) {
@@ -486,6 +526,11 @@ void ExecuteCommand(string cmd) {
          LogInfo("⚪ CLOSE: " + _Symbol);
          g_trade.PositionClose(_Symbol);
       }
+   }
+   // V17: CLOSE_SHORT_TF - Close only H4 and below, protect D1+ positions
+   else if(StringFind(cmd, "CLOSE_SHORT_TF") >= 0) {
+      LogInfo("🧹 CLOSE_SHORT_TF: Closing H4 and below (D1+ protected)");
+      CloseShortTimeframePositions(_Symbol);
    }
    else if(StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
       string tf = GetStringFromJson(cmd, "tf");
