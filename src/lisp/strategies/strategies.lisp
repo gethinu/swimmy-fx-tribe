@@ -40,7 +40,7 @@
   (setf *backtest-results-buffer* nil)
   (setf *expected-backtest-count* (length *strategy-knowledge-base*))
   
-  (let* ((max-batch-size 20) ; Limit concurrent requests
+  (let* ((max-batch-size 200) ; Limit concurrent requests (Increased to 200 via P5.1)
          (total (length *strategy-knowledge-base*))
          (start-idx (mod *backtest-cursor* total))
          (end-idx (min total (+ start-idx max-batch-size)))
@@ -59,14 +59,16 @@
     (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
             (length final-batch) start-idx (mod (+ start-idx (length final-batch)) total))
     
-    (dolist (strat final-batch)
-      (when (and *candle-history* (> (length *candle-history*) 100))
-        (let ((cached (get-cached-backtest (strategy-name strat))))
-          (if cached
-              (incf cached-count)
-              (progn 
-                (incf requested-count)
-                (request-backtest strat))))))
+    ;; Snapshot history to prevent ID drift (P5.1 Fix)
+    (let ((snapshot *candle-history*))
+      (dolist (strat final-batch)
+        (when (and snapshot (> (length snapshot) 100))
+          (let ((cached (get-cached-backtest (strategy-name strat))))
+            (if cached
+                (incf cached-count)
+                (progn 
+                  (incf requested-count)
+                  (request-backtest strat :candles snapshot)))))))
                 
     (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
             cached-count requested-count *backtest-cursor*)

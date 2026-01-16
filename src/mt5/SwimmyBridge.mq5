@@ -448,8 +448,11 @@ void ExecuteCommand(string cmd) {
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
       
-      LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5));
-      if(g_trade.Buy(vol, _Symbol, 0, sl, tp, "Swimmy Warrior")) {
+      // V16.0: Unique comment with Magic Number for identification
+      string comment = "SW-" + IntegerToString(cmd_magic);
+      
+      LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
+      if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
          RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
       }
    }
@@ -463,8 +466,11 @@ void ExecuteCommand(string cmd) {
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
       
-      LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5));
-      if(g_trade.Sell(vol, _Symbol, 0, sl, tp, "Swimmy Warrior")) {
+      // V16.0: Unique comment with Magic Number for identification
+      string comment = "SW-" + IntegerToString(cmd_magic);
+      
+      LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
+      if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
          RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
       }
    }

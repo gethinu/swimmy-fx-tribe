@@ -274,3 +274,25 @@
                  (return-from lookup-strategy-by-magic (getf warrior :strategy))))
              *warrior-allocation*))
   nil)
+
+(defun force-close-strategy-positions (strategy-name)
+  "Force close all positions belonging to a specific strategy (e.g., during extinction)"
+  (let ((closed-count 0))
+    (format t "[ALLOC] 💀 Force closing positions for extinct strategy: ~a~%" strategy-name)
+    (handler-case
+      (maphash 
+       (lambda (key warrior)
+         (let ((warrior-strat (getf warrior :strategy))
+               (symbol (getf warrior :symbol))
+               (magic (getf warrior :magic)))
+           (when (and warrior-strat (string= warrior-strat strategy-name))
+             (format t "[ALLOC] ✂️ Closing ~a Position (Key: ~a, Magic: ~a)~%" symbol key magic)
+             (pzmq:send *cmd-publisher* 
+                        (jsown:to-json (jsown:new-js 
+                                         ("action" "CLOSE") 
+                                         ("symbol" symbol) 
+                                         ("magic" magic))))
+             (incf closed-count))))
+       *warrior-allocation*)
+      (error (e) (format t "[ALLOC] ⚠️ Error closing positions: ~a~%" e)))
+    closed-count))

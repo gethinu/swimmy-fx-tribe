@@ -1,416 +1,6 @@
 {
   "records": [
     {
-      "timestamp": "2026-01-05T23:56:06.504165083+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:08.079697102+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:09.580673629+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:11.479691556+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:11.510153445+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:13.334103460+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:15.241898723+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:16.857556525+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:18.405806495+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:19.086721007+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:19.726706423+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-05T23:56:19.793681732+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:09:03.915451556+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:09:04.701085418+00:00",
-      "symbol": "GBPUSD",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:14:14.726721800+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:14:16.052391907+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:01.417998006+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:02.715776123+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:03.027733365+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:04.646940114+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:05.248562154+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:07.101669019+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:11.455999934+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:11.834748212+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:16.832512812+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:18.478633186+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:20.106623076+00:00",
-      "symbol": "EURUSD",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:29:28.578420722+00:00",
-      "symbol": "GBPUSD",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:30:04.873010455+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:30:06.365267471+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:34:00.759025815+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:14.300238762+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:16.127630654+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:16.906173466+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:19.096830861+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:20.473682638+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:22.863910356+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:24.803602823+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:25.857234087+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:26.443175478+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 0,
-      "actual_action": 0,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
-      "timestamp": "2026-01-06T00:35:28.043278822+00:00",
-      "symbol": "USDJPY",
-      "ensemble_action": 1,
-      "actual_action": 1,
-      "price_at_decision": 0.0,
-      "price_after": null,
-      "pnl_ensemble": null,
-      "pnl_actual": null
-    },
-    {
       "timestamp": "2026-01-06T00:35:30.414939420+00:00",
       "symbol": "USDJPY",
       "ensemble_action": 0,
@@ -4699,10 +4289,720 @@
       "price_after": null,
       "pnl_ensemble": null,
       "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T15:56:27.540933373+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:07:04.489394548+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:11:02.150871772+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:12:13.125704221+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:46:02.478506935+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:49:03.799191348+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:51:35.959103697+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T16:57:03.360446909+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:11:17.608732052+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:20:41.406040257+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:22:01.308868557+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:26:37.838472029+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:44:04.290774182+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:49:15.965309373+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:51:01.653493183+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T17:59:02.011106096+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:09:04.167663032+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:18:25.155898329+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:20:29.145608427+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:24:05.212994512+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:31:50.278335304+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:41:07.355554579+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:55:01.670685315+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T18:58:02.507509989+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:02:02.906728186+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:05:01.898407372+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:24:02.431195380+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:30:01.825717481+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:31:02.497309813+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:32:07.676342792+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:33:01.949072563+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:35:45.798596527+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:40:28.481610465+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:45:03.102540369+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:46:02.289937732+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:53:01.654737540+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:57:41.528939632+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T19:59:42.129209172+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T20:02:02.872144394+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T20:06:02.897859703+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:01:04.299188422+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:05:02.515179037+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:05:04.101374959+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:05:07.041834951+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:06:03.633996698+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:09:03.803137062+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:09:45.114468188+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:10:01.810032528+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:10:03.977146982+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:10:05.903868722+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:11:03.320827868+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:11:15.218641620+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:12:01.058065894+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:13:02.868538743+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:17:02.677588964+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:17:05.026140104+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:21:04.892759442+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:22:02.727920868+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:23:02.599697832+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:24:02.385645299+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:25:02.939266184+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:25:04.629180033+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:31:01.613013579+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T22:31:03.931401789+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:00:44.338906051+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:02:02.081435119+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:03:02.554821698+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:03:03.564920390+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 1,
+      "actual_action": 1,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:05:02.413606301+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:06:02.260761904+00:00",
+      "symbol": "GBPUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-15T23:07:04.309276668+00:00",
+      "symbol": "EURUSD",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 0.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
     }
   ],
   "ensemble_total_pnl": 0.0,
   "actual_total_pnl": 0.0,
-  "matches": 470,
+  "matches": 541,
   "mismatches": 0
 }

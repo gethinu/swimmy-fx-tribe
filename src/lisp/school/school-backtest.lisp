@@ -242,25 +242,8 @@
          (timeframe (if (numberp tf-slot) tf-slot 1))
          (tf-str (get-tf-string timeframe))
          
-         ;; Data Selection Logic (V41.6):
-         ;; 1. Try specific timeframe data for USDJPY (default assumption for generic backtest)
-         ;;    FIXME: *candle-history* implies USDJPY. If we want other symbols, we need symbol arg.
-         ;;    For now, assume if candles==*candle-history*, we check USDJPY tf data.
-         (tf-candles 
-           (if (and (> timeframe 1) 
-                    (eq candles *candle-history*) 
-                    (gethash "USDJPY" *candle-histories-tf*)
-                    (gethash tf-str (gethash "USDJPY" *candle-histories-tf*)))
-               (progn
-                 (format t "[L] 🎯 Using pre-loaded ~a data for backtest (Speed++)~%" tf-str)
-                 (gethash tf-str (gethash "USDJPY" *candle-histories-tf*)))
-               nil))
-         
-         ;; Resample if no specific data found
-         (target-candles (or tf-candles
-                             (if (> timeframe 1) 
-                                 (resample-candles candles timeframe) 
-                                 candles)))
+         ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
+         (target-candles candles)
          (len (length target-candles))
          (aux-candles-json (jsown:new-js))  ;; Initialize aux candles
          (msg nil)) ;; Initialize msg
@@ -307,16 +290,16 @@
           (send-zmq-msg cache-msg)
           (setf (gethash data-id *sent-data-ids*) t)))
           
-      ;; BACKTEST REQUEST (Lightweight)
+      ;; BACKTEST REQUEST (Lightweight) (P5.1 Resampling)
       (setf msg (jsown:to-json 
                   (jsown:new-js 
                     ("action" "BACKTEST")
                     ("strategy" (strategy-to-json strat :name-suffix suffix))
-                    ("data_id" data-id))))
-                    ;; Do not send "candles" or "aux_candles" here to save BW
-      
+                    ("data_id" data-id)
+                    ("timeframe" timeframe)))) ;; P5.1: Send timeframe
+                    
       (send-zmq-msg msg)
-      (format t "[L] 📤 Sent Backtest Request (ID: ~a)~%" data-id))))
+      (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)

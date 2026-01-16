@@ -82,7 +82,10 @@
     (with-profiling "maintenance-section-3"
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
       (when (fboundp 'swimmy.engine::check-discord-heartbeat)
-        (swimmy.engine::check-discord-heartbeat)))))
+        (swimmy.engine::check-discord-heartbeat))
+      ;; P7: Check for stress test trigger flag
+      (when (fboundp 'swimmy.school::check-stress-test-trigger)
+        (swimmy.school::check-stress-test-trigger)))))
 
 (defun process-tick-round-robin (symbol bid)
   "Optimize tick processing by handling one symbol per tick"

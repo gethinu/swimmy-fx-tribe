@@ -130,6 +130,12 @@
   (format t "[L] 🙏 May the wisdom live on in the tribe.~%")
   (format t "[L] ═══════════════════════════════════════~%~%")
   
+  ;; V44.11: Close all positions for the deceased (Fix Ghost Positions)
+  (when (fboundp 'force-close-strategy-positions)
+    (handler-case 
+        (force-close-strategy-positions strategy-name)
+      (error (e) (format t "[L] ⚠️ Failed to close positions: ~a~%" e))))
+
   ;; V42.0: Naval Ravikant's Auto-Funeral (File Cleanup request)
   (handler-case
       (with-open-file (out "data/graveyard.txt" 

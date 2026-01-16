@@ -60,6 +60,7 @@
                ;; REFACTORED DREAMER MIGRATION (Phase 11)
                (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
                (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+               (:file "src/lisp/school/school-stress")    ; P7: Deep Validation
                (:file "src/lisp/school/school-templates") ; Template Generation
                (:file "src/lisp/school/school-memory")
                (:file "src/lisp/school/school-ecosystem")
