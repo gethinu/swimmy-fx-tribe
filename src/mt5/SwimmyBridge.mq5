@@ -465,56 +465,63 @@ void CloseShortTimeframePositions(string symbol) {
 //| Command execution                                                 |
 //+------------------------------------------------------------------+
 void ExecuteCommand(string cmd) {
-   string cmd_symbol = GetStringFromJson(cmd, "symbol");
-   
-   // V15: Only execute commands for THIS symbol
-   // Note: Empty symbol ("") or "ALL" = broadcast to all EAs
+   string type = GetStringFromJson(cmd, "type");
+   string cmd_symbol = GetStringFromJson(cmd, "instrument");
+   if(cmd_symbol == "") cmd_symbol = GetStringFromJson(cmd, "symbol"); // Fallback check
+
+   // Only execute commands for THIS symbol (or ALL)
    if(cmd_symbol != "" && cmd_symbol != "ALL" && cmd_symbol != _Symbol) {
       return;  // Not for this EA
    }
    
+   // HEARTBEAT (High Priority)
+   if(type == "HEARTBEAT" || StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
+      g_last_heartbeat = TimeCurrent();
+      LogDebug("💓 Heartbeat received");
+      return;
+   }
+
    LogDebug("Processing command: " + StringSubstr(cmd, 0, 100) + "...");
    
    ulong cmd_magic = (ulong)GetValueFromJson(cmd, "magic");
    if(cmd_magic <= 0) cmd_magic = MAGIC_BASE;
-   
-   if(StringFind(cmd, "\"BUY\"") >= 0) {
+
+   // ORDER_OPEN (Protocol V2)
+   if(type == "ORDER_OPEN" || StringFind(cmd, "\"BUY\"") >= 0 || StringFind(cmd, "\"SELL\"") >= 0) {
+      string side = GetStringFromJson(cmd, "side");
+      // Legacy Fallback detection
+      if(side == "") {
+         if(StringFind(cmd, "\"BUY\"") >= 0) side = "BUY";
+         if(StringFind(cmd, "\"SELL\"") >= 0) side = "SELL";
+      }
+
       double sl = GetValueFromJson(cmd, "sl");
       double tp = GetValueFromJson(cmd, "tp");
-      // V15.11: Accept both "lot" and "volume" keys (Brain sends "lot")
       double vol = GetValueFromJson(cmd, "lot");
       if(vol <= 0) vol = GetValueFromJson(cmd, "volume");
       if(vol <= 0) vol = 0.01;
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
       
-      // V16.0: Unique comment with Magic Number for identification
-      string comment = "SW-" + IntegerToString(cmd_magic);
-      
-      LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
-      if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
-         RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
+      string comment = "SW-" + IntegerToString(cmd_magic); // V16.0 format
+      string msg_comment = GetStringFromJson(cmd, "comment");
+      if(msg_comment != "") comment = msg_comment;
+
+      if(side == "BUY") {
+         LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
+         if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
+            RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
+            SendTradeAck(cmd, g_trade.ResultOrder());
+         }
+      } else if(side == "SELL") {
+         LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
+         if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
+            RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
+            SendTradeAck(cmd, g_trade.ResultOrder());
+         }
       }
    }
-   else if(StringFind(cmd, "\"SELL\"") >= 0) {
-      double sl = GetValueFromJson(cmd, "sl");
-      double tp = GetValueFromJson(cmd, "tp");
-      // V15.11: Accept both "lot" and "volume" keys (Brain sends "lot")
-      double vol = GetValueFromJson(cmd, "lot");
-      if(vol <= 0) vol = GetValueFromJson(cmd, "volume");
-      if(vol <= 0) vol = 0.01;
-      
-      g_trade.SetExpertMagicNumber((ulong)cmd_magic);
-      
-      // V16.0: Unique comment with Magic Number for identification
-      string comment = "SW-" + IntegerToString(cmd_magic);
-      
-      LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
-      if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
-         RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
-      }
-   }
-   else if(StringFind(cmd, "\"CLOSE\"") >= 0) {
+   else if(type == "CLOSE" || StringFind(cmd, "\"CLOSE\"") >= 0) {
       bool close_all = GetBoolFromJson(cmd, "close_all");
       if(close_all) {
          LogInfo("🧹 CLOSE ALL: " + _Symbol);
@@ -527,28 +534,31 @@ void ExecuteCommand(string cmd) {
          g_trade.PositionClose(_Symbol);
       }
    }
-   // V17: CLOSE_SHORT_TF - Close only H4 and below, protect D1+ positions
-   else if(StringFind(cmd, "CLOSE_SHORT_TF") >= 0) {
+   else if(StringFind(cmd, "CLOSE_SHORT_TF") >= 0) { // Keep legacy string match for special command
       LogInfo("🧹 CLOSE_SHORT_TF: Closing H4 and below (D1+ protected)");
       CloseShortTimeframePositions(_Symbol);
    }
-   else if(StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
+   else if(type == "REQ_HISTORY" || StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
       string tf = GetStringFromJson(cmd, "tf");
       if(tf == "") tf = "M1";
-      // V15.5: Parse start and count
       datetime start = (datetime)GetValueFromJson(cmd, "start");
       int count = (int)GetValueFromJson(cmd, "count");
-      
       SendHistoryData(cmd_symbol, tf, start, count);
    }
-   else if(StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
-      g_last_heartbeat = TimeCurrent();
-      LogDebug("💓 Heartbeat received");
-   }
-   // V19: GET_POSITIONS - Return open positions for allocation sync
-   else if(StringFind(cmd, "\"GET_POSITIONS\"") >= 0) {
+   else if(type == "GET_POSITIONS" || StringFind(cmd, "\"GET_POSITIONS\"") >= 0) {
       SendOpenPositions();
    }
+}
+
+// Helper to send ACK
+void SendTradeAck(string orig_cmd, ulong ticket) {
+   if(!g_pub_connected) return;
+   string id = GetStringFromJson(orig_cmd, "id");
+   string json = StringFormat("{\"type\":\"ORDER_ACK\",\"id\":\"%s\",\"ticket\":%I64u,\"symbol\":\"%s\"}", 
+                              id, ticket, _Symbol);
+   uchar data[];
+   StringToCharArray(json, data);
+   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
 }
 
 //+------------------------------------------------------------------+
