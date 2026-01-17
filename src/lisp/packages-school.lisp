@@ -1,0 +1,334 @@
+;;; src/lisp/packages-school.lisp
+;;; ============================================================================
+;;; PACKAGE DEFINITIONS (School & Upper Layers)
+;;; ============================================================================
+
+(in-package :cl-user)
+
+;;; 4. SCHOOL (Strategy Layer) ---------------------------------------------------
+(defpackage :swimmy.school
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine)
+  (:export
+   ;; Council
+   #:convene-high-council
+   #:run-school-iteration
+   
+   ;; Monte-Carlo Validation (Phase 11)
+   #:run-monte-carlo-simulation
+   #:analyze-monte-carlo-results
+   #:run-mc-validation
+   #:internal-bootstrap-sample ;; Exposed for testing
+   #:calculate-max-drawdown ;; Exposed for testing
+   
+   ;; Learning
+   #:record-trade-outcome
+   #:extract-learned-patterns
+   #:learn-from-failure
+   #:store-memory
+   #:get-price-position
+   
+   ;; Research
+   #:integrate-research-papers
+   
+   ;; Indicators (used in tick-handler)
+   #:ind-rsi
+   #:ind-sma
+   #:ind-ema
+   #:ind-bb
+   #:ind-atr
+   #:calculate-atr
+   
+   ;; Meta Learning
+   #:get-best-strategy-for-regime
+   #:update-best-strategy-for-regime
+   #:extract-learned-patterns
+   
+   ;; Trading Session
+   #:current-trading-session
+   #:london-session-p
+   #:gotobi-day-p
+   
+   ;; Strategy Management
+   #:initialize-clan-treasury
+   #:assemble-team
+   #:morning-ritual
+   #:request-prediction
+   #:request-backtest
+   #:maintain-ecosystem-balance
+   #:get-population-health
+   #:process-category-trades
+   #:check-evolution
+   #:evolve-population-via-mutation
+   #:mutate-strategy
+   #:batch-backtest-knowledge
+   #:adopt-proven-strategies
+   #:record-trade-result
+   #:update-leader-stats
+   #:update-global-stats ;; V44.3: Moved from Reporting
+   #:lookup-strategy-by-magic  ;; V44.8: Resolving Unknown strategy names
+   #:generate-trade-result-narrative
+   #:process-clone-check-result ;; V10: Exported for message-dispatcher
+   #:process-wfv-result ;; V10: Exported for message-dispatcher
+   
+   ;; Persistence
+   #:cache-backtest-result
+   #:save-backtest-cache
+   #:load-backtest-cache
+   #:get-cached-backtest
+   
+   ;; Special Forces
+   #:force-recruit-strategy
+   #:recruit-special-forces
+   #:strategy-allowed-by-volatility-p
+   #:get-volatility-multiplier
+   #:*volatility-shift-threshold*
+   
+   ;; Constitution
+   #:initialize-constitution
+   #:evaluate-constitution
+   #:*constitution*
+   
+   ;; Reputation
+   #:get-reputation
+   #:update-reputation
+   
+   ;; Strategy Struct Accessors
+   #:make-strategy
+   #:strategy-name
+   #:strategy-indicators
+   #:strategy-sl
+   #:strategy-tp
+   #:strategy-volume
+   #:strategy-entry
+   #:strategy-exit
+   #:strategy-sharpe
+   #:strategy-win-rate
+   #:strategy-trades
+   #:strategy-max-dd
+   #:strategy-benched-p
+   
+   ;; Clan Struct Accessors
+   #:make-clan
+   #:clan-id
+   #:clan-name
+   #:clan-title
+   #:clan-emoji
+   #:clan-philosophy
+   #:clan-persona
+   #:clan-battle-cry
+   #:get-clan
+   #:get-clan-display
+   
+   ;; Leader Info Struct Accessors
+   #:make-leader-info
+   #:leader-info-strategy-name
+   #:leader-info-sharpe
+   #:leader-info-pnl-as-leader
+   #:leader-info-trades-as-leader
+   
+   ;; Elder Struct Accessors
+   #:elder-name
+   #:elder-peak-pnl
+   #:elder-vote
+   
+   ;; Core Value Struct Accessors
+   #:core-value-name
+   #:core-value-description
+   #:core-value-priority
+   
+   ;; Reputation Struct Accessors
+   #:reputation-trust-score
+   #:reputation-reliability
+   #:reputation-profit-score
+   
+   ;; Trade Prediction Struct
+   #:make-trade-prediction
+   #:trade-prediction-symbol
+   #:trade-prediction-confidence
+   
+   ;; Danger/Risk
+   #:danger-cooldown-active-p
+   #:has-resigned-p
+   #:reset-danger-state
+   #:debug-reset-warriors
+   #:debug-warrior-status
+   
+   ;; Hall of Fame
+   #:*hall-of-fame*
+   #:induct-to-hall-of-fame
+   #:load-hall-of-fame
+   #:save-hall-of-fame
+   #:elder-vote
+   
+   ;; Position Sync (V19)
+   #:reconcile-with-mt5-positions
+   #:request-mt5-positions
+   #:report-active-positions
+   
+   ;; Genome/State
+   #:save-genome
+   #:save-meta-learning
+   
+   ;; Pattern Matching
+   #:pattern-similarity
+   #:time-decay-weight
+   
+   ;; Learned Pattern Struct
+   #:learned-pattern-confidence
+   #:learned-pattern-description
+   
+   ;; Improvement Request Struct
+   #:improvement-request-category
+   #:improvement-request-description
+   #:improvement-request-status
+   
+   ;; Tribal Dialect
+   #:*tribal-dialect*
+   #:initialize-tribal-dialect
+   
+   ;; Walk Forward Validation
+   #:*wfv-pending-strategies*
+   #:start-walk-forward-validation
+   #:process-wfv-result
+   
+   ;; Meta Learning
+   #:get-best-strategy-for-regime
+   #:update-best-strategy-for-regime
+   #:on-trade-close-meta
+   #:record-proof-trade
+   
+   ;; Continuous Learning
+   #:continuous-learning-step
+   #:evaluate-strategy-performance
+   #:calculate-mutual-aid
+   
+   ;; Adaptation Engine (Phase 4)
+   #:update-adaptation-weights
+   #:get-adaptation-multiplier
+   
+   ;; Scoring Engine (Phase 5)
+   #:estimate-confidence
+   #:calculate-strategy-score
+   #:get-market-state-vector
+
+   ;; Lifecycle Management (Phase 6)
+   #:manage-strategy-lifecycle
+   #:perform-daily-lifecycle-review 
+   #:check-unbench-condition
+   #:count-benched-strategies ;; Expert Panel Cleanup
+
+   ;; Benching & Killing (P0/P1 Expert Panel 2026-01-16)
+   #:weekly-unbench-all
+   #:should-weekly-unbench-p
+   #:kill-strategy
+   #:get-kill-count
+   #:reset-all-kill-counters
+   #:prune-similar-strategies
+   #:strategy-distance
+   #:strategies-similar-p
+   #:compete-for-slot
+   
+   ;; Daily Report
+   #:get-daily-risk-limit
+   #:get-performance-stats
+   
+   ;; Visualization
+   #:print-lineage
+   
+   ;; Headhunting
+   #:recruit-founder
+   #:immigration-census
+   #:list-available-founders
+    
+    ;; Genome Engine (V14.0)
+    #:crossover-strategy
+    #:extract-genome
+    #:implant-genome
+    #:perform-structural-mutation
+    #:select-parent-tournament
+    #:select-tribal-pair
+    
+    ;; Reporting (V44.3)
+    #:update-global-stats
+   ))
+
+;;; 5. SHELL (Interface Layer) ---------------------------------------------------
+(defpackage :swimmy.shell
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school)
+  (:export
+   ;; Notification
+   #:broadcast-event
+   #:notify-discord
+   #:notify-discord-symbol
+   #:initialize-tribal-dialect
+   #:setup-symbol-webhooks
+   ;; Briefing
+   #:report-goal-status
+   #:send-periodic-status-report
+   #:save-live-status
+   ;; Date/Time utilities
+   #:get-date-string
+   #:get-time-string
+   ))
+
+;;; 6. EXECUTOR (Execution Layer) ------------------------------------------------
+(defpackage :swimmy.executor
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
+  (:export
+   ;; Heartbeat & Status
+   #:send-heartbeat
+   #:send-heartbeat-to-guardian
+   #:check-guardian-connection
+   #:update-status-file
+   #:pulse-check
+   
+   ;; Trade Processing
+   #:process-trade-closed
+   #:process-account-info
+   
+   ;; Metrics
+   #:get-system-metrics
+   
+   ;; Allocation (Phase 12)
+   #:calculate-kelly-lot
+   ))
+
+;;; 7. MAIN (Entry Point) --------------------------------------------------------
+(defpackage :swimmy.main
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell :swimmy.executor)
+  (:export 
+   #:start-system
+   #:start-brain
+   #:stop-brain
+   #:call-gemini
+   ;; Tick Handler (moved from swimmy.engine)
+   #:process-msg
+   #:update-candle
+   #:send-heartbeat
+   #:check-scheduled-tasks
+   ;; Utility functions
+   #:candles-to-json
+   ))
+
+;;; 8. TESTS (Unit Tests) --------------------------------------------------------
+(defpackage :swimmy.tests
+  (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell)
+  (:export #:run-all-tests #:run-integration-tests))
+
+;;; ----------------------------------------------------------------------------
+;;; COMPATIBILITY (CL-USER)
+;;; ----------------------------------------------------------------------------
+;; Import everything into CL-USER for REPL convenience and legacy support
+(format t "[PACKAGES] Importing symbols into CL-USER...~%")
+
+(use-package :swimmy.globals :cl-user)
+(use-package :swimmy.core :cl-user)
+(use-package :swimmy.engine :cl-user)
+(use-package :swimmy.school :cl-user)
+(use-package :swimmy.shell :cl-user)
+(use-package :swimmy.main :cl-user)
+(use-package :swimmy.tests :cl-user)
+;; Note: We avoid use-package for conflicts, but we might need it for legacy files.
+;; For now, let's keep CL-USER relatively clean or use specific packages.
+
+(format t "[PACKAGES] Package Hierarchy Defined.~%")

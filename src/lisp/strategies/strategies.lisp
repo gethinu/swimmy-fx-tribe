@@ -148,57 +148,70 @@
 ;;; P1: Similarity-based pruning (min 3 per category)
 ;;; ==========================================
 
-(defparameter *benched-strategies* (make-hash-table :test 'equal))
+;; *benched-strategies* REMOVED (Expert Panel Cleanup - Hickey)
+;; We now use strategy-status slot in the strategy struct.
+
 (defparameter *kill-counter* (make-hash-table :test 'equal) "P0: Track how many times each strategy was benched")
 (defparameter *max-bench-strikes* 1 "P0: Kill IMMEDIATELY after 1 bench (Expert Panel 2026-01-16)")
 (defparameter *min-strategies-per-category* 3 "P1: Minimum strategies to keep per category")
 (defparameter *similarity-threshold* 0.10 "P1: Parameter distance below this = similar")
 
+(defun find-strategy-object (name)
+  "Find strategy object by name in KB or Evolved list."
+  (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+      (find name swimmy.globals:*evolved-strategies* :key #'strategy-name :test #'string=)))
+
 (defun strategy-benched-p (name)
-  "Check if strategy is benched"
-  (gethash name *benched-strategies*))
+  "Check if strategy is benched (check status slot)"
+  (let ((s (find-strategy-object name)))
+    (if (and s (eq (strategy-status s) :benched))
+        (strategy-status-reason s)
+        nil)))
 
 (defun get-kill-count (name)
   "Get how many times a strategy has been benched"
   (or (gethash name *kill-counter*) 0))
 
 (defun kill-strategy (name reason)
-  "P0: Permanently remove a strategy from all pools (Taleb's Rule)"
-  (format t "~%[L] 💀 KILLED: ~a (~a)~%" name reason)
-  ;; Remove from knowledge base
-  (when (boundp '*strategy-knowledge-base*)
-    (setf *strategy-knowledge-base* 
-          (remove-if (lambda (s) (string= (strategy-name s) name)) *strategy-knowledge-base*)))
-  ;; Remove from evolved strategies
-  (when (boundp '*evolved-strategies*)
-    (setf *evolved-strategies* 
-          (remove-if (lambda (s) (string= (strategy-name s) name)) *evolved-strategies*)))
-  ;; Clean up tracking
-  (remhash name *benched-strategies*)
-  (remhash name *kill-counter*)
-  ;; Notify
-  (when (fboundp 'notify-discord-alert)
-    (notify-discord-alert 
-      (format nil "💀 **Strategy KILLED (3 Strikes)**~%Name: ~a~%Reason: ~a" name reason)
-      :color 15158332)))
+  "P0: Soft Kill - Bench indefinitely instead of permanent deletion (Expert Panel 2026-01-16)"
+  (let ((s (find-strategy-object name)))
+    (when s
+      (format t "~%[L] 🛡️ SOFT KILL: ~a (~a) -> Benched indefinitely~%" name reason)
+      (setf (strategy-status s) :killed)
+      (setf (strategy-status-reason s) (format nil "SOFT_KILL: ~a" reason))
+      ;; Notify
+      (when (fboundp 'notify-discord-alert)
+        (notify-discord-alert 
+          (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
+          :color 15158332)))))
 
 (defun bench-strategy (name reason)
   "Bench a strategy with reason. P0: 3rd bench = permanent kill"
-  (let ((strikes (1+ (get-kill-count name))))
+  (let ((strikes (1+ (get-kill-count name)))
+        (s (find-strategy-object name)))
     (setf (gethash name *kill-counter*) strikes)
     (if (>= strikes *max-bench-strikes*)
         ;; 3 strikes - you're out!
         (kill-strategy name (format nil "3-Strikes Rule: ~a" reason))
         ;; Just bench for now
-        (progn
-          (setf (gethash name *benched-strategies*) reason)
+        (when s
+          (setf (strategy-status s) :benched)
+          (setf (strategy-status-reason s) reason)
           (format t "[L] 🚫 BENCHED (~d/~d): ~a (~a)~%" 
                   strikes *max-bench-strikes* name reason)))))
 
 (defun unbench-all ()
   "Unbench all strategies (but keep kill counters)"
-  (clrhash *benched-strategies*)
-  (format t "[L] ♻️  All strategies unbenched (kill counters preserved)~%"))
+  ;; Iterate both lists
+  (dolist (s *strategy-knowledge-base*)
+    (when (or (eq (strategy-status s) :benched) (eq (strategy-status s) :killed))
+      (setf (strategy-status s) :active)
+      (setf (strategy-status-reason s) "")))
+  (dolist (s swimmy.globals:*evolved-strategies*)
+    (when (or (eq (strategy-status s) :benched) (eq (strategy-status s) :killed))
+      (setf (strategy-status s) :active)
+      (setf (strategy-status-reason s) "")))
+  (format t "[L] ♻️  All strategies status reset to ACTIVE (kill counters preserved)~%"))
 
 (defun reset-all-kill-counters ()
   "Reset all kill counters (use sparingly - monthly?)"
@@ -361,11 +374,11 @@
 
 (defun evaluate-strategy-performance (strat sharpe trades win-rate &optional (profit-factor 0.0))
   "Adjust strategy parameters based on backtest performance (Kodoku Standard)"
-      ;; KODOKU TIERED EVALUATION (Expert Panel 2026-01-16)
+      ;; THE PROVING GROUNDS (Tribal Selection 2026-01-16)
       
-      ;; TIER 1: DEATH (Sharpe < 0) - Immediate Kill
+      ;; TIER 1: DEATH (Sharpe < 0) - Soft Kill / Bench
       (when (< sharpe 0)
-        (kill-strategy name (format nil "Grading [D]: Negative Sharpe ~,2f" sharpe))
+        (bench-strategy name (format nil "Grading [D]: Negative Sharpe ~,2f. Needs optimization." sharpe))
         (return-from evaluate-strategy-performance))
 
       ;; TIER 2: REJECT (0 <= Sharpe < 0.6) - Noise
@@ -381,7 +394,7 @@
 
       ;; TIER 4: SURVIVE (Sharpe >= 1.0)
       
-      ;; KODOKU QUALITY CHECKS (Rule 2 & 3)
+      ;; QUALITY CHECKS (Rule 2 & 3)
       (when (> trades 20) ; Only apply with sufficient sample
         ;; Rule 3: PF Floor
         (when (< profit-factor 1.2)

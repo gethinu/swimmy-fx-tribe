@@ -176,17 +176,7 @@
 ;;;  V5.7 (Thorp): KELLY CRITERION
 ;;; ══════════════════════════════════════════════════════════════════
 
-(defun kelly-lot (win-rate avg-win avg-loss bankroll)
-  "Calculate optimal lot size using Kelly Criterion (half-Kelly for safety)"
-  (if (and (> avg-loss 0) (> win-rate 0) (< win-rate 1))
-      (let* ((payoff (/ avg-win avg-loss))
-             (edge (- (* win-rate (1+ payoff)) 1))
-             (kelly (if (> payoff 0) (/ edge payoff) 0))
-             (half-kelly (max 0 (* 0.5 kelly))))
-        (format t "[L] 📊 KELLY: WinRate=~,1f% Payoff=~,2f Edge=~,2f%% -> Kelly=~,2f%%~%"
-                (* 100 win-rate) payoff (* 100 edge) (* 100 kelly))
-        (max 0.01 (min 0.10 (* half-kelly bankroll))))
-      0.01))
+;;; Legacy kelly-lot removed in favor of swimmy.school:calculate-kelly-lot
 
 (defun get-strategy-kelly-lot (strat-name base-lot)
   "Get Kelly-adjusted lot for a specific strategy"
@@ -199,7 +189,7 @@
               (let* ((win-rate (/ wins (+ wins losses)))
                      (avg-win (if (> wins 0) (/ (max total-profit 0.001) wins) 0.001))
                      (avg-loss (if (> losses 0) (/ (max (- total-profit) 0.001) losses) 0.001)))
-                (kelly-lot win-rate avg-win avg-loss base-lot))
+                (calculate-kelly-lot win-rate avg-win avg-loss swimmy.globals:*current-equity*))
               base-lot))
         base-lot)))
 

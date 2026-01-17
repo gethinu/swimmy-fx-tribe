@@ -4,11 +4,14 @@
   :version "41.5.0"
   :author "Antigravity Team"
   :license "Proprietary"
-  :depends-on ("cl-ppcre" "pzmq" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads")
+  :depends-on ("cl-ppcre" "pzmq" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "postmodern")
   :serial t
   :components ((:file "src/lisp/packages")
+               (:file "src/lisp/packages-school")
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
+               (:file "src/lisp/core/execution-protocol") ; P7
+               (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
                (:file "src/lisp/core/risk-client")  ; V8.0: Risk Gateway client
                (:file "src/lisp/core/inference-client") ; V8.0: Inference client
@@ -48,6 +51,7 @@
                (:file "src/lisp/strategies/strategies-breakout")
                (:file "src/lisp/strategies/strategies-scalp")
                (:file "src/lisp/strategies/strategies")
+               (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
                
                ;; SCHOOL
                (:file "src/lisp/school/school-state")
@@ -60,6 +64,7 @@
                ;; REFACTORED DREAMER MIGRATION (Phase 11)
                (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
                (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+               (:file "src/lisp/school/school-monte-carlo") ; Phase 11: Monte Carlo
                (:file "src/lisp/school/school-stress")    ; P7: Deep Validation
                (:file "src/lisp/school/school-templates") ; Template Generation
                (:file "src/lisp/school/school-memory")
@@ -67,6 +72,9 @@
                (:file "src/lisp/school/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
                (:file "src/lisp/school/school-evolution") ; Genetic & LLM Generation (Dreamer)
 
+               (:file "src/lisp/school/school-adaptation") ; Adaptation Engine (Phase 4)
+               (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
+               (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
                (:file "src/lisp/school/school-learning")
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school/school-volatility")
@@ -81,6 +89,7 @@
                (:file "src/lisp/school/school-narrative") ; SRP Refactor
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-guards")
+               (:file "src/lisp/school/school-evaluation") ; SRP Refactor
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
@@ -99,13 +108,17 @@
                (:file "src/lisp/repl")
                
                ;; TICK HANDLER (loads last to access all packages)
+               (:file "src/lisp/core/scheduler")    ; SRP Refactor: Extracted from tick-handler
+               (:file "src/lisp/core/narrative")    ; SRP Refactor: Extracted from tick-handler
                (:file "src/lisp/core/executor")
+               (:file "src/lisp/core/message-dispatcher") ; SRP Refactor: New Module
                (:file "src/lisp/core/tick-handler")
                
                ;; TESTS
                (:file "src/lisp/tests")
 
                (:file "src/lisp/tests/school-split-tests")
+               (:file "src/lisp/tests/school-mc-tests")   ; Phase 11: MC Tests
                (:file "src/lisp/tests/school-mismatch-tests")
                (:file "src/lisp/tests/evolution-tests")
                (:file "src/lisp/tests/integration-tests")

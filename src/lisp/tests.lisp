@@ -253,10 +253,10 @@
                "Dream interval should be reasonable"))
 
 (deftest test-processing-step-no-maintenance
-  "Characterization: processing-step no longer calls maintenance"
+  "Characterization: process-msg no longer calls maintenance"
   ;; V8.4: Just verify the function exists and can be called
-  (let ((fn-sym (find-symbol "PROCESSING-STEP" :swimmy.main)))
-    (assert-true (and fn-sym (fboundp fn-sym)) "processing-step should be defined")))
+  (let ((fn-sym (find-symbol "PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn-sym (fboundp fn-sym)) "process-msg should be defined")))
 
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER

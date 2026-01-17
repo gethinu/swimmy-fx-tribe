@@ -141,8 +141,14 @@
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.9: Strategy Lineage Tracking (Pedigree)
-(defstruct strategy name indicators entry exit sl tp volume (sharpe 0.0) (category :trend) (indicator-type "sma") (pnl-history nil) (timeframe 1) (generation 0)
-            (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic ""))
+(defstruct strategy name indicators entry exit sl tp volume 
+            (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0)
+            (category :trend) (indicator-type "sma") (pnl-history nil) 
+            (timeframe 1) (generation 0)
+            (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic "")
+            (adapt-vector nil) (confidence-estimator "edge_ratio_v1")
+            ;; Lifecycle Management (Phase 6)
+            (consecutive-losses 0) (status :active) (status-reason "") (cooldown-until 0) (last-update 0))
 
 (defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic ""))
   `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation

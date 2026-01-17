@@ -51,11 +51,11 @@
 (defparameter *strategy-signal-history* (make-hash-table :test 'equal))
 (defparameter *strategy-correlation-cache* nil)
 
-(defun record-strategy-signal (strategy-name direction timestamp)
-  "Record strategy signal for correlation analysis"
+(defun record-strategy-signal (strategy-name direction timestamp &key (confidence 0.5) (reason "Signal"))
+  "Record strategy signal for correlation analysis (V4.1: Added Confidence/Reason)"
   (let* ((key strategy-name)
          (history (gethash key *strategy-signal-history* nil))
-         (signal (list timestamp direction)))
+         (signal (list timestamp direction confidence reason)))
     (push signal history)
     ;; Keep only last 100 signals
     (when (> (length history) 100)

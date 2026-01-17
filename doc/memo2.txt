@@ -249,3 +249,5 @@ Signal restored after 0s silence.
 [2026-01-16 22:44:31] EURUSD BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977559893-Gen1-mut-BB23-260116-224453-126 Sharpe:0.00 Outcome:PENDING Reason:
 [2026-01-16 22:48:00] GBPUSD BUY (TREND) Strategy:Wisdom-GBPUSD-Trend-3977560057-Gen1-mut-SMA45-260116-224737-739 Sharpe:0.00 Outcome:PENDING Reason:
 [2026-01-16 22:49:01] EURUSD BUY (TREND) Strategy:Wisdom-USDJPY-Reversal-3977560093-Gen1-mut-BB17-260116-224813-668 Sharpe:0.00 Outcome:PENDING Reason:
+[2026-01-16 23:35:06] EURUSD BUY (REVERSION) Strategy:Legend-RSI-Reversion-V1 Sharpe:0.12 Outcome:PENDING Reason:
+[2026-01-16 23:35:12] USDJPY BUY (SCALP) Strategy:SCALP-MTF-MACRO-H1 Sharpe:0.00 Outcome:PENDING Reason:

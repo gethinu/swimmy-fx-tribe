@@ -5,8 +5,13 @@
 (in-package :swimmy.school)
 
 ;;; ==========================================
-;;; MARKET STATE DEFINITIONS
+;;; MARKET STATE DEFINITIONS (V5.0 Granular)
 ;;; ==========================================
+(defparameter *market-regimes* 
+  '(:trend-early :trend-mature :trend-exhausted 
+    :range-expansion :range-compression 
+    :volatile-spike :illiquid :unknown))
+
 (defparameter *current-regime* :unknown)
 (defparameter *volatility-regime* :normal)  ; :low, :normal, :high
 
@@ -18,9 +23,9 @@
 
 (defstruct regime-snapshot
   timestamp
-  regime                ; :trending, :ranging
+  regime                ; Granular regime
   volatility            ; :high, :normal, :low
-  trend-strength        ; 0.0 to 1.0
+  trend-strength        ; 0.0 to 1.0 (ADX-like)
   volatility-value      ; actual number
   sma-spread            ; SMA20 - SMA50 as % of price
   momentum              ; price change momentum
@@ -40,35 +45,124 @@
            (sq-diffs (mapcar (lambda (r) (expt (- r mean) 2)) returns)))
       (sqrt (/ (reduce #'+ sq-diffs) (length sq-diffs))))))
 
+(defun calculate-slope (data n)
+  "Calculate linear regression slope of last n points"
+  (when (>= (length data) n)
+    (let* ((y (subseq data 0 n))
+           (x (loop for i from 0 below n collect i))
+           (n-val (float n))
+           (sum-x (reduce #'+ x))
+           (sum-y (reduce #'+ y))
+           (sum-xy (loop for i from 0 below n sum (* (nth i x) (nth i y))))
+           (sum-xx (loop for i from 0 below n sum (* (nth i x) (nth i x)))))
+      ;; Slope formula: (N*sum(xy) - sum(x)sum(y)) / (N*sum(xx) - sum(x)^2)
+      ;; Note: X is 0,1,2... so recent is 0. Slope logic inverted (0 is recent).
+      ;; Standard slope: we want change over time.
+      ;; Let's simplify: just (first - last) / n for now as approximation
+      (/ (- (first y) (car (last y))) n-val))))
+
+;;; ==========================================
+;;; SOFTMAX REGIME DETECTION (Phase 12)
+;;; ==========================================
+
+(defparameter *regime-scores* (make-hash-table :test 'eq) "Raw probability scores for each regime")
+
+(defun softmax-normalize (scores)
+  "Normalize a list of (key . score) using softmax"
+  (let* ((values (mapcar #'cdr scores))
+         (max-val (apply #'max values))
+         (exp-values (mapcar (lambda (x) (exp (- x max-val))) values)) ; Stabilized softmax
+         (sum-exp (reduce #'+ exp-values)))
+    (loop for (key . val) in scores
+          for exp-val in exp-values
+          collect (cons key (/ exp-val sum-exp)))))
+
+(defun calculate-regime-scores (spread-abs-pct vol vol-change momentum-10)
+  "Calculate raw scores for each regime based on features"
+  (let ((scores nil))
+    
+    ;; 1. Trend Early Score (Spread expanding, Momentum aligning)
+    (push (cons :trend-early 
+                (+ (* (if (and (> spread-abs-pct 0.0005) (< spread-abs-pct 0.002)) 1.0 0.0) 2.0)
+                   (* (min 1.0 (abs (* momentum-10 1000))) 1.0)))
+          scores)
+
+    ;; 2. Trend Mature Score (Spread strong and stable)
+    (push (cons :trend-mature 
+                (+ (* (if (> spread-abs-pct 0.002) 1.0 0.0) 2.0)
+                   (* (if (> vol 0.002) 1.0 0.0) 0.5)))
+          scores)
+
+    ;; 3. Trend Exhausted Score (Spread huge but Divergence or Climax Vol)
+    (push (cons :trend-exhausted 
+                (+ (* (if (> spread-abs-pct 0.004) 1.0 0.0) 1.5)
+                   (* (if (> vol 0.008) 1.0 0.0) 2.0)))
+          scores)
+
+    ;; 4. Range Expansion Score (Vol Up, No Spread)
+    (push (cons :range-expansion 
+                (+ (* (if (< spread-abs-pct 0.001) 1.0 0.0) 1.0)
+                   (* (min 2.0 (* vol-change 5.0)) 1.0))) ; Vol increasing
+          scores)
+
+    ;; 5. Range Compression Score (Vol Dead, No Spread)
+    (push (cons :range-compression 
+                (+ (* (if (< spread-abs-pct 0.0005) 1.0 0.0) 1.5)
+                   (* (if (< vol 0.001) 1.0 0.0) 1.5)))
+          scores)
+
+    ;; 6. Volatile Spike Score (Extreme Vol)
+    (push (cons :volatile-spike 
+                (* (max 0.0 (- (* vol 1000) 5.0)) 1.0)) ; Vol > 0.5% starts scoring
+          scores)
+
+    ;; 7. Illiquid Score (Tiny Vol)
+    (push (cons :illiquid 
+                (if (< vol 0.0005) 5.0 0.0))
+          scores)
+
+    scores))
+
 (defun detect-market-regime ()
-  (when (and *candle-history* (> (length *candle-history*) 50))
-    (let* ((closes (mapcar #'candle-close (subseq *candle-history* 0 50)))
-           (sma20 (/ (reduce #'+ (subseq closes 0 20)) 20))
-           (sma50 (/ (reduce #'+ closes) 50))
+  (when (and *candle-history* (> (length *candle-history*) 60))
+    (let* ((closes (mapcar #'candle-close (subseq *candle-history* 0 60)))
            (close (first closes))
-           (vol (or (calculate-price-volatility closes 20) 0.001)))
-      ;; Trend detection
-      (setf *current-regime*
-            (cond
-              ((> (abs (- sma20 sma50)) (* close 0.002)) :trending)
-              (t :ranging)))
-      ;; Volatility detection
+           (sma20 (/ (reduce #'+ (subseq closes 0 20)) 20))
+           (sma50 (/ (reduce #'+ (subseq closes 0 50)) 50))
+           
+           ;; Features
+           (spread-pct (/ (- sma20 sma50) close))
+           (spread-abs-pct (abs spread-pct))
+           (vol (or (calculate-price-volatility closes 20) 0.001))
+           (vol-prev (or (calculate-price-volatility (subseq closes 10 30) 20) 0.001))
+           (vol-change (/ (- vol vol-prev) vol-prev))
+           (momentum-10 (/ (- close (nth 10 closes)) (nth 10 closes))))
+
+      ;; 1. Determine Volatility Regime
       (setf *volatility-regime*
             (cond
-              ((> vol 0.005) :high)    ; > 0.5% per bar = high vol
-              ((< vol 0.001) :low)     ; < 0.1% per bar = low vol
+              ((> vol 0.005) :high)
+              ((< vol 0.001) :low)
               (t :normal)))
-      ;; V3.0: Enhanced volatility shift detection
-      (handler-case (detect-volatility-shift)
-        (error (e) (format t "[L] Vol shift error: ~a~%" e)))
-      ;; V3.0: Predict next regime
-      (handler-case
-          (let ((next-regime (predict-next-regime)))
-            (when next-regime
-              (format t "[L] 🔮 Next regime prediction: ~a~%" next-regime)))
-        (error (e) (format t "[L] Regime prediction error: ~a~%" e)))
-      (format t "[L] 📊 Regime: ~a | Volatility: ~a (~,3f%)~%" 
-              *current-regime* *volatility-regime* (* vol 100))
+      
+      ;; 2. Calculate Softmax Regime Probability
+      (let* ((raw-scores (calculate-regime-scores spread-abs-pct vol vol-change momentum-10))
+             (probs (softmax-normalize raw-scores)))
+        
+        ;; Update Global Score Map
+        (clrhash *regime-scores*)
+        (loop for (key . val) in probs do
+          (setf (gethash key *regime-scores*) val))
+        
+        ;; Set Current Regime to Max Probability (Backwards Compatibility)
+        (setf *current-regime* (car (first (sort (copy-list probs) #'> :key #'cdr))))
+        
+        ;; Log Top 3
+        (let ((sorted (sort (copy-list probs) #'> :key #'cdr)))
+          (format t "[L] 📊 Market: ~a (Conf: ~,2f) | 2nd: ~a (~,2f)~%" 
+                  (car (nth 0 sorted)) (cdr (nth 0 sorted))
+                  (car (nth 1 sorted)) (cdr (nth 1 sorted)))))
+      
       *current-regime*)))
 
 ;;; ==========================================

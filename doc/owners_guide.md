@@ -1,6 +1,6 @@
 # 🐟 Swimmy Ver 18 オーナーズガイド
 
-**最終版:** 2026-01-14 (V44.2 - Atomic Allocation Era)
+**最終版:** 2026-01-17 (V45.0 - Full Spec Era)
 **リーダー判断:** Elon Musk (Expert Panel Verified)
 
 ---
@@ -26,6 +26,24 @@ make logs
 
 ---
 
+## 🌊 Full Spec Implementation (V45.0 - Memo3 Complete)
+
+2026-01-17、システムは「市場適応型トレーディングOS」としての全機能を実装しました。
+
+### 1. 7つの市場状態 (Softmax Regime)
+単純な「トレンド/レンジ」ではなく、**確率的な市場認識**を行います。
+`detect-market-regime` は `(TrendMature: 0.8, RangeExpansion: 0.2)` のようなベクトルを出力を返します。
+
+### 2. ケリー基準による資金管理 (Kelly Criterion)
+ロット数は固定ではなく、戦略の「優位性（Edge）」に基づいて動的に計算されます。
+- `f* = p - q/b` （勝率とリスクリワード比から算出）
+- **Safety**: ハーフケリーを採用し、最大リスクを口座資金の10%に制限。
+
+### 3. ベイズ適応 (Bayesian Adaptation)
+戦略の信頼度は、ベイズ統計（Beta分布）を用いて更新されます。
+少ないトレード数でも統計的に正しい信頼区間を推定し、"使えない戦略"を早期に見切ります。
+
+---
 ## 🔒 アトミック予約システム (Atomic Allocation)
 
 V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました。

@@ -1,0 +1,73 @@
+;;; execution-protocol.lisp - Strict Execution Protocol V2
+;;; Phase 7 Implementation (memo3.txt Section 7)
+;;;
+;;; Responsibility: Define the schema for messages sent to the Execution Agent (MQL5/EA)
+
+(in-package :swimmy.core)
+
+(defparameter +protocol-version+ "2.0")
+
+;; Message Types (Strict Dispatch)
+(defparameter +MSG-HEARTBEAT+ "HEARTBEAT")
+(defparameter +MSG-ORDER-OPEN+ "ORDER_OPEN")
+(defparameter +MSG-ORDER-FILL+ "ORDER_FILL")
+(defparameter +MSG-ORDER-ACK+ "ORDER_ACK")  ;; Incoming
+(defparameter +MSG-TRADE-CLOSED+ "TRADE_CLOSED") ;; Incoming
+(defparameter +MSG-ACCOUNT-INFO+ "ACCOUNT_INFO") ;; Incoming
+(defparameter +MSG-HISTORY+ "HISTORY") ;; Incoming
+(defparameter +MSG-TICK+ "TICK") ;; Incoming
+
+(defun generate-uuid ()
+  "Generate a pseudo-UUID v4 string."
+  ;; Lisp implementation of simple UUID generation
+  (format nil "~(~x-~x-4~3,'0x-~x-~x~)"
+          (random 4294967296)
+          (random 65536)
+          (random 4096)
+          (logior #x8000 (random #x4000))
+          (random 281474976710656)))
+
+(defun make-protocol-message (type payload)
+  "Construct a standard protocol message wrapper."
+  (let ((msg (jsown:new-js
+               ("type" type)
+               ("id" (generate-uuid))
+               ("timestamp" (local-time:format-timestring nil (local-time:now) :format '(:year "-" (:month 2) "-" (:day 2) "T" (:hour 2) ":" (:min 2) ":" (:sec 2) "Z")))
+               ("version" +protocol-version+))))
+    ;; Merge payload into message
+    (dolist (key (jsown:keywords payload))
+      (setf (jsown:val msg key) (jsown:val payload key)))
+    msg))
+
+(defun make-order-message (strategy-id symbol side lot price sl tp &key (magic 0) (comment ""))
+  "Construct an ORDER_OPEN message (Protocol V2).
+   
+   Args:
+     strategy-id: String identifier of the strategy (e.g. 'Trend-Follow-v1')
+     symbol: Instrument symbol (e.g. 'USDJPY')
+     side: :BUY or :SELL (or string)
+     lot: Volume
+     price: Target price (0 for market)
+     sl: Stop Loss
+     tp: Take Profit
+     magic: Magic number
+     comment: Order comment"
+  (let ((side-str (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
+    (make-protocol-message +MSG-ORDER-OPEN+
+      (jsown:new-js
+        ("strategy_id" strategy-id)
+        ("instrument" symbol)
+        ("side" side-str)
+        ("lot" (read-from-string (format nil "~,2f" lot))) ;; Ensure 2 decimal formatting
+        ("price" (float price))
+        ("sl" (float sl))
+        ("tp" (float tp))
+        ("magic" (if (numberp magic) magic (parse-integer (format nil "~a" magic) :junk-allowed t)))
+        ("comment" comment)))))
+
+(defun make-heartbeat-message (&optional (status "OK"))
+  "Construct a HEARTBEAT message."
+  (make-protocol-message +MSG-HEARTBEAT+
+    (jsown:new-js
+      ("source" "BRAIN")
+      ("status" status))))

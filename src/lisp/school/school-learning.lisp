@@ -389,7 +389,16 @@
       (let ((strat (or (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)
                        (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
         (when strat
-          (update-strategy-metrics strat pnl))))
+          (update-strategy-metrics strat pnl)
+          
+          ;; Phase 4: Adaptation Engine (memo3 Sec 9)
+          ;; Update adaptation weights (EWMA) based on context
+            (update-adaptation-weights strat ctx pnl))
+          
+          ;; Phase 6: Lifecycle Management (memo3 Sec 10)
+          ;; Check for Benching or Soft Kill
+          (when (fboundp 'manage-strategy-lifecycle)
+            (manage-strategy-lifecycle strat (if won-p :win :loss) pnl))))
 
     ;; Homework integration hooks
     (handler-case

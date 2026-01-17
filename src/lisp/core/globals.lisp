@@ -80,6 +80,7 @@
 (defparameter *subscriber* nil)
 (defparameter *cmd-publisher* nil)
 (defparameter *backtest-requester* nil)
+(defvar *pending-orders* (make-hash-table :test 'equal) "Phase 7: Map of UUID -> (timestamp retry-count message)")
 
 ;;; MISSING GLOBALS (Package Migration)
 (defparameter *current-leader* nil)

@@ -49,7 +49,7 @@
     (when (> (- now *last-heartbeat-sent*) 30)
       (pulse-check) ; Added Pulse Check here
       (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
-        (pzmq:send *cmd-publisher* (jsown:to-json (jsown:new-js ("action" "HEARTBEAT")))))
+        (pzmq:send *cmd-publisher* (jsown:to-json (make-heartbeat-message))))
       ;; V43.0: Position Status Report every 5 minutes (10 heartbeats)
       (when (and (= (mod (floor now 30) 10) 0)
                  (boundp 'swimmy.school::*warrior-allocation*)
@@ -63,7 +63,37 @@
          (format nil "⚠️ ACCOUNT_INFO Timeout - MT5同期が~d秒間途絶" (- now *last-account-info-time*))
          :color 16776960) ; Yellow
         (setf *account-info-alert-sent* t))
+      
+      ;; Phase 7: Retry Logic
+      (check-pending-orders)
+      
       (setf *last-heartbeat-sent* now))))
+
+;; Phase 7: Retry Logic Implementation
+(defun check-pending-orders ()
+  "Check pending orders for timeout and retry."
+  (when (and (boundp 'swimmy.globals:*pending-orders*)
+             (> (hash-table-count swimmy.globals:*pending-orders*) 0))
+    (let ((now (get-universal-time))
+          (to-remove nil))
+      (maphash (lambda (id data)
+                 (destructuring-bind (ts retries msg-obj) data
+                   (when (> (- now ts) 5) ;; 5 seconds timeout
+                     (if (< retries 3)
+                         (progn
+                           ;; Retry
+                           (format t "[L] 🔄 Resending Order ~a (Retry ~d)~%" id (1+ retries))
+                           (setf (gethash id swimmy.globals:*pending-orders*) 
+                                 (list now (1+ retries) msg-obj))
+                           (pzmq:send *cmd-publisher* (jsown:to-json msg-obj)))
+                         (progn
+                           ;; Fail
+                           (format t "[L] ❌ Order ~a TIMED OUT after 3 retries~%" id)
+                           (notify-discord-alert (format nil "❌ Order Timed Out: ~a" id) :color 15158332)
+                           (push id to-remove))))))
+               swimmy.globals:*pending-orders*)
+      (dolist (id to-remove)
+        (remhash id swimmy.globals:*pending-orders*)))))
 
 ;;; --------------------------------------
 ;;; TRADE PROCESSING

@@ -1,0 +1,562 @@
+了解しました。以下に **完成形（市場適応型トレーディングOS） の「全設計仕様」** を提示します。実装は antiGRAVITY 側で行う前提で、エンジニアがそのまま実装・テストできるレベルの設計書にしています。
+ドキュメントはモジュール毎に分かれており、API 定義、データフォーマット、アルゴリズム擬似コード、DB スキーマ、監視・運用ルール、受け渡しアーティファクト一覧まで含みます。
+
+# 目次
+
+1. 要件サマリ（目的・非機能要件）
+2. 高レベル・アーキテクチャ
+3. コンポーネント仕様（各インターフェース）
+4. MarketState（状態空間）定義と推定器
+5. Strategy Pool と Strategy インターフェース仕様
+6. Allocation / Portfolio Manager（配分）アルゴリズム
+7. Execution（MQL5）API / メッセージ仕様
+8. Guardian（Rust）の役割とチェックリスト
+9. 学習・適応（Adaptation Map）設計と更新式
+10. Kill / Cooldown ポリシー（生死管理）
+11. バックテスト / フォワードテスト仕様（再現性ルール）
+12. ログ・DB スキーマ（SQL 定義）と監査トレース
+13. 評価指標（算出式）と受入基準（Acceptance Criteria）
+14. テストプラン（単体・統合・回帰・負荷）
+15. 運用手順（Runbook）と障害対応
+16. セキュリティ・権限設計
+17. 引き渡しアーティファクト（antiGRAVITY へ渡すもの）
+18. 最終チェックリスト（リリース承認条件）
+
+---
+
+# 1. 要件サマリ
+
+目的：
+
+* 「システム自身がなぜその戦略を採用したか説明できる」「市場に適応し続ける」トレーディングOSを構築する。
+  非機能要件：
+* ロバストな再現性（tick-replay 対応）
+* 明確な監査ログ（全意思決定トレース）
+* フェイルセーフ（Dead-Man, Circuit Breaker）
+* 拡張性（戦略の追加／状態空間の拡張が容易）
+* 実運用に耐えるパフォーマンス（注文遅延 < 100ms の目安）
+
+制約：MQL5 がブローカー発注を行う。Lisp が意思決定（Brain）、Rust が監査と重計算を担当。
+
+---
+
+# 2. 高レベル・アーキテクチャ（テキスト図）
+
+```
+Market Data (Tick/Bar) --> Data Ingest / Preproc --> State Estimator (Lisp) --> MarketState
+                                                             │
+                                       Strategy Pool (Lisp) <─┴─ Adaptation Map (DB)
+                                                             │
+                                                   Allocation Manager (Lisp)
+                                                             │
+                                   ┌───────────── Risk Check (Rust) ─────────────┐
+                                   │                                             │
+                               MQL5 Execution (Order Engine)  <── Heartbeat ────┘
+                                   │
+                               Broker / Market
+                                   │
+                               Trade Confirmations --> Execution Logs --> DB
+```
+
+---
+
+# 3. コンポーネント仕様（要点）
+
+* Data Ingest : tick & bar collector, missing-data detector, OHLC aggregator（M5, M15, H1）
+* State Estimator (Lisp) : MarketState ラベリング、状態スコアベクトル出力
+* Strategy Pool (Lisp) : 各戦略はメタデータ + `score(state_vector)` メソッドを持つ
+* Allocation Manager (Lisp) : 戦略スコア合成 → ポジション候補選定 → RM（Rust）に渡す
+* Guardian (Rust) : 同期的にリスク・整合性チェック、拒否/修正応答
+* Execution (MQL5) : 発注、SL/TP サーバー側登録、ポジション管理、DeadMan 機能
+* DB / Logging : 時刻同期された構造化ログ（JSON）、監査用永続化
+* Backtest / Replay : tick-level シミュレーション、slippage & latency model
+
+---
+
+# 4. MarketState（状態空間）定義と推定器
+
+## 4.1 State 列挙（最低 7 状態）
+
+```
+MarketRegime:
+  - TrendEarly
+  - TrendMature
+  - TrendExhausted
+  - RangeExpansion
+  - RangeCompression
+  - VolatileSpike
+  - Illiquid
+
+VolatilityState:
+  - Spike
+  - High
+  - Normal
+  - Low
+
+TimeBucket:
+  - TokyoOpen
+  - LondonOpen
+  - NYOpen
+  - QuietHours
+```
+
+## 4.2 出力フォーマット（State Vector）
+
+* `state_vector`: 正規化された浮動小数点ベクトル（長さ = N_regimes + N_vol + N_time）
+  例: `{TrendEarly:0.0,TrendMature:1.0,...,Volatility:0.2,TimeBucket:0.0}`
+
+## 4.3 推定器アルゴリズム（擬似）
+
+1. Feature 作成（windowed）
+
+   * SMA20, SMA50, SMA200 差分、SMA スプレッド、ATR(14), VIX proxy (ボラティリティ指数)、volume surge、tick-rate変化
+2. Rule-based 判定（初期フェーズ）
+
+   * TrendEarly: SMA20 > SMA50 且つ SMA20 の傾きが上向きで、上昇継続の傾向（傾きのEWMA > threshold）
+   * TrendExhausted: 直近の一方向伸長後に短期逆方向ヒゲが増える etc.
+3. スコアリング: 各ルールは 0-1 スコアを返し、softmax 正規化して state_vector を生成
+4. Optional: ML model (LightGBM) を plug-in 可能にするが、最初は deterministic rules を推奨（再現性のため）
+
+パラメータは設定ファイル（YAML）で管理。まずは rule-based でスタート。
+
+---
+
+# 5. Strategy Pool と Strategy インターフェース
+
+## 5.1 Strategy メタデータ（必須項目）
+
+```yaml
+strategy_id: "Trend-Pullback-01"
+name: "Trend Pullback"
+instrument_list: ["USDJPY","EURUSD"]
+timeframes: ["M15"]
+min_trades_for_eval: 30
+base_lot: 0.01
+max_open_positions: 2
+adapt_vector:
+  TrendEarly: 0.8
+  TrendMature: 0.2
+  TrendExhausted: -0.6
+  RangeExpansion: 0.1
+  RangeCompression: -0.9
+confidence_estimator: "edge_ratio_v1"
+```
+
+## 5.2 Strategy インターフェース（pseudo）
+
+```lisp
+(defmethod on_bar (strategy bar)
+  ;; return signal object or nil
+  ;; signal = {side: "BUY", price: 139.10, confidence: 0.72, reason: "pullback to SMA20"}
+)
+(defmethod on_tick (strategy tick) ...)
+(defmethod evaluate (strategy state_vector) ;; returns float score)
+(defmethod backtest_settings (strategy) ;; returns TP/SL/default_lot)
+```
+
+## 5.3 期待される出力
+
+* Signal (side, price, confidence, suggested_lot, TP, SL, expected_duration, strategy_id)
+
+---
+
+# 6. Allocation / Portfolio Manager（配分）アルゴリズム
+
+## 6.1 合成スコア
+
+* 各戦略から `strategy_score = dot(adapt_vector, state_vector) * confidence`
+* ただし、`confidence` は戦略内部の短期推定（例: recent edge EWMA）
+
+## 6.2 ポジションサイズ（例式）
+
+```
+edge_estimate = expected_return_per_trade (戦略推定)
+vol = ATR(14) normalized
+kelly_fraction = max(0, edge_estimate / (vol^2))  ;; simplistic
+position_lot = base_lot * clamp(kelly_fraction * risk_scale, min=0.1, max=2.0)
+```
+
+* constraints:
+
+  * max_simultaneous_positions_global (config)
+  * max_per_instrument_exposure_pct_of_account (config)
+  * max_drawdown_allowed_from_peak_pct (guardian が拒否)
+
+## 6.3 優先ルール
+
+1. Sort candidate signals by `strategy_score`
+2. For each, verify constraints (per-instrument, per-strategy, global)
+3. Propose order to Guardian (Rust) for final check
+4. On PASS, serialize order and send to MQL5
+
+---
+
+# 7. Execution（MQL5）API / メッセージ仕様
+
+## 7.1 通信プロトコル
+
+* 推奨: ZeroMQ (REQ/REP for control, PUB/SUB for market feed) + JSON payload
+* Heartbeat: 毎 1s 送信（Lisp -> MQL5 / MQL5 -> Lisp）
+
+## 7.2 JSON メッセージ例
+
+**ORDER_OPEN**
+
+```json
+{
+  "type":"ORDER_OPEN",
+  "id":"uuid-1234",
+  "strategy_id":"Trend-Pullback-01",
+  "instrument":"USDJPY",
+  "side":"BUY",
+  "lot":0.1,
+  "price":139.10,
+  "sl":138.95,
+  "tp":139.50,
+  "timestamp":"2026-01-16T12:00:00Z"
+}
+```
+
+**ORDER_ACK**
+
+```json
+{"type":"ORDER_ACK","id":"uuid-1234","status":"RECEIVED","server_time":"..."}
+```
+
+**ORDER_FILL**
+
+```json
+{"type":"ORDER_FILL","id":"uuid-1234","fill_price":139.12,"filled_lot":0.1,"timestamp":"..."}
+```
+
+**HEARTBEAT**
+
+```json
+{"type":"HEARTBEAT","source":"LISP","ts":"...","status":"OK"}
+```
+
+## 7.3 MQL5 側要件
+
+* マーケット注文送信と SL/TP の server-side registration
+* MagicNumber 管理（strategy_id -> magic)
+* DeadMan: heartbeat timeout -> 全平常ポジション即時決済
+* 履歴確認 API: `GET /orders/{id}` equivalent
+
+---
+
+# 8. Guardian（Rust）の役割とチェックリスト
+
+## 8.1 機能
+
+* 受信した order proposal に対して同時にチェックを行い `PASS/REJECT/ADJUST` を返す
+* チェック項目（fast path）
+
+  * exposure limits
+  * worst-case-loss estimate（SL を仮定）
+  * liquidity/lot size validity
+  * per-instrument max positions
+  * daily loss limit
+  * order rate limits
+* 監査ログ（immutable）を DB へ書く
+
+## 8.2 インターフェース（pseudo）
+
+```rust
+fn validate(proposal: OrderProposal) -> ValidationResult {
+  // return PASS | REJECT(reason) | ADJUST({lot,sl,tp})
+}
+```
+
+---
+
+# 9. 学習・適応（Adaptation Map）設計と更新式
+
+## 9.1 データ構造
+
+* `adaptation_table(strategy_id, state_signature) -> performance_stats`
+
+  * fields: trades, wins, losses, avg_return, avg_duration, ewma_edge
+
+## 9.2 更新ロジック（オンライン）
+
+* 新しいトレードがクローズされた時に以下更新：
+
+```
+ewma_edge_{t+1} = alpha * realized_return + (1-alpha) * ewma_edge_t
+alpha = 2/(N+1) where N is effective window (configurable)
+```
+
+* ただし、更新は `min_trades_for_update` を満たしている場合のみ実行
+
+## 9.3 ベイズ的更新（代替）
+
+* Beta分布で勝率更新、Gaussian for return estimate（詳細は実装ドキュメントにて）
+
+## 9.4 採用係数の計算（例）
+
+```
+adapt_score = zscore(ewma_edge) * sqrt(trades_count) / (1 + sqrt(volatility_state_index))
+```
+
+→ adapt_vector の要素値を更新する。
+
+---
+
+# 10. Kill / Cooldown ポリシー（生死管理）
+
+## 10.1 用語
+
+* Benching: 一時停止（cooldown）
+* Kill: 強い無効化（ただし永久 Kill は禁止。代わりに長期冷却）
+
+## 10.2 ルール（デフォルト）
+
+* immediate_bench: same-strategy で `N_loss_in_a_row >= bench_threshold`（例: 5） -> bench for `cooldown_blocks`（例: 1440 bars of M15? 設定で指定）
+* kill_candidate: strategy が `EWMA_edge < -edge_kill_threshold` & `trades_in_last_T < min_trades` -> move to long_cooldown
+* unbench: cooldown 終了時に再評価（再ラベルされた state による小規模試験トレード or paper-trade）
+
+## 10.3 監査
+
+* 全 bench/kill イベントは immutable log に記録（理由・基準・当該 state snapshot）
+
+---
+
+# 11. バックテスト / フォワードテスト仕様
+
+## 11.1 再現性ルール
+
+* 使用 tick-level データ（秒以下のタイムスタンプ）
+* スプレッド、スリッページ、遅延(ランダム/分布) モデルを入れる
+* ブローカーの約定ルール（partial-fill）を模倣
+
+## 11.2 検証手法
+
+* Walk-forward 最低 3 fold（rolling window）
+* Out-of-sample 最低期間を設定（例: 20% だが config 管理）
+* Monte-Carlo マルチシミュレーション（bootstrap from trade returns）
+
+## 11.3 受入基準（backtest）
+
+* Sharpe_annualized >= target_sharpe（config） in OOS folds
+* MaxDrawdown <= limit
+* No single instrument concentration > X%
+
+---
+
+# 12. ログ・DB スキーマ（主要テーブル）
+
+## 12.1 ticks (例: PostgreSQL)
+
+```sql
+CREATE TABLE ticks (
+  id SERIAL PRIMARY KEY,
+  instrument TEXT,
+  ts TIMESTAMP WITH TIME ZONE,
+  bid NUMERIC,
+  ask NUMERIC,
+  tick_volume INT,
+  source TEXT
+);
+```
+
+## 12.2 bars
+
+```sql
+CREATE TABLE bars (
+  id SERIAL PRIMARY KEY,
+  instrument TEXT,
+  timeframe TEXT,
+  ts TIMESTAMP WITH TIME ZONE,
+  open NUMERIC,
+  high NUMERIC,
+  low NUMERIC,
+  close NUMERIC,
+  volume NUMERIC
+);
+```
+
+## 12.3 signals
+
+```sql
+CREATE TABLE signals (
+  id UUID PRIMARY KEY,
+  strategy_id TEXT,
+  instrument TEXT,
+  timeframe TEXT,
+  side TEXT,
+  price NUMERIC,
+  confidence NUMERIC,
+  suggested_lot NUMERIC,
+  ts TIMESTAMP WITH TIME ZONE,
+  state_vector JSONB
+);
+```
+
+## 12.4 orders / fills / trades (簡略)
+
+```sql
+CREATE TABLE orders (...);
+CREATE TABLE fills (...);
+CREATE TABLE trades (...);
+```
+
+（詳細は handoff ドキュメントに含める）
+
+## 12.5 audit_events（ bench/kill/guardian decisions など）
+
+```sql
+CREATE TABLE audit_events (
+  id UUID PRIMARY KEY,
+  event_type TEXT,
+  payload JSONB,
+  ts TIMESTAMP WITH TIME ZONE
+);
+```
+
+ログは全て gz 圧縮で S3 儲備。監査用は変更不可（WORM）。
+
+---
+
+# 13. 評価指標（算出式）と受入基準
+
+主要指標（算出式は明示）：
+
+* Profit Factor = GrossProfit / GrossLoss
+* Sharpe (annualized) = (mean_return_daily / std_daily) * sqrt(252)
+* Sortino = mean_return_daily / downside_std_daily * sqrt(252)
+* Maximum Drawdown = max peak-to-trough %
+* Expectancy = (W * AvgWin) - ((1-W) * AvgLoss)
+* Trade-level metrics: avg_duration, median_return, win_streak, loss_streak
+
+受入基準は config 値として外出し。CI にて回帰違反で fail。
+
+---
+
+# 14. テストプラン（必須ケース）
+
+## 単体テスト
+
+* StateEstimator: 各ルールで期待スコアが返るか（固定シナリオ）
+* Strategy: 信号の一貫性、confidence の範囲
+* Guardian: 各 edge-case の拒否/許可
+
+## 統合テスト
+
+* Lisp -> Rust -> MQL5 のフルフローをローカルでシミュレーション
+* Heartbeat timeout による DeadMan 作動確認
+
+## 回帰テスト
+
+* 既知の edge-case データでの再現チェック（履歴100ケース）
+
+## 負荷テスト
+
+* tick ingest が 10k/s を想定するなら 2x を想定した負荷で監視
+
+---
+
+# 15. 運用手順（Runbook：抜粋）
+
+## 起動
+
+1. データコレクタ起動
+2. DB 接続確認
+3. Lisp Brain 起動（state estimator  warm-up）
+4. Rust Guardian 起動
+5. MQL5 EA 接続確認（heartbeat）
+6. Production モードで `enable_execution=true`
+
+## 停止（緊急）
+
+* `EMERGENCY_CLOSE_ALL` コマンドを発行（MQL5 が受信し、全ポジションを市場価格で決済）
+* その後ログを freeze して分析に回す
+
+## 障害対応（例）
+
+* Heartbeat 消失：30秒で execution halt, 60秒で Emergency close
+* Guardian 経由の拒否連続：運用者アラート（PagerDuty）
+
+---
+
+# 16. セキュリティ・権限設計
+
+* API は TLS + mTLS（ローカルでも相互認証）
+* キー管理: Secrets 管理を vault で（executables にはキー不要; MQL5 はブローカー認証）
+* ログ: 個人情報は記録しない（GDPR対応）
+
+---
+
+# 17. 引き渡しアーティファクト（antiGRAVITY へ渡すもの）
+
+1. この設計書（Markdown + PDF）
+2. API spec (JSON Schema) for Order messages and Heartbeat
+3. DB schema SQL files (create_tables.sql)
+4. Config templates (YAML) — thresholds, limits, envs
+5. Sample datasets: tick sample, bar sample, sample signals (CSV/Parquet)
+6. Unit-test stubs & Integration-test harness (pytest + MQL5 mock if possible)
+7. Backtest runner skeleton (script + config)
+8. Runbook (plain text)
+9. Acceptance checklist (see #18)
+
+---
+
+# 18. 最終チェックリスト（リリース承認条件）
+
+* [ ] Tick→Bar の欠損検出 & 補正ロジックが通っている
+* [ ] State Estimator が deterministic モードでラベルを返す（テストデータで期待値と一致）
+* [ ] Strategy Pool の adapt_vector が DB に格納・更新される
+* [ ] Guardian の validation ロジック通過率が期待通りに稼働
+* [ ] MQL5 による実注文（テスト口座）で 3 連続正常フローの成功（ORDER_OPEN→FILL→TRADE）
+* [ ] DeadMan・Circuit breakers 動作確認（シミュレーション）
+* [ ] Backtest による walk-forward の結果が Acceptance Criteria を満たす
+* [ ] 全監査ログが永続化（immutable）される
+
+---
+
+# 付録：重要コードスニペット（擬似コード）
+
+## MarketState scoring（擬似 LISP）
+
+```lisp
+(defun compute-state-vector (bars)
+  (let ((sma20 (sma bars 20)) (sma50 (sma bars 50)) (atr (atr bars 14)))
+    (let ((trend-score (clamp (/ (- sma20 sma50) sma50) -1 1))
+          (vol-score (if (> atr (* avg-atrratio 1.5)) 1 0)))
+      (normalize-vector
+        `((TrendEarly . ,(max 0 trend-score))
+          (TrendMature . ,(if (and (> trend-score 0.1) (< (sma-slope sma20) 0.05)) 1 0))
+          ...)))))
+```
+
+## Allocation decision (擬似)
+
+```pseudo
+candidates = []
+for s in strategies:
+  score = dot(s.adapt_vector, state_vector) * s.confidence
+  if score > strategy_min_score:
+    candidates.append((s,score))
+sort candidates by score desc
+for c in candidates:
+  proposed_lot = compute_lot(c.strategy)
+  result = guardian.validate(proposal)
+  if result == PASS:
+     send_order_to_mql5(proposal)
+```
+
+---
+
+# 最後に（引き渡しと次のアクション）
+
+実装は antiGRAVITY に任せるとのことですので、**まず渡すべき最小セット**を以下にまとめます（必須）：
+
+* 設計書（このドキュメント）
+* API spec (Order/Heartbeat JSON Schema)
+* DB schema SQL
+* sample tick & bar data（直近6か月分のサンプル）
+* config templates (threshold 値入り)
+* acceptance checklist
+
+antiGRAVITY がこれらを受け取り次第、実装フェーズに入れます。必要であれば「開発者向け Q&A ドキュメント」もこちらで追加設計します（要望があれば作成）。
+
+以上が完成形前提の全設計です。次にどのフォーマットでファイル（Markdown/PDF/SQL/YAML/サンプルCSV）を出力しましょうか。

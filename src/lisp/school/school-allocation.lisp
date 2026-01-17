@@ -22,6 +22,46 @@
 (defparameter *pending-ttl* 60) ; Seconds to wait for MT5 confirmation before giving up
 
 ;;; ==========================================
+;;; KELLY CRITERION LOGIC (Phase 12)
+;;; ==========================================
+
+(defparameter *base-lot* 0.01 "Default base lot if Kelly fails")
+(defparameter *max-kelly-fraction* 0.10 "Safety cap: max 10% risk of equity per trade")
+(defparameter *max-simultaneous* 3)
+
+(defun calculate-kelly-lot (win-rate avg-win avg-loss equity &optional (volatility 0.01))
+  "Calculate optimal position size using Kelly Criterion.
+   f* = p - q/b where p=win-rate, q=loss-rate, b=avg-win/avg-loss.
+   Result is clamped to safety limits."
+  
+  (let* ((p win-rate)
+         (q (- 1.0 p))
+         ;; Avoid division by zero
+         (loss (max 0.0001 (abs avg-loss)))
+         (win (max 0.0001 avg-win))
+         (b (/ win loss))
+         ;; Full Kelly
+         (f-star (if (> b 0) (- p (/ q b)) 0.0))
+         ;; Half Kelly for safety
+         (safe-kelly (* f-star 0.5)))
+    
+    (if (<= safe-kelly 0)
+        *base-lot* ; No edge, return min lot
+        (let* ((risk-amt (* equity (min safe-kelly *max-kelly-fraction*)))
+               ;; Estimate stop distance based on volatility (1.5 * ATR approx)
+               ;; e.g. for USDJPY 0.01 vol -> ~1.50 movement -> ~150 pips
+               (stop-distance (* volatility 100.0)) 
+               (lot (/ risk-amt (* stop-distance 1000.0)))) ; Approx 1000 units per lot pip
+          
+          (clamp-lot lot)))))
+
+(defun clamp-lot (lot)
+  "Clamp lot size to broker limits (0.01 - 5.0)"
+  (cond ((< lot 0.01) 0.01)
+        ((> lot 2.0) 2.0)  ; Soft cap
+        (t (float (/ (round (* lot 100)) 100)))))
+
+;;; ==========================================
 ;;; MAGIC NUMBER LOGIC (Reversible)
 ;;; ==========================================
 

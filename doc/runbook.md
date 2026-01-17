@@ -1,0 +1,109 @@
+# Swimmy Runbook (運用手順書)
+
+## 1. 起動手順
+
+### 1.1 通常起動 (systemd)
+```bash
+# Brain と Guardian を起動
+sudo systemctl start swimmy-brain swimmy-guardian
+
+# 状態確認
+systemctl --user status swimmy-brain swimmy-guardian
+```
+
+### 1.2 開発モード起動
+```bash
+cd /home/swimmy/swimmy
+make run  # Brain + Guardian を tmux で起動
+```
+
+### 1.3 起動確認チェックリスト
+- [ ] `swimmy-brain` が active (running)
+- [ ] `swimmy-guardian` が active (running)
+- [ ] Discord heartbeat が受信されている
+- [ ] MT5 EA が接続されている (heartbeat)
+
+---
+
+## 2. 停止手順
+
+### 2.1 通常停止
+```bash
+sudo systemctl stop swimmy-guardian swimmy-brain
+```
+
+### 2.2 緊急停止 (EMERGENCY_CLOSE_ALL)
+```bash
+# MT5 に直接コマンド送信
+echo '{"action":"CLOSE_ALL"}' | zmq-send tcp://localhost:5560
+
+# または Guardian 経由
+echo 'EMERGENCY_CLOSE_ALL' | zmq-send tcp://localhost:5559
+```
+
+### 2.3 強制停止 (プロセス Kill)
+```bash
+pkill -9 sbcl
+pkill -9 guardian
+```
+
+---
+
+## 3. 緊急対応
+
+### 3.1 Brain 無応答 (Heartbeat Timeout)
+**症状**: Guardian が `🔴 BRAIN DISCONNECT` を表示
+
+**対応**:
+1. Guardian が自動で `CLOSE_SHORT_TF` を発行 (120秒後)
+2. Brain 再起動: `sudo systemctl restart swimmy-brain`
+3. ログ確認: `journalctl -u swimmy-brain -f`
+
+### 3.2 Guardian Crash
+**症状**: Brain が `GUARDIAN_TIMEOUT` をログ
+
+**対応**:
+1. `sudo systemctl restart swimmy-guardian`
+2. ポジション確認: MT5 で手動確認
+
+### 3.3 MT5 接続断
+**症状**: Tick データが来ない
+
+**対応**:
+1. MT5 再起動
+2. EA のアタッチ確認
+3. ブローカー接続確認
+
+---
+
+## 4. 日次運用
+
+### 4.1 朝の確認 (09:00 JST)
+- [ ] 前日の PnL 確認 (Discord)
+- [ ] ログにエラーがないか確認
+- [ ] オープンポジション確認
+
+### 4.2 週末処理 (金曜 23:00 JST)
+- システムは自動でポジションクローズ (週末リスク回避)
+- 月曜朝まで新規エントリー停止
+
+---
+
+## 5. 障害時連絡先
+
+- **Discord**: #swimmy-alerts チャンネル
+- **ログ場所**: `/home/swimmy/swimmy/brain.log`
+- **監査ログ**: `/home/swimmy/swimmy/guardian_audit.jsonl`
+
+---
+
+## 6. コマンドリファレンス
+
+| コマンド | 説明 |
+|:---|:---|
+| `make run` | 開発モード起動 |
+| `make quality-gate` | テスト＆整合性チェック |
+| `/deploy` | 本番デプロイ (systemd restart) |
+| `CLOSE_ALL` | 全ポジション決済 |
+| `CLOSE_SHORT_TF` | H4以下のポジション決済 |
+| `CANCEL_ALL` | ペンディング注文キャンセル |

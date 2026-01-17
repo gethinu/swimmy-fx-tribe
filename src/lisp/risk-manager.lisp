@@ -108,16 +108,24 @@
                                     ("action" action)
                                     ("symbol" symbol)
                                     ("adjusted_lot" adjusted-lot)))
-                  (let ((msg (jsown:to-json 
-                               (jsown:new-js 
-                                 ("action" action)
-                                 ("symbol" symbol)
-                                 ("lot" (read-from-string (format nil "~,2f" adjusted-lot)))
-                                 ("sl" sl)
-                                 ("tp" tp)
-                                 ("magic" magic)
-                                 ("comment" (or comment ""))))))
-                    (pzmq:send *cmd-publisher* msg)
+                  (let* ((order-obj (make-order-message 
+                                      "RiskManager" ;; Default Strategy ID
+                                      symbol 
+                                      action 
+                                      adjusted-lot 
+                                      0.0 ;; Price 0 for market
+                                      sl tp 
+                                      :magic magic 
+                                      :comment (or comment "")))
+                         (uuid (jsown:val order-obj "id"))
+                         (msg-str (jsown:to-json order-obj)))
+                    
+                    ;; Retry Logic (Phase 7): Store pending order
+                    (when (boundp '*pending-orders*)
+                      (setf (gethash uuid *pending-orders*) 
+                            (list (get-universal-time) 0 order-obj)))
+
+                    (pzmq:send *cmd-publisher* msg-str)
                     t))
                 (progn
                   ;; Local Denial

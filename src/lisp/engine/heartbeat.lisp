@@ -42,9 +42,10 @@
                            (length swimmy.globals::*evolved-strategies*) 0))
          (kb-count (if (boundp 'swimmy.globals::*strategy-knowledge-base*)
                        (length swimmy.globals::*strategy-knowledge-base*) 0))
-         (benched-count (if (and (boundp 'swimmy.school::*benched-strategies*)
-                                 (hash-table-p swimmy.school::*benched-strategies*))
-                            (hash-table-count swimmy.school::*benched-strategies*) 0))
+         ;; Single Source of Truth (Hickey Cleanup)
+         (benched-count (if (fboundp 'swimmy.school::count-benched-strategies)
+                            (swimmy.school:count-benched-strategies)
+                            0))
          ;; Equity
          (equity (if (boundp 'swimmy.globals::*current-equity*)
                      swimmy.globals::*current-equity* 0))

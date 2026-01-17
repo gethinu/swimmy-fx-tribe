@@ -220,10 +220,55 @@
          (setf count 0)))
     (nreverse result)))
 
+;;; ==========================================
+;;; TICK REPLAY (Phase 12)
+;;; ==========================================
+
+(defstruct tick-lite timestamp bid ask)
+
+(defun interpolate-ticks (candle)
+  "Generate 4 synthetic ticks from a single candle (OHLC).
+   Pattern depends on candle direction.
+   - Bullish: Open -> Low -> High -> Close
+   - Bearish: Open -> High -> Low -> Close
+   Timestamps distributed: :00, :15, :45, :59"
+  (let* ((ts (candle-timestamp candle))
+         (o (candle-open candle))
+         (h (candle-high candle))
+         (l (candle-low candle))
+         (c (candle-close candle))
+         (ticks nil))
+    
+    (if (>= c o)
+        ;; Bullish (O -> L -> H -> C)
+        (setf ticks (list (make-tick-lite :timestamp ts :bid o :ask (+ o 0.01))
+                          (make-tick-lite :timestamp (+ ts 15) :bid l :ask (+ l 0.01))
+                          (make-tick-lite :timestamp (+ ts 45) :bid h :ask (+ h 0.01))
+                          (make-tick-lite :timestamp (+ ts 59) :bid c :ask (+ c 0.01))))
+        ;; Bearish (O -> H -> L -> C)
+        (setf ticks (list (make-tick-lite :timestamp ts :bid o :ask (+ o 0.01))
+                          (make-tick-lite :timestamp (+ ts 15) :bid h :ask (+ h 0.01))
+                          (make-tick-lite :timestamp (+ ts 45) :bid l :ask (+ l 0.01))
+                          (make-tick-lite :timestamp (+ ts 59) :bid c :ask (+ c 0.01)))))
+    ticks))
+
+(defun generate-tick-stream (candles)
+  "Convert a list of candles into a continuous stream of interpolated ticks.
+   Candles input should be Oldest-First for correct time sequence."
+  (let ((stream nil))
+    (dolist (c candles)
+      (dolist (tick (interpolate-ticks c))
+        (push tick stream)))
+    (nreverse stream)))
+
 ;; Request backtest from Rust
 ;; Helper to convert numeric timeframe to string suffix
 (defun get-tf-string (tf)
-  (cond ((= tf 1) "M1")
+  "Convert a numeric timeframe (in minutes) or a timeframe string to a valid string.
+   Returns the input if it's already a string (e.g., 'H1')."
+  (cond ((stringp tf) tf) ; Already a string, return it
+        ((not (numberp tf)) "M1") ; Not a number, default to M1
+        ((= tf 1) "M1")
         ((= tf 5) "M5")
         ((= tf 15) "M15")
         ((= tf 30) "M30")
