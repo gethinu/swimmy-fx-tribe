@@ -232,7 +232,10 @@
                        (let* ((strat (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
                                          (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
                               (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
+                               (tier (if strat (strategy-tier strat) :incubator))
                               (lot (if (and (>= sharpe 0.0) (< sharpe 0.3)) 0.01 lot)))
+                         (unless (eq tier :battlefield) (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*) (format t "[EXEC] Blocked ~a (Tier ~a)" lead-name tier) (return-from execute-category-trade nil))
+                         (let* ((rank-obj (get-strategy-rank lead-name)) (rank (if rank-obj (strategy-rank-rank rank-obj) :scout))) (unless (member rank '(:veteran :legend)) (format t "[EXEC] 📝 PAPER: ~a is Rank ~a (Need S/A).~%" lead-name rank) (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*) (return-from execute-category-trade nil)))
                          (cond
                            ((eq direction :buy)
                             (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))

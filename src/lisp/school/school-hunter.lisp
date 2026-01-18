@@ -1088,3 +1088,23 @@
    :entry '(and (> close ema) (> rsi 70))
    :exit '(or (> pnl tp) (< rsi 50))
    :exit '(or (> pnl tp) (< pnl (- sl)))))
+
+;;; ----------------------------------------------------------------------------
+;;; HUNTED #3: WEB SEARCH (2026-01-17)
+;;; Source: Forex Strategies (EMA Trend + RSI Pullback)
+;;; Logic: Trend (EMA20 > EMA50) + Pullback (RSI < 45)
+;;; ----------------------------------------------------------------------------
+(def-founder :hunted-web-rsi-ema "Hunted-Web-RSI-EMA-Pullback-Gen0-260117"
+  "Web-Hunted: EMA Trend with RSI Pullback entry."
+  (make-strategy
+   :name "Hunted-Web-RSI-EMA-Pullback-Gen0-260117"
+   :category :trend
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   :indicators '((ema 20) (ema 50) (rsi 14))
+   :entry '(or (and (> ema-20 ema-50) (< rsi 45) (> volume 0))
+               (and (< ema-20 ema-50) (> rsi 55) (> volume 0)))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))

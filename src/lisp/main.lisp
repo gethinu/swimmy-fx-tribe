@@ -64,7 +64,9 @@
   (format t "[SYSTEM] Loading historical data from Data Keeper...~%")
   (dolist (sym *supported-symbols*)
     ;; Load M1 Base (Legacy key: symbol -> list)
-    (let ((history (get-history-from-keeper sym 50000 "M1")))
+    ;; Load M1 Base (Legacy key: symbol -> list)
+    ;; V11.0: Reduced to 10,000 for RAM safety. Deep backtests use Direct CSV.
+    (let ((history (get-history-from-keeper sym 10000 "M1")))
       (if history
           (progn
             (setf (gethash sym *candle-histories*) history)
@@ -76,8 +78,9 @@
     
     ;; Load Other Timeframes (Nested key: symbol -> tf -> list)
     (let ((timeframes '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN")))
-      (dolist (tf timeframes)
-        (let ((tf-hist (get-history-from-keeper sym 20000 tf)))
+    	  (dolist (tf timeframes)
+	    ;; V11.0: Reduced to 5,000 for RAM safety
+	    (let ((tf-hist (get-history-from-keeper sym 5000 tf)))
           (when (and tf-hist (> (length tf-hist) 0))
              ;; Ensure nested hash exists
              (unless (gethash sym *candle-histories-tf*)

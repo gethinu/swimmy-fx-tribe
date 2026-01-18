@@ -280,6 +280,45 @@
 (defparameter *strategy-ranks* (make-hash-table :test 'equal))
 (defparameter *clan-treasury* (make-hash-table :test 'eq))
 (defparameter *mutual-aid-history* nil)
+(defparameter *rank-db-path* #P"/home/swimmy/swimmy/.swimmy/strategy_ranks.lisp")
+
+(defun save-strategy-ranks ()
+  "Save strategy ranks to file"
+  (ensure-directories-exist *rank-db-path*)
+  (let ((data nil))
+    (maphash (lambda (k v)
+               (push (list :name (strategy-rank-name v)
+                           :rank (strategy-rank-rank v)
+                           :trades (strategy-rank-trades v)
+                           :wins (strategy-rank-wins v)
+                           :total-pnl (strategy-rank-total-pnl v)
+                           :promotion-date (strategy-rank-promotion-date v)
+                           :last-trade (strategy-rank-last-trade v))
+                     data))
+             *strategy-ranks*)
+    (with-open-file (out *rank-db-path* :direction :output :if-exists :supersede)
+      (write data :stream out :pretty t))
+    (format t "[S] 💾 Saved ~d strategy ranks to ~a~%" (length data) *rank-db-path*)))
+
+(defun load-strategy-ranks ()
+  "Load strategy ranks from file"
+  (with-open-file (in *rank-db-path* :direction :input :if-does-not-exist nil)
+    (when in
+      (let ((data (read in nil nil))
+            (count 0))
+        (dolist (entry data)
+          (let ((name (getf entry :name)))
+            (setf (gethash name *strategy-ranks*)
+                  (make-strategy-rank
+                   :name name
+                   :rank (getf entry :rank)
+                   :trades (getf entry :trades)
+                   :wins (getf entry :wins)
+                   :total-pnl (getf entry :total-pnl)
+                   :promotion-date (getf entry :promotion-date)
+                   :last-trade (getf entry :last-trade)))
+            (incf count)))
+        (format t "[S] 📂 Loaded ~d strategy ranks from ~a~%" count *rank-db-path*)))))
 
 ;;; ==========================================
 ;;; SWARM CONSENSUS

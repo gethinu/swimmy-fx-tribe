@@ -23,7 +23,7 @@
 (defparameter *data-keeper-context* nil
   "ZMQ context for Data Keeper connection")
 
-(defparameter *data-keeper-timeout* 3000
+(defparameter *data-keeper-timeout* 60000
   "Timeout in milliseconds for Data Keeper queries")
 
 (defparameter *data-keeper-available* nil

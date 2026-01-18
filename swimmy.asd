@@ -58,6 +58,7 @@
                (:file "src/lisp/school/school-danger")
                (:file "src/lisp/school/school-constitution")
                (:file "src/lisp/school/school-resignation")
+               (:file "src/lisp/school/school-optimized-params") ; Phase 4: Code Gen
                (:file "src/lisp/school/school-strategy")  ; V8.1: Strategy/Clan System
                (:file "src/lisp/school/school-voting")    ; V8.1: Voting/Council System
                
@@ -75,6 +76,8 @@
                (:file "src/lisp/school/school-adaptation") ; Adaptation Engine (Phase 4)
                (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
                (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
+               (:file "src/lisp/school/school-selector")   ; The Proving Grounds (Phase 2): Tier System
+               (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
                (:file "src/lisp/school/school-learning")
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school/school-volatility")

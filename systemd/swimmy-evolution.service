@@ -1,0 +1,20 @@
+[Unit]
+Description=Swimmy Evolution Daemon (Hyper-Time)
+After=network.target
+
+[Service]
+Type=simple
+User=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/evolution_daemon.py
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+EnvironmentFile=/home/swimmy/swimmy/.env
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:/home/swimmy/swimmy/logs/evolution_daemon.log
+StandardError=append:/home/swimmy/swimmy/logs/evolution_daemon.log
+
+[Install]
+WantedBy=default.target

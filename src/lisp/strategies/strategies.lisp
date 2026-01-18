@@ -14,6 +14,14 @@
                 (get-breakout-strategies)
                 (get-scalp-strategies)))
   
+  ;; Phase 6b: Load Dynamic Strategies (Persistence Patch)
+  (let ((dynamic-path "src/lisp/strategies/strategies-dynamic.lisp"))
+    (if (probe-file dynamic-path)
+        (progn
+          (format t "[L] 📂 Loading persistence file: ~a~%" dynamic-path)
+          (load dynamic-path))
+        (format t "[L] ⚠️ Persistence file not found: ~a (created fresh)~%" dynamic-path)))
+
   (format t "[L] 📚 Knowledge base loaded: ~d strategies~%" 
           (length *strategy-knowledge-base*)))
 

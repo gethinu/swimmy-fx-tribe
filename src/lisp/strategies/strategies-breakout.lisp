@@ -10,4 +10,4 @@
         :entry '(> close bb-upper)
         :exit '(< close bb-middle)
         :sl 0.30 :tp 1.00 :volume 0.01
-        :timeframe 15))) ; M15 Walk
+        :timeframe 10080))) ; M15 Walk

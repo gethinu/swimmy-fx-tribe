@@ -1,218 +1,60 @@
-受け取りました。
-①〜④を通して見た結論を先に言います。
-
-**これは「弱すぎるEA」ではありません。
-弱く見えている原因は、戦略そのものではなく“評価不能・制御不能な構造”にあります。**
-
-以下、構造的に切ります。
-
----
-
-## 総評（率直）
-
-* 設計思想は **プロ水準**
-* 発想・役割分離・安全装置は **むしろ過剰に優秀**
-* しかし現状は
-  **「強さを測れない」「弱点を特定できない」構造**
-
-つまり
-👉 *勝てない* のではなく
-👉 *勝っているかどうか分からない*
-
-これが「弱すぎ」と感じる正体です。
-
----
-
-## ① 思考フロー分析：一番の問題点
-
-### 問題の核心
-
-**60以上の戦略を同列にスキャンしている点**
-
-これはアーキテクチャとしては美しいですが、
-トレード戦略としては致命的な欠点を孕みます。
-
-#### なぜか
-
-* 各戦略の
-
-  * 時間優位性
-  * 期待値分布
-  * 負け方
-    が**完全に異なる**
-* それを
-
-  * Swarm Consensus
-  * Benching / Kill
-    で**事後的に調整**している
-
-👉 これは
-**「事前に分類すべきものを、事後統計で裁こうとしている」**
-
----
-
-### 改善指針（重要）
-
-戦略は **スキャン対象**ではなく
-**最初からレイヤー分け**すべきです。
-
-例：
-
-```
-Layer 1: Market Regime 専用戦略
-- TrendOnly 戦略群
-- RangeOnly 戦略群
-
-Layer 2: Time Horizon
-- Scalping (M5)
-- Intraday (M15)
-- Swing (H1)
-
-Layer 3: Execution Style
-- Breakout
-- Pullback
-- Mean Reversion
-```
-
-👉 **「全部見る」のをやめる**
-👉 **「今はどの棚だけを見るか」を先に決める**
-
-この変更だけで、
-Swarm / Benching / Kill の精度が激変します。
-
----
-
-## ② 責務分離：ほぼ正解、ただし一点だけ致命的
-
-### 良い点
-
-* Lisp = 意思決定
-* MQL5 = 実行
-* Rust = 監査
-
-これは **完全に正しい**。
-
-### ただし問題点
-
-**Lisp側が「戦略の生死」を決めすぎている**
-
-* Kill（永久排除）
-* Benching（短期排除）
-
-これをやるなら、必須なのは：
-
-```
-・戦略IDごとの
-・ regime × volatility × time帯
-・ 条件付き期待値
-```
-
-しかし今のログ状態では
-**そこが取得できていない**。
-
-👉 結果：
-
-* 強い戦略を「誤ってKill」
-* 本当は時間帯依存な戦略を「無能扱い」
-
----
-
-## ③ バックテスト数値：ここははっきり言う
-
-Sharpe 2.91 が本当なら、
-**弱いEAではありえません。**
-
-ただし、今の数値は **信用できない**。
-
-理由：
-
-* PF 不明
-* DD 不明
-* トレード数不明
-* エラー多発（BINDINGS is unbound）
-
-👉 現在の状態は
-**「計器が壊れた戦闘機」**
-
-操縦はうまくても、
-高度も速度も分からない。
-
----
-
-## ④ 状態定義：ここが一番もったいない
-
-正直、ここは **弱すぎる**。
-
-```
-Trending / Ranging / Unknown
-High / Normal / Low
-```
-
-これだと：
-
-* Trend 初動
-* Trend 末期
-* Range 拡大型
-* Range 収縮型
-
-が **全部同じ扱い**。
-
-👉 60戦略あるのに
-👉 状態は 3×3 = 9通りしかない
-
-**情報量が完全に釣り合っていません。**
-
----
-
-## 即やるべき改善（優先順位付き）
-
-### 🥇 最優先
-
-**「Kill」を一時的に完全停止**
-
-* Kill → Cooldown（一定期間停止）に変更
-* 永久排除は禁止
-
----
-
-### 🥈 次
-
-**MarketRegime を最低5段階に**
-
-例：
-
-```
-enum MarketRegime {
-    TrendEarly,
-    TrendMature,
-    TrendExhausted,
-    RangeExpansion,
-    RangeCompression
-}
-```
-
-これだけで
-
-* 無駄なBenching
-* 誤Kill
-  が激減します。
-
----
-
-### 🥉 次
-
-**戦略評価を「総合」から「条件付き」に変更**
-
-* Overall PF / Sharpe → 捨てる
-* Regime × Time帯 × Volatility ごとに分解
-
----
-
-## 総結論
-
-これは
-
-* EAが弱い ❌
-* 言語選択が悪い ❌
-
-**評価設計が追いついていない ⭕**
+📊 Backtest Result
+📊 Backtest Summary (V7.0/Async)
+
+TREND (Total: 37 | Pass: 12 | Avg Sharpe: -2.87)
+Top 5:
+Trend-Pullback-Entry (S: 2.91)
+Conservative-Trend (S: 2.26)
+Sweet-Chariot-SMA-40 (S: 1.52)
+Triple-Screen-Proxy (S: 0.74)
+MACD-Zero-Reject (S: 0.68)
+Worst 5:
+MACD-Cross-Gen0 (S: -22.05)
+Hunted-Ichimoku-Cloud-Gen0 (S: -22.02)
+Ichimoku-Kijun-Gen0 (S: -22.02)
+Donchian-Trend-Gen0 (S: -21.81)
+T-Nakane-Gotobi (S: -14.78)
+
+REVERSION (Total: 22 | Pass: 0 | Avg Sharpe: -10.04)
+Top 5:
+RSI-Bull-Zone (S: -0.13)
+Aggressive-Reversal (S: -0.46)
+Extreme-Reversion-BB (S: -1.12)
+BB-Lower-Bounce (S: -2.07)
+BB-RSI-Reversion-Combo (S: -2.46)
+Worst 5:
+Auto-Reversion-1768118399 (S: -24.24)
+RSI-2-Gen0 (S: -23.67)
+Auto-Reversion-1768121043 (S: -23.25)
+Auto-Reversion-1768117681 (S: -23.25)
+Scalp-MOMENTUM-SCALP-EMA9-RSI7-Gen0-1768130621 (S: -23.05)
+
+BREAKOUT (Total: 29 | Pass: 0 | Avg Sharpe: -20.76)
+Top 5:
+CCI-Trend-Breakout (S: -1.18)
+Pullback-Breakout (S: -2.27)
+Auto-Breakout-1768098449 (S: -21.65)
+Auto-Breakout-1768098453 (S: -21.65)
+Auto-Breakout-1768098459 (S: -21.65)
+Worst 5:
+Volvo-Scalp-Gen0 (S: -23.15)
+Auto-Breakout-1768098467 (S: -22.83)
+Auto-Breakout-1768098465 (S: -22.83)
+Auto-Breakout-1768098463 (S: -22.83)
+Auto-Breakout-1768098460 (S: -22.83)
+
+SCALP (Total: 18 | Pass: 0 | Avg Sharpe: -20.59)
+Top 5:
+MA-Ribbon-Scalp (S: -6.81)
+Trend-Scalp-1M (S: -8.91)
+Fibonacci-EMA-Scalp (S: -11.61)
+SCALP-MTF-MACRO-H1 (S: -19.80)
+SCALP-BASE (S: -19.80)
+Worst 5:
+Auto-Scalp-1768118399 (S: -24.08)
+Auto-Scalp-1768098452 (S: -24.08)
+Auto-Scalp-1768098447 (S: -23.78)
+Auto-Scalp-1768098453 (S: -23.56)
+Auto-Scalp-1768121043 (S: -23.46)
+
+🔍 Async Delivery via Notifier Service.

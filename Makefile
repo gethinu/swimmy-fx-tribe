@@ -13,6 +13,7 @@ kill-zombies:
 	@-pkill -9 -u $(USER) -f "guardian" 2>/dev/null || true
 	@-pkill -9 -u $(USER) -f "data_keeper.py" 2>/dev/null || true
 	@-pkill -9 -u $(USER) -f "notifier.py" 2>/dev/null || true
+	@-pkill -9 -u $(USER) -f "evolution_daemon.py" 2>/dev/null || true
 	@systemctl --user reset-failed
 
 # Systemd Management
@@ -20,7 +21,7 @@ kill-zombies:
 run: kill-zombies
 	@echo "🔄 Restarting Swimmy System (via systemd)..."
 	@systemctl --user daemon-reload
-	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper strategy_hunter
+	@systemctl --user restart swimmy-brain swimmy-guardian swimmy-notifier swimmy-data-keeper strategy_hunter swimmy-evolution
 	@echo "✅ System restarted. Use 'make status' to check health."
 
 stop:
@@ -89,3 +90,6 @@ run-benchmarks:
 # Strategies Lineage (Genealogy)
 lineage:
 	@sbcl --noinform --load tools/show_lineage.lisp
+
+status:
+	@python3 tools/report_status.py

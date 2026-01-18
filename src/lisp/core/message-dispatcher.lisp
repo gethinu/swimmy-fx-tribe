@@ -175,7 +175,19 @@
               
              (swimmy.school:cache-backtest-result name 
                (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor))
-               
+             
+             ;; V42.1: Expert Panel Fix - Populate Buffer & Trigger Summary
+             (format t "[L] 📥 Buffering Result ~d/~d: ~a (Sharpe: ~,2f)~%" 
+                     (1+ (length *backtest-results-buffer*)) *expected-backtest-count* name sharpe)
+             (push (cons name (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor))
+                   *backtest-results-buffer*)
+             
+             (when (and *expected-backtest-count* 
+                        (> *expected-backtest-count* 0)
+                        (>= (length *backtest-results-buffer*) *expected-backtest-count*))
+               (format t "[L] 📊 Batch Complete (~d strategies). Sending Summary...~%" (length *backtest-results-buffer*))
+               (swimmy.core:notify-backtest-summary))
+
              (when (fboundp 'swimmy.school:process-wfv-result)
                (swimmy.school:process-wfv-result name 
                   (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)))))

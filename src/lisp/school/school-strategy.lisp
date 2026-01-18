@@ -215,7 +215,8 @@
     (incf (strategy-rank-total-pnl rank-data) pnl)
     (setf (strategy-rank-last-trade rank-data) (get-universal-time))
     ;; Check for promotion
-    (check-promotion strategy-name)))
+    (check-promotion strategy-name)
+    (save-strategy-ranks))) ; V46.1: Auto-save ranks
 
 
 ;;; ══════════════════════════════════════════════════════════════════

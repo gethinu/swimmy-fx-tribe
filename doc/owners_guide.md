@@ -98,6 +98,7 @@ V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました�
 | Brain | `swimmy-brain` | シグナル生成、学習、進化 |
 | Guardian | `swimmy-guardian` | MT5通信、注文執行、バックテスト |
 | Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ永続化 |
+| Evolution | `swimmy-evolution` | **Hyper-Time Evolution (無限進化ループ)**, Purge, Wisdom |
 
 ---
 
@@ -165,7 +166,8 @@ make run
 make kill-zombies
 
 # その後、正常に再起動
-systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper
+# その後、正常に再起動
+systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-evolution
 ```
 
 ---

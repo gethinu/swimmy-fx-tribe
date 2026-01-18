@@ -21,4 +21,4 @@ ls -t logs/swimmy.*.log 2>/dev/null | tail -n +8 | xargs -r rm
 
 # Start Swimmy with logging
 echo "[$(date)] Starting Swimmy Ver 41.5..."
-sbcl --noinform --load brain.lisp 2>&1 | tee logs/swimmy.log
+sbcl --dynamic-space-size 4096 --noinform --load brain.lisp 2>&1 | tee logs/swimmy.log

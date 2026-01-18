@@ -141,18 +141,21 @@
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.9: Strategy Lineage Tracking (Pedigree)
-(defstruct strategy name indicators entry exit sl tp volume 
+;; V46.0: The Proving Grounds (Tier System) - Expert Panel 2026-01-18
+(defstruct strategy name indicators entry exit (sl 0.0) (tp 0.0) (volume 0.01) 
             (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0)
             (category :trend) (indicator-type "sma") (pnl-history nil) 
             (timeframe 1) (generation 0)
             (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic "")
             (adapt-vector nil) (confidence-estimator "edge_ratio_v1")
             ;; Lifecycle Management (Phase 6)
-            (consecutive-losses 0) (status :active) (status-reason "") (cooldown-until 0) (last-update 0))
+            (consecutive-losses 0) (status :active) (status-reason "") (cooldown-until 0) (last-update 0)
+            ;; The Proving Grounds Tiers: :graveyard, :incubator, :training, :battlefield
+            (tier :incubator))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic ""))
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator))
   `(make-strategy :name ,name :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :sharpe 0.0 :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
-                  :filter-enabled ,filter-enabled :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic))
+                  :filter-enabled ,filter-enabled :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic :tier ,tier))
 
 (defmacro with-trend-filter ((tf logic period) strategy-form)
   "Wraps a strategy definition with MTF trend filter parameters.

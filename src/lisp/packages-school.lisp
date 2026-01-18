@@ -141,6 +141,13 @@
    #:reputation-reliability
    #:reputation-profit-score
    
+   ;; Rank Accessors (V46.1)
+   #:get-strategy-rank
+   #:strategy-rank-rank
+   #:strategy-rank-trades
+   #:check-promotion
+   #:recruit-elite-strategy
+   
    ;; Trade Prediction Struct
    #:make-trade-prediction
    #:trade-prediction-symbol

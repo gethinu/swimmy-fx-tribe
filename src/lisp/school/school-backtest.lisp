@@ -103,9 +103,24 @@
               ;; remhash? No, keep logic simple.
               nil))))))
 
+
 (defun initialize-backtest-system ()
   "Initialize the backtest system."
   (load-backtest-cache))
+
+;; V9.1: Fix Undefined Function (Expert Panel 2026-01-17)
+(defun candles-to-json (candles)
+  "Convert list of candle structs to JSON-friendly list of plists."
+  (mapcar (lambda (c)
+            (jsown:new-js
+              ("time" (candle-timestamp c))
+              ("open" (candle-open c))
+              ("high" (candle-high c))
+              ("low" (candle-low c))
+              ("close" (candle-close c))
+              ("volume" (candle-volume c))))
+          candles))
+
 
 
 (defun find-balanced-end (str start)
@@ -186,6 +201,7 @@
       ("tp" (strategy-tp strat))
       ("volume" (strategy-volume strat))
       ("indicator_type" (detect-indicator-type (strategy-indicators strat)))
+      ("timeframe" (strategy-timeframe strat)) ; V46.1: Export Timeframe
       ;; V8.0 Fix: filter_enabled must be bool (true/false), not nil
       ("filter_enabled" (if (and (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat)) :true :false))
       ("filter_tf" (if (slot-exists-p strat 'filter-tf) (or (strategy-filter-tf strat) "") ""))
@@ -280,7 +296,7 @@
         (t "M1")))
 
 ;; Request backtest from Rust
-(defun request-backtest (strat &key (candles *candle-history*) (suffix ""))
+(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol "USDJPY"))
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe."
   
   ;; V8.0: Multi-Timeframe Logic
@@ -303,50 +319,69 @@
              (ftf-str (cond ((stringp ftf) ftf)
                             ((numberp ftf) (get-tf-string ftf)) 
                             (t "D1")))
-             ;; FIXME: Symbol hardcoded to USDJPY
-             (usdjpy-hist (if (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
-                              (gethash "USDJPY" *candle-histories-tf*)
+             ;; FIXME: Symbol hardcoded to USDJPY in history logic too?
+             ;; Ideally we fetch specific symbol history but for now we rely on *candle-histories-tf*
+             (sym-hist (if (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
+                              (gethash symbol *candle-histories-tf*)
                               nil))
-             (hist (if usdjpy-hist
-                       (gethash ftf-str usdjpy-hist)
+             (hist (if sym-hist
+                       (gethash ftf-str sym-hist)
                        nil)))
         (when hist
            (format t "[L] 🧩 Attaching ~a Filter Data (~d bars)~%" ftf-str (length hist))
-           (push (cons ftf-str (swimmy.main:candles-to-json hist)) (cdr aux-candles-json)))))
+           (push (cons ftf-str (candles-to-json hist)) (cdr aux-candles-json)))))
 
-    (format t "[L] 📊 Requesting backtest for ~a~a (Candles: ~d / TF: M~d)...~%" 
-            (strategy-name strat) suffix len timeframe)
+    (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: M~d)...~%" 
+            (strategy-name strat) symbol suffix len timeframe)
     
-    (let* ((base-id (generate-data-id target-candles))
-           (ftf-str (if (and (slot-exists-p strat 'filter-enabled)
-                             (strategy-filter-enabled strat)
-                             (strategy-filter-tf strat))
-                        (get-tf-string (strategy-filter-tf strat))
-                        "NONE"))
-           (data-id (format nil "~a-AUX~a-~a" base-id ftf-str suffix)))
-           
-      ;; CACHE MISS: Send Data
-      (unless (gethash data-id *sent-data-ids*)
-        (format t "[L] 💾 Caching Data ID: ~a~%" data-id)
-        (let ((cache-msg (jsown:to-json 
-                           (jsown:new-js 
-                             ("action" "CACHE_DATA")
-                             ("data_id" data-id)
-                             ("candles" (swimmy.main:candles-to-json target-candles))
-                             ("aux_candles" aux-candles-json)))))
-          (send-zmq-msg cache-msg)
-          (setf (gethash data-id *sent-data-ids*) t)))
-          
-      ;; BACKTEST REQUEST (Lightweight) (P5.1 Resampling)
-      (setf msg (jsown:to-json 
-                  (jsown:new-js 
-                    ("action" "BACKTEST")
-                    ("strategy" (strategy-to-json strat :name-suffix suffix))
-                    ("data_id" data-id)
-                    ("timeframe" timeframe)))) ;; P5.1: Send timeframe
-                    
-      (send-zmq-msg msg)
-      (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe))))
+    (let* ((data-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
+           (use-file (and (string= suffix "") (probe-file data-file))))
+
+      (if use-file
+          (progn
+             (format t "[L] 🚀 Using Direct CSV: ~a~%" data-file)
+             (setf msg (jsown:to-json 
+                         (jsown:new-js 
+                           ("action" "BACKTEST")
+                           ("strategy" (strategy-to-json strat :name-suffix suffix))
+                           ("candles_file" data-file)
+                           ("symbol" symbol)
+                           ("timeframe" timeframe))))
+             (send-zmq-msg msg)
+             ;; (format t "[L] 📤 Sent Direct CSV Request (~a)~%" data-file)
+             )
+
+          ;; Fallback / WFV / In-Memory
+          (let* ((base-id (generate-data-id target-candles (format nil "-~a" symbol)))
+                 (ftf-str (if (and (slot-exists-p strat 'filter-enabled)
+                                   (strategy-filter-enabled strat)
+                                   (strategy-filter-tf strat))
+                              (get-tf-string (strategy-filter-tf strat))
+                              "NONE"))
+                 (data-id (format nil "~a-AUX~a-~a" base-id ftf-str suffix)))
+                 
+            ;; CACHE MISS: Send Data
+            (unless (gethash data-id *sent-data-ids*)
+              (format t "[L] 💾 Caching Data ID: ~a~%" data-id)
+              (let ((cache-msg (jsown:to-json 
+                                 (jsown:new-js 
+                                   ("action" "CACHE_DATA")
+                                   ("data_id" data-id)
+                                   ("candles" (candles-to-json target-candles))
+                                   ("aux_candles" aux-candles-json)))))
+                (send-zmq-msg cache-msg)
+                (setf (gethash data-id *sent-data-ids*) t)))
+                
+            ;; BACKTEST REQUEST
+            (setf msg (jsown:to-json 
+                        (jsown:new-js 
+                          ("action" "BACKTEST")
+                          ("strategy" (strategy-to-json strat :name-suffix suffix))
+                          ("data_id" data-id)
+                          ("timeframe" timeframe)))) 
+                          
+            (send-zmq-msg msg)
+            (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)

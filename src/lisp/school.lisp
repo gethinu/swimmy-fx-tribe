@@ -15,6 +15,8 @@
 (defun init-school ()
   ;; V9.2: Taleb's Antifragility (Safe Load)
   (safely-load-hunter-strategies)
+  (load-strategy-ranks) ; V46.1: Load Rank DB
+  (apply-optimized-params) ; Phase 4: Apply Evolutionary Genes
 
   ;; V8.7: Reclassify ALL strategies (KB + Evolved) to fix category bugs
   (build-category-pools) ; Clears pools and adds *strategy-knowledge-base*
