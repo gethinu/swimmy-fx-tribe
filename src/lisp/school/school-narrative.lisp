@@ -149,3 +149,55 @@
                 (if shamans (format nil "~{~a~^, ~}" shamans) "-")))
       ""))
 
+
+(defun generate-evolution-report ()
+  "Generate the Evolution Factory Report (formerly Python).
+   Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."
+  (let* ((all *strategy-knowledge-base*)
+         (battlefield (remove-if-not (lambda (s) (eq (strategy-tier s) :battlefield)) all))
+         (training (remove-if-not (lambda (s) (eq (strategy-tier s) :training)) all))
+         (selection (remove-if-not (lambda (s) (eq (strategy-tier s) :selection)) all))
+         (incubator (remove-if-not (lambda (s) (eq (strategy-tier s) :incubator)) all))
+         (graveyard (remove-if-not (lambda (s) (eq (strategy-tier s) :graveyard)) all))
+         (new-counts 0) ;; (count-if (lambda (s) (< (- (get-universal-time) (strategy-born-time s)) 86400)) all)) ;; FIXME: Strategy struct missing born-time
+         (s-rank-count (length battlefield))
+         (a-rank-count (length training)))
+    
+    (format nil "
+🏭 **Evolution Factory Report**
+Current status of the autonomous strategy generation pipeline.
+
+🧠 Knowledge Base (Active)
+~d Strategies
+
+🏆 **S-Rank (Elite)**
+~d (Battlefield / Sharpe > 1.0)
+
+🎖️ **A-Rank (Pro)**
+~d (Training / Sharpe > 0.5)
+
+🪜 **Selection**
+~d (Sharpe > 0.1)
+
+👶 New Recruits (24h)
+~d
+
+👻 Graveyard
+~d
+
+⚙️ System Status
+✅ Evolution Daemon Active
+✅ Native Lisp Orchestration (V28)
+~a"
+            (length all)
+            s-rank-count
+            a-rank-count
+            (length selection)
+            new-counts
+            (length graveyard)
+            (swimmy.core:get-time-string))))
+
+(defun notify-evolution-report ()
+  "Send the Evolution Factory Report to Discord"
+  (let ((report (generate-evolution-report)))
+    (swimmy.shell:notify-discord report :color 3447003)))

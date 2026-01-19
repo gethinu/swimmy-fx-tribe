@@ -1,4 +1,4 @@
-;;; src/lisp/school/school-selector.lisp
+;;; src/lisp/school/school-tier-system.lisp
 ;;; ============================================================================
 ;;; THE PROVING GROUNDS: SELECTION ENGINE (Battlefield Logic)
 ;;; ============================================================================
@@ -12,6 +12,13 @@
 ;;; ============================================================================
 
 (in-package :swimmy.school)
+
+;;; V26: 3-Step Ladder System (Expert Panel Request)
+;;; 1. :incubator - Freshly born. Defaults here.
+;;; 2. :selection - Surviving (Sharpe >= 0.1)
+;;; 3. :training - Growth (Sharpe >= 0.5)
+;;; 4. :battlefield - Elite (Sharpe >= 1.0)
+
 
 (defparameter *battlefield-quota* 4 "Maximum number of strategies allowed in Battlefield per category")
 
@@ -31,15 +38,15 @@
     ;; V23: Auto-promote to :veteran if entering battlefield (Fixes Execution Block)
     (when (eq new-tier :battlefield)
       (setf (strategy-rank strategy) :veteran)
-      (format t "[SELECTOR] 🎖️ RANK UP: ~a is now a VETERAN!~%" (strategy-name strategy)))
-    (format t "[SELECTOR] 🎖️ PROMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
+      (format t "[SELECTOR] RANK UP: ~a is now a VETERAN!~%" (strategy-name strategy)))
+    (format t "[SELECTOR] PROMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
             (strategy-name strategy) old-tier new-tier reason)))
 
 (defun demote (strategy new-tier reason)
   "Demote a strategy to a lower tier."
   (let ((old-tier (strategy-tier strategy)))
     (setf (strategy-tier strategy) new-tier)
-    (format t "[SELECTOR] 🔻 DEMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
+    (format t "[SELECTOR] DEMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
             (strategy-name strategy) old-tier new-tier reason)))
 
 ;;; ----------------------------------------------------------------------------
@@ -52,7 +59,7 @@
    2. Identify Top Training Graduates (Challengers).
    3. Force substitution if Challenger > Weakest Defender."
   
-  (format t "[SELECTOR] ⚔️ BATTLE ROYALE START: Category ~a~%" category)
+  (format t "[SELECTOR] BATTLE ROYALE START: Category ~a~%" category)
   
   (let* ((defenders (get-strategies-by-tier :battlefield category))
          (challengers (get-strategies-by-tier :training category))
@@ -64,7 +71,7 @@
     ;; 1. Fill Empty Slots
     (let ((slots-remaining (- *battlefield-quota* (length defenders))))
       (when (> slots-remaining 0)
-        (format t "[SELECTOR] 📥 Filling ~d empty slots...~%" slots-remaining)
+        (format t "[SELECTOR] Filling ~d empty slots...~%" slots-remaining)
         (loop for i from 0 below slots-remaining
               for chal in sorted-challengers
               do (promote chal :battlefield "Empty Slot Fill")
@@ -84,7 +91,7 @@
             ;; Challenge Condition: Significant improvement required (buffer)
             (if (> chal-score (+ def-score 0.1)) 
                 (progn
-                  (format t "[SELECTOR] 🥊 KNOCKOUT! ~a (S=~,2f) defeats ~a (S=~,2f)~%"
+                  (format t "[SELECTOR] KNOCKOUT! ~a (S=~,2f) defeats ~a (S=~,2f)~%"
                           (strategy-name chal) chal-score (strategy-name weakest-defender) def-score)
                   
                   ;; Swap
@@ -94,27 +101,55 @@
                   ;; Remove from lists to prevent double swap in one run
                   (setf sorted-defenders (rest sorted-defenders)))
                 
-                (format t "[SELECTOR] 🛡️ ~a (S=~,2f) defends against ~a (S=~,2f)~%"
+                (format t "[SELECTOR] ~a (S=~,2f) defends against ~a (S=~,2f)~%"
                         (strategy-name weakest-defender) def-score (strategy-name chal) chal-score))))))))
 
-(defun execute-proving-grounds ()
-  "Main entry point. Runs Battle Royale for all categories."
-  (format t "[SELECTOR] 🏟️ OPENING THE PROVING GROUNDS...~%")
+;;; ----------------------------------------------------------------------------
+;;; MERITOCRACY (The Ladder Algorithm)
+;;; ----------------------------------------------------------------------------
+
+(defun run-meritocracy-selection ()
+  "Run the 'Ladder' selection based on Absolute Thresholds.
+   Moves strategies between tiers based on Sharpe Value."
+  (format t "[SELECTOR] CLIMBING THE LADDER (Meritocracy Selection)...~%")
   
-  ;; 0. Auto-Graduate Incubators (Simple pass for now, later add criteria)
-  (dolist (s (get-strategies-by-tier :incubator))
-    (when (and (strategy-sharpe s) (> (strategy-sharpe s) 0.5))
-      (promote s :training "Graduate from Incubator (Sharpe > 0.5)")))
+  (dolist (strat *strategy-knowledge-base*)
+    (let ((sharpe (or (strategy-sharpe strat) 0.0))
+          (tier (strategy-tier strat)))
       
-  ;; 1. Run Battle Royale per Category
-  (let ((categories '(:trend :reversion :breakout :scalp)))
-    (dolist (cat categories)
-      (run-battle-royale cat)))
-      
+      (cond 
+        ;; 1. Promotion to Battlefield (The Elite)
+        ((>= sharpe 1.0)
+         (unless (eq tier :battlefield)
+           (promote strat :battlefield "Sharpe >= 1.0 (Elite)")))
+        
+        ;; 2. Promotion to Training (Growth)
+        ((>= sharpe 0.5)
+         (cond 
+           ((eq tier :battlefield) (demote strat :training "Sharpe < 1.0"))
+           ((not (eq tier :training)) (promote strat :training "Sharpe >= 0.5"))))
+           
+        ;; 3. Promotion to Selection (Survival)
+        ((>= sharpe 0.1)
+         (cond
+           ((eq tier :training) (demote strat :selection "Sharpe < 0.5"))
+           ((eq tier :battlefield) (demote strat :selection "Sharpe < 0.5 (Crash)"))
+           ((not (eq tier :selection)) (promote strat :selection "Sharpe >= 0.1"))))
+           
+        ;; 4. Demotion to Incubator/Graveyard (Fail)
+        (t
+         (unless (member tier '(:incubator :graveyard))
+           (demote strat :incubator "Sharpe < 0.1")))))))
+
+(defun execute-proving-grounds ()
+  "Main entry point. Runs Meritocratic Selection."
+  (format t "[SELECTOR] OPENING THE PROVING GROUNDS...~%")
+  (run-meritocracy-selection)
+
   ;; 2. Report Status
-  (format t "[SELECTOR] 📊 BATTLEFIELD STATUS:~%")
+  (format t "[SELECTOR] BATTLEFIELD STATUS:~%")
   (dolist (s (get-strategies-by-tier :battlefield))
-    (format t "   🎖️ [~a] ~a (Sharpe: ~,2f)~%" 
+    (format t "   [~a] ~a (Sharpe: ~,2f)~%" 
             (strategy-category s) (strategy-name s) (strategy-sharpe s))))
 
 ;; Auto-run on load (for now, during dev)

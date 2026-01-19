@@ -68,6 +68,16 @@
         (dolist (file (directory wildcard))
           (handler-case
               (let ((strat (load-strategy file)))
+                ;; V28.1: Sync Rank with Tier on Load (Fixes Execution Block)
+                (when strat
+                  (let ((tier-kw (intern (string-upcase tier) :keyword)))
+                    ;; Force Tier to match Directory (Truth)
+                    (setf (slot-value strat 'swimmy.school::tier) tier-kw)
+                    ;; Force Rank logic
+                    (when (eq tier-kw :battlefield)
+                      (setf (slot-value strat 'swimmy.school::rank) :veteran)
+                      ;; (format t "[LIB] ⚔️ Restoring VETERAN rank for ~a~%" (slot-value strat 'swimmy.school::name))
+                      )))
                 (push strat strategies)
                 (incf count))
             (error (e)

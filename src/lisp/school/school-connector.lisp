@@ -56,7 +56,11 @@
   "Wisdom Update (Civilization Handover)"
   ;; V24: Native Lisp Wisdom Extraction
   (format t "~%[CONNECTOR] [Phase 7] Wisdom Update (Native)...~%")
-  (analyze-veterans))
+  (analyze-veterans)
+  
+  ;; V28.2: Send Factory Report (Restores Visibility)
+  (format t "[CONNECTOR] 📨 Sending Evolution Factory Report...~%")
+  (swimmy.school::notify-evolution-report))
 
 (defun start-evolution-service ()
   "Main Loop: The Connector"

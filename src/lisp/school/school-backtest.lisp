@@ -35,7 +35,9 @@
       (format nil "EMPTY-~A" suffix)))
 
 (defun send-zmq-msg (msg)
-  "Helper to send ZMQ message"
+  "Helper to send ZMQ message with Throttling (Speed Demon Fix)"
+  ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
+  (sleep 0.005) 
   (if (and (boundp '*backtest-requester*) *backtest-requester*)
       (pzmq:send *backtest-requester* msg)
       (pzmq:send *cmd-publisher* msg)))

@@ -61,12 +61,17 @@
       nil)))
 
 (defun terminate-guardian ()
-  "Kill the Guardian process."
+  "Kill the Guardian process and close streams to prevent FD leaks."
+  (when *guardian-stream-in*
+    (ignore-errors (close *guardian-stream-in*))
+    (setf *guardian-stream-in* nil))
+  (when *guardian-stream-out*
+    (ignore-errors (close *guardian-stream-out*))
+    (setf *guardian-stream-out* nil))
   (when *guardian-process*
     (uiop:terminate-process *guardian-process*)
-    (setf *guardian-process* nil)
-    (setf *guardian-stream-in* nil)
-    (setf *guardian-stream-out* nil)))
+    ;; Optional: (uiop:wait-process *guardian-process*) for zombies, but might block
+    (setf *guardian-process* nil)))
 
 ;;; ----------------------------------------------------------------------------
 ;;; WISDOM LOADING

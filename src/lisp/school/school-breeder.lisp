@@ -54,20 +54,24 @@
       :status :active)))
 
 (defun run-breeding-cycle ()
-  "Breed the Top 2 Battlefield strategies in each category."
-  (format t "[BREEDER] 🧬 Starting Breeding Cycle...~%")
-  (let ((categories '(:trend :reversion :breakout :scalp)))
+  "Breed top strategies from Battlefield, Training, and Selection tiers."
+  (format t "[BREEDER] 🧬 Starting Breeding Cycle (Battlefield, Training, Selection)...~%")
+  (let ((categories '(:trend :reversion :breakout :scalp))
+        (tiers '(:battlefield :training :selection)))
+        
     (dolist (cat categories)
-      (let* ((warriors (get-strategies-by-tier :battlefield cat))
-             (sorted (sort (copy-list warriors) #'> :key (lambda (s) (or (strategy-sharpe s) 0)))))
-        (when (>= (length sorted) 2)
-          (let ((p1 (first sorted))
-                (p2 (second sorted)))
-            (format t "[BREEDER] 💕 Breeding ~a + ~a~%" (strategy-name p1) (strategy-name p2))
-            (let ((child (breed-strategies p1 p2)))
-              (push child *strategy-knowledge-base*)
-              (save-recruit-to-lisp child) ;; Persist to disk
-              (format t "[BREEDER] 👶 Born: ~a (Tier: Incubator)~%" (strategy-name child)))))))))
+      (dolist (tier tiers)
+        (let* ((warriors (get-strategies-by-tier tier cat))
+               (sorted (sort (copy-list warriors) #'> :key (lambda (s) (or (strategy-sharpe s) 0)))))
+               
+          (when (>= (length sorted) 2)
+            (let ((p1 (first sorted))
+                  (p2 (second sorted)))
+              (format t "[BREEDER] 💕 Breeding [~a] ~a + ~a~%" tier (strategy-name p1) (strategy-name p2))
+              (let ((child (breed-strategies p1 p2)))
+                (push child *strategy-knowledge-base*)
+                (save-recruit-to-lisp child) ;; Persist to disk
+                (format t "[BREEDER] 👶 Born: ~a (Tier: Incubator)~%" (strategy-name child))))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation
