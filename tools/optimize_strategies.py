@@ -119,7 +119,11 @@ def run_evolution():
                 # Prepare Backtest
                 tf_raw = genome.get("timeframe", 15)
                 tf_label = get_tf_label(tf_raw)
-                symbol = "USDJPY"  # Default for tuning
+
+                # V17b: Multi-Currency Fix (Expert Panel Request)
+                # Randomly select a symbol to prevent overfitting to USDJPY
+                symbol = random.choice(["USDJPY", "EURUSD", "GBPUSD"])
+
                 candles_path = f"data/historical/{symbol}_{tf_label}.csv"
 
                 # Check data exists

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Audit Swimmy System Services
 
-SERVICES=("swimmy-brain" "swimmy-guardian" "data_keeper")
+SERVICES=("swimmy-brain" "swimmy-guardian" "swimmy-data-keeper")
 
 echo "🔍 Auditing System Services..."
 ALL_OK=true

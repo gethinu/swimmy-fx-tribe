@@ -8,8 +8,10 @@
   :serial t
   :components ((:file "src/lisp/packages")
                (:file "src/lisp/packages-school")
+               (:file "src/lisp/school/school-state") ; Moved to top (Dependency Fix)
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
+               (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
                (:file "src/lisp/core/execution-protocol") ; P7
                (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
@@ -54,8 +56,6 @@
                (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
                
                ;; SCHOOL
-               (:file "src/lisp/school/school-state")
-               (:file "src/lisp/school/school-danger")
                (:file "src/lisp/school/school-constitution")
                (:file "src/lisp/school/school-resignation")
                (:file "src/lisp/school/school-optimized-params") ; Phase 4: Code Gen
@@ -77,7 +77,9 @@
                (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
                (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
                (:file "src/lisp/school/school-selector")   ; The Proving Grounds (Phase 2): Tier System
+               (:file "src/lisp/school/school-scout")      ; Phase 11: Lisp-Native Scout
                (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
+               (:file "src/lisp/school/school-connector")
                (:file "src/lisp/school/school-learning")
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school/school-volatility")
@@ -88,6 +90,7 @@
                ;; (:file "src/lisp/school-hunter") ; V9.2: Loaded dynamically for safety (safely-load-hunter-strategies)
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school/school-risk")      ; SRP Refactor
+               (:file "src/lisp/school/school-danger")    ; Found during Audit
                (:file "src/lisp/school/school-market")    ; SRP Refactor
                (:file "src/lisp/school/school-narrative") ; SRP Refactor
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19

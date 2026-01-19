@@ -296,8 +296,10 @@
         (t "M1")))
 
 ;; Request backtest from Rust
-(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol "USDJPY"))
-  "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe."
+(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil))
+  "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
+   Uses strategy's native symbol if not overridden."
+  (let ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
   
   ;; V8.0: Multi-Timeframe Logic
   ;; Strategy decides its own destiny (timeframe)
@@ -332,9 +334,9 @@
            (push (cons ftf-str (candles-to-json hist)) (cdr aux-candles-json)))))
 
     (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: M~d)...~%" 
-            (strategy-name strat) symbol suffix len timeframe)
+            (strategy-name strat) actual-symbol suffix len timeframe)
     
-    (let* ((data-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
+    (let* ((data-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" actual-symbol))
            (use-file (and (string= suffix "") (probe-file data-file))))
 
       (if use-file
@@ -345,7 +347,7 @@
                            ("action" "BACKTEST")
                            ("strategy" (strategy-to-json strat :name-suffix suffix))
                            ("candles_file" data-file)
-                           ("symbol" symbol)
+                           ("symbol" actual-symbol)
                            ("timeframe" timeframe))))
              (send-zmq-msg msg)
              ;; (format t "[L] 📤 Sent Direct CSV Request (~a)~%" data-file)
@@ -381,7 +383,7 @@
                           ("timeframe" timeframe)))) 
                           
             (send-zmq-msg msg)
-            (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe))))))
+            (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe)))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
@@ -436,9 +438,9 @@
   "Calculate required OOS Sharpe Ratio based on generation number.
    López de Prado Rule: Higher generation = Higher burden of proof for overfitting."
   (let ((g (or gen 0))
-        (base 0.1)
+        (base 0.0) ;; Relaxed from 0.1 to 0.0 (The Laxative)
         (step 0.05))
-    ;; Gen0: 0.1
+    ;; Gen0: 0.0
     ;; Gen10: 0.6
     ;; Gen20: 1.1
     (min 2.0 (+ base (* g step)))))
@@ -463,19 +465,28 @@
       ;; Scenario 1: Robust Strategy (OOS > Threshold AND Degradation < 50%)
       ((and (> oos-sharpe required-oos) (< degradation 0.5))
        (format t "[L] ✅ VALIDATED: ~a is robust! Promoted.~%" base-name)
-       (notify-discord-alert (format nil "Valid Strategy: ~a (Gen ~d | OOS: ~,2f)" base-name gen oos-sharpe) :color 3066993))
+       (notify-discord-alert (format nil "Valid Strategy: ~a (Gen ~d | OOS: ~,2f)" base-name gen oos-sharpe) :color 3066993)
+       ;; V17c: Persist Promotion to Battlefield
+       (swimmy.persistence:move-strategy strat :battlefield))
       
       ;; Scenario 2: Overfit (Good IS, Bad OOS)
       ((> degradation 0.7)
        (format t "[L] 🚮 OVERFIT: ~a discarded. (Good past, bad future)~%" base-name)
        (setf *evolved-strategies* 
-             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*)))
+             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
+       ;; V17c: Move to Graveyard
+       (swimmy.persistence:move-strategy strat :graveyard))
        
       ;; Scenario 3: Weak (OOS < Required)
       (t
        (format t "[L] 🗑️ WEAK: ~a (OOS ~,2f < ~,2f) discarded.~%" base-name oos-sharpe required-oos)
        (setf *evolved-strategies* 
-             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))))
+             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
+       ;; V17c: Move to Graveyard
+       (setf *evolved-strategies* 
+             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
+       ;; V17c: Move to Graveyard
+       (swimmy.persistence:move-strategy strat :graveyard)))
     
     ;; Cleanup pending
     (remhash base-name *wfv-pending-strategies*)))

@@ -6,24 +6,30 @@
 
 (defparameter *strategy-knowledge-base* nil)
 
-(defun init-knowledge-base ()
-  "Initialize with historically proven strategies"
-  (setf *strategy-knowledge-base*
-        (append (get-trend-strategies)
-                (get-reversion-strategies)
-                (get-breakout-strategies)
-                (get-scalp-strategies)))
-  
-  ;; Phase 6b: Load Dynamic Strategies (Persistence Patch)
-  (let ((dynamic-path "src/lisp/strategies/strategies-dynamic.lisp"))
-    (if (probe-file dynamic-path)
-        (progn
-          (format t "[L] 📂 Loading persistence file: ~a~%" dynamic-path)
-          (load dynamic-path))
-        (format t "[L] ⚠️ Persistence file not found: ~a (created fresh)~%" dynamic-path)))
+;; Ensure persistence functions are available
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package :swimmy.persistence)
+    (load "src/lisp/core/persistence.lisp")))
 
-  (format t "[L] 📚 Knowledge base loaded: ~d strategies~%" 
-          (length *strategy-knowledge-base*)))
+(defun init-knowledge-base ()
+  "Initialize with strategies from The Great Library (Sharded Persistence)"
+  (setf *strategy-knowledge-base*
+        (swimmy.persistence:load-all-strategies))
+
+  (format t "[L] 📚 Knowledge base loaded: ~d strategies from Library~%" 
+          (length *strategy-knowledge-base*))
+
+  ;; Phase 10: Unlock the Alpha (Legacy Activation)
+  ;; Force assign :tier :battlefield to all legacy strategies (loaded from init)
+  ;; that do not have a tier assigned (nil).
+  (dolist (s *strategy-knowledge-base*)
+    (unless (strategy-tier s)
+      (setf (strategy-tier s) :battlefield)
+      ;; Also ensure generated slot is 0 if missing
+      (unless (strategy-generation s) 
+        (setf (strategy-generation s) 0))))
+  
+  (format t "[L] 🔓 Alpha Unlocked: Strategies normalized~%"))
 
 ;; ===== Sharpe フィルター;; Thresholds
 (defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Taleb's Rule: Block negative EV)")
@@ -117,8 +123,10 @@
    This fixes the Sharpe=-3.75 bug where all strategies defaulted to SMA."
   (let* ((indicators (strategy-indicators strategy))
          (first-indicator (first indicators))
-         (indicator-name (when first-indicator 
-                           (string-downcase (symbol-name (first first-indicator))))))
+         (indicator-name (cond
+                           ((stringp first-indicator) (string-downcase first-indicator))
+                           ((and first-indicator (listp first-indicator)) (string-downcase (symbol-name (first first-indicator))))
+                           (t nil))))
     (cond
       ;; MACD strategies
       ((and indicator-name (search "macd" indicator-name)) "macd")
@@ -127,6 +135,7 @@
       ;; Stochastic strategies
       ((and indicator-name (search "stoch" indicator-name)) "stoch")
       ;; Bollinger Band strategies
+      ((and indicator-name (search "boland" indicator-name)) "bb") ; Fixed "boland" for BB
       ((and indicator-name (search "bb" indicator-name)) "bb")
       ;; EMA strategies
       ((and indicator-name (search "ema" indicator-name)) "ema")
@@ -164,9 +173,16 @@
 (defparameter *min-strategies-per-category* 3 "P1: Minimum strategies to keep per category")
 (defparameter *similarity-threshold* 0.10 "P1: Parameter distance below this = similar")
 
+
 (defun find-strategy-object (name)
-  "Find strategy object by name in KB or Evolved list."
-  (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+  "Find a strategy object by name in the KB"
+  (find name *strategy-knowledge-base*
+        :key #'strategy-name
+        :test #'string-equal))
+
+(defun find-strategy (name)
+  "Alias for find-strategy-object (Generative AI Compatibility)"
+  (or (find-strategy-object name)
       (find name swimmy.globals:*evolved-strategies* :key #'strategy-name :test #'string=)))
 
 (defun strategy-benched-p (name)

@@ -4,14 +4,269 @@ import os
 import sys
 import random
 import time
+import re
 from backtest_service import BacktestService
 
 # Configuration
-# Configuration
 MAX_ATTEMPTS = 50
 MIN_SHARPE = 0.1
-GRAVEYARD_FILE = "data/graveyard.json"
+GRAVEYARD_LISP = "src/lisp/school/graveyard-persistence.lisp"
+DYNAMIC_LISP = "src/lisp/strategies/strategies-dynamic.lisp"
 OPTIMIZED_FILE = "strategies_optimized.json"
+
+
+def load_json(path):
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+
+def load_lisp_graveyard(path):
+    """
+    Parse the Lisp Graveyard file to avoid toxic parameters.
+    Format: (push '(:name "..." :timeframe 15 :sma-short 10 :sma-long 20 ...) *graveyard*)
+    """
+    if not os.path.exists(path):
+        return []
+
+    graveyard = []
+    try:
+        with open(path, "r") as f:
+            content = f.read()
+
+        # Regex to extract key parameters for toxicity check
+        # Looks for :timeframe X :sma-short Y :sma-long Z
+        # We don't need a perfect Lisp parser, just enough to screen duplicates
+        pattern = re.compile(
+            r":timeframe\s+(\d+)\s+:sma-short\s+(\d+)\s+:sma-long\s+(\d+)"
+        )
+
+        for match in pattern.finditer(content):
+            tf, short, long_p = match.groups()
+            graveyard.append(
+                {"timeframe": int(tf), "sma_short": int(short), "sma_long": int(long_p)}
+            )
+
+        # print(f"DEBUG: Loaded {len(graveyard)} corpses from Lisp")
+        return graveyard
+    except Exception as e:
+        print(f"Error parse lisp graveyard: {e}")
+        return []
+
+
+def append_to_lisp_graveyard(path, candidates):
+    """Append failures to Lisp Graveyard as Code-as-Data (push to *graveyard*)"""
+    try:
+        with open(path, "a") as f:
+            for c in candidates:
+                f.write(
+                    f"\n(push '(:name \"{c['name']}\" :timeframe {c['timeframe']} :sma-short {c['sma_short']} :sma-long {c['sma_long']} :sl {c.get('sl',0)} :tp {c.get('tp',0)}) *graveyard*)\n"
+                )
+    except Exception as e:
+        print(f"Error appending to lisp graveyard: {e}")
+
+
+def append_to_dynamic_lisp(path, strategy):
+    """Append SUCCESSFUL recruit to Dynamic Strategies file as Lisp Code."""
+    try:
+        with open(path, "a") as f:
+            # Generate the (defstrategy ...) macro call
+            # Assuming trend strategy for now based on SMA
+            lisp_code = f"""
+(push 
+  (defstrategy {strategy['name']}
+    :category :trend
+    :timeframe {strategy['timeframe']}
+    :indicators ("SMA-{strategy['sma_short']}" "SMA-{strategy['sma_long']}")
+    :entry "CROSS SMA {strategy['sma_short']} {strategy['sma_long']}"
+    :exit "CROSS SMA {strategy['sma_short']} {strategy['sma_long']}"
+    :sl {strategy['sl']}
+    :tp {strategy['tp']}
+    :sharpe {strategy.get('sharpe', 0.1)}  
+    :trades {strategy.get('trades', 0)}
+    :regime-filter t)
+  *strategy-knowledge-base*)
+"""
+            f.write(lisp_code)
+            print(f"✅ Saved recruit to {path}")
+    except Exception as e:
+        print(f"Error appending to dynamic strategies: {e}")
+
+
+def is_toxic(params, graveyard):
+    """Check if params are too close to a known failure."""
+    for corpse in graveyard:
+        if (
+            corpse.get("timeframe") == params["timeframe"]
+            and corpse.get("sma_short") == params["sma_short"]
+            and corpse.get("sma_long") == params["sma_long"]
+        ):
+            return True
+    return False
+
+
+def mutate_best(best_strats, attempt):
+    """Clone a winner and mutate it."""
+    parent = random.choice(best_strats)
+
+    # Mutate
+    short = parent.get("sma_short", 10)
+    long_p = parent.get("sma_long", 20)
+
+    # Mutate +/- 10%
+    if random.random() < 0.5:
+        short = max(5, int(short * random.uniform(0.9, 1.1)))
+    if random.random() < 0.5:
+        long_p = max(short + 5, int(long_p * random.uniform(0.9, 1.1)))
+
+    name = f"Recruit-Elite-{int(time.time())}-{attempt}"
+
+    return {
+        "name": name,
+        "timeframe": parent.get("timeframe", 15),
+        "sma_short": short,
+        "sma_long": long_p,
+        "sl": round(max(0.01, parent.get("sl", 0.05) * random.uniform(0.9, 1.1)), 3),
+        "tp": round(max(0.01, parent.get("tp", 0.05) * random.uniform(0.9, 1.1)), 3),
+        "volume": 0.01,
+        "indicator_type": "sma",
+        "filter_enabled": False,
+    }
+
+
+def generate_smart_strategy(attempt, best_strats, graveyard):
+    # 80% Imitation (Wisdom), 20% Exploration (Random)
+    if best_strats and random.random() < 0.8:
+        candidate = mutate_best(best_strats, attempt)
+    else:
+        # Random but avoid Graveyard
+        for _ in range(10):  # Try 10 times to find non-toxic
+            candidate = generate_random_strategy(attempt)
+            if not is_toxic(candidate, graveyard):
+                break
+    return candidate
+
+
+def generate_random_strategy(attempt):
+    TIMEFRAMES = [1, 5, 15, 30, 60, 240, 1440, 10080]
+    SL_RANGES = (0.01, 0.10)
+    TP_RANGES = (0.01, 0.15)
+
+    tf = random.choice(TIMEFRAMES)
+    name = f"Recruit-Rnd-{int(time.time())}-{attempt}"
+    short = random.randint(5, 50)
+    long_p = random.randint(50, 200)
+    return {
+        "name": name,
+        "timeframe": tf,
+        "sma_short": short,
+        "sma_long": long_p,
+        "sl": round(random.uniform(*SL_RANGES), 3),
+        "tp": round(random.uniform(*TP_RANGES), 3),
+        "volume": 0.01,
+        "indicator_type": "sma",
+        "filter_enabled": False,
+    }
+
+
+def get_tf_label(tf_mins):
+    s = str(tf_mins).upper()
+    if s in ["W1", "D1", "H4", "H1", "M30", "M15", "M5", "M1"]:
+        return s
+    if s == "60":
+        return "H1"
+    if s == "240":
+        return "H4"
+    if s == "1440":
+        return "D1"
+    if s == "10080":
+        return "W1"
+    return f"M{tf_mins}"
+
+
+def run_exam():
+    service = BacktestService(use_zmq=False)
+
+    # Phase 5: Load Wisdom
+    best_strats = load_json(OPTIMIZED_FILE)
+    graveyard = load_lisp_graveyard(GRAVEYARD_LISP)
+
+    new_corpses = []
+
+    try:
+        if service.guardian_process:
+            time.sleep(1)
+
+        for i in range(MAX_ATTEMPTS):
+            candidate = generate_smart_strategy(i, best_strats, graveyard)
+
+            tf_raw = candidate["timeframe"]
+            tf_label = get_tf_label(tf_raw)
+            symbol = "USDJPY"
+            candles_path = f"data/historical/{symbol}_{tf_label}.csv"
+
+            if not os.path.exists(candles_path):
+                continue
+
+            payload = {
+                "action": "BACKTEST",
+                "strategy": candidate,
+                "candles_file": candles_path,
+                "strategy_name": candidate["name"],
+                "symbol": symbol,
+                "timeframe": tf_raw,
+                "from_date": "2024-01-01",
+                "to_date": "2025-01-01",
+                "spread": 10,
+                "balance": 10000,
+            }
+
+            res = service.run_backtest(payload)
+            success = False
+
+            stats = {}
+            if (
+                res
+                and res.get("type") == "BACKTEST_RESULT"
+                and not res.get("result", {}).get("error")
+            ):
+                stats = res["result"]
+                sharpe = stats.get("sharpe", 0.0)
+                trades = stats.get("trades", 0)
+
+                if sharpe >= MIN_SHARPE and trades > 1:
+                    candidate["sharpe"] = sharpe
+                    candidate["trades"] = trades
+                    print(json.dumps(candidate))
+                    success = True
+                    # SAVE TO LISP (The Missing Link)
+                    append_to_dynamic_lisp(DYNAMIC_LISP, candidate)
+
+                    if new_corpses:
+                        append_to_lisp_graveyard(GRAVEYARD_LISP, new_corpses)
+                    return 0
+
+            # If failed, add to graveyard list
+            if not success:
+                new_corpses.append(candidate)
+
+    finally:
+        # Save accumulated failures
+        if new_corpses:
+            append_to_lisp_graveyard(GRAVEYARD_LISP, new_corpses)
+
+        if service.guardian_process:
+            service.guardian_process.terminate()
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(run_exam())
 
 
 def load_json(path):

@@ -73,6 +73,9 @@ def main():
     for entry in cache:
         name = entry.get("name", "Unknown")
         res = entry.get("result", {}) or {}
+        if isinstance(res, list):
+            # Handle weird case where result is a list (likely empty or malformed)
+            res = {}
 
         # Extract metrics
         sharpe = res.get("sharpe", 0.0) or 0.0  # Handle None

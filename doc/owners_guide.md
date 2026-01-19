@@ -1,6 +1,6 @@
 # 🐟 Swimmy Ver 18 オーナーズガイド
 
-**最終版:** 2026-01-17 (V45.0 - Full Spec Era)
+**最終版:** 2026-01-19 (V46.0 - Lisp Native Era)
 **リーダー判断:** Elon Musk (Expert Panel Verified)
 
 ---
@@ -9,41 +9,57 @@
 
 ```bash
 # 全サービス起動 (Zombie Processの一掃を含む)
-make run  # 推奨 (kill-zombies を自動実行)
+make run  # 推奨
 
 # または個別起動
-systemctl --user start swimmy-brain swimmy-guardian swimmy-data-keeper
+systemctl --user start swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper
 
 # 全サービス停止
-systemctl --user stop swimmy-brain swimmy-guardian swimmy-data-keeper
+systemctl --user stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper
 
 # ステータス確認
 make status
 
 # リアルタイムログ監視
 make logs
+
+# 🧬 進化状況モニター (Multi-Currency Visualizer)
+./tools/monitor_evolution.sh
 ```
 
 ---
 
-## 🌊 Full Spec Implementation (V45.0 - Memo3 Complete)
+## 🌊 Lisp Native Implementation (V46.0)
 
-2026-01-17、システムは「市場適応型トレーディングOS」としての全機能を実装しました。
+2026-01-19、システムは「完全なるLisp化」を達成しました。Pythonによるオーケストレーションは廃止されました。
 
-### 1. 7つの市場状態 (Softmax Regime)
+### 1. Pure Lisp Daemon (swimmy-school)
+進化・学習・最適化のループは、Systemd管理下のSBCLプロセス (`swimmy-school`) によって直接制御されます。
+- **高速化**: Pythonインタプリタの起動オーバーヘッドがゼロになりました。
+- **堅牢性**: Systemdがプロセスの死活監視を行い、クラッシュ時に自動復旧します。
+
+### 2. Sharded File Persistence (The Great Library)
+戦略データを単一の巨大ファイルではなく、戦略ごとに個別のファイル (`data/library/<tier>/<name>.lisp`) として管理します。
+- **Incubator**: 生まれたて/テスト中
+- **Battlefield**: 交配待ちのエリート
+- **Graveyard**: 敗者
+- **Legends**: 外部から招喚された英雄
+
+### 2. 7つの市場状態 (Softmax Regime)
 単純な「トレンド/レンジ」ではなく、**確率的な市場認識**を行います。
 `detect-market-regime` は `(TrendMature: 0.8, RangeExpansion: 0.2)` のようなベクトルを出力を返します。
 
-### 2. ケリー基準による資金管理 (Kelly Criterion)
+### 3. ケリー基準による資金管理 (Kelly Criterion)
 ロット数は固定ではなく、戦略の「優位性（Edge）」に基づいて動的に計算されます。
 - `f* = p - q/b` （勝率とリスクリワード比から算出）
 - **Safety**: ハーフケリーを採用し、最大リスクを口座資金の10%に制限。
 
-### 3. ベイズ適応 (Bayesian Adaptation)
+### 4. ベイズ適応 (Bayesian Adaptation)
 戦略の信頼度は、ベイズ統計（Beta分布）を用いて更新されます。
 少ないトレード数でも統計的に正しい信頼区間を推定し、"使えない戦略"を早期に見切ります。
 
 ---
+
 ## 🔒 アトミック予約システム (Atomic Allocation)
 
 V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました。
@@ -86,7 +102,10 @@ V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました�
 │  - MT5通信、注文執行、バックテスト、RiskGate        │
 ├─────────────────────────────────────────────────────┤
 │  BRAIN (Lisp)           Port 5555/5556 (PUB)        │
-│  - シグナル生成、学習、Evolution、Heartbeat         │
+│  - シグナル生成、学習、State Management             │
+├─────────────────────────────────────────────────────┤
+│  SCHOOL (Lisp)          Systemd Managed             │
+│  - 進化、淘汰、リクルート (Daemon Native)           │
 ├─────────────────────────────────────────────────────┤
 │  DATA KEEPER (Python)   Port 5561                   │
 │  - 10M Candle Buffer (Async Save)                   │
@@ -98,18 +117,22 @@ V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました�
 | Brain | `swimmy-brain` | シグナル生成、学習、進化 |
 | Guardian | `swimmy-guardian` | MT5通信、注文執行、バックテスト |
 | Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ永続化 |
-| Evolution | `swimmy-evolution` | **Hyper-Time Evolution (無限進化ループ)**, Purge, Wisdom |
+| School | `swimmy-school` | **Hyper-Time Evolution (無限進化ループ)**, Purge, Wisdom |
 
 ---
 
-## 🧬 SRP モジュール構成 (V44.2)
+## 🧬 SRP モジュール構成 (V46.0)
 
 `school-execution.lisp` もリファクタリングされ、全ファイルがSRP準拠（600行以下）です。
 
 ```
 src/lisp/
-├── school.lisp                    (33行) オーケストレーター
+├── school.lisp                    (Orchestrator - 33行)
 ├── school/
+│   ├── school-daemon.lisp        (Systemd Entry Point)
+│   ├── school-connector.lisp     (Evolution Loop)
+│   ├── school-scout.lisp         (Recruitment)
+│   ├── school-breeder.lisp       (Breeding/Wisdom)
 │   ├── school-allocation.lisp    (Atomic Allocation)
 │   ├── school-execution.lisp     (Atomic Execution)
 │   ├── school-danger.lisp        (Tiered Cooldown)
@@ -126,6 +149,7 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 - ✅ マルチタイムフレーム履歴対応 (`REQ_HISTORY` + `tf` パラメータ)
 - ✅ W1, D1, H4, H1, M30, M15, M5, M1 対応
 - ✅ 戦略名 (Comment) 対応
+- ✅ マルチカレンシー対応 (USDJPY, EURUSD, GBPUSD)
 
 **ログで確認:**
 ```
@@ -137,7 +161,7 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 
 ---
 
-## 🏁 Launch Checklist
+## 🏁 Launch Checklist (Lisp Native)
 
 ```bash
 # 1. Quality Gate 確認
@@ -150,8 +174,8 @@ make status
 # → EA ログで "Ver 15.2" を確認
 
 # 4. ログ確認
-tail -30 logs/swimmy.log
-tail -10 logs/guardian.log
+journalctl --user -u swimmy-school -f
+journalctl --user -u swimmy-brain -f
 ```
 
 ---
@@ -166,8 +190,7 @@ make run
 make kill-zombies
 
 # その後、正常に再起動
-# その後、正常に再起動
-systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-evolution
+systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-school
 ```
 
 ---

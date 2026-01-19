@@ -8,6 +8,9 @@ MAX_FUNCTIONS = 25
 EXCLUDELIST = [
     "src/lisp/school/school-hunter.lisp",
     "src/lisp/dsl.lisp",
+    "src/lisp/strategies/strategies-dynamic.lisp",
+    "src/lisp/school/school-optimized-params.lisp",
+    "src/lisp/school/graveyard-persistence.lisp",
 ]  # Generated/Legacy files allowed
 
 

@@ -23,6 +23,9 @@
 (defvar *total-wins* 0 "Total winning trades count")
 (defvar *total-trades-count* 0 "Total trades count")
 
+;; Phase 6c: Graveyard (Unified Persistence)
+(defparameter *graveyard* nil "List of failed strategy parameters (Code-as-Data)")
+
 ;; V44.4: Strategy Cooldown State (P12.5 - Prevent Rapid Entries)
 (defvar *strategy-cooldowns* (make-hash-table :test 'equal) 
   "Hash table mapping 'strategy-symbol' to last-trade universal-time")

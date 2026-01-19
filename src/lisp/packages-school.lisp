@@ -255,8 +255,14 @@
     #:select-parent-tournament
     #:select-tribal-pair
     
+    ;; Phase 13: Wisdom Native
+    #:analyze-veterans
+    
     ;; Reporting (V44.3)
     #:update-global-stats
+    
+    ;; Phase 12: The Connector
+    #:start-evolution-service
    ))
 
 ;;; 5. SHELL (Interface Layer) ---------------------------------------------------

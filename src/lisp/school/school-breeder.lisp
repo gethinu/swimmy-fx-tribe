@@ -66,6 +66,7 @@
             (format t "[BREEDER] 💕 Breeding ~a + ~a~%" (strategy-name p1) (strategy-name p2))
             (let ((child (breed-strategies p1 p2)))
               (push child *strategy-knowledge-base*)
+              (save-recruit-to-lisp child) ;; Persist to disk
               (format t "[BREEDER] 👶 Born: ~a (Tier: Incubator)~%" (strategy-name child)))))))))
 
 ;;; ----------------------------------------------------------------------------
@@ -73,70 +74,83 @@
 ;;; ----------------------------------------------------------------------------
 
 (defun save-recruit-to-lisp (strat)
-  "Append the strategy definition to strategies-dynamic.lisp (Code-as-Data)."
-  (let ((filepath "src/lisp/strategies/strategies-dynamic.lisp"))
-    (with-open-file (stream filepath
-                            :direction :output
-                            :if-exists :append
-                            :if-does-not-exist :create)
-      (format stream "~%~%(push ~%" )
-      (format stream "  (make-strategy~%")
-      (format stream "    :name ~s~%" (strategy-name strat))
-      (format stream "    :category ~s~%" (strategy-category strat))
-      (format stream "    :timeframe ~s~%" (strategy-timeframe strat))
-      (format stream "    :generation ~d~%" (strategy-generation strat))
-      (format stream "    :sl ~f~%" (strategy-sl strat))
-      (format stream "    :tp ~f~%" (strategy-tp strat))
-      (format stream "    :volume ~f~%" (strategy-volume strat))
-      (format stream "    :indicators '~s~%" (strategy-indicators strat)) ;; Quote the list!
-      (format stream "    :entry ~s~%" (strategy-entry strat))
-      (format stream "    :exit ~s~%" (strategy-exit strat))
-      (format stream "    :tier ~s~%" (strategy-tier strat))
-      (format stream "    :status ~s)~%" (strategy-status strat))
-      (format stream "  *strategy-knowledge-base*)~%"))
-    (format t "[PERSIST] 💾 Saved code for ~a to ~a~%" (strategy-name strat) filepath)))
+  "Save the new strategy to The Great Library (Sharded Persistence)."
+  (swimmy.persistence:save-strategy strat)
+  (format t "[PERSIST] 💾 Saved recruited strategy ~a to Library~%" (strategy-name strat)))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 3.7: The Entrance Exam (Recruitment Filter)
 ;;; ----------------------------------------------------------------------------
 
 (defun recruit-elite-strategy ()
-  "Recruit a new strategy by forcing it to pass the Entrance Exam (historical test).
-   Calls tools/recruit_elite.py."
-  (format t "[RECRUIT] ⚔️ Starting Entrance Exam process...~%")
+  "Recruit a new strategy using Lisp-Native Scout (Phase 11).
+   Directly calls school-scout:recruit-scout."
+  (format t "[RECRUIT] ⚔️ Starting Lisp-Native Recruitment (Phase 11)...~%")
   (handler-case
-      (let ((output (uiop:run-program '("tools/recruit_elite.py") 
-                                      :output :string 
-                                      :ignore-error-status t)))
-        (if (and output (> (length output) 0))
-            (let* ((json (jsown:parse output))
-                   (name (jsown:val json "name"))
-                   (tf (jsown:val json "timeframe"))
-                   (short (jsown:val json "sma_short"))
-                   (long-p (jsown:val json "sma_long"))
-                   (sl (jsown:val json "sl"))
-                   (tp (jsown:val json "tp")))
-              
-              (format t "[RECRUIT] 🎉 PASSED! Recruit: ~a (TF:~a SMA:~a/~a)~%" name tf short long-p)
-              
-              ;; Create and Register
-              (let ((recruit (make-strategy
-                               :name name
-                               :category :trend ;; Default category for now
-                               :timeframe tf
-                               :generation 0
-                               :sl sl
-                               :tp tp
-                               :volume 0.01
-                               :indicators (list (format nil "SMA-~a" short) (format nil "SMA-~a" long-p))
-                               :entry (format nil "CROSS SMA ~a ~a" short long-p)
-                               :exit (format nil "TP/SL")
-                               :tier :incubator
-                               :status :active)))
-                (push recruit *strategy-knowledge-base*)
-                ;; Phase 6b: Persist Immediately (Code-as-Data)
-                (save-recruit-to-lisp recruit)
-                recruit))
-            (format t "[RECRUIT] ❌ All candidates failed the exam.~%")))
+      (let ((count (recruit-scout)))
+        (if (> count 0)
+            (format t "[RECRUIT] 🎉 Successfully recruited ~d strategies!~%" count)
+            (format t "[RECRUIT] ❌ No suitable recruits found this cycle.~%")))
     (error (e)
       (format t "[RECRUIT] 💥 Error during recruitment: ~a~%" e))))
+
+;;; ----------------------------------------------------------------------------
+;;; Phase 13: Wisdom Native (Civilization Handover)
+;;; ----------------------------------------------------------------------------
+
+(defun extract-params-from-strategy (strat)
+  "Convert a strategy struct into an optimized-param plist."
+  (list :name (strategy-name strat)
+        :timeframe (strategy-timeframe strat)
+        :sl (strategy-sl strat)
+        :tp (strategy-tp strat)
+        ;; Extract Indicators (Reverse engineering the strings)
+        ;; This is a simplification: We assume SMA-S and SMA-L format for now.
+        :indicators (strategy-indicators strat)))
+        ;; TODO: Parse indicators more robustly if needed for gene regeneration
+
+(defun save-optimized-params-to-file (params-list)
+  "Save the optimized parameters to school-optimized-params.lisp."
+  (let ((filepath "src/lisp/school/school-optimized-params.lisp"))
+    (with-open-file (stream filepath
+                            :direction :output
+                            :if-exists :supersede
+                            :if-does-not-exist :create)
+      (format stream ";;; school-optimized-params.lisp~%")
+      (format stream ";;; GENERATED BY LISP WISDOM ENGINE (analyze-veterans)~%")
+      (format stream ";;; DO NOT EDIT MANUALLY.~%")
+      (format stream ";;; Generated at: ~a~%~%" (swimmy.shell:get-date-string))
+      (format stream "(in-package :swimmy.school)~%~%")
+      (format stream "(defparameter *optimized-params*~%")
+      (format stream "  '(~%")
+      (dolist (p params-list)
+        (format stream "    ~s~%" p))
+      (format stream "   ))~%"))
+    (format t "[WISDOM] 💾 Saved ~d veteran genes to ~a~%" (length params-list) filepath)))
+
+(defun analyze-veterans ()
+  "Analyze the Knowledge Base and extract 'Wisdom' (Best Genes).
+   Replaces extract_wisdom.py."
+  (format t "[WISDOM] 🧠 Analyzing Veterans for Gene Extraction...~%")
+  (let* ((all-strats (append *strategy-knowledge-base* 
+                             (get-strategies-by-tier :battlefield :trend) 
+                             (get-strategies-by-tier :battlefield :reversion))) 
+                             ;; Note: get-strategies-by-tier might duplicates KB if KB holds everything.
+                             ;; *strategy-knowledge-base* usually holds ALL.
+         (unique-strats (remove-duplicates all-strats :key #'strategy-name :test #'string=))
+         ;; Filter: Positive Sharpe only, or just take top N?
+         ;; For now, let's take anyone with Sharpe > 0.1 to allow early evolution.
+         (candidates (remove-if-not (lambda (s) (and (strategy-sharpe s) (> (strategy-sharpe s) 0.1))) unique-strats))
+         ;; Sort by Sharpe
+         (best (sort (copy-list candidates) #'> :key #'strategy-sharpe))
+         ;; Take Top 50
+         (elite (subseq best 0 (min (length best) 50)))
+         (genes (mapcar #'extract-params-from-strategy elite)))
+    
+    (format t "[WISDOM] Found ~d candidates (Sharpe > 0.1). Extracting ~d Elite Genes.~%" (length candidates) (length elite))
+    
+    (if genes
+        (save-optimized-params-to-file genes)
+        (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
+    
+    (length genes)))
