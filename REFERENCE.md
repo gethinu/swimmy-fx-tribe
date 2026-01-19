@@ -14,6 +14,22 @@
 | Discord Bot | `/home/swimmy/swimmy/src/python/discord_bot.py` |
 | Config | `/home/swimmy/swimmy/config/.env` |
 
+### 1.2 Tribal Tiers & Rank Mapping (The Hierarchy)
+
+ Strategies are organized into a strict hierarchy based on performance (Sharpe Ratio).
+
+| Tier (Tribal) | Rank (System) | Sharpe | Role | Execution |
+| :--- | :--- | :--- | :--- | :--- |
+| **Elder** | `:legend` | > 2.0 | Governance | Allowed |
+| **Battlefield** | `:veteran` (S) | > 1.0 | Real Trading | **Allowed** |
+| **Training** | `:veteran` (A) | > 0.5 | Paper Trading | Blocked |
+| **Initiate** | `:scout` (B) | > 0.0 | Monitoring | Blocked |
+| **Unworthy** | `:scout` (C) | < 0.0 | Selection | Blocked |
+
+> [!NOTE]
+> **Battlefield Exception**: Strategies placed in the `:battlefield` Tier are treated as `:veteran` for execution purposes, even if their Rank database entry hasn't updated yet.
+
+
 ### Windows (MT5)
 | Component | Path |
 |-----------|------|
