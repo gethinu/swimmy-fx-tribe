@@ -37,3 +37,8 @@ guardian/target/
 # Guardian has its own git repo
 guardian/
 config/.env.systemd
+
+# Strategy Data (Generated/Ephemeral)
+data/library/INCUBATOR/
+data/library/GRAVEYARD/
+data/library/TRAINING/
