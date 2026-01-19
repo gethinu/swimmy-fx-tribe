@@ -39,7 +39,8 @@ def count_strategies(tier_dir):
 
 def main():
     env = load_env()
-    webhook_url = os.getenv("SWIMMY_DISCORD_REPORTS") or env.get(
+    # Prioritize .env file content because system environment might be stale
+    webhook_url = env.get("SWIMMY_DISCORD_REPORTS") or os.getenv(
         "SWIMMY_DISCORD_REPORTS"
     )
 

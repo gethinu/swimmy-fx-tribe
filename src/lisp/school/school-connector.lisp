@@ -59,8 +59,8 @@
   (analyze-veterans)
   
   ;; V28.2: Send Factory Report (Restores Visibility)
-  (format t "[CONNECTOR] 📨 Sending Evolution Factory Report...~%")
-  (swimmy.school::notify-evolution-report))
+  ;; (format t "[CONNECTOR] 📨 Sending Evolution Factory Report...~%")
+  ;; (swimmy.school::notify-evolution-report))
 
 (defun start-evolution-service ()
   "Main Loop: The Connector"
