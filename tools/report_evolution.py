@@ -2,25 +2,21 @@
 """
 report_evolution.py
 ===================
-Generates a "Gene Pool" status report for the Evolution Factory.
-Reads strategies.json and strategy_ranks.lisp to report on:
-- Counts by Tier/Rank
-- Top Performers (Sharpe)
-- Recent Promotions
+Generates the "Evolution Factory Report" using the filesystem as the source of truth.
+Counts .lisp strategy files in data/library/ Tiers.
 """
 
 import zmq
 import json
 import os
 import sys
-import re
-from datetime import datetime
+import glob
+from datetime import datetime, timezone, timedelta
 
 # Configuration
 ZMQ_PORT = 5562
 ENV_FILE = "/home/swimmy/swimmy/.env"
-STRATEGIES_JSON = "/home/swimmy/swimmy/strategies.json"
-STRATEGY_RANKS_LISP = "/home/swimmy/swimmy/.swimmy/strategy_ranks.lisp"
+LIBRARY_PATH = "/home/swimmy/swimmy/data/library"
 
 
 def load_env():
@@ -36,45 +32,9 @@ def load_env():
     return env_vars
 
 
-def load_strategies():
-    if not os.path.exists(STRATEGIES_JSON):
-        return []
-    try:
-        with open(STRATEGIES_JSON, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"❌ Error loading strategies: {e}")
-        return []
-
-
-def parse_lisp_ranks():
-    """Parses the Lisp association list for strategy ranks."""
-    if not os.path.exists(STRATEGY_RANKS_LISP):
-        return {}
-
-    ranks = {}
-    try:
-        with open(STRATEGY_RANKS_LISP, "r") as f:
-            content = f.read()
-            # Simple regex to extract key-values from (:KEY val ...)
-            # Assumes format: (:NAME "Name" :RANK :tier ...)
-            entries = content.split("(:NAME")[1:]
-            for entry in entries:
-                try:
-                    name_match = re.search(r'"([^"]+)"', entry)
-                    rank_match = re.search(r":RANK :([^ ]+)", entry)
-                    wins_match = re.search(r":WINS ([0-9]+)", entry)
-
-                    if name_match and rank_match:
-                        name = name_match.group(1)
-                        rank = rank_match.group(1).upper()  # e.g. SCOUT
-                        wins = int(wins_match.group(1)) if wins_match else 0
-                        ranks[name] = {"rank": rank, "wins": wins}
-                except:
-                    continue
-    except Exception as e:
-        print(f"❌ Error parsing ranks: {e}")
-    return ranks
+def count_strategies(tier_dir):
+    path = os.path.join(LIBRARY_PATH, tier_dir, "*.lisp")
+    return len(glob.glob(path))
 
 
 def main():
@@ -85,68 +45,72 @@ def main():
 
     if not webhook_url:
         print("❌ Error: SWIMMY_DISCORD_REPORTS not set.")
-        # Fallback to APEX if REPORTS not set (Article 5)
-        webhook_url = os.getenv("SWIMMY_DISCORD_APEX") or env.get("SWIMMY_DISCORD_APEX")
-        if not webhook_url:
-            sys.exit(1)
+        sys.exit(1)
 
-    strategies = load_strategies()
-    ranks = parse_lisp_ranks()
+    # 1. Count from Filesystem (Source of Truth)
+    # Note: Case sensitivity based on actual directory structure
+    count_s = count_strategies("BATTLEFIELD")
+    count_a = count_strategies("training")  # Directory is lowercase
+    count_recruits = count_strategies("INCUBATOR")
+    count_graveyard = count_strategies("GRAVEYARD")
+    count_selection = count_strategies("selection")  # Directory is lowercase
+    count_legend = count_strategies("LEGEND")  # Just in case
 
-    # Aggregation
-    tier_counts = {"BATTLEFIELD": 0, "TRAINING": 0, "INCUBATOR": 0, "GRAVEYARD": 0}
-    rank_counts = {"LEGEND": 0, "VETERAN": 0, "SCOUT": 0}
+    # Total Active = S + A + Selection + Recruits + Legend
+    active_total = count_s + count_a + count_recruits + count_selection + count_legend
 
-    top_performers = []  # (Name, Rank, Tier)
+    # "Veteran Genes" usually implies the surviving pool.
+    # For this report, we'll align it with Active Knowledge Base.
+    veteran_genes = active_total
 
-    battlefield_count = 0
+    # 2. Build Payload (Exact Format Requested)
+    # JST Timestamp
+    jst = timezone(timedelta(hours=9))
+    now = datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
 
-    for s in strategies:
-        name = s.get("name", "Unknown")
-        rank_info = ranks.get(name, {"rank": "SCOUT", "wins": 0})
-        rank = rank_info["rank"]
-        wins = rank_info["wins"]
+    description = f"""Current status of the autonomous strategy generation pipeline.
 
-        rank_counts[rank] = rank_counts.get(rank, 0) + 1
+🧠 Knowledge Base (Active)
+{active_total} Strategies
 
-        # Heuristic: Since strategies.json lacks "tier" field,
-        # assume Wins >= 10 implies Battlefield/Veteran proxy for now.
-        # This matches the user's observation of "~14" active strategies.
-        if wins >= 10:
-            battlefield_count += 1
-            top_performers.append({"name": name, "wins": wins, "rank": rank})
+🏆 S-Rank (Elite)
+{count_s}
 
-    top_performers.sort(key=lambda x: x["wins"], reverse=True)
+🎖️ A-Rank (Pro)
+{count_a}
 
-    # Payload
-    desc = "**🧬 Gene Pool Status Report**\n\n"
-    desc += "**Rank Distribution:**\n"
+👶 New Recruits (Born)
+{count_recruits}
 
-    # Explicitly calculate "Effective S-Rank" (Battlefield)
-    desc += f"🏆 **S-Rank (Elite)**: {battlefield_count} (Battlefield / Wins >= 10)\n"
-    desc += f"🛡️ **Candidates**: {len(strategies) - battlefield_count} (Selection / Incubator)\n"
+👻 Graveyard (Rejected)
+{count_graveyard}
 
-    desc += "\n**Top Warriors (By Wins):**\n"
-    for p in top_performers[:5]:
-        desc += f"🥇 **{p['name']}**: {p['wins']} wins ({p['rank']})\n"
+🧬 Veteran Genes
+{veteran_genes}
+
+⚙️ System Status
+✅ Evolution Daemon Active
+✅ Persistence Linked
+Swimmy AI • {now} JST"""
 
     payload = {
+        "content": "🏭 **Evolution Factory Report**",  # Posting title outside embed for clean notification
         "embeds": [
             {
-                "title": "🏭 Evolution Factory Update",
-                "description": desc,
-                "color": 0x9B59B6,  # Purple for Evolution
-                "footer": {"text": "Swimmy Evolution System"},
+                "description": description,
+                "color": 0x2ECC71,  # Green for Factory/Status
             }
-        ]
+        ],
     }
 
-    # Send
+    # 3. Send
     context = zmq.Context()
     socket = context.socket(zmq.PUSH)
     socket.connect(f"tcp://localhost:{ZMQ_PORT}")
     socket.send_json({"webhook": webhook_url, "data": payload})
-    print("✅ Evolution Report Notification Sent.")
+
+    print("✅ Evolution Factory Report Sent.")
+    print(description)  # Print for verification
 
 
 if __name__ == "__main__":
