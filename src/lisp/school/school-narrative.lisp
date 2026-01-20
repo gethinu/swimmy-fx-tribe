@@ -198,6 +198,11 @@ Current status of the autonomous strategy generation pipeline.
             (swimmy.core:get-time-string))))
 
 (defun notify-evolution-report ()
-  "Send the Evolution Factory Report to Discord"
-  (let ((report (generate-evolution-report)))
+  "Send the Evolution Factory Report to Discord AND save to file."
+  (let ((report (generate-evolution-report))
+        (path "data/reports/evolution_factory_report.txt"))
+    ;; 1. Save to File (Restoring missing functionality)
+    (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (write-string report stream))
+    ;; 2. Send to Discord
     (swimmy.shell:notify-discord report :color 3447003)))

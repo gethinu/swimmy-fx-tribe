@@ -102,11 +102,49 @@
 (defparameter *processed-candle-time* (make-hash-table :test 'equal)
   "Tracks the timestamp of the last processed candle for each strategy/symbol pair.")
 
+;;; P2 Refactor: Helper Functions
+
+(defun guard-execution-status (symbol now)
+  "Check system state, market hours, and circuit breakers. Returns T if safe."
+  (cond
+    ;; 1. Warmup Check
+    ((eq *system-state* :warmup)
+     (if (> now *warmup-end-time*)
+         (progn (setf *system-state* :trading) t)
+         nil))
+    ;; 2. Entry Interval
+    ((< (- now *last-entry-time*) *min-entry-interval-seconds*) nil)
+    ;; 3. Startup Safety
+    ((and (< now (+ *warmup-end-time* 60)) (> (hash-table-count *warrior-allocation*) 0)) nil)
+    ;; 4. Market Hours
+    ((not (market-open-p)) nil)
+    ;; 5. Circuit Breaker
+    (*circuit-breaker-active*
+     (if (> now *breaker-cooldown-end*)
+         (progn (setf *circuit-breaker-active* nil) (setf *recent-losses* nil) t)
+         nil))
+    (t t)))
+
+(defun calc-execution-lot (category symbol history rank base-lot lead-name)
+  "Calculate dynamic lot size based on Volatility, Risk Parity, and Rank."
+  (let* ((rank-mult (calculate-rank-multiplier rank))
+         (vol-scaled (if (and (fboundp 'volatility-scaled-lot) history)
+                         (volatility-scaled-lot base-lot history)
+                         base-lot))
+         (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
+         (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
+         (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot) (error () base-lot)))
+         (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot)))
+    
+    (max 0.01 (* rank-mult vol-mult 
+                 (min (correlation-adjusted-lot symbol vol-scaled) 
+                      rp-lot hdrl-lot kelly-adj)))))
+
 
 (defun execute-category-trade (category direction symbol bid ask)
   (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
   (handler-case
-    (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))  ; Safety + exposure check
+    (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
       (let* ((strategies (gethash category *active-team*))
              (lead-strat (first strategies))
              (lead-name (when lead-strat (strategy-name lead-strat)))
@@ -122,79 +160,49 @@
              
              (rank-data (when lead-name (get-strategy-rank lead-name)))
              (rank (if rank-data (strategy-rank-rank rank-data) :scout))
-             (rank-mult (calculate-rank-multiplier rank))
              (base-lot (get-category-lot category))
              
-             ;; Fetch correct history for timeframe
-             ;; V15.4: Fallback Synthesis for H1 from M1 (Fixes Silence/Dead Air)
+             ;; History Fetch
              (history (if (= timeframe 1)
                           (gethash symbol *candle-histories*)
                           (let ((tf-map (gethash symbol *candle-histories-tf*)))
                             (or (and tf-map (gethash timeframe-key tf-map))
-                                ;; Synthesis Fallback
                                 (when (and (= timeframe 60) (gethash symbol *candle-histories*))
-                                   (format t "[L] ⚠️ Synthesizing H1 from M1 (~d bars)...~%" (length (gethash symbol *candle-histories*)))
                                    (resample-candles (gethash symbol *candle-histories*) 60))))))
              
              (latest-candle (and history (first history)))
              (latest-ts (if latest-candle (candle-timestamp latest-candle) 0))
              (idempotency-key (format nil "~a-~a-~a" category symbol timeframe-key))
-             (last-processed (gethash idempotency-key *processed-candle-time* 0))
+             (last-processed (gethash idempotency-key *processed-candle-time* 0)))
 
-             ;; Logic wrapped in binding to maintain let* structure
-             (guard-check (progn
-                            ;; Guard 1: Missing Data
-                            (unless history
-                              (format t "[L] ⚠️ Skipping ~a (~a) - No history found~%" lead-name timeframe-key)
-                              (return-from execute-category-trade nil))
-                            
-                            ;; Guard 2: Idempotency
-                            (when (<= latest-ts last-processed)
-                              ;; (format t "[TRACE] Skipping ~a (~a) - Candle ~a already processed~%" lead-name timeframe-key latest-ts)
-                              (return-from execute-category-trade nil))
-                            
-                            ;; Update processed time (Commit execution)
-                            (setf (gethash idempotency-key *processed-candle-time*) latest-ts)
-                            (format t "[L] 🕰️ New Candle Detected: ~a (~a) TS=~d. Analysing...~%" 
-                                    symbol timeframe-key latest-ts)
-                            t))
-
-             (vol-scaled-lot (if (and (fboundp 'volatility-scaled-lot) history)
-                                 (volatility-scaled-lot base-lot history)
-                                 base-lot))
-                    (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
-                    (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
-                    (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot) (error () base-lot)))
-                    (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot))
-                    (lot (max 0.01 (* rank-mult vol-mult 
-                                      (min (correlation-adjusted-lot symbol vol-scaled-lot) rp-lot hdrl-lot kelly-adj))))
-                    (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
-                    (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
-                    (sl-pips 0.15) (tp-pips 0.40)
-                    (warmup-p (< *category-trades* 50))
-                    (large-lot-p (> lot 0.05))
-                    (high-rank-p (member rank '(:veteran :legend)))
-                    (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))
-      
-      (setf conf (if (numberp conf) conf 0.0))
-      
-      (let ((now (get-universal-time)))
-        (when (and (eq *system-state* :warmup) (> now *warmup-end-time*))
-          (setf *system-state* :trading)
-          (format t "[L] ✅ P0 WARMUP COMPLETE: Trading ENABLED~%"))
-        (when (eq *system-state* :warmup) (return-from execute-category-trade nil))
-        (when (< (- now *last-entry-time*) *min-entry-interval-seconds*) (return-from execute-category-trade nil))
+        ;; Pipeline Execution
+        ;; 1. Data Integrity Check
+        (unless history 
+           (return-from execute-category-trade nil))
         
-        (let ((startup-period-end (+ *warmup-end-time* 60)))
-          (when (and (< now startup-period-end) (> (hash-table-count *warrior-allocation*) 0))
-            (return-from execute-category-trade nil)))
-            
-        (unless (market-open-p) (return-from execute-category-trade nil))
-
-        (when *circuit-breaker-active*
-          (if (> now *breaker-cooldown-end*)
-              (progn (setf *circuit-breaker-active* nil) (setf *recent-losses* nil))
-              (return-from execute-category-trade nil))))
+        ;; 2. Idempotency Check
+        (when (<= latest-ts last-processed)
+           (return-from execute-category-trade nil))
+           
+        ;; 3. System & Market Guard Check
+        (unless (guard-execution-status symbol (get-universal-time))
+           (return-from execute-category-trade nil))
+           
+        ;; Commit Processing (State Update)
+        (setf (gethash idempotency-key *processed-candle-time*) latest-ts)
+        (format t "[L] 🕰️ New Candle: ~a (~a) TS=~d~%" symbol timeframe-key latest-ts)
+        
+        ;; 4. Lot Calculation & Context Setup
+        (let* ((lot (calc-execution-lot category symbol history rank base-lot lead-name))
+               (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
+               (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
+               (sl-pips 0.15) (tp-pips 0.40)
+               (warmup-p (< *category-trades* 50))
+               (large-lot-p (> lot 0.05))
+               (high-rank-p (member rank '(:veteran :legend)))
+               (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))
+          
+          (setf conf (if (numberp conf) conf 0.0))
       
       ;; V44.2: ATOMIC RESERVATION (Expert Panel Approved)
       ;; Reserve slot BEFORE any heavy lifting to prevent race conditions.
@@ -234,7 +242,9 @@
                               (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
                                (tier (if strat (strategy-tier strat) :incubator))
                               (lot (if (and (>= sharpe 0.0) (< sharpe 0.3)) 0.01 lot)))
-                         (unless (eq tier :battlefield) (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*) (format t "[EXEC] Blocked ~a (Tier ~a)" lead-name tier) (return-from execute-category-trade nil))
+                         (format t "[EXEC] 🏁 Attempting trade for ~a (Tier: ~a, Rank: ~a)...~%" lead-name tier (if rank-obj (strategy-rank-rank rank-obj) :unknown))
+                         ;; (unless (eq tier :battlefield) ... removed strict check V48
+
                          (let* ((rank-obj (get-strategy-rank lead-name)) 
                                 (rank (if rank-obj (strategy-rank-rank rank-obj) :scout))) 
                            ;; V47: Allow Battlefield Tier to execute regardless of Rank (Implicit Veteran)
@@ -378,7 +388,7 @@
                             (record-clan-trade-time strat-key)
                             (when (fboundp 'record-strategy-trade) 
                               (record-strategy-trade top-name :trade 0))))))))))))
-        (error (e) nil))))))
+        (error (e) nil)))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING

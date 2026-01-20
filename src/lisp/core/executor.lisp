@@ -107,7 +107,7 @@
                          ((> pnl 0.3) 0)   ;; Clear win -> UP correct
                          ((< pnl -0.3) 1)  ;; Clear loss -> DOWN correct
                          (t 2)))           ;; Small -> FLAT
-               (candles-json (candles-to-json (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
+               (candles-json (swimmy.school:candles-to-json (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
                (cmd (jsown:to-json (jsown:new-js
                       ("action" "TRAIN")
                       ("candles" candles-json)

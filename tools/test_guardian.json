@@ -1,0 +1,1 @@
+{"action":"BACKTEST","strategy":{"name":"TEST-M5","timeframe":5,"sma_short":10,"sma_long":20,"sl":0.05,"tp":0.1,"volume":0.01,"indicator_type":"sma","filter_enabled":false},"candles_file":"data/historical/USDJPY_M5.csv","strategy_name":"TEST-M5","symbol":"USDJPY","timeframe":5,"from_date":"2024-01-01","to_date":"2025-01-01","spread":10,"balance":10000}

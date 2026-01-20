@@ -131,7 +131,7 @@
 
 (defun get-jst-timestamp ()
   "Return current JST time as MM/DD HH:MM string"
-  (multiple-value-bind (sec min hour date month) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (sec min hour date month) (decode-universal-time (get-universal-time) -9)
     (declare (ignore sec))
     (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST" month date hour min)))
 

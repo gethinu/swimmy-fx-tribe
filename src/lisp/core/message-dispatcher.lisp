@@ -14,6 +14,9 @@
         (cond
           ((string= type swimmy.core:+MSG-TICK+) 
            (update-candle (jsown:val json "bid") (jsown:val json "symbol"))
+           ;; V48: CRITICAL FIX - Trigger Strategy Execution on Tick (Fixed Args)
+           (when (fboundp 'swimmy.school:process-category-trades)
+             (swimmy.school:process-category-trades (jsown:val json "symbol") (jsown:val json "bid") (jsown:val json "ask")))
            ;; V41.2: Throttled operations for performance
            ;; Only save status every 60 seconds (already implemented in save-live-status)
            (when (fboundp 'save-live-status) (save-live-status))

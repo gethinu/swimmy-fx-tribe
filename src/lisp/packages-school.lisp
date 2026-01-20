@@ -263,6 +263,7 @@
     
     ;; Phase 12: The Connector
     #:start-evolution-service
+    #:candles-to-json
    ))
 
 ;;; 5. SHELL (Interface Layer) ---------------------------------------------------
@@ -320,7 +321,8 @@
    #:send-heartbeat
    #:check-scheduled-tasks
    ;; Utility functions
-   #:candles-to-json
+   ;; Utility functions
+   ;; v1.0 Moved to swimmy.school
    ))
 
 ;;; 8. TESTS (Unit Tests) --------------------------------------------------------

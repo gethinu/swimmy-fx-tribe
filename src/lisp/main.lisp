@@ -71,9 +71,8 @@
           (progn
             (setf (gethash sym *candle-histories*) history)
             (format t "[SYSTEM] Loaded ~d candles for ~a (M1)~%" (length history) sym)
-            ;; Legacy compat for main symbol
-            (when (string= sym "USDJPY")
-              (setf *candle-history* history)))
+            ;; Legacy compat: Update global history pointer
+            (setf *candle-history* history))
           (format t "[SYSTEM] ⚠️ No M1 history available for ~a~%" sym)))
     
     ;; Load Other Timeframes (Nested key: symbol -> tf -> list)

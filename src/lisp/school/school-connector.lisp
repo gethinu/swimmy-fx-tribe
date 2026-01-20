@@ -56,11 +56,21 @@
   "Wisdom Update (Civilization Handover)"
   ;; V24: Native Lisp Wisdom Extraction
   (format t "~%[CONNECTOR] [Phase 7] Wisdom Update (Native)...~%")
-  (analyze-veterans)
-  
-  ;; V28.2: Send Factory Report (Restores Visibility)
-  ;; (format t "[CONNECTOR] 📨 Sending Evolution Factory Report...~%")
-  ;; (swimmy.school::notify-evolution-report))
+  (analyze-veterans))
+
+;; V48: Throttled Reporting (Prevents Spam)
+(defparameter *last-report-time* 0)
+(defconstant +report-interval+ (* 4 3600)) ; 4 Hours
+
+(defun phase-7-report ()
+  "Send report if interval passed"
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-report-time*) +report-interval+)
+      (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
+      (swimmy.school::notify-evolution-report)
+      (setf *last-report-time* now))))
+
+
 
 (defun start-evolution-service ()
   "Main Loop: The Connector"
@@ -86,8 +96,9 @@
     ;; 6. Breeding
     (phase-6-breeding)
     
-    ;; 7. Wisdom
+    ;; 7. Wisdom & Reporting
     (phase-7-wisdom-update)
+    (phase-7-report)
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)

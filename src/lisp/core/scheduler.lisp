@@ -45,9 +45,9 @@
         (setf *last-dream-time* now)
         (format t "[DREAM CYCLE #~d] 💭 1-hour cycle...~%" *dream-cycle*)
         (when (> (length *candle-history*) 100)
-          (check-ecosystem-diversity)
-          (check-pattern-memory)
-          (check-gene-pool-health))
+          ;; V41.9: Removed legacy undefined checks (check-ecosystem-diversity, etc.)
+          ;; Only keeping confirmed recurring tasks
+          nil)
         ;; V6.17: Restart evolution if stagnating
         (check-evolution)
         (evolve-population-via-mutation)
