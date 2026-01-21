@@ -132,20 +132,7 @@
   (format t "[PERSIST] 💾 Saved recruited strategy ~a to Library~%" (strategy-name strat)))
 
 ;;; ----------------------------------------------------------------------------
-;;; Phase 3.7: The Entrance Exam (Recruitment Filter)
-;;; ----------------------------------------------------------------------------
-
-(defun recruit-elite-strategy ()
-  "Recruit a new strategy using Lisp-Native Scout (Phase 11).
-   Directly calls school-scout:recruit-scout."
-  (format t "[RECRUIT] ⚔️ Starting Lisp-Native Recruitment (Phase 11)...~%")
-  (handler-case
-      (let ((count (recruit-scout)))
-        (if (> count 0)
-            (format t "[RECRUIT] 🎉 Successfully recruited ~d strategies!~%" count)
-            (format t "[RECRUIT] ❌ No suitable recruits found this cycle.~%")))
-    (error (e)
-      (format t "[RECRUIT] 💥 Error during recruitment: ~a~%" e))))
+;; P8: recruit-elite-strategy (Scout) DELETED
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 13: Wisdom Native (Civilization Handover)

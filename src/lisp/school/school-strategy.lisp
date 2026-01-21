@@ -402,34 +402,10 @@
       ((and (<= tp 0.30) (or (search "scalp" name) (search "pop" name) (search "1m" name))) :scalp)
       ;; Everything else is trend
       (t :trend))))
-
-(defun recruit-from-evolution ()
-  "Promote evolved strategies from *evolved-strategies* to master knowledge base"
-  (when (and (boundp '*evolved-strategies*) *evolved-strategies*)
-    (let ((count 0)
-          (new-names nil))
-      (dolist (strat *evolved-strategies*)
-        ;; Avoid duplicates in knowledge base
-        (unless (find (strategy-name strat) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
-          (push strat *strategy-knowledge-base*)
-          ;; Add to category pool for selection
-          (let ((cat (categorize-strategy strat))) ; V8.7: Use correct categorization
-            (when (boundp '*category-pools*)
-               (push strat (gethash cat *category-pools*))))
-          (incf count)
-          (push (strategy-name strat) new-names)
-          (format t "[RECRUIT] 🛡️ Inducted: ~a (Category: ~a)~%" (strategy-name strat) (categorize-strategy strat))))
-      
-      (when (> count 0)
-        (format t "[RECRUIT] 🔥 ~d strategies promoted from evolution!~%" count)
-        (safe-notify-discord-recruit 
-         (format nil "🔥 Recruited ~d new strategies!~%~{~a~%~}" count (reverse new-names)) 
-         :color 3066993)
-        ;; Clear the waiting list so we don't re-add
-        (setf *evolved-strategies* nil)))))
+;; P8: recruit-from-evolution DELETED - redundant KB entry point
 
 (defun assemble-team ()
-  (recruit-from-evolution) ; Check for new recruits first
+  ;; P8: recruit-from-evolution call removed
   (detect-market-regime)
   (record-regime)          ; Track for pattern analysis
   (predict-next-regime)    ; Forecast next regime

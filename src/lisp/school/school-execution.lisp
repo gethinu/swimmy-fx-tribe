@@ -386,25 +386,14 @@
   (maphash (lambda (key val) (declare (ignore val)) (recruit-founder key)) *founder-registry*))
 
 (defun safely-load-hunter-strategies ()
+  "Load Hunter strategies. P8: Removed duplicate KB push - Founders use add-to-kb now."
   (let ((path (merge-pathnames "src/lisp/school/school-hunter.lisp" (uiop:getcwd))))
     (handler-case
         (progn
           (load path)
           (format t "[HUNTER] ✅ Successfully loaded strategies from ~a~%" path)
-          (when (boundp '*founder-registry*)
-            (let ((count 0))
-              (maphash (lambda (key maker-fn)
-                         (declare (ignore key))
-                         (handler-case
-                             (let ((strat (funcall maker-fn)))
-                               (unless (find (strategy-name strat) *strategy-knowledge-base* 
-                                             :key #'strategy-name :test #'string=)
-                                 (push strat *strategy-knowledge-base*)
-                                 (incf count)))
-                           (error (e) (format t "[HUNTER] ⚠️ Failed to instantiate ~a: ~a~%" key e))))
-                       *founder-registry*)
-              (when (> count 0)
-                (format t "[HUNTER] ➕ Onboarded ~d new strategies from Registry to KB~%" count))))
+          ;; P8: Removed duplicate KB push (lines 394-407)
+          ;; Founders now register via def-founder and are added via add-to-kb
           t)
       (error (e)
         (format t "[HUNTER] 🚨 CRITICAL LOAD ERROR: ~a~%" e)

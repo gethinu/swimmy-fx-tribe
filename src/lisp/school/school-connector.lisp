@@ -41,10 +41,7 @@
   (format t "[CONNECTOR] [Phase 4] The Proving Grounds (Native)...~%")
   (execute-proving-grounds))
 
-(defun phase-5-recruit ()
-  "Recruitment (Lisp-Native Scout)"
-  (format t "~%[CONNECTOR] [Phase 5] Recruitment (Native Scout)...~%")
-  (recruit-scout))
+;; P8: phase-5-recruit (Scout) DELETED
 
 (defun phase-6-breeding ()
   "Evolution (Breeding & Selection)"
