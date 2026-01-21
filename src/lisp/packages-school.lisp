@@ -153,6 +153,8 @@
    #:check-rank-criteria
    #:evaluate-new-strategy
    #:run-b-rank-culling
+   #:can-breed-p
+   #:run-legend-breeding
    
    ;; Trade Prediction Struct
    #:make-trade-prediction

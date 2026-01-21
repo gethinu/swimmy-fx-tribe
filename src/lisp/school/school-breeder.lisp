@@ -55,8 +55,9 @@
 
 (defun run-breeding-cycle ()
   "Breed top strategies from ALL tiers, prioritizing higher generations.
-   V45.0: Fixed to allow multi-generational evolution (Gen45+ possible)."
-  (format t "[BREEDER] 🧬 Starting Breeding Cycle (Multi-Gen Evolution V45.0)...~%")
+   V45.0: Fixed to allow multi-generational evolution (Gen45+ possible).
+   V47.0: Added breeding count limits (3 uses) and parent/child competition."
+  (format t "[BREEDER] 🧬 Starting Breeding Cycle (V47.0 with Limits)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
         ;; V45.0: Include :incubator for multi-generational breeding
         (tiers '(:battlefield :training :selection :incubator)))
@@ -74,14 +75,20 @@
         (when (>= (length sorted) 2)
           (let ((p1 (first sorted))
                 (p2 (second sorted)))
-            (format t "[BREEDER] 💕 Breeding Gen~d ~a + Gen~d ~a~%"
-                    (or (strategy-generation p1) 0) (strategy-name p1)
-                    (or (strategy-generation p2) 0) (strategy-name p2))
-            (let ((child (breed-strategies p1 p2)))
-              (push child *strategy-knowledge-base*)
-              (save-recruit-to-lisp child)
-              (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
-                      (strategy-name child) (strategy-generation child)))))))))
+            ;; V47.0: Check breeding limit (Legend exempt)
+            (when (and (can-breed-p p1) (can-breed-p p2))
+              (format t "[BREEDER] 💕 Breeding Gen~d ~a + Gen~d ~a~%"
+                      (or (strategy-generation p1) 0) (strategy-name p1)
+                      (or (strategy-generation p2) 0) (strategy-name p2))
+              (let ((child (breed-strategies p1 p2)))
+                ;; V47.0: Increment breeding count for parents
+                (increment-breeding-count p1)
+                (increment-breeding-count p2)
+                
+                (push child *strategy-knowledge-base*)
+                (save-recruit-to-lisp child)
+                (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
+                        (strategy-name child) (strategy-generation child))))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation

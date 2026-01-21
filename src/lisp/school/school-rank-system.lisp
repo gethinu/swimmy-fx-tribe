@@ -209,3 +209,48 @@
           (length (get-strategies-by-rank :S))
           (length (get-strategies-by-rank :graveyard))
           (length (get-strategies-by-rank :legend))))
+
+;;; ---------------------------------------------------------------------------
+;;; BREEDING HELPERS (V47.0)
+;;; ---------------------------------------------------------------------------
+
+(defun can-breed-p (strategy)
+  "Check if strategy can be used for breeding.
+   Returns T if under breeding limit or is Legend."
+  (or (eq (strategy-rank strategy) :legend)
+      (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*)))
+
+(defun run-legend-breeding ()
+  "Breed Legend strategies with random B-rank strategies.
+   V47.0: Owner's Vision - Legends participate in periodic random breeding."
+  (format t "[LEGEND] 👑 Starting Legend Breeding Cycle...~%")
+  (let ((legends (get-strategies-by-rank :legend))
+        (b-ranks (get-strategies-by-rank :B))
+        (bred-count 0))
+    
+    (when (and legends b-ranks)
+      ;; Pick random legend and random B-rank
+      (let* ((legend (nth (random (length legends)) legends))
+             (b-rank (nth (random (length b-ranks)) b-ranks)))
+        
+        (when (and legend b-rank)
+          (format t "[LEGEND] 🏆 Breeding ~a (Legend) + ~a (B-Rank)~%"
+                  (strategy-name legend) (strategy-name b-rank))
+          
+          ;; Create child using breed-strategies from school-breeder
+          (when (fboundp 'breed-strategies)
+            (let ((child (breed-strategies legend b-rank)))
+              ;; Mark child as having legendary heritage
+              (setf (strategy-generation child) 
+                    (1+ (max (strategy-generation legend) 
+                             (strategy-generation b-rank))))
+              ;; Increment B-rank's breeding count (Legend exempt)
+              (increment-breeding-count b-rank)
+              
+              (push child *strategy-knowledge-base*)
+              (incf bred-count)
+              (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child)))))))
+    
+    (format t "[LEGEND] 👑 Legend Breeding Complete: ~d children~%" bred-count)
+    bred-count))
+
