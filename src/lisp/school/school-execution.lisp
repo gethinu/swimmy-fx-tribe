@@ -89,8 +89,14 @@
            (record-prediction-outcome symbol (if (eq opposing-direction :long) :buy :sell) (if (> pnl 0) :win :loss))
            (record-trade-outcome symbol (if (eq opposing-direction :long) :buy :sell) category "Doten" pnl)
            (when (fboundp 'record-strategy-trade)
-             (let ((lead-strat (first (gethash category *active-team*))))
-                 (when lead-strat (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl))))
+              (let ((lead-strat (first (gethash category *active-team*))))
+                  (when lead-strat 
+                    (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl)
+                    ;; V47.5: Live Trade Audit + RL Reward hooks
+                    (when (fboundp 'run-live-trade-audit)
+                      (run-live-trade-audit lead-strat pnl))
+                    (when (fboundp 'record-rl-reward)
+                      (record-rl-reward lead-strat pnl)))))
            ;; Discord Notification
            (swimmy.shell:notify-discord-symbol symbol (format nil "🔄 **DOTEN** ~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                                   :color (if (> pnl 0) 3066993 15158332))
@@ -263,7 +269,7 @@
                 (when (or (<= bid sl) (>= bid tp))
                   (setf pnl (- bid entry) closed t))))
              ((eq pos :short)
-              (let ((sl (+ entry sl-pips)) (tp (- entry tp-pips)))
+              (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed
@@ -276,9 +282,15 @@
              (record-prediction-outcome symbol (if (eq pos :long) :buy :sell) (if (> pnl 0) :win :loss))
              (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Warriors" pnl)
              (when (fboundp 'record-strategy-trade)
-                (let ((lead-strat (first (gethash category *active-team*))))
-                    (when lead-strat (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl))))
-             (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "win" "loss")))
+                 (let ((lead-strat (first (gethash category *active-team*))))
+                     (when lead-strat 
+                       (record-strategy-trade (strategy-name lead-strat) (if (> pnl 0) :win :loss) pnl)
+                       ;; V47.5: Live Trade Audit + RL Reward hooks
+                       (when (fboundp 'run-live-trade-audit)
+                         (run-live-trade-audit lead-strat pnl))
+                       (when (fboundp 'record-rl-reward)
+                         (record-rl-reward lead-strat pnl)))))
+              (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "win" "loss")))
              (swimmy.shell:notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
    *warrior-allocation*))

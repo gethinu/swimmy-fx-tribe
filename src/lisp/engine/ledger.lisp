@@ -56,9 +56,14 @@
               (format out "~s~%" state-obj)))
           ;; Atomic rename to prevent corruption
           (rename-file tmp-path *state-file-path*)
-          (format t "[LEDGER] 💾 State saved atomically to ~a~%" *state-file-path*))
+          (format t "[LEDGER] 💾 State saved atomically to ~a~%" *state-file-path*)
+          
+          ;; V47.5: Save Q-table for persistence across restarts
+          (when (fboundp 'swimmy.school::save-q-table)
+            (funcall 'swimmy.school::save-q-table)))
       (error (e)
         (format t "[LEDGER] ❌ Save failed: ~a~%" e)))))
+
 
 ;;; ==========================================
 ;;; LOAD STATE

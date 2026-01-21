@@ -29,14 +29,30 @@
                        :test #'equal)))
 
 (defun breed-strategies (parent1 parent2)
-  "Create a child strategy from two parents."
+  "Create a child strategy from two parents.
+   V47.5: Enhanced with P3 graveyard avoidance."
   (let* ((child-name (format nil "Bred-~a-~a-Gen~d" 
                              (subseq (strategy-name parent1) 0 (min 5 (length (strategy-name parent1))))
                              (random 1000)
                              (1+ (max (strategy-generation parent1) (strategy-generation parent2)))))
-         (child-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.1))
-         (child-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.1))
-         (child-is (crossover-indicators parent1 parent2)))
+         (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.1))
+         (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.1))
+         (child-is (crossover-indicators parent1 parent2))
+         ;; V47.5: Get avoid regions from graveyard analysis
+         (avoid-regions (when (fboundp 'analyze-graveyard-for-avoidance)
+                          (analyze-graveyard-for-avoidance)))
+         ;; Check if SL/TP falls in avoid region, regenerate if needed
+         (child-sl initial-sl)
+         (child-tp initial-tp))
+    
+    ;; V47.5: Regenerate SL/TP if in avoid region (up to 3 attempts)
+    (when (and avoid-regions (fboundp 'should-avoid-params-p))
+      (dotimes (i 3)
+        (when (should-avoid-params-p child-sl child-tp avoid-regions)
+          (format t "[BREEDER] 🚫 SL=~d TP=~d in avoid region, regenerating...~%" 
+                  (round child-sl) (round child-tp))
+          (setf child-sl (mutate-value initial-sl 0.2))  ; Larger mutation
+          (setf child-tp (mutate-value initial-tp 0.2)))))
     
     (make-strategy
       :name child-name
@@ -52,6 +68,7 @@
       :exit (strategy-exit parent1)
       :tier :incubator ;; Born in the Incubator
       :status :active)))
+
 
 (defun run-breeding-cycle ()
   "Breed top strategies from ALL tiers, prioritizing higher generations.
