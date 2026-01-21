@@ -65,6 +65,11 @@
         
   (recruit-special-forces) ; V7.0: Inject special forces
   (clrhash *category-positions*)
+  
+  ;; V47.0: Run B/A/S Rank Evaluation (Expert Panel - Naval)
+  (when (fboundp 'run-rank-evaluation)
+    (run-rank-evaluation))
+  
   (format t "[SCHOOL] Swimmy School ready (Strategies Reclassified & Pools Built)~%"))
 
 (format t "[SCHOOL] 🦅 Refactored School System Loaded (Musk/Uncle Bob Edition)~%")

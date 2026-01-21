@@ -148,6 +148,12 @@
    #:check-promotion
    #:recruit-elite-strategy
    
+   ;; V47.0: B/A/S Rank System
+   #:run-rank-evaluation
+   #:check-rank-criteria
+   #:evaluate-new-strategy
+   #:run-b-rank-culling
+   
    ;; Trade Prediction Struct
    #:make-trade-prediction
    #:trade-prediction-symbol
