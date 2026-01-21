@@ -7,6 +7,7 @@ MAX_LINES = 600
 MAX_FUNCTIONS = 25
 EXCLUDELIST = [
     "src/lisp/school/school-hunter.lisp",
+    "src/lisp/school/school-hunter-auto.lisp",  # P9: Auto-generated strategies
     "src/lisp/dsl.lisp",
     "src/lisp/strategies/strategies-dynamic.lisp",
     "src/lisp/school/school-optimized-params.lisp",

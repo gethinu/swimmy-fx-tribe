@@ -386,14 +386,18 @@
   (maphash (lambda (key val) (declare (ignore val)) (recruit-founder key)) *founder-registry*))
 
 (defun safely-load-hunter-strategies ()
-  "Load Hunter strategies. P8: Removed duplicate KB push - Founders use add-to-kb now."
-  (let ((path (merge-pathnames "src/lisp/school/school-hunter.lisp" (uiop:getcwd))))
+  "Load Hunter strategies. P9: Split into core + auto files."
+  (let ((core-path (merge-pathnames "src/lisp/school/school-hunter.lisp" (uiop:getcwd)))
+        (auto-path (merge-pathnames "src/lisp/school/school-hunter-auto.lisp" (uiop:getcwd))))
     (handler-case
         (progn
-          (load path)
-          (format t "[HUNTER] ✅ Successfully loaded strategies from ~a~%" path)
-          ;; P8: Removed duplicate KB push (lines 394-407)
-          ;; Founders now register via def-founder and are added via add-to-kb
+          ;; P9: Load core strategies (manual Hunted)
+          (load core-path)
+          (format t "[HUNTER] ✅ Loaded core strategies~%")
+          ;; P9: Load auto-generated strategies
+          (when (probe-file auto-path)
+            (load auto-path)
+            (format t "[HUNTER] ✅ Loaded auto-generated strategies~%"))
           t)
       (error (e)
         (format t "[HUNTER] 🚨 CRITICAL LOAD ERROR: ~a~%" e)
