@@ -108,9 +108,29 @@
           (strategy-name strategy) reason))
 
 (defun save-failure-pattern (strategy)
-  "Save failed strategy parameters for learning (avoid same mistakes)."
-  ;; TODO: Implement failure DB
-  (declare (ignore strategy)))
+  "Save failed strategy parameters for learning (avoid same mistakes).
+   V47.2: Implemented per Graham's requirement.
+   Appends to data/memory/graveyard.sexp for offline analysis."
+  (let ((pattern (list :name (strategy-name strategy)
+                       :timeframe (strategy-timeframe strategy)
+                       :direction (strategy-direction strategy)
+                       :symbol (strategy-symbol strategy)
+                       :sl (strategy-sl strategy)
+                       :tp (strategy-tp strategy)
+                       :sharpe (strategy-sharpe strategy)
+                       :profit-factor (strategy-profit-factor strategy)
+                       :win-rate (strategy-win-rate strategy)
+                       :max-dd (strategy-max-dd strategy)
+                       :timestamp (get-universal-time))))
+    (handler-case
+        (with-open-file (stream "data/memory/graveyard.sexp"
+                                :direction :output
+                                :if-exists :append
+                                :if-does-not-exist :create)
+          (write pattern :stream stream)
+          (terpri stream))
+      (error (e)
+        (format t "[GRAVEYARD] ⚠️ Failed to save pattern: ~a~%" e)))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; PHASE 1 EVALUATION (New Strategy → B-RANK or Graveyard)
@@ -317,4 +337,52 @@
     
     (format t "[LEGEND] 👑 Legend Breeding Complete: ~d children~%" bred-count)
     bred-count))
+
+;;; ---------------------------------------------------------------------------
+;;; RL REWARD SYSTEM (V47.2)
+;;; ---------------------------------------------------------------------------
+
+(defparameter *rl-rewards-file* "data/memory/rl_rewards.sexp"
+  "File to store S-RANK trade rewards for reinforcement learning.")
+
+(defun record-rl-reward (strategy trade-result)
+  "Record S-RANK trade result as RL reward.
+   V47.2: Owner's Vision - S-RANK results guide exploration."
+  (when (eq (strategy-rank strategy) :S)
+    (let ((reward-entry (list :strategy (strategy-name strategy)
+                              :timeframe (strategy-timeframe strategy)
+                              :direction (strategy-direction strategy)
+                              :symbol (strategy-symbol strategy)
+                              :sl (strategy-sl strategy)
+                              :tp (strategy-tp strategy)
+                              :pnl trade-result   ; Win/Loss amount
+                              :reward (if (> trade-result 0) 1.0 -0.5)
+                              :timestamp (get-universal-time))))
+      (handler-case
+          (with-open-file (stream *rl-rewards-file*
+                                  :direction :output
+                                  :if-exists :append
+                                  :if-does-not-exist :create)
+            (write reward-entry :stream stream)
+            (terpri stream)
+            (format t "[RL] 🎯 Reward recorded: ~a → ~,2f~%" 
+                    (strategy-name strategy) (getf reward-entry :reward)))
+        (error (e)
+          (format t "[RL] ⚠️ Failed to record reward: ~a~%" e))))))
+
+(defun get-param-priority (timeframe direction symbol)
+  "Get exploration priority for parameter region based on historical rewards.
+   Higher values = more successful trades in this category.
+   V47.2: Guides Scout/Breeder to explore proven territory."
+  ;; TODO: Analyze *rl-rewards-file* and compute scores
+  ;; For now, return equal priority
+  (declare (ignore timeframe direction symbol))
+  1.0)
+
+(defun analyze-graveyard-for-avoidance ()
+  "Analyze graveyard.sexp to identify parameter regions to avoid.
+   Returns list of (TF Direction Symbol SL-range TP-range) to skip."
+  ;; TODO: Load graveyard.sexp and compute failure clusters
+  nil)
+
 
