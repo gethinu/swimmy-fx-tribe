@@ -55,18 +55,32 @@
          (>= wr (getf criteria :wr-min 0))
          (< maxdd (getf criteria :maxdd-max 1.0)))))
 
-(defun get-strategies-by-rank (rank &optional timeframe)
-  "Get all strategies with a specific rank, optionally filtered by TF."
+(defun get-strategies-by-rank (rank &optional timeframe direction symbol)
+  "Get all strategies with a specific rank, optionally filtered by TF/Direction/Symbol.
+   V47.2: Extended for full category filtering."
   (let ((candidates (remove-if-not 
                       (lambda (s) (eq (strategy-rank s) rank))
                       *strategy-knowledge-base*)))
-    (if timeframe
-        (remove-if-not (lambda (s) (eql (strategy-timeframe s) timeframe)) candidates)
-        candidates)))
+    ;; Apply TF filter
+    (when timeframe
+      (setf candidates (remove-if-not 
+                         (lambda (s) (eql (strategy-timeframe s) timeframe)) 
+                         candidates)))
+    ;; Apply Direction filter
+    (when direction
+      (setf candidates (remove-if-not 
+                         (lambda (s) (eq (strategy-direction s) direction)) 
+                         candidates)))
+    ;; Apply Symbol filter
+    (when symbol
+      (setf candidates (remove-if-not 
+                         (lambda (s) (string= (strategy-symbol s) symbol)) 
+                         candidates)))
+    candidates))
 
-(defun count-by-rank-and-tf (rank timeframe)
-  "Count strategies with given rank and timeframe."
-  (length (get-strategies-by-rank rank timeframe)))
+(defun count-by-category (rank timeframe direction symbol)
+  "Count strategies with given rank and category."
+  (length (get-strategies-by-rank rank timeframe direction symbol)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; RANK PROMOTION / DEMOTION
@@ -125,17 +139,23 @@
         :graveyard)))
 
 ;;; ---------------------------------------------------------------------------
-;;; B-RANK CULLING (100 strategies/TF → Keep best, discard rest)
+;;; B-RANK CULLING (100 strategies per category → Keep best, discard rest)
+;;; V47.2: Category = TF × Direction × Symbol
 ;;; ---------------------------------------------------------------------------
 
-(defun run-b-rank-culling (timeframe)
-  "When B-RANK reaches threshold, keep top performers and discard rest.
-   Top 2 per TF are promoted to A-RANK."
-  (let* ((b-strategies (get-strategies-by-rank :B timeframe))
+(defparameter *supported-timeframes* '(5 15 60 240 1440 10080)
+  "M5, M15, H1, H4, D1, W1")
+(defparameter *supported-directions* '(:BUY :SELL :BOTH))
+(defparameter *supported-symbols* '("EURUSD" "GBPUSD" "USDJPY"))
+
+(defun run-b-rank-culling-for-category (timeframe direction symbol)
+  "Cull B-RANK strategies for a specific TF × Direction × Symbol category."
+  (let* ((b-strategies (get-strategies-by-rank :B timeframe direction symbol))
          (count (length b-strategies)))
     
     (when (>= count *culling-threshold*)
-      (format t "[RANK] 🗡️ CULLING B-RANK (TF=~a, Count=~d)~%" timeframe count)
+      (format t "[RANK] 🗡️ CULLING B-RANK (TF=~a Dir=~a Sym=~a Count=~d)~%" 
+              timeframe direction symbol count)
       
       ;; Sort by composite score (Sharpe + PF bonus)
       (let* ((sorted (sort (copy-list b-strategies) #'>
@@ -147,11 +167,21 @@
         
         ;; Promote top 2 to A-RANK
         (dolist (s to-promote)
-          (promote-rank s :A "Culling Champion"))
+          (promote-rank s :A (format nil "Culling Champion (~a/~a/~a)" 
+                                     timeframe direction symbol)))
         
         ;; Discard rest
         (dolist (s to-discard)
           (send-to-graveyard s "Culling Loser"))))))
+
+(defun run-b-rank-culling (&optional single-tf)
+  "Run culling for all TF × Direction × Symbol categories.
+   V47.2: Full category-based culling."
+  (let ((timeframes (if single-tf (list single-tf) *supported-timeframes*)))
+    (dolist (tf timeframes)
+      (dolist (dir *supported-directions*)
+        (dolist (sym *supported-symbols*)
+          (run-b-rank-culling-for-category tf dir sym))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; A-RANK EVALUATION (CPCV Validation → S-RANK or back to B)
@@ -193,14 +223,13 @@
 (defun run-rank-evaluation ()
   "Main rank evaluation cycle.
    1. Evaluate new strategies (→ B or Graveyard)
-   2. Cull B-RANK if threshold reached
-   3. Validate A-RANK via CPCV (→ S or back)"
-  (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V47.0)~%")
+   2. Cull B-RANK if threshold reached (by TF × Direction × Symbol)
+   3. Validate A-RANK via CPCV (→ S or back)
+   V47.2: Full category-based evaluation."
+  (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V47.2 with Categories)~%")
   
-  ;; Process each timeframe
-  (dolist (tf '(5 15 60 240 1440 10080))
-    ;; Check if culling needed
-    (run-b-rank-culling tf))
+  ;; Run category-based culling (all TF × Direction × Symbol combinations)
+  (run-b-rank-culling)
   
   ;; Report status
   (format t "[RANK] 📊 Status: B=~d A=~d S=~d Graveyard=~d Legend=~d~%"
@@ -209,6 +238,41 @@
           (length (get-strategies-by-rank :S))
           (length (get-strategies-by-rank :graveyard))
           (length (get-strategies-by-rank :legend))))
+
+;;; ---------------------------------------------------------------------------
+;;; DIRECTION AUTO-DETECTION (V47.2)
+;;; ---------------------------------------------------------------------------
+
+(defun detect-direction-from-entry (entry-code)
+  "Analyze entry code to detect trade direction.
+   Returns :BUY, :SELL, or :BOTH.
+   V47.2: Owner's Vision - Auto-detect direction from strategy logic."
+  (let ((entry-str (format nil "~a" entry-code)))
+    (cond
+      ;; BUY-only patterns
+      ((and (search "BUY" (string-upcase entry-str))
+            (not (search "SELL" (string-upcase entry-str))))
+       :BUY)
+      ((and (search "LONG" (string-upcase entry-str))
+            (not (search "SHORT" (string-upcase entry-str))))
+       :BUY)
+      ;; SELL-only patterns  
+      ((and (search "SELL" (string-upcase entry-str))
+            (not (search "BUY" (string-upcase entry-str))))
+       :SELL)
+      ((and (search "SHORT" (string-upcase entry-str))
+            (not (search "LONG" (string-upcase entry-str))))
+       :SELL)
+      ;; Default: Both directions
+      (t :BOTH))))
+
+(defun auto-set-strategy-direction (strategy)
+  "Automatically set strategy direction based on entry logic."
+  (let ((detected (detect-direction-from-entry (strategy-entry strategy))))
+    (setf (strategy-direction strategy) detected)
+    (format t "[RANK] 🎯 Direction detected for ~a: ~a~%" 
+            (strategy-name strategy) detected)
+    detected)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; BREEDING HELPERS (V47.0)

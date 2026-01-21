@@ -139,10 +139,10 @@
 ;; V6.10: Added :category slot for explicit classification (Graham requirement)
 ;; V7.9++: Added :indicator-type slot for correct backtesting (Sharpe=-3.75 bug fix)
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
-;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.9: Strategy Lineage Tracking (Pedigree)
 ;; V46.0: The Proving Grounds (Tier System) - Expert Panel 2026-01-18
 ;; V47.0: B/A/S Rank System - Owner's Vision 2026-01-21
+;; V47.2: TF × Direction × Symbol Categorization - Owner's Vision 2026-01-21
 (defstruct strategy name indicators entry exit (sl 0.0) (tp 0.0) (volume 0.01) 
             (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
             (category :trend) (indicator-type "sma") (pnl-history nil) 
@@ -158,12 +158,14 @@
             ;; V47.0: Breeding usage counter (max 3 before discard, Legend exempt)
             (breeding-count 0)
             ;; V17d: Multi-Currency Identity
-            (symbol "USDJPY"))
+            (symbol "USDJPY")
+            ;; V47.2: Trade Direction (:BUY, :SELL, :BOTH)
+            (direction :BOTH))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY")
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY") (direction :BOTH)
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0))
   `(make-strategy :name (string ',name) :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
-                  :filter-enabled ,(or filter-enabled regime-filter) :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic :tier ,tier :rank ,rank :symbol ,symbol
+                  :filter-enabled ,(or filter-enabled regime-filter) :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic :tier ,tier :rank ,rank :symbol ,symbol :direction ,direction
                   :sharpe ,sharpe :profit-factor ,profit-factor :win-rate ,win-rate :trades ,trades :max-dd ,max-dd))
 
 (defmacro with-trend-filter ((tf logic period) strategy-form)
