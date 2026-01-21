@@ -10,9 +10,9 @@
         :sl 0.50 :tp 1.00 :volume 0.01
         :timeframe 5) ; H1 Golden Cross
       (make-strategy :name "Medium-EMA-Cross-20-50"
-        :indicators '((ema 20) (ema 50) (rsi 14))
-        :entry '(and (cross-above ema-20 ema-50) (> rsi-14 50))
-        :exit '(cross-below ema-20 ema-50)
+        :indicators '((ema 14) (ema 20) (rsi 14))
+        :entry '(and (cross-above ema-14 ema-20) (> rsi-14 50))
+        :exit '(cross-below ema-14 ema-20)
         :sl 0.40 :tp 0.80 :volume 0.02
         :category :trend :timeframe 60) ; M15 for clearer trend
       (make-strategy :name "TF-10-50"
@@ -59,25 +59,25 @@
       
       ;; 2.1 MACD Strategies
       (make-strategy :name "MACD-Zero-Cross-Long"
-        :indicators '((macd 12 26 9))
+        :indicators '((macd 8 12 9))
         :entry '(cross-above macd-line 0)
         :exit '(cross-below macd-line 0)
         :sl 0.30 :tp 0.60 :volume 0.01
         :timeframe 240) ; M15 MACD
       (make-strategy :name "MACD-Signal-Cross"
-        :indicators '((macd 12 26 9))
+        :indicators '((macd 9 12 9))
         :entry '(cross-above macd-line signal-line)
         :exit '(cross-below macd-line signal-line)
         :sl 0.25 :tp 0.50 :volume 0.01
         :timeframe 240) ; M15 MACD Signal
       (make-strategy :name "MACD-Above-Zero-Cross"
-        :indicators '((macd 12 26 9))
+        :indicators '((macd 9 12 9))
         :entry '(and (> macd-line 0) (cross-above macd-line signal-line))
         :exit '(cross-below macd-line signal-line)
         :sl 0.25 :tp 0.50 :volume 0.01
         :timeframe 240) ; M15 MACD Trend
       (make-strategy :name "MACD-Expansion"
-        :indicators '((macd 12 26 9))
+        :indicators '((macd 9 12 9))
         :entry '(and (> macd-line 0) (> macd-line signal-line))
         :exit '(cross-below macd-line signal-line)
         :sl 0.30 :tp 0.70 :volume 0.01

@@ -15,6 +15,12 @@
   "Initialize with strategies from The Great Library (Sharded Persistence)"
   (setf *strategy-knowledge-base*
         (swimmy.persistence:load-all-strategies))
+  
+  ;; P7: Recruit Strategies Injection
+  (when (fboundp 'get-recruit-strategies)
+    (let ((recruits (get-recruit-strategies)))
+      (setf *strategy-knowledge-base* (append *strategy-knowledge-base* recruits))
+      (format t "[L] 🛡️ Recruited ~d strategies from Evolutionary Gap~%" (length recruits))))
 
   (format t "[L] 📚 Knowledge base loaded: ~d strategies from Library~%" 
           (length *strategy-knowledge-base*))

@@ -53,9 +53,11 @@
                (:file "src/lisp/strategies/strategies-breakout")
                (:file "src/lisp/strategies/strategies-scalp")
                (:file "src/lisp/strategies/strategies")
+               (:file "src/lisp/strategies/strategies-recruits") ; P7: Recruited Strategies
                (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
                
                ;; SCHOOL
+               (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
                (:file "src/lisp/school/school-constitution")
                (:file "src/lisp/school/school-resignation")
                (:file "src/lisp/school/school-optimized-params") ; Phase 4: Code Gen

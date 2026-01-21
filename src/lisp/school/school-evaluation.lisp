@@ -146,11 +146,15 @@
              (transformed-logic (transform-cross-calls-helper entry-logic pkg)))
         (handler-case
             (locally (declare (sb-ext:muffle-conditions style-warning))
-              (let ((entry-result (eval `(let ,bindings ,transformed-logic))))
+              (let ((entry-result (eval `(let ,bindings 
+                                           (declare (ignorable ,@(mapcar #'car bindings)))
+                                           ,transformed-logic))))
                 (cond
                   (entry-result :buy)
                   ((and (strategy-exit strat)
-                        (eval `(let ,bindings ,(transform-cross-calls-helper (strategy-exit strat) pkg)))) :sell)
+                        (eval `(let ,bindings 
+                                 (declare (ignorable ,@(mapcar #'car bindings)))
+                                 ,(transform-cross-calls-helper (strategy-exit strat) pkg)))) :sell)
                   (t :hold))))
           (error (e) 
             (format t "[L] Eval Err ~a: ~a~%" (strategy-name strat) e)
@@ -165,9 +169,10 @@
            ((:trend-exhausted) '(:mean-reversion :counter-trend))
            ((:range-expansion :ranging) '(:range :mean-reversion))
            ((:range-compression) '(:breakout :trend))
+           ;; V45: Don't fully halt - allow LEGEND + scalp with warning (Opus 2026-01-20)
            ((:volatile-spike :illiquid) 
-            (format t "[L] 🛑 MARKET UNSAFE (~a). Trading halted.~%" regime)
-            nil) ;; Halt trading
+            (format t "[L] ⚠️ MARKET CAUTION (~a). Limiting to LEGEND/scalp strategies.~%" regime)
+            '(:scalp :legend))  ;; Allow defensive trading
            (t '(:trend :range))))) ;; Default generic
     
     (remove-if-not 

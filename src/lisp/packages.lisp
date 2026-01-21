@@ -203,6 +203,8 @@
    #:notify-apex            ;; V41.6: Apex webhook for system status
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
+   #:*discord-daily-webhook* ;; Fix for school-narrative.lisp
+
    
    ;; Research Algorithms (Migrated from School)
    #:research-enhanced-analysis

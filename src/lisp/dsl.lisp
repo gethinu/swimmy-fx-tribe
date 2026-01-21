@@ -142,6 +142,7 @@
 ;; V8.0: Multi-Timeframe Revolution (Musk Order)
 ;; V8.9: Strategy Lineage Tracking (Pedigree)
 ;; V46.0: The Proving Grounds (Tier System) - Expert Panel 2026-01-18
+;; V47.0: B/A/S Rank System - Owner's Vision 2026-01-21
 (defstruct strategy name indicators entry exit (sl 0.0) (tp 0.0) (volume 0.01) 
             (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
             (category :trend) (indicator-type "sma") (pnl-history nil) 
@@ -152,8 +153,10 @@
             (consecutive-losses 0) (status :active) (status-reason "") (cooldown-until 0) (last-update 0)
             ;; The Proving Grounds Tiers: :graveyard, :incubator, :training, :battlefield
             (tier :incubator)
-            ;; V23: The Missing Rank (:scout, :recruit, :veteran, :legend)
-            (rank :scout)
+            ;; V47.0: B/A/S Rank System (:B, :A, :S, :legend, :graveyard)
+            (rank nil)
+            ;; V47.0: Breeding usage counter (max 3 before discard, Legend exempt)
+            (breeding-count 0)
             ;; V17d: Multi-Currency Identity
             (symbol "USDJPY"))
 

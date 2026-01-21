@@ -54,24 +54,34 @@
       :status :active)))
 
 (defun run-breeding-cycle ()
-  "Breed top strategies from Battlefield, Training, and Selection tiers."
-  (format t "[BREEDER] 🧬 Starting Breeding Cycle (Battlefield, Training, Selection)...~%")
+  "Breed top strategies from ALL tiers, prioritizing higher generations.
+   V45.0: Fixed to allow multi-generational evolution (Gen45+ possible)."
+  (format t "[BREEDER] 🧬 Starting Breeding Cycle (Multi-Gen Evolution V45.0)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
-        (tiers '(:battlefield :training :selection)))
+        ;; V45.0: Include :incubator for multi-generational breeding
+        (tiers '(:battlefield :training :selection :incubator)))
         
     (dolist (cat categories)
-      (dolist (tier tiers)
-        (let* ((warriors (get-strategies-by-tier tier cat))
-               (sorted (sort (copy-list warriors) #'> :key (lambda (s) (or (strategy-sharpe s) 0)))))
-               
-          (when (>= (length sorted) 2)
-            (let ((p1 (first sorted))
-                  (p2 (second sorted)))
-              (format t "[BREEDER] 💕 Breeding [~a] ~a + ~a~%" tier (strategy-name p1) (strategy-name p2))
-              (let ((child (breed-strategies p1 p2)))
-                (push child *strategy-knowledge-base*)
-                (save-recruit-to-lisp child) ;; Persist to disk
-                (format t "[BREEDER] 👶 Born: ~a (Tier: Incubator)~%" (strategy-name child))))))))))
+      ;; Collect ALL strategies from all tiers for this category
+      (let* ((all-warriors (loop for tier in tiers
+                                 append (get-strategies-by-tier tier cat)))
+             ;; V45.0: Sort by (generation * 0.1 + sharpe) to prefer evolved strategies
+             (sorted (sort (copy-list all-warriors) #'> 
+                          :key (lambda (s) 
+                                 (+ (* (or (strategy-generation s) 0) 0.1)
+                                    (or (strategy-sharpe s) 0))))))
+             
+        (when (>= (length sorted) 2)
+          (let ((p1 (first sorted))
+                (p2 (second sorted)))
+            (format t "[BREEDER] 💕 Breeding Gen~d ~a + Gen~d ~a~%"
+                    (or (strategy-generation p1) 0) (strategy-name p1)
+                    (or (strategy-generation p2) 0) (strategy-name p2))
+            (let ((child (breed-strategies p1 p2)))
+              (push child *strategy-knowledge-base*)
+              (save-recruit-to-lisp child)
+              (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
+                      (strategy-name child) (strategy-generation child)))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation

@@ -108,35 +108,61 @@
 ;;; MERITOCRACY (The Ladder Algorithm)
 ;;; ----------------------------------------------------------------------------
 
+(defun get-min-trades-for-tier (tier timeframe)
+  "Get minimum trades required based on timeframe.
+   V46.1: Timeframe-aware thresholds - '時間の洗礼' normalized across TFs."
+  (let ((trades-per-month 
+         (case timeframe
+           ((5)    8640)   ; M5: 8640/month
+           ((15)   2880)   ; M15
+           ((30)   1440)   ; M30
+           ((60)   720)    ; H1
+           ((240)  180)    ; H4
+           ((1440) 30)     ; D1
+           ((10080) 4)     ; W1
+           (t 100))))      ; Default
+    ;; Battlefield = 2 months, Training = 1 month
+    (case tier
+      (:battlefield (max 10 (floor (* 2 (/ trades-per-month 30)))))
+      (:training    (max 5  (floor (/ trades-per-month 30))))
+      (t 0))))
+
 (defun run-meritocracy-selection ()
-  "Run the 'Ladder' selection based on Absolute Thresholds.
-   Moves strategies between tiers based on Sharpe Value."
-  (format t "[SELECTOR] CLIMBING THE LADDER (Meritocracy Selection)...~%")
+  "Run unified Tier selection with timeframe-aware thresholds.
+   V46.1: Normalized 'time-tested' requirement across all timeframes."
+  (format t "[SELECTOR] CLIMBING THE LADDER (TF-Aware V46.1)...~%")
   
   (dolist (strat *strategy-knowledge-base*)
-    (let ((sharpe (or (strategy-sharpe strat) 0.0))
-          (tier (strategy-tier strat)))
+    (let* ((sharpe (or (strategy-sharpe strat) 0.0))
+           (trades (or (strategy-trades strat) 0))
+           (tier (strategy-tier strat))
+           (tf (or (strategy-timeframe strat) 60))
+           (min-bf-trades (get-min-trades-for-tier :battlefield tf))
+           (min-tr-trades (get-min-trades-for-tier :training tf)))
       
       (cond 
-        ;; 1. Promotion to Battlefield (The Elite)
-        ((>= sharpe 1.0)
+        ;; 1. Battlefield: Sharpe >= 0.5 AND trades >= TF-aware threshold
+        ((and (>= sharpe 0.5) (>= trades min-bf-trades))
          (unless (eq tier :battlefield)
-           (promote strat :battlefield "Sharpe >= 1.0 (Elite)")))
+           (promote strat :battlefield 
+                    (format nil "S=~,2f T=~d/~d (TF:~a)" sharpe trades min-bf-trades tf))))
         
-        ;; 2. Promotion to Training (Growth)
-        ((>= sharpe 0.5)
+        ;; 2. Training: Sharpe >= 0.3 AND trades >= TF-aware threshold
+        ((and (>= sharpe 0.3) (>= trades min-tr-trades))
          (cond 
-           ((eq tier :battlefield) (demote strat :training "Sharpe < 1.0"))
-           ((not (eq tier :training)) (promote strat :training "Sharpe >= 0.5"))))
+           ((eq tier :battlefield) (demote strat :training "Below threshold"))
+           ((not (eq tier :training)) 
+            (promote strat :training 
+                     (format nil "S=~,2f T=~d/~d" sharpe trades min-tr-trades)))))
            
-        ;; 3. Promotion to Selection (Survival)
+        ;; 3. Selection: Sharpe >= 0.1
         ((>= sharpe 0.1)
          (cond
-           ((eq tier :training) (demote strat :selection "Sharpe < 0.5"))
-           ((eq tier :battlefield) (demote strat :selection "Sharpe < 0.5 (Crash)"))
+           ((eq tier :training) (demote strat :selection "Sharpe < 0.3"))
+           ((eq tier :battlefield) (demote strat :selection "Below threshold"))
            ((not (eq tier :selection)) (promote strat :selection "Sharpe >= 0.1"))))
            
-        ;; 4. Demotion to Incubator/Graveyard (Fail)
+        ;; 4. Fail -> Incubator
         (t
          (unless (member tier '(:incubator :graveyard))
            (demote strat :incubator "Sharpe < 0.1")))))))

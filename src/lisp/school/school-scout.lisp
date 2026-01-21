@@ -96,12 +96,14 @@
 ;;; ----------------------------------------------------------------------------
 
 (defun generate-scout-candidate (wisdom attempt)
-  "Generate a candidate strategy, imitating wisdom or random."
-  ;; Phase 8: Inverted Bias (20% Imitation, 80% Random)
-  ;; To force M5/M15 pivot, we must ignore the D1-heavy wisdom for now.
-  (if (and wisdom (> (length wisdom) 0) (< (random 1.0) 0.2))
+  "Generate a candidate strategy from Wisdom ONLY.
+   V46.0: Random generation removed per Expert Panel - 'dice rolling is not strategy'."
+  (if (and wisdom (> (length wisdom) 0))
       (mutate-wisdom-elite (nth (random (length wisdom)) wisdom) attempt)
-      (generate-random-scout attempt)))
+      ;; V46.0: No fallback to random - Wisdom required
+      (progn
+        (format t "[SCOUT] ⚠️ No Wisdom available. Skipping recruitment (V46 - No Random).~%")
+        nil)))
 
 (defun mutate-wisdom-elite (elite attempt)
   "Clone and mutate an elite JSON object."

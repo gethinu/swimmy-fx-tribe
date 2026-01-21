@@ -49,50 +49,51 @@ def main():
         sys.exit(1)
 
     # 1. Count from Filesystem (Source of Truth)
-    # Note: Case sensitivity based on actual directory structure
-    count_s = count_strategies("BATTLEFIELD")
-    count_a = count_strategies("training")  # Directory is lowercase
+    # V45: Use actual Tier names consistently
+    count_battlefield = count_strategies("BATTLEFIELD")
+    count_training = count_strategies("training")  # lowercase
     count_recruits = count_strategies("INCUBATOR")
     count_graveyard = count_strategies("GRAVEYARD")
-    count_selection = count_strategies("selection")  # Directory is lowercase
-    count_legend = count_strategies("LEGEND")  # Just in case
+    count_selection = count_strategies("selection")  # lowercase
+    count_legend = count_strategies("LEGEND")
 
-    # Total Active = S + A + Selection + Recruits + Legend
-    active_total = count_s + count_a + count_recruits + count_selection + count_legend
+    # Total Active
+    active_total = (
+        count_battlefield
+        + count_training
+        + count_recruits
+        + count_selection
+        + count_legend
+    )
 
-    # "Veteran Genes" usually implies the surviving pool.
-    # For this report, we'll align it with Active Knowledge Base.
-    veteran_genes = active_total
-
-    # 2. Build Payload (Exact Format Requested)
-    # JST Timestamp
+    # 2. Build Payload (V45: Unified Terminology)
     jst = timezone(timedelta(hours=9))
     now = datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
 
-    description = f"""Current status of the autonomous strategy generation pipeline.
+    description = f"""Strategy Generation Pipeline Status
 
-🧠 Knowledge Base (Active)
-{active_total} Strategies
+🧠 Knowledge Base
+{active_total} Active Strategies
 
-🏆 S-Rank (Elite)
-{count_s}
+⚔️ Battlefield (Elite)
+{count_battlefield} (Sharpe ≥0.5, Trades ≥10)
 
-🎖️ A-Rank (Pro)
-{count_a}
+🎯 Training
+{count_training} (Sharpe ≥0.3, Trades ≥5)
 
-👶 New Recruits (Born)
+📋 Selection
+{count_selection} (Sharpe ≥0.1)
+
+👶 Incubator
 {count_recruits}
 
-👻 Graveyard (Rejected)
+👻 Graveyard
 {count_graveyard}
-
-🧬 Veteran Genes
-{veteran_genes}
 
 ⚙️ System Status
 ✅ Evolution Daemon Active
-✅ Persistence Linked
-Swimmy AI • {now} JST"""
+✅ Multi-Gen Breeding V45.0
+{now} JST"""
 
     payload = {
         "content": "🏭 **Evolution Factory Report**",  # Posting title outside embed for clean notification

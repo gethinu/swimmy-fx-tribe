@@ -204,5 +204,10 @@ Current status of the autonomous strategy generation pipeline.
     ;; 1. Save to File (Restoring missing functionality)
     (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
       (write-string report stream))
-    ;; 2. Send to Discord
-    (swimmy.shell:notify-discord report :color 3447003)))
+    ;; 2. Send to Discord (Targeting REPORTS channel via *discord-daily-webhook*)
+    ;; Use queue-discord-notification directly to control Title and Webhook
+    (swimmy.core:queue-discord-notification 
+      swimmy.core:*discord-daily-webhook* 
+      report 
+      :color 3447003 
+      :title "🏭 Evolution Factory Report")))

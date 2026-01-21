@@ -183,12 +183,13 @@
          (coming-of-age strategy-name "Warrior" "Veteran")
          :veteran)
         
-        ;; Veteran → Legend: 100+ trades, 55%+ win rate, 2000+ PnL, Sharpe > 1.0
+        ;; Veteran → Legend: 30+ trades, 55%+ win rate, 500+ PnL, Sharpe > 0.3
+        ;; [V45.0] Expert Panel (Musk): "Sharpe 1.0 is impossible for short-term backtest"
         ((and (eq current-rank :veteran)
-              (>= trades 100)
+              (>= trades 30)
               (>= win-rate 0.55)
-              (> pnl 2000)
-              (> sharpe 1.0))
+              (> pnl 500)
+              (> sharpe 0.3))
          (setf (strategy-rank-rank rank-data) :legend)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Veteran" "Legend")

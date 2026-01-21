@@ -16,6 +16,20 @@
   :tp 0.15
   :regime-filter t)
 
+      (make-strategy :name "Legend-RSI-Reversion-V1"
+        :indicators '((rsi 2)) ;; 2-period RSI (Larry Connors)
+        :entry '(< rsi-2 5) ;; Extreme oversold
+        :exit '(> close sma-5) ;; Exit on break above 5-SMA
+        :sl 0.088 :tp 0.091 :volume 0.05
+        :category :reversion :timeframe 1440)
+        
+      (make-strategy :name "Legend-London-Breakout-V1"
+        :indicators '((session-high 8 16) (session-low 8 16)) ;; 8:00-16:00 (London Open)
+        :entry '(break-above session-high)
+        :exit '(time-exit 24)
+        :sl 0.10 :tp 0.20 :volume 0.10
+        :category :breakout :timeframe 60)
+
 ;; 2. London Breakout (Breakout)
 ;; Volatility capture at market open.
 (defstrategy "Legendary-London-Breakout"

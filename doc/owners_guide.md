@@ -45,9 +45,34 @@ make logs
 - **Graveyard**: 敗者
 - **Legends**: 外部から招喚された英雄
 
-### 2. 7つの市場状態 (Softmax Regime)
+### 2. 7つの市場状態 (Softmax Regime Detection V45.0)
+
 単純な「トレンド/レンジ」ではなく、**確率的な市場認識**を行います。
-`detect-market-regime` は `(TrendMature: 0.8, RangeExpansion: 0.2)` のようなベクトルを出力を返します。
+
+**レジーム一覧:**
+| レジーム | 説明 | 取引対象 |
+|---------|------|---------|
+| `trend-early` | トレンド初期 | trend, breakout |
+| `trend-mature` | トレンド成熟 | trend, breakout |
+| `trend-exhausted` | トレンド枯渇 | mean-reversion |
+| `range-expansion` | レンジ拡大 | range, mean-reversion |
+| `range-compression` | レンジ縮小 | breakout, trend |
+| `volatile-spike` | ボラ急上昇 | ⚠️ LEGEND/scalp のみ |
+| `illiquid` | 流動性枯渇 | ⚠️ LEGEND/scalp のみ |
+
+**Softmax確率:**
+- `detect-market-regime` は `(TrendMature: 0.8, RangeExpansion: 0.2)` のような確率ベクトルを返す
+- 最高確率のレジームが `*current-regime*` にセットされる
+- 複数レジームが近い確率の場合、コンフィデンスが下がる
+
+**シンボル別レジーム (V45.0):**
+- 各通貨ペアごとに独立したレジーム判定を実施
+- `(gethash symbol *candle-histories*)` で通貨別履歴を使用
+- 例: USDJPYがトレンド中でもEURUSDはレンジの可能性あり
+
+**リスク対応:**
+- `volatile-spike` / `illiquid` 時は全戦略スキャンではなく、LEGEND/scalp 戦略のみに制限
+- 完全停止はせず、防御的トレードを許可（V45.0で修正）
 
 ### 3. ケリー基準による資金管理 (Kelly Criterion)
 ロット数は固定ではなく、戦略の「優位性（Edge）」に基づいて動的に計算されます。

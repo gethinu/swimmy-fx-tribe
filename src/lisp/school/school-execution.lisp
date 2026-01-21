@@ -141,149 +141,108 @@
                       rp-lot hdrl-lot kelly-adj)))))
 
 
+;;; P3 Refactor: Decomposed Execution Helpers (Expert Panel 2026-01-20)
+
+(defun prepare-trade-context (category symbol)
+  "Helper: Resolve strategy, timeframe, and history context."
+  (let* ((strategies (gethash category *active-team*))
+         (lead-strat (first strategies))
+         (lead-name (when lead-strat (strategy-name lead-strat)))
+         (timeframe (if lead-strat (strategy-timeframe lead-strat) 1))
+         (timeframe-key (cond ((= timeframe 5) "M5") ((= timeframe 15) "M15") ((= timeframe 30) "M30")
+                             ((= timeframe 60) "H1") ((= timeframe 240) "H4") ((= timeframe 1440) "D1") (t "M1")))
+         (history (if (= timeframe 1) (gethash symbol *candle-histories*)
+                      (let ((tf-map (gethash symbol *candle-histories-tf*)))
+                        (or (and tf-map (gethash timeframe-key tf-map))
+                            (when (and (= timeframe 60) (gethash symbol *candle-histories*))
+                               (resample-candles (gethash symbol *candle-histories*) 60)))))))
+    (values lead-name timeframe-key history)))
+
+(defun validate-trade-opportunity (category symbol timeframe-key history)
+  "Helper: Check integrity, idempotency, and guardian status."
+  (let* ((latest-candle (first history))
+         (latest-ts (if latest-candle (candle-timestamp latest-candle) 0))
+         (idempotency-key (format nil "~a-~a-~a" category symbol timeframe-key))
+         (last-processed (gethash idempotency-key *processed-candle-time* 0)))
+    (cond
+      ((null history) nil)
+      ((<= latest-ts last-processed) nil)
+      ((not (guard-execution-status symbol (get-universal-time))) nil)
+      (t 
+       ;; Commit State (Side Effect required to prevent double processing)
+       (setf (gethash idempotency-key *processed-candle-time*) latest-ts)
+       (format t "[L] 🕰️ New Candle: ~a (~a) TS=~d~%" symbol timeframe-key latest-ts)
+       t))))
+
+(defun verify-signal-authority (symbol direction category lot rank lead-name)
+  "Helper: Verify signal with Council, AI, and Blocking rules."
+  (cond
+    ((should-block-trade-p symbol direction category) nil)
+    ((should-unlearn-p symbol) nil)
+    ((not (verify-parallel-scenarios symbol direction category)) nil)
+    (t 
+     ;; High Council Check
+     (let ((danger-p (and (boundp '*danger-level*) (> *danger-level* 2)))
+           (large-lot-p (> lot 0.05))
+           (high-rank-p (member rank '(:veteran :legend))))
+       (if (and (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
+           (let ((res (convene-high-council (format nil "~a ~a ~,2f" symbol direction lot) category 
+                                            :urgency (if danger-p :critical :normal))))
+             (not (eq res :rejected)))
+           t)))))
+
+(defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override)
+  "Helper: atomic reservation and execution."
+  ;; Reservation
+  (multiple-value-bind (slot-index magic) 
+      (try-reserve-warrior-slot category lead-name symbol direction)
+    (unless slot-index 
+      (format t "[ALLOC] ⚠️ Clan ~a Full (4/4)!~%" category)
+      (return-from execute-order-sequence nil))
+    
+    (let ((committed nil))
+      (unwind-protect
+           (progn 
+             (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+             (let ((sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)) ;; Constants (Phase 3.2)
+               (cond
+                 ((eq direction :buy)
+                  (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
+                    (when (safe-order "BUY" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
+                      (setf committed t))))
+                 ((eq direction :sell)
+                  (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
+                    (when (safe-order "SELL" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
+                      (setf committed t))))))
+             (when committed
+                 (update-symbol-exposure symbol lot :open)
+                 (incf *category-trades*)
+                 (setf *last-entry-time* (get-universal-time))
+                 (format t "[EXEC] ✅ Committed: ~a ~a~%" category symbol)
+                 (request-mt5-positions)
+                 t))
+        ;; Cleanup
+        (unless committed
+           (remhash magic *pending-orders*)
+           (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
+           (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))
+
 (defun execute-category-trade (category direction symbol bid ask)
-  (format t "[TRACE] execute-category-trade ~a ~a symbol=~a bid=~a ask=~a~%" category direction symbol bid ask)
+  (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
   (handler-case
-    (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
-      (let* ((strategies (gethash category *active-team*))
-             (lead-strat (first strategies))
-             (lead-name (when lead-strat (strategy-name lead-strat)))
-             ;; V15.3: Respect Strategy Timeframe (Fix M1 Spam)
-             (timeframe (if lead-strat (strategy-timeframe lead-strat) 1))
-             (timeframe-key (cond ((= timeframe 5) "M5")
-                                 ((= timeframe 15) "M15")
-                                 ((= timeframe 30) "M30")
-                                 ((= timeframe 60) "H1")
-                                 ((= timeframe 240) "H4")
-                                 ((= timeframe 1440) "D1")
-                                 (t "M1")))
-             
-             (rank-data (when lead-name (get-strategy-rank lead-name)))
-             (rank (if rank-data (strategy-rank-rank rank-data) :scout))
-             (base-lot (get-category-lot category))
-             
-             ;; History Fetch
-             (history (if (= timeframe 1)
-                          (gethash symbol *candle-histories*)
-                          (let ((tf-map (gethash symbol *candle-histories-tf*)))
-                            (or (and tf-map (gethash timeframe-key tf-map))
-                                (when (and (= timeframe 60) (gethash symbol *candle-histories*))
-                                   (resample-candles (gethash symbol *candle-histories*) 60))))))
-             
-             (latest-candle (and history (first history)))
-             (latest-ts (if latest-candle (candle-timestamp latest-candle) 0))
-             (idempotency-key (format nil "~a-~a-~a" category symbol timeframe-key))
-             (last-processed (gethash idempotency-key *processed-candle-time* 0)))
-
-        ;; Pipeline Execution
-        ;; 1. Data Integrity Check
-        (unless history 
-           (return-from execute-category-trade nil))
-        
-        ;; 2. Idempotency Check
-        (when (<= latest-ts last-processed)
-           (return-from execute-category-trade nil))
-           
-        ;; 3. System & Market Guard Check
-        (unless (guard-execution-status symbol (get-universal-time))
-           (return-from execute-category-trade nil))
-           
-        ;; Commit Processing (State Update)
-        (setf (gethash idempotency-key *processed-candle-time*) latest-ts)
-        (format t "[L] 🕰️ New Candle: ~a (~a) TS=~d~%" symbol timeframe-key latest-ts)
-        
-        ;; 4. Lot Calculation & Context Setup
-        (let* ((lot (calc-execution-lot category symbol history rank base-lot lead-name))
-               (conf (or (and (boundp '*last-confidence*) *last-confidence*) 0.0))
-               (swarm-consensus (or (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) 0))
-               (sl-pips 0.15) (tp-pips 0.40)
-               (warmup-p (< *category-trades* 50))
-               (large-lot-p (> lot 0.05))
-               (high-rank-p (member rank '(:veteran :legend)))
-               (danger-p (and (boundp '*danger-level*) (> *danger-level* 2))))
-          
-          (setf conf (if (numberp conf) conf 0.0))
-      
-      ;; V44.2: ATOMIC RESERVATION (Expert Panel Approved)
-      ;; Reserve slot BEFORE any heavy lifting to prevent race conditions.
-      (multiple-value-bind (slot-index magic) 
-          (try-reserve-warrior-slot category lead-name symbol direction)
-        
-        (unless slot-index 
-          (format t "[ALLOC] ⚠️ Clan ~a is fully deployed (4/4 warriors)!~%" category)
-          (return-from execute-category-trade nil))
-        
-        ;; CRITICAL SECTION: We hold the reservation. Must ensure cleanup or commit.
-        (let ((trade-committed nil))
-          (unwind-protect
-               (progn
-                 (when (and (not warmup-p) (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
-                   (let* ((proposal (format nil "~a ~a ~,2f lot (~a戦略: ~a)" symbol direction lot rank lead-name))
-                          (urgency (cond (danger-p :critical) (large-lot-p :high) (t :normal)))
-                          (council-result (convene-high-council proposal category :urgency urgency)))
-                     (when (eq council-result :rejected) (return-from execute-category-trade nil))))
-
-                 (unless (should-block-trade-p symbol direction category)
-                   (let* ((prediction (handler-case (predict-trade-outcome symbol direction) (error (e) nil)))
-                          (should-trade (if prediction (should-take-trade-p prediction) t)))
-                     
-                     (when (global-panic-active-p) (format t "[L] 💉 SOROS: Elevated volatility~%"))
-                     (when (should-unlearn-p symbol) (setf should-trade nil))
-                     (when should-trade
-                       (unless (verify-parallel-scenarios symbol direction category) (setf should-trade nil)))
-                         
-                     (when should-trade
-                       (sleep (/ (random 2000) 1000.0))
-                       (when (< (random 100) 5) (return-from execute-category-trade nil))
-                       (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
-
-                       (let* ((strat (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
-                                         (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-                              (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
-                               (tier (if strat (strategy-tier strat) :incubator))
-                              (lot (if (and (>= sharpe 0.0) (< sharpe 0.3)) 0.01 lot)))
-                         (format t "[EXEC] 🏁 Attempting trade for ~a (Tier: ~a, Rank: ~a)...~%" lead-name tier (if rank-obj (strategy-rank-rank rank-obj) :unknown))
-                         ;; (unless (eq tier :battlefield) ... removed strict check V48
-
-                         (let* ((rank-obj (get-strategy-rank lead-name)) 
-                                (rank (if rank-obj (strategy-rank-rank rank-obj) :scout))) 
-                           ;; V47: Allow Battlefield Tier to execute regardless of Rank (Implicit Veteran)
-                           (unless (or (eq tier :battlefield) (member rank '(:veteran :legend))) 
-                             (format t "[EXEC] 📝 PAPER: ~a is Rank ~a (Need Battlefield/S/A).~%" lead-name rank) 
-                             (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*) 
-                             (return-from execute-category-trade nil)))
-                         (cond
-                           ((eq direction :buy)
-                            (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
-                              (log-why-trade symbol :buy category :strategy lead-name 
-                                            :tribe-cons (if (boundp '*tribe-consensus*) *tribe-consensus* 0)
-                                            :swarm-cons swarm-consensus :parallel-score 2
-                                            :elder-ok (not (should-block-trade-p symbol :buy category)))
-                              (when (safe-order "BUY" symbol lot sl tp magic 
-                                                (format nil "~a|~a" lead-name timeframe-key))
-                                (setf trade-committed t) ;; LEGALLY COMMITTED
-                                (update-symbol-exposure symbol lot :open)
-                                (incf *category-trades*)
-                                (setf *last-entry-time* (get-universal-time))
-                                (format t "[L] ⏳ ORDER PENDING: ~a -> ~a BUY (Magic ~d)~%" category symbol magic)
-                                (request-mt5-positions)
-                                (return-from execute-category-trade t))))
-                           ((eq direction :sell)
-                            (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                              (when (safe-order "SELL" symbol lot sl tp magic 
-                                                (format nil "~a|~a" lead-name timeframe-key))
-                                (setf trade-committed t) ;; LEGALLY COMMITTED
-                                (update-symbol-exposure symbol lot :open)
-                                (incf *category-trades*)
-                                (setf *last-entry-time* (get-universal-time))
-                                (format t "[L] ⏳ ORDER PENDING: ~a -> ~a SELL (Magic ~d)~%" category symbol magic)
-                                (request-mt5-positions)
-                                (return-from execute-category-trade t))))))))))
-            ;; UNWIND-PROTECT CLEANUP
-            (unless trade-committed
-              (remhash magic *pending-orders*)
-              (format t "[ALLOC] ♻️ Reservation Cancelled: Slot ~d (Magic ~d) Released~%" slot-index magic)))))))
-    (error (e) (format t "[TRACE] 🚨 ERROR in execute-category-trade: ~a~%" e))))
+      (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
+        (multiple-value-bind (lead-name timeframe-key history) (prepare-trade-context category symbol)
+          (when (validate-trade-opportunity category symbol timeframe-key history)
+             (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))
+                    (rank (if rank-data (strategy-rank-rank rank-data) :scout))
+                    (base-lot (get-category-lot category))
+                    (lot (calc-execution-lot category symbol history rank base-lot lead-name)))
+               
+               (when (verify-signal-authority symbol direction category lot rank lead-name)
+                  ;; Sleep Randomization (Anti-Gaming)
+                  (sleep (/ (random 2000) 1000.0))
+                  (execute-order-sequence category direction symbol bid ask lot lead-name timeframe-key nil))))))
+    (error (e) (format t "[EXEC] 🚨 Error: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)
   "V5.2: Close warrior positions at SL/TP using warrior-allocation"
@@ -295,7 +254,7 @@
               (entry (getf warrior :entry))
                (magic (getf warrior :magic))
                (lot (or (getf warrior :lot) 0.01))
-               (sl-pips 0.15) (tp-pips 0.40)
+               (sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)
                (pnl 0) (closed nil))
          (when (and entry (numberp bid) (numberp ask))
            (cond
@@ -327,68 +286,70 @@
 (defun process-category-trades (symbol bid ask)
   ;; V19: Periodic stale allocation cleanup
   (cleanup-stale-allocations)
-  (when (and (trading-allowed-p) *candle-history* (> (length *candle-history*) 100))
-    (close-category-positions symbol bid ask)
-    (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
-    (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
+  ;; V45: Use per-symbol history for regime detection (Fix: Opus 2026-01-20)
+  (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))
+    (when (and (trading-allowed-p) history (> (length history) 100))
+      (close-category-positions symbol bid ask)
+      (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
+      (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
     
-    (let ((research-analysis nil))
-      (when (>= (length *candle-history*) 50)
-        (setf research-analysis (research-enhanced-analysis *candle-history*))
-        (select-optimal-model *candle-history*)
-        (detect-regime-hmm *candle-history*))
-    
-    (let* ((swarm-decision (swarm-trade-decision symbol *candle-history*))
-           (consensus (swarm-decision-consensus-strength swarm-decision))
-           (swarm-direction (swarm-decision-direction swarm-decision))
-           (memory-suggestion (memory-suggests-direction symbol))
-           (dual-trend (when research-analysis (getf research-analysis :dual-trend)))
-           (trend-agrees (or (null dual-trend) (not (listp dual-trend))
-                            (eq (getf dual-trend :agreement) :aligned)
-                            (eq (getf dual-trend :direction) (case swarm-direction (:BUY :UP) (:SELL :DOWN) (t :FLAT))))))
-      (setf *last-swarm-consensus* consensus)
-      (elect-leader)
-      (let ((boosted-decision (get-leader-boosted-decision swarm-decision)))
-        (setf swarm-decision boosted-decision))
-      (handler-case
-        (let* ((min-consensus-to-trade 0.25)
-               (any-strong-signal nil))
-        (when (or t (> consensus min-consensus-to-trade))
-            (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
-            (let ((strat-signals (collect-strategy-signals symbol *candle-history*)))
-              (setf any-strong-signal (and strat-signals t))
-              (when strat-signals
-                (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                (let* ((all-sorted 
-                        (sort (shuffle-list strat-signals)
-                              (lambda (a b)
-                                (let* ((name-a (getf a :strategy-name))
-                                       (name-b (getf b :strategy-name))
-                                       (cache-a (get-cached-backtest name-a))
-                                       (cache-b (get-cached-backtest name-b))
-                                       (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                       (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                  (> sharpe-a sharpe-b)))))
-                       (top-sig (first all-sorted))
-                       (top-name (when top-sig (getf top-sig :strategy-name)))
-                       (top-cat (when top-sig (getf top-sig :category)))
-                       (top-cache (when top-name (get-cached-backtest top-name)))
-                       (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                  (when top-sig
-                    (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                            top-name top-cat top-sharpe (length strat-signals))
-                    (let* ((direction (getf top-sig :direction))
-                           (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                      (when (can-clan-trade-p strat-key)
-                        (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
-                          (when trade-executed
-                            (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                            (record-clan-trade-time strat-key)
-                            (when (fboundp 'record-strategy-trade) 
-                              (record-strategy-trade top-name :trade 0))))))))))))
-        (error (e) nil)))))))
+      (let ((research-analysis nil))
+        (when (>= (length history) 50)
+          (setf research-analysis (research-enhanced-analysis history))
+          (select-optimal-model history)
+          (detect-regime-hmm history))
+      
+        (let* ((swarm-decision (swarm-trade-decision symbol history))
+               (consensus (swarm-decision-consensus-strength swarm-decision))
+               (swarm-direction (swarm-decision-direction swarm-decision))
+               (memory-suggestion (memory-suggests-direction symbol))
+               (dual-trend (when research-analysis (getf research-analysis :dual-trend)))
+               (trend-agrees (or (null dual-trend) (not (listp dual-trend))
+                                (eq (getf dual-trend :agreement) :aligned)
+                                (eq (getf dual-trend :direction) (case swarm-direction (:BUY :UP) (:SELL :DOWN) (t :FLAT))))))
+          (setf *last-swarm-consensus* consensus)
+          (elect-leader)
+          (let ((boosted-decision (get-leader-boosted-decision swarm-decision)))
+            (setf swarm-decision boosted-decision))
+          (handler-case
+              (let* ((min-consensus-to-trade 0.25)
+                     (any-strong-signal nil))
+                (when (or t (> consensus min-consensus-to-trade))
+                  (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
+                  (let ((strat-signals (collect-strategy-signals symbol history)))
+                    (setf any-strong-signal (and strat-signals t))
+                    (when strat-signals
+                      (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
+                      (let* ((all-sorted 
+                              (sort (shuffle-list strat-signals)
+                                    (lambda (a b)
+                                      (let* ((name-a (getf a :strategy-name))
+                                             (name-b (getf b :strategy-name))
+                                             (cache-a (get-cached-backtest name-a))
+                                             (cache-b (get-cached-backtest name-b))
+                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                        (> sharpe-a sharpe-b)))))
+                             (top-sig (first all-sorted))
+                             (top-name (when top-sig (getf top-sig :strategy-name)))
+                             (top-cat (when top-sig (getf top-sig :category)))
+                             (top-cache (when top-name (get-cached-backtest top-name)))
+                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                        (when top-sig
+                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                                  top-name top-cat top-sharpe (length strat-signals))
+                          (let* ((direction (getf top-sig :direction))
+                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                            (when (can-clan-trade-p strat-key)
+                              (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
+                                (when trade-executed
+                                  (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
+                                  (record-clan-trade-time strat-key)
+                                  (when (fboundp 'record-strategy-trade) 
+                                    (record-strategy-trade top-name :trade 0))))))))))))
+            (error (e) nil)))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING

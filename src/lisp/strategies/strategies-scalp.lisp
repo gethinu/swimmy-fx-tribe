@@ -24,9 +24,9 @@
         :sl 0.30 :tp 0.60 :volume 0.01
         :timeframe 10080) ; H1 Triple Screen
       (make-strategy :name "Trend-Scalp-1M"
-        :indicators '((ema 9) (ema 21) (rsi 14))
-        :entry '(and (cross-above ema-9 ema-21) (> rsi-14 50))
-        :exit '(cross-below ema-9 ema-21)
+        :indicators '((ema 10) (ema 14) (rsi 14))
+        :entry '(and (cross-above ema-10 ema-14) (> rsi-14 50))
+        :exit '(cross-below ema-10 ema-14)
         :sl 0.10 :tp 0.20 :volume 0.01
         :timeframe 10080) ; M5 Scalp (was M1)
       (make-strategy :name "MACD-Zero-Reject"
