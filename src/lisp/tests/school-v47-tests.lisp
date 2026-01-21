@@ -169,7 +169,64 @@
     (assert-false (swimmy.school:meets-rank-criteria-p bad-strat :B) "Should fail B")))
 
 ;;; ==========================================
+;;; P8 ADD-TO-KB TESTS
+;;; ==========================================
+
+(deftest test-add-to-kb-basic
+  "P8: Test basic add-to-kb functionality"
+  (let ((strat (cl-user::make-strategy 
+                 :name "TestKB-Basic" 
+                 :sharpe 0.2
+                 :profit-factor 1.1)))
+    ;; Remove if exists
+    (setf *strategy-knowledge-base* 
+          (remove "TestKB-Basic" *strategy-knowledge-base* 
+                  :key #'cl-user::strategy-name :test #'string=))
+    ;; Add
+    (let ((result (swimmy.school:add-to-kb strat :founder :notify nil)))
+      (assert-true result "Should add strategy"))))
+
+(deftest test-add-to-kb-duplicate
+  "P8: Test duplicate rejection"
+  (let ((strat (cl-user::make-strategy :name "TestKB-Dup" :sharpe 0.2)))
+    ;; Ensure exists
+    (setf *strategy-knowledge-base* 
+          (remove "TestKB-Dup" *strategy-knowledge-base* 
+                  :key #'cl-user::strategy-name :test #'string=))
+    (swimmy.school:add-to-kb strat :founder :notify nil)
+    ;; Try add again
+    (let ((result (swimmy.school:add-to-kb strat :founder :notify nil)))
+      (assert-false result "Should reject duplicate"))))
+
+(deftest test-add-to-kb-sharpe-gate
+  "P8: Test B-RANK gate (Sharpe >= 0.1)"
+  ;; Low Sharpe should fail
+  (let ((bad-strat (cl-user::make-strategy :name "TestKB-LowSharpe" :sharpe 0.05)))
+    (setf *strategy-knowledge-base* 
+          (remove "TestKB-LowSharpe" *strategy-knowledge-base* 
+                  :key #'cl-user::strategy-name :test #'string=))
+    (let ((result (swimmy.school:add-to-kb bad-strat :founder :notify nil :require-bt t)))
+      (assert-false result "Low Sharpe should fail gate")))
+  ;; Good Sharpe should pass
+  (let ((good-strat (cl-user::make-strategy :name "TestKB-GoodSharpe" :sharpe 0.15)))
+    (setf *strategy-knowledge-base* 
+          (remove "TestKB-GoodSharpe" *strategy-knowledge-base* 
+                  :key #'cl-user::strategy-name :test #'string=))
+    (let ((result (swimmy.school:add-to-kb good-strat :founder :notify nil :require-bt t)))
+      (assert-true result "Good Sharpe should pass gate"))))
+
+(deftest test-startup-mode
+  "P8: Test startup mode suppresses notifications"
+  (let ((swimmy.school:*startup-mode* t))
+    ;; In startup mode, notifications should be suppressed
+    ;; (We can't easily test notification side effect, just verify flag works)
+    (assert-true swimmy.school:*startup-mode* "Startup mode should be T"))
+  (swimmy.school:end-startup-mode)
+  (assert-false swimmy.school:*startup-mode* "Should be NIL after end"))
+
+;;; ==========================================
 ;;; REGISTER TESTS
 ;;; ==========================================
 
-(format t "[V47.5 TESTS] 15 tests loaded for V47.5 Strategy Lifecycle~%")
+(format t "[V47.5+P8 TESTS] 19 tests loaded~%")
+

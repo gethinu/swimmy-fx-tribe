@@ -156,6 +156,13 @@
    #:can-breed-p
    #:run-legend-breeding
    
+   ;; P8: Single Entry Point for KB
+   #:add-to-kb
+   #:*startup-mode*
+   #:end-startup-mode
+   #:notify-recruit-unified
+   #:validate-strategy-for-kb
+   
    ;; Trade Prediction Struct
    #:make-trade-prediction
    #:trade-prediction-symbol
