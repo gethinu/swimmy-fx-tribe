@@ -68,6 +68,7 @@
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
 (setf (gethash "USDJPY" *symbol-webhooks*) (get-discord-webhook "usdjpy"))
 (setf (gethash "EURUSD" *symbol-webhooks*) (get-discord-webhook "eurusd"))
+(setf (gethash "GBPUSD" *symbol-webhooks*) (get-discord-webhook "gbpusd"))
 
 ;;; ==========================================
 ;;; STATE & BUFFERS
