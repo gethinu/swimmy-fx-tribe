@@ -316,7 +316,9 @@
     recruited))
 
 (defun is-toxic-params (scout)
-  "Check against *graveyard* memory."
+  "Check against *graveyard* memory AND P3 avoid regions.
+   V47.5: Enhanced with P3 graveyard analysis integration."
+  ;; Check local graveyard (exact match)
   (when (boundp '*graveyard*)
     (dolist (corpse *graveyard*)
       ;; Corpse format: '(:name "..." :timeframe 15 :sma-short 10 ...)
@@ -328,7 +330,18 @@
                    (= c-short (scout-struct-sma-short scout))
                    (= c-long (scout-struct-sma-long scout)))
           (return-from is-toxic-params t)))))
+  
+  ;; V47.5: Check P3 graveyard avoid regions (SL/TP range based)
+  (let ((sl (scout-struct-sl scout))
+        (tp (scout-struct-tp scout)))
+    (when (and sl tp)
+      (let ((avoid-regions (analyze-graveyard-for-avoidance)))
+        (when (should-avoid-params-p sl tp avoid-regions)
+          (format t "[SCOUT] 🚫 P3 Graveyard blocked SL=~d TP=~d~%" sl tp)
+          (return-from is-toxic-params t)))))
+  
   nil)
+
 
 (defun register-recruit (scout sharpe trades)
   "Convert scout to full Strategy object and push to KB."

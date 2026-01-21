@@ -106,13 +106,15 @@
     (let ((avoid-regions nil))
       (maphash (lambda (key failures)
                  (when (>= (length failures) 5)
-                   (let ((sls (mapcar (lambda (f) (getf f :sl 0)) failures))
-                         (tps (mapcar (lambda (f) (getf f :tp 0)) failures)))
-                     (push (list :tf (first key) :dir (second key) :sym (third key)
-                                 :sl-min (apply #'min sls) :sl-max (apply #'max sls)
-                                 :tp-min (apply #'min tps) :tp-max (apply #'max tps)
-                                 :failure-count (length failures))
-                           avoid-regions))))
+                   ;; V47.5: Filter nil values to prevent min/max errors
+                   (let ((sls (remove nil (mapcar (lambda (f) (getf f :sl)) failures)))
+                         (tps (remove nil (mapcar (lambda (f) (getf f :tp)) failures))))
+                     (when (and sls tps)  ;; Only if non-empty after filtering
+                       (push (list :tf (first key) :dir (second key) :sym (third key)
+                                   :sl-min (apply #'min sls) :sl-max (apply #'max sls)
+                                   :tp-min (apply #'min tps) :tp-max (apply #'max tps)
+                                   :failure-count (length failures))
+                             avoid-regions)))))
                clusters)
       (format t "[GRAVEYARD] 📊 Found ~d avoid regions~%" (length avoid-regions))
       avoid-regions)))
@@ -126,10 +128,11 @@
   nil)
 
 ;;; ---------------------------------------------------------------------------
-;;; Q-LEARNING (V47.3)
+;;; Q-LEARNING (V47.3 + V47.5 Persistence)
 ;;; ---------------------------------------------------------------------------
 
 (defparameter *q-table* (make-hash-table :test 'equal))
+(defparameter *q-table-file* "data/memory/q_table.sexp")
 (defparameter *q-alpha* 0.1)
 (defparameter *q-epsilon* 0.2)
 
@@ -150,6 +153,36 @@
 (defun explore-or-exploit-p ()
   "ε-greedy: 20% explore, 80% exploit."
   (< (random 1.0) *q-epsilon*))
+
+;;; V47.5: Q-table Persistence
+(defun save-q-table ()
+  "Save Q-table to disk for persistence across restarts."
+  (handler-case
+      (progn
+        (ensure-directories-exist *q-table-file*)
+        (with-open-file (stream *q-table-file*
+                                :direction :output
+                                :if-exists :supersede
+                                :if-does-not-exist :create)
+          (let ((entries nil))
+            (maphash (lambda (k v) (push (cons k v) entries)) *q-table*)
+            (write entries :stream stream))
+          (format t "[Q-TABLE] 💾 Saved ~d entries~%" (hash-table-count *q-table*))))
+    (error (e)
+      (format t "[Q-TABLE] ⚠️ Failed to save: ~a~%" e))))
+
+(defun load-q-table ()
+  "Load Q-table from disk."
+  (handler-case
+      (when (probe-file *q-table-file*)
+        (with-open-file (stream *q-table-file* :direction :input)
+          (let ((entries (read stream nil nil)))
+            (clrhash *q-table*)
+            (dolist (entry entries)
+              (setf (gethash (car entry) *q-table*) (cdr entry)))
+            (format t "[Q-TABLE] 📂 Loaded ~d entries~%" (hash-table-count *q-table*)))))
+    (error (e)
+      (format t "[Q-TABLE] ⚠️ Failed to load: ~a~%" e))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; FILE ROTATION (V47.3)
@@ -177,4 +210,8 @@
       (format t "[ROTATE] 📦 Rotated ~a -> ~a~%" filepath backup)
       t)))
 
-(format t "[P3] 🧠 V47.3 Learning Advanced Loaded (15 functions)~%")
+;; Auto-load Q-table on file load
+(load-q-table)
+
+(format t "[P3] 🧠 V47.5 Learning Advanced Loaded (Q-table persistent)~%")
+
