@@ -237,52 +237,29 @@
         t)))
 
 (defun recruit-founder (founder-type)
-  "Injects a specific Founder Strategy into the live Knowledge Base.
-   Now uses *founder-registry* for OCP compliance.
-   Includes Safety Gate (V9.3)."
+  "P8: Injects a Founder Strategy via add-to-kb (single entry point).
+   Now includes BT validation (Sharpe >= 0.1) per Expert Panel conditions."
   (let ((maker-func (gethash founder-type *founder-registry*)))
     (if maker-func
         (let ((founder (funcall maker-func)))
           (if (null founder)
               (format t "[HEADHUNTER] ❌ Failed to create founder ~a~%" founder-type)
-              ;; V9.3: Safety Gate (Verify before inject)
-              (if (verify-candidate-locally founder *candle-history*)
-                  (cond
-                    ;; Check Duplicates
-                    ((find (strategy-name founder) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
-                     (format t "[HEADHUNTER] ⚠️ Founder ~a already exists. Skipping.~%" (strategy-name founder)))
-                    (t
-                     (progn
-                       (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
-                       ;; Tournament Gate: Must beat a weaker rival (Expert Panel 2026-01-16)
-                       (if (compete-for-slot founder)
-                           (progn
-                             ;; 1. Add to Knowledge Base
-                             (push founder *strategy-knowledge-base*)
-                             ;; 2. Categorize & Add to Pool
-                             (let ((cat (categorize-strategy founder)))
-                               (push founder (gethash cat *category-pools*))
-                               (format t "[HEADHUNTER] Assigned to Clan: ~a~%" cat))
-                             ;; 3. Notifications (Route to SYSTEM_LOGS, not LIVE_FEED)
-                             (swimmy.core:notify-discord-recruit
-                              (format nil "🕵️ **New Founder Recruited!**~%Name: `~a`~%Origin: External Registry~%Clan: ~a"
-                                      (strategy-name founder) (categorize-strategy founder)))
-                             (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                                (pzmq:send swimmy.globals::*cmd-publisher* 
-                                           (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
-                                                                        ("name" (strategy-name founder))))))
-                             t)
-                           ;; Tournament failed - not added
-                           (format t "[HEADHUNTER] 🛡️ Tournament Gate Blocked: ~a too weak~%" (strategy-name founder))))))
-                  ;; Else: Safety Gate Failed (Graham)
-                  (progn
-                    (format t "[HEADHUNTER] 🛡️ Safety Gate Blocked: ~a (Verification Failed)~%" (strategy-name founder))
-                    ;; V9.4: López de Prado (Pending Pool) - Notify Pending Manager
-                    (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                      (pzmq:send swimmy.globals::*cmd-publisher* 
-                                 (jsown:to-json (jsown:new-js ("type" "SAFETY_GATE_BLOCKED") 
-                                                              ("name" (strategy-name founder))
-                                                              ("reason" "Insufficient History")))))))))
+              ;; P8: Use add-to-kb as single entry point
+              ;; Note: add-to-kb handles duplicate check, BT validation (Sharpe>=0.1), 
+              ;; category pool, and notification
+              (progn
+                (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
+                (if (add-to-kb founder :founder :require-bt t)
+                    (progn
+                      (format t "[HEADHUNTER] ✅ Founder ~a accepted by KB~%" (strategy-name founder))
+                      ;; ZMQ notification for external systems
+                      (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
+                        (pzmq:send swimmy.globals::*cmd-publisher* 
+                                   (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
+                                                                ("name" (strategy-name founder))))))
+                      t)
+                    (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (BT gate or duplicate)~%" 
+                            (strategy-name founder))))))
         (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
 ;;; ----------------------------------------------------------------------------

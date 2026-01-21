@@ -88,39 +88,33 @@
 (defun run-breeding-cycle ()
   "Breed top strategies from ALL tiers, prioritizing higher generations.
    V45.0: Fixed to allow multi-generational evolution (Gen45+ possible).
-   V47.0: Added breeding count limits (3 uses) and parent/child competition."
+   V47.0: Added breeding count limits (3 uses) and parent/child competition.
+   P8: Now uses add-to-kb as single entry point."
   (format t "[BREEDER] 🧬 Starting Breeding Cycle (V47.0 with Limits)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
-        ;; V45.0: Include :incubator for multi-generational breeding
         (tiers '(:battlefield :training :selection :incubator)))
-        
     (dolist (cat categories)
-      ;; Collect ALL strategies from all tiers for this category
       (let* ((all-warriors (loop for tier in tiers
                                  append (get-strategies-by-tier tier cat)))
-             ;; V45.0: Sort by (generation * 0.1 + sharpe) to prefer evolved strategies
              (sorted (sort (copy-list all-warriors) #'> 
                           :key (lambda (s) 
                                  (+ (* (or (strategy-generation s) 0) 0.1)
                                     (or (strategy-sharpe s) 0))))))
-             
         (when (>= (length sorted) 2)
           (let ((p1 (first sorted))
                 (p2 (second sorted)))
-            ;; V47.0: Check breeding limit (Legend exempt)
             (when (and (can-breed-p p1) (can-breed-p p2))
               (format t "[BREEDER] 💕 Breeding Gen~d ~a + Gen~d ~a~%"
                       (or (strategy-generation p1) 0) (strategy-name p1)
                       (or (strategy-generation p2) 0) (strategy-name p2))
               (let ((child (breed-strategies p1 p2)))
-                ;; V47.0: Increment breeding count for parents
                 (increment-breeding-count p1)
                 (increment-breeding-count p2)
-                
-                (push child *strategy-knowledge-base*)
-                (save-recruit-to-lisp child)
-                (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
-                        (strategy-name child) (strategy-generation child))))))))))
+                ;; P8: Use add-to-kb as single entry point
+                (when (add-to-kb child :breeder :require-bt nil :notify nil)
+                  (save-recruit-to-lisp child)
+                  (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
+                          (strategy-name child) (strategy-generation child)))))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation
