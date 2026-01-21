@@ -38,7 +38,7 @@
   (make-strategy 
    :name "Volvo-Scalp-Gen0"
    :category :scalp
-   :timeframe "M1"
+   :timeframe 1  ;; V47.7 Fix: Use integer (1=M1)
    :generation 0
    :sl 0.0010
    :tp 0.0015
@@ -68,7 +68,7 @@
   (make-strategy 
    :name "London-Breakout-Gen0"
    :category :breakout
-   :timeframe "M5"
+   :timeframe 5  ;; V47.7 Fix: Use integer (5=M5)
    :generation 0
    :sl 0.0015
    :tp 0.0030
@@ -94,7 +94,7 @@
   (make-strategy 
    :name "Ichimoku-Kijun-Gen0"
    :category :trend
-   :timeframe "H1"
+   :timeframe 60  ;; V47.7 Fix: Use integer (60=H1)
    :generation 0
    :sl 0.0050
    :tp 0.0100
@@ -120,7 +120,7 @@
   (make-strategy 
    :name "Donchian-Trend-Gen0"
    :category :trend
-   :timeframe "H4"
+   :timeframe 240  ;; V47.7 Fix: Use integer (240=H4)
    :generation 0
    :sl 0.0050
    :tp 0.0150
@@ -145,7 +145,7 @@
   (make-strategy 
    :name "BB-Bounce-Gen0"
    :category :reversion
-   :timeframe "M15"
+   :timeframe 15  ;; V47.7 Fix: Use integer (15=M15)
    :generation 0
    :sl 0.0020
    :tp 0.0020
@@ -171,7 +171,7 @@
   (make-strategy 
    :name "MACD-Cross-Gen0"
    :category :trend
-   :timeframe "H1"
+   :timeframe 60  ;; V47.7 Fix: Use integer (60=H1)
    :generation 0
    :sl 0.0030
    :tp 0.0060
@@ -196,7 +196,7 @@
   (make-strategy 
    :name "RSI-2-Gen0"
    :category :reversion
-   :timeframe "D1"         ; Daily timeframe
+   :timeframe 1440  ;; V47.7 Fix: Use integer (1440=D1)
    :generation 0
    :sl 0.0100
    :tp 0.0100
