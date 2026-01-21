@@ -67,6 +67,7 @@
                ;; REFACTORED DREAMER MIGRATION (Phase 11)
                (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
                (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+               (:file "src/lisp/school/school-validation") ; P9: OOS Validation for A-RANK
                (:file "src/lisp/school/school-monte-carlo") ; Phase 11: Monte Carlo
                (:file "src/lisp/school/school-stress")    ; P7: Deep Validation
                (:file "src/lisp/school/school-templates") ; Template Generation
