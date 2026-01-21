@@ -60,7 +60,7 @@
 
 ;; V48: Throttled Reporting (Prevents Spam)
 (defparameter *last-report-time* 0)
-(defconstant +report-interval+ (* 4 3600)) ; 4 Hours
+(defconstant +report-interval+ (* 1 3600)) ; 1 Hour (V47.7: Reduced from 4hr)
 
 (defun phase-7-report ()
   "Send report if interval passed"
