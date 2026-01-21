@@ -458,3 +458,7 @@
                            50)))
     (format nil "Overall win rate: ~,1f% (~d wins, ~d losses)"
             overall-rate total-successes total-failures)))
+
+;;; P3: LEARNING ADVANCED functions moved to school-p3-learning.lisp (V47.3)
+
+
