@@ -225,8 +225,55 @@
   (assert-false swimmy.school:*startup-mode* "Should be NIL after end"))
 
 ;;; ==========================================
+;;; P9 E2E TESTS: OOS VALIDATION & A-RANK
+;;; ==========================================
+
+(deftest test-meets-a-rank-criteria-pass
+  "P9: Test A-RANK criteria - passing strategy"
+  (let ((good-strat (cl-user::make-strategy 
+                      :name "TestARank-Good"
+                      :sharpe 0.5 :profit-factor 1.5 
+                      :win-rate 0.5 :max-dd 0.1)))
+    (assert-true (swimmy.school:meets-a-rank-criteria good-strat)
+                 "Good strategy should meet A-RANK criteria")))
+
+(deftest test-meets-a-rank-criteria-fail-sharpe
+  "P9: Test A-RANK criteria - failing on Sharpe"
+  (let ((bad-strat (cl-user::make-strategy 
+                     :name "TestARank-BadSharpe"
+                     :sharpe 0.2 :profit-factor 1.5 
+                     :win-rate 0.5 :max-dd 0.1)))
+    (assert-false (swimmy.school:meets-a-rank-criteria bad-strat)
+                  "Low Sharpe should fail A-RANK criteria")))
+
+(deftest test-meets-a-rank-criteria-fail-maxdd
+  "P9: Test A-RANK criteria - failing on MaxDD"
+  (let ((bad-strat (cl-user::make-strategy 
+                     :name "TestARank-BadDD"
+                     :sharpe 0.5 :profit-factor 1.5 
+                     :win-rate 0.5 :max-dd 0.25)))
+    (assert-false (swimmy.school:meets-a-rank-criteria bad-strat)
+                  "High MaxDD should fail A-RANK criteria")))
+
+(deftest test-e2e-add-to-kb-lifecycle
+  "P9 E2E: Test strategy lifecycle add-to-kb → KB membership"
+  (let ((test-strat (cl-user::make-strategy 
+                      :name "TestE2E-Lifecycle-001"
+                      :sharpe 0.2 :category :scalp)))
+    ;; Remove if exists
+    (setf *strategy-knowledge-base* 
+          (remove "TestE2E-Lifecycle-001" *strategy-knowledge-base* 
+                  :key #'cl-user::strategy-name :test #'string=))
+    ;; Add via add-to-kb
+    (swimmy.school:add-to-kb test-strat :founder :notify nil :require-bt t)
+    ;; Verify in KB
+    (let ((found (find "TestE2E-Lifecycle-001" *strategy-knowledge-base* 
+                       :key #'cl-user::strategy-name :test #'string=)))
+      (assert-true found "Strategy should be in KB after add-to-kb"))))
+
+;;; ==========================================
 ;;; REGISTER TESTS
 ;;; ==========================================
 
-(format t "[V47.5+P8 TESTS] 19 tests loaded~%")
+(format t "[V47.5+P8+P9 TESTS] 23 tests loaded~%")
 
