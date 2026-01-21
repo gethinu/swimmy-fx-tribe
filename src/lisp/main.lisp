@@ -90,6 +90,10 @@
   ;; V9.2: Init School Strategy System (AFTER History Load for Safety Gate)
   (swimmy.school::init-school)
   
+  ;; P8: End startup mode to enable notifications
+  (when (fboundp 'swimmy.school::end-startup-mode)
+    (swimmy.school::end-startup-mode))
+  
   (format t "[SYSTEM] Initialization complete.~%"))
 
 ;;; MAIN ENTRY POINT
