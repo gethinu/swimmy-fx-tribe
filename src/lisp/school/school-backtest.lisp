@@ -201,7 +201,7 @@
       ("sma_long" (or sma-long 20))
       ("sl" (strategy-sl strat))
       ("tp" (strategy-tp strat))
-      ("volume" (strategy-volume strat))
+      ("volume" (or (strategy-volume strat) 0.01))
       ("indicator_type" (detect-indicator-type (strategy-indicators strat)))
       ("timeframe" (strategy-timeframe strat)) ; V46.1: Export Timeframe
       ;; V8.0 Fix: filter_enabled must be bool (true/false), not nil

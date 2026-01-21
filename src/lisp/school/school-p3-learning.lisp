@@ -154,6 +154,52 @@
   "ε-greedy: 20% explore, 80% exploit."
   (< (random 1.0) *q-epsilon*))
 
+;;; V47.7: Q-Value Strategy Selection (Expert Panel Approved)
+;;; Musk Conditions: Breeder only, 80/20 rule, daily decay
+
+(defun get-top-q-sltps (tf dir sym n)
+  "Get top N SL/TP combinations by Q-value for given TF/Dir/Symbol."
+  (let ((candidates nil))
+    (maphash (lambda (k v) 
+               (when (and (= (first k) tf)
+                          (eq (second k) dir)
+                          (string= (third k) sym)
+                          (> v 0))  ; Only positive Q-values
+                 (push (list :sl (fourth k) :tp (fifth k) :q v) candidates)))
+             *q-table*)
+    (let ((sorted (sort candidates #'> :key (lambda (c) (getf c :q)))))
+      (subseq sorted 0 (min n (length sorted))))))
+
+(defun select-sltp-with-q (tf dir sym fallback-sl fallback-tp)
+  "Select SL/TP using Q-table, with fallback values.
+   80% use fallback (explore), 20% use Q-value (exploit)."
+  (if (not (explore-or-exploit-p))
+      (values fallback-sl fallback-tp)  ; 80% Explore
+      ;; 20% Exploit: Use Q-value
+      (let ((top-sltps (get-top-q-sltps tf dir sym 5)))
+        (if (and top-sltps (> (length top-sltps) 0))
+            (let ((chosen (nth (random (length top-sltps)) top-sltps)))
+              (format t "[Q-VALUE] 🎯 Using learned SL=~d TP=~d (Q=~,2f)~%"
+                      (getf chosen :sl) (getf chosen :tp) (getf chosen :q))
+              (values (getf chosen :sl) (getf chosen :tp)))
+            (values fallback-sl fallback-tp)))))
+
+(defun decay-q-table ()
+  "Apply daily time decay to Q-values (1% per day).
+   López de Prado: Prevents overfitting to old market conditions."
+  (let ((decay-rate 0.99)
+        (count 0))
+    (maphash (lambda (k v)
+               (let ((new-v (* v decay-rate)))
+                 (if (< (abs new-v) 0.01)
+                     (remhash k *q-table*)  ; Remove negligible entries
+                     (setf (gethash k *q-table*) new-v))
+                 (incf count)))
+             *q-table*)
+    (format t "[Q-TABLE] ⏳ Decayed ~d entries by ~,1f%~%" count (* (- 1 decay-rate) 100))
+    (save-q-table)))  ; Persist after decay
+
+
 ;;; V47.5: Q-table Persistence
 (defun save-q-table ()
   "Save Q-table to disk for persistence across restarts."

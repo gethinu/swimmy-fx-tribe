@@ -86,6 +86,10 @@
       (setf swimmy.engine::*daily-pnl* 0.0)
       (setf swimmy.engine::*max-drawdown* 0.0)
       
+      ;; V47.7: Q-table daily decay (1%/day) - López de Prado overfitting prevention
+      (when (fboundp 'swimmy.school::decay-q-table)
+        (funcall 'swimmy.school::decay-q-table))
+      
       ;; Persist reset
       (when (fboundp 'swimmy.engine::save-state)
         (funcall 'swimmy.engine::save-state)))

@@ -30,11 +30,15 @@
 
 (defun breed-strategies (parent1 parent2)
   "Create a child strategy from two parents.
-   V47.5: Enhanced with P3 graveyard avoidance."
+   V47.5: Enhanced with P3 graveyard avoidance.
+   V47.7: Q-value guided SL/TP selection (20% exploit rate)."
   (let* ((child-name (format nil "Bred-~a-~a-Gen~d" 
                              (subseq (strategy-name parent1) 0 (min 5 (length (strategy-name parent1))))
                              (random 1000)
                              (1+ (max (strategy-generation parent1) (strategy-generation parent2)))))
+         (tf (strategy-timeframe parent1))
+         (dir (or (strategy-direction parent1) :BOTH))
+         (sym (or (strategy-symbol parent1) "USDJPY"))
          (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.1))
          (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.1))
          (child-is (crossover-indicators parent1 parent2))
@@ -54,10 +58,20 @@
           (setf child-sl (mutate-value initial-sl 0.2))  ; Larger mutation
           (setf child-tp (mutate-value initial-tp 0.2)))))
     
+    ;; V47.7: Q-value guided selection (20% exploit, 80% explore)
+    ;; Musk Condition: Only apply to breeding, not Scout
+    (when (fboundp 'select-sltp-with-q)
+      (multiple-value-bind (q-sl q-tp) 
+          (select-sltp-with-q tf dir sym child-sl child-tp)
+        (setf child-sl q-sl)
+        (setf child-tp q-tp)))
+    
     (make-strategy
       :name child-name
       :category (strategy-category parent1) ;; Inherit from P1
-      :timeframe (strategy-timeframe parent1)
+      :timeframe tf
+      :direction dir
+      :symbol sym
       :generation (1+ (max (strategy-generation parent1) (strategy-generation parent2)))
       :sl child-sl
       :tp child-tp
@@ -68,6 +82,7 @@
       :exit (strategy-exit parent1)
       :tier :incubator ;; Born in the Incubator
       :status :active)))
+
 
 
 (defun run-breeding-cycle ()
