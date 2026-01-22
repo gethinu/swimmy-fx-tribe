@@ -15,8 +15,8 @@
 ;;; CONFIGURATION
 ;;; ============================================================================
 
-(defparameter *prune-sharpe-threshold* 0.05
-  "Strategies with Sharpe below this are candidates for removal")
+(defparameter *prune-sharpe-threshold* 0.08
+  "Strategies with Sharpe below this are candidates for removal (Graham: closer to B-RANK 0.1)")
 
 (defparameter *prune-inactive-days* 90
   "Days of inactivity before a strategy is considered dormant")
