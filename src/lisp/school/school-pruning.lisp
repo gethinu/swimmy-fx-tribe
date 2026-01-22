@@ -87,20 +87,38 @@
 ;;; ============================================================================
 
 (defun strategy-distance (strat1 strat2)
-  "Calculate distance between two strategies based on SL, TP, timeframe.
-   Returns normalized distance [0.0, 1.0] where 0 = identical."
+  "Calculate distance between two strategies.
+   Includes: SL, TP, timeframe, indicator type, symbol.
+   Returns normalized distance [0.0, 1.0] where 0 = identical.
+   P11: Enhanced per Hickey's Expert Panel recommendation."
   (let* ((sl1 (or (strategy-sl strat1) 0.005))
          (sl2 (or (strategy-sl strat2) 0.005))
          (tp1 (or (strategy-tp strat1) 0.01))
          (tp2 (or (strategy-tp strat2) 0.01))
          (tf1 (or (strategy-timeframe strat1) 60))
          (tf2 (or (strategy-timeframe strat2) 60))
+         ;; P11: Add indicator type comparison
+         (ind1 (car (strategy-indicators strat1)))
+         (ind2 (car (strategy-indicators strat2)))
+         (ind-type1 (if (listp ind1) (car ind1) ind1))
+         (ind-type2 (if (listp ind2) (car ind2) ind2))
+         (ind-match (if (equalp ind-type1 ind-type2) 0.0 1.0))
+         ;; P11: Add symbol comparison
+         (sym1 (or (strategy-symbol strat1) "USDJPY"))
+         (sym2 (or (strategy-symbol strat2) "USDJPY"))
+         (sym-match (if (string-equal sym1 sym2) 0.0 1.0))
          ;; Normalize differences
          (sl-diff (abs (/ (- sl1 sl2) (max sl1 sl2 0.001))))
          (tp-diff (abs (/ (- tp1 tp2) (max tp1 tp2 0.001))))
          (tf-diff (abs (/ (- tf1 tf2) (max tf1 tf2 1)))))
-    ;; Weighted average
-    (/ (+ (* 0.3 sl-diff) (* 0.3 tp-diff) (* 0.4 tf-diff)) 1.0)))
+    ;; Weighted average (P11: adjusted weights)
+    ;; indicator 25%, symbol 15%, SL 20%, TP 20%, TF 20%
+    (/ (+ (* 0.25 ind-match) 
+          (* 0.15 sym-match) 
+          (* 0.20 sl-diff) 
+          (* 0.20 tp-diff) 
+          (* 0.20 tf-diff)) 
+       1.0)))
 
 (defun prune-similar-strategies ()
   "Remove duplicate/near-identical strategies, keeping higher Sharpe.

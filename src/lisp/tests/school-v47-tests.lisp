@@ -272,8 +272,46 @@
       (assert-true found "Strategy should be in KB after add-to-kb"))))
 
 ;;; ==========================================
+;;; P11 TESTS: PRUNING & STRATEGY DISTANCE
+;;; ==========================================
+
+(deftest test-strategy-distance-identical
+  "P11: Test strategy-distance for identical strategies"
+  (let ((strat1 (cl-user::make-strategy :name "Dist-A" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((sma 20)) :symbol "EURUSD"))
+        (strat2 (cl-user::make-strategy :name "Dist-A2" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((sma 20)) :symbol "EURUSD")))
+    (assert-true (< (swimmy.school:strategy-distance strat1 strat2) 0.01)
+                 "Identical strategies should have distance near 0")))
+
+(deftest test-strategy-distance-different-indicator
+  "P11: Test strategy-distance with different indicators"
+  (let ((strat1 (cl-user::make-strategy :name "Dist-B" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((sma 20)) :symbol "EURUSD"))
+        (strat2 (cl-user::make-strategy :name "Dist-B2" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((rsi 14)) :symbol "EURUSD")))
+    ;; Different indicator type = 0.25 distance contribution
+    (assert-true (>= (swimmy.school:strategy-distance strat1 strat2) 0.25)
+                 "Different indicator should increase distance")))
+
+(deftest test-strategy-distance-different-symbol
+  "P11: Test strategy-distance with different symbols"
+  (let ((strat1 (cl-user::make-strategy :name "Dist-C" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((sma 20)) :symbol "EURUSD"))
+        (strat2 (cl-user::make-strategy :name "Dist-C2" :sl 30 :tp 60 :timeframe 60
+                                        :indicators '((sma 20)) :symbol "GBPUSD")))
+    ;; Different symbol = 0.15 distance contribution
+    (assert-true (>= (swimmy.school:strategy-distance strat1 strat2) 0.15)
+                 "Different symbol should increase distance")))
+
+(deftest test-prune-sharpe-threshold
+  "P11: Test prune sharpe threshold is 0.08"
+  (assert-true (= swimmy.school:*prune-sharpe-threshold* 0.08)
+               "Prune threshold should be 0.08 (Graham recommendation)"))
+
+;;; ==========================================
 ;;; REGISTER TESTS
 ;;; ==========================================
 
-(format t "[V47.5+P8+P9 TESTS] 23 tests loaded~%")
+(format t "[V47.5+P8+P9+P11 TESTS] 27 tests loaded~%")
 

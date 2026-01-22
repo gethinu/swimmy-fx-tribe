@@ -67,6 +67,23 @@
       (swimmy.school::notify-evolution-report)
       (setf *last-report-time* now))))
 
+;; P11: Weekly KB Pruning
+(defparameter *last-prune-time* 0)
+(defconstant +prune-interval+ (* 7 24 3600)) ; 7 Days (Weekly)
+
+(defun phase-8-weekly-prune ()
+  "P11: Run KB pruning weekly to maintain optimal KB size.
+   Target: 18,349 → 5,000 strategies"
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-prune-time*) +prune-interval+)
+      (format t "[CONNECTOR] 🗑️ Running Weekly KB Pruning...~%")
+      (handler-case
+          (let ((removed (run-kb-pruning)))
+            (format t "[CONNECTOR] ✅ Pruning complete: ~d strategies removed~%" removed)
+            (setf *last-prune-time* now))
+        (error (e)
+          (format t "[CONNECTOR] ❌ Pruning error: ~a~%" e))))))
+
 
 
 (defun start-evolution-service ()
@@ -96,6 +113,9 @@
     ;; 7. Wisdom & Reporting
     (phase-7-wisdom-update)
     (phase-7-report)
+    
+    ;; 8. Weekly KB Pruning (P11)
+    (phase-8-weekly-prune)
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)
