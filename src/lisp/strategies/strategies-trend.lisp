@@ -34,7 +34,8 @@
         :entry '(and (> sma-20 sma-50) (> sma-50 sma-200)) ; Perfect Order
         :exit '(< sma-20 sma-50)
         :sl 0.50 :tp 1.00 :volume 0.02
-        :category :trend :timeframe 30)      (make-strategy :name "Fibonacci-EMA-Scalp"
+        :category :trend :timeframe 30)
+      (make-strategy :name "Fibonacci-EMA-Scalp"
         :indicators '((ema 5) (ema 8) (ema 13))
         :entry '(and (> ema-5 ema-8) (> ema-8 ema-13))
         :exit '(cross-below ema-5 ema-8)

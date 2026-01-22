@@ -304,8 +304,9 @@ def restart_service(tracker: RevivalTracker) -> bool:
 def check_guardian_alive() -> bool:
     if TEST_MODE:
         return True
+    # V48.0: Fixed - swimmy-guardian is a system service, not user service
     result = subprocess.run(
-        ["systemctl", "--user", "is-active", "--quiet", "swimmy-guardian"],
+        ["systemctl", "is-active", "--quiet", "swimmy-guardian"],
         capture_output=True,
     )
     return result.returncode == 0

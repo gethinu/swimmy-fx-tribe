@@ -109,7 +109,7 @@
                ;; SYSTEM & UTILS
                (:file "src/lisp/logger")
                (:file "src/lisp/core/rituals")
-               (:file "src/lisp/mixseek")
+               (:file "src/lisp/core/comomentum") ;; V48.0: Replaced mixseek (4-clan removal)
                ;; (:file "src/lisp/research") MOVED to CORE
                (:file "src/lisp/llm-integration")
                (:file "src/lisp/evolution")

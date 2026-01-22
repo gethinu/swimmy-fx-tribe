@@ -1,60 +1,9 @@
-📊 Backtest Result
-📊 Backtest Summary (V7.0/Async)
 
-TREND (Total: 37 | Pass: 12 | Avg Sharpe: -2.87)
-Top 5:
-Trend-Pullback-Entry (S: 2.91)
-Conservative-Trend (S: 2.26)
-Sweet-Chariot-SMA-40 (S: 1.52)
-Triple-Screen-Proxy (S: 0.74)
-MACD-Zero-Reject (S: 0.68)
-Worst 5:
-MACD-Cross-Gen0 (S: -22.05)
-Hunted-Ichimoku-Cloud-Gen0 (S: -22.02)
-Ichimoku-Kijun-Gen0 (S: -22.02)
-Donchian-Trend-Gen0 (S: -21.81)
-T-Nakane-Gotobi (S: -14.78)
-
-REVERSION (Total: 22 | Pass: 0 | Avg Sharpe: -10.04)
-Top 5:
-RSI-Bull-Zone (S: -0.13)
-Aggressive-Reversal (S: -0.46)
-Extreme-Reversion-BB (S: -1.12)
-BB-Lower-Bounce (S: -2.07)
-BB-RSI-Reversion-Combo (S: -2.46)
-Worst 5:
-Auto-Reversion-1768118399 (S: -24.24)
-RSI-2-Gen0 (S: -23.67)
-Auto-Reversion-1768121043 (S: -23.25)
-Auto-Reversion-1768117681 (S: -23.25)
-Scalp-MOMENTUM-SCALP-EMA9-RSI7-Gen0-1768130621 (S: -23.05)
-
-BREAKOUT (Total: 29 | Pass: 0 | Avg Sharpe: -20.76)
-Top 5:
-CCI-Trend-Breakout (S: -1.18)
-Pullback-Breakout (S: -2.27)
-Auto-Breakout-1768098449 (S: -21.65)
-Auto-Breakout-1768098453 (S: -21.65)
-Auto-Breakout-1768098459 (S: -21.65)
-Worst 5:
-Volvo-Scalp-Gen0 (S: -23.15)
-Auto-Breakout-1768098467 (S: -22.83)
-Auto-Breakout-1768098465 (S: -22.83)
-Auto-Breakout-1768098463 (S: -22.83)
-Auto-Breakout-1768098460 (S: -22.83)
-
-SCALP (Total: 18 | Pass: 0 | Avg Sharpe: -20.59)
-Top 5:
-MA-Ribbon-Scalp (S: -6.81)
-Trend-Scalp-1M (S: -8.91)
-Fibonacci-EMA-Scalp (S: -11.61)
-SCALP-MTF-MACRO-H1 (S: -19.80)
-SCALP-BASE (S: -19.80)
-Worst 5:
-Auto-Scalp-1768118399 (S: -24.08)
-Auto-Scalp-1768098452 (S: -24.08)
-Auto-Scalp-1768098447 (S: -23.78)
-Auto-Scalp-1768098453 (S: -23.56)
-Auto-Scalp-1768121043 (S: -23.46)
-
-🔍 Async Delivery via Notifier Service.
+🚨 ALERT
+🧪 Phase 1 BT Batch (RR)
+Requested: 936 / 20833
+Cursor: 167 / 20833~%✅ Cycle Complete!
+🚨 ALERT
+🧪 Phase 1 BT Batch (RR)
+Requested: 1000 / 20833
+Cursor: 1167 / 20833

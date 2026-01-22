@@ -1,0 +1,4 @@
+(.venv) swimmy@SERV870:~/swimmy$ sudo systemctl start postgresql
+[sudo] password for swimmy: 
+Failed to start postgresql.service: Unit postgresql.service not found.
+(.venv) swimmy@SERV870:~/swimmy$ 

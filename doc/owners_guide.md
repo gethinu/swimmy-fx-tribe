@@ -1,7 +1,35 @@
 # 🐟 Swimmy Ver 18 オーナーズガイド
 
-**最終版:** 2026-01-22 (V47.10 - P10 Optimization Complete)
+**最終版:** 2026-01-22 (V48.0 - Rank System Overhaul)
 **リーダー判断:** Elon Musk (Expert Panel Verified)
+
+---
+
+## 🆕 V48.0 新機能 (2026-01-22)
+
+### 1. Rank System Fix
+- **問題解決**: `strategy-rank` が常にnilだった問題を修正
+- **B-RANK昇格**: Phase 1 BT合格(Sharpe≥0.1)で自動昇格
+- **Graveyard連携**: 失敗戦略に`:graveyard`ランク設定
+
+### 2. CPCV自動検証
+- **Phase 3.5**: 進化ループにCPCV検証フェーズ追加
+- **run-a-rank-cpcv-batch**: 5件/5分間隔で処理
+- **S-RANK昇格**: CPCV合格時に自動昇格+Discord通知
+
+### 3. 基準値DB対応
+- **rank_criteria.sql**: PostgreSQLスキーマ
+- **動的読込**: DB接続時は5分キャッシュで基準値取得
+- **フォールバック**: DB未接続時はハードコード値使用
+
+### 4. Backtest最適化
+- **Symbol対応**: 戦略ごとのsymbolでバックテスト
+- **バッチサイズ**: 300→1000に増加
+- **サイクル完了通知**: 一周終了時にサマリー送信
+
+### 5. 4氏族システム削除
+- **mixseek.lisp**: 無効化
+- **comomentum.lisp**: 有用機能のみ保持
 
 ---
 
@@ -13,6 +41,12 @@
   - 90日非活性削除
   - 類似戦略削除 (distance < 0.1)
 - **school-pruning.lisp**: `run-kb-pruning` でワンコマンド実行
+- **自動実行**: 週1回 (`phase-8-weekly-prune`)
+
+> [!WARNING]
+> **PostgreSQLサーバーは現在未起動です。**
+> 基準値DBは無効。ハードコード値（フォールバック）で動作中。
+> DB接続が必要な場合: `sudo systemctl start postgresql`
 
 ### 2. P12 True CPCV Integration
 - **Guardian CPCV_VALIDATE action**: 真のCPCV検証
@@ -24,12 +58,6 @@
 - **A-RANK昇格検証**: 70/30分割でOOS検証
 - **school-validation.lisp**: `validate-for-a-rank-promotion`
 - **基準**: Sharpe≥0.3, PF≥1.2, WR≥40%, MaxDD<20%
-
-### 3. SRP Compliance Split
-- **school-backtest.lisp**: 640→564行
-- **school-validation.lisp**: 82行
-- **school-pruning.lisp**: 198行
-- **school-hunter.lisp**: 1,110→104行 + school-hunter-auto.lisp (1,017行)
 
 ---
 

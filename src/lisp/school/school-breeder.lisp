@@ -8,6 +8,22 @@
 
 (in-package :swimmy.school)
 
+(defun can-breed-p (strategy)
+  "Check if a strategy is eligible for breeding."
+  (and strategy
+       (not (eq (strategy-status strategy) :killed))
+       (not (eq (strategy-status strategy) :killed))
+       (not (eq (strategy-status strategy) :benched))
+       ;; Sanity Check for Overflow prevention
+       (numberp (strategy-sl strategy))
+       (< (abs (strategy-sl strategy)) 1000.0)
+       (numberp (strategy-tp strategy))
+       (< (abs (strategy-tp strategy)) 1000.0)))
+
+(defun increment-breeding-count (strategy)
+  "Increment the breeding usage count."
+  (incf (strategy-breeding-count strategy)))
+
 (defun random-range (min max)
   "Return random number between min and max."
   (+ min (random (- max min))))

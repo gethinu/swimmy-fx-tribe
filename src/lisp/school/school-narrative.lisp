@@ -154,14 +154,17 @@
   "Generate the Evolution Factory Report (formerly Python).
    Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."
   (let* ((all *strategy-knowledge-base*)
-         (battlefield (remove-if-not (lambda (s) (eq (strategy-tier s) :battlefield)) all))
-         (training (remove-if-not (lambda (s) (eq (strategy-tier s) :training)) all))
-         (selection (remove-if-not (lambda (s) (eq (strategy-tier s) :selection)) all))
-         (incubator (remove-if-not (lambda (s) (eq (strategy-tier s) :incubator)) all))
-         (graveyard (remove-if-not (lambda (s) (eq (strategy-tier s) :graveyard)) all))
-         (new-counts 0) ;; (count-if (lambda (s) (< (- (get-universal-time) (strategy-born-time s)) 86400)) all)) ;; FIXME: Strategy struct missing born-time
-         (s-rank-count (length battlefield))
-         (a-rank-count (length training)))
+         ;; Filter by Rank (V47.8: Updated to use Rank System instead of Tiers)
+         (s-rank (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
+         (a-rank (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
+         (b-rank (count-if (lambda (s) (eq (strategy-rank s) :B)) all)) ; Selection
+         (graveyard (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
+         ;; New Recruits (24h) - using new creation-time slot (P13)
+         (one-day-ago (- (get-universal-time) 86400))
+         (new-recruits (count-if (lambda (s) 
+                                   (and (strategy-creation-time s)
+                                        (> (strategy-creation-time s) one-day-ago))) 
+                                 all)))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -171,12 +174,12 @@ Current status of the autonomous strategy generation pipeline.
 ~d Strategies
 
 🏆 **S-Rank (Elite)**
-~d (Battlefield / Sharpe > 1.0)
+~d (Sharpe > 0.5)
 
 🎖️ **A-Rank (Pro)**
-~d (Training / Sharpe > 0.5)
+~d (Sharpe > 0.3)
 
-🪜 **Selection**
+🪜 **B-Rank (Selection)**
 ~d (Sharpe > 0.1)
 
 👶 New Recruits (24h)
@@ -190,12 +193,12 @@ Current status of the autonomous strategy generation pipeline.
 ✅ Native Lisp Orchestration (V28)
 ~a"
             (length all)
-            s-rank-count
-            a-rank-count
-            (length selection)
-            new-counts
-            (length graveyard)
-            (swimmy.core:get-time-string))))
+            s-rank
+            a-rank
+            b-rank
+            new-recruits
+            graveyard
+            (format-timestamp (get-universal-time)))))
 
 (defun notify-evolution-report ()
   "Send the Evolution Factory Report to Discord AND save to file."

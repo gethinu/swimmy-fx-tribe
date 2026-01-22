@@ -160,7 +160,11 @@
             ;; V17d: Multi-Currency Identity
             (symbol "USDJPY")
             ;; V47.2: Trade Direction (:BUY, :SELL, :BOTH)
-            (direction :BOTH))
+            (direction :BOTH)
+            ;; P10: Inactivity Pruning
+            (last-signal-time 0)
+            ;; P13: New Recruits Tracking
+            (creation-time (get-universal-time)))
 
 (defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY") (direction :BOTH)
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0))

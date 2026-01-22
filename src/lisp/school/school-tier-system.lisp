@@ -28,7 +28,7 @@
                       (lambda (s) (eq (strategy-tier s) tier))
                       *strategy-knowledge-base*)))
     (if category
-        (remove-if-not (lambda (s) (eq (strategy-category s) category)) candidates)
+        (remove-if-not (lambda (s) (equal (strategy-category s) category)) candidates)
         candidates)))
 
 (defun promote (strategy new-tier reason)
@@ -143,24 +143,24 @@
       (cond 
         ;; 1. Battlefield: Sharpe >= 0.5 AND trades >= TF-aware threshold
         ((and (>= sharpe 0.5) (>= trades min-bf-trades))
-         (unless (eq tier :battlefield)
+         (unless (equal tier :battlefield)
            (promote strat :battlefield 
                     (format nil "S=~,2f T=~d/~d (TF:~a)" sharpe trades min-bf-trades tf))))
         
         ;; 2. Training: Sharpe >= 0.3 AND trades >= TF-aware threshold
         ((and (>= sharpe 0.3) (>= trades min-tr-trades))
          (cond 
-           ((eq tier :battlefield) (demote strat :training "Below threshold"))
-           ((not (eq tier :training)) 
+           ((equal tier :battlefield) (demote strat :training "Below threshold"))
+           ((not (equal tier :training)) 
             (promote strat :training 
                      (format nil "S=~,2f T=~d/~d" sharpe trades min-tr-trades)))))
            
         ;; 3. Selection: Sharpe >= 0.1
         ((>= sharpe 0.1)
          (cond
-           ((eq tier :training) (demote strat :selection "Sharpe < 0.3"))
-           ((eq tier :battlefield) (demote strat :selection "Below threshold"))
-           ((not (eq tier :selection)) (promote strat :selection "Sharpe >= 0.1"))))
+           ((equal tier :training) (demote strat :selection "Sharpe < 0.3"))
+           ((equal tier :battlefield) (demote strat :selection "Below threshold"))
+           ((not (equal tier :selection)) (promote strat :selection "Sharpe >= 0.1"))))
            
         ;; 4. Fail -> Incubator
         (t

@@ -55,7 +55,10 @@
     
     ;; 3. Add to KB
     (push strategy *strategy-knowledge-base*)
-    (format t "[KB] ✅ Added: ~a (Source: ~a)~%" name source)
+    ;; V48.0: Initialize rank to B (passed Phase 1 BT to get here)
+    (unless (strategy-rank strategy)
+      (setf (strategy-rank strategy) :B))
+    (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~a)~%" name source (strategy-rank strategy))
     
     ;; 4. Add to category pool
     (let ((cat (categorize-strategy strategy)))

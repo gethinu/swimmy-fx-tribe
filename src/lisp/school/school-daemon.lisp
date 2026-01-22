@@ -15,7 +15,11 @@
 
 ;; Start the service (Infinite Loop)
 (handler-case
-    (swimmy.school:start-evolution-service)
+    (progn
+      ;; V47.8: Essential initializations for Lisp-Native loop
+      (swimmy.school::init-school) ; Loads hunters and builds category pools
+      (swimmy.school::init-backtest-zmq) ; Connects to ZMQ
+      (swimmy.school:start-evolution-service))
   (sb-sys:interactive-interrupt ()
     (format t "~%[DAEMON] 🛑 Service Interrupted by Signal.~%"))
   (error (e)

@@ -114,14 +114,17 @@
 (defun candles-to-json (candles)
   "Convert list of candle structs to JSON-friendly list of plists."
   (mapcar (lambda (c)
-            (jsown:new-js
-              ("time" (candle-timestamp c))
-              ("open" (candle-open c))
-              ("high" (candle-high c))
-              ("low" (candle-low c))
-              ("close" (candle-close c))
-              ("volume" (candle-volume c))))
+            `((time . ,(candle-timestamp c))
+              (open . ,(candle-open c))
+              (high . ,(candle-high c))
+              (low . ,(candle-low c))
+              (close . ,(candle-close c))
+              (volume . ,(candle-volume c))))
           candles))
+
+(defun candles-to-alist (candles)
+  "Convert list of candle structs to alist for S-Expression protocol."
+  (candles-to-json candles)) ; Same structure for alists
 
 
 
@@ -176,9 +179,10 @@
             (values 12 26))
            (t (values 5 20))))))))  ; Ultimate fallback
 
-;; V6.11: Detect indicator type from strategy indicators
+;; V7.13: Detect indicator type from strategy indicators (PROPERLY)
 (defun detect-indicator-type (indicators)
-  "Detect primary indicator type from indicators list for Rust backtester"
+  "Detect primary indicator type from indicators list for Rust backtester.
+   Returns a string or nil."
   (when (and indicators (listp indicators))
     (let ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators))))
       (cond
@@ -186,29 +190,26 @@
         ((member first-ind '(bb BB :bb bollinger)) "bb")
         ((member first-ind '(macd MACD :macd)) "macd")
         ((member first-ind '(stoch STOCH :stoch stochastic)) "stoch")
-        (t "sma")))))  ; Default to SMA
+        (t "sma")))))
 
-;; Convert strategy to JSON for Rust backtester
-;; V6.11: Now includes indicator_type
-;; V7.12: Updated to support name-suffix for WFV
-(defun strategy-to-json (strat &key (name-suffix ""))
-  "Convert strategy struct to JSON for backtest request"
+;; V7.13: Convert strategy to Alist for S-Expression Protocol
+(defun strategy-to-alist (strat &key (name-suffix ""))
+  "Convert strategy struct to an alist for S-Expression communication with Guardian."
   (multiple-value-bind (sma-short sma-long) 
       (extract-sma-params (strategy-indicators strat))
-    (jsown:new-js
-      ("name" (format nil "~a~a" (strategy-name strat) name-suffix))
-      ("sma_short" (or sma-short 5))
-      ("sma_long" (or sma-long 20))
-      ("sl" (strategy-sl strat))
-      ("tp" (strategy-tp strat))
-      ("volume" (or (strategy-volume strat) 0.01))
-      ("indicator_type" (detect-indicator-type (strategy-indicators strat)))
-      ("timeframe" (strategy-timeframe strat)) ; V46.1: Export Timeframe
-      ;; V8.0 Fix: filter_enabled must be bool (true/false), not nil
-      ("filter_enabled" (if (and (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat)) :true :false))
-      ("filter_tf" (if (slot-exists-p strat 'filter-tf) (or (strategy-filter-tf strat) "") ""))
-      ("filter_period" (if (slot-exists-p strat 'filter-period) (or (strategy-filter-period strat) 0) 0))
-      ("filter_logic" (if (slot-exists-p strat 'filter-logic) (strategy-filter-logic strat) "")))))
+    `((name . ,(format nil "~a~a" (strategy-name strat) name-suffix))
+      (sma_short . ,(or sma-short 5))
+      (sma_long . ,(or sma-long 20))
+      (sl . ,(or (strategy-sl strat) 0.0))
+      (tp . ,(or (strategy-tp strat) 0.0))
+      (volume . ,(or (strategy-volume strat) 0.01))
+      ,@(let ((type (detect-indicator-type (strategy-indicators strat))))
+          (if type `((indicator_type . ,type)) nil))
+      (timeframe . ,(or (strategy-timeframe strat) 1))
+      (filter_enabled . ,(if (and (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat)) t nil))
+      (filter_tf . ,(if (slot-exists-p strat 'filter-tf) (or (strategy-filter-tf strat) "") ""))
+      (filter_period . ,(if (slot-exists-p strat 'filter-period) (or (strategy-filter-period strat) 0) 0))
+      (filter_logic . ,(if (slot-exists-p strat 'filter-logic) (format nil "~a" (strategy-filter-logic strat)) "")))))
 
 
 ;; Helper to resample candles (M1 -> M5, etc)
@@ -312,7 +313,7 @@
          ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
          (target-candles candles)
          (len (length target-candles))
-         (aux-candles-json (jsown:new-js))  ;; Initialize aux candles
+         (aux-candles-ht (make-hash-table :test 'equal))  ;; Initialize aux candles as hash table
          (msg nil)) ;; Initialize msg
     
     ;; V8.10: Fetch Aux Candles for MTF
@@ -333,7 +334,7 @@
                        nil)))
         (when hist
            (format t "[L] 🧩 Attaching ~a Filter Data (~d bars)~%" ftf-str (length hist))
-           (push (cons ftf-str (candles-to-json hist)) (cdr aux-candles-json)))))
+           (setf (gethash ftf-str aux-candles-ht) (candles-to-json hist)))))
 
     (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: M~d)...~%" 
             (strategy-name strat) actual-symbol suffix len timeframe)
@@ -344,19 +345,16 @@
       (if use-file
           (progn
              (format t "[L] 🚀 Using Direct CSV: ~a~%" data-file)
-             (setf msg (jsown:to-json 
-                         (jsown:new-js 
-                           ("action" "BACKTEST")
-                           ("strategy" (strategy-to-json strat :name-suffix suffix))
-                           ("candles_file" data-file)
-                           ("symbol" actual-symbol)
-                           ("timeframe" timeframe))))
-             (send-zmq-msg msg)
-             ;; (format t "[L] 📤 Sent Direct CSV Request (~a)~%" data-file)
-             )
+             (let* ((request `((action . "BACKTEST")
+                               (strategy . ,(strategy-to-alist strat :name-suffix suffix))
+                               (candles_file . ,data-file)
+                               (symbol . ,actual-symbol)
+                               (timeframe . ,timeframe)))
+                    (msg (prin1-to-string request)))
+               (send-zmq-msg msg)))
 
           ;; Fallback / WFV / In-Memory
-          (let* ((base-id (generate-data-id target-candles (format nil "-~a" symbol)))
+          (let* ((base-id (generate-data-id target-candles (format nil "-~a" actual-symbol)))
                  (ftf-str (if (and (slot-exists-p strat 'filter-enabled)
                                    (strategy-filter-enabled strat)
                                    (strategy-filter-tf strat))
@@ -367,25 +365,24 @@
             ;; CACHE MISS: Send Data
             (unless (gethash data-id *sent-data-ids*)
               (format t "[L] 💾 Caching Data ID: ~a~%" data-id)
-              (let ((cache-msg (jsown:to-json 
-                                 (jsown:new-js 
-                                   ("action" "CACHE_DATA")
-                                   ("data_id" data-id)
-                                   ("candles" (candles-to-json target-candles))
-                                   ("aux_candles" aux-candles-json)))))
+              (let* ((cache-request `((action . "CACHE_DATA")
+                                      (data_id . ,data-id)
+                                      (candles . ,(candles-to-alist target-candles))
+                                      (aux_candles . ,(loop for k being the hash-keys of aux-candles-ht
+                                                           using (hash-value v)
+                                                           collect (cons k v)))))
+                     (cache-msg (prin1-to-string cache-request)))
                 (send-zmq-msg cache-msg)
                 (setf (gethash data-id *sent-data-ids*) t)))
                 
             ;; BACKTEST REQUEST
-            (setf msg (jsown:to-json 
-                        (jsown:new-js 
-                          ("action" "BACKTEST")
-                          ("strategy" (strategy-to-json strat :name-suffix suffix))
-                          ("data_id" data-id)
-                          ("timeframe" timeframe)))) 
-                          
-            (send-zmq-msg msg)
-            (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe)))))))
+            (let* ((request `((action . "BACKTEST")
+                              (strategy . ,(strategy-to-alist strat :name-suffix suffix))
+                              (data_id . ,data-id)
+                              (timeframe . ,timeframe)))
+                   (msg (prin1-to-string request)))
+              (send-zmq-msg msg)
+              (format t "[L] 📤 Sent Backtest Request (ID: ~a / TF: M~d)~%" data-id timeframe))))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
@@ -561,3 +558,59 @@
         (format t "[L] ⚠️ Received clone result for unknown candidate: ~a~%" candidate-name))))
 
 ;;; OOS Validation functions moved to school-validation.lisp (P10 SRP)
+
+(defun prune-to-graveyard (strat reason)
+  "V48.0 Fail Path: Move strategies to Graveyard."
+  (let ((old-tier (strategy-tier strat))
+        (old-rank (strategy-rank strat)))
+    (setf (strategy-tier strat) :graveyard)
+    (setf (strategy-rank strat) :graveyard)  ;; V48.0: Also set rank for Evolution Report
+    (setf (strategy-status strat) :inactive)
+    (setf (strategy-status-reason strat) reason)
+    ;; Remove from active pools if present
+    (let ((cat (categorize-strategy strat)))
+      (setf (gethash cat *category-pools*) 
+            (remove (strategy-name strat) (gethash cat *category-pools*) :key #'strategy-name :test #'string=)))
+    
+    (format t "[PRUNER] 🪦 GRAVEYARD: ~a (~a -> :graveyard) | Reason: ~a~%" 
+            (strategy-name strat) old-tier reason)
+    
+    ;; Persist change (V47.8: immediate save for safety)
+    (swimmy.persistence:save-strategy strat)))
+
+(defun run-qualification-cycle ()
+  "V47.8 Phase 3: Loop through strategies needing backtest."
+  (format t "[QUALIFY] 🏁 Starting Qualification Cycle...~%")
+  (let ((candidates (remove-if-not 
+                     (lambda (s) 
+                       (and (member (strategy-tier s) '(:incubator :scout))
+                            (= (or (strategy-trades s) 0) 0)
+                            (= (or (strategy-sharpe s) 0.0) 0.0)))
+                     *strategy-knowledge-base*))
+        (limit 50)
+        (count 0))
+    
+    (format t "[QUALIFY] found ~d candidates.~%" (length candidates))
+    
+    (dolist (strat candidates)
+      (when (< count limit)
+        (incf count)
+        ;; Request backtest (no suffix = standard phase 1)
+        (request-backtest strat)
+        ;; Sleep purely to not flood ZMQ buffer instantly
+        (sleep 0.01)))
+    
+    (format t "[QUALIFY] 📤 Sent ~d backtest requests.~%" count)))
+
+(defun init-backtest-zmq ()
+  "Initialize ZMQ connection to backtest service for the school daemon.
+   V47.8 Fix: Prevents crash when calling request-backtest in isolated service."
+  (unless (and (boundp 'swimmy.globals:*backtest-requester*) swimmy.globals:*backtest-requester*)
+    (handler-case
+        (let* ((ctx (pzmq:ctx-new))
+               (req (pzmq:socket ctx :pub)))
+          (pzmq:connect req "tcp://localhost:5559")
+          (setf swimmy.globals:*backtest-requester* req)
+          (format t "[BACKTEST] 🔌 Connected to Guardian Service (PUB -> 5559)~%"))
+      (error (e)
+        (format t "[BACKTEST] ❌ Failed to initialize ZMQ: ~a~%" e)))))

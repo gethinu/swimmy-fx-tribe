@@ -32,9 +32,10 @@
   t)
 
 (defun phase-3-qualify ()
-  "Run WFV Qualification (Legacy Python removed)"
-  ;; (run-command '("python3" "tools/run_qualification.py"))
-  (format t "[CONNECTOR] ⏩ Skipping Phase 3 (Python Legacy)...~%"))
+  "Run WFV Qualification (Native Lisp Loop)"
+  (format t "[CONNECTOR] [Phase 3] Qualification (Native Backtest Loop)...~%")
+  (when (fboundp 'run-qualification-cycle)
+    (run-qualification-cycle)))
 
 (defun phase-4-purge ()
   "Run The Selector (Native Lisp Battle Royale)"
@@ -49,6 +50,14 @@
   ;; V24: Directly call the native breeder
   (run-breeding-cycle))
 
+(defun phase-3-5-cpcv-validate ()
+  "V48.0: CPCV Validation Phase - Promote A-RANK → S-RANK via CPCV"
+  (format t "~%[CONNECTOR] [Phase 3.5] CPCV Validation...~%")
+  (handler-case
+      (run-a-rank-cpcv-batch)
+    (error (e)
+      (format t "[CONNECTOR] ⚠️ CPCV error: ~a~%" e))))
+
 (defun phase-7-wisdom-update ()
   "Wisdom Update (Civilization Handover)"
   ;; V24: Native Lisp Wisdom Extraction
@@ -57,7 +66,7 @@
 
 ;; V48: Throttled Reporting (Prevents Spam)
 (defparameter *last-report-time* 0)
-(defconstant +report-interval+ (* 1 3600)) ; 1 Hour (V47.7: Reduced from 4hr)
+(defconstant +report-interval+ (* 20 60)) ; 20 Minutes (V47.9: Request by Owner)
 
 (defun phase-7-report ()
   "Send report if interval passed"
@@ -101,11 +110,14 @@
     ;; 3. Qualify
     (phase-3-qualify)
     
+    ;; 3.5 V48.0: CPCV Validation (A-RANK → S-RANK)
+    (phase-3-5-cpcv-validate)
+    
     ;; 4. Purge
     (phase-4-purge)
     
     ;; 5. Recruit
-    (phase-5-recruit)
+    ;; (phase-5-recruit)
     
     ;; 6. Breeding
     (phase-6-breeding)

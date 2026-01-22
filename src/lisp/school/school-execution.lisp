@@ -2,13 +2,13 @@
 (in-package :swimmy.school)
 
 ;;; PARAMETERS
-(defparameter *category-positions* (make-hash-table :test 'eq))
+(defparameter *category-positions* (make-hash-table :test 'equal))
 (defparameter *total-capital* 0.10)
 (defparameter *lstm-threshold* 0.60)
-(defparameter *last-clan-trade-time* (make-hash-table :test 'eq))
+(defparameter *last-clan-trade-time* (make-hash-table :test 'equal))
 (defparameter *min-trade-interval* 300)
 (defvar *last-swarm-consensus* 0)
-(defparameter *category-entries* (make-hash-table :test 'eq))
+(defparameter *category-entries* (make-hash-table :test 'equal))
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -66,7 +66,7 @@
     (maphash 
      (lambda (key warrior)
        (when (and warrior 
-                  (eq (getf warrior :category) category)
+                  (equal (getf warrior :category) category)
                   (eq (getf warrior :direction) opposing-direction)
                   (equal (getf warrior :symbol) symbol))
          ;; Close it

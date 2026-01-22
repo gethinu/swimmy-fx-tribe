@@ -332,27 +332,25 @@
 (defparameter *slots-per-category*
   '((:trend . 2) (:reversion . 2) (:breakout . 1) (:scalp . 1)))
 
-(defparameter *category-pools* (make-hash-table :test 'eq))
-(defparameter *active-team* (make-hash-table :test 'eq))
+(defparameter *category-pools* (make-hash-table :test 'equal))
+(defparameter *active-team* (make-hash-table :test 'equal))
+
+(defun make-category-key (strat)
+  "V47.8: Category Key = (Timeframe Direction Symbol)"
+  (list (strategy-timeframe strat)
+        (strategy-direction strat)
+        (strategy-symbol strat)))
 
 (defun categorize-strategy (strat)
-  ;; Priority 1: Explicit Specific Category (Overrides inference)
-  (let ((cat (if (and (fboundp 'strategy-category) (strategy-category strat))
-                 (strategy-category strat)
-                 nil)))
-    (if (and cat (not (eq cat :trend)))
-        cat
-        ;; Priority 2: Name Inference (Specific -> Generic)
-        (let ((name (string-downcase (strategy-name strat))))
-          (cond
-            ;; Specific Types First (Scalp/Breakout/Reversion)
-            ((or (search "scalp" name) (search "fast" name)) :scalp)
-            ((or (search "break" name) (search "atr" name) (search "volatility" name) (search "walk" name)) :breakout)
-            ((or (search "reversion" name) (search "bounce" name) (search "stoch" name) (search "rsi" name)) :reversion)
-            ;; Generic Types Last (Trend/MA/Cross)
-            ;; If explicit was :trend, and we fall through here, we confirm it's :trend
-            ((or (search "cross" name) (search "ema" name) (search "sma" name) (search "macd" name) (search "trend" name)) :trend)
-            (t :trend))))))
+  "V47.8: Categorize strategy by TF x Direction x Symbol.
+   Returns a list key e.g. (60 :BUY \"USDJPY\")"
+  (if (and (fboundp 'strategy-timeframe) 
+           (fboundp 'strategy-direction) 
+           (fboundp 'strategy-symbol))
+      (make-category-key strat)
+      (progn
+        (format t "⚠️ Legacy Strategy found: ~a. Defaulting to (60 :BOTH \"USDJPY\")~%" (strategy-name strat))
+        (list 60 :BOTH "USDJPY"))))
 
 (defun build-category-pools ()
   (clrhash *category-pools*)

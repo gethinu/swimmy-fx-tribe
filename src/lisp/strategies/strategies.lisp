@@ -29,9 +29,17 @@
       (setf (strategy-tier s) :battlefield)
       ;; Also ensure generated slot is 0 if missing
       (unless (strategy-generation s) 
-        (setf (strategy-generation s) 0))))
+        (setf (strategy-generation s) 0)))
+    ;; V48.0: Initialize rank based on Sharpe (for Evolution Factory Report)
+    (unless (strategy-rank s)
+      (let ((sharpe (or (strategy-sharpe s) 0.0)))
+        (cond
+          ((>= sharpe 0.5) (setf (strategy-rank s) :S))
+          ((>= sharpe 0.3) (setf (strategy-rank s) :A))
+          ((>= sharpe 0.1) (setf (strategy-rank s) :B))
+          (t (setf (strategy-rank s) :graveyard))))))
   
-  (format t "[L] 🔓 Alpha Unlocked: Strategies normalized~%"))
+  (format t "[L] 🔓 Alpha Unlocked: Strategies normalized with Ranks~%"))
 
 ;; ===== Sharpe フィルター;; Thresholds
 (defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Taleb's Rule: Block negative EV)")
@@ -51,12 +59,12 @@
 (defparameter *backtest-cursor* 0 "Cursor for round-robin backtesting")
 
 (defun batch-backtest-knowledge ()
-  "Backtest knowledge base strategies with Round-Robin Pagination (V19.2)"
+  "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
+   Backtests each strategy using its native symbol's candle data."
   (load-backtest-cache) 
   (setf *backtest-results-buffer* nil)
-  (setf *expected-backtest-count* (length *strategy-knowledge-base*))
   
-  (let* ((max-batch-size 300) ; P4: Increased to 300 (Expert Panel 2026-01-16)
+  (let* ((max-batch-size 1000) ;; V48.0: Increased from 300 to 1000 (S-Expression optimization)
          (total (length *strategy-knowledge-base*))
          (start-idx (mod *backtest-cursor* total))
          (end-idx (min total (+ start-idx max-batch-size)))
@@ -67,37 +75,47 @@
                               nil))
          (final-batch (append batch-strategies wrap-strategies))
          (cached-count 0)
-         (requested-count 0))
+         (requested-count 0)
+         (old-cursor *backtest-cursor*))
     
     ;; Update cursor for next time
     (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
+    
+    ;; V48.0: Detect cycle completion (cursor wrapped around)
+    (let ((cycle-completed (and (> old-cursor 0) (< *backtest-cursor* old-cursor))))
         
-    (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
-            (length final-batch) start-idx (mod (+ start-idx (length final-batch)) total))
-    
-    ;; Use *candle-histories* hash table (P5.2 Fix: Was using *candle-history* which is nil)
-    (let ((snapshot (or *candle-history* 
-                        (gethash "USDJPY" *candle-histories*)
-                        (gethash "EURUSD" *candle-histories*)
-                        (gethash "GBPUSD" *candle-histories*))))
+      (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
+              (length final-batch) start-idx *backtest-cursor*)
+      
+      ;; V48.0: Use strategy's native symbol for candle data
       (dolist (strat final-batch)
-        (when (and snapshot (> (length snapshot) 100))
-          (let ((cached (get-cached-backtest (strategy-name strat))))
-            (if cached
-                (incf cached-count)
-                (progn 
-                  (incf requested-count)
-                  (request-backtest strat :candles snapshot)))))))
-                
-    (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
-            cached-count requested-count *backtest-cursor*)
-    
-    ;; Notify Discord only if actual requests were made
-    (when (> requested-count 0)
-      (notify-discord-alert 
-        (format nil "🧪 **Backtest Batch Queued (RR)**\n- Requested: ~d / ~d\n- Cursor: ~d / ~d" 
-                requested-count total *backtest-cursor* total) 
-        :color 3066993))))
+        (let* ((sym (or (strategy-symbol strat) "USDJPY"))
+               (snapshot (or (gethash sym *candle-histories*)
+                            *candle-history*
+                            (gethash "USDJPY" *candle-histories*))))
+          (when (and snapshot (> (length snapshot) 100))
+            (let ((cached (get-cached-backtest (strategy-name strat))))
+              (if cached
+                  (incf cached-count)
+                  (progn 
+                    (incf requested-count)
+                    (request-backtest strat :candles snapshot :symbol sym)))))))
+                  
+      (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
+              cached-count requested-count *backtest-cursor*)
+      
+      ;; Notify Discord only if actual requests were made
+      (when (> requested-count 0)
+        (notify-discord-alert 
+          (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a" 
+                  requested-count total *backtest-cursor* total
+                  (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
+          :color 3066993))
+      
+      ;; V48.0: Send summary on cycle completion
+      (when cycle-completed
+        (format t "[L] 🔄 KB Backtest Cycle Complete! Sending summary...~%")
+        (swimmy.core:notify-backtest-summary)))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

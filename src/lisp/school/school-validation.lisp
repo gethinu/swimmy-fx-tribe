@@ -87,40 +87,42 @@
 (defun request-cpcv-validation (strat)
   "Request CPCV validation from Guardian via ZMQ.
    Returns (values passed-p result-plist error-msg)"
-  (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
-         (candles-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
-         (params (jsown:new-js
-                   ("sma_short" (car (extract-sma-params (strategy-indicators strat))))
-                   ("sma_long" (cadr (multiple-value-list 
-                                       (extract-sma-params (strategy-indicators strat)))))
-                   ("sl" (or (strategy-sl strat) 0.003))
-                   ("tp" (or (strategy-tp strat) 0.006))
-                   ("volume" (or (strategy-volume strat) 0.01))))
-         (request (jsown:new-js
-                    ("action" "CPCV_VALIDATE")
-                    ("strategy_name" (strategy-name strat))
-                    ("symbol" symbol)
-                    ("candles_file" candles-file)
-                    ("strategy_params" params))))
-    (format t "[CPCV] 🔬 Requesting CPCV validation for ~a...~%" (strategy-name strat))
-    (handler-case
-        (let ((response-str (send-zmq-msg (jsown:to-json request))))
-          (if response-str
-              (let* ((response (jsown:parse response-str))
-                     (passed (jsown:val-safe response "passed"))
-                     (error-msg (jsown:val-safe response "error")))
-                (if error-msg
-                    (values nil nil error-msg)
-                    (values passed
-                            (list :median-sharpe (jsown:val-safe response "median_sharpe")
-                                  :median-pf (jsown:val-safe response "median_pf")
-                                  :median-wr (jsown:val-safe response "median_wr")
-                                  :median-maxdd (jsown:val-safe response "median_maxdd")
-                                  :std-sharpe (jsown:val-safe response "std_sharpe")
-                                  :path-count (jsown:val-safe response "path_count")
-                                  :passed-count (jsown:val-safe response "passed_count"))
-                            nil)))
-              (values nil nil "No response from Guardian")))
+   (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
+          (candles-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
+          (strat-params (strategy-to-alist strat))
+          (request `((action . "CPCV_VALIDATE")
+                     (strategy_name . ,(strategy-name strat))
+                     (symbol . ,symbol)
+                     (candles_file . ,candles-file)
+                     (strategy_params . ,strat-params))))
+     (format t "[CPCV] 🔬 Requesting CPCV validation for ~a (S-Exp)...~%" (strategy-name strat))
+     (handler-case
+         (let ((response-str (send-zmq-msg (prin1-to-string request))))
+           (if (and response-str (> (length response-str) 0) (char= (char response-str 0) #\())
+               ;; S-Expression Response
+               (let* ((response (read-from-string response-str))
+                      (passed (cdr (assoc 'passed response)))
+                      (error-msg (cdr (assoc 'error response))))
+                 (if error-msg
+                     (values nil nil error-msg)
+                     (values passed
+                             (list :median-sharpe (cdr (assoc 'median_sharpe response))
+                                   :median-pf (cdr (assoc 'median_pf response))
+                                   :median-wr (cdr (assoc 'median_wr response))
+                                   :median-maxdd (cdr (assoc 'median_maxdd response))
+                                   :std-sharpe (cdr (assoc 'std_sharpe response))
+                                   :path-count (cdr (assoc 'path_count response))
+                                   :passed-count (cdr (assoc 'passed_count response)))
+                             nil)))
+               ;; Legacy JSON fallback
+               (if (and response-str (> (length response-str) 0) (char= (char response-str 0) #\{))
+                   (let* ((response (jsown:parse response-str))
+                          (passed (jsown:val-safe response "passed"))
+                          (error-msg (jsown:val-safe response "error")))
+                     (if error-msg
+                         (values nil nil error-msg)
+                         (values passed (list :median-sharpe (jsown:val-safe response "median_sharpe")) nil)))
+                   (values nil nil "Invalid response format"))))
       (error (e)
         (values nil nil (format nil "CPCV error: ~a" e))))))
 
@@ -159,3 +161,123 @@
        (format t "[S-RANK] ❌ ~a: CPCV FAILED (median Sharpe=~,3f)~%"
                (strategy-name strat) (getf result :median-sharpe))
        nil))))
+
+;;; ============================================================================
+;;; V48.0: BATCH CPCV VALIDATION TRIGGERS
+;;; Called from evolution loop to process A-RANK strategies
+;;; ============================================================================
+
+(defparameter *cpcv-batch-size* 5
+  "Number of A-RANK strategies to validate per cycle (to avoid overwhelming Guardian)")
+
+(defparameter *last-cpcv-cycle* 0
+  "Timestamp of last CPCV cycle")
+
+(defparameter *cpcv-cycle-interval* 300
+  "Minimum seconds between CPCV cycles (5 minutes)")
+
+(defun run-a-rank-cpcv-batch ()
+  "V48.0: Batch process A-RANK strategies for S-RANK promotion via CPCV.
+   Called from evolution loop. Processes up to *cpcv-batch-size* at a time."
+  (let ((now (get-universal-time)))
+    ;; Rate limit CPCV cycles
+    (when (< (- now *last-cpcv-cycle*) *cpcv-cycle-interval*)
+      (return-from run-a-rank-cpcv-batch nil))
+    (setf *last-cpcv-cycle* now)
+    ;; Get A-RANK strategies
+    (let* ((a-rank-strategies (remove-if-not 
+                                (lambda (s) (eq (strategy-rank s) :A))
+                                *strategy-knowledge-base*))
+           (batch (if (> (length a-rank-strategies) *cpcv-batch-size*)
+                      (subseq a-rank-strategies 0 *cpcv-batch-size*)
+                      a-rank-strategies))
+           (promoted 0)
+           (failed 0))
+      (when (null batch)
+        (format t "[CPCV] ℹ️ No A-RANK strategies to validate~%")
+        (return-from run-a-rank-cpcv-batch nil))
+      (format t "[CPCV] 🔬 Processing ~d A-RANK strategies for S-RANK...~%" (length batch))
+      ;; Process each strategy
+      (dolist (strat batch)
+        (handler-case
+            (if (validate-for-s-rank-promotion strat)
+                (progn
+                  (setf (strategy-rank strat) :S)
+                  (incf promoted)
+                  (notify-discord-alert 
+                    (format nil "🏆 **S-RANK PROMOTION**~%~a passed CPCV!~%Live trading permitted." 
+                            (strategy-name strat))
+                    :color 15844367))
+                (incf failed))
+          (error (e)
+            (format t "[CPCV] ⚠️ Error validating ~a: ~a~%" (strategy-name strat) e)
+            (incf failed))))
+      ;; Report results
+      (format t "[CPCV] 📊 Batch complete: Promoted=~d, Failed=~d~%" promoted failed)
+      ;; Save promoted strategies
+      (when (> promoted 0)
+        (dolist (s batch)
+          (when (eq (strategy-rank s) :S)
+            (swimmy.persistence:save-strategy s)))))))
+
+(defvar *rank-criteria-cache* (make-hash-table :test 'eq)
+  "V48.0: Cache for rank criteria loaded from DB")
+
+(defvar *criteria-cache-time* 0
+  "Last time criteria were loaded from DB")
+
+(defparameter *criteria-cache-ttl* 300
+  "Cache TTL in seconds (5 minutes)")
+
+(defun load-rank-criteria-from-db ()
+  "V48.0: Load rank criteria from PostgreSQL.
+   Returns T if loaded successfully, NIL otherwise."
+  (handler-case
+      (when (and (boundp 'swimmy.db::*db-connected*) swimmy.db::*db-connected*)
+        (let ((rows (postmodern:query 
+                      "SELECT rank, min_sharpe, min_pf, min_wr, max_dd FROM rank_criteria")))
+          (clrhash *rank-criteria-cache*)
+          (dolist (row rows)
+            (let ((rank (intern (string-upcase (first row)) :keyword)))
+              (setf (gethash rank *rank-criteria-cache*)
+                    (list :min-sharpe (float (second row))
+                          :min-pf (float (third row))
+                          :min-wr (float (fourth row))
+                          :max-dd (float (fifth row))))))
+          (setf *criteria-cache-time* (get-universal-time))
+          (format t "[CRITERIA] ✅ Loaded ~d rank criteria from DB~%" (hash-table-count *rank-criteria-cache*))
+          t))
+    (error (e)
+      (format t "[CRITERIA] ⚠️ DB load failed: ~a (using defaults)~%" e)
+      nil)))
+
+(defun get-rank-criteria (rank)
+  "V48.0: Get criteria for a rank. Loads from PostgreSQL if available.
+   Falls back to hardcoded values if DB unavailable."
+  ;; Check cache validity
+  (when (> (- (get-universal-time) *criteria-cache-time*) *criteria-cache-ttl*)
+    (load-rank-criteria-from-db))
+  
+  ;; Try cache first
+  (let ((cached (gethash rank *rank-criteria-cache*)))
+    (when cached
+      (return-from get-rank-criteria cached)))
+  
+  ;; Fallback to hardcoded defaults
+  (case rank
+    (:B '(:min-sharpe 0.1 :min-pf 0.0 :min-wr 0.0 :max-dd 1.0))
+    (:A '(:min-sharpe 0.3 :min-pf 1.2 :min-wr 0.40 :max-dd 0.20))
+    (:S '(:min-sharpe 0.5 :min-pf 1.5 :min-wr 0.45 :max-dd 0.15))
+    (otherwise '(:min-sharpe 0.0 :min-pf 0.0 :min-wr 0.0 :max-dd 1.0))))
+
+(defun check-rank-criteria (strat rank)
+  "V48.0: Check if strategy meets criteria for given rank."
+  (let ((criteria (get-rank-criteria rank))
+        (sharpe (or (strategy-sharpe strat) 0.0))
+        (pf (or (strategy-pf strat) 0.0))
+        (wr (or (strategy-win-rate strat) 0.0))
+        (maxdd (or (strategy-max-dd strat) 1.0)))
+    (and (>= sharpe (getf criteria :min-sharpe))
+         (>= pf (getf criteria :min-pf))
+         (>= wr (getf criteria :min-wr))
+         (< maxdd (getf criteria :max-dd)))))
