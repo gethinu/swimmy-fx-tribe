@@ -486,7 +486,14 @@ graph TD
 | P8 | Strategy Pipeline Redesign | 2026-01-21 |
 | **P9** | **OOS Validation + Hunter Split** | **2026-01-22** |
 | **P10** | **KB Pruning + SRP Fix** | **2026-01-22** |
+| **P11** | **Expert Panel Items (3/4)** | **2026-01-22** |
+| **P12** | **True CPCV Lisp-Rust** | **2026-01-22** |
 
 ---
 
-## 🚀 総合ステータス: 95% 完了 (V47.10)
+## 🚀 総合ステータス: 100% 完了 (V47.12)
+
+### P12 Implementation Details
+- **Guardian CPCV_VALIDATE action**: CpcvRequest struct + handler in main.rs
+- **request-cpcv-validation**: Lisp→Rust ZMQ call in school-validation.lisp
+- **validate-for-s-rank-promotion**: S-RANK with CPCV validation (Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%)
