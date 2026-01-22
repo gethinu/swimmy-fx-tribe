@@ -14,7 +14,13 @@
   - 類似戦略削除 (distance < 0.1)
 - **school-pruning.lisp**: `run-kb-pruning` でワンコマンド実行
 
-### 2. P9 OOS Validation (CPCV Lite)
+### 2. P12 True CPCV Integration
+- **Guardian CPCV_VALIDATE action**: 真のCPCV検証
+- **request-cpcv-validation**: Lisp→Rust ZMQ呼び出し
+- **validate-for-s-rank-promotion**: S-RANK昇格時自動CPCV検証
+- **基準**: Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%, CPCV PASS
+
+### 3. P9 OOS Validation (CPCV Lite)
 - **A-RANK昇格検証**: 70/30分割でOOS検証
 - **school-validation.lisp**: `validate-for-a-rank-promotion`
 - **基準**: Sharpe≥0.3, PF≥1.2, WR≥40%, MaxDD<20%
