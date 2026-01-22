@@ -42,3 +42,6 @@ config/.env.systemd
 data/library/INCUBATOR/
 data/library/GRAVEYARD/
 data/library/TRAINING/
+
+# Historical data (too large for git)
+data/historical/
