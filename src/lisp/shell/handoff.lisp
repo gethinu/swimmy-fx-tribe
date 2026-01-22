@@ -27,10 +27,16 @@
     (format nil "~d-~2,'0d-~2,'0d" year month day)))
 
 (defun get-time-string ()
-  "Get current time as string."
+  "Get current time as string (UTC) HH:MM:SS"
   (multiple-value-bind (s m h)
-      (decode-universal-time (get-universal-time))
-    (format nil "~2,'0d:~2,'0d:~2,'0d UTC" h m s)))
+      (decode-universal-time (get-universal-time) 0)
+    (format nil "~2,'0d:~2,'0d:~2,'0d" h m s)))
+
+(defun get-jst-time-string ()
+  "Get current time as string (JST) HH:MM:SS"
+  (multiple-value-bind (s m h)
+      (decode-universal-time (get-universal-time) -9)
+    (format nil "~2,'0d:~2,'0d:~2,'0d" h m s)))
 
 ;;; ==========================================
 ;;; DAILY HANDOFF

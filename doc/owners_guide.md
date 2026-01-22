@@ -1,35 +1,35 @@
 # 🐟 Swimmy Ver 18 オーナーズガイド
 
-**最終版:** 2026-01-22 (V48.0 - Rank System Overhaul)
+**最終版:** 2026-01-22 (V48.2 - Expert Panel Phase 8)
 **リーダー判断:** Elon Musk (Expert Panel Verified)
 
 ---
 
-## 🆕 V48.0 新機能 (2026-01-22)
+## 🆕 V48.2 新機能 (2026-01-22) - Phase 8: Robustness
 
-### 1. Rank System Fix
-- **問題解決**: `strategy-rank` が常にnilだった問題を修正
-- **B-RANK昇格**: Phase 1 BT合格(Sharpe≥0.1)で自動昇格
-- **Graveyard連携**: 失敗戦略に`:graveyard`ランク設定
+### 1. Atomic KB 操作 (Rich Hickey)
+- **KBロック**: `*kb-lock*` を導入し、戦略の追加・削除・ランク変更をスレッッド安全に実行
+- **データ不整合防止**: マルチスレッド環境での競合を排除
 
-### 2. CPCV自動検証
-- **Phase 3.5**: 進化ループにCPCV検証フェーズ追加
-- **run-a-rank-cpcv-batch**: 5件/5分間隔で処理
-- **S-RANK昇格**: CPCV合格時に自動昇格+Discord通知
+### 2. S-RANK カテゴリ枠制限 (López de Prado)
+- **多様性維持**: 54カテゴリごとに最大3枠のS-RANK枠を設定
+- **エリート選抜**: 枠が埋まっている場合、既存の最弱戦略よりも高性能な戦略が現れると自動的に入れ替え（旧最弱はAへ降格）
 
-### 3. 基準値DB対応
-- **rank_criteria.sql**: PostgreSQLスキーマ
-- **動的読込**: DB接続時は5分キャッシュで基準値取得
-- **フォールバック**: DB未接続時はハードコード値使用
+### 3. Safe Graveyard Save (Taleb)
+- **フォールバック保存**: メインの墓場保存に失敗した場合、緊急用ファイル (`graveyard.emergency.sexp`) に書き込みを試行
 
-### 4. Backtest最適化
-- **Symbol対応**: 戦略ごとのsymbolでバックテスト
-- **バッチサイズ**: 300→1000に増加
-- **サイクル完了通知**: 一周終了時にサマリー送信
+---
 
-### 5. 4氏族システム削除
-- **mixseek.lisp**: 無効化
-- **comomentum.lisp**: 有用機能のみ保持
+## 🆕 V48.1 新機能 (2026-01-22) - Phase 7: Efficiency
+
+### 1. Graveyard 即時削除 (Taleb)
+- 失敗戦略をKBから即座に排除し、マシンの「脆弱性」を排除。パターンは保存済み。
+
+### 2. CPCV バッチサイズ増加
+- 5件 → **20件** に拡大。検証サイクルを4倍速化。
+
+### 3. ensure-rank 統一
+- ランク変更ロジックを一点集中化し、不整合な `setf` を廃止。
 
 ---
 
@@ -41,12 +41,12 @@
   - 90日非活性削除
   - 類似戦略削除 (distance < 0.1)
 - **school-pruning.lisp**: `run-kb-pruning` でワンコマンド実行
-- **自動実行**: 週1回 (`phase-8-weekly-prune`)
+- **自動実行**: 6時間ごと (`phase-8-weekly-prune`) ← V48.0で変更
 
-> [!WARNING]
-> **PostgreSQLサーバーは現在未起動です。**
-> 基準値DBは無効。ハードコード値（フォールバック）で動作中。
-> DB接続が必要な場合: `sudo systemctl start postgresql`
+> [!TIP]
+> **PostgreSQLサーバー稼働中** ✅
+> 基準値DB: `swimmy_db.rank_criteria` テーブル使用可能
+> スキーマ場所: `db/schema/rank_criteria.sql`
 
 ### 2. P12 True CPCV Integration
 - **Guardian CPCV_VALIDATE action**: 真のCPCV検証

@@ -28,6 +28,8 @@
    #:*cmd-publisher*
    #:*backtest-requester*
    #:*last-heartbeat-sent*
+   #:*last-discord-notification-time*
+   #:*last-zmq-success-time*
    #:*pending-orders* ;; Phase 7
    
    ;; Trading State
@@ -200,6 +202,7 @@
    #:notify-discord-weekly
    #:notify-discord-emergency
    #:notify-discord-backtest
+   #:notify-cpcv-result
    #:notify-apex            ;; V41.6: Apex webhook for system status
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue

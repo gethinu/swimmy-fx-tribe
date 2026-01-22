@@ -28,14 +28,15 @@
 (defvar *current-regime* :unknown)
 (defvar *volatility-regime* :normal)
 (defvar *candle-history* nil)
-(defvar *candle-histories* (make-hash-table :test 'equal))
+(defvar *candle-histories* (make-hash-table :test 'equal) "Master candle history: symbol -> M1 candles")
+(defvar *candle-histories-tf* (make-hash-table :test 'equal) "V41.6: Multi-timeframe data: symbol -> tf -> candles")
 (defvar *current-candles* (make-hash-table :test 'equal))
 (defvar *current-minutes* (make-hash-table :test 'equal))
 
 ;;; TRADING STATE
 (defparameter *trading-enabled* t)
 (defvar *daily-trade-count* 0)
-(defvar *accumulated-pnl* 0)
+(defvar *accumulated-pnl* 0.0 "Life-time PnL (accumulated across all sessions)")
 (defvar *locked-treasury* 0)
 (defvar *last-regime* nil)
 (defparameter *base-lot-size* 0.01)
@@ -47,10 +48,10 @@
 (defvar *consecutive-losses* 0)
 (defparameter *risk-tolerance* :balanced)
 (defparameter *daily-loss-limit* -5000)
-(defvar *daily-pnl* 0.0)
+(defvar *daily-pnl* 0.0 "Daily PnL (resets at 00:00)")
 (defvar *current-equity* 100000.0)
-(defvar *peak-equity* 100000.0)
-(defvar *max-drawdown* 0.0)
+(defvar *peak-equity* 100000.0 "Peak equity for all-time drawdown calculation")
+(defvar *max-drawdown* 0.0 "Maximum observed drawdown percentage (all-time)")
 (defparameter *max-dd-percent* 5.0)
 
 ;; V44.5: Dynamic (Session) Drawdown Monitoring (Expert Panel P2)
@@ -75,6 +76,8 @@
 
 ;;; COMMUNICATION STATE
 (defparameter *discord-webhook-url* nil)
+(defvar *last-discord-notification-time* 0 "V48.2 Expert Panel: Last time ANY message was sent to Discord")
+(defvar *last-zmq-success-time* 0 "V48.2: Last time a ZMQ message was successfully handed off to pub-socket")
 (defparameter *last-heartbeat-sent* 0)
 (defparameter *publisher* nil)
 (defparameter *subscriber* nil)
@@ -140,9 +143,6 @@
 (defparameter *initial-backtest-done* nil)
 (defparameter *arms* (make-hash-table :test 'equal))
 (defparameter *arm-states* (make-hash-table :test 'equal))
-;; V8.0: Risk Management (Updated V19.8: Period-Based Limits)
-(defparameter *max-drawdown* 0.0)
-(defparameter *peak-equity* 100000)
 
 ;; Tiered Risk Limits (Expert Panel 2026-01-14)
 (defvar *daily-loss-limit-pct* -5.0)    ; Stop trading for the day
@@ -157,8 +157,6 @@
 (defparameter *hard-deck-drawdown-pct* 50.0)  ; Permanent System Stop (Ruin Prevention)
 
 ;; Risk Metrics
-(defparameter *accumulated-pnl* 0.0)  ; Life-time PnL
-(defparameter *daily-pnl* 0.0)        ; Resets daily 00:00
 (defparameter *weekly-pnl* 0.0)       ; Resets Monday 00:00
 (defparameter *monthly-pnl* 0.0)      ; Resets 1st of Month 00:00
 (defvar *processed-tickets* (make-hash-table :test 'equal) "V44.0: Deduplication for TRADE_CLOSED events")
@@ -166,8 +164,6 @@
 (defparameter *clans* nil)
 (defparameter *market-data* nil)
 (defparameter *last-tick-time* 0)
-(defparameter *candle-histories* (make-hash-table :test 'equal))
-(defparameter *candle-histories-tf* (make-hash-table :test 'equal)) ; V41.6: Nested hash table for multi-timeframe support
 
 (format t "[GLOBALS] Global variables defined in SWIMMY.GLOBALS~%")
 

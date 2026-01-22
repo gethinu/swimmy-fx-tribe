@@ -3,10 +3,6 @@
 ;;; ==========================================
 ;;; MESSAGE DISPATCHER - Extracted from tick-handler.lisp (SRP Refactor)
 ;;; ==========================================
-;;; Handles:
-;;; - ZeroMQ Message Parsing
-;;; - Dispatch to Tick, Heartbeat, Account, etc.
-;;; - System Commands (REPORT, RELOAD, RESET)
 
 (defun internal-process-msg (msg)
   (handler-case
@@ -33,6 +29,19 @@
                  (when (fboundp 'swimmy.school:process-wfv-result)
                    (swimmy.school:process-wfv-result name 
                       (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)))))
+              ((member type '(cpcv-result :cpcv-result) :test #'eq)
+               (let* ((result (cdr (assoc 'result sexp)))
+                      (name (cdr (assoc 'strategy_name result)))
+                      (median (cdr (assoc 'median_sharpe result)))
+                      (paths (cdr (assoc 'path_count result)))
+                      (passed (cdr (assoc 'passed_count result)))
+                      (failed (cdr (assoc 'failed_count result)))
+                      (pass-rate (cdr (assoc 'pass_rate result)))
+                      (is-passed (cdr (assoc 'is_passed result))))
+                 (format t "[L] 🏆 CPCV Result Received for ~a: ~a~%" name (if is-passed "PASSED" "FAILED"))
+                 (swimmy.core:notify-cpcv-result 
+                  (list :strategy-name name :median-sharpe median :path-count paths 
+                        :passed-count passed :failed-count failed :pass-rate pass-rate :is-passed is-passed))))
               (t (format t "[L] ⚠️ Unhandled S-Exp Message Type: ~a~%" type))))
           ;; Legacy JSON Path
           (let* ((json (jsown:parse msg)) (type (jsown:val json "type")))
@@ -109,25 +118,33 @@
                  (push (cons name (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)) *backtest-results-buffer*)
                  (when (and *expected-backtest-count* (> *expected-backtest-count* 0) (>= (length *backtest-results-buffer*) *expected-backtest-count*)) (swimmy.core:notify-backtest-summary))
                  (when (fboundp 'swimmy.school:process-wfv-result) (swimmy.school:process-wfv-result name (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)))
-                 ;; V48.0: Rank System Fix - Update strategy rank based on BT results
                  (let ((strat (or (find name swimmy.school::*strategy-knowledge-base* :key #'swimmy.school::strategy-name :test #'string=)
                                   (find name swimmy.globals::*evolved-strategies* :key #'swimmy.school::strategy-name :test #'string=))))
                    (when strat
-                     ;; Update strategy metrics
                      (setf (swimmy.school::strategy-sharpe strat) sharpe)
                      (setf (swimmy.school::strategy-pf strat) profit-factor)
                      (setf (swimmy.school::strategy-win-rate strat) (/ win-rate 100.0))
                      (setf (swimmy.school::strategy-trades strat) trades)
                      (cond
-                       ;; Phase 1 BT Failed → Graveyard
                        ((< sharpe 0.1)
                         (when (fboundp 'swimmy.school::prune-to-graveyard)
                           (funcall 'swimmy.school::prune-to-graveyard strat "Sharpe < 0.1 (Phase 1 BT)")))
-                       ;; Phase 1 BT Passed → B-RANK
                        (t
-                        (unless (member (swimmy.school::strategy-rank strat) '(:A :S :legend))
-                          (setf (swimmy.school::strategy-rank strat) :B)
-                          (format t "[RANK] ⬆️ B-RANK: ~a (Sharpe=~,2f)~%" name sharpe))))))))
+                        (unless (member (swimmy.school:strategy-rank strat) '(:A :S :legend))
+                          (swimmy.school:ensure-rank strat :B (format nil "Phase 1 BT Passed (S=~,2f)" sharpe)))))))))
+              ((string= type "CPCV_RESULT")
+               (let* ((result (jsown:val json "result"))
+                      (name (jsown:val result "strategy_name"))
+                      (median (float (jsown:val result "median_sharpe")))
+                      (paths (jsown:val result "path_count"))
+                      (passed (jsown:val result "passed_count"))
+                      (failed (jsown:val result "failed_count"))
+                      (pass-rate (float (jsown:val result "pass_rate")))
+                      (is-passed (jsown:val result "is_passed")))
+                 (format t "[L] 🏆 CPCV Result Received (JSON) for ~a: ~a~%" name (if is-passed "PASSED" "FAILED"))
+                 (swimmy.core:notify-cpcv-result 
+                  (list :strategy-name name :median-sharpe median :path-count paths 
+                        :passed-count passed :failed-count failed :pass-rate pass-rate :is-passed is-passed))))
               (t nil))))
     (error (e)
       (format t "[L] ⚠️ Error processing message: ~a~%" e)
@@ -135,5 +152,4 @@
       nil)))
 
 (defun process-msg (msg)
-  "Main message dispatcher - Delegates to internal robust processor"
   (internal-process-msg msg))

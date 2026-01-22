@@ -4,7 +4,7 @@
 
 (in-package :swimmy.school)
 
-(defparameter *strategy-knowledge-base* nil)
+;; Ensure *strategy-knowledge-base* is imported from swimmy.globals
 
 ;; Ensure persistence functions are available
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -34,10 +34,10 @@
     (unless (strategy-rank s)
       (let ((sharpe (or (strategy-sharpe s) 0.0)))
         (cond
-          ((>= sharpe 0.5) (setf (strategy-rank s) :S))
-          ((>= sharpe 0.3) (setf (strategy-rank s) :A))
-          ((>= sharpe 0.1) (setf (strategy-rank s) :B))
-          (t (setf (strategy-rank s) :graveyard))))))
+          ((>= sharpe 0.5) (ensure-rank s :S "Initial Load (High Sharpe)"))
+          ((>= sharpe 0.3) (ensure-rank s :A "Initial Load (Mid Sharpe)"))
+          ((>= sharpe 0.1) (ensure-rank s :B "Initial Load (Base Sharpe)"))
+          (t (ensure-rank s :graveyard "Initial Load (Low Sharpe)"))))))
   
   (format t "[L] 🔓 Alpha Unlocked: Strategies normalized with Ranks~%"))
 
@@ -112,10 +112,22 @@
                   (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
           :color 3066993))
       
-      ;; V48.0: Send summary on cycle completion
+      ;; V48.0: Send detailed summary on cycle completion
       (when cycle-completed
         (format t "[L] 🔄 KB Backtest Cycle Complete! Sending summary...~%")
-        (swimmy.core:notify-backtest-summary)))))
+        ;; Calculate rank distribution (FORCE reload from global symbol to see survivors)
+        (let* ((all swimmy.globals:*strategy-knowledge-base*)
+               (s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
+               (a-count (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
+               (b-count (count-if (lambda (s) (eq (strategy-rank s) :B)) all))
+               (grave-newly-found (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
+               (kb-after (length all))
+               (jst-time (swimmy.shell:get-jst-time-string)))
+          (notify-discord-alert
+            (format nil "📊 **Phase 1 BT Cycle Complete**~%⏰ ~a JST~%~%**Rank Distribution (Survivors):**~%🏆 S-Rank: ~d~%🎯 A-Rank: ~d~%📋 B-Rank: ~d~%⚰️ Waiting Deletion: ~d~%~%**KB (Physical Deletion):** ~d → ~d (~@d)"
+                    jst-time s-count a-count b-count grave-newly-found 
+                    total kb-after (- kb-after total))
+            :color 5763719))))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

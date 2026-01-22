@@ -272,15 +272,15 @@
            (format t "   ✅ KEEP S-RANK - All criteria met~%"))
           
           (:demote-to-a
-           (setf (strategy-rank strategy) :A)
+           (ensure-rank strategy :A "Live Audit: 1 violation")
            (format t "   ⚠️ DEMOTED TO A-RANK - 1 violation (probation)~%"))
           
           (:demote-to-breeding
-           (setf (strategy-rank strategy) :B)
+           (ensure-rank strategy :B "Live Audit: 2 violations")
            (format t "   ⚠️ DEMOTED TO B-RANK - 2 violations (breeding stock)~%"))
           
           (:demote-to-graveyard
-           (setf (strategy-rank strategy) :graveyard)
+           (ensure-rank strategy :graveyard "Live Audit: Critical failure")
            (format t "   💀 DEMOTED TO GRAVEYARD - All criteria failed~%")
            (save-failure-pattern strategy)))
         

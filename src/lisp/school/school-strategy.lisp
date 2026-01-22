@@ -332,7 +332,7 @@
 (defparameter *slots-per-category*
   '((:trend . 2) (:reversion . 2) (:breakout . 1) (:scalp . 1)))
 
-(defparameter *category-pools* (make-hash-table :test 'equal))
+;; *category-pools* moved to school-state.lisp for early initialization
 (defparameter *active-team* (make-hash-table :test 'equal))
 
 (defun make-category-key (strat)

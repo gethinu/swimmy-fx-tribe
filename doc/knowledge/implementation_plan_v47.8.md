@@ -1,7 +1,28 @@
-# 🏛️ Strategy Lifecycle Implementation Plan V48.0
+# 🏛️ Strategy Lifecycle Implementation Plan V48.2
 
-**更新日:** 2026-01-22 17:30 JST
-**バージョン:** V48.0 (Rank System Overhaul + CPCV Trigger + Criteria DB)
+**更新日:** 2026-01-22 21:30 JST
+**バージョン:** V48.2 (Expert Panel Phase 8 Completion)
+
+---
+
+## V48.2 完了フェーズ (Phase 8)
+
+| 機能 | 詳細 |
+|------|------|
+| Atomic KB Locks | `*kb-lock*` によるスレッド安全なKB操作 |
+| Safe Graveyard Save | `graveyard.emergency.sexp` へのフォールバック保存 |
+| S-RANK Slot Limits | 各カテゴリ最大3枠のS-RANK枠管理 & 自動入れ替え |
+| Circular Dependency Fix | `school-state.lisp` への状態変数集約によるビルド安定化 |
+
+---
+
+## V48.1 完了フェーズ (Phase 7)
+
+| 機能 | 詳細 |
+|------|------|
+| Graveyard Immediate Purge | `prune-to-graveyard` で即座にKBから削除 |
+| CPCV Batch Size Up | バッチサイズ 5 → 20 件 |
+| Unified Rank Setter | `ensure-rank` によるランク変更の一元管理 |
 
 ---
 

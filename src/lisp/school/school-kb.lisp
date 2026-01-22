@@ -15,6 +15,8 @@
   "When T, suppress Discord notifications for strategy additions.
    Set to NIL after initial load completes.")
 
+;; *kb-lock* moved to school-state.lisp for early initialization
+
 ;;; ============================================================================
 ;;; SINGLE ENTRY POINT
 ;;; ============================================================================
@@ -39,37 +41,38 @@
     (format t "[KB] ❌ Cannot add NIL strategy~%")
     (return-from add-to-kb nil))
   
-  (let ((name (strategy-name strategy)))
-    
-    ;; 1. Duplicate Check
-    (when (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
-      (format t "[KB] ⚠️ Duplicate: ~a already exists~%" name)
-      (return-from add-to-kb nil))
-    
-    ;; 2. BT Validation (B-RANK gate: Sharpe >= 0.1)
-    (when require-bt
-      (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
-        (when (< sharpe 0.1)
-          (format t "[KB] 🚫 Rejected: ~a (Sharpe ~,2f < 0.1)~%" name sharpe)
-          (return-from add-to-kb nil))))
-    
-    ;; 3. Add to KB
-    (push strategy *strategy-knowledge-base*)
-    ;; V48.0: Initialize rank to B (passed Phase 1 BT to get here)
-    (unless (strategy-rank strategy)
-      (setf (strategy-rank strategy) :B))
-    (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~a)~%" name source (strategy-rank strategy))
-    
-    ;; 4. Add to category pool
-    (let ((cat (categorize-strategy strategy)))
-      (when (boundp '*category-pools*)
-        (push strategy (gethash cat *category-pools*))))
-    
-    ;; 5. Notification (suppress during startup)
-    (when (and notify (not *startup-mode*))
-      (notify-recruit-unified strategy source))
-    
-    t))
+  (bt:with-lock-held (*kb-lock*)
+    (let ((name (strategy-name strategy)))
+      
+      ;; 1. Duplicate Check
+      (when (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+        (format t "[KB] ⚠️ Duplicate: ~a already exists~%" name)
+        (return-from add-to-kb nil))
+      
+      ;; 2. BT Validation (B-RANK gate: Sharpe >= 0.1)
+      (when require-bt
+        (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
+          (when (< sharpe 0.1)
+            (format t "[KB] 🚫 Rejected: ~a (Sharpe ~,2f < 0.1)~%" name sharpe)
+            (return-from add-to-kb nil))))
+      
+      ;; 3. Add to KB
+      (push strategy *strategy-knowledge-base*)
+      ;; V48.0: Initialize rank to B (passed Phase 1 BT to get here)
+      (unless (strategy-rank strategy)
+        (%ensure-rank-no-lock strategy :B "New Strategy Induction"))
+      (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~a)~%" name source (strategy-rank strategy))
+      
+      ;; 4. Add to category pool
+      (let ((cat (categorize-strategy strategy)))
+        (when (boundp '*category-pools*)
+          (push strategy (gethash cat *category-pools*))))
+      
+      ;; 5. Notification (suppress during startup)
+      (when (and notify (not *startup-mode*))
+        (notify-recruit-unified strategy source))
+      
+      t)))
 
 (defun notify-recruit-unified (strategy source)
   "Send unified recruitment notification to Discord.

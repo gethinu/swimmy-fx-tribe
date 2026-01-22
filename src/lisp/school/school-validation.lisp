@@ -167,8 +167,8 @@
 ;;; Called from evolution loop to process A-RANK strategies
 ;;; ============================================================================
 
-(defparameter *cpcv-batch-size* 5
-  "Number of A-RANK strategies to validate per cycle (to avoid overwhelming Guardian)")
+(defparameter *cpcv-batch-size* 20
+  "V48.1: Number of A-RANK strategies to validate per cycle (Expert Panel P1: 5→20)")
 
 (defparameter *last-cpcv-cycle* 0
   "Timestamp of last CPCV cycle")
@@ -184,36 +184,57 @@
     (when (< (- now *last-cpcv-cycle*) *cpcv-cycle-interval*)
       (return-from run-a-rank-cpcv-batch nil))
     (setf *last-cpcv-cycle* now)
-    ;; Get A-RANK strategies
+    ;; Get A-RANK strategies that meet basic S-RANK criteria
     (let* ((a-rank-strategies (remove-if-not 
-                                (lambda (s) (eq (strategy-rank s) :A))
+                                (lambda (s) 
+                                  (and (eq (strategy-rank s) :A)
+                                       ;; Only try to promote if it meets basic S-RANK stats (Sharpe > 0.5 etc)
+                                       (check-rank-criteria s :S)))
                                 *strategy-knowledge-base*))
-           (batch (if (> (length a-rank-strategies) *cpcv-batch-size*)
-                      (subseq a-rank-strategies 0 *cpcv-batch-size*)
-                      a-rank-strategies))
+           ;; Shuffle to avoid getting stuck on the same failing strategies if pool is large
+           (shuffled (sort (copy-list a-rank-strategies) 
+                           (lambda (a b) (declare (ignore a b)) (< (random 100) 50))))
+           (batch (if (> (length shuffled) *cpcv-batch-size*)
+                      (subseq shuffled 0 *cpcv-batch-size*)
+                      shuffled))
            (promoted 0)
            (failed 0))
       (when (null batch)
-        (format t "[CPCV] ℹ️ No A-RANK strategies to validate~%")
+        (format t "[CPCV] ℹ️ No A-RANK strategies ready for S-RANK validation (Sharpe < 0.5)~%")
         (return-from run-a-rank-cpcv-batch nil))
-      (format t "[CPCV] 🔬 Processing ~d A-RANK strategies for S-RANK...~%" (length batch))
+      (format t "[CPCV] 🔬 Processing ~d S-RANK candidates...~%" (length batch))
       ;; Process each strategy
       (dolist (strat batch)
         (handler-case
             (if (validate-for-s-rank-promotion strat)
                 (progn
-                  (setf (strategy-rank strat) :S)
+                  (ensure-rank strat :S "CPCV Passed")
                   (incf promoted)
                   (notify-discord-alert 
-                    (format nil "🏆 **S-RANK PROMOTION**~%~a passed CPCV!~%Live trading permitted." 
+                    (format nil "🏆 **S-RANK PROMOTION**
+~a passed CPCV!
+Live trading permitted." 
                             (strategy-name strat))
                     :color 15844367))
-                (incf failed))
+                (progn
+                  ;; V48.2: Demote back to B if it fails CPCV (Overfitted)
+                  (%ensure-rank-no-lock strat :B "CPCV Failed (Overfit)")
+                  (incf failed)))
           (error (e)
             (format t "[CPCV] ⚠️ Error validating ~a: ~a~%" (strategy-name strat) e)
             (incf failed))))
       ;; Report results
       (format t "[CPCV] 📊 Batch complete: Promoted=~d, Failed=~d~%" promoted failed)
+      
+      ;; V48.1: Send CPCV batch summary to Discord with JST
+      (when (or (> promoted 0) (> failed 0))
+        (let ((jst-time (swimmy.core:get-time-string)))
+          (notify-discord-alert
+            (format nil "🔬 **CPCV Validation**~%⏰ ~a JST~%~%A-RANK Tested: ~d~%🏆 S-RANK Promoted: ~d~%❌ Failed: ~d~%~%A-RANK Remaining: ~d"
+                    jst-time (length batch) promoted failed
+                    (count-if (lambda (s) (eq (strategy-rank s) :A)) *strategy-knowledge-base*))
+            :color (if (> promoted 0) 5763719 15158332))))
+      
       ;; Save promoted strategies
       (when (> promoted 0)
         (dolist (s batch)

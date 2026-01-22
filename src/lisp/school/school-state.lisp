@@ -4,22 +4,25 @@
 
 (in-package :swimmy.school)
 
-;;; ==========================================
-;;; FORWARD DECLARATIONS
-;;; ==========================================
-(defvar *has-resigned-today* nil)
-(defvar *current-leader* nil)
+;;; = : = = = = = = = = = = 
+;;; FORWARD DECLARATIONS (Local to School or for early referencing)
+;;; = = = = = = = = = = = = = 
 (defvar *trade-history* (make-hash-table :test 'eq))
 (defvar *category-entries* (make-hash-table :test 'eq))
 (defvar *last-swarm-consensus* 0)
 (defvar *category-positions* nil)
-(defvar *daily-pnl* 0)
 (defvar *yesterday-pnl* 0 "PnL from the previous trading day (for reporting)")
-(defvar *accumulated-pnl* 0)
 (defvar *category-trades* 0)
 
-;; Global Analytics State
-(defvar *all-time-win-rate* 50.0 "Global win rate percentage")
+;; P8: Rich Hickey - Atomic KB Operations (V48.2)
+;; Moved to school-state.lisp for early initialization (ASDF loading order fix)
+(defvar *kb-lock* (bt:make-lock "KB-LOCK")
+  "Lock for modifying *strategy-knowledge-base* and *category-pools*.")
+
+(defparameter *category-pools* (make-hash-table :test 'equal)
+  "Strategies grouped by category (TF x Direction x Symbol).")
+
+;; Global Analytics State (Legacy or and specifics)
 (defvar *total-wins* 0 "Total winning trades count")
 (defvar *total-trades-count* 0 "Total trades count")
 
@@ -59,16 +62,13 @@
 (defparameter *breaker-cooldown-seconds* 900 "Duration to Halt trading (15m)")
 
 ;; Warrior System (school-danger.lisp)
-(defparameter *warrior-allocation* (make-hash-table :test 'equal) 
-  "Tracks which warrior is assigned to which trade/symbol")
+;; *warrior-allocation* moved to globals.lisp
 
 ;; Ritual History (rituals.lisp)
 (defparameter *win-rate-history* nil "Historical win rates")
 (defparameter *max-win-rate-history* 100 "Max size of win rate history")
 
-;; Tribe signal integration
-(defvar *tribe-direction* :hold "Current tribe consensus direction")
-(defvar *tribe-consensus* 0.0 "Current tribe consensus strength")
+;; Tribe signal integration (moved to globals.lisp)
 
 ;;; ==========================================
 ;;; CORRELATION & EXPOSURE MANAGEMENT
@@ -220,11 +220,8 @@
 ;;; ==========================================
 ;;; DANGER AVOIDANCE SYSTEM
 ;;; ==========================================
-(defparameter *consecutive-losses* 0)
-(defparameter *consecutive-wins* 0)
+;; Danger Cooldowns (moved to globals.lisp)
 (defparameter *last-trade-result* nil)
-(defparameter *danger-cooldown-until* 0)
-(defparameter *danger-level* 0)
 
 ;; V44.0: Unified 11-Tier Cooldown System (Expert Panel Approved)
 ;; Tiers: 3min → 5min → 10min → 15min → 30min → 45min → 1h → 2h → 3h → 4h → EOD

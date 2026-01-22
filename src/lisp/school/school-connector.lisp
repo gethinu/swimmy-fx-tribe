@@ -76,9 +76,9 @@
       (swimmy.school::notify-evolution-report)
       (setf *last-report-time* now))))
 
-;; P11: Weekly KB Pruning
+;; P11: KB Pruning every 6 hours (V48.0: Changed from weekly)
 (defparameter *last-prune-time* 0)
-(defconstant +prune-interval+ (* 7 24 3600)) ; 7 Days (Weekly)
+(defconstant +prune-interval+ (* 6 3600)) ;; 6 Hours (V48.0: Owner Request)
 
 (defun phase-8-weekly-prune ()
   "P11: Run KB pruning weekly to maintain optimal KB size.
@@ -92,6 +92,19 @@
             (setf *last-prune-time* now))
         (error (e)
           (format t "[CONNECTOR] ❌ Pruning error: ~a~%" e))))))
+
+(defun check-notifier-health ()
+  "V48.2 Expert Panel (Taleb/Kim): Watchdog for the Discord Notifier.
+   If no message has been successful for 15 minutes, log a critical local warning."
+  (let* ((now (get-universal-time))
+         (elapsed (- now *last-discord-notification-time*))
+         (threshold (* 15 60))) ;; 15 Minutes (Musk Order)
+    (when (and (> elapsed threshold) (> *last-discord-notification-time* 0))
+      (format t "~%[WATCHDOG] 🚨 CRITICAL: Discord Notifier SILENT for ~d minutes!~%" 
+              (floor elapsed 60))
+      (format t "[WATCHDOG] 🛡️ Possible service crash or network failure. Verifying systemd...~%")
+      ;; We don't auto-restart yet (Taleb: "Complexity is death"), but we alert in logs.
+      )))
 
 
 
@@ -128,6 +141,9 @@
     
     ;; 8. Weekly KB Pruning (P11)
     (phase-8-weekly-prune)
+    
+    ;; 9. V48.2 Expert Panel: Heartbeat 2.0 (Watcher)
+    (check-notifier-health)
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)

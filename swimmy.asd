@@ -52,21 +52,23 @@
                (:file "src/lisp/strategies/strategies-reversion")
                (:file "src/lisp/strategies/strategies-breakout")
                (:file "src/lisp/strategies/strategies-scalp")
-               (:file "src/lisp/strategies/strategies")
-               (:file "src/lisp/strategies/strategies-recruits") ; P7: Recruited Strategies
-               (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
-               
-               ;; SCHOOL
-               (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
-               (:file "src/lisp/school/school-constitution")
-               (:file "src/lisp/school/school-resignation")
-               (:file "src/lisp/school/school-optimized-params") ; Phase 4: Code Gen
-               (:file "src/lisp/school/school-strategy")  ; V8.1: Strategy/Clan System
+                (:file "src/lisp/school/school-strategy")  ; V8.1: Strategy/Clan System
+                (:file "src/lisp/school/school-rank-system") ; Rank System Overhaul V47.0
+                (:file "src/lisp/strategies/strategies")
+                (:file "src/lisp/strategies/strategies-recruits") ; P7: Recruited Strategies
+                (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
+                
+                ;; SCHOOL
+                (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
+                (:file "src/lisp/school/school-constitution")
+                (:file "src/lisp/school/school-resignation")
+                (:file "src/lisp/school/school-optimized-params") ; Phase 4: Code Gen
                (:file "src/lisp/school/school-voting")    ; V8.1: Voting/Council System
                
                ;; REFACTORED DREAMER MIGRATION (Phase 11)
                (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
-               (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+                (:file "src/lisp/school/school-backtest-utils")
+                (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
                (:file "src/lisp/school/school-validation") ; P9: OOS Validation for A-RANK
                (:file "src/lisp/school/school-pruning")    ; P10: KB Pruning & Optimization
                (:file "src/lisp/school/school-monte-carlo") ; Phase 11: Monte Carlo
@@ -128,6 +130,7 @@
                (:file "src/lisp/tests")
 
                (:file "src/lisp/tests/school-split-tests")
+                (:file "src/lisp/tests/stress-test-kb")
                (:file "src/lisp/tests/school-mc-tests")   ; Phase 11: MC Tests
                (:file "src/lisp/tests/school-mismatch-tests")
                (:file "src/lisp/tests/evolution-tests")

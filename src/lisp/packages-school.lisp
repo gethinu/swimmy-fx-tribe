@@ -62,6 +62,8 @@
    #:mutate-strategy
    #:batch-backtest-knowledge
    #:adopt-proven-strategies
+   #:ensure-rank
+   #:strategy-rank
    #:record-trade-result
    #:update-leader-stats
    #:update-global-stats ;; V44.3: Moved from Reporting
@@ -106,6 +108,11 @@
    #:strategy-trades
    #:strategy-max-dd
    #:strategy-benched-p
+   #:strategy-symbol
+   #:strategy-direction
+   #:strategy-timeframe
+   #:strategy-profit-factor
+   #:strategy-pf
    
    ;; Clan Struct Accessors
    #:make-clan
@@ -298,6 +305,7 @@
    ;; Date/Time utilities
    #:get-date-string
    #:get-time-string
+   #:get-jst-time-string
    ))
 
 ;;; 6. EXECUTOR (Execution Layer) ------------------------------------------------

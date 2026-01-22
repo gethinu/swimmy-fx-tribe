@@ -33,6 +33,10 @@
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
 
+(defparameter *s-rank-slots-per-category* 3
+  "V48.2: Maximum S-RANK strategies per (Symbol x Direction x Timeframe) category.
+   Marcos López de Prado: Portfolio diversity requires capping similar strategies.")
+
 ;;; ---------------------------------------------------------------------------
 ;;; RANK UTILITIES
 ;;; ---------------------------------------------------------------------------
@@ -83,34 +87,88 @@
   (length (get-strategies-by-rank rank timeframe direction symbol)))
 
 ;;; ---------------------------------------------------------------------------
-;;; RANK PROMOTION / DEMOTION
+;;; V48.1: UNIFIED RANK SETTER (Expert Panel - Naval's DRY)
 ;;; ---------------------------------------------------------------------------
+
+(defun ensure-rank (strategy new-rank &optional reason)
+  "V48.1/V48.2: Single entry point for all rank changes (DRY principle).
+   V48.2: Enforces S-RANK slot limits and handles atomic promotion/demotion.
+   Handles logging and graveyard pattern saving automatically."
+  (bt:with-lock-held (*kb-lock*)
+    (%ensure-rank-no-lock strategy new-rank reason)))
+
+(defun %ensure-rank-no-lock (strategy new-rank &optional reason)
+  "Internal version of ensure-rank that assumes *kb-lock* is already held."
+  (let ((old-rank (strategy-rank strategy)))
+    (when (not (eq old-rank new-rank))
+      ;; P8: Marcos López de Prado - Portfolio Diversity Check for S-RANK
+      (when (eq new-rank :S)
+        (let* ((tf (strategy-timeframe strategy))
+               (dir (strategy-direction strategy))
+               (sym (strategy-symbol strategy))
+               (s-strategies (get-strategies-by-rank :S tf dir sym))
+               (count (length s-strategies)))
+          
+          (when (>= count *s-rank-slots-per-category*)
+            ;; If full, find the weakest S-RANK in this category
+            (let* ((sorted (sort (copy-list s-strategies) #'< ; Weakest first
+                                 :key (lambda (s) 
+                                        (+ (or (strategy-sharpe s) 0)
+                                           (* 0.1 (or (strategy-profit-factor s) 0))))))
+                   (weakest (car sorted))
+                   (candidate-score (+ (or (strategy-sharpe strategy) 0)
+                                       (* 0.1 (or (strategy-profit-factor strategy) 0))))
+                   (weakest-score (+ (or (strategy-sharpe weakest) 0)
+                                     (* 0.1 (or (strategy-profit-factor weakest) 0)))))
+              
+              (if (> candidate-score weakest-score)
+                  (progn
+                    (format t "[RANK] 🔄 S-RANK FULL (TF=~a/D=~a/S=~a): Replacing ~a (Score ~,2f) with ~a (Score ~,2f)~%"
+                            tf dir sym (strategy-name weakest) weakest-score
+                            (strategy-name strategy) candidate-score)
+                    ;; Atomic demotion of weakest
+                    (setf (strategy-rank weakest) :A)
+                    (format t "[RANK] ⬇️ DEMOTE: ~a (S → A) | Capacity Replaced~%" (strategy-name weakest)))
+                  (progn
+                    (format t "[RANK] ❌ S-RANK FULL: ~a (Score ~,2f) is not better than weakest ~a (Score ~,2f). Staying ~a.~%"
+                            (strategy-name strategy) candidate-score
+                            (strategy-name weakest) weakest-score
+                            old-rank)
+                    (return-from %ensure-rank-no-lock old-rank)))))))
+
+      ;; Normal rank change
+      (setf (strategy-rank strategy) new-rank)
+      (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
+              (strategy-name strategy) old-rank new-rank reason)
+      
+      ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
+      (when (eq new-rank :graveyard)
+        (save-failure-pattern strategy reason)
+        (setf *strategy-knowledge-base* 
+              (remove strategy *strategy-knowledge-base* :test #'eq))
+        ;; Also remove from category pools
+        (let ((cat (categorize-strategy strategy)))
+          (setf (gethash cat *category-pools*)
+                (remove strategy (gethash cat *category-pools*) :test #'eq)))
+        (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%")))
+    new-rank))
 
 (defun promote-rank (strategy new-rank reason)
   "Promote strategy to a higher rank."
-  (let ((old-rank (strategy-rank strategy)))
-    (setf (strategy-rank strategy) new-rank)
-    (format t "[RANK] ⬆️ PROMOTE: ~a (~a → ~a) | ~a~%"
-            (strategy-name strategy) old-rank new-rank reason)))
+  (ensure-rank strategy new-rank reason))
 
 (defun demote-rank (strategy new-rank reason)
   "Demote strategy to a lower rank (or graveyard)."
-  (let ((old-rank (strategy-rank strategy)))
-    (setf (strategy-rank strategy) new-rank)
-    (format t "[RANK] ⬇️ DEMOTE: ~a (~a → ~a) | ~a~%"
-            (strategy-name strategy) old-rank new-rank reason)))
+  (ensure-rank strategy new-rank reason))
 
 (defun send-to-graveyard (strategy reason)
   "Move strategy to graveyard and save failure pattern."
-  (setf (strategy-rank strategy) :graveyard)
-  (save-failure-pattern strategy)
-  (format t "[RANK] 💀 GRAVEYARD: ~a | ~a~%"
-          (strategy-name strategy) reason))
+  (ensure-rank strategy :graveyard reason))
 
-(defun save-failure-pattern (strategy)
+(defun save-failure-pattern (strategy &optional reason)
   "Save failed strategy parameters for learning (avoid same mistakes).
-   V47.2: Implemented per Graham's requirement.
-   Appends to data/memory/graveyard.sexp for offline analysis."
+   V47.2/V48.2: Enhanced robustness for Nassim Taleb's safety concerns.
+   Appends to data/memory/graveyard.sexp with fallback to emergency file."
   (let ((pattern (list :name (strategy-name strategy)
                        :timeframe (strategy-timeframe strategy)
                        :direction (strategy-direction strategy)
@@ -121,16 +179,29 @@
                        :profit-factor (strategy-profit-factor strategy)
                        :win-rate (strategy-win-rate strategy)
                        :max-dd (strategy-max-dd strategy)
+                       :reason reason
                        :timestamp (get-universal-time))))
     (handler-case
-        (with-open-file (stream "data/memory/graveyard.sexp"
-                                :direction :output
-                                :if-exists :append
-                                :if-does-not-exist :create)
-          (write pattern :stream stream)
-          (terpri stream))
+        (progn
+          (ensure-directories-exist "data/memory/")
+          (with-open-file (stream "data/memory/graveyard.sexp"
+                                  :direction :output
+                                  :if-exists :append
+                                  :if-does-not-exist :create)
+            (write pattern :stream stream)
+            (terpri stream)))
       (error (e)
-        (format t "[GRAVEYARD] ⚠️ Failed to save pattern: ~a~%" e)))))
+        (format t "[GRAVEYARD] ⚠️ Primary save failed: ~a. Attempting EMERGENCY save.~%" e)
+        (handler-case
+            (with-open-file (stream "data/memory/graveyard.emergency.sexp"
+                                    :direction :output
+                                    :if-exists :append
+                                    :if-does-not-exist :create)
+              (write pattern :stream stream)
+              (terpri stream))
+          (error (e2)
+            (format t "[GRAVEYARD] ❌ EMERGENCY SAVE FAILED: ~a. Pattern lost for ~a!~%" 
+                    e2 (strategy-name strategy))))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; PHASE 1 EVALUATION (New Strategy → B-RANK or Graveyard)
@@ -292,7 +363,7 @@
     (setf (strategy-direction strategy) detected)
     (format t "[RANK] 🎯 Direction detected for ~a: ~a~%" 
             (strategy-name strategy) detected)
-    detected)))
+    detected))
 
 ;;; ---------------------------------------------------------------------------
 ;;; BREEDING HELPERS (V47.0)

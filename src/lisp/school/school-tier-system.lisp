@@ -37,7 +37,7 @@
     (setf (strategy-tier strategy) new-tier)
     ;; V23: Auto-promote to :veteran if entering battlefield (Fixes Execution Block)
     (when (eq new-tier :battlefield)
-      (setf (strategy-rank strategy) :veteran)
+      (ensure-rank strategy :veteran "Entering Battlefield")
       (format t "[SELECTOR] RANK UP: ~a is now a VETERAN!~%" (strategy-name strategy)))
     (format t "[SELECTOR] PROMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
             (strategy-name strategy) old-tier new-tier reason)))

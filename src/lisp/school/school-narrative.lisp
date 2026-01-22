@@ -101,7 +101,7 @@
     ;; JST is UTC+9, so calculate UTC by subtracting 9 hours
     (multiple-value-bind (us um uh ud umo uy) (decode-universal-time u-time 0) ; 0 = UTC
       (declare (ignore us uy))
-      (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST (~2,'0d:~2,'0d UTC)" 
+      (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST / ~2,'0d:~2,'0d UTC" 
               mo d h m uh um))))
 
 (defun format-duration (seconds)
@@ -153,7 +153,7 @@
 (defun generate-evolution-report ()
   "Generate the Evolution Factory Report (formerly Python).
    Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."
-  (let* ((all *strategy-knowledge-base*)
+  (let* ((all swimmy.globals:*strategy-knowledge-base*)
          ;; Filter by Rank (V47.8: Updated to use Rank System instead of Tiers)
          (s-rank (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
          (a-rank (count-if (lambda (s) (eq (strategy-rank s) :A)) all))

@@ -36,6 +36,8 @@
                                                     ("description" (format nil "~a" msg))
                                                     ("color" color)))))))))
           (pzmq:send *notifier-socket* (jsown:to-json payload))
+          (setf *last-zmq-success-time* (get-universal-time))
+          (setf *last-discord-notification-time* (get-universal-time))
           t)
       (error (e)
         (format t "[DISCORD] Failed to send ZMQ msg: ~a~%" e)
@@ -50,6 +52,8 @@
                      ("webhook" webhook)
                      ("data" payload))))
           (pzmq:send *notifier-socket* (jsown:to-json msg))
+          (setf *last-zmq-success-time* (get-universal-time))
+          (setf *last-discord-notification-time* (get-universal-time))
           t)
       (error (e)
         (format t "[DISCORD] Failed to send raw ZMQ msg: ~a~%" e)
@@ -152,47 +156,82 @@
       (t :trend))))
 
 (defun notify-backtest-summary ()
-  "Compile and send categorized backtest summary to Discord"
-  (let ((results (copy-list *backtest-results-buffer*))
-        (categories '(:trend :reversion :breakout :scalp))
-        (summary-msg (format nil "📊 **Backtest Summary (V7.0/Async)**~%")))
+  "V48.4: Detailed Category Trend Report (54 Categories).
+   Groups results by Symbol x Direction x Timeframe. No narrative flair."
+  (let* ((results (copy-list *backtest-results-buffer*))
+         (category-map (make-hash-table :test 'equal))
+         (report-msg (format nil "📊 **Backtest Category Trends**~%⏰ ~a~%~%" (swimmy.core:get-jst-timestamp))))
     
-    (dolist (cat categories)
-      (let* ((cat-results (remove-if-not 
-                            (lambda (res) (eq (categorize-strategy-name (car res)) cat))
-                            results))
-             (total (length cat-results))
-             (passed (count-if (lambda (res) (> (getf (cdr res) :sharpe) 0)) cat-results))
-             (avg-sharpe (if (> total 0)
-                             (/ (loop for r in cat-results sum (getf (cdr r) :sharpe)) total)
-                             0.0))
-             (sorted (sort (copy-list cat-results) #'> :key (lambda (x) (getf (cdr x) :sharpe)))))
+    ;; 1. Group results by category
+    (dolist (res results)
+      (let* ((name (car res))
+             (metrics (cdr res))
+             (sharpe (getf metrics :sharpe))
+             ;; Lookup strategy properties
+             (strat (or (find name swimmy.globals:*strategy-knowledge-base* :key #'swimmy.school:strategy-name :test #'string=)
+                        (find name swimmy.globals:*evolved-strategies* :key #'swimmy.school:strategy-name :test #'string=))))
+        (when strat
+          (let* ((sym (swimmy.school:strategy-symbol strat))
+                 (dir (swimmy.school:strategy-direction strat))
+                 (tf (swimmy.school:strategy-timeframe strat))
+                 (cat-key (format nil "~a/~a/M~d" sym dir tf)))
+            (push sharpe (gethash cat-key category-map))))))
+    
+    ;; 2. Calculate category stats
+    (let ((cat-stats nil))
+      (maphash (lambda (k v)
+                 (let ((avg (/ (reduce #'+ v) (length v))))
+                   (push (list :cat k :avg avg :count (length v)) cat-stats)))
+               category-map)
+      
+      (setf cat-stats (sort cat-stats #'> :key (lambda (x) (getf x :avg))))
+      
+      ;; 3. Build the report
+      (when cat-stats
+        (setf report-msg (concatenate 'string report-msg "🚀 **Strongest Categories:**~%"))
+        (loop for i from 0 below (min 5 (length cat-stats))
+              for stat = (nth i cat-stats)
+              do (setf report-msg (concatenate 'string report-msg 
+                                                (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
+                                                        (getf stat :cat) (getf stat :avg) (getf stat :count)))))
         
-        (when (> total 0)
-          (setf summary-msg (concatenate 'string summary-msg 
-                                         (format nil "~%**~a** (Total: ~d | Pass: ~d | Avg Sharpe: ~,2f)~%" 
-                                                 cat total passed avg-sharpe)))
-          
-          (setf summary-msg (concatenate 'string summary-msg (format nil "  Top 5:~%")))
-          (loop for i from 0 below (min 5 (length sorted))
-                for res = (nth i sorted)
-                do (setf summary-msg (concatenate 'string summary-msg 
-                                                  (format nil "    ~d. ~a (S: ~,2f)~%" (1+ i) (car res) (getf (cdr res) :sharpe)))))
-          
-          (when (> total 5)
-            (setf summary-msg (concatenate 'string summary-msg (format nil "  Worst 5:~%")))
-            (let ((worst (reverse sorted)))
-              (loop for i from 0 below (min 5 (length worst))
-                    for res = (nth i worst)
-                    do (setf summary-msg (concatenate 'string summary-msg 
-                                                      (format nil "    ~d. ~a (S: ~,2f)~%" (1+ i) (car res) (getf (cdr res) :sharpe))))))))))
-    
-    (setf summary-msg (concatenate 'string summary-msg (format nil "~%🔍 Async Delivery via Notifier Service.")))
-    (notify-discord-backtest summary-msg :color 5763719)
+        (when (> (length cat-stats) 5)
+          (setf report-msg (concatenate 'string report-msg "~%📉 **Weakest Categories:**~%"))
+          (let ((weakest (reverse (last cat-stats (min 5 (length cat-stats))))))
+            (dolist (stat weakest)
+              (setf report-msg (concatenate 'string report-msg 
+                                              (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
+                                                      (getf stat :cat) (getf stat :avg) (getf stat :count)))))))
+        
+        ;; 4. Top 3 Individual Strategies
+        (let ((top-strats (subseq (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe)))
+                                  0 (min 3 (length results)))))
+          (setf report-msg (concatenate 'string report-msg "~%🌟 **Top 3 Individual Results:**~%"))
+          (dolist (s top-strats)
+            (setf report-msg (concatenate 'string report-msg 
+                                            (format nil "  • ~a (S: ~,2f)~%" (car s) (getf (cdr s) :sharpe)))))))
+
+      (notify-discord-backtest report-msg :color 5763719))
     
     ;; Clear buffer
     (setf *backtest-results-buffer* nil)
     (setf *expected-backtest-count* 0)))
+
+(defun notify-cpcv-result (data)
+  "V48.5: Notify CPCV Validation Result to Discord Alerts."
+  (let* ((name (or (getf data :strategy-name) (getf data :name) "Unknown"))
+         (median-sharpe (float (or (getf data :median-sharpe) 0.0)))
+         (paths (or (getf data :path-count) 0))
+         (passed (or (getf data :passed-count) 0))
+         (failed (or (getf data :failed-count) 0))
+         (pass-rate (float (or (getf data :pass-rate) 0.0)))
+         (is-passed (getf data :is-passed))
+         (status-emoji (if is-passed "✅" "❌"))
+         (status-text (if is-passed "PASSED" "FAILED"))
+         (color (if is-passed 3066993 15158332)) ; Green if passed, Red if failed
+         (msg (format nil "~a **CPCV Validation: ~a**~%Strategy: `~a`~%~%**Metrics:**~%• Median Sharpe: ~,2f~%• Paths: ~d~%• Result: ~d Passed / ~d Failed (~,1f%)~%~%**Outcome:** ~a"
+                      status-emoji status-text name median-sharpe paths passed failed (* 100 pass-rate) status-text)))
+    (notify-discord-alert msg :color color)))
 
 (defun send-periodic-status-report (symbol bid)
   "Send a periodic status report to Discord if interval continues"
