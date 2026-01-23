@@ -72,7 +72,7 @@
 (defun meets-a-rank-criteria (strat)
   "Check if strategy meets basic A-RANK criteria (without OOS)."
   (let ((sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-pf strat) 0.0))
+        (pf (or (strategy-profit-factor strat) 0.0))
         (wr (or (strategy-win-rate strat) 0.0))
         (maxdd (or (strategy-max-dd strat) 1.0)))
     (and (>= sharpe 0.3)
@@ -136,7 +136,7 @@
   
   ;; Check basic S-RANK criteria first
   (let ((sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-pf strat) 0.0))
+        (pf (or (strategy-profit-factor strat) 0.0))
         (wr (or (strategy-win-rate strat) 0.0))
         (maxdd (or (strategy-max-dd strat) 1.0)))
     (unless (and (>= sharpe 0.5) (>= pf 1.5) (>= wr 0.45) (< maxdd 0.15))
@@ -295,7 +295,7 @@ Live trading permitted."
   "V48.0: Check if strategy meets criteria for given rank."
   (let ((criteria (get-rank-criteria rank))
         (sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-pf strat) 0.0))
+        (pf (or (strategy-profit-factor strat) 0.0))
         (wr (or (strategy-win-rate strat) 0.0))
         (maxdd (or (strategy-max-dd strat) 1.0)))
     (and (>= sharpe (getf criteria :min-sharpe))

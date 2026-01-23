@@ -112,7 +112,6 @@
    #:strategy-direction
    #:strategy-timeframe
    #:strategy-profit-factor
-   #:strategy-pf
    
    ;; Clan Struct Accessors
    #:make-clan

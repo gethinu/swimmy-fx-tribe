@@ -57,6 +57,9 @@
 
 ;; V19.2: Round-Robin Backtest Cursor (Musk's Decision)
 (defparameter *backtest-cursor* 0 "Cursor for round-robin backtesting")
+(defparameter *last-cycle-notify-time* 0 "V48.5: Throttling for Cycle Complete alerts")
+(defconstant +cycle-notify-interval+ (* 6 3600) "6 Hour Alert Interval")
+
 
 (defun batch-backtest-knowledge ()
   "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
@@ -112,9 +115,10 @@
                   (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
           :color 3066993))
       
-      ;; V48.0: Send detailed summary on cycle completion
-      (when cycle-completed
-        (format t "[L] 🔄 KB Backtest Cycle Complete! Sending summary...~%")
+      ;; V48.5: Throttled summary on cycle completion (Every 6 hours)
+      (when (and cycle-completed (> (- (get-universal-time) *last-cycle-notify-time*) +cycle-notify-interval+))
+        (format t "[L] 🔄 KB Backtest Cycle Complete! Sending throttled summary...~%")
+        (setf *last-cycle-notify-time* (get-universal-time))
         ;; Calculate rank distribution (FORCE reload from global symbol to see survivors)
         (let* ((all swimmy.globals:*strategy-knowledge-base*)
                (s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) all))

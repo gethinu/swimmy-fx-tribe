@@ -122,7 +122,7 @@
                                   (find name swimmy.globals::*evolved-strategies* :key #'swimmy.school::strategy-name :test #'string=))))
                    (when strat
                      (setf (swimmy.school::strategy-sharpe strat) sharpe)
-                     (setf (swimmy.school::strategy-pf strat) profit-factor)
+                     (setf (swimmy.school::strategy-profit-factor strat) profit-factor)
                      (setf (swimmy.school::strategy-win-rate strat) (/ win-rate 100.0))
                      (setf (swimmy.school::strategy-trades strat) trades)
                      (cond

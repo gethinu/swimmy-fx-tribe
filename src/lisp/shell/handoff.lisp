@@ -198,4 +198,24 @@
         (format t "[SHELL] ⚠️ Failed to generate weekly summary: ~a~%" e)
         nil))))
 
+(defun send-periodic-status-report (symbol bid)
+  "V48.5: Periodic status reports Moved to Shell layer.
+   Throttled by *status-notification-interval*."
+  (let* ((now (get-universal-time))
+         (last-time (gethash symbol *last-status-notification-time* 0)))
+    (when (> (- now last-time) *status-notification-interval*)
+      (let ((tribe-dir (if (boundp '*tribe-direction*) (symbol-value '*tribe-direction*) "N/A"))
+            (tribe-con (if (and (boundp '*tribe-consensus*) (symbol-value '*tribe-consensus*)) (symbol-value '*tribe-consensus*) 0.0))
+            (swarm-con (if (and (boundp '*last-swarm-consensus*) (symbol-value '*last-swarm-consensus*)) (symbol-value '*last-swarm-consensus*) 0.0))
+            (pred (if (boundp '*last-prediction*) (symbol-value '*last-prediction*) "N/A"))
+            (conf (if (and (boundp '*last-confidence*) (symbol-value '*last-confidence*)) (symbol-value '*last-confidence*) 0.0))
+            (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
+            (active-warriors (if (boundp '*warrior-allocation*) 
+                                 (hash-table-count (symbol-value '*warrior-allocation*)) 0)))
+        (swimmy.core:notify-discord-symbol symbol 
+          (format nil "🕒 STATUS REPORT~%Price: ~,3f~%~%🧠 AI: ~a (~,1f%)~%🏛️ Tribes: ~a (~,0f%)~%🐟 Swarm: ~,0f%~%~%⚔️ Warriors: ~d~%⚠️ Danger: Lv~d"
+                  bid pred (* 100 conf) tribe-dir (* 100 tribe-con) (* 100 swarm-con) active-warriors danger)
+          :color swimmy.core:+color-status+)
+        (setf (gethash symbol *last-status-notification-time*) now)))))
+
 (format t "[SHELL] handoff.lisp loaded~%")

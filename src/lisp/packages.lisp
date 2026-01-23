@@ -206,6 +206,14 @@
    #:notify-apex            ;; V41.6: Apex webhook for system status
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
+   #:+color-recruit+
+   #:+color-alert+
+   #:+color-backtest+
+   #:+color-success+
+   #:+color-info+
+   #:+color-emergency+
+   #:+color-weekly+
+   #:+color-status+
    #:*discord-daily-webhook* ;; Fix for school-narrative.lisp
 
    

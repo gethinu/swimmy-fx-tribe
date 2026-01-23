@@ -14,6 +14,20 @@
 (defparameter *notifier-socket* nil)
 (defparameter *notifier-context* nil)
 
+;;; ==========================================
+;;; NOTIFICATION CONSTANTS (Expert Panel P2)
+;;; ==========================================
+(defconstant +color-recruit+ 9132483 "Green/Success")
+(defconstant +color-alert+   15158332 "Red/Warning")
+(defconstant +color-backtest+ 3447003 "Blue/Process")
+(defconstant +color-success+  3066993 "Bright Green")
+(defconstant +color-info+     5763719 "Gray/Info")
+(defconstant +color-emergency+ 16711680 "Critical Red")
+(defconstant +color-weekly+    10181046 "Purple/Weekly")
+(defconstant +color-status+    10070709 "Dark Gray")
+
+
+
 (defun ensure-notifier-connection ()
   "Ensure ZMQ connection to Notifier is active"
   (unless *notifier-context*
@@ -23,7 +37,7 @@
     (pzmq:connect *notifier-socket* *notifier-endpoint*)
     (format t "[DISCORD] Connected to Notifier service at ~a~%" *notifier-endpoint*)))
 
-(defun queue-discord-notification (webhook msg &key (color 3447003) (title "Swimmy Notification"))
+(defun queue-discord-notification (webhook msg &key (color +color-backtest+) (title "Swimmy Notification"))
   "Send notification to Notifier service via ZMQ"
   (when (and webhook msg (not (equal msg "NIL")))
     (ensure-notifier-connection)
@@ -63,12 +77,12 @@
 ;;; PUBLIC API (Backward Compatible)
 ;;; ==========================================
 
-(defun notify-discord (msg &key (color 3447003))
+(defun notify-discord (msg &key (color +color-backtest+))
   "Main notification"
   (when *discord-webhook-url*
     (queue-discord-notification *discord-webhook-url* msg :color color :title "🐟 Apex")))
 
-(defun notify-discord-symbol (symbol msg &key (color 3447003))
+(defun notify-discord-symbol (symbol msg &key (color +color-backtest+))
   "Symbol-specific channel (with Fallback for errors)"
   (let* ((looked-up (gethash symbol *symbol-webhooks*))
          ;; Priority: Specific -> Fallback (STOP there)
@@ -81,17 +95,17 @@
     (when webhook
       (queue-discord-notification webhook final-msg :color color :title final-title))))
 
-(defun notify-discord-alert (msg &key (color 15158332))
+(defun notify-discord-alert (msg &key (color +color-alert+))
   "Alerts channel"
   (when *alerts-webhook-url*
     (queue-discord-notification *alerts-webhook-url* msg :color color :title "🚨 ALERT")))
 
-(defun notify-discord-status (msg &key (color 3066993))
+(defun notify-discord-status (msg &key (color +color-success+))
   "Status channel"
   (when *status-webhook-url*
     (queue-discord-notification *status-webhook-url* msg :color color :title "📊 Status")))
 
-(defun notify-discord-daily (msg &key (color 3447003))
+(defun notify-discord-daily (msg &key (color +color-backtest+))
   "Daily report channel"
   (let ((webhook (or *discord-daily-webhook* *discord-webhook-url*)))
     (when webhook
@@ -101,9 +115,9 @@
   "Weekly summary channel"
   (let ((webhook (or *discord-weekly-webhook* *discord-webhook-url*)))
     (when webhook
-      (queue-discord-notification webhook msg :color 10181046 :title "📈 Weekly Summary"))))
+      (queue-discord-notification webhook msg :color +color-weekly+ :title "📈 Weekly Summary"))))
 
-(defun notify-discord-recruit (msg &key (color 3066993))
+(defun notify-discord-recruit (msg &key (color +color-success+))
   "Recruitment channel"
   (let ((webhook (or *discord-recruit-webhook* *discord-webhook-url*)))
     (when webhook
@@ -113,14 +127,14 @@
   "EMERGENCY - Now also async via Notifier (since Notifier is reliable)"
   (let ((webhook (or *discord-emergency-url* *discord-webhook-url*)))
     (when webhook
-      (queue-discord-notification webhook msg :color 15158332 :title "🚨 EMERGENCY 🚨"))))
+      (queue-discord-notification webhook msg :color +color-emergency+ :title "🚨 EMERGENCY 🚨"))))
 
-(defun notify-apex (msg &key (color 3066993))
+(defun notify-apex (msg &key (color +color-success+))
   "System status to Apex channel (Online, Recovery, Critical alerts)"
   (when *apex-webhook-url*
     (queue-discord-notification *apex-webhook-url* msg :color color :title "🐟 Apex")))
 
-(defun notify-discord-backtest (msg &key (color 3447003))
+(defun notify-discord-backtest (msg &key (color +color-backtest+))
   "Backtest results"
   (when *backtest-webhook-url*
      (queue-discord-notification *backtest-webhook-url* msg :color color :title "📊 Backtest Result")))
@@ -228,28 +242,31 @@
          (is-passed (getf data :is-passed))
          (status-emoji (if is-passed "✅" "❌"))
          (status-text (if is-passed "PASSED" "FAILED"))
-         (color (if is-passed 3066993 15158332)) ; Green if passed, Red if failed
+         (color (if is-passed +color-success+ +color-alert+)) ; Green if passed, Red if failed
          (msg (format nil "~a **CPCV Validation: ~a**~%Strategy: `~a`~%~%**Metrics:**~%• Median Sharpe: ~,2f~%• Paths: ~d~%• Result: ~d Passed / ~d Failed (~,1f%)~%~%**Outcome:** ~a"
                       status-emoji status-text name median-sharpe paths passed failed (* 100 pass-rate) status-text)))
-    (notify-discord-alert msg :color color)))
+    (notify-discord-alert msg :color color)
+    ;; V48.5: Performance Persistence (Expert Panel P3)
+    (log-cpcv-to-file data)))
 
-(defun send-periodic-status-report (symbol bid)
-  "Send a periodic status report to Discord if interval continues"
-  (let* ((now (get-universal-time))
-         (last-time (gethash symbol *last-status-notification-time* 0)))
-    (when (> (- now last-time) *status-notification-interval*)
-      (let ((tribe-dir (if (boundp '*tribe-direction*) *tribe-direction* "N/A"))
-            (tribe-con (if (and (boundp '*tribe-consensus*) *tribe-consensus*) *tribe-consensus* 0.0))
-            (swarm-con (if (and (boundp '*last-swarm-consensus*) *last-swarm-consensus*) *last-swarm-consensus* 0.0))
-            (pred (if (boundp '*last-prediction*) *last-prediction* "N/A"))
-            (conf (if (and (boundp '*last-confidence*) *last-confidence*) *last-confidence* 0.0))
-            (danger (if (boundp '*danger-level*) *danger-level* 0))
-            (active-warriors (if (boundp '*warrior-allocation*) 
-                                 (hash-table-count *warrior-allocation*) 0)))
-        (notify-discord-symbol symbol 
-          (format nil "🕒 STATUS REPORT~%Price: ~,3f~%~%🧠 AI: ~a (~,1f%)~%🏛️ Tribes: ~a (~,0f%)~%🐟 Swarm: ~,0f%~%~%⚔️ Warriors: ~d~%⚠️ Danger: Lv~d"
-                  bid pred (* 100 conf) tribe-dir (* 100 tribe-con) (* 100 swarm-con) active-warriors danger)
-          :color 10070709) ; Dark Grey for status
-        (setf (gethash symbol *last-status-notification-time*) now)))))
+(defun log-cpcv-to-file (data)
+  "Save CPCV result to a local CSV for future training/audit."
+  (let ((path "data/logs/cpcv_history.csv")
+        (header "timestamp,strategy,median_sharpe,paths,pass_rate,outcome"))
+    (ensure-directories-exist path)
+    (unless (probe-file path)
+      (with-open-file (s path :direction :output)
+        (format s "~a~%" header)))
+    (with-open-file (s path :direction :output :if-exists :append)
+      (format s "~d,~a,~,4f,~d,~,4f,~a~%"
+              (get-universal-time)
+              (or (getf data :strategy-name) "unknown")
+              (getf data :median-sharpe 0.0)
+              (getf data :path-count 0)
+              (getf data :pass-rate 0.0)
+              (if (getf data :is-passed) "PASS" "FAIL")))))
+
+
+
 
 (format t "[L] 💬 core/discord.lisp loaded - V42.0 (Phase 2 Notifier)~%")
