@@ -22,24 +22,26 @@
           (length *strategy-knowledge-base*))
 
   ;; Phase 10: Unlock the Alpha (Legacy Activation)
-  ;; Force assign :tier :battlefield to all legacy strategies (loaded from init)
-  ;; that do not have a tier assigned (nil).
-  (dolist (s *strategy-knowledge-base*)
-    (unless (strategy-tier s)
-      (setf (strategy-tier s) :battlefield)
-      ;; Also ensure generated slot is 0 if missing
-      (unless (strategy-generation s) 
-        (setf (strategy-generation s) 0)))
-    ;; V48.0: Initialize rank based on Sharpe (for Evolution Factory Report)
-    (unless (strategy-rank s)
-      (let ((sharpe (or (strategy-sharpe s) 0.0)))
-        (cond
-          ((>= sharpe 0.5) (ensure-rank s :S "Initial Load (High Sharpe)"))
-          ((>= sharpe 0.3) (ensure-rank s :A "Initial Load (Mid Sharpe)"))
-          ((>= sharpe 0.1) (ensure-rank s :B "Initial Load (Base Sharpe)"))
-          (t (ensure-rank s :graveyard "Initial Load (Low Sharpe)"))))))
-  
-  (format t "[L] 🔓 Alpha Unlocked: Strategies normalized with Ranks~%"))
+  (let ((strats *strategy-knowledge-base*))
+    (dolist (s strats)
+      (unless (strategy-tier s)
+        (setf (strategy-tier s) :battlefield)
+        (unless (strategy-generation s) (setf (strategy-generation s) 0)))
+      (unless (strategy-rank s)
+        (let ((sharpe (or (strategy-sharpe s) 0.0)))
+          (cond
+            ((>= sharpe 0.5) (setf (strategy-rank s) :S))
+            ((>= sharpe 0.3) (setf (strategy-rank s) :A))
+            ((>= sharpe 0.1) (setf (strategy-rank s) :B))
+            (t (setf (strategy-rank s) :graveyard))))))
+    
+    ;; Physically remove graveyard ones once after processing
+    (setf *strategy-knowledge-base* 
+          (remove-if (lambda (s) (eq (strategy-rank s) :graveyard)) strats))
+    
+    (format t "[L] 🔓 Alpha Unlocked: ~d strategies survivors (~d purged from memory)~%" 
+            (length *strategy-knowledge-base*)
+            (- (length strats) (length *strategy-knowledge-base*))))
 
 ;; ===== Sharpe フィルター;; Thresholds
 (defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Taleb's Rule: Block negative EV)")
@@ -57,6 +59,7 @@
 
 ;; V19.2: Round-Robin Backtest Cursor (Musk's Decision)
 (defparameter *backtest-cursor* 0 "Cursor for round-robin backtesting")
+(defparameter *cycle-start-kb-size* 0 "V48.5: KB size at the start of a BT cycle")
 (defparameter *last-cycle-notify-time* 0 "V48.5: Throttling for Cycle Complete alerts")
 (defconstant +cycle-notify-interval+ (* 6 3600) "6 Hour Alert Interval")
 
@@ -67,10 +70,15 @@
   (load-backtest-cache) 
   (setf *backtest-results-buffer* nil)
   
-  (let* ((max-batch-size 1000) ;; V48.0: Increased from 300 to 1000 (S-Expression optimization)
+  (let* ((max-batch-size 1000) 
          (total (length *strategy-knowledge-base*))
+         (old-cursor *backtest-cursor*)
          (start-idx (mod *backtest-cursor* total))
          (end-idx (min total (+ start-idx max-batch-size)))
+         (cycle-completed (and (> old-cursor 0) (< (mod (+ old-cursor max-batch-size) total) old-cursor))))
+    
+    (when (or (zerop old-cursor) (>= old-cursor total))
+      (setf *cycle-start-kb-size* total))
          (batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
          ;; Handle wrap-around if needed
          (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
@@ -99,7 +107,19 @@
           (when (and snapshot (> (length snapshot) 100))
             (let ((cached (get-cached-backtest (strategy-name strat))))
               (if cached
-                  (incf cached-count)
+                  (progn
+                    (incf cached-count)
+                    ;; V48.5: Apply cached metrics to strategy and prune if weak
+                    (let ((sharpe (float (getf cached :sharpe 0.0)))
+                          (pf (float (getf cached :profit-factor 0.0)))
+                          (wr (float (getf cached :win-rate 0.0)))
+                          (trades (getf cached :trades 0)))
+                      (setf (strategy-sharpe strat) sharpe
+                            (strategy-profit-factor strat) pf
+                            (strategy-win-rate strat) wr
+                            (strategy-trades strat) trades)
+                      (when (< sharpe 0.1)
+                        (prune-to-graveyard strat "Cached Sharpe < 0.1"))))
                   (progn 
                     (incf requested-count)
                     (request-backtest strat :candles snapshot :symbol sym)))))))
@@ -130,7 +150,7 @@
           (notify-discord-alert
             (format nil "📊 **Phase 1 BT Cycle Complete**~%⏰ ~a JST~%~%**Rank Distribution (Survivors):**~%🏆 S-Rank: ~d~%🎯 A-Rank: ~d~%📋 B-Rank: ~d~%⚰️ Waiting Deletion: ~d~%~%**KB (Physical Deletion):** ~d → ~d (~@d)"
                     jst-time s-count a-count b-count grave-newly-found 
-                    total kb-after (- kb-after total))
+                    *cycle-start-kb-size* kb-after (- kb-after *cycle-start-kb-size*))
             :color 5763719))))))
 
 (defun adopt-proven-strategies ()

@@ -440,13 +440,19 @@
         (save-failure-pattern strat reason)
       (error (e)
         (format t "[PRUNER] ⚠️ Pattern save failed: ~a~%" e)))
-    ;; 2. atomic removal from KB and pools
+    ;; 2. Atomic removal from KB and pools
     (bt:with-lock-held (*kb-lock*)
       (let ((cat (categorize-strategy strat)))
         (setf (gethash cat *category-pools*) 
               (remove name (gethash cat *category-pools*) :key #'strategy-name :test #'string=)))
       (setf *strategy-knowledge-base* 
             (remove name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+
+    ;; 3. File System Persistence: Move to Graveyard
+    (handler-case
+        (swimmy.persistence:move-strategy strat :graveyard)
+      (error (e)
+        (format t "[PRUNER] ⚠️ File move failed: ~a~%" e)))
     
     (format t "[PRUNER] 🗑️ DELETED: ~a (~a) | Reason: ~a~%" name old-tier reason)))
 

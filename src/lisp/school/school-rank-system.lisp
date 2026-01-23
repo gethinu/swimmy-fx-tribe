@@ -150,6 +150,13 @@
         (let ((cat (categorize-strategy strategy)))
           (setf (gethash cat *category-pools*)
                 (remove strategy (gethash cat *category-pools*) :test #'eq)))
+        
+        ;; P13: Synchronize with File System
+        (handler-case
+            (swimmy.persistence:move-strategy strategy :graveyard)
+          (error (e)
+            (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
+        
         (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%")))
     new-rank))
 

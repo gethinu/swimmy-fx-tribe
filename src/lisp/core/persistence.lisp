@@ -63,7 +63,7 @@
   "Load all strategies from the library"
   (let ((strategies nil)
         (count 0))
-    (dolist (tier '("GRAVEYARD" "INCUBATOR" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND"))
+    (dolist (tier '("INCUBATOR" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND"))
       (let ((wildcard (merge-pathnames (format nil "~a/*.lisp" tier) *library-path*)))
         (dolist (file (directory wildcard))
           (handler-case
