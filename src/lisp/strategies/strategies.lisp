@@ -41,7 +41,7 @@
     
     (format t "[L] 🔓 Alpha Unlocked: ~d strategies survivors (~d purged from memory)~%" 
             (length *strategy-knowledge-base*)
-            (- (length strats) (length *strategy-knowledge-base*))))
+            (- (length strats) (length *strategy-knowledge-base*)))))
 
 ;; ===== Sharpe フィルター;; Thresholds
 (defparameter *min-sharpe-threshold* 0.0 "Minimum Sharpe to be adopted/kept (Taleb's Rule: Block negative EV)")
@@ -74,84 +74,82 @@
          (total (length *strategy-knowledge-base*))
          (old-cursor *backtest-cursor*)
          (start-idx (mod *backtest-cursor* total))
-         (end-idx (min total (+ start-idx max-batch-size)))
-         (cycle-completed (and (> old-cursor 0) (< (mod (+ old-cursor max-batch-size) total) old-cursor))))
+         (end-idx (min total (+ start-idx max-batch-size))))
     
     (when (or (zerop old-cursor) (>= old-cursor total))
       (setf *cycle-start-kb-size* total))
-         (batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
-         ;; Handle wrap-around if needed
-         (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
-                              (subseq *strategy-knowledge-base* 0 (min total (- max-batch-size (- end-idx start-idx))))
-                              nil))
-         (final-batch (append batch-strategies wrap-strategies))
-         (cached-count 0)
-         (requested-count 0)
-         (old-cursor *backtest-cursor*))
     
-    ;; Update cursor for next time
-    (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
-    
-    ;; V48.0: Detect cycle completion (cursor wrapped around)
-    (let ((cycle-completed (and (> old-cursor 0) (< *backtest-cursor* old-cursor))))
+    (let* ((batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
+           ;; Handle wrap-around if needed
+           (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
+                                (subseq *strategy-knowledge-base* 0 (min total (- max-batch-size (- end-idx start-idx))))
+                                nil))
+           (final-batch (append batch-strategies wrap-strategies))
+           (cached-count 0)
+           (requested-count 0))
+      
+      ;; Update cursor for next time
+      (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
+      
+      ;; V48.0: Detect cycle completion (cursor wrapped around)
+      (let ((cycle-completed (and (> old-cursor 0) (< *backtest-cursor* old-cursor))))
+        (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
+                (length final-batch) start-idx *backtest-cursor*)
         
-      (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
-              (length final-batch) start-idx *backtest-cursor*)
-      
-      ;; V48.0: Use strategy's native symbol for candle data
-      (dolist (strat final-batch)
-        (let* ((sym (or (strategy-symbol strat) "USDJPY"))
-               (snapshot (or (gethash sym *candle-histories*)
-                            *candle-history*
-                            (gethash "USDJPY" *candle-histories*))))
-          (when (and snapshot (> (length snapshot) 100))
-            (let ((cached (get-cached-backtest (strategy-name strat))))
-              (if cached
-                  (progn
-                    (incf cached-count)
-                    ;; V48.5: Apply cached metrics to strategy and prune if weak
-                    (let ((sharpe (float (getf cached :sharpe 0.0)))
-                          (pf (float (getf cached :profit-factor 0.0)))
-                          (wr (float (getf cached :win-rate 0.0)))
-                          (trades (getf cached :trades 0)))
-                      (setf (strategy-sharpe strat) sharpe
-                            (strategy-profit-factor strat) pf
-                            (strategy-win-rate strat) wr
-                            (strategy-trades strat) trades)
-                      (when (< sharpe 0.1)
-                        (prune-to-graveyard strat "Cached Sharpe < 0.1"))))
-                  (progn 
-                    (incf requested-count)
-                    (request-backtest strat :candles snapshot :symbol sym)))))))
-                  
-      (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
-              cached-count requested-count *backtest-cursor*)
-      
-      ;; Notify Discord only if actual requests were made
-      (when (> requested-count 0)
-        (notify-discord-alert 
-          (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a" 
-                  requested-count total *backtest-cursor* total
-                  (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
-          :color 3066993))
-      
-      ;; V48.5: Throttled summary on cycle completion (Every 6 hours)
-      (when (and cycle-completed (> (- (get-universal-time) *last-cycle-notify-time*) +cycle-notify-interval+))
-        (format t "[L] 🔄 KB Backtest Cycle Complete! Sending throttled summary...~%")
-        (setf *last-cycle-notify-time* (get-universal-time))
-        ;; Calculate rank distribution (FORCE reload from global symbol to see survivors)
-        (let* ((all swimmy.globals:*strategy-knowledge-base*)
-               (s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
-               (a-count (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
-               (b-count (count-if (lambda (s) (eq (strategy-rank s) :B)) all))
-               (grave-newly-found (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
-               (kb-after (length all))
-               (jst-time (swimmy.shell:get-jst-time-string)))
-          (notify-discord-alert
-            (format nil "📊 **Phase 1 BT Cycle Complete**~%⏰ ~a JST~%~%**Rank Distribution (Survivors):**~%🏆 S-Rank: ~d~%🎯 A-Rank: ~d~%📋 B-Rank: ~d~%⚰️ Waiting Deletion: ~d~%~%**KB (Physical Deletion):** ~d → ~d (~@d)"
-                    jst-time s-count a-count b-count grave-newly-found 
-                    *cycle-start-kb-size* kb-after (- kb-after *cycle-start-kb-size*))
-            :color 5763719))))))
+        ;; V48.0: Use strategy's native symbol for candle data
+        (dolist (strat final-batch)
+          (let* ((sym (or (strategy-symbol strat) "USDJPY"))
+                 (snapshot (or (gethash sym *candle-histories*)
+                              *candle-history*
+                              (gethash "USDJPY" *candle-histories*))))
+            (when (and snapshot (> (length snapshot) 100))
+              (let ((cached (get-cached-backtest (strategy-name strat))))
+                (if cached
+                    (progn
+                      (incf cached-count)
+                      ;; V48.5: Apply cached metrics to strategy and prune if weak
+                      (let ((sharpe (float (getf cached :sharpe 0.0)))
+                            (pf (float (getf cached :profit-factor 0.0)))
+                            (wr (float (getf cached :win-rate 0.0)))
+                            (trades (getf cached :trades 0)))
+                        (setf (strategy-sharpe strat) sharpe
+                              (strategy-profit-factor strat) pf
+                              (strategy-win-rate strat) wr
+                              (strategy-trades strat) trades)
+                        (when (< sharpe 0.1)
+                          (prune-to-graveyard strat "Cached Sharpe < 0.1"))))
+                    (progn 
+                      (incf requested-count)
+                      (request-backtest strat :candles snapshot :symbol sym)))))))
+                    
+        (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
+                cached-count requested-count *backtest-cursor*)
+        
+        ;; Notify Discord only if actual requests were made
+        (when (> requested-count 0)
+          (notify-discord-alert 
+            (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a" 
+                    requested-count total *backtest-cursor* total
+                    (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
+            :color 3066993))
+        
+        ;; V48.5: Throttled summary on cycle completion (Every 6 hours)
+        (when (and cycle-completed (> (- (get-universal-time) *last-cycle-notify-time*) +cycle-notify-interval+))
+          (format t "[L] 🔄 KB Backtest Cycle Complete! Sending throttled summary...~%")
+          (setf *last-cycle-notify-time* (get-universal-time))
+          ;; Calculate rank distribution (FORCE reload from global symbol to see survivors)
+          (let* ((all swimmy.globals:*strategy-knowledge-base*)
+                 (s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
+                 (a-count (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
+                 (b-count (count-if (lambda (s) (eq (strategy-rank s) :B)) all))
+                 (grave-newly-found (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
+                 (kb-after (length all))
+                 (jst-time (swimmy.shell:get-jst-time-string)))
+            (notify-discord-alert
+              (format nil "📊 **Phase 1 BT Cycle Complete**~%⏰ ~a JST~%~%**Rank Distribution (Survivors):**~%🏆 S-Rank: ~d~%🎯 A-Rank: ~d~%📋 B-Rank: ~d~%⚰️ Waiting Deletion: ~d~%~%**KB (Physical Deletion):** ~d → ~d (~@d)"
+                      jst-time s-count a-count b-count grave-newly-found 
+                      *cycle-start-kb-size* kb-after (- kb-after *cycle-start-kb-size*))
+              :color 5763719)))))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

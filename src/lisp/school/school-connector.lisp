@@ -38,9 +38,13 @@
     (run-qualification-cycle)))
 
 (defun phase-4-purge ()
-  "Run The Selector (Native Lisp Battle Royale)"
-  (format t "[CONNECTOR] [Phase 4] The Proving Grounds (Native)...~%")
-  (execute-proving-grounds))
+  "Run The Selector (Native Lisp Battle Royale)
+   V49.0: Switch to Rank System (run-rank-evaluation).
+   Legacy 'execute-proving-grounds' replaced."
+  (format t "[CONNECTOR] [Phase 4] The Proving Grounds (Rank System V49)...~%")
+  ;; V49.0: Fix A-Rank 0 issue by running the correct evaluation logic
+  (when (fboundp 'run-rank-evaluation)
+    (run-rank-evaluation)))
 
 ;; P8: phase-5-recruit (Scout) DELETED
 
@@ -48,7 +52,10 @@
   "Evolution (Breeding & Selection)"
   (format t "~%[CONNECTOR] [Phase 6] Evolution (Native Breeding)...~%")
   ;; V24: Directly call the native breeder
-  (run-breeding-cycle))
+  (run-breeding-cycle)
+  ;; V48.7: Integrate Legend Breeding (Owner's Request)
+  (when (fboundp 'run-legend-breeding)
+    (run-legend-breeding)))
 
 (defun phase-3-5-cpcv-validate ()
   "V48.0: CPCV Validation Phase - Promote A-RANK → S-RANK via CPCV"

@@ -55,8 +55,9 @@
          (tf (strategy-timeframe parent1))
          (dir (or (strategy-direction parent1) :BOTH))
          (sym (or (strategy-symbol parent1) "USDJPY"))
-         (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.1))
-         (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.1))
+         ;; V49.0: Aggressive Mutation (0.1 -> 0.3)
+         (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.3))
+         (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.3))
          (child-is (crossover-indicators parent1 parent2))
          ;; V47.5: Get avoid regions from graveyard analysis
          (avoid-regions (when (fboundp 'analyze-graveyard-for-avoidance)
@@ -101,36 +102,43 @@
 
 
 
-(defun run-breeding-cycle ()
   "Breed top strategies from ALL tiers, prioritizing higher generations.
    V45.0: Fixed to allow multi-generational evolution (Gen45+ possible).
    V47.0: Added breeding count limits (3 uses) and parent/child competition.
-   P8: Now uses add-to-kb as single entry point."
-  (format t "[BREEDER] 🧬 Starting Breeding Cycle (V47.0 with Limits)...~%")
+   V49.0: EVOLUTION INTENSIFICATION (Expert Panel).
+   - Max pairs increased: 5 -> 20
+   - Mutation rate increased: 10% -> 30%"
+  (format t "[BREEDER] 🧬 Starting Breeding Cycle (V49.0 INTENSIFIED)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
-        (tiers '(:battlefield :training :selection :incubator)))
+        (tiers '(:battlefield :training :selection :incubator))
+        (max-pairs-per-category 20)) ;; EXPLOSION: 4x throughput
     (dolist (cat categories)
       (let* ((all-warriors (loop for tier in tiers
                                  append (get-strategies-by-tier tier cat)))
+             ;; V48.7: Rank-aware and raw Sharpe priority. 
+             ;; Reduced generation bonus from 0.1 to 0.01 to avoid "recent junk" bias.
              (sorted (sort (copy-list all-warriors) #'> 
-                          :key (lambda (s) 
-                                 (+ (* (or (strategy-generation s) 0) 0.1)
-                                    (or (strategy-sharpe s) 0))))))
-        (when (>= (length sorted) 2)
-          (let ((p1 (first sorted))
-                (p2 (second sorted)))
-            (when (and (can-breed-p p1) (can-breed-p p2))
-              (format t "[BREEDER] 💕 Breeding Gen~d ~a + Gen~d ~a~%"
-                      (or (strategy-generation p1) 0) (strategy-name p1)
-                      (or (strategy-generation p2) 0) (strategy-name p2))
-              (let ((child (breed-strategies p1 p2)))
-                (increment-breeding-count p1)
-                (increment-breeding-count p2)
-                ;; P8: Use add-to-kb as single entry point
-                (when (add-to-kb child :breeder :require-bt nil :notify nil)
-                  (save-recruit-to-lisp child)
-                  (format t "[BREEDER] 👶 Born: ~a (Gen~d, Tier: Incubator)~%"
-                          (strategy-name child) (strategy-generation child)))))))))))
+                           :key (lambda (s) 
+                                  (+ (case (strategy-rank s) (:legend 3.0) (:S 2.0) (:A 1.0) (t 0.0))
+                                     (or (strategy-sharpe s) 0)
+                                     (* (or (strategy-generation s) 0) 0.01))))))
+        
+        (loop for i from 0 below (* 2 max-pairs-per-category) by 2
+              while (< (1+ i) (length sorted))
+              for p1 = (nth i sorted)
+              for p2 = (nth (1+ i) sorted)
+              do (when (and (can-breed-p p1) (can-breed-p p2))
+                   (format t "[BREEDER] 💕 Breeding Pair ~d (~a): Gen~d ~a (S=~,2f) + Gen~d ~a (S=~,2f)~%"
+                           (1+ (/ i 2)) cat
+                           (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
+                           (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
+                   (let ((child (breed-strategies p1 p2)))
+                     (increment-breeding-count p1)
+                     (increment-breeding-count p2)
+                     (when (add-to-kb child :breeder :require-bt nil :notify nil)
+                       (save-recruit-to-lisp child)
+                       (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
+                               (strategy-name child) (strategy-generation child)))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation

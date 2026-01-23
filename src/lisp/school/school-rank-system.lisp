@@ -279,7 +279,13 @@
     (dolist (tf timeframes)
       (dolist (dir *supported-directions*)
         (dolist (sym *supported-symbols*)
-          (run-b-rank-culling-for-category tf dir sym))))))
+          (run-b-rank-culling-for-category tf dir sym))))
+    
+    ;; V48.7: Meritocratic Promotion (A-Rank)
+    ;; Any B-Rank strategy with Sharpe >= 0.3 should be promoted even if culling not triggered
+    (dolist (s (get-strategies-by-rank :B))
+      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) 0.3))
+        (promote-rank s :A (format nil "Meritocratic Promotion (S=~,2f)" (strategy-sharpe s)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; A-RANK EVALUATION (CPCV Validation → S-RANK or back to B)

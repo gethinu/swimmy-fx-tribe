@@ -59,8 +59,12 @@
     (dolist (l legends)
       ;; Add to KB if not exists
       (unless (find (strategy-name l) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+        ;; V48.7: Set explicit legend rank and battlefield tier
+        (setf (strategy-rank l) :legend)
+        (setf (strategy-tier l) :battlefield)
         (push l *strategy-knowledge-base*)
-        (format t "[LEGENDS] 🆕 Summoned: ~a~%" (strategy-name l))))
+        (format t "[LEGENDS] 🆕 Summoned: ~a (Rank=~a, Tier=~a)~%" 
+                (strategy-name l) (strategy-rank l) (strategy-tier l))))
     ;; Force save
     (when (fboundp 'save-knowledge-base)
       (save-knowledge-base))

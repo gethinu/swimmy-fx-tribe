@@ -15,8 +15,8 @@
 ;;; CONFIGURATION
 ;;; ============================================================================
 
-(defparameter *prune-sharpe-threshold* 0.08
-  "Strategies with Sharpe below this are candidates for removal (Graham: closer to B-RANK 0.1)")
+(defparameter *prune-sharpe-threshold* 0.20
+  "V48.8: Increased from 0.08 to 0.20 per Expert Panel (Operation Black Death)")
 
 (defparameter *prune-inactive-days* 90
   "Days of inactivity before a strategy is considered dormant")
@@ -27,13 +27,16 @@
 (defparameter *prune-protected-ranks* '(:S :legend)
   "Ranks that are protected from pruning")
 
+(defparameter *kb-hard-cap* 10000
+  "V48.8: Maximum allowed KB size to prevent 'Noise Sea' explosion")
+
 ;;; ============================================================================
 ;;; LOW SHARPE PRUNING
 ;;; ============================================================================
 
 (defun prune-low-sharpe-strategies ()
-  "Remove strategies with Sharpe ratio below threshold.
-   Returns count of removed strategies."
+  "Remove strategies with Sharpe ratio below threshold and move to physical Grave.
+   V48.8: Now physically moves files via swimmy.persistence:move-strategy."
   (let* ((before-count (length *strategy-knowledge-base*))
          (removed 0))
     (setf *strategy-knowledge-base*
@@ -43,12 +46,14 @@
                    (rank (strategy-rank strat)))
                (when (and (< sharpe *prune-sharpe-threshold*)
                           (not (member rank *prune-protected-ranks*)))
-                 (format t "[PRUNE] 🗑️ Low Sharpe: ~a (Sharpe=~,3f)~%"
+                 (format t "[PRUNE] 🗑️ Low Sharpe: ~a (Sharpe=~,3f) → GRAVEYARD~%"
                          (strategy-name strat) sharpe)
+                 ;; V48.8: Use send-to-graveyard to save patterns and update memory
+                 (send-to-graveyard strat "Operation Black Death (Low Sharpe)")
                  (incf removed)
                  t)))
            *strategy-knowledge-base*))
-    (format t "[PRUNE] ✅ Removed ~d low-Sharpe strategies (KB: ~d → ~d)~%"
+    (format t "[PRUNE] ✅ Purged ~d low-Sharpe strategies (KB: ~d → ~d)~%"
             removed before-count (length *strategy-knowledge-base*))
     removed))
 
@@ -122,7 +127,7 @@
 
 (defun prune-similar-strategies ()
   "Remove duplicate/near-identical strategies, keeping higher Sharpe.
-   Returns count of removed strategies."
+   V48.8: Now physically moves files via swimmy.persistence:move-strategy."
   (let* ((before-count (length *strategy-knowledge-base*))
          (strategies (copy-list *strategy-knowledge-base*))
          (to-remove nil)
@@ -144,16 +149,37 @@
                                                   *prune-protected-ranks*)))
                             (push strat2 to-remove)
                             (incf removed)
-                            (format t "[PRUNE] 👯 Similar: ~a ≈ ~a~%"
+                            (format t "[PRUNE] 👯 Similar: ~a ≈ ~a → GRAVEYARD~%"
                                     (strategy-name strat2) 
-                                    (strategy-name strat1)))))))
-    ;; Remove similar strategies
+                                    (strategy-name strat1))
+                            ;; V48.8: Use send-to-graveyard to save patterns and update memory
+                            (send-to-graveyard strat2 "Operation Black Death (Similarity)"))))))
+    ;; Remove similar strategies from memory
     (setf *strategy-knowledge-base*
           (remove-if (lambda (s) (member s to-remove :test #'eq))
                      *strategy-knowledge-base*))
-    (format t "[PRUNE] ✅ Removed ~d similar strategies (KB: ~d → ~d)~%"
+    (format t "[PRUNE] ✅ Purged ~d similar strategies (KB: ~d → ~d)~%"
             removed before-count (length *strategy-knowledge-base*))
     removed))
+
+(defun enforce-kb-hard-cap ()
+  "V48.8: Ensure KB size does not exceed *kb-hard-cap*.
+   Removes lowest Sharpe strategies first."
+  (let ((current-size (length *strategy-knowledge-base*)))
+    (when (> current-size *kb-hard-cap*)
+      (let* ((excess (- current-size *kb-hard-cap*))
+             ;; Sort by Sharpe ascending (worst first)
+             (sorted (sort (copy-list *strategy-knowledge-base*) #'<
+                           :key (lambda (s) (or (strategy-sharpe s) 0.0))))
+             (to-purge (subseq (remove-if (lambda (s) (member (strategy-rank s) *prune-protected-ranks*))
+                                          sorted)
+                               0 (min excess current-size))))
+        (format t "[PRUNE] 🚨 KB Over Limit (~d > ~d). Purging ~d laggards...~%"
+                current-size *kb-hard-cap* (length to-purge))
+        (dolist (strat to-purge)
+          (send-to-graveyard strat "Operation Black Death (KB Hard Cap)"))
+        (format t "[PRUNE] ✅ KB Downsized to ~d strategies.~%" (length *strategy-knowledge-base*))
+        (length to-purge)))))
 
 ;;; ============================================================================
 ;;; MAIN PRUNING FUNCTION
@@ -184,6 +210,10 @@
         ;; Phase 3: Similar
         (format t "~%📊 Phase 3: Similar Strategy Pruning~%")
         (incf total-removed (prune-similar-strategies))
+        
+        ;; Phase 4: Hard Cap Enforcing (V48.8)
+        (format t "~%📊 Phase 4: KB Hard Cap Enforcement~%")
+        (incf total-removed (or (enforce-kb-hard-cap) 0))
         
         ;; Summary
         (format t "~%╔═══════════════════════════════════════════════════════╗~%")

@@ -140,12 +140,17 @@
            (min-bf-trades (get-min-trades-for-tier :battlefield tf))
            (min-tr-trades (get-min-trades-for-tier :training tf)))
       
-      (cond 
-        ;; 1. Battlefield: Sharpe >= 0.5 AND trades >= TF-aware threshold
-        ((and (>= sharpe 0.5) (>= trades min-bf-trades))
-         (unless (equal tier :battlefield)
-           (promote strat :battlefield 
-                    (format nil "S=~,2f T=~d/~d (TF:~a)" sharpe trades min-bf-trades tf))))
+      ;; V48.7: Legend Exemption (Owner's Vision)
+      ;; Legends must remain in Battlefield to preserve elite genetics
+      (if (eq (strategy-rank strat) :legend)
+          (unless (eq (strategy-tier strat) :battlefield)
+            (setf (strategy-tier strat) :battlefield))
+          (cond 
+            ;; 1. Battlefield: Sharpe >= 0.5 AND trades >= TF-aware threshold
+            ((and (>= sharpe 0.5) (>= trades min-bf-trades))
+             (unless (equal tier :battlefield)
+               (promote strat :battlefield 
+                        (format nil "S=~,2f T=~d/~d (TF:~a)" sharpe trades min-bf-trades tf))))
         
         ;; 2. Training: Sharpe >= 0.3 AND trades >= TF-aware threshold
         ((and (>= sharpe 0.3) (>= trades min-tr-trades))
@@ -165,7 +170,7 @@
         ;; 4. Fail -> Incubator
         (t
          (unless (member tier '(:incubator :graveyard))
-           (demote strat :incubator "Sharpe < 0.1")))))))
+           (demote strat :incubator "Sharpe < 0.1"))))))))
 
 (defun execute-proving-grounds ()
   "Main entry point. Runs Meritocratic Selection."

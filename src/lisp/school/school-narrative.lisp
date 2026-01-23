@@ -158,13 +158,23 @@
          (s-rank (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
          (a-rank (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
          (b-rank (count-if (lambda (s) (eq (strategy-rank s) :B)) all)) ; Selection
-         (graveyard (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
+         (graveyard (length (directory (merge-pathnames "GRAVEYARD/*.lisp" swimmy.persistence:*library-path*))))
          ;; New Recruits (24h) - using new creation-time slot (P13)
          (one-day-ago (- (get-universal-time) 86400))
          (new-recruits (count-if (lambda (s) 
                                    (and (strategy-creation-time s)
                                         (> (strategy-creation-time s) one-day-ago))) 
-                                 all)))
+                                 all))
+         ;; V49.0: Top Strategies Snippet (Expert Panel: Visibility)
+         (top-snippet 
+          (let ((sorted (sort (copy-list all) #'> :key (lambda (s) (or (strategy-sharpe s) -1.0)))))
+            (with-output-to-string (s)
+              (format s "~%🌟 **Top Candidates:**~%")
+              (dolist (st (subseq sorted 0 (min (length sorted) 5)))
+                (format s "- `~a` (S=~,2f, ~a)~%" 
+                        (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                        (or (strategy-sharpe st) 0.0) 
+                        (strategy-rank st)))))))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -188,6 +198,8 @@ Current status of the autonomous strategy generation pipeline.
 👻 Graveyard
 ~d
 
+~a
+
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
@@ -198,6 +210,7 @@ Current status of the autonomous strategy generation pipeline.
             b-rank
             new-recruits
             graveyard
+            top-snippet
             (format-timestamp (get-universal-time)))))
 
 (defun notify-evolution-report ()

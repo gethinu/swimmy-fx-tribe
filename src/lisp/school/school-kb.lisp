@@ -18,6 +18,50 @@
 ;; *kb-lock* moved to school-state.lisp for early initialization
 
 ;;; ============================================================================
+;;; GRAVEYARD AVOIDANCE (Taleb)
+;;; ============================================================================
+
+(defvar *graveyard-cache* nil)
+(defvar *last-graveyard-load* 0)
+
+(defun load-graveyard-cache ()
+  "Load failure patterns from graveyard.sexp (Cached 5 min)."
+  (let ((path "data/memory/graveyard.sexp")
+        (now (get-universal-time)))
+    (if (and *graveyard-cache* (< (- now *last-graveyard-load*) 300))
+        *graveyard-cache*
+        (progn
+          (setf *last-graveyard-load* now)
+          (setf *graveyard-cache* 
+                (if (probe-file path)
+                    (with-open-file (stream path :direction :input :if-does-not-exist nil)
+                      (loop for pattern = (read stream nil nil)
+                            while pattern collect pattern))
+                    nil))))))
+
+(defun is-graveyard-pattern-p (strategy)
+  "Check if strategy matches a known failure pattern."
+  (let ((patterns (load-graveyard-cache))
+        (s-sl (strategy-sl strategy))
+        (s-tp (strategy-tp strategy))
+        (s-sym (or (strategy-symbol strategy) "USDJPY")))
+    (block match-loop
+      (dolist (p patterns)
+        (let ((g-sl (getf p :sl))
+              (g-tp (getf p :tp))
+              (g-sym (getf p :symbol)))
+          ;; Match Criteria:
+          ;; 1. Same Symbol
+          ;; 2. SL and TP within 5% tolerance
+          (when (and (string= s-sym g-sym)
+                     (numberp g-sl) (numberp s-sl)
+                     (numberp g-tp) (numberp s-tp)
+                     (< (abs (- s-sl g-sl)) (* 0.05 g-sl))
+                     (< (abs (- s-tp g-tp)) (* 0.05 g-tp)))
+            (return-from match-loop t))))
+      nil)))
+
+;;; ============================================================================
 ;;; SINGLE ENTRY POINT
 ;;; ============================================================================
 
@@ -27,6 +71,8 @@
    P8 Expert Panel Conditions:
    - Graham: Breeder生成物は必ずBT通過
    - López de Prado: Founderも最低限BT検証
+   
+   V49.0 Expert Panel: Graveyard Check (Taleb)
    
    Arguments:
      STRATEGY - Strategy struct to add
@@ -47,6 +93,11 @@
       ;; 1. Duplicate Check
       (when (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         (format t "[KB] ⚠️ Duplicate: ~a already exists~%" name)
+        (return-from add-to-kb nil))
+        
+      ;; 1.5 Graveyard Check (V49.0 Taleb)
+      (when (is-graveyard-pattern-p strategy)
+        (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
         (return-from add-to-kb nil))
       
       ;; 2. BT Validation (B-RANK gate: Sharpe >= 0.1)

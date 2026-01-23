@@ -295,12 +295,25 @@
                             :color (if (> pnl 0) 3066993 15158332)))))))
    *warrior-allocation*))
 
+
+(defun s-rank-gate-passed-p ()
+  "V49.0: Musk's Iron Gate. Require 5+ S-Rank strategies for Demo Trading."
+  (let ((s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) *strategy-knowledge-base*)))
+    (if (>= s-count 5)
+        t
+        (progn
+          ;; Throttled logging (every 5 mins)
+          (when (= (mod (get-universal-time) 300) 0)
+             (format t "[GATE] 🛑 Demo Trading Blocked: Only ~d/5 S-Rank strategies ready.~%" s-count))
+          nil))))
+
 (defun process-category-trades (symbol bid ask)
   ;; V19: Periodic stale allocation cleanup
   (cleanup-stale-allocations)
   ;; V45: Use per-symbol history for regime detection (Fix: Opus 2026-01-20)
   (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))
-    (when (and (trading-allowed-p) history (> (length history) 100))
+    ;; V49.0: Added S-Rank Gate (Musk)
+    (when (and (trading-allowed-p) (s-rank-gate-passed-p) history (> (length history) 100))
       (close-category-positions symbol bid ask)
       (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
       (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
