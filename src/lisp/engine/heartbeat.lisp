@@ -108,6 +108,8 @@ MT5: ~a (~d秒前)
   (when *heartbeat-enabled*
     (let ((elapsed (- (get-universal-time) *last-heartbeat-sent*)))
       (when (>= elapsed *heartbeat-interval*)
+        ;; Claim execution first (prevents race condition)
+        (setf *last-heartbeat-sent* (get-universal-time))
         (send-discord-heartbeat)))))
 
 ;;; ==========================================

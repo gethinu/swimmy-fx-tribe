@@ -346,9 +346,9 @@
         
         (cond
           ;; 1. Critical Shortage (Exploration needed)
-          ;; V9.6: Taleb's Risk filter - Don't fill quotas if performance is catastrophic
-          ((> shortage 0.05)
-           (if (> avg-sharpe -0.5)
+          ;; V49.6: Aggressive Hunting (shortage threshold lowered from 0.05 to 0.01)
+          ((> shortage 0.01)
+           (if (> avg-sharpe -0.8) ;; Relaxed from -0.5 to -0.8 to allow recovery hunting
                (progn
                  (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" clan)
                  (trigger-autohunt clan :shortage))

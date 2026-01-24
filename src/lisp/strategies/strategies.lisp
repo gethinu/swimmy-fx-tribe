@@ -68,7 +68,8 @@
   "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
    Backtests each strategy using its native symbol's candle data."
   (load-backtest-cache) 
-  (setf *backtest-results-buffer* nil)
+  (setf swimmy.globals:*rr-backtest-results-buffer* nil)
+  (setf swimmy.globals:*rr-backtest-start-time* (get-universal-time))
   
   (let* ((max-batch-size 1000) 
          (total (length *strategy-knowledge-base*))
@@ -78,6 +79,8 @@
     
     (when (or (zerop old-cursor) (>= old-cursor total))
       (setf *cycle-start-kb-size* total))
+    
+    (setf swimmy.globals:*rr-expected-backtest-count* (length (append batch-strategies wrap-strategies)))
     
     (let* ((batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
            ;; Handle wrap-around if needed
@@ -118,9 +121,7 @@
                               (strategy-trades strat) trades)
                         (when (< sharpe 0.1)
                           (prune-to-graveyard strat "Cached Sharpe < 0.1"))))
-                    (progn 
-                      (incf requested-count)
-                      (request-backtest strat :candles snapshot :symbol sym)))))))
+                      (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))))))
                     
         (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
                 cached-count requested-count *backtest-cursor*)
@@ -134,22 +135,11 @@
             :color 3066993))
         
         ;; V48.5: Throttled summary on cycle completion (Every 6 hours)
-        (when (and cycle-completed (> (- (get-universal-time) *last-cycle-notify-time*) +cycle-notify-interval+))
+        ;; V49.5: Decoupled and Triggered at 90% (expert Panel)
+        (when cycle-completed
           (format t "[L] 🔄 KB Backtest Cycle Complete! Sending throttled summary...~%")
           (setf *last-cycle-notify-time* (get-universal-time))
-          ;; Calculate rank distribution (FORCE reload from global symbol to see survivors)
-          (let* ((all swimmy.globals:*strategy-knowledge-base*)
-                 (s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
-                 (a-count (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
-                 (b-count (count-if (lambda (s) (eq (strategy-rank s) :B)) all))
-                 (grave-newly-found (count-if (lambda (s) (eq (strategy-rank s) :graveyard)) all))
-                 (kb-after (length all))
-                 (jst-time (swimmy.shell:get-jst-time-string)))
-            (notify-discord-alert
-              (format nil "📊 **Phase 1 BT Cycle Complete**~%⏰ ~a JST~%~%**Rank Distribution (Survivors):**~%🏆 S-Rank: ~d~%🎯 A-Rank: ~d~%📋 B-Rank: ~d~%⚰️ Waiting Deletion: ~d~%~%**KB (Physical Deletion):** ~d → ~d (~@d)"
-                      jst-time s-count a-count b-count grave-newly-found 
-                      *cycle-start-kb-size* kb-after (- kb-after *cycle-start-kb-size*))
-              :color 5763719)))))))
+          (notify-backtest-summary :rr)))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

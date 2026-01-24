@@ -43,6 +43,13 @@
       (t (mapcar (lambda (e) (transform-cross-calls-helper e pkg)) expr)))))
 
 (defun evaluate-strategy-signal (strat history)
+  "Evaluate strategy signal. V49.5: Support for Swarm Ensemble voting."
+  (when (and (fboundp 'swarm-strategy-p) (swarm-strategy-p strat))
+    (multiple-value-bind (sig strength) (convene-swarm-voting strat history)
+      (declare (ignore strength))
+      (return-from evaluate-strategy-signal 
+        (case sig (1 :buy) (-1 :sell) (t :hold)))))
+  
   (unless (is-safe-trading-time-p (strategy-name strat))
     (return-from evaluate-strategy-signal :hold))
   (when (and history (> (length history) 100))

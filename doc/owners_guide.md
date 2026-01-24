@@ -1,7 +1,19 @@
-# 🐟 Swimmy Owner's Guide (V49.0)
+# 🐟 Swimmy Owner's Guide (V49.5)
 
-**最終版:** 2026-01-22 (V48.2 - Expert Panel Phase 8)
-**リーダー判断:** Elon Musk (Expert Panel Verified)
+**最終版:** 2026-01-24 (V49.5 - Project Haystack)
+**リーダー判断:** Elon Musk (Simons Integration)
+
+---
+
+## 🆕 V49.5 新機能 (2026-01-24) - Phase 11: Project Haystack
+
+### 1. The Haystack Paradigm (Jim Simons)
+- **Mass Weak Ensemble**: 「一本の針」ではなく「干し草の山（全データ）」を集め、無数の「弱い予測シグナル（Weak Learners）」の多数決で取引します。
+- **Swarm Strategy**: 内部に数千の `Predictor` を抱えた巨大なコンテナ戦略。既存の「精鋭戦略」と共存し、競争します。
+- **Predictor Factory**: RSIや移動平均、価格アクションの組み合わせをプログラムが自動生成し、過去データで有効なものだけを抽出します。
+
+### 2. Ghost Notification Fix
+- **安全装置**: システム停止後やバックテスト中に「損切り通知」がDiscordに飛ぶバグを修正しました。
 
 ---
 

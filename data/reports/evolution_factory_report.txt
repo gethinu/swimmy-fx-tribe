@@ -3,7 +3,7 @@
 Current status of the autonomous strategy generation pipeline.
 
 🧠 Knowledge Base (Active)
-5061 Strategies
+5657 Strategies
 
 🏆 **S-Rank (Verified Elite)**
 0 (Sharpe > 0.5 + Multi-Verify)
@@ -12,13 +12,13 @@ Current status of the autonomous strategy generation pipeline.
 38 (Sharpe > 0.3)
 
 🪜 **B-Rank (Selection)**
-5018 (Sharpe > 0.1)
+4360 (Sharpe > 0.1)
 
 👶 New Recruits (24h)
-5023
+5619
 
 👻 Graveyard
-197897
+262692
 
 
 🌟 **Top Candidates:**
@@ -32,4 +32,4 @@ Current status of the autonomous strategy generation pipeline.
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
-01/24 13:59 JST / 04:59 UTC
+01/24 21:01 JST / 12:01 UTC

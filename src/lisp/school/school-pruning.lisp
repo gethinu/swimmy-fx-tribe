@@ -15,8 +15,8 @@
 ;;; CONFIGURATION
 ;;; ============================================================================
 
-(defparameter *prune-sharpe-threshold* 0.20
-  "V48.8: Increased from 0.08 to 0.20 per Expert Panel (Operation Black Death)")
+(defparameter *prune-sharpe-threshold* 0.10
+  "V49.6: Aggressive culling floor (Taleb/Musk Recommendation)")
 
 (defparameter *prune-inactive-days* 90
   "Days of inactivity before a strategy is considered dormant")
@@ -27,8 +27,8 @@
 (defparameter *prune-protected-ranks* '(:S :legend :A)
   "Ranks that are protected from pruning (Fortress Mode: A-Rank included)")
 
-(defparameter *kb-hard-cap* 10000
-  "V48.8: Maximum allowed KB size to prevent 'Noise Sea' explosion")
+(defparameter *kb-hard-cap* 2000
+  "V49.6: Target Size for S-Rank density (5000 -> 2000)")
 
 ;;; ============================================================================
 ;;; LOW SHARPE PRUNING

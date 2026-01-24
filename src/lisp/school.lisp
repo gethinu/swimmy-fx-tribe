@@ -73,6 +73,10 @@
   (when (fboundp 'run-rank-evaluation)
     (run-rank-evaluation))
   
+  ;; P13: Project Haystack (Jim Simons) - Deploy Symbol Swarms
+  (when (fboundp 'initialize-project-haystack)
+    (initialize-project-haystack))
+  
   (format t "[SCHOOL] Swimmy School ready (Strategies Reclassified & Pools Built)~%"))
 
 (format t "[SCHOOL] 🦅 Refactored School System Loaded (Musk/Uncle Bob Edition)~%")

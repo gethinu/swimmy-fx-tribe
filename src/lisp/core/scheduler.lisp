@@ -117,5 +117,5 @@
              (sent-sym (getf (cdr event) :sent-flag))
              (task-fn (getf (cdr event) :fn)))
         (when (and (>= h trigger-h) (not (symbol-value sent-sym)))
-          (funcall task-fn)
-          (setf (symbol-value sent-sym) t))))))
+          (setf (symbol-value sent-sym) t) ;; Claim executed first
+          (funcall task-fn))))))

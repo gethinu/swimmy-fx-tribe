@@ -470,11 +470,16 @@
     
     (format t "[QUALIFY] found ~d candidates.~%" (length candidates))
     
+    ;; V49.5 Fix: Set expected count for Discord Summary notification
+    (setf swimmy.globals:*qual-expected-backtest-count* (min limit (length candidates)))
+    (setf swimmy.globals:*qual-backtest-results-buffer* nil)
+    (setf swimmy.globals:*qual-backtest-start-time* (get-universal-time))
+    
     (dolist (strat candidates)
       (when (< count limit)
         (incf count)
-        ;; Request backtest (no suffix = standard phase 1)
-        (request-backtest strat)
+        ;; Request backtest with -QUAL suffix to route results correctly
+        (request-backtest strat :suffix "-QUAL")
         ;; Sleep purely to not flood ZMQ buffer instantly
         (sleep 0.01)))
     

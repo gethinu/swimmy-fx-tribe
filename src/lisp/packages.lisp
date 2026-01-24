@@ -21,6 +21,9 @@
    #:*gemini-api-key*
    #:*supported-symbols*
    #:*genome-path*
+   #:*system-state*
+   #:*cooldown-tier*
+   #:*cooldown-durations*
    
    ;; ZMQ State
    #:*publisher*
@@ -119,6 +122,16 @@
    ;; Backtest State
    #:*backtest-results-buffer*
    #:*expected-backtest-count*
+   #:*backtest-start-time*
+   #:*rr-backtest-results-buffer*
+   #:*rr-expected-backtest-count*
+   #:*rr-backtest-start-time*
+   #:*qual-backtest-results-buffer*
+   #:*qual-expected-backtest-count*
+   #:*qual-backtest-start-time*
+   #:*cpcv-results-buffer*
+   #:*expected-cpcv-count*
+   #:*cpcv-start-time*
    #:*initial-backtest-done*
    #:*backtest-webhook-url*
    
@@ -203,9 +216,11 @@
    #:notify-discord-emergency
    #:notify-discord-backtest
    #:notify-cpcv-result
+   #:notify-cpcv-summary
    #:notify-apex            ;; V41.6: Apex webhook for system status
    #:queue-discord-notification ;; Exported for tick-handler.lisp
    #:flush-discord-queue
+   #:check-timeout-flushes
    #:+color-recruit+
    #:+color-alert+
    #:+color-backtest+

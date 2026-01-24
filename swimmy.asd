@@ -103,6 +103,8 @@
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
                (:file "src/lisp/school/school-execution") ; SRP Refactor
+               (:file "src/lisp/school/school-swarm-core") ; P13: Swarm Core
+               (:file "src/lisp/school/school-factory")    ; P13: Predictor Factory
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
                (:file "src/lisp/transfer-learning") ; Added V7.0

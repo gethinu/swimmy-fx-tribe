@@ -88,8 +88,17 @@
 ;;; MISSING GLOBALS (Package Migration)
 (defparameter *current-leader* nil)
 (defparameter *current-volatility-state* :unknown)
-(defparameter *backtest-results-buffer* nil)
-(defparameter *expected-backtest-count* 0)
+;; V49.5: Decoupled Backtest Buffers (Expert Panel P1)
+(defparameter *rr-backtest-results-buffer* nil "Buffer for Round-Robin KB backtests")
+(defparameter *rr-expected-backtest-count* 0)
+(defparameter *rr-backtest-start-time* 0)
+
+(defparameter *qual-backtest-results-buffer* nil "Buffer for Qualification (Incubator/Scout) backtests")
+(defparameter *qual-expected-backtest-count* 0)
+(defparameter *qual-backtest-start-time* 0)
+
+(defparameter *backtest-results-buffer* nil "DEPRECATED (Legacy fallback)")
+(defparameter *expected-backtest-count* 0 "DEPRECATED (Legacy fallback)")
 (defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
 (defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
 (defparameter *market-regime* :ranging)
@@ -164,6 +173,17 @@
 (defparameter *clans* nil)
 (defparameter *market-data* nil)
 (defparameter *last-tick-time* 0)
+
+;; V49.5: System Management Globals
+(defvar *system-state* :unknown "Current operational state: :trading, :warmup, :paused.")
+(defvar *cooldown-tier* 0 "Current danger avoidance level.")
+(defparameter *cooldown-durations* '(180 300 600 900 1800 2700 3600 7200 10800 14400 :eod)
+  "Escalating pause durations for the danger system.")
+
+;; V49.5: Batch Buffering (Decoupled)
+(defparameter *cpcv-results-buffer* nil)
+(defparameter *expected-cpcv-count* 0)
+(defparameter *cpcv-start-time* 0)
 
 (format t "[GLOBALS] Global variables defined in SWIMMY.GLOBALS~%")
 

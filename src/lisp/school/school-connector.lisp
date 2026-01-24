@@ -79,24 +79,24 @@
   "Send report if interval passed"
   (let ((now (get-universal-time)))
     (when (> (- now *last-report-time*) +report-interval+)
+      (setf *last-report-time* now) ;; Claim execution first
       (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
-      (swimmy.school::notify-evolution-report)
-      (setf *last-report-time* now))))
+      (swimmy.school::notify-evolution-report))))
 
 ;; P11: KB Pruning every 6 hours (V48.0: Changed from weekly)
 (defparameter *last-prune-time* 0)
-(defconstant +prune-interval+ (* 6 3600)) ;; 6 Hours (V48.0: Owner Request)
+(defconstant +prune-interval+ (* 1 3600)) ;; 1 Hour (V49.6: Aggressive Acceleration)
 
 (defun phase-8-weekly-prune ()
   "P11: Run KB pruning weekly to maintain optimal KB size.
    Target: 18,349 → 5,000 strategies"
   (let ((now (get-universal-time)))
     (when (> (- now *last-prune-time*) +prune-interval+)
+      (setf *last-prune-time* now) ;; Claim execution first
       (format t "[CONNECTOR] 🗑️ Running Weekly KB Pruning...~%")
       (handler-case
           (let ((removed (run-kb-pruning)))
-            (format t "[CONNECTOR] ✅ Pruning complete: ~d strategies removed~%" removed)
-            (setf *last-prune-time* now))
+            (format t "[CONNECTOR] ✅ Pruning complete: ~d strategies removed~%" removed))
         (error (e)
           (format t "[CONNECTOR] ❌ Pruning error: ~a~%" e))))))
 
@@ -152,6 +152,8 @@
     
     ;; 9. V48.2 Expert Panel: Heartbeat 2.0 (Watcher)
     (check-notifier-health)
+    ;; V49.5: Flush stagnant notification buffers (Expert Panel)
+    (swimmy.core:check-timeout-flushes)
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)

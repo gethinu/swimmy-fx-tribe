@@ -84,11 +84,6 @@
 (defvar *current-candle* nil)
 (defvar *current-minute* -1)
 
-;; Backtest Buffering
-(defvar *backtest-results-buffer* nil)
-(defvar *expected-backtest-count* 0)
-(defvar *backtest-start-time* 0)
-
 ;; Status Reporting State
 (defvar *last-status-notification-time* (make-hash-table :test 'equal))
 (defparameter *status-notification-interval* 3600) ; Default 1 hour

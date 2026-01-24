@@ -169,67 +169,96 @@
        :scalp)
       (t :trend))))
 
-(defun notify-backtest-summary ()
-  "V48.4: Detailed Category Trend Report (54 Categories).
-   Groups results by Symbol x Direction x Timeframe. No narrative flair."
-  (let* ((results (copy-list *backtest-results-buffer*))
-         (category-map (make-hash-table :test 'equal))
-         (report-msg (format nil "📊 **Backtest Category Trends**~%⏰ ~a~%~%" (swimmy.core:get-jst-timestamp))))
+(defun notify-backtest-summary (&optional (type :rr))
+   "V49.6: Enhanced summary. Restores Rank Distribution and ensures content visibility."
+  (let* ((buffer-sym (case type
+                       (:qual 'swimmy.globals:*qual-backtest-results-buffer*)
+                       (:rr 'swimmy.globals:*rr-backtest-results-buffer*)
+                       (t 'swimmy.globals:*backtest-results-buffer*)))
+         (expected-sym (case type
+                         (:qual 'swimmy.globals:*qual-expected-backtest-count*)
+                         (:rr 'swimmy.globals:*rr-expected-backtest-count*)
+                         (t 'swimmy.globals:*expected-backtest-count*)))
+         ;; 1. Capture current state
+         (results (copy-list (symbol-value buffer-sym)))
+         (expected (symbol-value expected-sym)))
     
-    ;; 1. Group results by category
-    (dolist (res results)
-      (let* ((name (car res))
-             (metrics (cdr res))
-             (sharpe (getf metrics :sharpe))
-             ;; Lookup strategy properties
-             (strat (or (find name swimmy.globals:*strategy-knowledge-base* :key #'swimmy.school:strategy-name :test #'string=)
-                        (find name swimmy.globals:*evolved-strategies* :key #'swimmy.school:strategy-name :test #'string=))))
-        (when strat
-          (let* ((sym (swimmy.school:strategy-symbol strat))
-                 (dir (swimmy.school:strategy-direction strat))
-                 (tf (swimmy.school:strategy-timeframe strat))
-                 (cat-key (format nil "~a/~a/M~d" sym dir tf)))
-            (push sharpe (gethash cat-key category-map))))))
-    
-    ;; 2. Calculate category stats
-    (let ((cat-stats nil))
-      (maphash (lambda (k v)
-                 (let ((avg (/ (reduce #'+ v) (length v))))
-                   (push (list :cat k :avg avg :count (length v)) cat-stats)))
-               category-map)
-      
-      (setf cat-stats (sort cat-stats #'> :key (lambda (x) (getf x :avg))))
-      
-      ;; 3. Build the report
-      (when cat-stats
-        (setf report-msg (concatenate 'string report-msg "🚀 **Strongest Categories:**~%"))
-        (loop for i from 0 below (min 5 (length cat-stats))
-              for stat = (nth i cat-stats)
-              do (setf report-msg (concatenate 'string report-msg 
-                                                (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
-                                                        (getf stat :cat) (getf stat :avg) (getf stat :count)))))
-        
-        (when (> (length cat-stats) 5)
-          (setf report-msg (concatenate 'string report-msg "~%📉 **Weakest Categories:**~%"))
-          (let ((weakest (reverse (last cat-stats (min 5 (length cat-stats))))))
-            (dolist (stat weakest)
-              (setf report-msg (concatenate 'string report-msg 
-                                              (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
-                                                      (getf stat :cat) (getf stat :avg) (getf stat :count)))))))
-        
-        ;; 4. Top 3 Individual Strategies
-        (let ((top-strats (subseq (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe)))
-                                  0 (min 3 (length results)))))
-          (setf report-msg (concatenate 'string report-msg "~%🌟 **Top 3 Individual Results:**~%"))
-          (dolist (s top-strats)
-            (setf report-msg (concatenate 'string report-msg 
-                                            (format nil "  • ~a (S: ~,2f)~%" (car s) (getf (cdr s) :sharpe)))))))
+    (unless (or results (> expected 0))
+      (return-from notify-backtest-summary nil))
 
-      (notify-discord-backtest report-msg :color 5763719))
+    ;; 2. CLEAR IMMEDIATELY to prevent double-processing (Race Condition Fix)
+    (setf (symbol-value buffer-sym) nil)
+    (setf (symbol-value expected-sym) 0)
+
+    (let* ((category-map (make-hash-table :test 'equal))
+           (title (if (eq type :qual) "📊 **Qualification Batch (Incubator)**" "📊 **Round-Robin KB Batch**"))
+           (report-msg (format nil "~a~%⏰ ~a~%~%Progress: ~d/~d results received.~%~%" 
+                               title (get-jst-timestamp) (length results) expected)))
     
-    ;; Clear buffer
-    (setf *backtest-results-buffer* nil)
-    (setf *expected-backtest-count* 0)))
+      ;; 0. Rank Distribution (Only for RR cycles or if KB is relevant)
+      (when (or (eq type :rr) (null type))
+        (let* ((all swimmy.globals:*strategy-knowledge-base*)
+               (s-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :S)) all))
+               (a-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :A)) all))
+               (b-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :B)) all))
+               (grave-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :graveyard)) all)))
+          (setf report-msg (concatenate 'string report-msg 
+                                        (format nil "**Current Rank Distribution:**~%🏆 S-Rank: ~d | 🎯 A-Rank: ~d | 📋 B-Rank: ~d~%⚰️ Graveyard/Pending: ~d~%~%"
+                                                s-count a-count b-count grave-count)))))
+
+      ;; 1. Group results by category
+      (dolist (res results)
+        (let* ((name (car res))
+               (metrics (cdr res))
+               (sharpe (getf metrics :sharpe))
+               (strat (or (find name swimmy.globals:*strategy-knowledge-base* :key #'swimmy.school:strategy-name :test #'string=)
+                          (find name swimmy.globals:*evolved-strategies* :key #'swimmy.school:strategy-name :test #'string=))))
+          (if strat
+              (let* ((sym (swimmy.school:strategy-symbol strat))
+                     (dir (swimmy.school:strategy-direction strat))
+                     (tf (swimmy.school:strategy-timeframe strat))
+                     (cat-key (format nil "~a/~a/M~d" sym dir tf)))
+                (push sharpe (gethash cat-key category-map)))
+              (push sharpe (gethash "New/Testing" category-map)))))
+      
+      ;; 2. Calculate category stats
+      (let ((cat-stats nil))
+        (maphash (lambda (k v)
+                   (let ((avg (/ (reduce #'+ v) (length v))))
+                     (push (list :cat k :avg avg :count (length v)) cat-stats)))
+                 category-map)
+        
+        (setf cat-stats (sort cat-stats #'> :key (lambda (x) (getf x :avg))))
+        
+        ;; 3. Build the report
+        (when cat-stats
+          (setf report-msg (concatenate 'string report-msg "🚀 **Strongest Categories (Current Batch):**~%"))
+          (loop for i from 0 below (min 5 (length cat-stats))
+                for stat = (nth i cat-stats)
+                do (setf report-msg (concatenate 'string report-msg 
+                                                  (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
+                                                          (getf stat :cat) (getf stat :avg) (getf stat :count)))))
+          
+          (when (> (length cat-stats) 5)
+            (setf report-msg (concatenate 'string report-msg "~%📉 **Weakest Categories:**~%"))
+            (let ((weakest (reverse (last cat-stats (min 3 (length cat-stats))))))
+              (dolist (stat weakest)
+                (setf report-msg (concatenate 'string report-msg 
+                                                (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
+                                                        (getf stat :cat) (getf stat :avg) (getf stat :count))))))))
+
+        ;; 4. Individual Results Listing
+        (when results
+          (let ((sorted (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe))))
+                (top-count (min 10 (length results))))
+            (setf report-msg (concatenate 'string report-msg "~%🌟 **Top Strategy Results (Latest):**~%"))
+            (loop for i from 0 below top-count
+                  for s = (nth i sorted)
+                  do (setf report-msg (concatenate 'string report-msg 
+                                                  (format nil "  • `~a`: ~,2f Sharpe (~d trades)~%" 
+                                                          (car s) (getf (cdr s) :sharpe) (getf (cdr s) :trades 0)))))))
+
+        (notify-discord-backtest report-msg :color (if (eq type :qual) 3447003 5763719))))))
 
 (defun notify-cpcv-result (data)
   "V48.5: Notify CPCV Validation Result to Discord Alerts."
@@ -265,6 +294,68 @@
               (getf data :path-count 0)
               (getf data :pass-rate 0.0)
               (if (getf data :is-passed) "PASS" "FAIL")))))
+
+(defun notify-cpcv-summary ()
+  "V49.5: Send a summary of the CPCV batch to Discord."
+  (let* ((results (copy-list *cpcv-results-buffer*))
+         (expected *expected-cpcv-count*))
+    
+    (unless (or results (> expected 0))
+      (return-from notify-cpcv-summary nil))
+
+    ;; CLEAR IMMEDIATELY (Race Condition Fix)
+    (setf *cpcv-results-buffer* nil)
+    (setf *expected-cpcv-count* 0)
+
+    (let* ((promoted 0)
+           (failed 0)
+           (msg (format nil "🔬 **CPCV Batch Summary**~%⏰ ~a JST~%~%Progress: ~d/~d results.~%~%" 
+                            (swimmy.core:get-jst-timestamp) (length results) expected)))
+
+      (dolist (res results)
+        (if (getf res :is-passed)
+            (incf promoted)
+            (incf failed)))
+      
+      (setf msg (concatenate 'string msg 
+                             (format nil "A-RANK Tested: ~d~%" (length results))
+                             (format nil "🏆 S-RANK Promoted: ~d~%" promoted)
+                             (format nil "❌ CPCV Failed: ~d~%~%" failed)))
+      
+      (when (> promoted 0)
+        (setf msg (concatenate 'string msg "🌟 **New Promotions:**~%"))
+        (dolist (res (subseq results 0 (min 5 (length results))))
+          (when (getf res :is-passed)
+            (setf msg (concatenate 'string msg (format nil "  • `~a` (S: ~,2f)~%" 
+                                                   (getf res :strategy-name) 
+                                                   (getf res :median-sharpe)))))))
+      
+      (notify-discord-alert msg :color (if (> promoted 0) 5763719 15158332)))))
+
+(defun check-timeout-flushes ()
+  "V49.5 Expert Panel P1: Flush stagnant buffers after 5 minutes."
+  (let ((now (get-universal-time))
+        (timeout (* 5 60)))
+    ;; 1. Round-Robin KB
+    (when (and (> *rr-expected-backtest-count* 0)
+               (> (length *rr-backtest-results-buffer*) 0)
+               (> (- now *rr-backtest-start-time*) timeout))
+      (format t "[DISCORD] ⏳ Flushing RR-Batch due to timeout.~%")
+      (notify-backtest-summary :rr))
+    
+    ;; 2. Qualification
+    (when (and (> *qual-expected-backtest-count* 0)
+               (> (length *qual-backtest-results-buffer*) 0)
+               (> (- now *qual-backtest-start-time*) timeout))
+      (format t "[DISCORD] ⏳ Flushing Qual-Batch due to timeout.~%")
+      (notify-backtest-summary :qual))
+      
+    ;; 3. CPCV
+    (when (and (> *expected-cpcv-count* 0)
+               (> (length *cpcv-results-buffer*) 0)
+               (> (- now *cpcv-start-time*) timeout))
+      (format t "[DISCORD] ⏳ Flushing CPCV-Batch due to timeout.~%")
+      (notify-cpcv-summary))))
 
 
 

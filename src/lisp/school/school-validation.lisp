@@ -85,8 +85,8 @@
 ;;; ============================================================================
 
 (defun request-cpcv-validation (strat)
-  "Request CPCV validation from Guardian via ZMQ.
-   Returns (values passed-p result-plist error-msg)"
+  "V49.5: Request CPCV validation (Non-blocking ASYNC).
+   Result is handled by message-dispatcher.lisp"
    (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
           (candles-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
           (strat-params (strategy-to-alist strat))
@@ -95,36 +95,10 @@
                      (symbol . ,symbol)
                      (candles_file . ,candles-file)
                      (strategy_params . ,strat-params))))
-     (format t "[CPCV] 🔬 Requesting CPCV validation for ~a (S-Exp)...~%" (strategy-name strat))
-     (handler-case
-         (let ((response-str (send-zmq-msg (prin1-to-string request))))
-           (if (and response-str (> (length response-str) 0) (char= (char response-str 0) #\())
-               ;; S-Expression Response
-               (let* ((response (read-from-string response-str))
-                      (passed (cdr (assoc 'passed response)))
-                      (error-msg (cdr (assoc 'error response))))
-                 (if error-msg
-                     (values nil nil error-msg)
-                     (values passed
-                             (list :median-sharpe (cdr (assoc 'median_sharpe response))
-                                   :median-pf (cdr (assoc 'median_pf response))
-                                   :median-wr (cdr (assoc 'median_wr response))
-                                   :median-maxdd (cdr (assoc 'median_maxdd response))
-                                   :std-sharpe (cdr (assoc 'std_sharpe response))
-                                   :path-count (cdr (assoc 'path_count response))
-                                   :passed-count (cdr (assoc 'passed_count response)))
-                             nil)))
-               ;; Legacy JSON fallback
-               (if (and response-str (> (length response-str) 0) (char= (char response-str 0) #\{))
-                   (let* ((response (jsown:parse response-str))
-                          (passed (jsown:val-safe response "passed"))
-                          (error-msg (jsown:val-safe response "error")))
-                     (if error-msg
-                         (values nil nil error-msg)
-                         (values passed (list :median-sharpe (jsown:val-safe response "median_sharpe")) nil)))
-                   (values nil nil "Invalid response format"))))
-      (error (e)
-        (values nil nil (format nil "CPCV error: ~a" e))))))
+     (format t "[CPCV] 📤 Sent CPCV request for ~a (Async)...~%" (strategy-name strat))
+     (send-zmq-msg (prin1-to-string request))
+     ;; Return T to indicate request sent successfully
+     (values t nil nil)))
 
 (defun validate-for-s-rank-promotion (strat)
   "Validate strategy is ready for S-RANK promotion using true CPCV.
@@ -173,8 +147,8 @@
 (defparameter *last-cpcv-cycle* 0
   "Timestamp of last CPCV cycle")
 
-(defparameter *cpcv-cycle-interval* 300
-  "Minimum seconds between CPCV cycles (5 minutes)")
+(defparameter *cpcv-cycle-interval* 60
+  "V49.6: High-Velocity Validation (300s -> 60s) for rapid S-Rank creation")
 
 (defun run-a-rank-cpcv-batch ()
   "V48.0: Batch process A-RANK strategies for S-RANK promotion via CPCV.
@@ -202,44 +176,19 @@
       (when (null batch)
         (format t "[CPCV] ℹ️ No A-RANK strategies ready for S-RANK validation (Sharpe < 0.5)~%")
         (return-from run-a-rank-cpcv-batch nil))
-      (format t "[CPCV] 🔬 Processing ~d S-RANK candidates...~%" (length batch))
+      (format t "[CPCV] 🔬 Dispatching ~d S-RANK candidates (Async)...~%" (length batch))
+      
+      ;; V49.5 Fix: Set expected count for batch summary
+      (setf swimmy.globals:*expected-cpcv-count* (length batch))
+      (setf swimmy.globals:*cpcv-results-buffer* nil)
+      (setf swimmy.globals:*cpcv-start-time* (get-universal-time))
+      
       ;; Process each strategy
       (dolist (strat batch)
         (handler-case
-            (if (validate-for-s-rank-promotion strat)
-                (progn
-                  (ensure-rank strat :S "CPCV Passed")
-                  (incf promoted)
-                  (notify-discord-alert 
-                    (format nil "🏆 **S-RANK PROMOTION**
-~a passed CPCV!
-Live trading permitted." 
-                            (strategy-name strat))
-                    :color 15844367))
-                (progn
-                  ;; V48.2: Demote back to B if it fails CPCV (Overfitted)
-                  (%ensure-rank-no-lock strat :B "CPCV Failed (Overfit)")
-                  (incf failed)))
+            (request-cpcv-validation strat) ; Just send request
           (error (e)
-            (format t "[CPCV] ⚠️ Error validating ~a: ~a~%" (strategy-name strat) e)
-            (incf failed))))
-      ;; Report results
-      (format t "[CPCV] 📊 Batch complete: Promoted=~d, Failed=~d~%" promoted failed)
-      
-      ;; V48.1: Send CPCV batch summary to Discord with JST
-      (when (or (> promoted 0) (> failed 0))
-        (let ((jst-time (swimmy.core:get-time-string)))
-          (notify-discord-alert
-            (format nil "🔬 **CPCV Validation**~%⏰ ~a JST~%~%A-RANK Tested: ~d~%🏆 S-RANK Promoted: ~d~%❌ Failed: ~d~%~%A-RANK Remaining: ~d"
-                    jst-time (length batch) promoted failed
-                    (count-if (lambda (s) (eq (strategy-rank s) :A)) *strategy-knowledge-base*))
-            :color (if (> promoted 0) 5763719 15158332))))
-      
-      ;; Save promoted strategies
-      (when (> promoted 0)
-        (dolist (s batch)
-          (when (eq (strategy-rank s) :S)
-            (swimmy.persistence:save-strategy s)))))))
+            (format t "[CPCV] ⚠️ Error dispatching ~a: ~a~%" (strategy-name strat) e)))))))
 
 (defvar *rank-criteria-cache* (make-hash-table :test 'eq)
   "V48.0: Cache for rank criteria loaded from DB")
