@@ -44,10 +44,40 @@
                                (subseq i2 0 (ceiling (/ (length i2) 2))))
                        :test #'equal)))
 
+(defun mutate-indicators-with-library (indicators category)
+  "Mutate indicators by swapping one with a regime-aware alternative.
+   V49.5: Prevents 'Genetic Stagnation' using indicators-library."
+  (if (> (random 1.0) 0.7) ; 30% chance to swap an indicator
+      (let* ((idx (random (length indicators)))
+             (regime (case category
+                       (:trend :trend)
+                       (:reversion :reversion)
+                       (:breakout :breakout)
+                       (:scalp :reversion) ; Scalp usually reversions/fast trends
+                       (t :trend)))
+             (new-indicator (get-random-indicator-for-regime regime)))
+        (format t "[BREEDER] 🧬 Indicator Swap: ~a -> ~a (Regime: ~a)~%" 
+                (nth idx indicators) new-indicator regime)
+        (setf (nth idx indicators) new-indicator)
+        indicators)
+      indicators))
+
+(defun mutate-indicator-params (params)
+  "Recursively mutate numeric parameters in an indicator list (e.g. RSI 14 -> 15).
+   V49.3 Expert Panel: Fixes 'Genetic Stagnation' by exploring parameter space."
+  (mapcar (lambda (p)
+            (cond
+              ((listp p) (mutate-indicator-params p))
+              ((numberp p)
+               (let ((new-val (mutate-value p 0.1))) ;; +/- 10% Mutation
+                 (if (integerp p) (round new-val) new-val)))
+              (t p))) ; Keep symbols (rsi, macd)
+          params))
 (defun breed-strategies (parent1 parent2)
   "Create a child strategy from two parents.
    V47.5: Enhanced with P3 graveyard avoidance.
-   V47.7: Q-value guided SL/TP selection (20% exploit rate)."
+   V47.7: Q-value guided SL/TP selection (20% exploit rate).
+   V49.5: Regime-Aware Indicator Mutation."
   (let* ((child-name (format nil "Bred-~a-~a-Gen~d" 
                              (subseq (strategy-name parent1) 0 (min 5 (length (strategy-name parent1))))
                              (random 1000)
@@ -58,7 +88,10 @@
          ;; V49.0: Aggressive Mutation (0.1 -> 0.3)
          (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.3))
          (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.3))
-         (child-is (crossover-indicators parent1 parent2))
+         ;; V49.5: Smart Mutation for Indicators (Regime-Aware)
+         (child-is (mutate-indicators-with-library 
+                    (mutate-indicator-params (crossover-indicators parent1 parent2))
+                    (strategy-category parent1)))
          ;; V47.5: Get avoid regions from graveyard analysis
          (avoid-regions (when (fboundp 'analyze-graveyard-for-avoidance)
                           (analyze-graveyard-for-avoidance)))

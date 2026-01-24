@@ -295,8 +295,8 @@
   (let ((failure-prob (calculate-failure-confidence symbol direction category)))
     (cond
       ((> failure-prob 0.8) 
-       (format t "[L] 🛑 HIGH FAILURE RISK (~,1f%) - blocking~%" (* failure-prob 100))
-       0.0)
+       (format t "[L] 🛡️ HIGH FAILURE RISK (~,1f%) - Reducing to MINIMUM size (10%) per Taleb Prep.~%" (* failure-prob 100))
+       0.1)
       ((> failure-prob 0.6)
        (format t "[L] ⚠️ ELEVATED RISK (~,1f%) - reducing to 50%~%" (* failure-prob 100))
        0.5)

@@ -33,9 +33,9 @@
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
 
-(defparameter *s-rank-slots-per-category* 3
-  "V48.2: Maximum S-RANK strategies per (Symbol x Direction x Timeframe) category.
-   Marcos López de Prado: Portfolio diversity requires capping similar strategies.")
+(defparameter *global-s-rank-cap* 50
+  "Total number of S-RANK strategies allowed in the global portfolio.
+   V49.5: Abolished category quotas for meritocratic selection.")
 
 ;;; ---------------------------------------------------------------------------
 ;;; RANK UTILITIES
@@ -101,42 +101,7 @@
   "Internal version of ensure-rank that assumes *kb-lock* is already held."
   (let ((old-rank (strategy-rank strategy)))
     (when (not (eq old-rank new-rank))
-      ;; P8: Marcos López de Prado - Portfolio Diversity Check for S-RANK
-      (when (eq new-rank :S)
-        (let* ((tf (strategy-timeframe strategy))
-               (dir (strategy-direction strategy))
-               (sym (strategy-symbol strategy))
-               (s-strategies (get-strategies-by-rank :S tf dir sym))
-               (count (length s-strategies)))
-          
-          (when (>= count *s-rank-slots-per-category*)
-            ;; If full, find the weakest S-RANK in this category
-            (let* ((sorted (sort (copy-list s-strategies) #'< ; Weakest first
-                                 :key (lambda (s) 
-                                        (+ (or (strategy-sharpe s) 0)
-                                           (* 0.1 (or (strategy-profit-factor s) 0))))))
-                   (weakest (car sorted))
-                   (candidate-score (+ (or (strategy-sharpe strategy) 0)
-                                       (* 0.1 (or (strategy-profit-factor strategy) 0))))
-                   (weakest-score (+ (or (strategy-sharpe weakest) 0)
-                                     (* 0.1 (or (strategy-profit-factor weakest) 0)))))
-              
-              (if (> candidate-score weakest-score)
-                  (progn
-                    (format t "[RANK] 🔄 S-RANK FULL (TF=~a/D=~a/S=~a): Replacing ~a (Score ~,2f) with ~a (Score ~,2f)~%"
-                            tf dir sym (strategy-name weakest) weakest-score
-                            (strategy-name strategy) candidate-score)
-                    ;; Atomic demotion of weakest
-                    (setf (strategy-rank weakest) :A)
-                    (format t "[RANK] ⬇️ DEMOTE: ~a (S → A) | Capacity Replaced~%" (strategy-name weakest)))
-                  (progn
-                    (format t "[RANK] ❌ S-RANK FULL: ~a (Score ~,2f) is not better than weakest ~a (Score ~,2f). Staying ~a.~%"
-                            (strategy-name strategy) candidate-score
-                            (strategy-name weakest) weakest-score
-                            old-rank)
-                    (return-from %ensure-rank-no-lock old-rank)))))))
-
-      ;; Normal rank change
+      ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
       (setf (strategy-rank strategy) new-rank)
       (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
               (strategy-name strategy) old-rank new-rank reason)
@@ -366,7 +331,50 @@
             
     ;; Audit Alert
     (when (> b-count 5000)
-      (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))))
+      (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))
+    
+    ;; 4. Global Portfolio Construction (The Draft)
+    (construct-global-portfolio)))
+
+(defun construct-global-portfolio ()
+  "V49.5: Global S-RANK Draft. Selects best strategies across all categories.
+   Applies Diversity Penalty to ensure uncorrelated candidates."
+  (format t "[RANK] 🏟️ Starting Global Portfolio Draft...~%")
+  (let* ((candidates (sort (copy-list (append (get-strategies-by-rank :S)
+                                              (get-strategies-by-rank :A)))
+                           #'> :key (lambda (s) (or (strategy-sharpe s) 0.0))))
+         (selected-team nil)
+         (demoted-count 0)
+         (promoted-count 0))
+    
+    (dolist (candidate candidates)
+      (if (and (< (length selected-team) *global-s-rank-cap*)
+               (>= (or (strategy-sharpe candidate) 0.0) 0.5) ; S-Rank Floor
+               (is-diverse-addition-p candidate selected-team))
+          (progn
+            (push candidate selected-team)
+            (when (eq (strategy-rank candidate) :A)
+              (incf promoted-count)
+              (setf (strategy-rank candidate) :S)))
+          (progn
+            (when (eq (strategy-rank candidate) :S)
+              (incf demoted-count)
+              (setf (strategy-rank candidate) :A)))))
+    
+    (format t "[RANK] 📊 Draft Complete: Team Size=~d | Promoted=~d Demoted=~d~%"
+            (length selected-team) promoted-count demoted-count)))
+
+(defun is-diverse-addition-p (strategy team)
+  "Check if adding this strategy maintains portfolio diversity (Clone Prevention).
+   V49.5: Uses Genetic Distance as a proxy for correlation."
+  (every (lambda (member)
+           (let ((dist (if (fboundp 'calculate-genetic-distance)
+                           (calculate-genetic-distance 
+                            (extract-genome strategy) 
+                            (extract-genome member))
+                           1.0)))
+             (> dist 0.3))) ; Diversity Threshold
+         team))
 
 ;;; ---------------------------------------------------------------------------
 ;;; DIRECTION AUTO-DETECTION (V47.2)

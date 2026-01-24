@@ -84,7 +84,8 @@
                (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
                (:file "src/lisp/school/school-tier-system")   ; The Proving Grounds (Phase 2): Tier System
                (:file "src/lisp/school/school-kb")        ; P8: Single KB Entry Point
-               (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
+                (:file "src/lisp/school/indicators-library")
+                (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
                (:file "src/lisp/school/school-connector")
                (:file "src/lisp/school/school-learning")
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
