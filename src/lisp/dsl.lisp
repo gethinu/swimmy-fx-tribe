@@ -157,6 +157,8 @@
             (rank nil)
             ;; V47.0: Breeding usage counter (max 3 before discard, Legend exempt)
             (breeding-count 0)
+            ;; V49.2: Metadata tracking (Expert Panel)
+            (regime-intent :unknown)
             ;; V17d: Multi-Currency Identity
             (symbol "USDJPY")
             ;; V47.2: Trade Direction (:BUY, :SELL, :BOTH)

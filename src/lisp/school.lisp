@@ -17,13 +17,16 @@
   "Apply optimized parameters from *optimized-params* to strategies."
   (format t "[EVOLUTION] 🧬 Applying Evolutionary Genes (Code-as-Data)...~%")
   (when (boundp '*optimized-params*)
-    (dolist (params *optimized-params*)
-      (let* ((name (getf params :name))
-             (strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-        (when strat
-          (setf (strategy-timeframe strat) (getf params :timeframe))
-          (setf (strategy-sl strat) (getf params :sl))
-          (setf (strategy-tp strat) (getf params :tp)))))))
+    (handler-case
+        (dolist (params *optimized-params*)
+          (let* ((name (getf params :name))
+                 (strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+            (when strat
+              (setf (strategy-timeframe strat) (getf params :timeframe))
+              (setf (strategy-sl strat) (getf params :sl))
+              (setf (strategy-tp strat) (getf params :tp)))))
+      (error (e)
+        (format t "[EVOLUTION] ⚠️ Error applying optimized params: ~a~%" e)))))
 
 (defun sanitize-strategies ()
   "Repair strategies with malformed indicators (strings instead of lists) to prevent crashes."

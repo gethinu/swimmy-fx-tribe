@@ -3,4 +3,7 @@
 ' Double-click this to start Auto-Journal in background
 
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """\\wsl$\Ubuntu\home\swimmy\swimmy\start_journal_windows.bat""", 0, False
+Set fso = CreateObject("Scripting.FileSystemObject")
+' Dynamically resolve path to batch file (distro-independent)
+currentDir = fso.GetParentFolderName(WScript.ScriptFullName)
+WshShell.Run """" & currentDir & "\scripts\start_journal_windows.bat""", 0, False

@@ -199,22 +199,50 @@
         nil))))
 
 (defun send-periodic-status-report (symbol bid)
-  "V48.5: Periodic status reports Moved to Shell layer.
-   Throttled by *status-notification-interval*."
+  "V49.0: Redesigned Japanese Status Report.
+   Includes Regime (Soros), Volatility (Taleb), and Category-based S-Rank monitoring."
   (let* ((now (get-universal-time))
          (last-time (gethash symbol *last-status-notification-time* 0)))
     (when (> (- now last-time) *status-notification-interval*)
-      (let ((tribe-dir (if (boundp '*tribe-direction*) (symbol-value '*tribe-direction*) "N/A"))
-            (tribe-con (if (and (boundp '*tribe-consensus*) (symbol-value '*tribe-consensus*)) (symbol-value '*tribe-consensus*) 0.0))
-            (swarm-con (if (and (boundp '*last-swarm-consensus*) (symbol-value '*last-swarm-consensus*)) (symbol-value '*last-swarm-consensus*) 0.0))
-            (pred (if (boundp '*last-prediction*) (symbol-value '*last-prediction*) "N/A"))
-            (conf (if (and (boundp '*last-confidence*) (symbol-value '*last-confidence*)) (symbol-value '*last-confidence*) 0.0))
-            (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
-            (active-warriors (if (boundp '*warrior-allocation*) 
-                                 (hash-table-count (symbol-value '*warrior-allocation*)) 0)))
-        (swimmy.core:notify-discord-symbol symbol 
-          (format nil "🕒 STATUS REPORT~%Price: ~,3f~%~%🧠 AI: ~a (~,1f%)~%🏛️ Tribes: ~a (~,0f%)~%🐟 Swarm: ~,0f%~%~%⚔️ Warriors: ~d~%⚠️ Danger: Lv~d"
-                  bid pred (* 100 conf) tribe-dir (* 100 tribe-con) (* 100 swarm-con) active-warriors danger)
+      (let* ((regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
+             (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
+             (pred (if (boundp '*last-prediction*) (symbol-value '*last-prediction*) "HOLD"))
+             (conf (if (and (boundp '*last-confidence*) (symbol-value '*last-confidence*)) (symbol-value '*last-confidence*) 0.5))
+             (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
+             
+             ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
+             ;; 3 Directions x 6 TFs = 18 possible categories per symbol
+             (watchers 
+              (let ((results nil)
+                    (tfs '(5 15 60 240 1440 10080))
+                    (dirs '(:BUY :SELL :BOTH)))
+                (dolist (tf tfs)
+                  (dolist (dir dirs)
+                    (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
+                      (when s-strats
+                        (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
+                          (push (format nil "  • M~d ~a: `~a` (S:~,2f)" 
+                                        tf dir 
+                                        (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
+                                        (or (swimmy.school:strategy-sharpe best) 0.0))
+                                results))))))
+                (if results (nreverse results) '("  (Sランク待機なし)")))))
+
+        (swimmy.core:notify-discord-status 
+          (format nil "🕒 **~a 状況レポート**
+価格: **~,3f**
+
+相場環境: **~a**
+変動力: **~a**
+
+🧠 **インテリジェンス:**
+  AI予測: ~a (~,1f%)
+  危険レベル: Lv~d
+
+⚔️ **配置中の精鋭戦略 (S-Rank Watchers):**
+~{~a~^~%~}"
+                  symbol bid regime vol pred (* 100 conf) danger 
+                  (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
           :color swimmy.core:+color-status+)
         (setf (gethash symbol *last-status-notification-time*) now)))))
 

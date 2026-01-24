@@ -1,7 +1,37 @@
-# 🏛️ Strategy Lifecycle Implementation Plan V48.2
+# 🏛️ Strategy Lifecycle Implementation Plan V49.0
 
-**更新日:** 2026-01-22 21:30 JST
-**バージョン:** V48.2 (Expert Panel Phase 8 Completion)
+**更新日:** 2026-01-24 10:40 JST
+**バージョン:** V49.0 (User Feedback Refinements)
+
+---
+
+## V49.0 完了フェーズ (Phase 10)
+
+| 機能 | 詳細 |
+|------|------|
+| A-Rank Grace Period | 7日間の猶予期間による過学習・ノイズ耐性向上 |
+| Status Report Redesign | Soros/Taleb指標を搭載した日本語状況レポートへの刷新 |
+| Robust VBS Launcher | WSLディストリビューション名に依存しない起動スクリプト |
+| Weekly Summary Trigger | Sunday 23:00 自動発行トリガーの追加 |
+
+---
+
+## V49.2 完了フェーズ (Phase 10)
+
+| 機能 | 詳細 |
+|------|------|
+| Tactical Mapping | `*regime-tactics*` によるレジーム別戦術のデータ化 |
+| LLM Injection | `test-llm-tactical-injection` によるLLMプロンプトへの知恵注入 |
+| Cloning Safety | ブリーディング時の遺伝的距離チェック (`strategies-correlation-ok-p`) |
+| Strict Regimes | `regime-intent` メタデータの継承による意図の追跡 |
+
+## V48.5 完了フェーズ (Phase 9)
+
+| 機能 | 詳細 |
+|------|------|
+| Perf Persistence | `cpcv_history.csv` へのバックテスト結果永続化 |
+| Notification Throttling | 大量バックテスト時の通知流量制御によるノイズ削減 |
+| Category Watchers | 通貨ペア×方向×TF別の精鋭戦略監視機能 |
 
 ---
 

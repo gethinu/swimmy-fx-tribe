@@ -42,8 +42,8 @@
 
 ;; 3. HEARTBEAT
 (format t "[TEST] >> Sending to HEARTBEAT...~%")
-;; Manually send to heartbeat webhook
-(let ((webhook *heartbeat-webhook-url*))
+;; Fix: Heartbeat consolidated to ALERTS in config.lisp
+(let ((webhook (get-discord-webhook "heartbeat")))
   (if webhook
       (queue-discord-notification webhook "🧪 TEST: Heartbeat Channel Checking In" :title "💓 Heartbeat Test")
       (format t "⚠️ Heartbeat Webhook NOT FOUND~%")))
@@ -79,9 +79,10 @@
 (notify-discord-recruit "🧪 TEST: Recruit Channel")
 (sleep 0.5)
 
-;; 10. JOURNAL (Not in discord.lisp standard API, check env)
+;; 10. JOURNAL
 (format t "[TEST] >> Sending to JOURNAL...~%")
-(let ((webhook (uiop:getenv "SWIMMY_DISCORD_JOURNAL")))
+;; Fix: Journal consolidated to REPORTS in config.lisp
+(let ((webhook (get-discord-webhook "journal")))
   (if webhook
       (queue-discord-notification webhook "🧪 TEST: Journal Channel" :title "📓 Journal Test")
       (format t "⚠️ Journal Webhook NOT FOUND~%")))

@@ -51,6 +51,7 @@ def process_queue():
             continue
 
         webhook_url, payload = message_queue.popleft()
+        print(f"[DEBUG] Worker popped message for {webhook_url[:40]}...", flush=True)
         msg_id = id(payload)  # Unique ID for tracking retries
         retry_count = failed_count.get(msg_id, 0)
 
@@ -69,7 +70,7 @@ def process_queue():
 
             elif response.status_code >= 400:
                 print(
-                    f"[NOTIFIER] Error {response.status_code}: {response.text}",
+                    f"[NOTIFIER] Error {response.status_code} for {webhook_url[:60]}...: {response.text}",
                     flush=True,
                 )
                 # Don't retry HTTP errors (webhook invalid, etc)
@@ -78,6 +79,7 @@ def process_queue():
 
             else:
                 # Success - cleanup
+                print(f"[NOTIFIER] Sent to {webhook_url[:60]}...", flush=True)
                 if msg_id in failed_count:
                     del failed_count[msg_id]
 
@@ -119,6 +121,7 @@ def main():
     print("=" * 60)
 
     # Start Worker Thread
+    print("[NOTIFIER] Starting worker thread...", flush=True)
     worker = threading.Thread(target=process_queue, daemon=True)
     worker.start()
 

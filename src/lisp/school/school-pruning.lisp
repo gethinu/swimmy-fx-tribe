@@ -24,8 +24,8 @@
 (defparameter *prune-similarity-threshold* 0.1
   "Strategies with distance below this are considered duplicates")
 
-(defparameter *prune-protected-ranks* '(:S :legend)
-  "Ranks that are protected from pruning")
+(defparameter *prune-protected-ranks* '(:S :legend :A)
+  "Ranks that are protected from pruning (Fortress Mode: A-Rank included)")
 
 (defparameter *kb-hard-cap* 10000
   "V48.8: Maximum allowed KB size to prevent 'Noise Sea' explosion")
@@ -36,7 +36,8 @@
 
 (defun prune-low-sharpe-strategies ()
   "Remove strategies with Sharpe ratio below threshold and move to physical Grave.
-   V48.8: Now physically moves files via swimmy.persistence:move-strategy."
+   V48.8: Now physically moves files via swimmy.persistence:move-strategy.
+   V49.0: Fortress Mode - A-Rank is immutable."
   (let* ((before-count (length *strategy-knowledge-base*))
          (removed 0))
     (setf *strategy-knowledge-base*
@@ -44,14 +45,25 @@
            (lambda (strat)
              (let ((sharpe (or (strategy-sharpe strat) 0.0))
                    (rank (strategy-rank strat)))
-               (when (and (< sharpe *prune-sharpe-threshold*)
-                          (not (member rank *prune-protected-ranks*)))
-                 (format t "[PRUNE] 🗑️ Low Sharpe: ~a (Sharpe=~,3f) → GRAVEYARD~%"
-                         (strategy-name strat) sharpe)
-                 ;; V48.8: Use send-to-graveyard to save patterns and update memory
-                 (send-to-graveyard strat "Operation Black Death (Low Sharpe)")
-                 (incf removed)
-                 t)))
+               ;; 1. Check if Sharpe is below threshold
+               (if (< sharpe *prune-sharpe-threshold*)
+                   (cond
+                     ;; 2. PROTECTION CHECK (Fortress)
+                     ((member rank *prune-protected-ranks*)
+                      (format t "[PRUNE-BLOCK] 🛡️ Protected ~a Strategy: ~a (Sharpe=~,3f) - SAFE~%"
+                              rank (strategy-name strat) sharpe)
+                      nil) ;; Do NOT remove
+                     
+                     ;; 3. NORMAL PRUNING
+                     (t
+                      (format t "[PRUNE-AUDIT] 🗑️ Low Sharpe: ~a (Sharpe=~,3f Rank=~a) → GRAVEYARD~%"
+                              (strategy-name strat) sharpe rank)
+                      ;; V48.8: Use send-to-graveyard to save patterns and update memory
+                      (send-to-graveyard strat "Operation Black Death (Low Sharpe)")
+                      (incf removed)
+                      t))
+                   ;; Sharpe OK
+                   nil))) 
            *strategy-knowledge-base*))
     (format t "[PRUNE] ✅ Purged ~d low-Sharpe strategies (KB: ~d → ~d)~%"
             removed before-count (length *strategy-knowledge-base*))

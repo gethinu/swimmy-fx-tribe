@@ -13,6 +13,31 @@
 (defparameter *last-maintenance-time* 0)
 (defvar *last-new-day* nil "Tracks the last day number we processed for day rollover")
 (defvar *daily-report-sent-today* nil "Prevents duplicate daily reports")
+(defvar *advisor-report-sent-today* nil "Prevents duplicate advisor reports")
+
+;; V49.1: Data-driven Schedule (Martin Fowler Refactor)
+(defparameter *scheduled-events*
+  '((:advisor-report :hour 8  :sent-flag *advisor-report-sent-today* :fn send-morning-papers)
+    (:daily-report   :hour 23 :sent-flag *daily-report-sent-today*   :fn send-nightly-reports))
+  "List of scheduled tasks with their trigger hour and tracking flags.")
+
+(defun send-morning-papers ()
+  "Morning paper trigger"
+  (format t "[SCHEDULER] ⏰ 08:00 Running Advisor Council...~%")
+  (when (fboundp 'swimmy.school::run-advisor-council)
+    (funcall 'swimmy.school::run-advisor-council)))
+
+(defun send-nightly-reports ()
+  "Nightly reports trigger (Daily + Weekly)"
+  (multiple-value-bind (s m h date month year day-of-week) (decode-universal-time (get-universal-time))
+    (declare (ignore s m h date month year))
+    (format t "[SCHEDULER] ⏰ 23:00 Sending Nightly Reports...~%")
+    (send-daily-tribal-narrative)
+    ;; Weekly Summary (Sunday - DOW 6)
+    (when (= day-of-week 6)
+      (format t "[SCHEDULER] 📊 Sunday detected - Generating Weekly Summary...~%")
+      (when (fboundp 'swimmy.shell::generate-weekly-summary)
+        (funcall 'swimmy.shell::generate-weekly-summary)))))
 
 (defun run-periodic-maintenance ()
   "Handle periodic maintenance tasks (backtests, ecosystem, evolution) - Throttled 60s
@@ -64,38 +89,33 @@
         (swimmy.school::check-stress-test-trigger)))))
 
 (defun check-scheduled-tasks (&optional (now (get-universal-time)))
-  "Check and execute scheduled tasks based on time of day."
+  "Check and execute scheduled tasks based on data-driven configuration."
   (multiple-value-bind (s m h date month year day-of-week dst-p tz)
       (decode-universal-time now)
-    (declare (ignore s m month year dst-p tz)) ;; Don't ignore day-of-week
+    (declare (ignore s m month year dst-p tz day-of-week))
     
     ;; 1. New Day Processing (Reset Logic)
     (when (or (null *last-new-day*) (not (= date *last-new-day*)))
       (format t "~%[SCHEDULER] 📅 NEW DAY DETECTED: ~a~%" date)
       (setf *last-new-day* date)
-      (setf *daily-report-sent-today* nil) ;; Reset flag
-      
-      ;; Reset Daily Metrics
+      (setf *daily-report-sent-today* nil)
+      (setf *advisor-report-sent-today* nil)
       (setf *daily-pnl* 0.0)
       (setf *daily-trades* 0)
       (setf *consecutive-wins* 0)
       (setf *consecutive-losses* 0)
-      
-      ;; CRITICAL FIX V8.0: Reset Daily PnL and DD
-      ;; Note: Using :: for internal symbol access
       (setf swimmy.engine::*daily-pnl* 0.0)
       (setf swimmy.engine::*max-drawdown* 0.0)
-      
-      ;; V47.7: Q-table daily decay (1%/day) - López de Prado overfitting prevention
       (when (fboundp 'swimmy.school::decay-q-table)
         (funcall 'swimmy.school::decay-q-table))
-      
-      ;; Persist reset
       (when (fboundp 'swimmy.engine::save-state)
         (funcall 'swimmy.engine::save-state)))
         
-    ;; 2. Scheduled Report (23:00 Trigger)
-    (when (and (>= h 23) (not *daily-report-sent-today*))
-      (format t "[SCHEDULER] ⏰ 23:00 Trigger - Sending Daily Report...~%")
-      (send-daily-tribal-narrative)
-      (setf *daily-report-sent-today* t))))
+    ;; 2. Generic Task Runner (Iterates *scheduled-events*)
+    (dolist (event *scheduled-events*)
+      (let* ((trigger-h (getf (cdr event) :hour))
+             (sent-sym (getf (cdr event) :sent-flag))
+             (task-fn (getf (cdr event) :fn)))
+        (when (and (>= h trigger-h) (not (symbol-value sent-sym)))
+          (funcall task-fn)
+          (setf (symbol-value sent-sym) t))))))

@@ -291,20 +291,56 @@
 ;;; A-RANK EVALUATION (CPCV Validation → S-RANK or back to B)
 ;;; ---------------------------------------------------------------------------
 
+(defparameter *a-rank-probation-tracker* (make-hash-table :test 'equal)
+  "Tracks consecutive failure days for A-Rank strategies (Grace Period).")
+
 (defun evaluate-a-rank-strategy (strategy)
   "Evaluate A-RANK strategy with CPCV (2021-2026 OOS).
-   If passes S criteria → S-RANK. If fails → B-RANK or Graveyard."
-  (if (check-rank-criteria strategy :S)
-      (progn
-        (promote-rank strategy :S "CPCV Validated - LIVE TRADING PERMITTED")
-        :S)
-      (if (check-rank-criteria strategy :B)
-          (progn
-            (demote-rank strategy :B "CPCV Failed - Back to Training")
-            :B)
-          (progn
-            (send-to-graveyard strategy "CPCV Critical Failure")
-            :graveyard))))
+   If passes S criteria → S-RANK. If fails → B-RANK or Graveyard.
+   V49.0: Implements Grace Period (7 days) for A-Rank protection."
+  (let ((name (strategy-name strategy)))
+    (if (check-rank-criteria strategy :S)
+        (progn
+          ;; Promotion to S (Clear probation)
+          (remhash name *a-rank-probation-tracker*)
+          (promote-rank strategy :S "CPCV Validated - LIVE TRADING PERMITTED")
+          :S)
+        
+        ;; Failed S check, now check A maintenance (or B fall)
+        (if (check-rank-criteria strategy :B)
+             (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
+               ;; Even if it technically passes B, if it falls below A-level (Sharpe 0.3)
+               ;; we treat it as a potential demotion candidate in the original logic.
+               ;; But check-criteria '(:B) is Sharpe >= 0.1. A-Rank requires >= 0.3.
+               ;; If Sharpe is [0.1, 0.3), it counts as a FAIL for A-Rank standards.
+               
+               (if (< sharpe 0.3)
+                   (let ((fails (incf (gethash name *a-rank-probation-tracker* 0))))
+                     (if (< fails 7)
+                         (progn
+                           ;; GRACE PERIOD
+                           (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3) - Safe for now.~%"
+                                   fails name sharpe)
+                           :A)
+                         (progn
+                           ;; DEMOTION
+                           (remhash name *a-rank-probation-tracker*)
+                           (demote-rank strategy :B (format nil "Grace Period Expired (~d continuous failures)" fails))
+                           :B)))
+                   
+                   ;; Sharpe >= 0.3 (Maintained A-Rank Standard)
+                   (progn
+                     (remhash name *a-rank-probation-tracker*)
+                     ;; format t "[RANK] A-Rank Maintained: ~a (Sharpe=~,2f)~%" name sharpe
+                     :A)))
+            
+            ;; Failed B check (Sharpe < 0.1) -> IMMEDIATE GRAVEYARD?
+            ;; Or allow grace period even for total collapse?
+            ;; Expert Panel: "If it crashes to negative, kill it."
+            (progn
+              (remhash name *a-rank-probation-tracker*)
+              (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")
+              :graveyard)))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; BREEDING MANAGEMENT

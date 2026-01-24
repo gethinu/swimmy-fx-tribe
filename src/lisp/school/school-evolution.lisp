@@ -240,7 +240,12 @@ Generate strategies now:"
   (let* ((analysis (if (fboundp 'get-structured-self-analysis) 
                        (get-structured-self-analysis) 
                        "Initializing..."))
-         (context (list :analysis analysis))
+         (tactics (get-regime-tactics))
+         (wisdom (getf tactics :wisdom "Standard generation rules apply."))
+         (target-indicators (getf tactics :indicators nil))
+         (enhanced-analysis (format nil "~a~%~%[TACTICAL WISDOM] ~a~%~@[Recommended Indicators: ~{~a~^, ~}~]" 
+                                   analysis wisdom target-indicators))
+         (context (list :analysis enhanced-analysis))
          (type-map '((:trend . "Trend Following")
                      (:reversion . "Mean Reversion") 
                      (:breakout . "Breakout")
@@ -336,19 +341,33 @@ except Exception as e:
                           (exit (if (string= exit-str "") nil (read-from-string exit-str))))
                       
                       (when (and name entry exit)
-                         (push (cons (make-strategy :name (format nil "~a-Gen0" name)
-                                                    :entry entry 
-                                                    :exit exit 
-                                                    :sl sl :tp tp 
-                                                    :category :trend
-                                                    :timeframe (if (numberp tf) tf 15) ; Default M15
-                                                    :generation 0)
-                                     prob)
-                               strategies))))))
+                        (let ((s (make-strategy :name (format nil "~a-Gen0" name)
+                                                :entry entry 
+                                                :exit exit 
+                                                :sl sl :tp tp 
+                                                :category :trend
+                                                :timeframe (if (numberp tf) tf 15) ; Default M15
+                                                :generation 0)))
+                          (setf (strategy-regime-intent s) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
+                          (push (cons s prob) strategies)))))))
             (error (e)
               (format t "[PARSE ERROR] Transpilation failed: ~a~%" e)
               nil)))))
     strategies))
+
+;; V49.2: Automated Tactical Injection Test (Uncle Bob Requirement)
+(defun test-llm-tactical-injection ()
+  "Verify that LLM prompt correctly incorporates tactical wisdom from the regime."
+  (format t "~%🧪 Testing LLM Tactical Injection...~%")
+  (let* ((*current-regime* :trend-mature)
+         (tactics (get-regime-tactics))
+         (wisdom (getf tactics :wisdom))
+         (analysis "Test Analysis")
+         (enhanced-analysis (format nil "~a~%~%[TACTICAL WISDOM] ~a" analysis wisdom))
+         (prompt (generate-vs-prompt "Trend Following" (list :analysis enhanced-analysis))))
+    (if (search "Mature trend" prompt)
+        (progn (format t "  ✅ Tactical Wisdom found in prompt.~%") t)
+        (progn (format t "  ❌ Tactical Wisdom MISSING from prompt!~%") nil))))
 
 
 ;;; ==========================================
@@ -570,30 +589,6 @@ Generate only the Lisp code:"
       (t
        (list :action :evolve
              :focus nil
-             :message "Ecosystem healthy - continue evolution"))))
+             :message "Ecosystem healthy - continue evolution")))))
 
-;;; ==========================================
-;;; PARAMETER APPLICATION (Restored V48)
-;;; ==========================================
 
-(defun apply-optimized-params ()
-  "Apply optimized parameters from *optimized-params* to strategies."
-  (format t "[EVOLUTION] 🧬 Applying Evolutionary Genes (Code-as-Data)...~%")
-  (when (boundp '*optimized-params*)
-    (dolist (params *optimized-params*)
-      (let* ((name (getf params :name))
-             (strat (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-        (when strat
-          ;; Apply Params
-          (setf (strategy-timeframe strat) (getf params :timeframe))
-          (setf (strategy-sl strat) (getf params :sl))
-          (setf (strategy-tp strat) (getf params :tp))
-          ;; Indicators is a list of strings "SMA-5", parse if needed or store as strings?
-          ;; Strategy struct usually expects ((SMA 5) (SMA 20)) or similar.
-          ;; The optimized data has strings ("SMA-5" "SMA-20").
-          ;; We might need parsing logic here if the strategy engine relies on symbols/numbers.
-          ;; For now, assuming the engine handles or we skip indicator overwrite if format mismatch.
-          ;; Actually, let's just log it for now to be safe.
-          ;; (format t "   Updated ~a (TF: ~a, SL: ~a, TP: ~a)~%" name (strategy-timeframe strat) (strategy-sl strat) (strategy-tp strat))
-          )))))
-)

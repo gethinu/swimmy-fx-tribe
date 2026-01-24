@@ -102,6 +102,7 @@
 
 
 
+(defun run-breeding-cycle ()
   "Breed top strategies from ALL tiers, prioritizing higher generations.
    V45.0: Fixed to allow multi-generational evolution (Gen45+ possible).
    V47.0: Added breeding count limits (3 uses) and parent/child competition.
@@ -132,13 +133,17 @@
                            (1+ (/ i 2)) cat
                            (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
                            (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
-                   (let ((child (breed-strategies p1 p2)))
-                     (increment-breeding-count p1)
-                     (increment-breeding-count p2)
-                     (when (add-to-kb child :breeder :require-bt nil :notify nil)
-                       (save-recruit-to-lisp child)
-                       (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
-                               (strategy-name child) (strategy-generation child)))))))))
+                   ;; V49.2: Correlation Check (Taleb's Safety Guard)
+                   (when (strategies-correlation-ok-p p1 p2)
+                     (let ((child (breed-strategies p1 p2)))
+                       (increment-breeding-count p1)
+                       (increment-breeding-count p2)
+                       ;; V49.2: Inherit Regime Intent
+                       (setf (strategy-regime-intent child) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
+                       (when (add-to-kb child :breeder :require-bt nil :notify nil)
+                         (save-recruit-to-lisp child)
+                         (format t "[BREEDER] 👶 Born: ~a (Gen~d) Intended for: ~a~%"
+                                 (strategy-name child) (strategy-generation child) (strategy-regime-intent child)))))))))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation
@@ -185,6 +190,17 @@
         (format stream "    ~s~%" p))
       (format stream "   ))~%"))
     (format t "[WISDOM] 💾 Saved ~d veteran genes to ~a~%" (length params-list) filepath)))
+
+;; V49.2: Strategy Correlation Check (Taleb's Safety Guard)
+(defun strategies-correlation-ok-p (p1 p2)
+  "Check if two parents are too similar (Clone Prevention).
+   Returns NIL if genetic distance is too small."
+  (let ((dist (calculate-genetic-distance (extract-genome p1) (extract-genome p2))))
+    (if (< dist 0.2)
+        (progn
+          (format t "[BREEDER] 🚫 Pair too similar (Dist: ~,2f). Skipping Jackpotクローン.~%" dist)
+          nil)
+        t)))
 
 (defun analyze-veterans ()
   "Analyze the Knowledge Base and extract 'Wisdom' (Best Genes).

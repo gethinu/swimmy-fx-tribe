@@ -3,24 +3,33 @@
 Current status of the autonomous strategy generation pipeline.
 
 🧠 Knowledge Base (Active)
-20428 Strategies
+49064 Strategies
 
 🏆 **S-Rank (Elite)**
 0 (Sharpe > 0.5)
 
 🎖️ **A-Rank (Pro)**
-0 (Sharpe > 0.3)
+108 (Sharpe > 0.3)
 
 🪜 **B-Rank (Selection)**
-19133 (Sharpe > 0.1)
+48056 (Sharpe > 0.1)
 
 👶 New Recruits (24h)
-20428
+49026
 
 👻 Graveyard
-13443
+94091
+
+
+🌟 **Top Candidates:**
+- `RECRUIT-RND-1768778854-7` (S=0.54, A)
+- `RECRUIT-RND-1768782010-12` (S=0.47, A)
+- `RECRUIT-RND-1768781596-0` (S=0.46, A)
+- `RECRUIT-RND-1768781571-4` (S=0.45, A)
+- `RECRUIT-RND-1768782422-5` (S=0.41, A)
+
 
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
-01/23 23:43 JST / 14:43 UTC
+01/24 11:40 JST / 02:40 UTC

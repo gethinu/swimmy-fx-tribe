@@ -58,6 +58,10 @@
    #:get-population-health
    #:process-category-trades
    #:check-evolution
+   #:get-regime-tactics ;; V49.2: Tactical Mapping
+   #:*current-regime*
+   #:*predicted-regime*
+   #:*volatility-regime*
    #:evolve-population-via-mutation
    #:mutate-strategy
    #:batch-backtest-knowledge
@@ -112,6 +116,7 @@
    #:strategy-direction
    #:strategy-timeframe
    #:strategy-profit-factor
+   #:strategy-regime-intent ;; V49.2: Metadata
    
    ;; Clan Struct Accessors
    #:make-clan
@@ -149,6 +154,7 @@
    
    ;; Rank Accessors (V46.1)
    #:get-strategy-rank
+   #:get-strategies-by-rank
    #:strategy-rank-rank
    #:strategy-rank-trades
    #:check-promotion

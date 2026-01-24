@@ -1,9 +1,25 @@
-# 🐟 Swimmy Ver 18 オーナーズガイド
+# 🐟 Swimmy Owner's Guide (V49.0)
 
 **最終版:** 2026-01-22 (V48.2 - Expert Panel Phase 8)
 **リーダー判断:** Elon Musk (Expert Panel Verified)
 
 ---
+
+## 🆕 V49.2 新機能 (2026-01-24) - Phase 10: Strategic Evolution
+
+### 1. Data-Driven Tactical Mapping (Regime-Aware) (Fowler/Musk)
+- **タクティカル・ウィズダム**: 市場レジーム（`trend-mature`, `range-expansion` 等）ごとに最適なインジケータ設定と「知恵」を定義。
+- **実装**: `*regime-tactics*` (school-strategy.lisp)
+- **効果**: LLMが生成する戦略が、現在の市場環境により適合するように誘導される。
+
+### 2. LLM Tactical Injection (Uncle Bob)
+- **プロンプト注入**: 戦略生成プロンプトに `[TACTICAL WISDOM]` セクションを自動挿入。
+- **自動テスト**: `(test-llm-tactical-injection)` で注入プロセスを保証。
+
+### 3. Breeding Jackpot Safety Check (Taleb)
+- **相関チェック**: 「Breeding Jackpot」（S-Rank同士の優先交配）実行時に、親同士の遺伝的距離をチェック。
+- **クローン防止**: 距離が近すぎる（< 0.2）場合は交配をスキップし、システムの脆弱性（多様性の欠如）を防ぐ。
+- **メタデータ**: 生成された戦略に `regime-intent` を付与し、どのレジームを意図して生まれたかを追跡可能に。
 
 ## 🆕 V48.2 新機能 (2026-01-22) - Phase 8: Robustness
 

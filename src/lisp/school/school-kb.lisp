@@ -35,8 +35,15 @@
           (setf *graveyard-cache* 
                 (if (probe-file path)
                     (with-open-file (stream path :direction :input :if-does-not-exist nil)
-                      (loop for pattern = (read stream nil nil)
-                            while pattern collect pattern))
+                      (let ((data (handler-case (read stream nil nil) (error () nil))))
+                        (cond
+                          ((null data) nil)
+                          ;; Case 1: Wrapped list of plists ((:NAME ...) (:NAME ...))
+                          ((and (listp data) (listp (car data))) data)
+                          ;; Case 2: Sequence of plists starting with this one
+                          (t (cons data 
+                                   (loop for pattern = (read stream nil nil)
+                                         while pattern collect pattern))))))
                     nil))))))
 
 (defun is-graveyard-pattern-p (strategy)
@@ -57,7 +64,9 @@
                      (numberp g-sl) (numberp s-sl)
                      (numberp g-tp) (numberp s-tp)
                      (< (abs (- s-sl g-sl)) (* 0.05 g-sl))
-                     (< (abs (- s-tp g-tp)) (* 0.05 g-tp)))
+                     (< (abs (- s-tp g-tp)) (* 0.05 g-tp))
+                     ;; V49.1: EXEMPTION for A-Rank Rescues (Sharpe >= 0.3)
+                     (not (>= (or (strategy-sharpe strategy) 0) 0.3)))
             (return-from match-loop t))))
       nil)))
 
@@ -96,7 +105,7 @@
         (return-from add-to-kb nil))
         
       ;; 1.5 Graveyard Check (V49.0 Taleb)
-      (when (is-graveyard-pattern-p strategy)
+      (when (and (not *startup-mode*) (is-graveyard-pattern-p strategy))
         (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
         (return-from add-to-kb nil))
       

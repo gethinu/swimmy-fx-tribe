@@ -363,21 +363,58 @@
 ;;; ============================================================================
 
 (defun get-regime-weights ()
-  ;; Use predicted regime if available for proactive positioning
+  "V49.1: Granular Regime Enforcement (Musk/López de Prado).
+   Maps 7 market states to the 4 great clans."
   (let* ((effective-regime (or *predicted-regime* *current-regime*))
          (effective-volatility (or *predicted-volatility* *volatility-regime*))
          (base-weights 
            (case effective-regime
-             (:trending   '((:trend . 0.50) (:reversion . 0.20) (:breakout . 0.20) (:scalp . 0.10)))
-             (:ranging    '((:trend . 0.20) (:reversion . 0.50) (:breakout . 0.10) (:scalp . 0.20)))
-             (otherwise   *category-allocation*))))
+             ;; Trending States
+             ((:trend-early :trend-mature)
+              '((:trend . 0.50) (:breakout . 0.30) (:reversion . 0.10) (:scalp . 0.10)))
+             (:trend-exhausted
+              '((:reversion . 0.60) (:trend . 0.10) (:breakout . 0.10) (:scalp . 0.20)))
+             
+             ;; Range States
+             (:range-expansion 
+              '((:breakout . 0.50) (:reversion . 0.20) (:trend . 0.10) (:scalp . 0.20)))
+             (:range-compression
+              '((:reversion . 0.60) (:scalp . 0.20) (:trend . 0.10) (:breakout . 0.10)))
+             
+             ;; Extreme / Illiquid States
+             ((:volatile-spike :illiquid)
+              '((:scalp . 0.80) (:trend . 0.05) (:reversion . 0.05) (:breakout . 0.10)))
+              
+             (otherwise *category-allocation*))))
     ;; Adjust for volatility
     (case effective-volatility
-      (:high  ; High volatility: reduce all, favor scalping
-       (mapcar (lambda (cw) (cons (car cw) (* (cdr cw) 0.5))) base-weights))
-      (:low   ; Low volatility: increase positions
-       (mapcar (lambda (cw) (cons (car cw) (* (cdr cw) 1.2))) base-weights))
+      (:high  ; High volatility: reduce all, favor scalping/breakout
+       (mapcar (lambda (cw) 
+                 (let ((cat (car cw)) (w (cdr cw)))
+                   (cons cat (* w (if (member cat '(:scalp :breakout)) 1.2 0.5)))))
+               base-weights))
+      (:low   ; Low volatility: increase positions, favor reversion
+       (mapcar (lambda (cw) 
+                 (let ((cat (car cw)) (w (cdr cw)))
+                   (cons cat (* w (if (eq cat :reversion) 1.5 0.8)))))
+               base-weights))
       (otherwise base-weights))))
+
+;; V49.2: Data-Driven Tactical Mapping (Fowler/Musk Recommendation)
+(defparameter *regime-tactics*
+  '((:trend-early     :indicators ((adx 14) (sma 20))    :wisdom "Early trend detected. Focus on breakouts and momentum.")
+    (:trend-mature    :indicators ((sma 50) (sma 200))   :wisdom "Mature trend. Use trailing stops and long-term averages.")
+    (:trend-exhausted :indicators ((rsi 14) (bollinger 20)) :wisdom "Trend exhausted. Watch for mean reversion and overbought/oversold.")
+    (:range-expansion :indicators ((bollinger 20) (atr 14)) :wisdom "Range expanding. Trade the volatility and breakout levels.")
+    (:range-compression :indicators ((rsi 14) (stochastic 5)) :wisdom "Range compressing. Scalp the edges and watch for low-vol triggers.")
+    (:volatile-spike  :indicators ((atr 14) (rsi 2))      :wisdom "High volatility. Tighten stops, focus on extreme reversions.")
+    (:illiquid       :indicators ((sma 5) (vwap 1))      :wisdom "Illiquid market. Be cautious, focus on short-term price action."))
+  "Maps market regimes to recommended indicators and tactical wisdom.")
+
+(defun get-regime-tactics (&optional regime)
+  "Retrieve tactical wisdom for the current or specified regime."
+  (let ((r (or regime (when (boundp '*predicted-regime*) *predicted-regime*) (when (boundp '*current-regime*) *current-regime*))))
+    (cdr (assoc r *regime-tactics*))))
 
 (defun select-best-from-pool (category n)
   (let* ((pool (gethash category *category-pools*))

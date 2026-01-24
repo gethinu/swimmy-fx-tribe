@@ -3,7 +3,7 @@ REM Auto-Journal Windows Native Daemon
 REM Double-click to start capturing screenshots on Windows
 
 REM Use pushd to handle UNC paths (maps a drive letter temporarily)
-pushd "\\wsl$\Ubuntu\home\swimmy\swimmy"
+pushd "%~dp0.."
 if errorlevel 1 (
     echo ERROR: Cannot access WSL path
     echo Make sure WSL is running

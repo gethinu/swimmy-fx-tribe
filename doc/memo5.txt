@@ -1,89 +1,77 @@
- ALERT
- CPCV Validation
- 21:27:55 UTC JST
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-A-RANK Tested: 20
- S-RANK Promoted: 0
- Failed: 20
+ Knowledge Base (Active)
+1541 Strategies
 
-A-RANK Remaining: 76
+ S-Rank (Elite)
+0 (Sharpe > 0.5)
+
+ A-Rank (Pro)
+38 (Sharpe > 0.3)
+
+ B-Rank (Selection)
+1499 (Sharpe > 0.1)
+
+ New Recruits (24h)
+1503
+
+ Graveyard
+82546
+
+
+ Top Candidates:
+RECRUIT-RND-1768778854-7 (S=0.54, A),
+RECRUIT-RND-1768782010-12 (S=0.47, A),
+RECRUIT-RND-1768781596-0 (S=0.46, A),
+RECRUIT-RND-1768781571-4 (S=0.45, A),
+RECRUIT-RND-1768782422-5 (S=0.41, A),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/24 09:40 JST / 00:40 UTC
 :fire:
 クリックしてリアクション
-:100:
-クリックしてリアクション
 :laughing:
+クリックしてリアクション
+:100:
 クリックしてリアクション
 リアクションを付ける
 返信
 転送
 その他
-[21:28]2026年1月22日 木曜日 21:28
- ALERT
- CPCV Validation
- 21:27:59 UTC JST
 
-A-RANK Tested: 20
- S-RANK Promoted: 0
- Failed: 20
-
-A-RANK Remaining: 76
+reports
+アプリ
+ — 9:452026年1月24日 土曜日 9:45
+ Daily Report
+ TEST: Daily Report Channel
 :fire:
 クリックしてリアクション
-:100:
-クリックしてリアクション
 :laughing:
+クリックしてリアクション
+:100:
 クリックしてリアクション
 リアクションを付ける
 返信
 転送
 その他
-[21:28]2026年1月22日 木曜日 21:28
- ALERT
- CPCV Validation
- 21:28:06 UTC JST
-
-A-RANK Tested: 20
- S-RANK Promoted: 0
- Failed: 20
-
-A-RANK Remaining: 76
+[9:45]2026年1月24日 土曜日 9:45
+ Weekly Summary
+ TEST: Weekly Report Channel
 :fire:
 クリックしてリアクション
-:100:
-クリックしてリアクション
 :laughing:
+クリックしてリアクション
+:100:
 クリックしてリアクション
 リアクションを付ける
 返信
 転送
 その他
-[21:28]2026年1月22日 木曜日 21:28
- ALERT
- CPCV Validation
- 21:28:20 UTC JST
-
-A-RANK Tested: 20
- S-RANK Promoted: 0
- Failed: 20
-
-A-RANK Remaining: 76
-:fire:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[21:28]2026年1月22日 木曜日 21:28
- ALERT
- CPCV Validation
- 21:28:31 UTC JST
-
-A-RANK Tested: 20
- S-RANK Promoted: 0
- Failed: 20
-
-A-RANK Remaining: 76
+[9:45]2026年1月24日 土曜日 9:45
+ Journal Test
+ TEST: Journal Channel

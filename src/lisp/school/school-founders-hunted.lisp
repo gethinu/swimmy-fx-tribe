@@ -275,5 +275,5 @@
   (format t "[HUNT] ✅ Batch Recruitment Complete. Portfolio Size: ~d~%" (length *strategy-knowledge-base*)))
 
 ;; Execution Trigger: Only run if we are in a running system (not just compilation)
-(when (boundp '*strategy-knowledge-base*)
-  (recruit-hunted-batch))
+;; (when (boundp '*strategy-knowledge-base*)
+;;   (recruit-hunted-batch))

@@ -13,6 +13,23 @@
       (decode-universal-time ut -9)
     (format nil "~D-~2,'0D-~2,'0D ~2,'0D:~2,'0D:~2,'0D" year month day hour min sec)))
 
+(defun hot-reload-school ()
+  "V49.1: Hot Reload Helper (Gene Kim/Expert Panel).
+   Reloads the entire ASDF system without process restart.
+   Note: Some global variables might be reset if not defined by defvar."
+  (format t "~%[HOT-RELOAD] 🌀 Initiating system refresh...~%")
+  (handler-case
+      (progn
+        (asdf:load-system :swimmy)
+        (format t "[HOT-RELOAD] ✅ System reloaded successfully at ~a~%" (get-jst-str))
+        ;; V49.1: Notify via Discord if possible
+        (when (fboundp 'swimmy.core:notify-apex)
+          (swimmy.core:notify-apex (format nil "🔄 **Hot Reload Complete** at ~a" (get-jst-str)) :color 3447003))
+        t)
+    (error (c)
+      (format t "[HOT-RELOAD] ❌ Reload failed: ~a~%" c)
+      nil)))
+
 ;;; EXTERNAL SERVICES
 ;;; EXTERNAL SERVICES
 (defun call-gemini (prompt)

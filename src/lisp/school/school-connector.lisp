@@ -20,16 +20,16 @@
         (progn (format t "[CONNECTOR] ✅ Command succesful.~%") t)
         (progn (format t "[CONNECTOR] ❌ Command failed (RC=~a).~%" exit-code) nil))))
 
-(defun phase-1-optimize ()
-  "Run Evolutionary Optimization (Legacy Python removed)"
-  ;; (run-command '("python3" "tools/optimize_strategies.py"))
-  (format t "[CONNECTOR] ⏩ Skipping Phase 1 (Python Legacy)...~%"))
+(defun phase-1-validation ()
+  "Phase 1: Validation Batch (Formerly RR/Optimize)
+   Running native Lisp qualification cycle for scout/incubator strategies."
+  (format t "[CONNECTOR] [Phase 1] Validation Batch (Lisp Native)...~%")
+  (when (fboundp 'run-qualification-cycle)
+    (run-qualification-cycle)))
 
-(defun phase-2-patch ()
-  "Apply Optimized Genes (Legacy Python removed)"
-  ;; (run-command '("python3" "tools/generate_lisp_params.py"))
-  (format t "[CONNECTOR] ⏩ Skipping Phase 2 (Python Legacy)...~%")
-  t)
+;; Phase 2 (Legacy Python Patch) is deprecated and removed.
+;; Logic is now handled dynamically by the evolution loop.
+
 
 (defun phase-3-qualify ()
   "Run WFV Qualification (Native Lisp Loop)"
@@ -121,11 +121,12 @@
   (loop
     (format t "~%--- 🕰️ Cycle Start [Time: ~a] ---~%" (swimmy.core:get-time-string))
     
-    ;; 1. Optimize
-    (phase-1-optimize)
+    ;; 1. Validation Batch (Formerly RR/Optimize)
+    (phase-1-validation)
     
-    ;; 2. Patch
-    (phase-2-patch)
+    ;; 2. [REMOVED] Legacy Python Phase 2
+    ;; Logic absorbed into Evolution Engine
+
     
     ;; 3. Qualify
     (phase-3-qualify)

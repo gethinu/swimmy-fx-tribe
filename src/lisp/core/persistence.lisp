@@ -96,8 +96,20 @@
           (format t "[LIB] 🗑️ Deleted ~a from ~a~%" name path))
         (format t "[LIB] ⚠️ File not found for deletion: ~a~%" path))))
 
-(defun move-strategy (strategy-obj new-tier)
-  "Move strategy to a new tier (delete old file, update slot, save new file)."
+(defun move-strategy (strategy-obj new-tier &key (force nil))
+  "Move strategy to a new tier (delete old file, update slot, save new file).
+   V49.3: Fortress Mode - Blocks moving A/S/Legend to Graveyard without :force t."
+  
+  ;; Fortress Safety Check
+  (let ((rank (slot-value strategy-obj 'swimmy.school::rank))
+        (name (slot-value strategy-obj 'swimmy.school::name)))
+    (when (and (member rank '(:A :S :legend))
+               (not force)
+               (or (eq new-tier :graveyard) 
+                   (string-equal (string new-tier) "GRAVEYARD")))
+       (error "[PERSISTENCE] 🛡️ FORTRESS BLOCK: Attempted to move protected ~a strategy '~a' to Graveyard without FORCE!" 
+              rank name)))
+
   ;; 1. Delete old file using CURRENT tier
   (delete-strategy strategy-obj)
   

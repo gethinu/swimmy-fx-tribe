@@ -171,10 +171,16 @@
             (with-output-to-string (s)
               (format s "~%🌟 **Top Candidates:**~%")
               (dolist (st (subseq sorted 0 (min (length sorted) 5)))
-                (format s "- `~a` (S=~,2f, ~a)~%" 
-                        (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
-                        (or (strategy-sharpe st) 0.0) 
-                        (strategy-rank st)))))))
+                (let* ((rank (strategy-rank st))
+                       (sharpe (or (strategy-sharpe st) 0.0))
+                       ;; V49.0: Identification of high-potential A-Rank
+                       (label (if (and (eq rank :A) (>= sharpe 0.5))
+                                  "A: READY FOR CPCV"
+                                  (symbol-name rank))))
+                  (format s "- `~a` (S=~,2f, ~a)~%" 
+                          (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                          sharpe
+                          label)))))))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -183,8 +189,8 @@ Current status of the autonomous strategy generation pipeline.
 🧠 Knowledge Base (Active)
 ~d Strategies
 
-🏆 **S-Rank (Elite)**
-~d (Sharpe > 0.5)
+🏆 **S-Rank (Verified Elite)**
+~d (Sharpe > 0.5 + Multi-Verify)
 
 🎖️ **A-Rank (Pro)**
 ~d (Sharpe > 0.3)
