@@ -5,6 +5,19 @@
 
 ---
 
+## 🆕 V49.4 新機能 (2026-01-24) - Phase 11: System Hardening
+
+### 1. Hot Reload (Hot Reloading) (Gene Kim)
+- **ゼロダウンタイム**: プロセスを停止せずにコード更新が可能。
+- **操作**: `./tools/reload.sh` を実行すると、SIGHUPシグナルが送信され、ASDFシステムがリロードされます。
+- **効果**: リードタイムの大幅短縮。
+
+### 2. Regime Hard Lock (Musk)
+- **物理的ロック**: レジームと戦略の不整合（例: レンジ相場でトレンド戦略）を物理的に排除。
+- **検証**: `test-regime-lock.lisp` により、対象リストから除外されていることを数学的に証明。
+
+---
+
 ## 🆕 V49.2 新機能 (2026-01-24) - Phase 10: Strategic Evolution
 
 ### 1. Data-Driven Tactical Mapping (Regime-Aware) (Fowler/Musk)
@@ -96,20 +109,17 @@
 ## 🚀 起動 / 停止 (Systemd)
 
 ```bash
-# 全サービス起動 (Zombie Processの一掃を含む)
-make run  # 推奨
+# 全サービス再起動 (推奨)
+systemctl --user restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
 
-# または個別起動
-systemctl --user start swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper
-
-# 全サービス停止
-systemctl --user stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper
+# 停止
+systemctl --user stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
 
 # ステータス確認
-make status
+systemctl --user status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
 
 # リアルタイムログ監視
-make logs
+journalctl --user -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-school
 
 # 🧬 進化状況モニター (Multi-Currency Visualizer)
 ./tools/monitor_evolution.sh
@@ -278,10 +288,10 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 
 ```bash
 # 1. Quality Gate 確認
-make quality-gate
+./tools/quality_gate.sh
 
 # 2. サービス状態確認
-make status
+systemctl --user status swimmy-school swimmy-brain
 
 # 3. MT5 EA バージョン確認
 # → EA ログで "Ver 15.2" を確認
@@ -296,13 +306,10 @@ journalctl --user -u swimmy-brain -f
 ## 🚨 緊急時対応
 
 ```bash
-# ゾンビプロセス一掃（サービス再起動で自動実行）
-make run
+# 1. ゾンビプロセス一掃
+./tools/kill_zombies.sh
 
-# 手動でゾンビを殺す場合
-make kill-zombies
-
-# その後、正常に再起動
+# 2. 正常に再起動
 systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-school
 ```
 

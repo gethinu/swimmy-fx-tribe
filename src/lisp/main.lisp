@@ -136,5 +136,12 @@
                              (format t "~%[SYSTEM] 🛑 SIGTERM received. Saving state before exit...~%")
                              (stop-brain)))
 
+  ;; V49.4: Hot Reload (SIGHUP) - Gene Kim's Requirement
+  (sb-sys:enable-interrupt sb-unix:sighup
+                           (lambda (signal code scp)
+                             (declare (ignore signal code scp))
+                             (format t "~%[SYSTEM] 🔄 SIGHUP derived. Triggering Hot Reload...~%")
+                             (hot-reload-school)))
+
   ;; Start Runner (Infinite Loop)
   (start-brain))

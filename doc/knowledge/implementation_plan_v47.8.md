@@ -548,3 +548,16 @@ graph TD
 - **Guardian CPCV_VALIDATE action**: CpcvRequest struct + handler in main.rs
 - **request-cpcv-validation**: Lisp→Rust ZMQ call in school-validation.lisp
 - **validate-for-s-rank-promotion**: S-RANK with CPCV validation (Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%)
+
+## P11: System Hardening (v49.4) ✅ 完了 (2026-01-24)
+
+### Phase 1: Hot Reload (Gene Kim) ✅
+- [x] SIGHUP Handler in `main.lisp`
+- [x] `tools/reload.sh` Script
+- [x] Zero-Downtime Code Update
+
+### Phase 2: Regime Hard Lock (Musk) ✅
+- [x] `test-regime-lock.lisp` Verification
+- [x] Physical lock-out of Trend strategies in Range markets
+- [x] Quality Gate Integration
+

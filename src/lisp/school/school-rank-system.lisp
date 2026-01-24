@@ -272,23 +272,12 @@
         (dolist (s to-discard)
           (send-to-graveyard s "Culling Loser"))))))
 
-(defun run-b-rank-culling (&optional single-tf)
-  "Run culling for all TF × Direction × Symbol categories.
-   V47.2: Full category-based culling."
-  (let ((timeframes (if single-tf (list single-tf) *supported-timeframes*)))
-    (dolist (tf timeframes)
-      (dolist (dir *supported-directions*)
-        (dolist (sym *supported-symbols*)
-          (run-b-rank-culling-for-category tf dir sym))))
-    
-    ;; V48.7: Meritocratic Promotion (A-Rank)
-    ;; Any B-Rank strategy with Sharpe >= 0.3 should be promoted even if culling not triggered
-    (dolist (s (get-strategies-by-rank :B))
-      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) 0.3))
-        (promote-rank s :A (format nil "Meritocratic Promotion (S=~,2f)" (strategy-sharpe s)))))))
+(defun collect-active-symbols ()
+  "Collect all unique symbols present in the KB."
+  (remove-duplicates (mapcar #'strategy-symbol *strategy-knowledge-base*) :test #'string=))
 
 ;;; ---------------------------------------------------------------------------
-;;; A-RANK EVALUATION (CPCV Validation → S-RANK or back to B)
+;;; A-RANK EVALUATION
 ;;; ---------------------------------------------------------------------------
 
 (defparameter *a-rank-probation-tracker* (make-hash-table :test 'equal)
@@ -296,88 +285,88 @@
 
 (defun evaluate-a-rank-strategy (strategy)
   "Evaluate A-RANK strategy with CPCV (2021-2026 OOS).
-   If passes S criteria → S-RANK. If fails → B-RANK or Graveyard.
-   V49.0: Implements Grace Period (7 days) for A-Rank protection."
+   If passes S criteria → S-RANK. If fails → B-RANK or Graveyard."
   (let ((name (strategy-name strategy)))
     (if (check-rank-criteria strategy :S)
         (progn
-          ;; Promotion to S (Clear probation)
           (remhash name *a-rank-probation-tracker*)
           (promote-rank strategy :S "CPCV Validated - LIVE TRADING PERMITTED")
           :S)
-        
-        ;; Failed S check, now check A maintenance (or B fall)
         (if (check-rank-criteria strategy :B)
              (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
-               ;; Even if it technically passes B, if it falls below A-level (Sharpe 0.3)
-               ;; we treat it as a potential demotion candidate in the original logic.
-               ;; But check-criteria '(:B) is Sharpe >= 0.1. A-Rank requires >= 0.3.
-               ;; If Sharpe is [0.1, 0.3), it counts as a FAIL for A-Rank standards.
-               
                (if (< sharpe 0.3)
                    (let ((fails (incf (gethash name *a-rank-probation-tracker* 0))))
                      (if (< fails 7)
                          (progn
-                           ;; GRACE PERIOD
-                           (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3) - Safe for now.~%"
-                                   fails name sharpe)
+                           (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3)~%" fails name sharpe)
                            :A)
                          (progn
-                           ;; DEMOTION
                            (remhash name *a-rank-probation-tracker*)
-                           (demote-rank strategy :B (format nil "Grace Period Expired (~d continuous failures)" fails))
+                           (demote-rank strategy :B (format nil "Grace Period Expired (~d failures)" fails))
                            :B)))
-                   
-                   ;; Sharpe >= 0.3 (Maintained A-Rank Standard)
-                   (progn
-                     (remhash name *a-rank-probation-tracker*)
-                     ;; format t "[RANK] A-Rank Maintained: ~a (Sharpe=~,2f)~%" name sharpe
-                     :A)))
-            
-            ;; Failed B check (Sharpe < 0.1) -> IMMEDIATE GRAVEYARD?
-            ;; Or allow grace period even for total collapse?
-            ;; Expert Panel: "If it crashes to negative, kill it."
+                   (progn (remhash name *a-rank-probation-tracker*) :A)))
             (progn
               (remhash name *a-rank-probation-tracker*)
               (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")
               :graveyard)))))
 
 ;;; ---------------------------------------------------------------------------
-;;; BREEDING MANAGEMENT
+;;; BREEDING HELPERS
 ;;; ---------------------------------------------------------------------------
 
 (defun increment-breeding-count (strategy)
-  "Increment breeding use count. Discard if reaches limit (Legend exempt)."
+  "Increment breeding use count."
   (let ((count (1+ (or (strategy-breeding-count strategy) 0))))
     (setf (strategy-breeding-count strategy) count)
-    
     (when (and (>= count *max-breeding-uses*)
                (not (eq (strategy-rank strategy) :legend)))
-      (send-to-graveyard strategy 
-        (format nil "Breeding limit reached (~d uses)" count)))))
+      (send-to-graveyard strategy (format nil "Breeding limit reached (~d uses)" count)))))
 
-;;; ---------------------------------------------------------------------------
-;;; MAIN ENTRY POINT
-;;; ---------------------------------------------------------------------------
+(defun run-b-rank-culling (&optional single-tf)
+  "Run culling for all TF × Direction × Symbol categories.
+   V49.3: Dynamic symbol detection to prevent zombie-accumulation in non-major pairs."
+  (let ((timeframes (if single-tf (list single-tf) *supported-timeframes*))
+        (symbols (collect-active-symbols))) ;; Dynamic Symbols
+    (dolist (tf timeframes)
+      (dolist (dir *supported-directions*)
+        (dolist (sym symbols)
+          (run-b-rank-culling-for-category tf dir sym))))
+    
+    ;; V48.7: Meritocratic Promotion (A-Rank)
+    (dolist (s (get-strategies-by-rank :B))
+      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) 0.3))
+        (promote-rank s :A (format nil "Meritocratic Promotion (S=~,2f)" (strategy-sharpe s)))))))
 
 (defun run-rank-evaluation ()
   "Main rank evaluation cycle.
    1. Evaluate new strategies (→ B or Graveyard)
-   2. Cull B-RANK if threshold reached (by TF × Direction × Symbol)
+   2. Cull B-RANK if threshold reached (Dynamic Categories)
    3. Validate A-RANK via CPCV (→ S or back)
-   V47.2: Full category-based evaluation."
-  (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V47.2 with Categories)~%")
+   V49.3: Added missing A-Rank evaluation loop."
+  (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
   
-  ;; Run category-based culling (all TF × Direction × Symbol combinations)
+  ;; 1. Culling
   (run-b-rank-culling)
   
+  ;; 2. A-Rank Promotion (V49.3: THE MISSING LINK)
+  (let ((a-ranks (get-strategies-by-rank :A)))
+    (format t "[RANK] 🧐 Evaluating ~d A-Rank strategies for promotion...~%" (length a-ranks))
+    (dolist (s a-ranks)
+      (evaluate-a-rank-strategy s)))
+  
   ;; Report status
-  (format t "[RANK] 📊 Status: B=~d A=~d S=~d Graveyard=~d Legend=~d~%"
-          (length (get-strategies-by-rank :B))
-          (length (get-strategies-by-rank :A))
-          (length (get-strategies-by-rank :S))
-          (length (get-strategies-by-rank :graveyard))
-          (length (get-strategies-by-rank :legend))))
+  (let ((b-count (length (get-strategies-by-rank :B)))
+        (a-count (length (get-strategies-by-rank :A)))
+        (s-count (length (get-strategies-by-rank :S)))
+        (g-count (length (get-strategies-by-rank :graveyard)))
+        (l-count (length (get-strategies-by-rank :legend))))
+    
+    (format t "[RANK] 📊 Status: B=~d A=~d S=~d Graveyard=~d Legend=~d~%"
+            b-count a-count s-count g-count l-count)
+            
+    ;; Audit Alert
+    (when (> b-count 5000)
+      (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; DIRECTION AUTO-DETECTION (V47.2)
