@@ -131,7 +131,7 @@
          nil))
     (t t)))
 
-(defun calc-execution-lot (category symbol history rank base-lot lead-name)
+(defun calc-execution-lot (category symbol history rank base-lot lead-name direction)
   "Calculate dynamic lot size based on Volatility, Risk Parity, and Rank."
   (let* ((rank-mult (calculate-rank-multiplier rank))
          (vol-scaled (if (and (fboundp 'volatility-scaled-lot) history)
@@ -140,9 +140,13 @@
          (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
          (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
          (hdrl-lot (handler-case (hdrl-adjusted-lot symbol base-lot) (error () base-lot)))
-         (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot)))
+     (kelly-adj (if lead-name (get-strategy-kelly-lot lead-name base-lot) base-lot))
+         (penalty (let ((strat (when lead-name 
+                                 (or (find lead-name *evolved-strategies* :key #'strategy-name :test #'string=)
+                                     (find lead-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))))
+                    (get-failure-penalty symbol direction category strat))))
     
-    (max 0.01 (* rank-mult vol-mult 
+    (max 0.01 (* rank-mult vol-mult penalty
                  (min (correlation-adjusted-lot symbol vol-scaled) 
                       rp-lot hdrl-lot kelly-adj)))))
 
@@ -242,7 +246,7 @@
              (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))
                     (rank (if rank-data (strategy-rank-rank rank-data) :scout))
                     (base-lot (get-category-lot category))
-                    (lot (calc-execution-lot category symbol history rank base-lot lead-name)))
+                    (lot (calc-execution-lot category symbol history rank base-lot lead-name direction)))
                
                (when (verify-signal-authority symbol direction category lot rank lead-name)
                   ;; Sleep Randomization (Anti-Gaming)

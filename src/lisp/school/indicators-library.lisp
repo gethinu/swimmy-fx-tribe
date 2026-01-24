@@ -14,6 +14,8 @@
 (defparameter *indicator-weights* (make-hash-table :test 'equal)
   "V49.6: Adaptive weights for indicator selection (Bandit logic).")
 
+(defparameter *weights-file* "data/memory/indicator_weights.sexp")
+
 (defparameter *indicator-catalog*
   '((:trend      . ((ema 20) (ema 50) (ema 200) (sma 100) (adx 14) (ichimoku 9 26 52) (psar 0.02 0.2)))
     (:reversion  . ((rsi 14) (bollinger 20 2) (stochastic 14 3 3) (mfi 14) (cci 20) (wpr 14)))
@@ -48,3 +50,35 @@
 (defun get-all-indicators ()
   "Return every possible indicator in the catalog (for general mutation)."
   (reduce #'append (mapcar #'cdr *indicator-catalog*)))
+
+;;; ============================================================================
+;;; PERSISTENCE
+;;; ============================================================================
+
+(defun save-indicator-weights ()
+  "Persist learned weights to file."
+  (ensure-directories-exist *weights-file*)
+  (with-open-file (out *weights-file* 
+                       :direction :output 
+                       :if-exists :supersede 
+                       :if-does-not-exist :create)
+    (let ((weights-list nil))
+      (maphash (lambda (k v) (push (list k v) weights-list)) *indicator-weights*)
+      (format out ";;; V49.7: Adaptive Indicator Weights (Learned)~%")
+      (write weights-list :stream out)))
+  (format t "[PERSIST] 💾 Saved indicator weights to ~a~%" *weights-file*))
+
+(defun load-indicator-weights ()
+  "Load weights from file if exists."
+  (handler-case
+      (with-open-file (in *weights-file* :direction :input :if-does-not-exist nil)
+        (when in
+          (let ((weights (read in)))
+            (dolist (entry weights)
+              (setf (gethash (car entry) *indicator-weights*) (cadr entry))))
+          (format t "[PERSIST] 📖 Loaded ~d indicator weights~%" (hash-table-count *indicator-weights*))))
+    (error (e)
+      (format t "[PERSIST] ⚠️ Failed to load weights: ~a~%" e))))
+
+;; Initialization
+(load-indicator-weights)

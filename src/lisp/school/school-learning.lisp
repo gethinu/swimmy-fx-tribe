@@ -290,25 +290,52 @@
         0.0  ; Not enough similar data
         (/ weighted-failures (+ weighted-failures weighted-successes 0.001)))))
 
-(defun get-failure-penalty (symbol direction category)
-  "Get lot size multiplier based on failure probability (0.3 to 1.0)"
+(defun get-failure-penalty (symbol direction category &optional strategy)
+  "Get lot size multiplier based on failure probability.
+   V49.7: Convexity-Aware (Taleb Philosophy)."
   (let ((failure-prob (calculate-failure-confidence symbol direction category)))
-    (cond
-      ((> failure-prob 0.8) 
-       (format t "[L] 🛡️ HIGH FAILURE RISK (~,1f%) - Reducing to MINIMUM size (10%) per Taleb Prep.~%" (* failure-prob 100))
-       0.1)
-      ((> failure-prob 0.6)
-       (format t "[L] ⚠️ ELEVATED RISK (~,1f%) - reducing to 50%~%" (* failure-prob 100))
-       0.5)
-      ((> failure-prob 0.4)
-       (format t "[L] 📊 MODERATE RISK (~,1f%) - reducing to 70%~%" (* failure-prob 100))
-       0.7)
-      (t 1.0))))
+    (if strategy
+        (get-convex-adjusted-penalty strategy failure-prob)
+        (cond
+          ((> failure-prob 0.8) 
+           (format t "[L] 🛑 HIGH FAILURE RISK (~,1f%) - scaling to minimum~%" (* failure-prob 100))
+           0.1)
+          ((> failure-prob 0.6)
+           (format t "[L] ⚠️ ELEVATED RISK (~,1f%) - reducing to 50%~%" (* failure-prob 100))
+           0.5)
+          ((> failure-prob 0.4)
+           (format t "[L] 📊 MODERATE RISK (~,1f%) - reducing to 70%~%" (* failure-prob 100))
+           0.7)
+          (t 1.0)))))
 
-(defun should-block-trade-p (symbol direction category)
-  "Check if this trade should be blocked based on failure analysis"
-  (let ((penalty (get-failure-penalty symbol direction category)))
-    (zerop penalty)))
+(defun get-convex-adjusted-penalty (strategy failure-prob)
+  "V49.7: Refine penalty based on strategy convexity (Taleb).
+   Convex (Trend): Higher payoff potential, more lenient sizing.
+   Concave (Scalp/Rev): Higher ruin risk in tails, strict sizing."
+  (let* ((cat (strategy-category strategy))
+         (convex-rank (> (or (strategy-sharpe strategy) 0) 1.5)) ; Elite Sharpe is often convex
+         (is-convex (or (eq cat :trend) (eq cat :breakout) convex-rank)))
+    (cond
+      ((and is-convex (> failure-prob 0.8)) 0.15) ; +50% leeway for Trend
+      ((and (not is-convex) (> failure-prob 0.7)) 0.05) ; Stricter for Scalp
+      (t (get-failure-penalty nil nil nil))))) ; Fallback to default logic (now minimum 0.1)
+
+(defun update-indicator-feedback (strategy won-p)
+  "V49.7: Reward/Penalize indicators used in the trade (Andrew Ng Bandit)."
+  (let* ((indicators (strategy-indicators strategy))
+         (regime (or (when (boundp '*current-regime*) *current-regime*) :unknown))
+         (score (if won-p 1.5 0.5))) ; Reinforcement factor
+    (dolist (ind indicators)
+      ;; We only update weights for the indicator symbol/params list
+      (update-indicator-weight (if (listp ind) (car ind) ind) regime score))
+    ;; Periodic persistence (10% of trades)
+    (when (< (random 1.0) 0.1)
+      (save-indicator-weights))))
+
+(defun should-block-trade-p (symbol direction category &optional strategy)
+  "Check if this trade should be blocked. V49.5: No longer blocks (minimal sizing)."
+  (declare (ignore symbol direction category strategy))
+  nil)
 
 ;;; ==========================================
 ;;; TRADE OUTCOME RECORDING
@@ -393,12 +420,15 @@
           
           ;; Phase 4: Adaptation Engine (memo3 Sec 9)
           ;; Update adaptation weights (EWMA) based on context
-            (update-adaptation-weights strat ctx pnl))
+            (update-adaptation-weights strat ctx pnl)
           
           ;; Phase 6: Lifecycle Management (memo3 Sec 10)
           ;; Check for Benching or Soft Kill
           (when (fboundp 'manage-strategy-lifecycle)
-            (manage-strategy-lifecycle strat (if won-p :win :loss) pnl))))
+            (manage-strategy-lifecycle strat (if won-p :win :loss) pnl))
+          
+          ;; V49.7: Adaptive Indicator Feedback (Bandit Loop)
+          (update-indicator-feedback strat won-p))))
 
     ;; Homework integration hooks
     (handler-case
