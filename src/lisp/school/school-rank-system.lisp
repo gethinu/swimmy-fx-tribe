@@ -33,9 +33,6 @@
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
 
-(defparameter *global-s-rank-cap* 50
-  "Total number of S-RANK strategies allowed in the global portfolio.
-   V49.5: Abolished category quotas for meritocratic selection.")
 
 ;;; ---------------------------------------------------------------------------
 ;;; RANK UTILITIES
@@ -333,48 +330,9 @@
     (when (> b-count 5000)
       (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))
     
-    ;; 4. Global Portfolio Construction (The Draft)
+    ;; 4. Global Portfolio Construction (The Draft) - Moved to school-portfolio.lisp
     (construct-global-portfolio)))
 
-(defun construct-global-portfolio ()
-  "V49.5: Global S-RANK Draft. Selects best strategies across all categories.
-   Applies Diversity Penalty to ensure uncorrelated candidates."
-  (format t "[RANK] 🏟️ Starting Global Portfolio Draft...~%")
-  (let* ((candidates (sort (copy-list (append (get-strategies-by-rank :S)
-                                              (get-strategies-by-rank :A)))
-                           #'> :key (lambda (s) (or (strategy-sharpe s) 0.0))))
-         (selected-team nil)
-         (demoted-count 0)
-         (promoted-count 0))
-    
-    (dolist (candidate candidates)
-      (if (and (< (length selected-team) *global-s-rank-cap*)
-               (>= (or (strategy-sharpe candidate) 0.0) 0.5) ; S-Rank Floor
-               (is-diverse-addition-p candidate selected-team))
-          (progn
-            (push candidate selected-team)
-            (when (eq (strategy-rank candidate) :A)
-              (incf promoted-count)
-              (setf (strategy-rank candidate) :S)))
-          (progn
-            (when (eq (strategy-rank candidate) :S)
-              (incf demoted-count)
-              (setf (strategy-rank candidate) :A)))))
-    
-    (format t "[RANK] 📊 Draft Complete: Team Size=~d | Promoted=~d Demoted=~d~%"
-            (length selected-team) promoted-count demoted-count)))
-
-(defun is-diverse-addition-p (strategy team)
-  "Check if adding this strategy maintains portfolio diversity (Clone Prevention).
-   V49.5: Uses Genetic Distance as a proxy for correlation."
-  (every (lambda (member)
-           (let ((dist (if (fboundp 'calculate-genetic-distance)
-                           (calculate-genetic-distance 
-                            (extract-genome strategy) 
-                            (extract-genome member))
-                           1.0)))
-             (> dist 0.3))) ; Diversity Threshold
-         team))
 
 ;;; ---------------------------------------------------------------------------
 ;;; DIRECTION AUTO-DETECTION (V47.2)

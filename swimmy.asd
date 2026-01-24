@@ -88,6 +88,7 @@
                 (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
                (:file "src/lisp/school/school-connector")
                (:file "src/lisp/school/school-learning")
+                (:file "src/lisp/school/school-portfolio")   ; V49.6: Portfolio & Global Draft
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school/school-volatility")
 
