@@ -45,3 +45,8 @@ data/library/TRAINING/
 
 # Historical data (too large for git)
 data/historical/
+
+# Runtime Data (too large or ephemeral)
+data/memory/
+*.db
+*.sexp
