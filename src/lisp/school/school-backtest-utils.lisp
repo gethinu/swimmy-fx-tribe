@@ -16,9 +16,9 @@
   "Helper to send ZMQ message with Throttling (Speed Demon Fix)"
   ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
   (sleep 0.005) 
-  (if (and (boundp '*backtest-requester*) *backtest-requester*)
-      (pzmq:send *backtest-requester* msg)
-      (pzmq:send *cmd-publisher* msg)))
+  (if (and (boundp 'swimmy.globals:*backtest-requester*) swimmy.globals:*backtest-requester*)
+      (pzmq:send swimmy.globals:*backtest-requester* msg)
+      (pzmq:send swimmy.globals:*cmd-publisher* msg)))
 
 (defun load-backtest-cache ()
   "Load backtest results from disk."
@@ -104,3 +104,16 @@
                 (decf depth)
                 (when (zerop depth) (return (1+ i)))))
           finally (return nil))))
+
+(defun generate-data-id (candles &optional (suffix ""))
+  "Generate a stable ID for a set of candles based on timestamps and count."
+  (if (and candles (listp candles))
+      (let* ((first (first candles))
+             (last (car (last candles)))
+             (count (length candles)))
+        (format nil "DATA-~A-~A-~D~A" 
+                (candle-timestamp first) 
+                (candle-timestamp last) 
+                count 
+                suffix))
+      (format nil "DATA-EMPTY~A" suffix)))

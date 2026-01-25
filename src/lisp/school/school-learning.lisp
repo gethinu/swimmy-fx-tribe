@@ -21,33 +21,7 @@
 ;;; TRADE RECORD STRUCTURE
 ;;; ==========================================
 
-(defstruct trade-record
-  timestamp
-  symbol
-  direction           ; :buy or :sell
-  category            ; :trend, :reversion, :breakout, :scalp
-  strategy-name
-  ;; Market Context (15+ variables)
-  regime              ; :trending, :ranging
-  volatility          ; :high, :normal, :low
-  sma-position        ; :above, :below, :crossing
-  rsi-value           ; actual RSI value 0-100
-  rsi-zone            ; :overbought, :neutral, :oversold
-  momentum            ; :accelerating, :decelerating, :flat
-  spread-condition    ; :tight, :normal, :wide
-  session             ; :tokyo, :london, :newyork, :overlap, :off
-  day-of-week         ; 0-6
-  hour-of-day         ; 0-23
-  price-vs-high       ; distance from recent high (%)
-  price-vs-low        ; distance from recent low (%)
-  consecutive-candles ; number of same-direction candles
-  volume-condition    ; :high, :normal, :low
-  atr-percentile      ; current ATR vs historical
-  ;; Outcome
-  pnl
-  hold-time           ; how long position was held (seconds)
-  max-drawdown        ; worst point during trade
-  hit-sl-or-tp)       ; :sl, :tp, :manual, :signal
+
 
 ;;; ==========================================
 ;;; MIGRATED: HALL OF FAME (From engine/learning)
@@ -410,6 +384,9 @@
           (format t "[L] ✅ SUCCESS: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
                   strategy-name direction (getf ctx :regime)
                   (getf ctx :rsi-value) (getf ctx :session))))
+    
+    ;; V49.8: SQL Persistence for Trade Logs
+    (record-trade-to-db record)
     
     ;; Update Strategy Specific Metrics (V6.9 Fix: The -0.19 Bug)
     (when strategy-name

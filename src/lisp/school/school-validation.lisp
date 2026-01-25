@@ -42,8 +42,11 @@
             (if result
                 (let ((sharpe (getf result :sharpe 0.0)))
                   (if (>= sharpe *oos-min-sharpe*)
+                    (progn
+                      (setf (strategy-oos-sharpe strat) sharpe)
+                      (upsert-strategy strat)
                       (values t sharpe 
-                              (format nil "OOS PASSED: Sharpe=~,2f" sharpe))
+                              (format nil "OOS PASSED: Sharpe=~,2f" sharpe)))
                       (values nil sharpe 
                               (format nil "OOS FAILED: Sharpe=~,2f < ~,2f" 
                                       sharpe *oos-min-sharpe*))))
@@ -67,6 +70,8 @@
   (multiple-value-bind (passed sharpe msg) (run-oos-validation strat)
     (format t "[A-RANK] ~a ~a: ~a~%" 
             (if passed "✅" "❌") (strategy-name strat) msg)
+    (when passed
+      (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe)))
     passed))
 
 (defun meets-a-rank-criteria (strat)
@@ -125,12 +130,17 @@
        (format t "[S-RANK] ⚠️ ~a: CPCV error - ~a~%" (strategy-name strat) error-msg)
        nil)
       (passed
-       (format t "[S-RANK] ✅ ~a: CPCV PASSED (median Sharpe=~,3f, ~d/~d paths)~%"
-               (strategy-name strat)
-               (getf result :median-sharpe)
-               (getf result :passed-count)
-               (getf result :path-count))
-       t)
+       (let ((median (getf result :median-sharpe))
+             (pass-rate (getf result :pass-rate)))
+         (setf (strategy-cpcv-median-sharpe strat) median)
+         (setf (strategy-cpcv-pass-rate strat) pass-rate)
+         (upsert-strategy strat)
+         (format t "[S-RANK] ✅ ~a: CPCV PASSED (median Sharpe=~,3f, ~d/~d paths)~%"
+                 (strategy-name strat)
+                 median
+                 (getf result :passed-count)
+                 (getf result :path-count))
+         t))
       (t
        (format t "[S-RANK] ❌ ~a: CPCV FAILED (median Sharpe=~,3f)~%"
                (strategy-name strat) (getf result :median-sharpe))
@@ -190,64 +200,4 @@
           (error (e)
             (format t "[CPCV] ⚠️ Error dispatching ~a: ~a~%" (strategy-name strat) e)))))))
 
-(defvar *rank-criteria-cache* (make-hash-table :test 'eq)
-  "V48.0: Cache for rank criteria loaded from DB")
-
-(defvar *criteria-cache-time* 0
-  "Last time criteria were loaded from DB")
-
-(defparameter *criteria-cache-ttl* 300
-  "Cache TTL in seconds (5 minutes)")
-
-(defun load-rank-criteria-from-db ()
-  "V48.0: Load rank criteria from PostgreSQL.
-   Returns T if loaded successfully, NIL otherwise."
-  (handler-case
-      (when (and (boundp 'swimmy.db::*db-connected*) swimmy.db::*db-connected*)
-        (let ((rows (postmodern:query 
-                      "SELECT rank, min_sharpe, min_pf, min_wr, max_dd FROM rank_criteria")))
-          (clrhash *rank-criteria-cache*)
-          (dolist (row rows)
-            (let ((rank (intern (string-upcase (first row)) :keyword)))
-              (setf (gethash rank *rank-criteria-cache*)
-                    (list :min-sharpe (float (second row))
-                          :min-pf (float (third row))
-                          :min-wr (float (fourth row))
-                          :max-dd (float (fifth row))))))
-          (setf *criteria-cache-time* (get-universal-time))
-          (format t "[CRITERIA] ✅ Loaded ~d rank criteria from DB~%" (hash-table-count *rank-criteria-cache*))
-          t))
-    (error (e)
-      (format t "[CRITERIA] ⚠️ DB load failed: ~a (using defaults)~%" e)
-      nil)))
-
-(defun get-rank-criteria (rank)
-  "V48.0: Get criteria for a rank. Loads from PostgreSQL if available.
-   Falls back to hardcoded values if DB unavailable."
-  ;; Check cache validity
-  (when (> (- (get-universal-time) *criteria-cache-time*) *criteria-cache-ttl*)
-    (load-rank-criteria-from-db))
-  
-  ;; Try cache first
-  (let ((cached (gethash rank *rank-criteria-cache*)))
-    (when cached
-      (return-from get-rank-criteria cached)))
-  
-  ;; Fallback to hardcoded defaults
-  (case rank
-    (:B '(:min-sharpe 0.1 :min-pf 0.0 :min-wr 0.0 :max-dd 1.0))
-    (:A '(:min-sharpe 0.3 :min-pf 1.2 :min-wr 0.40 :max-dd 0.20))
-    (:S '(:min-sharpe 0.5 :min-pf 1.5 :min-wr 0.45 :max-dd 0.15))
-    (otherwise '(:min-sharpe 0.0 :min-pf 0.0 :min-wr 0.0 :max-dd 1.0))))
-
-(defun check-rank-criteria (strat rank)
-  "V48.0: Check if strategy meets criteria for given rank."
-  (let ((criteria (get-rank-criteria rank))
-        (sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-profit-factor strat) 0.0))
-        (wr (or (strategy-win-rate strat) 0.0))
-        (maxdd (or (strategy-max-dd strat) 1.0)))
-    (and (>= sharpe (getf criteria :min-sharpe))
-         (>= pf (getf criteria :min-pf))
-         (>= wr (getf criteria :min-wr))
-         (< maxdd (getf criteria :max-dd)))))
+;; V50.3: Rank criteria logic moved to school-rank-system.lisp for consolidation.

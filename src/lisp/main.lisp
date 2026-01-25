@@ -22,6 +22,14 @@
       (progn
         (asdf:load-system :swimmy)
         (format t "[HOT-RELOAD] ✅ System reloaded successfully at ~a~%" (get-jst-str))
+        ;; V50.5: Force End Startup Mode (to re-enable backtesting/notifications immediately)
+        (when (fboundp 'swimmy.school::end-startup-mode)
+          (swimmy.school::end-startup-mode))
+        
+        ;; V50.5: Flush Deferred Backtests
+        (when (fboundp 'swimmy.school::flush-deferred-founders)
+          (swimmy.school::flush-deferred-founders))
+          
         ;; V49.1: Notify via Discord if possible
         (when (fboundp 'swimmy.core:notify-apex)
           (swimmy.core:notify-apex (format nil "🔄 **Hot Reload Complete** at ~a" (get-jst-str)) :color 3447003))
@@ -110,7 +118,7 @@
   ;; P8: End startup mode to enable notifications
   (when (fboundp 'swimmy.school::end-startup-mode)
     (swimmy.school::end-startup-mode))
-  
+    
   (format t "[SYSTEM] Initialization complete.~%"))
 
 ;;; MAIN ENTRY POINT

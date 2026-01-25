@@ -4,7 +4,7 @@
   :version "41.5.0"
   :author "Antigravity Team"
   :license "Proprietary"
-  :depends-on ("cl-ppcre" "pzmq" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "postmodern")
+  :depends-on ("cl-ppcre" "pzmq" "sqlite" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "postmodern")
   :serial t
   :components ((:file "src/lisp/packages")
                (:file "src/lisp/packages-school")
@@ -14,6 +14,7 @@
                (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
                (:file "src/lisp/core/execution-protocol") ; P7
                (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
+               (:file "src/lisp/core/sqlite-manager") ; V49.8: SQL Connection Management
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
                (:file "src/lisp/core/risk-client")  ; V8.0: Risk Gateway client
                (:file "src/lisp/core/inference-client") ; V8.0: Inference client
@@ -59,6 +60,8 @@
                 (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
                 
                 ;; SCHOOL
+                (:file "src/lisp/school/school-db")
+                (:file "src/lisp/school/school-cemetery")
                 (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
                 (:file "src/lisp/school/school-constitution")
                 (:file "src/lisp/school/school-resignation")

@@ -117,6 +117,9 @@
    #:strategy-timeframe
    #:strategy-profit-factor
    #:strategy-regime-intent ;; V49.2: Metadata
+   #:strategy-oos-sharpe
+   #:strategy-cpcv-median-sharpe
+   #:strategy-cpcv-pass-rate
    
    ;; Clan Struct Accessors
    #:make-clan
@@ -164,6 +167,8 @@
    #:run-rank-evaluation
    #:check-rank-criteria
    #:evaluate-new-strategy
+   #:apply-backtest-result
+    #:upsert-strategy
    #:run-b-rank-culling
    #:can-breed-p
    #:run-legend-breeding
@@ -265,6 +270,7 @@
    ;; Daily Report
    #:get-daily-risk-limit
    #:get-performance-stats
+   #:get-db-stats
    
    ;; Visualization
    #:print-lineage
@@ -291,6 +297,13 @@
     ;; Phase 12: The Connector
     #:start-evolution-service
     #:candles-to-json
+
+    ;; V49.8: Cemetery & Tactical Avoidance
+    #:calculate-strategy-hash
+    #:get-graveyard-hashes
+    #:prune-strategies-by-graveyard-hash
+    #:cemetery-audit-db
+    #:record-graveyard-pattern
    ))
 
 ;;; 5. SHELL (Interface Layer) ---------------------------------------------------

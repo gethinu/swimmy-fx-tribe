@@ -13,8 +13,8 @@
   "V49.6: Global S-RANK Draft. Selects best strategies across all categories.
    Prioritizes P&L Correlation over simple Genetic Distance."
   (format t "[PORTFOLIO] 🏟️ Starting Global Portfolio Draft (Cap=~d)...~%" *global-s-rank-cap*)
-  (let* ((candidates (sort (copy-list (append (get-strategies-by-rank :S)
-                                              (get-strategies-by-rank :A)))
+  (let* ((candidates (sort (copy-list (append (fetch-candidate-strategies :ranks '(":S"))
+                                              (fetch-candidate-strategies :ranks '(":A"))))
                            #'> :key (lambda (s) (or (strategy-sharpe s) 0.0))))
          (selected-team nil)
          (demoted-count 0)
@@ -66,9 +66,10 @@
         nil)))
 
 (defun get-strategy-trades (name)
-  "Extract all recorded trades for a specific strategy."
-  (remove-if-not (lambda (r) (string= (trade-record-strategy-name r) name))
-                 (append *success-log* *failure-log*)))
+  "Extract all recorded trades for a specific strategy from SQL (V49.8)."
+  (unless *db-conn* (init-db))
+  (let ((rows (sqlite:execute-to-list *db-conn* "SELECT pnl FROM trade_logs WHERE strategy_name = ?" name)))
+    (mapcar (lambda (row) (make-trade-record :pnl (first row))) rows)))
 
 (defun calculate-pearson-correlation (v1 v2)
   "Pearson Correlation Coefficient implementation."

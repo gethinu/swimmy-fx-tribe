@@ -59,8 +59,8 @@
                        (format t "[CRITICAL] All bind attempts failed. Exiting to prevent debugger hang.~%")
                        (sb-ext:exit :code 1))))))
 
-           (setf *cmd-publisher* pub)
-           ;; *backtest-requester* remains nil, triggering fallback to *cmd-publisher* in school-backtest.lisp
+           (setf swimmy.globals:*cmd-publisher* pub)
+           ;; swimmy.globals:*backtest-requester* remains nil, triggering fallback to *cmd-publisher* in school-backtest.lisp
 
            ;; V41.7: Set Receive Timeout to 100ms for non-blocking loop
            (pzmq:setsockopt pull :rcvtimeo 100)
@@ -109,6 +109,12 @@
                (request-prediction))
            
            (format t "[BRAIN] 🚀 System active and running...~%")
+           
+           ;; V50.7: Flush Deferred Backtests (ZMQ-Ready Phase)
+           (format t "[SYSTEM] 🚀 ZMQ Ready. Triggering Acceleration Flush...~%")
+           (let ((flush-sym (find-symbol "FLUSH-DEFERRED-FOUNDERS" "SWIMMY.SCHOOL")))
+             (when (and flush-sym (fboundp flush-sym))
+               (funcall flush-sym)))
            
            ;; V44.5: Brain Restart Notification (Expert Panel P3)
            (handler-case

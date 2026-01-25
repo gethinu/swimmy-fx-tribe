@@ -70,7 +70,7 @@ def process_queue():
 
             elif response.status_code >= 400:
                 print(
-                    f"[NOTIFIER] Error {response.status_code} for {webhook_url[:60]}...: {response.text}",
+                    f"[NOTIFIER] Error {response.status_code} for {webhook_url}: {response.text}",
                     flush=True,
                 )
                 # Don't retry HTTP errors (webhook invalid, etc)

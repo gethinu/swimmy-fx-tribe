@@ -97,6 +97,8 @@
 (defparameter *qual-expected-backtest-count* 0)
 (defparameter *qual-backtest-start-time* 0)
 
+(defparameter *sent-data-ids* (make-hash-table :test 'equal) "V50.9: Track Data IDs sent to Guardian")
+
 (defparameter *backtest-results-buffer* nil "DEPRECATED (Legacy fallback)")
 (defparameter *expected-backtest-count* 0 "DEPRECATED (Legacy fallback)")
 (defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))

@@ -80,8 +80,6 @@
     (when (or (zerop old-cursor) (>= old-cursor total))
       (setf *cycle-start-kb-size* total))
     
-    (setf swimmy.globals:*rr-expected-backtest-count* (length (append batch-strategies wrap-strategies)))
-    
     (let* ((batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
            ;; Handle wrap-around if needed
            (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
@@ -90,6 +88,8 @@
            (final-batch (append batch-strategies wrap-strategies))
            (cached-count 0)
            (requested-count 0))
+      
+      (setf swimmy.globals:*rr-expected-backtest-count* (length final-batch))
       
       ;; Update cursor for next time
       (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))

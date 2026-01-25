@@ -134,6 +134,7 @@
    #:*cpcv-start-time*
    #:*initial-backtest-done*
    #:*backtest-webhook-url*
+   #:*sent-data-ids*  ;; V50.9: Track sent data IDs to prevent spam
    
    ;; Dream/Evolution State
    #:*dream-cycle*
@@ -273,6 +274,13 @@
    #:+MSG-ACCOUNT-INFO+
    #:+MSG-HISTORY+
    #:+MSG-TICK+
+
+   ;; V49.8: SQL Connection Management
+   #:execute-non-query
+   #:execute-to-list
+   #:execute-single
+   #:with-transaction
+   #:close-db-connection
    ))
 
 

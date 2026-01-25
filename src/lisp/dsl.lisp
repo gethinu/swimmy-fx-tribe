@@ -4,7 +4,6 @@
 
 ;; Forward declarations to suppress warnings (actual values set in brain.lisp)
 (defvar *candle-history* nil)
-(defvar *cmd-publisher* nil)
 (defvar *pending-strategy* nil)
 (defvar *last-confidence* 0.0)
 (defvar *last-prediction* "HOLD")
@@ -166,15 +165,23 @@
             ;; P10: Inactivity Pruning
             (last-signal-time 0)
             ;; P13: New Recruits Tracking
-            (creation-time (get-universal-time)))
+            (creation-time (get-universal-time))
+            ;; V49.8: Stable Logic Hash for Graveyard Matching
+            (hash nil)
+            ;; V50.3: Validation Gates Metrics
+            (oos-sharpe 0.0)
+            (cpcv-median-sharpe 0.0)
+            (cpcv-pass-rate 0.0))
 
 
 
 (defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY") (direction :BOTH)
-                         (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0))
+                         (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
+                         (oos-sharpe 0.0) (cpcv-median-sharpe 0.0) (cpcv-pass-rate 0.0))
   `(make-strategy :name (string ',name) :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
                   :filter-enabled ,(or filter-enabled regime-filter) :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic :tier ,tier :rank ,rank :symbol ,symbol :direction ,direction
-                  :sharpe ,sharpe :profit-factor ,profit-factor :win-rate ,win-rate :trades ,trades :max-dd ,max-dd))
+                  :sharpe ,sharpe :profit-factor ,profit-factor :win-rate ,win-rate :trades ,trades :max-dd ,max-dd
+                  :oos-sharpe ,oos-sharpe :cpcv-median-sharpe ,cpcv-median-sharpe :cpcv-pass-rate ,cpcv-pass-rate))
 
 (defmacro with-trend-filter ((tf logic period) strategy-form)
   "Wraps a strategy definition with MTF trend filter parameters.

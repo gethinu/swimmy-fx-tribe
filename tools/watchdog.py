@@ -49,7 +49,7 @@ MAX_DEATHS_IN_WINDOW = 2
 GUARDIAN_CHECK_INTERVAL_SECS = 60
 
 # Environment
-WEBHOOK_URL = os.getenv("SWIMMY_DISCORD_ALERTS", "")
+WEBHOOK_URL = os.getenv("SWIMMY_DISCORD_ALERTS", "").strip('"').strip("'")
 
 # Test mode flag
 TEST_MODE = "--test" in sys.argv

@@ -12,6 +12,8 @@ Restart=always
 RestartSec=10
 EnvironmentFile=/home/swimmy/swimmy/.env
 Environment=PYTHONUNBUFFERED=1
+Nice=19
+CPUSchedulingPolicy=batch
 StandardOutput=append:/home/swimmy/swimmy/logs/evolution_daemon.log
 StandardError=append:/home/swimmy/swimmy/logs/evolution_daemon.log
 

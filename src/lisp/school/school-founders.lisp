@@ -245,20 +245,25 @@
           (if (null founder)
               (format t "[HEADHUNTER] ❌ Failed to create founder ~a~%" founder-type)
               ;; P8: Use add-to-kb as single entry point
-              ;; Note: add-to-kb handles duplicate check, BT validation (Sharpe>=0.1), 
-              ;; category pool, and notification
+              ;; V50.5: Provisional Entry (Async Validation)
+              ;; Allow entry with Rank=NIL, then trigger backtest.
               (progn
                 (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
-                (if (add-to-kb founder :founder :require-bt t)
+                (if (add-to-kb founder :founder :require-bt nil) ; Disable gate for entry
                     (progn
-                      (format t "[HEADHUNTER] ✅ Founder ~a accepted by KB~%" (strategy-name founder))
-                      ;; ZMQ notification for external systems
-                      (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                        (pzmq:send swimmy.globals::*cmd-publisher* 
-                                   (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
-                                                                ("name" (strategy-name founder))))))
+                      ;; V50.5: Trigger Validation (only if system is running)
+                      (if (and (boundp '*startup-mode*) *startup-mode*)
+                          (format t "[HEADHUNTER] ⏳ Founder ~a added. BT Deferred (Startup Mode).~%" (strategy-name founder))
+                          (progn
+                            (format t "[HEADHUNTER] ⏳ Founder ~a provisionally accepted. Requesting BT...~%" (strategy-name founder))
+                            (request-backtest founder)
+                            ;; ZMQ notification for external systems
+                            (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
+                              (pzmq:send swimmy.globals::*cmd-publisher* 
+                                         (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
+                                                                      ("name" (strategy-name founder))))))))
                       t)
-                    (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (BT gate or duplicate)~%" 
+                    (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%" 
                             (strategy-name founder))))))
         (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
@@ -386,5 +391,26 @@
           (format t "[IMMIGRATION] 🎯 Selected candidate for ~a: ~a~%" target-clan pick)
           (recruit-founder pick))
         (format t "[IMMIGRATION] ⚠️ No candidates found for clan ~a in Registry.~%" target-clan))))
+
+;;; ----------------------------------------------------------------------------
+;;; FLUSH DEFERRED (V50.5)
+;;; ----------------------------------------------------------------------------
+(defun flush-deferred-founders ()
+  "Flush (backtest) any founders that were deferred during startup.
+   Called by Main after hot-reload or end of startup."
+  (format t "[HEADHUNTER] 🚽 Flushing deferred backtests...~%")
+  (let ((count 0))
+    (dolist (s *strategy-knowledge-base*)
+      (let ((rank (strategy-rank s)))
+        (when (or (null rank) 
+                  (and (stringp rank) (string= rank "NIL"))
+                  (eq rank :nil))
+          (format t "[HEADHUNTER] 🚀 Requesting deferred BT for ~a...~%" (strategy-name s))
+          (handler-case
+              (request-backtest s)
+            (error (e) (format t "[HEADHUNTER] ⚠️ BT Request failed: ~a~%" e)))
+          (incf count))))
+    (format t "[HEADHUNTER] ✅ Flushed ~d deferred strategies.~%" count)
+    count))
 
 ;;; End of Founders Registry

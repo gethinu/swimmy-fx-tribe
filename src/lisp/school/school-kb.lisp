@@ -25,26 +25,22 @@
 (defvar *last-graveyard-load* 0)
 
 (defun load-graveyard-cache ()
-  "Load failure patterns from graveyard.sexp (Cached 5 min)."
-  (let ((path "data/memory/graveyard.sexp")
-        (now (get-universal-time)))
+  "Load failure patterns from SQL (V49.8) or graveyard.sexp."
+  (let ((now (get-universal-time)))
     (if (and *graveyard-cache* (< (- now *last-graveyard-load*) 300))
         *graveyard-cache*
         (progn
           (setf *last-graveyard-load* now)
           (setf *graveyard-cache* 
-                (if (probe-file path)
-                    (with-open-file (stream path :direction :input :if-does-not-exist nil)
-                      (let ((data (handler-case (read stream nil nil) (error () nil))))
-                        (cond
-                          ((null data) nil)
-                          ;; Case 1: Wrapped list of plists ((:NAME ...) (:NAME ...))
-                          ((and (listp data) (listp (car data))) data)
-                          ;; Case 2: Sequence of plists starting with this one
-                          (t (cons data 
-                                   (loop for pattern = (read stream nil nil)
-                                         while pattern collect pattern))))))
-                    nil))))))
+                (or (handler-case 
+                        (let ((rows (sqlite:execute-to-list (or *db-conn* (init-db)) 
+                                                           "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
+                          (mapcar (lambda (row) (read-from-string (first row))) rows))
+                      (error () nil))
+                    (when (probe-file "data/memory/graveyard.sexp")
+                      (with-open-file (stream "data/memory/graveyard.sexp" :direction :input :if-does-not-exist nil)
+                        (let ((data (read stream nil nil)))
+                          (if (and data (listp data) (listp (car data))) data (list data)))))))))))
 
 (defun is-graveyard-pattern-p (strategy)
   "Check if strategy matches a known failure pattern."
@@ -118,17 +114,22 @@
       
       ;; 3. Add to KB
       (push strategy *strategy-knowledge-base*)
-      ;; V48.0: Initialize rank to B (passed Phase 1 BT to get here)
-      (unless (strategy-rank strategy)
-        (%ensure-rank-no-lock strategy :B "New Strategy Induction"))
-      (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~a)~%" name source (strategy-rank strategy))
+      ;; V50.4: Only assign :B rank if it actually meets the criteria.
+      ;; This prevents unvalidated junk from diluting the base.
+      (when (and (not (strategy-rank strategy))
+                 (check-rank-criteria strategy :B))
+        (%ensure-rank-no-lock strategy :B "New Strategy Induction (Validation Passed)"))
+      (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~s)~%" name source (strategy-rank strategy))
       
       ;; 4. Add to category pool
       (let ((cat (categorize-strategy strategy)))
         (when (boundp '*category-pools*)
           (push strategy (gethash cat *category-pools*))))
       
-      ;; 5. Notification (suppress during startup)
+      ;; 5. Persist to SQL (V49.8)
+      (upsert-strategy strategy)
+      
+      ;; 6. Notification (suppress during startup)
       (when (and notify (not *startup-mode*))
         (notify-recruit-unified strategy source))
       

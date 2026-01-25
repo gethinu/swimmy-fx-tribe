@@ -154,3 +154,269 @@
    :entry '(or (and (> close upper-band) (< atr 0.0010)) ; Breakout from quiet logic
                (and (< close lower-band) (< atr 0.0010)))
    :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251329
+;;; Logic: MOMENTUM_SCALP_EMA(10)_RSI(6) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema10-rsi6-gen0-2601251329 "Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251329"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251329"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 8) (rsi 8))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251330
+;;; Logic: MOMENTUM_SCALP_EMA(10)_RSI(6) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema10-rsi6-gen0-2601251330 "Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA10-RSI6-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 9) (rsi 8))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI16-Bollinger20-2.1Squeeze-Gen0-2601251330
+;;; Logic: RSI(16) + Bollinger(20, 2.1) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi16-bollinger20-2.1squeeze-gen0-2601251330 "Scalp-RSI16-Bollinger20-2.1Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI16-Bollinger20-2.1Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 16) (bb 20 2.1))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330
+;;; Logic: RSI(13) + Bollinger(18, 2.2) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi13-bollinger18-2.2squeeze-gen0-2601251330 "Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 13) (bb 18 2.2))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI16-Bollinger22-1.8Squeeze-Gen0-2601251330
+;;; Logic: RSI(16) + Bollinger(22, 1.8) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi16-bollinger22-1.8squeeze-gen0-2601251330 "Scalp-RSI16-Bollinger22-1.8Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI16-Bollinger22-1.8Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 16) (bb 22 1.8))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI16-Bollinger18-2.1Squeeze-Gen0-2601251330
+;;; Logic: RSI(16) + Bollinger(18, 2.1) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi16-bollinger18-2.1squeeze-gen0-2601251330 "Scalp-RSI16-Bollinger18-2.1Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI16-Bollinger18-2.1Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 16) (bb 18 2.1))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330
+;;; Logic: RSI(13) + Bollinger(18, 2.2) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi13-bollinger18-2.2squeeze-gen0-2601251330 "Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI13-Bollinger18-2.2Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 13) (bb 18 2.2))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI12-Bollinger21-2.0Squeeze-Gen0-2601251330
+;;; Logic: RSI(12) + Bollinger(21, 2.0) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi12-bollinger21-2.0squeeze-gen0-2601251330 "Scalp-RSI12-Bollinger21-2.0Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI12-Bollinger21-2.0Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 12) (bb 21 2.0))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI16-Bollinger22-1.9Squeeze-Gen0-2601251330
+;;; Logic: RSI(16) + Bollinger(22, 1.9) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi16-bollinger22-1.9squeeze-gen0-2601251330 "Scalp-RSI16-Bollinger22-1.9Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI16-Bollinger22-1.9Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 16) (bb 22 1.9))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI13-Bollinger18-2.0Squeeze-Gen0-2601251330
+;;; Logic: RSI(13) + Bollinger(18, 2.0) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi13-bollinger18-2.0squeeze-gen0-2601251330 "Scalp-RSI13-Bollinger18-2.0Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI13-Bollinger18-2.0Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 13) (bb 18 2.0))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI14-Bollinger21-1.9Squeeze-Gen0-2601251330
+;;; Logic: RSI(14) + Bollinger(21, 1.9) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi14-bollinger21-1.9squeeze-gen0-2601251330 "Scalp-RSI14-Bollinger21-1.9Squeeze-Gen0-2601251330"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI14-Bollinger21-1.9Squeeze-Gen0-2601251330"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 14) (bb 21 1.9))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA8-RSI7-Gen0-2601251332
+;;; Logic: MOMENTUM_SCALP_EMA(8)_RSI(7) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema8-rsi7-gen0-2601251332 "Scalp-MOMENTUM-SCALP-EMA8-RSI7-Gen0-2601251332"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA8-RSI7-Gen0-2601251332"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 8) (rsi 6))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-RSI13-Bollinger20-1.9Squeeze-Gen0-2601251333
+;;; Logic: RSI(13) + Bollinger(20, 1.9) Squeeze (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-rsi13-bollinger20-1.9squeeze-gen0-2601251333 "Scalp-RSI13-Bollinger20-1.9Squeeze-Gen0-2601251333"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-RSI13-Bollinger20-1.9Squeeze-Gen0-2601251333"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((rsi 13) (bb 20 1.9))
+   :entry '(and (< bb-width 0.0010) (> rsi 60) (> volume 0))
+   :exit '(> pnl tp)
+   :exit '(or (> pnl tp) (< pnl (- sl)))))
+;;; ----------------------------------------------------------------------------
+;;; AUTO-HUNTED: Scalp-MOMENTUM-SCALP-EMA9-RSI6-Gen0-2601251334
+;;; Logic: MOMENTUM_SCALP_EMA(9)_RSI(6) (Generated via trigger_hunt.py)
+;;; ----------------------------------------------------------------------------
+(def-founder :scalp-momentum-scalp-ema9-rsi6-gen0-2601251334 "Scalp-MOMENTUM-SCALP-EMA9-RSI6-Gen0-2601251334"
+  "Auto-Generated Strategy by Hunter Agent."
+  (make-strategy
+   :name "Scalp-MOMENTUM-SCALP-EMA9-RSI6-Gen0-2601251334"
+   :category :scalp
+   :timeframe "H1"
+   :generation 0
+   :sl 0.0050
+   :tp 0.0100
+   :volume 0.01
+   
+   :indicators '((ema 10) (rsi 8))
+   :entry '(and (> close ema) (> rsi 70))
+   :exit '(or (> pnl tp) (< rsi 50))
+   :exit '(or (> pnl tp) (< pnl (- sl)))))

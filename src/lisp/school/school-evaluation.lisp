@@ -23,23 +23,45 @@
     (nreverse values)))
 
 (defun transform-cross-calls-helper (expr pkg)
-  (flet ((add-prev-suffix (sym)
-           (if (symbolp sym)
-               (intern (format nil "~a-PREV" (symbol-name sym)) pkg)
-               sym)))
+  "V49.8 Fix: Safe code transformation without dangerous EVAL.
+   Recursively maps forms like (SMA 5) or symbols like CLOSE to their bound equivalents."
+  (flet ((map-to-symbol (item &optional prev-p)
+           (cond
+             ((symbolp item)
+              (if prev-p
+                  (intern (format nil "~A-PREV" (symbol-name item)) pkg)
+                  item))
+             ((and (listp item) (symbolp (car item)))
+              (let* ((type (car item))
+                     (params (cdr item))
+                     (base (case (intern (string-upcase (symbol-name type)) :keyword)
+                             (:sma (format nil "SMA-~D" (first params)))
+                             (:ema (format nil "EMA-~D" (first params)))
+                             (:rsi (format nil "RSI-~D" (first params)))
+                             (:cci (format nil "CCI-~D" (first params)))
+                             (:atr (format nil "ATR-~D" (first params)))
+                             (t nil))))
+                (if base
+                    (intern (if prev-p 
+                                (format nil "~A-PREV" base)
+                                base)
+                            pkg)
+                    item)))
+             ((numberp item) item)
+             (t item))))
     (cond
       ((atom expr) expr)
       ((and (listp expr) 
-            (member (car expr) '(cross-above cross-below))
+            (member (car expr) '(cross-above cross-below) :test #'eq)
             (= (length expr) 3))
        (let ((fn (first expr))
              (a (second expr))
              (b (third expr)))
          (list fn 
-               (if (symbolp a) a (eval a)) 
-               (if (symbolp b) b (eval b)) 
-               (if (symbolp a) (add-prev-suffix a) (eval a)) 
-               (if (symbolp b) (add-prev-suffix b) (eval b)))))
+               (map-to-symbol a nil) 
+               (map-to-symbol b nil) 
+               (map-to-symbol a t) 
+               (map-to-symbol b t))))
       (t (mapcar (lambda (e) (transform-cross-calls-helper e pkg)) expr)))))
 
 (defun evaluate-strategy-signal (strat history)

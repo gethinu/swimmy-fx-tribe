@@ -1,7 +1,13 @@
-# 🐟 Swimmy Owner's Guide (V49.5)
+## 🆕 V49.8 新機能 (2026-01-24) - Phase 12: SQL Persistence & Scaling
 
-**最終版:** 2026-01-24 (V49.5 - Project Haystack)
-**リーダー判断:** Elon Musk (Simons Integration)
+### 1. SQLite Migration (Jim Simons / Taleb)
+- **永続化層の刷新**: 戦略ナレッジベース（KB）とトレードログをフラットファイルから SQLite (`swimmy.db`) へ移行。
+- **Swarm Draft (SQL版)**: 数万件のBランク戦略をメモリに保持せず、必要な時にSQLクエリで高速抽出。RAM消費を劇的に削減。
+- **データ規模**: 8.5万戦略、43万墓場パターンを安定して管理可能に。
+
+### 2. Genetic Persistence (Rich Hickey)
+- **トランザクション整合性**: 戦略の追加(`add-to-kb`)やトレード記録が、クラッシュ時もデータ消失しないトランザクション下で実行されます。
+- **S-expression 互換**: DB内にもS式を保存し、既存のLispロジックと100%の互換性を維持。
 
 ---
 

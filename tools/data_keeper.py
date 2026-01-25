@@ -17,7 +17,10 @@ MAX_CONSECUTIVE_FAILURES = 5
 def load_apex_webhook():
     """Load apex webhook URL from Environment Variable."""
     # 1. Environment Variable
-    return os.getenv("SWIMMY_DISCORD_APEX", "")
+    webhook = os.getenv("SWIMMY_DISCORD_APEX", "")
+    if webhook:
+        webhook = webhook.strip('"').strip("'")
+    return webhook
 
 
 APEX_WEBHOOK = load_apex_webhook()

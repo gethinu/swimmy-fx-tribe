@@ -17,6 +17,12 @@
 
 ;; Note: Access via environment variables is now the standard (2026-01-10)
 
+(defun strip-quotes (str)
+  "環境変数から二重引用符を削除 (防御的プログラミング)"
+  (if (stringp str)
+      (string-trim '(#\" #\Space #\Tab #\Newline #\Return) str)
+      str))
+
 (defun get-discord-webhook (key)
   "Webhook URLを取得 (Consolidated 2026-01-10)
    Maps logical keys to consolidated environmental variables.
@@ -26,25 +32,26 @@
    - REPORTS: daily, weekly, journal
    - ALERTS: emergency, apex, alerts"
   (let ((k (string-downcase (string key))))
-    (cond
-      ;; [MICRO] Live Feed
-      ((member k '("usdjpy" "eurusd" "gbpusd") :test #'equal)
-       (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED"))
-      
-      ;; [MESO] System Logs
-      ((member k '("status" "backtest" "recruit" "fallback" "apex") :test #'equal)
-       (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
-      
-      ;; [MACRO] Reports
-      ((member k '("daily" "weekly" "journal") :test #'equal)
-       (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
-      
-      ;; [URGENT] Alerts
-      ((member k '("emergency" "alerts" "heartbeat") :test #'equal)
-       (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+    (strip-quotes
+     (cond
+       ;; [MICRO] Live Feed
+       ((member k '("usdjpy" "eurusd" "gbpusd") :test #'equal)
+        (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED"))
        
-      ;; Default to Alerts if unknown
-      (t (uiop:getenv "SWIMMY_DISCORD_ALERTS")))))
+       ;; [MESO] System Logs
+       ((member k '("status" "backtest" "recruit" "fallback" "apex") :test #'equal)
+        (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
+       
+       ;; [MACRO] Reports
+       ((member k '("daily" "weekly" "journal") :test #'equal)
+        (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
+       
+       ;; [URGENT] Alerts
+       ((member k '("emergency" "alerts" "heartbeat") :test #'equal)
+        (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+        
+       ;; Default to Alerts if unknown
+       (t (uiop:getenv "SWIMMY_DISCORD_ALERTS"))))))
 
 ;; フォールバックなしでシンプルに取得
 ;; (Legacy variables initialization below remains valid)
@@ -166,7 +173,6 @@
 ;;; ==========================================
 ;;; EXECUTION & INFRASTRUCTURE
 ;;; ==========================================
-(defparameter *cmd-publisher* nil)  ; ZMQ publisher socket
 (defparameter *last-heartbeat-sent* 0)
 
 ;;; ==========================================

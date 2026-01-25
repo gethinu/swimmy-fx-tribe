@@ -39,5 +39,10 @@
 (format t "~%[EVO] 🧬 run-breeding-cycle (Generational Advance)...~%")
 (swimmy.school:run-breeding-cycle)
 
+;; 3. Cemetery Pruning (V49.8 Pre-emptive Avoidance)
+(format t "~%[EVO] 🪦 cemetery-audit-db & prune-strategies-by-graveyard-hash...~%")
+(swimmy.school:cemetery-audit-db)
+(swimmy.school:prune-strategies-by-graveyard-hash)
+
 (format t "~%[EVO] ✅ Breeding Cycle Completed.~%")
 (sb-ext:exit :code 0)

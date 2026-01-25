@@ -20,12 +20,12 @@
 
 (defparameter *rank-criteria*
   '((:B       :sharpe-min 0.1  :pf-min 1.0  :wr-min 0.30  :maxdd-max 0.30)
-    (:A       :sharpe-min 0.3  :pf-min 1.2  :wr-min 0.40  :maxdd-max 0.20)
-    (:S       :sharpe-min 0.5  :pf-min 1.5  :wr-min 0.45  :maxdd-max 0.15))
+    (:A       :sharpe-min 0.3  :pf-min 1.2  :wr-min 0.40  :maxdd-max 0.20 :oos-min 0.3)
+    (:S       :sharpe-min 0.5  :pf-min 1.5  :wr-min 0.45  :maxdd-max 0.15 :cpcv-min 0.5))
   "Rank criteria thresholds. All conditions must be met (AND logic).")
 
-(defparameter *culling-threshold* 100
-  "Number of B-RANK strategies per TF before culling begins.")
+(defparameter *culling-threshold* 10
+  "Number of B-RANK strategies per TF before culling begins. (V50.4 Accelerated)")
 
 (defparameter *a-rank-slots-per-tf* 2
   "Only top 2 strategies per TF can be promoted to A-RANK.")
@@ -54,7 +54,12 @@
     (and (>= sharpe (getf criteria :sharpe-min 0))
          (>= pf (getf criteria :pf-min 0))
          (>= wr (getf criteria :wr-min 0))
-         (< maxdd (getf criteria :maxdd-max 1.0)))))
+         (< maxdd (getf criteria :maxdd-max 1.0))
+         ;; V50.3: Gate Lockdown
+         (cond
+           ((eq target-rank :A) (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0)))
+           ((eq target-rank :S) (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0)))
+           (t t)))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
   "Get all strategies with a specific rank, optionally filtered by TF/Direction/Symbol.
@@ -102,6 +107,9 @@
       (setf (strategy-rank strategy) new-rank)
       (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
               (strategy-name strategy) old-rank new-rank reason)
+      
+      ;; V49.9: Persist to SQL
+      (upsert-strategy strategy)
       
       ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
       (when (eq new-rank :graveyard)
@@ -225,10 +233,12 @@
              (to-promote (subseq sorted 0 (min *a-rank-slots-per-tf* (length sorted))))
              (to-discard (nthcdr *a-rank-slots-per-tf* sorted)))
         
-        ;; Promote top 2 to A-RANK
+        ;; Instead of direct promotion, we now queue for OOS Validation
         (dolist (s to-promote)
-          (promote-rank s :A (format nil "Culling Champion (~a/~a/~a)" 
-                                     timeframe direction symbol)))
+          (format t "[RANK] 🔬 Queueing ~a for OOS Validation...~%" (strategy-name s))
+          (handler-case
+              (validate-for-a-rank-promotion s)
+            (error (e) (format t "[RANK] ⚠️ OOS Failed for ~a: ~a~%" (strategy-name s) e))))
         
         ;; Discard rest
         (dolist (s to-discard)
@@ -254,23 +264,29 @@
           (remhash name *a-rank-probation-tracker*)
           (promote-rank strategy :S "CPCV Validated - LIVE TRADING PERMITTED")
           :S)
-        (if (check-rank-criteria strategy :B)
-             (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
-               (if (< sharpe 0.3)
-                   (let ((fails (incf (gethash name *a-rank-probation-tracker* 0))))
-                     (if (< fails 7)
-                         (progn
-                           (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3)~%" fails name sharpe)
-                           :A)
-                         (progn
-                           (remhash name *a-rank-probation-tracker*)
-                           (demote-rank strategy :B (format nil "Grace Period Expired (~d failures)" fails))
-                           :B)))
-                   (progn (remhash name *a-rank-probation-tracker*) :A)))
-            (progn
-              (remhash name *a-rank-probation-tracker*)
-              (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")
-              :graveyard)))))
+        ;; V50.3: No more automatic A->S shortcuts. 
+        ;; We just check if it's ready for CPCV dispatch.
+        (progn
+          (when (and (>= (or (strategy-sharpe strategy) 0.0) 0.5)
+                     (fboundp 'run-a-rank-cpcv-batch))
+            (format t "[RANK] 🧪 ~a is Elite. Awaiting CPCV validation.~%" name))
+          (if (check-rank-criteria strategy :B)
+              (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
+                (if (< sharpe 0.3)
+                    (let ((fails (incf (gethash name *a-rank-probation-tracker* 0))))
+                      (if (< fails 7)
+                          (progn
+                            (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3)~%" fails name sharpe)
+                            :A)
+                          (progn
+                            (remhash name *a-rank-probation-tracker*)
+                            (demote-rank strategy :B (format nil "Grace Period Expired (~d failures)" fails))
+                            :B)))
+                    (progn (remhash name *a-rank-probation-tracker*) :A)))
+              (progn
+                (remhash name *a-rank-probation-tracker*)
+                (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")
+                :graveyard))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; BREEDING HELPERS
@@ -294,10 +310,10 @@
         (dolist (sym symbols)
           (run-b-rank-culling-for-category tf dir sym))))
     
-    ;; V48.7: Meritocratic Promotion (A-Rank)
+    ;; V48.7: Meritocratic Promotion (A-Rank) -> Now queues for OOS
     (dolist (s (get-strategies-by-rank :B))
       (when (and (strategy-sharpe s) (>= (strategy-sharpe s) 0.3))
-        (promote-rank s :A (format nil "Meritocratic Promotion (S=~,2f)" (strategy-sharpe s)))))))
+        (validate-for-a-rank-promotion s)))))
 
 (defun run-rank-evaluation ()
   "Main rank evaluation cycle.
@@ -414,6 +430,21 @@
     bred-count))
 
 ;;; Note: RL, Graveyard, Q-learning, and File Rotation functions moved to school-learning.lisp (V47.3)
+
+(defun apply-backtest-result (name metrics)
+  "Apply backtest metrics to a strategy and trigger rank evaluation if necessary."
+  (let ((strat (find-strategy name)))
+    (when strat
+      (setf (strategy-sharpe strat) (float (getf metrics :sharpe 0.0))
+            (strategy-profit-factor strat) (float (getf metrics :profit-factor 0.0))
+            (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
+            (strategy-trades strat) (getf metrics :trades 0)
+            (strategy-max-dd strat) (float (getf metrics :max-dd 0.0)))
+      (upsert-strategy strat)
+      ;; Trigger Phase 1 Evaluation if currently unranked
+      (when (null (strategy-rank strat))
+        (evaluate-new-strategy strat))
+      t)))
 
 
 

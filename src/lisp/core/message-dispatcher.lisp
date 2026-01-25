@@ -14,17 +14,15 @@
                       (pnl (float (or (cdr (assoc 'pnl result)) 0.0)))
                       (win-rate (float (or (cdr (assoc 'win_rate result)) 0.0)))
                       (profit-factor (float (or (cdr (assoc 'profit_factor result)) 0.0)))
-                      ;; V49.5: Identify buffer by suffix
+                      (max-dd (float (or (cdr (assoc 'max_dd result)) 1.0)))
                       (is-rr (search "-RR" full-name))
                       (is-qual (search "-QUAL" full-name))
                       (name (cond (is-rr (subseq full-name 0 is-rr))
                                   (is-qual (subseq full-name 0 is-qual))
                                   (t full-name)))
-                      (metrics (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor)))
-                 
+                      (metrics (list :sharpe sharpe :trades trades :pnl pnl :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
                  (swimmy.school:cache-backtest-result name metrics)
-                 
-                 ;; Route to decoupled buffers
+                 (swimmy.school:apply-backtest-result name metrics)
                  (cond
                    (is-qual
                     (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
@@ -32,13 +30,12 @@
                           (expected swimmy.globals:*qual-expected-backtest-count*))
                       (when (and (> expected 0) (>= count (max 1 (floor (* expected 0.9)))))
                         (swimmy.core:notify-backtest-summary :qual))))
-                   (t ;; Fallback to RR or legacy
+                   (t
                     (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
                     (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
                           (expected swimmy.globals:*rr-expected-backtest-count*))
                       (when (and (> expected 0) (>= count (max 1 (floor (* expected 0.9)))))
                         (swimmy.core:notify-backtest-summary :rr)))))
-
                  (when (fboundp 'swimmy.school:process-wfv-result)
                    (swimmy.school:process-wfv-result name metrics))))
               ((member type '(cpcv-result :cpcv-result) :test #'eq)
@@ -62,7 +59,12 @@
                      (let ((strat (or (find name swimmy.school::*strategy-knowledge-base* :key #'swimmy.school:strategy-name :test #'string=)
                                       (find name swimmy.globals:*evolved-strategies* :key #'swimmy.school:strategy-name :test #'string=))))
                        (when strat
-                         (swimmy.school:ensure-rank strat :S "CPCV Passed (Async Flow)")))))))
+                         (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
+                         (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
+                         (swimmy.school:upsert-strategy strat)
+                         (if (swimmy.school:check-rank-criteria strat :S)
+                             (swimmy.school:ensure-rank strat :S "CPCV Passed and Criteria Met")
+                             (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%" name))))))))
               (t nil)))
           (let* ((json (jsown:parse msg)) (type (jsown:val json "type")))
             (cond
