@@ -3,15 +3,30 @@ import json
 import time
 import os
 import sys
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Configuration
 BACKTEST_PORT = 5580
 BRAIN_PORT = 5555
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
-CSV_BASE = "/home/swimmy/swimmy/data/historical"
+BASE_DIR = str(resolve_base_dir())
+CSV_BASE = os.path.join(BASE_DIR, "data", "historical")
 
 
-def load_strategies(path="strategies.json"):
+def load_strategies(path=None):
+    if path is None:
+        path = os.path.join(BASE_DIR, "strategies.json")
     if not os.path.exists(path):
         print(f"❌ Strategy file not found: {path}")
         return []

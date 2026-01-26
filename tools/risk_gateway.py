@@ -12,7 +12,7 @@ Purpose:
 Architecture:
     [Swimmy Lisp] --(ZMQ REQ)--> [risk_gateway.py] --(ZMQ REP)--> [Swimmy Lisp]
 
-Hard Limits:
+Hard Limits (defaults, env override available):
     - Daily Loss Limit: ¥-5000 (Soft), ¥-10000 (Hard Stop)
     - Max Drawdown: 5%
     - Max Risk Per Trade: 2% of Equity
@@ -41,13 +41,36 @@ import json
 import time
 import os
 
-# Configuration
-ZMQ_PORT = 5563
-DAILY_LOSS_LIMIT_SOFT = -5000.0
-DAILY_LOSS_LIMIT_HARD = -10000.0
-MAX_DRAWDOWN_PERCENT = 5.0
-MAX_CONSECUTIVE_LOSSES = 5
-MAX_RISK_PER_TRADE_PERCENT = 2.0  # Cap single trade risk
+def _env_float(key, default):
+    raw = os.getenv(key)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(key, default):
+    raw = os.getenv(key)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# Configuration (Environment overrides supported)
+ZMQ_PORT = _env_int("SWIMMY_RISK_GATEWAY_PORT", 5563)
+DAILY_LOSS_LIMIT_SOFT = _env_float("SWIMMY_DAILY_LOSS_LIMIT", -5000.0)
+DAILY_LOSS_LIMIT_HARD = _env_float(
+    "SWIMMY_DAILY_LOSS_LIMIT_HARD", min(DAILY_LOSS_LIMIT_SOFT * 2, -10000.0)
+)
+MAX_DRAWDOWN_PERCENT = _env_float("SWIMMY_MAX_DRAWDOWN_PCT", 5.0)
+MAX_CONSECUTIVE_LOSSES = _env_int("SWIMMY_MAX_CONSECUTIVE_LOSSES", 5)
+MAX_RISK_PER_TRADE_PERCENT = _env_float("SWIMMY_MAX_RISK_PER_TRADE_PCT", 2.0)
+MAX_LOT_SIZE = _env_float("SWIMMY_MAX_LOT_SIZE", 0.5)
 
 # State
 daily_loss_triggered = False
@@ -104,8 +127,8 @@ def handle_check_risk(data):
 
     # D. Lot Size / Risk Cap (Sanity Check)
     # Simple check: Lot 1.0 is huge. Cap at 0.5 usually, but let's be strict here.
-    if lot > 0.5:
-        reasons.append(f"FAT_FINGER: Lot {lot} > 0.5")
+    if lot > MAX_LOT_SIZE:
+        reasons.append(f"FAT_FINGER: Lot {lot} > {MAX_LOT_SIZE}")
 
     # 3. Decision
     if reasons:

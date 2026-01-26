@@ -13,13 +13,23 @@ import os
 import sys
 import json
 from datetime import datetime
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Configuration
 ZMQ_PORT = 5562
-ENV_FILE = "/home/swimmy/swimmy/.env"
-
-# Paths to Lisp Files (Single Source of Truth)
-BASE_DIR = "/home/swimmy/swimmy"
+BASE_DIR = str(resolve_base_dir())
+ENV_FILE = os.path.join(BASE_DIR, ".env")
 LISP_GRAVEYARD = os.path.join(BASE_DIR, "src/lisp/school/graveyard-persistence.lisp")
 LISP_DYNAMIC = os.path.join(BASE_DIR, "src/lisp/strategies/strategies-dynamic.lisp")
 LISP_OPTIMIZED = os.path.join(BASE_DIR, "src/lisp/school/school-optimized-params.lisp")

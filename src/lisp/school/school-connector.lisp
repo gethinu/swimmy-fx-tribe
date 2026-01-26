@@ -33,9 +33,10 @@
 
 (defun phase-3-qualify ()
   "Run WFV Qualification (Native Lisp Loop)"
-  (format t "[CONNECTOR] [Phase 3] Qualification (Native Backtest Loop)...~%")
-  (when (fboundp 'run-qualification-cycle)
-    (run-qualification-cycle)))
+  (format t "[CONNECTOR] [Phase 3] WFV Qualification (Deferred)...~%")
+  ;; WFV is not yet scheduled in the live loop to avoid duplicate qualification floods.
+  ;; Placeholder for future WFV batch runner.
+  nil)
 
 (defun phase-4-purge ()
   "Run The Selector (Native Lisp Battle Royale)
@@ -120,6 +121,10 @@
   (format t "♾️  STARTING EVOLUTION SERVICE (Lisp-Native Orchestration) ♾️~%")
   (loop
     (format t "~%--- 🕰️ Cycle Start [Time: ~a] ---~%" (swimmy.core:get-time-string))
+
+    ;; Sync metrics/ranks from DB for multi-process coherence
+    (when (fboundp 'refresh-strategy-metrics-from-db)
+      (refresh-strategy-metrics-from-db))
     
     ;; 1. Validation Batch (Formerly RR/Optimize)
     (phase-1-validation)

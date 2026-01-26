@@ -2,7 +2,13 @@
 
 (load "~/quicklisp/setup.lisp")
 (require 'asdf)
-(push #p"/home/swimmy/swimmy/" asdf:*central-registry*)
+(let* ((root (or (uiop:getenv "SWIMMY_HOME")
+                 (when (or *load-pathname* *compile-file-pathname*)
+                   (uiop:pathname-directory-pathname
+                    (or *load-pathname* *compile-file-pathname*)))
+                 (truename "."))))
+  (push (probe-file (uiop:ensure-directory-pathname root))
+        asdf:*central-registry*))
 (ql:quickload :swimmy)
 
 (in-package :swimmy.school)

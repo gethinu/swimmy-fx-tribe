@@ -7,11 +7,26 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Find PID of the Brain (SBCL process running main.lisp or just "sbcl" with swimmy loaded)
-# We assume the main process is searchable via "sbcl" and "swimmy".Adjust if necessary.
-# More robust: Look for the process created by systemd or the main entry.
+# Prefer systemd restart for safety (avoids port rebind conflicts)
+if systemctl --user status swimmy-brain >/dev/null 2>&1; then
+  echo -e "${GREEN}[ACTION] Restarting swimmy-brain via systemd...${NC}"
+  systemctl --user restart swimmy-brain
+  if [ $? -eq 0 ]; then
+      echo -e "${GREEN}[SUCCESS] swimmy-brain restarted.${NC}"
+      exit 0
+  else
+      echo -e "${RED}[ERROR] Failed to restart swimmy-brain via systemd.${NC}"
+      exit 1
+  fi
+fi
 
-BRAIN_PID=$(pgrep -f "sbcl.*swimmy" | head -n 1)
+# Find PID of the Brain (SBCL process running brain.lisp)
+BRAIN_PID=$(pgrep -f "sbcl.*brain.lisp" | head -n 1)
+
+# Fallback for alternate process names
+if [ -z "$BRAIN_PID" ]; then
+  BRAIN_PID=$(pgrep -f "sbcl.*swimmy" | head -n 1)
+fi
 
 if [ -z "$BRAIN_PID" ]; then
     echo -e "${RED}[ERROR] Swimmy Brain process not found! Is it running?${NC}"

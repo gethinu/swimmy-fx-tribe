@@ -18,9 +18,21 @@ import json
 import os
 import sys
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Paths
-BASE_DIR = "/home/swimmy/swimmy"
+BASE_DIR = str(resolve_base_dir())
 BACKTEST_CACHE = os.path.join(BASE_DIR, "data", "backtest_cache.json")
 METRICS_FILE = os.path.join(BASE_DIR, "data", "system_metrics.json")
 

@@ -12,6 +12,25 @@
   "Active trading symbols for multi-currency support")
 
 ;;; ==========================================
+;;; PATH RESOLUTION
+;;; ==========================================
+
+(defun resolve-swimmy-home ()
+  "Resolve Swimmy project root (env override supported)."
+  (let ((env (uiop:getenv "SWIMMY_HOME")))
+    (uiop:ensure-directory-pathname
+     (if (and env (> (length env) 0))
+         env
+         (uiop:getcwd)))))
+
+(defparameter *swimmy-home* (resolve-swimmy-home)
+  "Project root directory for resolving runtime paths.")
+
+(defun swimmy-path (relative)
+  "Build an absolute path from project root."
+  (merge-pathnames relative *swimmy-home*))
+
+;;; ==========================================
 ;;; DISCORD WEBHOOKS (Environment Variables)
 ;;; ==========================================
 
@@ -201,8 +220,8 @@
 (defvar *category-positions* (make-hash-table :test 'eq))
 (defvar *pair-correlations* (make-hash-table :test 'equal))
 (defvar *symbol-exposure* (make-hash-table :test 'equal))
-(defparameter *max-symbol-exposure* 3.0)
-(defparameter *max-total-exposure* 6.0)
+(defparameter *max-symbol-exposure* 0.30)
+(defparameter *max-total-exposure* 0.60)
 (defvar *current-leader* nil)
 
 ;; Risk State
@@ -236,7 +255,7 @@
 ;;; ==========================================
 (defparameter *philosophy-log* nil)
 (defparameter *philosophy-log-max* 500)
-(defparameter *philosophy-log-path* "/home/swimmy/swimmy/.opus/philosophy_log.md")
+(defparameter *philosophy-log-path* (swimmy-path ".opus/philosophy_log.md"))
 
 
 

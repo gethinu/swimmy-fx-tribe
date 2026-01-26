@@ -12,11 +12,29 @@
 (defvar *backtest-cache-validity* (* 24 3600)
   "Validity period for backtest results (24 hours).")
 
-(defun send-zmq-msg (msg)
-  "Helper to send ZMQ message with Throttling (Speed Demon Fix)"
+(defun normalize-json-key (key)
+  "Normalize a symbol/string key into a JSON object key string."
+  (cond
+    ((stringp key) key)
+    ((symbolp key) (string-downcase (symbol-name key)))
+    (t (format nil "~a" key))))
+
+(defun alist-to-json (alist)
+  "Convert an alist with symbol/string keys to a jsown object."
+  (let ((obj (jsown:empty-object)))
+    (dolist (pair alist obj)
+      (let ((key-str (normalize-json-key (car pair)))
+            (val (cdr pair)))
+        (setf (jsown:val obj key-str) val)))))
+
+(defun send-zmq-msg (msg &key (target :cmd))
+  "Helper to send ZMQ message with throttling.
+TARGET: :backtest routes to backtest service; :cmd routes to main guardian."
   ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
-  (sleep 0.005) 
-  (if (and (boundp 'swimmy.globals:*backtest-requester*) swimmy.globals:*backtest-requester*)
+  (sleep 0.005)
+  (if (and (eq target :backtest)
+           (boundp 'swimmy.globals:*backtest-requester*)
+           swimmy.globals:*backtest-requester*)
       (pzmq:send swimmy.globals:*backtest-requester* msg)
       (pzmq:send swimmy.globals:*cmd-publisher* msg)))
 
@@ -75,20 +93,20 @@
               (remhash strategy-name *backtest-cache*)
               nil))))))
 
-(defun candles-to-json (candles)
-  "Convert list of candle structs to JSON-friendly list of plists."
+(defun candles-to-alist (candles)
+  "Convert list of candle structs to alist for Guardian S-Expression/JSON protocol."
   (mapcar (lambda (c)
-            `((time . ,(candle-timestamp c))
-              (open . ,(candle-open c))
-              (high . ,(candle-high c))
-              (low . ,(candle-low c))
-              (close . ,(candle-close c))
-              (volume . ,(candle-volume c))))
+            `((t . ,(candle-timestamp c))
+              (o . ,(candle-open c))
+              (h . ,(candle-high c))
+              (l . ,(candle-low c))
+              (c . ,(candle-close c))
+              (v . ,(candle-volume c))))
           candles))
 
-(defun candles-to-alist (candles)
-  "Convert list of candle structs to alist for S-Expression protocol."
-  (candles-to-json candles)) ; Same structure for alists
+(defun candles-to-json (candles)
+  "Convert list of candle structs to JSON array of jsown objects."
+  (mapcar #'alist-to-json (candles-to-alist candles)))
 
 (defun find-balanced-end (str start)
   "Find the end of a balanced s-expression starting at position start"

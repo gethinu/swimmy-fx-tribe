@@ -32,6 +32,10 @@
          (corr-factor (max 0.3 (- 1.0 (* corr-exposure 0.5)))))  ; Min 30% of base lot
     (min headroom (* base-lot corr-factor))))
 
+(defun get-symbol-exposure (symbol)
+  "Return current exposure for a symbol."
+  (gethash symbol *symbol-exposure* 0.0))
+
 (defun update-symbol-exposure (symbol lot action)
   "Update exposure tracking on trade open/close"
   (if (eq action :open)

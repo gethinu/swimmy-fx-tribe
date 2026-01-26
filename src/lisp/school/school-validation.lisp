@@ -15,44 +15,58 @@
 (defparameter *oos-min-sharpe* 0.3
   "Minimum Sharpe ratio required to pass OOS validation for A-RANK")
 
+(defparameter *oos-pending* (make-hash-table :test 'equal)
+  "Tracks OOS backtest requests to avoid spamming. name -> last-request time")
+
+(defparameter *oos-request-interval* 600
+  "Minimum seconds between OOS requests per strategy.")
+
+(defun maybe-request-oos-backtest (strat)
+  "Dispatch async OOS backtest if not requested recently."
+  (let* ((name (strategy-name strat))
+         (now (get-universal-time))
+         (last (gethash name *oos-pending* 0)))
+    (when (> (- now last) *oos-request-interval*)
+      (setf (gethash name *oos-pending*) now)
+      (request-backtest strat :suffix "-OOS")
+      (format t "[OOS] 📤 Dispatched OOS backtest for ~a~%" name)
+      t)))
+
+(defun handle-oos-backtest-result (name metrics)
+  "Apply OOS backtest result to strategy and attempt promotion."
+  (let ((strat (find-strategy name)))
+    (when strat
+      (let ((sharpe (float (or (getf metrics :sharpe) 0.0))))
+        (setf (strategy-oos-sharpe strat) sharpe)
+        (remhash name *oos-pending*)
+        (upsert-strategy strat)
+        (format t "[OOS] 📥 ~a OOS Sharpe=~,2f~%" name sharpe)
+        ;; Attempt promotion if core metrics are already strong enough
+        (when (meets-a-rank-criteria strat)
+          (if (>= sharpe *oos-min-sharpe*)
+              (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe))
+              (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))))))
+
 (defun run-oos-validation (strat)
   "Run Out-of-Sample validation for A-RANK promotion candidates.
    Returns (values passed-p oos-sharpe message)"
   (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
-         (data-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol)))
+         (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol)))))
     
     (unless (probe-file data-file)
       (return-from run-oos-validation 
         (values nil 0.0 (format nil "No data file for ~a" symbol))))
     
-    (handler-case
-        (let* ((lines (with-open-file (s data-file :direction :input)
-                        (loop for line = (read-line s nil)
-                              while line count 1)))
-               (test-start-row (floor (* lines (- 1.0 *oos-test-ratio*))))
-               (test-rows (- lines test-start-row)))
-          
-          (format t "[OOS] 📊 ~a: Using rows ~d-~d for OOS test (~d rows)~%"
-                  (strategy-name strat) test-start-row lines test-rows)
-          
-          ;; Request backtest with suffix to differentiate from normal BT
-          ;; The Guardian will use the same CSV but we're conceptually testing OOS
-          ;; TODO: Implement proper data range limiting in Guardian API
-          (let ((result (request-backtest strat :suffix "-OOS")))
-            (if result
-                (let ((sharpe (getf result :sharpe 0.0)))
-                  (if (>= sharpe *oos-min-sharpe*)
-                    (progn
-                      (setf (strategy-oos-sharpe strat) sharpe)
-                      (upsert-strategy strat)
-                      (values t sharpe 
-                              (format nil "OOS PASSED: Sharpe=~,2f" sharpe)))
-                      (values nil sharpe 
-                              (format nil "OOS FAILED: Sharpe=~,2f < ~,2f" 
-                                      sharpe *oos-min-sharpe*))))
-                (values nil 0.0 "OOS backtest failed"))))
-      (error (e)
-        (values nil 0.0 (format nil "OOS error: ~a" e))))))
+    (let ((oos (strategy-oos-sharpe strat)))
+      (when (numberp oos)
+        (return-from run-oos-validation
+          (values (>= oos *oos-min-sharpe*)
+                  oos
+                  (format nil "OOS cached: Sharpe=~,2f" oos)))))
+    
+    (if (maybe-request-oos-backtest strat)
+        (values nil 0.0 "OOS pending (async)")
+        (values nil 0.0 "OOS request throttled"))))
 
 (defun validate-for-a-rank-promotion (strat)
   "Validate strategy is ready for A-RANK promotion using OOS validation.
@@ -66,10 +80,10 @@
             (strategy-name strat))
     (return-from validate-for-a-rank-promotion nil))
   
-  ;; Run OOS validation
+  ;; Run OOS validation (async)
   (multiple-value-bind (passed sharpe msg) (run-oos-validation strat)
     (format t "[A-RANK] ~a ~a: ~a~%" 
-            (if passed "✅" "❌") (strategy-name strat) msg)
+            (if passed "✅" "⏳") (strategy-name strat) msg)
     (when passed
       (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe)))
     passed))
@@ -93,15 +107,16 @@
   "V49.5: Request CPCV validation (Non-blocking ASYNC).
    Result is handled by message-dispatcher.lisp"
    (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
-          (candles-file (format nil "/home/swimmy/swimmy/data/historical/~a_M1.csv" symbol))
-          (strat-params (strategy-to-alist strat))
-          (request `((action . "CPCV_VALIDATE")
-                     (strategy_name . ,(strategy-name strat))
-                     (symbol . ,symbol)
-                     (candles_file . ,candles-file)
-                     (strategy_params . ,strat-params))))
+          (candles-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol))))
+          (strat-params (alist-to-json (strategy-to-alist strat)))
+          (request (jsown:new-js
+                     ("action" "CPCV_VALIDATE")
+                     ("strategy_name" (strategy-name strat))
+                     ("symbol" symbol)
+                     ("candles_file" candles-file)
+                     ("strategy_params" strat-params))))
      (format t "[CPCV] 📤 Sent CPCV request for ~a (Async)...~%" (strategy-name strat))
-     (send-zmq-msg (prin1-to-string request))
+     (send-zmq-msg (jsown:to-json request) :target :cmd)
      ;; Return T to indicate request sent successfully
      (values t nil nil)))
 

@@ -4,14 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/.venv/bin/python3 tools/backtest_service.py
+WorkingDirectory=%h/swimmy
+ExecStart=%h/swimmy/.venv/bin/python3 tools/backtest_service.py
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=%h/swimmy/.env
+LimitNOFILE=65535
 # Logs
-StandardOutput=append:/home/swimmy/swimmy/logs/backtest.log
-StandardError=append:/home/swimmy/swimmy/logs/backtest.log
+StandardOutput=append:%h/swimmy/logs/backtest.log
+StandardError=append:%h/swimmy/logs/backtest.log
 
 [Install]
 WantedBy=default.target

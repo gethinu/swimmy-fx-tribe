@@ -11,11 +11,24 @@ import json
 import os
 import sys
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Configuration
 ZMQ_PORT = 5562
-ENV_FILE = "/home/swimmy/swimmy/.env"
-BACKTEST_CACHE = "/home/swimmy/swimmy/data/backtest_cache.json"
+BASE_DIR = str(resolve_base_dir())
+ENV_FILE = os.path.join(BASE_DIR, ".env")
+BACKTEST_CACHE = os.path.join(BASE_DIR, "data", "backtest_cache.json")
 
 
 def load_env():

@@ -6,13 +6,13 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/pending_manager.py
+WorkingDirectory=%h/swimmy
+ExecStart=/usr/bin/python3 %h/swimmy/tools/pending_manager.py
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
-StandardOutput=append:/home/swimmy/swimmy/logs/pending_manager.log
-StandardError=append:/home/swimmy/swimmy/logs/pending_manager.log
+StandardOutput=append:%h/swimmy/logs/pending_manager.log
+StandardError=append:%h/swimmy/logs/pending_manager.log
 
 [Install]
 WantedBy=default.target

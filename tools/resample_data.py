@@ -2,8 +2,21 @@ import csv
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-DATA_DIR = "/home/swimmy/swimmy/data/historical"
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+BASE_DIR = str(resolve_base_dir())
+DATA_DIR = os.path.join(BASE_DIR, "data", "historical")
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 
 TF_SECONDS = {

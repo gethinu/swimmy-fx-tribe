@@ -5,7 +5,15 @@
     (load quicklisp-init)))
 
 (require :asdf)
-(push (probe-file "/home/swimmy/swimmy/") asdf:*central-registry*)
+(let* ((script (or *load-pathname* *compile-file-pathname*))
+       (script-dir (when script (uiop:pathname-directory-pathname script)))
+       (root (or (uiop:getenv "SWIMMY_HOME")
+                 (when script-dir
+                   (uiop:pathname-directory-pathname
+                    (merge-pathnames "../" script-dir)))
+                 (truename "."))))
+  (push (probe-file (uiop:ensure-directory-pathname root))
+        asdf:*central-registry*))
 (ql:quickload :swimmy)
 
 (in-package :swimmy.school)

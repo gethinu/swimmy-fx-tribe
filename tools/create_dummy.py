@@ -5,7 +5,18 @@ import os
 from pathlib import Path
 
 # Fix paths
-base_dir = Path("/home/swimmy/swimmy")
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+base_dir = resolve_base_dir()
 data_dir = base_dir / "data" / "historical"
 data_dir.mkdir(parents=True, exist_ok=True)
 

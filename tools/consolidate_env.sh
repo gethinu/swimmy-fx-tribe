@@ -1,7 +1,9 @@
 #!/bin/bash
 # consolidate_env.sh - Consolidates environment variables to root .env
 
-echo "Consolidating environment variables to /home/swimmy/swimmy/.env..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIMMY_HOME="${SWIMMY_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+echo "Consolidating environment variables to ${SWIMMY_HOME}/.env..."
 
 # Update systemd services
 sudo sed -i 's|config/.env|.env|g' /etc/systemd/system/swimmy-brain.service
@@ -14,8 +16,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart swimmy-brain swimmy-school swimmy-guardian
 
 # Cleanup
-if [ -f /home/swimmy/swimmy/config/.env ]; then
-    rm /home/swimmy/swimmy/config/.env
+if [ -f "${SWIMMY_HOME}/config/.env" ]; then
+    rm "${SWIMMY_HOME}/config/.env"
     echo "Removed redundant config/.env"
 fi
 

@@ -3,11 +3,24 @@ import json
 import os
 import sys
 import re
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Configuration
-STRATEGIES_JSON = "strategies.json"
-RANK_DB_PATH = "/home/swimmy/swimmy/.swimmy/strategy_ranks.lisp"
-GRAVEYARD_LISP = "src/lisp/school/graveyard-persistence.lisp"
+BASE_DIR = str(resolve_base_dir())
+STRATEGIES_JSON = os.path.join(BASE_DIR, "strategies.json")
+RANK_DB_PATH = os.path.join(BASE_DIR, ".swimmy", "strategy_ranks.lisp")
+GRAVEYARD_LISP = os.path.join(BASE_DIR, "src", "lisp", "school", "graveyard-persistence.lisp")
 
 
 def load_json(path):

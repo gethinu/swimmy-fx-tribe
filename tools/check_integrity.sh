@@ -35,7 +35,7 @@ fi
 # 3. Environment Variable Check
 echo -e "\n${YELLOW}[3/5] Checking Environment Variables (.env)...${NC}"
 REQUIRED_KEYS=("SWIMMY_DISCORD_BOT_TOKEN" "SWIMMY_GEMINI_API_KEY" "SWIMMY_DISCORD_ALERTS")
-OPTIONAL_KEYS=("OANDA_API_KEY" "OANDA_ACCOUNT_ID")
+OPTIONAL_KEYS=()
 MISSING=0
 
 if [ ! -f .env ]; then

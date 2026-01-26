@@ -4,6 +4,18 @@ import subprocess
 import re
 from datetime import datetime
 import time
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # ANSI Colors
 CYAN = "\033[96m"
@@ -14,8 +26,9 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 CLEAR = "\033[H\033[J"
 
-SWIMMY_LOG = "/home/swimmy/swimmy/logs/swimmy.log"
-GUARDIAN_LOG = "/home/swimmy/swimmy/logs/guardian.log"
+BASE_DIR = str(resolve_base_dir())
+SWIMMY_LOG = os.path.join(BASE_DIR, "logs", "swimmy.log")
+GUARDIAN_LOG = os.path.join(BASE_DIR, "logs", "guardian.log")
 
 
 def get_service_status(service_name):

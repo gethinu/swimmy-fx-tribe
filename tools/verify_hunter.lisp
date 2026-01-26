@@ -27,7 +27,8 @@
       (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))
         (when (probe-file quicklisp-init)
           (load quicklisp-init)))
-      (asdf:load-system :swimmy))
+      (handler-bind ((warning (lambda (w) (declare (ignore w)) (muffle-warning w))))
+        (asdf:load-system :swimmy)))
   (error (e)
     (exit-error (format nil "Failed to load base system: ~a" e))))
 

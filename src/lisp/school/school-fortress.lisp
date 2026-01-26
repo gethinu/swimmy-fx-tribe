@@ -1,21 +1,10 @@
 ;; school-fortress.lisp - Swimmy V5.5-V6.1 Fortress Features
 
-
 (in-package :swimmy.school)
 
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
-
-(in-package :swimmy.school)
+(defun decode-jst (&optional (time (get-universal-time)))
+  "Decode universal time into JST components."
+  (decode-universal-time time 9))
 
 ;; V6.0 (Graham): Extracted from school.lisp for modularity
 ;; V6.2 (Graham): Added Gotobi, Kelly, WhyLog
@@ -46,7 +35,7 @@
 
 (defun gotobi-day-p ()
   "Check if today is a Gotobi day (5th, 10th, 15th, 20th, 25th, or end of month)"
-  (multiple-value-bind (s m h day month year) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (s m h day month year) (decode-jst)
     (declare (ignore s m h))
     (let ((last-day (days-in-month month year)))
       (if (or (member day '(5 10 15 20 25))
@@ -58,7 +47,7 @@
 (defun gotobi-usdjpy-bias ()
   "Return Gotobi trading bias for USDJPY (Japanese importers buy USD)"
   (if (gotobi-day-p)
-      (let ((hour (nth-value 2 (decode-universal-time (get-universal-time)))))
+      (let ((hour (nth-value 2 (decode-jst))))
         (cond
           ((and (>= hour 0) (< hour 9)) :strong-buy)
           ((and (>= hour 9) (< hour 15)) :buy)
@@ -82,20 +71,20 @@
 
 (defun london-session-p ()
   "Check if currently in London session (8:00-17:00 GMT = 17:00-02:00 JST)"
-  (multiple-value-bind (s m h) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (s m h) (decode-jst)
     (declare (ignore s m))
     ;; JST is GMT+9, London session is 8-17 GMT = 17-26 JST (17:00-02:00 next day)
     (or (>= h 17) (< h 2))))
 
 (defun london-overlap-p ()
   "Check if in London-NY overlap (best liquidity, 13:00-17:00 GMT = 22:00-02:00 JST)"
-  (multiple-value-bind (s m h) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (s m h) (decode-jst)
     (declare (ignore s m))
     (or (>= h 22) (< h 2))))
 
 (defun ecb-week-p ()
   "Check if this week likely has ECB announcement (first Thursday of month)"
-  (multiple-value-bind (s m h day month year) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (s m h day month year) (decode-jst)
     (declare (ignore s m h month year))
     ;; First Thursday is between 1-7
     (<= day 7)))
@@ -205,7 +194,7 @@
   (when swarm-cons (format t "[L]   ├─ Swarm Consensus: ~,0f%~%" (* 100 swarm-cons)))
   
   ;; User Request: Log to memo2.txt (Only if pending or success, or significant failure)
-  (with-open-file (stream "/home/swimmy/swimmy/doc/memo2.txt" 
+  (with-open-file (stream (swimmy.core::swimmy-path "doc/memo2.txt") 
                           :direction :output 
                           :if-exists :append 
                           :if-does-not-exist :create)

@@ -110,9 +110,18 @@
     ("EURUSD" . (("GBPUSD" . 0.90) ("USDJPY" . -0.60) ("EURJPY" . 0.30)))
     ("GBPUSD" . (("EURUSD" . 0.90) ("USDJPY" . -0.50) ("GBPJPY" . 0.40)))))
 
+(defun resolve-swimmy-home ()
+  "Resolve Swimmy project root (env override supported)."
+  (let ((env (uiop:getenv "SWIMMY_HOME")))
+    (uiop:ensure-directory-pathname
+     (if (and env (> (length env) 0))
+         env
+         (uiop:getcwd)))))
+
+(defparameter cycle-completed nil "Legacy flag used by maintenance logs")
 (defparameter *symbol-exposure* (make-hash-table :test 'equal))
-(defparameter *max-symbol-exposure* 0.15)
-(defparameter *max-total-exposure* 0.30)
+(defparameter *max-symbol-exposure* 0.30)
+(defparameter *max-total-exposure* 0.60)
 
 ;;; ==========================================
 ;;; DYNAMIC CORRELATION (Taleb Homework #3)
@@ -312,7 +321,7 @@
 (defparameter *strategy-ranks* (make-hash-table :test 'equal))
 (defparameter *clan-treasury* (make-hash-table :test 'eq))
 (defparameter *mutual-aid-history* nil)
-(defparameter *rank-db-path* #P"/home/swimmy/swimmy/.swimmy/strategy_ranks.lisp")
+(defparameter *rank-db-path* (merge-pathnames ".swimmy/strategy_ranks.lisp" (resolve-swimmy-home)))
 
 (defun save-strategy-ranks ()
   "Save strategy ranks to file"

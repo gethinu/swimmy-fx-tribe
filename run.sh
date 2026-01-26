@@ -1,7 +1,9 @@
 #!/bin/bash
 # Swimmy Launch Script with Log Rotation (Gene Kim)
 
-cd /home/swimmy/swimmy
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIMMY_HOME="${SWIMMY_HOME:-$SCRIPT_DIR}"
+cd "$SWIMMY_HOME"
 
 # Load Environment Variables
 if [ -f .env ]; then

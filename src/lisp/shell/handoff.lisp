@@ -12,7 +12,7 @@
 ;;; STATE
 ;;; ==========================================
 
-(defparameter *handoff-path* "/home/swimmy/swimmy/.opus/daily_handoff.md")
+(defparameter *handoff-path* (swimmy.core::swimmy-path ".opus/daily_handoff.md"))
 (defparameter *last-weekly-summary* 0)
 
 ;;; ==========================================
@@ -149,7 +149,7 @@
 (defun generate-weekly-summary ()
   "Generate weekly summary (call once per week)."
   (let* ((progress (get-goal-progress))
-         (summary-path "/home/swimmy/swimmy/.opus/weekly_summary.md"))
+         (summary-path (swimmy.core::swimmy-path ".opus/weekly_summary.md")))
     
     (handler-case
         (progn

@@ -180,11 +180,11 @@
 (deftest test-prediction-weights-configurable
   "V17: Test that prediction weights are configurable (Issue 1)"
   ;; Check that weight variables exist and are numbers
-  (assert-true (boundp 'cl-user::*prediction-weight-trend*) "Trend weight should exist")
-  (assert-true (boundp 'cl-user::*prediction-weight-volatility*) "Volatility weight should exist")
-  (assert-true (boundp 'cl-user::*prediction-min-confidence*) "Min confidence should exist")
-  (assert-true (numberp cl-user::*prediction-weight-trend*) "Trend weight should be a number")
-  (assert-true (> cl-user::*prediction-weight-trend* 0) "Weight should be positive"))
+  (assert-true (boundp 'swimmy.school::*prediction-weight-trend*) "Trend weight should exist")
+  (assert-true (boundp 'swimmy.school::*prediction-weight-volatility*) "Volatility weight should exist")
+  (assert-true (boundp 'swimmy.school::*prediction-min-confidence*) "Min confidence should exist")
+  (assert-true (numberp swimmy.school::*prediction-weight-trend*) "Trend weight should be a number")
+  (assert-true (> swimmy.school::*prediction-weight-trend* 0) "Weight should be positive"))
 
 (deftest test-prediction-feedback-functions
   "V17: Test feedback loop functions exist (Issue 2)"
@@ -202,21 +202,21 @@
                          :symbol "USDJPY" :direction :buy 
                          :predicted-outcome :win :confidence 0.3)))
     ;; High confidence should pass (0.7 > 0.5 default threshold)
-    (assert-true (cl-user::should-take-trade-p high-conf-pred) "High conf should pass")
+    (assert-true (swimmy.school::should-take-trade-p high-conf-pred) "High conf should pass")
     ;; Low confidence should fail
-    (assert-false (cl-user::should-take-trade-p low-conf-pred) "Low conf should fail")))
+    (assert-false (swimmy.school::should-take-trade-p low-conf-pred) "Low conf should fail")))
 
 ;;; V18: Extended Tests (Uncle Bob)
 (deftest test-factor-correlation-calculation
   "V18: Test dynamic correlation calculation (López de Prado)"
   ;; High correlation when trend and momentum agree
-  (assert-equal 0.8 (cl-user::calculate-factor-correlation t t nil) 
+  (assert-equal 0.8 (swimmy.school::calculate-factor-correlation t t nil) 
                 "Trend+momentum aligned = high correlation")
   ;; Zero correlation when reversion is active
-  (assert-equal 0.0 (cl-user::calculate-factor-correlation t nil t)
+  (assert-equal 0.0 (swimmy.school::calculate-factor-correlation t nil t)
                 "Reversion = no correlation")
   ;; Low correlation in mixed cases
-  (assert-true (< (cl-user::calculate-factor-correlation nil nil nil) 0.5)
+  (assert-true (< (swimmy.school::calculate-factor-correlation nil nil nil) 0.5)
                "Mixed case = low correlation"))
 
 (deftest test-extracted-factor-functions
@@ -228,11 +228,11 @@
 
 (deftest test-learning-cycle-adjustment
   "V18: Test that learning cycle can adjust thresholds (Naval/Ng)"
-  (let ((orig-threshold cl-user::*prediction-min-confidence*))
+  (let ((orig-threshold swimmy.school::*prediction-min-confidence*))
     ;; Verify adjustment functions exist and threshold is settable
-    (assert-true (numberp cl-user::*prediction-min-confidence*) "Threshold is number")
-    (assert-true (and (>= cl-user::*prediction-min-confidence* 0.3)
-                      (<= cl-user::*prediction-min-confidence* 0.7))
+    (assert-true (numberp swimmy.school::*prediction-min-confidence*) "Threshold is number")
+    (assert-true (and (>= swimmy.school::*prediction-min-confidence* 0.3)
+                      (<= swimmy.school::*prediction-min-confidence* 0.7))
                  "Threshold in valid range")))
 
 ;;; ==========================================

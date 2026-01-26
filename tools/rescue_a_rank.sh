@@ -2,8 +2,10 @@
 # Rescue script for A-Rank strategies (Sharpe > 0.3)
 # Moves .lisp files from GRAVEYARD to TRAINING if they match criteria.
 
-GRAVE_DIR="/home/swimmy/swimmy/data/library/GRAVEYARD"
-TARGET_DIR="/home/swimmy/swimmy/data/library/TRAINING"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIMMY_HOME="${SWIMMY_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+GRAVE_DIR="$SWIMMY_HOME/data/library/GRAVEYARD"
+TARGET_DIR="$SWIMMY_HOME/data/library/TRAINING"
 mkdir -p "$TARGET_DIR"
 
 echo "[RESCUE] 🚑 Scanning GRAVEYARD for Sharpe > 0.3..."

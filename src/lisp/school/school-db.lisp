@@ -75,7 +75,32 @@
   "Save or update strategy in SQL."
   (unless (strategy-hash strat)
     (setf (strategy-hash strat) (calculate-strategy-hash strat)))
-  (handler-case
+  (let* ((name (strategy-name strat))
+         (existing-row (ignore-errors (first (execute-to-list
+                                              "SELECT sharpe, profit_factor, win_rate, trades, max_dd FROM strategies WHERE name=?"
+                                              name))))
+         (db-sharpe (if existing-row (or (first existing-row) 0.0) 0.0))
+         (db-pf (if existing-row (or (second existing-row) 0.0) 0.0))
+         (db-wr (if existing-row (or (third existing-row) 0.0) 0.0))
+         (db-trades (if existing-row (or (fourth existing-row) 0) 0))
+         (db-max-dd (if existing-row (or (fifth existing-row) 0.0) 0.0))
+         (cur-sharpe (or (strategy-sharpe strat) 0.0))
+         (cur-pf (or (strategy-profit-factor strat) 0.0))
+         (cur-wr (or (strategy-win-rate strat) 0.0))
+         (cur-trades (or (strategy-trades strat) 0))
+         (cur-max-dd (or (strategy-max-dd strat) 0.0)))
+    ;; Preserve non-zero DB metrics if in-memory values are zero.
+    (when (and existing-row (zerop cur-sharpe) (not (zerop db-sharpe)))
+      (setf cur-sharpe db-sharpe))
+    (when (and existing-row (zerop cur-pf) (not (zerop db-pf)))
+      (setf cur-pf db-pf))
+    (when (and existing-row (zerop cur-wr) (not (zerop db-wr)))
+      (setf cur-wr db-wr))
+    (when (and existing-row (zerop cur-trades) (> db-trades 0))
+      (setf cur-trades db-trades))
+    (when (and existing-row (zerop cur-max-dd) (not (zerop db-max-dd)))
+      (setf cur-max-dd db-max-dd))
+    (handler-case
       (execute-non-query
        "INSERT OR REPLACE INTO strategies (
           name, indicators, entry, exit, sl, tp, volume, 
@@ -83,18 +108,18 @@
           category, timeframe, generation, rank, symbol, direction, hash, 
           oos_sharpe, cpcv_median, cpcv_pass_rate, data_sexp
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-       (strategy-name strat)
+       name
        (format nil "~a" (strategy-indicators strat))
        (format nil "~a" (strategy-entry strat))
        (format nil "~a" (strategy-exit strat))
        (strategy-sl strat)
        (strategy-tp strat)
        (strategy-volume strat)
-       (or (strategy-sharpe strat) 0.0)
-       (or (strategy-profit-factor strat) 0.0)
-       (or (strategy-win-rate strat) 0.0)
-       (or (strategy-trades strat) 0)
-       (or (strategy-max-dd strat) 0.0)
+       cur-sharpe
+       cur-pf
+       cur-wr
+       cur-trades
+       cur-max-dd
        (format nil "~a" (strategy-category strat))
        (strategy-timeframe strat)
        (strategy-generation strat)
@@ -107,6 +132,7 @@
        (or (strategy-cpcv-pass-rate strat) 0.0)
        (format nil "~s" strat)) ; Store full serialized object as backup
     (error (e) (format t "[DB] ❌ Upsert error for ~a: ~a~%" (strategy-name strat) e))))
+  )
 
 (defun record-trade-to-db (record)
   "Log trade to SQL."
@@ -121,6 +147,38 @@
    (format nil "~a" (trade-record-regime record))
    (trade-record-pnl record)
    (trade-record-hold-time record)))
+
+(defparameter *last-db-sync-time* 0)
+(defparameter *db-sync-interval* 60
+  "Minimum seconds between DB syncs for strategy metrics.")
+
+(defun refresh-strategy-metrics-from-db (&key (force nil))
+  "Refresh in-memory strategy metrics from the DB (for multi-process coherence)."
+  (let ((now (get-universal-time)))
+    (when (or force (> (- now *last-db-sync-time*) *db-sync-interval*))
+      (setf *last-db-sync-time* now)
+      (let ((rows (execute-to-list
+                   "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_pass_rate FROM strategies"))
+            (updated 0))
+        (dolist (row rows)
+          (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-pass) row
+            (let ((strat (find-strategy name)))
+              (when strat
+                (when sharpe (setf (strategy-sharpe strat) (float sharpe 0.0)))
+                (when pf (setf (strategy-profit-factor strat) (float pf 0.0)))
+                (when wr (setf (strategy-win-rate strat) (float wr 0.0)))
+                (when trades (setf (strategy-trades strat) trades))
+                (when maxdd (setf (strategy-max-dd strat) (float maxdd 0.0)))
+                (when oos (setf (strategy-oos-sharpe strat) (float oos 0.0)))
+                (when cpcv-median (setf (strategy-cpcv-median-sharpe strat) (float cpcv-median 0.0)))
+                (when cpcv-pass (setf (strategy-cpcv-pass-rate strat) (float cpcv-pass 0.0)))
+                (when (and rank (stringp rank))
+                  (let ((rank-sym (ignore-errors (read-from-string rank))))
+                    (when (symbolp rank-sym)
+                      (setf (strategy-rank strat) rank-sym))))
+                (incf updated)))))
+        (when (> updated 0)
+          (format t "[DB] 🔄 Synced metrics for ~d strategies~%" updated))))))
 
 (defun fetch-candidate-strategies (&key (min-sharpe 0.1) (ranks '(":B" ":A" ":S")))
   "Fetch strategies from DB matching criteria for the global draft."

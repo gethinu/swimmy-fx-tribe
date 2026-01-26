@@ -118,6 +118,10 @@
   ;; P8: End startup mode to enable notifications
   (when (fboundp 'swimmy.school::end-startup-mode)
     (swimmy.school::end-startup-mode))
+
+  ;; V51.0: Ensure Brain uses Backtest Service (PUSH -> 5580)
+  (when (fboundp 'swimmy.school::init-backtest-zmq)
+    (swimmy.school::init-backtest-zmq))
     
   (format t "[SYSTEM] Initialization complete.~%"))
 

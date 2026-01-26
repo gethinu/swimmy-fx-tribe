@@ -5,21 +5,21 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/run.sh
+WorkingDirectory=%h/swimmy
+ExecStart=%h/swimmy/run.sh
 Restart=always
 RestartSec=10
 
 # Environment
-Environment="HOME=/home/swimmy"
-EnvironmentFile=/home/swimmy/swimmy/.env
+Environment=HOME=%h
+EnvironmentFile=%h/swimmy/.env
 
 # Security
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/swimmy/swimmy/doc/logs
-ReadWritePaths=/home/swimmy/swimmy/.opus
-ReadWritePaths=/home/swimmy/swimmy/logs
+ReadWritePaths=%h/swimmy/doc/logs
+ReadWritePaths=%h/swimmy/.opus
+ReadWritePaths=%h/swimmy/logs
 
 # Logging
 StandardOutput=journal

@@ -10,6 +10,10 @@
   (unless *sqlite-conn*
     (ensure-directories-exist path)
     (setf *sqlite-conn* (sqlite:connect path))
+    ;; Improve concurrency between brain/school processes
+    (ignore-errors (sqlite:execute-non-query *sqlite-conn* "PRAGMA journal_mode=WAL"))
+    (ignore-errors (sqlite:execute-non-query *sqlite-conn* "PRAGMA synchronous=NORMAL"))
+    (ignore-errors (sqlite:execute-non-query *sqlite-conn* "PRAGMA busy_timeout=5000"))
     (format t "[SQL] 🗄️ Connected to database: ~a~%" path))
   *sqlite-conn*)
 

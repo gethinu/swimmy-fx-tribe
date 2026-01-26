@@ -16,14 +16,28 @@ import asyncio
 import os
 import json
 from datetime import datetime
+from pathlib import Path
 
 # Bot configuration - token MUST be set via environment variable
 TOKEN = os.environ.get("SWIMMY_DISCORD_BOT_TOKEN")
 if not TOKEN:
     raise ValueError("SWIMMY_DISCORD_BOT_TOKEN environment variable is required")
-SWIMMY_QUERY_FILE = "/home/swimmy/swimmy/.opus/query.txt"
-SWIMMY_RESPONSE_FILE = "/home/swimmy/swimmy/.opus/response.txt"
-SWIMMY_STATUS_FILE = "/home/swimmy/swimmy/.opus/live_status.json"
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = str(resolve_base_dir())
+SWIMMY_QUERY_FILE = os.path.join(BASE_DIR, ".opus", "query.txt")
+SWIMMY_RESPONSE_FILE = os.path.join(BASE_DIR, ".opus", "response.txt")
+SWIMMY_STATUS_FILE = os.path.join(BASE_DIR, ".opus", "live_status.json")
 
 # Singleton check
 import fcntl

@@ -1,11 +1,25 @@
 import zmq
 import json
 import time
+import os
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Configuration
 BACKTEST_PORT = 5580
 BRAIN_PORT = 5555
-CSV_FILE = "/home/swimmy/swimmy/data/historical/USDJPY_M1.csv"
+BASE_DIR = str(resolve_base_dir())
+CSV_FILE = os.path.join(BASE_DIR, "data", "historical", "USDJPY_M1.csv")
 
 
 def main():

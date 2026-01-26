@@ -6,7 +6,7 @@
 ;;; and knowledge base management.
 
 (defparameter *log-analysis-history* nil)
-(defparameter *knowledge-base-path* #P"/home/swimmy/swimmy/.opus/knowledge_base.lisp")
+(defparameter *knowledge-base-path* (swimmy.core::swimmy-path ".opus/knowledge_base.lisp"))
 (defparameter *learned-patterns* nil)
 (defparameter *improvement-requests* nil)
 

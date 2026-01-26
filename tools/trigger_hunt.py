@@ -16,6 +16,18 @@ import time
 import os
 import cleanup_hunter
 import argparse  # Added for argparsing futureproof
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 
 # Templates for each clan
@@ -79,8 +91,9 @@ def get_templates(clan):
     return []
 
 
-TARGET_FILE = "/home/swimmy/swimmy/src/lisp/school/school-hunter.lisp"
-TEMPLATE_FILE = "/home/swimmy/swimmy/src/lisp/templates/founder.lisp.template"
+BASE_DIR = str(resolve_base_dir())
+TARGET_FILE = os.path.join(BASE_DIR, "src", "lisp", "school", "school-hunter.lisp")
+TEMPLATE_FILE = os.path.join(BASE_DIR, "src", "lisp", "templates", "founder.lisp.template")
 
 
 def generate_lisp_code(clan, base_timestamp):

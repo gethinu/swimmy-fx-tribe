@@ -18,6 +18,8 @@
     (progn
       ;; V47.8: Essential initializations for Lisp-Native loop
       (swimmy.school::init-school) ; Loads hunters and builds category pools
+      (when (fboundp 'swimmy.school::end-startup-mode)
+        (swimmy.school::end-startup-mode))
       (swimmy.school::init-backtest-zmq) ; Connects to ZMQ
       (swimmy.school:start-evolution-service))
   (sb-sys:interactive-interrupt ()

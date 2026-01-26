@@ -11,6 +11,33 @@
 (defvar *risk-alert-throttle* (make-hash-table :test 'equal)
   "Timestamp of last alert for (symbol action reason) to prevent spam")
 
+(defun check-correlation-risk (symbol direction)
+  "Engine-level wrapper for School correlation checks."
+  (if (fboundp 'swimmy.school::check-correlation-risk)
+      (swimmy.school::check-correlation-risk symbol direction)
+      0.0))
+
+(defun get-symbol-exposure (symbol)
+  "Engine-level wrapper for School exposure tracking."
+  (cond
+    ((fboundp 'swimmy.school::get-symbol-exposure)
+     (swimmy.school::get-symbol-exposure symbol))
+    ((boundp '*symbol-exposure*)
+     (gethash symbol *symbol-exposure* 0.0))
+    (t 0.0)))
+
+(defun apply-gotobi-adjustment (symbol direction)
+  "Engine-level wrapper for School Gotobi adjustments."
+  (if (fboundp 'swimmy.school::apply-gotobi-adjustment)
+      (swimmy.school::apply-gotobi-adjustment symbol direction)
+      1.0))
+
+(defun apply-london-edge (symbol direction)
+  "Engine-level wrapper for School London session adjustments."
+  (if (fboundp 'swimmy.school::apply-london-edge)
+      (swimmy.school::apply-london-edge symbol direction)
+      1.0))
+
 (defun risk-check-all (symbol direction lot category)
   "Unified risk check before trade execution. Returns (approved-p adjusted-lot reason)"
   (let ((checks nil)
@@ -50,9 +77,12 @@
     
     ;; 5. P0: Daily loss limit PRE-OPEN CHECK (BLOCK, not just warn)
     ;; This prevents opening new positions after hitting loss limit
-    (when (and (boundp '*daily-pnl*) (< *daily-pnl* -5000))
+    (when (and (boundp '*daily-pnl*)
+               (boundp '*daily-loss-limit*)
+               (< *daily-pnl* *daily-loss-limit*))
       (push "DAILY_LOSS_LIMIT_EXCEEDED" checks)
-      (format t "[L] 🛑 PRE-OPEN BLOCK: Daily loss ¥~,0f exceeds ¥-5000 limit~%" *daily-pnl*)
+      (format t "[L] 🛑 PRE-OPEN BLOCK: Daily loss ¥~,0f exceeds ¥~,0f limit~%"
+              *daily-pnl* *daily-loss-limit*)
       (setf approved nil))
     
     ;; 6. Gotobi adjustment (USDJPY only)

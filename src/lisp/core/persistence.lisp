@@ -13,10 +13,16 @@
 (in-package :swimmy.persistence)
 
 
-(defparameter *library-path* (merge-pathnames "data/library/" (user-homedir-pathname)))
+(defun resolve-library-root ()
+  "Resolve the project root for persistence (env override supported)."
+  (let ((env (ignore-errors (uiop:getenv "SWIMMY_HOME"))))
+    (cond
+      ((and env (> (length env) 0))
+       (uiop:ensure-directory-pathname env))
+      (t
+       (uiop:ensure-directory-pathname (uiop:getcwd))))))
 
-;; Or specifically: /home/swimmy/swimmy/data/library/
-(defparameter *library-path* #P"/home/swimmy/swimmy/data/library/")
+(defparameter *library-path* (merge-pathnames "data/library/" (resolve-library-root)))
 
 (defun ensure-directory (path)
   (ensure-directories-exist path))

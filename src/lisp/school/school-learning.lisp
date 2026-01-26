@@ -28,7 +28,7 @@
 ;;; ==========================================
 
 (defparameter *hall-of-fame* nil "List of legendary strategies")
-(defparameter *hall-of-fame-path* "/home/swimmy/swimmy/.opus/hall_of_fame.lisp")
+(defparameter *hall-of-fame-path* (swimmy.core::swimmy-path ".opus/hall_of_fame.lisp"))
 
 (defun induct-to-hall-of-fame (strategy-name peak-pnl speciality wisdom)
   "Induct a legendary strategy into the Hall of Fame.
@@ -467,5 +467,4 @@
             overall-rate total-successes total-failures)))
 
 ;;; P3: LEARNING ADVANCED functions moved to school-p3-learning.lisp (V47.3)
-
 

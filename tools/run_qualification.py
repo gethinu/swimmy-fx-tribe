@@ -4,11 +4,24 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from backtest_service import BacktestService
 
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
 # Configuration
-RANK_DB_PATH = "/home/swimmy/swimmy/.swimmy/strategy_ranks.lisp"
-STRATEGIES_JSON = "/home/swimmy/swimmy/strategies.json"
+BASE_DIR = str(resolve_base_dir())
+RANK_DB_PATH = os.path.join(BASE_DIR, ".swimmy", "strategy_ranks.lisp")
+STRATEGIES_JSON = os.path.join(BASE_DIR, "strategies.json")
 START_YEAR = 2006
 END_YEAR = 2026
 

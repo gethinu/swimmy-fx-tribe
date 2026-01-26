@@ -53,7 +53,7 @@
     
     ;; Analyze each file
     (dolist (file files)
-      (let ((path (format nil "/home/swimmy/swimmy/~a" file)))
+      (let ((path (swimmy.core::swimmy-path file)))
         (when (probe-file path)
           (let ((funcs (count-functions-in-file path)))
             (incf total-functions funcs)

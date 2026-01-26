@@ -4,14 +4,14 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/.venv/bin/python3 tools/notifier.py
+WorkingDirectory=%h/swimmy
+ExecStart=%h/swimmy/.venv/bin/python3 tools/notifier.py
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=%h/swimmy/.env
 # Logs
-StandardOutput=append:/home/swimmy/swimmy/logs/notifier.log
-StandardError=append:/home/swimmy/swimmy/logs/notifier.log
+StandardOutput=append:%h/swimmy/logs/notifier.log
+StandardError=append:%h/swimmy/logs/notifier.log
 
 [Install]
 WantedBy=default.target

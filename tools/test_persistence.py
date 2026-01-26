@@ -3,6 +3,18 @@ import json
 import time
 import os
 import sys
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 # Test configuration
 ZMQ_PORT = 5561
@@ -11,7 +23,8 @@ TF = "M5"
 TEST_TIMESTAMP = int(time.time()) - (int(time.time()) % 300)  # Current M5 candle
 TEST_OPEN = 150.00
 TEST_CLOSE = 150.50
-CSV_FILE = f"/home/swimmy/swimmy/data/historical/{SYMBOL}_{TF}.csv"
+BASE_DIR = str(resolve_base_dir())
+CSV_FILE = os.path.join(BASE_DIR, "data", "historical", f"{SYMBOL}_{TF}.csv")
 
 
 def test_persistence():

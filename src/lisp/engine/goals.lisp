@@ -14,11 +14,9 @@
 ;;; ==========================================
 ;;; GOAL STATE
 ;;; ==========================================
-
-(defparameter *monthly-goal* 10000)        ; Ramen profitability target (yen)
-(defparameter *goal-start-date* nil)       ; When we started tracking
-(defparameter *accumulated-pnl* 0.0)       ; Total PnL since goal start
-(defparameter *trading-days-in-month* 22)  ; Approximate trading days
+;; NOTE: *monthly-goal*, *trading-days-in-month*, *accumulated-pnl* are defined
+;; in core/config.lisp. Do not redefine here to avoid overriding runtime config.
+(defvar *goal-start-date* nil)       ; When we started tracking
 
 ;; Note: *risk-tolerance* is in config.lisp
 ;; Note: *daily-loss-limit* is in config.lisp
@@ -36,17 +34,32 @@
   (calculate-daily-targets)
   (get-daily-target))
 
+(defun safe-trading-days ()
+  "Return valid trading days in month or a safe fallback."
+  (if (and (boundp '*trading-days-in-month*)
+           (numberp *trading-days-in-month*)
+           (> *trading-days-in-month* 0))
+      *trading-days-in-month*
+      22))
+
+(defun set-daily-loss-limit-from-target (daily-target &key (multiplier 1.0) (min-limit 1000))
+  "Set *daily-loss-limit* based on daily target. Returns applied absolute limit."
+  (when (and (numberp daily-target) (> daily-target 0))
+    (let ((limit (max min-limit (round (* daily-target multiplier)))))
+      (setf *daily-loss-limit* (- limit))
+      limit)))
+
 (defun calculate-daily-targets ()
   "Calculate daily targets based on monthly goal.
    Delegates risk limit setting to risk module."
-  (let ((daily-target (ceiling (/ *monthly-goal* *trading-days-in-month*))))
+  (let ((daily-target (ceiling (/ *monthly-goal* (safe-trading-days)))))
     ;; Forward to Risk Authority if available
     (when (fboundp 'set-daily-loss-limit-from-target)
       (set-daily-loss-limit-from-target daily-target))))
 
 (defun get-daily-target ()
   "Get current daily profit target."
-  (ceiling (/ *monthly-goal* *trading-days-in-month*)))
+  (ceiling (/ *monthly-goal* (safe-trading-days))))
 
 (defun get-daily-risk-limit ()
   "Get maximum acceptable daily loss (from global config)."
@@ -64,7 +77,8 @@
    Returns a property list."
   (let* ((days-elapsed (get-days-elapsed))
          (expected-pnl (* (get-daily-target) days-elapsed))
-         (actual-pnl (+ *accumulated-pnl* *daily-pnl*))
+         (actual-pnl (+ (if (boundp '*accumulated-pnl*) *accumulated-pnl* 0.0)
+                        (if (boundp '*daily-pnl*) *daily-pnl* 0.0)))
          (progress-pct (if (> *monthly-goal* 0)
                            (* 100 (/ actual-pnl *monthly-goal*))
                            0))

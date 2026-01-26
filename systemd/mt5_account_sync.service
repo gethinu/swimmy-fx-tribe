@@ -5,22 +5,22 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/mt5_account_sync.py
+WorkingDirectory=%h/swimmy
+ExecStart=/usr/bin/python3 %h/swimmy/tools/mt5_account_sync.py
 Restart=always
 RestartSec=10
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
 # Environment
-EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=%h/swimmy/.env
 
 # Logging
-StandardOutput=append:/home/swimmy/swimmy/logs/mt5_account_sync.log
-StandardError=append:/home/swimmy/swimmy/logs/mt5_account_sync.log
+StandardOutput=append:%h/swimmy/logs/mt5_account_sync.log
+StandardError=append:%h/swimmy/logs/mt5_account_sync.log
 
 # Failure notification hook (sends to Discord via wrapper script)
-ExecStopPost=/bin/bash /home/swimmy/swimmy/tools/notify_failure.sh $$SERVICE_RESULT "MT5 Account Sync"
+ExecStopPost=/bin/bash %h/swimmy/tools/notify_failure.sh $$SERVICE_RESULT "MT5 Account Sync"
 
 [Install]
 WantedBy=default.target

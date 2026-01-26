@@ -4,8 +4,10 @@
 
 set -e
 
-LOG_DIR="/home/swimmy/swimmy/doc/logs"
-JSON_LOG="/home/swimmy/logs/swimmy.json.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIMMY_HOME="${SWIMMY_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+LOG_DIR="$SWIMMY_HOME/doc/logs"
+JSON_LOG="${JSON_LOG:-$HOME/logs/swimmy.json.log}"
 KEEP_DAYS=7
 COMPRESS_DAYS=1
 

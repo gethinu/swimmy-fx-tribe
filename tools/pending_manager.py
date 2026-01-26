@@ -16,6 +16,18 @@ import sys
 import os
 import json
 import zmq
+from pathlib import Path
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 try:
     import requests
@@ -32,7 +44,8 @@ APEX_WEBHOOK = "https://discord.com/api/webhooks/1325656170668265532/..."  # Rep
 # For this file, we will use the standard one if available.
 
 BRAIN_PUB_PORT = 5556
-PENDING_FILE = "/home/swimmy/swimmy/data/pending_strategies.json"
+BASE_DIR = str(resolve_base_dir())
+PENDING_FILE = os.path.join(BASE_DIR, "data", "pending_strategies.json")
 CHECK_INTERVAL = 3600  # Check every hour
 
 
@@ -87,7 +100,7 @@ def check_data_availability(pending_dict):
     # OR we assume that if X hours passed, we retry.
 
     # Simple Heuristic for V1:
-    # Check if file `/home/swimmy/swimmy/data/history/{SYMBOL}/M1.csv` has > 500 lines?
+    # Check if file `{SWIMMY_HOME}/data/history/{SYMBOL}/M1.csv` has > 500 lines?
     # Swimmy uses Data Keeper.
     # Let's use a simpler heuristic: Just retry every 24 hours.
     # Prado says: "Wait for data".

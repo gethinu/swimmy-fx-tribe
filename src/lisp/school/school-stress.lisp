@@ -11,7 +11,7 @@
                  ("action" "LOAD_CSV")
                  ("path" path)
                  ("data_id" data-id)))))
-    (send-zmq-msg msg)
+    (send-zmq-msg msg :target :cmd)
     (format t "[STRESS] 📤 Sent LOAD_CSV: ~a -> ~a~%" path data-id)))
 
 (defun stress-test-strategy (strat symbol-name data-id)
@@ -24,7 +24,7 @@
                  ("strategy" (strategy-to-json strat :name-suffix "-STRESS"))
                  ("data_id" data-id)
                  ("timeframe" tf-num)))))
-    (send-zmq-msg msg)
+    (send-zmq-msg msg :target :cmd)
     (format t "[STRESS] 📤 Testing ~a on ~a (TF: M~d)~%" (strategy-name strat) data-id tf-num)))
 
 (defvar *stress-test-triggered* nil "Flag to prevent re-running stress test")
@@ -47,7 +47,7 @@
   (format t "[STRESS] 🏗️ Initializing Deep Stress Test (20 years USDJPY)...~%")
   
   ;; 1. Load Data
-  (let ((path "/home/swimmy/swimmy/data/historical/USDJPY_M1.csv")
+  (let ((path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
         (id "STRESS-USDJPY-20Y"))
     (command-load-csv path id)
     
@@ -65,4 +65,3 @@
               (stress-test-strategy strat "USDJPY" id)
               (sleep 0.5))
             (format t "[STRESS] ✅ Stress Test Complete. Check Guardian logs for results.~%"))))))
-

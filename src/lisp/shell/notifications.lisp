@@ -120,7 +120,7 @@
 ;;; LIVE STATUS JSON
 ;;; ==========================================
 
-(defparameter *live-status-path* "/home/swimmy/swimmy/.opus/live_status.json")
+(defparameter *live-status-path* (swimmy.core::swimmy-path ".opus/live_status.json"))
 (defparameter *live-status-interval* 60)
 (defparameter *last-status-write* 0)
 

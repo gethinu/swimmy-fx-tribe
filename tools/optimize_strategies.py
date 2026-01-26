@@ -5,11 +5,24 @@ import sys
 import random
 import copy
 import time
+from pathlib import Path
 from backtest_service import BacktestService
 
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
 # Configuration
-STRATEGIES_JSON = "/home/swimmy/swimmy/strategies.json"
-OPTIMIZED_JSON = "/home/swimmy/swimmy/strategies_optimized.json"
+BASE_DIR = str(resolve_base_dir())
+STRATEGIES_JSON = os.path.join(BASE_DIR, "strategies.json")
+OPTIMIZED_JSON = os.path.join(BASE_DIR, "strategies_optimized.json")
 GENERATIONS = 5  # Phase 4: Increased from 1 to 5
 POPULATION_SIZE = 20  # Phase 4: Increased from 10 to 20
 

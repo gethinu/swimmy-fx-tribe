@@ -3,8 +3,10 @@
 # Monitors logs for critical errors and alerts Discord
 
 # Config
-LOG_BRAIN="/home/swimmy/swimmy/logs/brain.log"
-LOG_GUARDIAN="/home/swimmy/swimmy/logs/guardian.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SWIMMY_HOME="${SWIMMY_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+LOG_BRAIN="${SWIMMY_HOME}/logs/brain.log"
+LOG_GUARDIAN="${SWIMMY_HOME}/logs/guardian.log"
 CONFIG_FILE="src/lisp/core/config.lisp"
 CHECK_INTERVAL=1  # Seconds between checks (tail -f is continuous, this is for loop safety if restart needed)
 
@@ -12,8 +14,8 @@ echo "🛡️ Starting Swimmy Sentinel..."
 
 # Load webhook from JSON config file
 # Load .env if exists
-if [ -f "/home/swimmy/swimmy/.env" ]; then
-    export $(grep -v '^#' /home/swimmy/swimmy/.env | xargs)
+if [ -f "${SWIMMY_HOME}/.env" ]; then
+    export $(grep -v '^#' "${SWIMMY_HOME}/.env" | xargs)
 fi
 
 # Webhook URL Selection

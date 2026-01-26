@@ -230,6 +230,9 @@
    #:start-walk-forward-validation
    #:process-wfv-result
    
+   ;; OOS Backtest
+   #:handle-oos-backtest-result
+   
    ;; Meta Learning
    #:get-best-strategy-for-regime
    #:update-best-strategy-for-regime

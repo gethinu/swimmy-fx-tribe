@@ -37,7 +37,8 @@
          ;; V41.1: Fix ZMQ topology - Brain BINDS, Guardian CONNECTS
          ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)  
          ;; Brain: PULL<-5555 (bind), PUB->5556 (bind), PUSH->5580 (connect)
-         (let ((pull (pzmq:socket ctx :pull)) 
+         (let ((pull (pzmq:socket ctx :pull))
+               (pull-bt (pzmq:socket ctx :pull))
                (pub (pzmq:socket ctx :pub))
                (bind-success nil))
            
@@ -46,8 +47,9 @@
              (handler-case
                  (progn
                    (pzmq:bind pull "tcp://*:5555")
+                   (pzmq:bind pull-bt "tcp://*:5581")
                    (pzmq:bind pub "tcp://*:5556")
-                   ;; V44.9: Removed dead port 5580 (bt-req). Backtest now uses pub channel (5556).
+                   ;; V51.0: Backtest results use dedicated PULL 5581.
                    (setf bind-success t))
                (error (e)
                  (format t "[FATAL] Bind attempt ~d failed: ~a~%" i e)
@@ -125,33 +127,39 @@
            
            ;; MAIN LOOP - V41.7: Non-blocking with Timeout
            ;; V9.7: Gene Kim - Latency Monitoring
-           (loop 
+           (loop
              (let ((loop-start-time (get-internal-real-time)))
-               (handler-case 
-                   (let ((msg (pzmq:recv-string pull)))
-                     (process-msg msg))
-                 ;; Ignore timeout errors (EAGAIN)
-                 (error (e) 
-                   (let ((err-str (format nil "~a" e)))
-                     (unless (search "Resource temporarily unavailable" err-str)
-                        (format t "[L] 🚨 Main Loop Error: ~a~%" e)
-                        (sleep 0.1)))))
-               
+               (flet ((recv-nonblock (sock label)
+                        (handler-case
+                            (let ((msg (pzmq:recv-string sock :dontwait t)))
+                              (when msg
+                                (process-msg msg)))
+                          (error (e)
+                            (let ((err-str (format nil "~a" e)))
+                              (unless (search "Resource temporarily unavailable" err-str)
+                                (format t "[L] 🚨 ~a Error: ~a~%" label e)
+                                (sleep 0.1)))))))
+                 ;; Backtest results (non-blocking to avoid tick starvation)
+                 (recv-nonblock pull-bt "Backtest Loop")
+                 ;; Main guardian stream (non-blocking)
+                 (recv-nonblock pull "Main Loop"))
+
                ;; Periodic Maintenance
                (handler-case
                    (when (fboundp 'run-periodic-maintenance)
                      (run-periodic-maintenance))
                  (error (e) (format t "[L] Maintenance Error: ~a~%" e)))
-               
+
                ;; Heartbeat
                (when (fboundp 'swimmy.engine::check-discord-heartbeat)
                  (swimmy.engine::check-discord-heartbeat))
-               
+
                ;; Latency Check
                (let* ((loop-end-time (get-internal-real-time))
                       (duration (- loop-end-time loop-start-time))
                       (duration-ms (* (/ duration internal-time-units-per-second) 1000.0)))
                  (when (> duration-ms 500) ; Alert if loop takes > 500ms
-                   (format t "[LATENCY] 🐢 Slow Tick detected: ~,2f ms~%" duration-ms))))))
+                   (format t "[LATENCY] 🐢 Slow Tick detected: ~,2f ms~%" duration-ms)))
+               (sleep 0.01))))
       
       (pzmq:ctx-term ctx))))

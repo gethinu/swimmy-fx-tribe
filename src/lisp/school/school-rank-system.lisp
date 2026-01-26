@@ -392,8 +392,16 @@
 (defun can-breed-p (strategy)
   "Check if strategy can be used for breeding.
    Returns T if under breeding limit or is Legend."
-  (or (eq (strategy-rank strategy) :legend)
-      (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*)))
+  (and strategy
+       (not (eq (strategy-status strategy) :killed))
+       (not (eq (strategy-status strategy) :benched))
+       ;; Sanity checks to avoid pathological SL/TP values
+       (numberp (strategy-sl strategy))
+       (< (abs (strategy-sl strategy)) 1000.0)
+       (numberp (strategy-tp strategy))
+       (< (abs (strategy-tp strategy)) 1000.0)
+       (or (eq (strategy-rank strategy) :legend)
+           (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*))))
 
 (defun run-legend-breeding ()
   "Breed Legend strategies with random B-rank strategies.
@@ -434,18 +442,27 @@
 (defun apply-backtest-result (name metrics)
   "Apply backtest metrics to a strategy and trigger rank evaluation if necessary."
   (let ((strat (find-strategy name)))
-    (when strat
-      (setf (strategy-sharpe strat) (float (getf metrics :sharpe 0.0))
-            (strategy-profit-factor strat) (float (getf metrics :profit-factor 0.0))
-            (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
-            (strategy-trades strat) (getf metrics :trades 0)
-            (strategy-max-dd strat) (float (getf metrics :max-dd 0.0)))
-      (upsert-strategy strat)
-      ;; Trigger Phase 1 Evaluation if currently unranked
-      (when (null (strategy-rank strat))
-        (evaluate-new-strategy strat))
-      t)))
-
-
-
-
+    (if strat
+        (progn
+          (setf (strategy-sharpe strat) (float (getf metrics :sharpe 0.0))
+                (strategy-profit-factor strat) (float (getf metrics :profit-factor 0.0))
+                (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
+                (strategy-trades strat) (getf metrics :trades 0)
+                (strategy-max-dd strat) (float (getf metrics :max-dd 0.0)))
+          (upsert-strategy strat)
+          ;; Trigger Phase 1 Evaluation if currently unranked
+          (when (null (strategy-rank strat))
+            (evaluate-new-strategy strat))
+          t)
+        ;; Fallback: update DB even if in-memory strategy is missing
+        (progn
+          (execute-non-query
+           "UPDATE strategies SET sharpe=?, profit_factor=?, win_rate=?, trades=?, max_dd=?, last_bt_time=? WHERE name=?"
+           (float (getf metrics :sharpe 0.0))
+           (float (getf metrics :profit-factor 0.0))
+           (float (getf metrics :win-rate 0.0))
+           (getf metrics :trades 0)
+           (float (getf metrics :max-dd 0.0))
+           (get-universal-time)
+           name)
+          nil))))

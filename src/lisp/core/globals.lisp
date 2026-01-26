@@ -120,20 +120,20 @@
 (defparameter *discord-weekly-webhook* nil)
 (defparameter *discord-emergency-url* nil)
 (defparameter *symbol-webhooks* (make-hash-table :test 'equal))
-(defparameter *discord-recruit-webhook* "https://discord.com/api/webhooks/1413195529680191538/OLcthUXpQr6fM32o8Vx-zlEJfgDTXfq14RPPSJdEKBJJZUUVBWJ9Hwq7ZPNFOMDkmQSW")
+(defparameter *discord-recruit-webhook* nil)
 
 ;;; MISSING GLOBALS (Engine/Manager)
 (defparameter *benched-arms* nil)
 (defparameter *max-streak-losses* 3)
 (defparameter *max-portfolio-size* 5)
 (defparameter *has-resigned-today* nil)
-(defparameter *max-symbol-exposure* 0.15)
+(defparameter *max-symbol-exposure* 0.30)
 
 ;;; MISSING GLOBALS (Metrics/Signals/Config)
 (defparameter *consecutive-wins* 0)
 (defparameter *nn-threshold* 0.6)
 (defparameter *genome-path* "genome.lisp")
-(defparameter *max-total-exposure* 5.0)
+(defparameter *max-total-exposure* 0.60)
 (defparameter *strategy-usage-stats* (make-hash-table :test 'equal))
 
 (defparameter *monthly-goal* 100000.0)
@@ -188,4 +188,3 @@
 (defparameter *cpcv-start-time* 0)
 
 (format t "[GLOBALS] Global variables defined in SWIMMY.GLOBALS~%")
-

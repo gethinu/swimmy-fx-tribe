@@ -4,15 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/strategy_hunter.py
+WorkingDirectory=%h/swimmy
+ExecStart=/usr/bin/python3 %h/swimmy/tools/strategy_hunter.py
 Restart=always
 RestartSec=10
 StartLimitIntervalSec=300
 StartLimitBurst=5
 Environment=PYTHONUNBUFFERED=1
-StandardOutput=append:/home/swimmy/swimmy/logs/strategy_hunter.log
-StandardError=append:/home/swimmy/swimmy/logs/strategy_hunter.log
+StandardOutput=append:%h/swimmy/logs/strategy_hunter.log
+StandardError=append:%h/swimmy/logs/strategy_hunter.log
 
 [Install]
 WantedBy=default.target
