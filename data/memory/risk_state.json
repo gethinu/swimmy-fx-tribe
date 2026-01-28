@@ -1,0 +1,21 @@
+{
+  "daily_pnl": -40.0,
+  "max_daily_loss": 5000.0,
+  "max_lot_size": 0.1,
+  "min_lot_size": 0.01,
+  "brain_connected": true,
+  "wins": 21,
+  "losses": 3,
+  "total_win_amt": 40010.0,
+  "total_loss_amt": 30.0,
+  "consecutive_losses": 0,
+  "daily_symbol_volume": {
+    "EURUSD": 0.06999999999999999,
+    "USDJPY": 1.9900000000000015
+  },
+  "open_positions": {
+    "USDJPY": 1.9900000000000015,
+    "EURUSD": 0.06999999999999999
+  },
+  "vix_level": 30.0
+}

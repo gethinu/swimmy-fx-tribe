@@ -1,0 +1,28 @@
+{
+  "records": [
+    {
+      "timestamp": "2026-01-25T14:21:56.442137907+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 1,
+      "price_at_decision": 150.0,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    },
+    {
+      "timestamp": "2026-01-25T14:21:56.442355743+00:00",
+      "symbol": "USDJPY",
+      "ensemble_action": 0,
+      "actual_action": 0,
+      "price_at_decision": 150.5,
+      "price_after": null,
+      "pnl_ensemble": null,
+      "pnl_actual": null
+    }
+  ],
+  "ensemble_total_pnl": 0.0,
+  "actual_total_pnl": 0.0,
+  "matches": 1,
+  "mismatches": 1
+}
