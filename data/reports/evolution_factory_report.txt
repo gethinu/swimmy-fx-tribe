@@ -3,33 +3,28 @@
 Current status of the autonomous strategy generation pipeline.
 
 🧠 Knowledge Base (Active)
-170 Strategies
+3 Strategies
 
 🏆 **S-Rank (Verified Elite)**
-0 (Sharpe > 0.5 + Multi-Verify)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
 🎖️ **A-Rank (Pro)**
-0 (Sharpe > 0.3)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
 🪜 **B-Rank (Selection)**
-0 (Sharpe > 0.1)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
 👶 New Recruits (24h)
-170
+3
 
 👻 Graveyard
-262969
+345769
 
 
 🌟 **Top Candidates:**
-- `Bred-Hunte-846-Gen1` (S=0.00, NIL)
-- `Bred-Scalp-808-Gen1` (S=0.00, NIL)
-- `Bred-Scalp-429-Gen1` (S=0.00, NIL)
-- `Bred-Scalp-480-Gen1` (S=0.00, NIL)
-- `Bred-Scalp-611-Gen1` (S=0.00, NIL)
-
+  - error: The variable SWIMMY.SCHOOL::ST-SHARPE is unbound.
 
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
-01/25 20:45 JST / 11:45 UTC
+01/28 09:28 JST / 00:28 UTC

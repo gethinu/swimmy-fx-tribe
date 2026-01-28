@@ -1,13 +1,15 @@
 [Unit]
 Description=Swimmy Backtest Service (Naval Modularization)
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 WorkingDirectory=%h/swimmy
 ExecStart=%h/swimmy/.venv/bin/python3 tools/backtest_service.py
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 EnvironmentFile=%h/swimmy/.env
 LimitNOFILE=65535
 # Logs

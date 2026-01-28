@@ -28,12 +28,15 @@
         (setf (strategy-tier s) :battlefield)
         (unless (strategy-generation s) (setf (strategy-generation s) 0)))
       (unless (strategy-rank s)
-        (let ((sharpe (or (strategy-sharpe s) 0.0)))
-          (cond
-            ((>= sharpe 0.5) (setf (strategy-rank s) :S))
-            ((>= sharpe 0.3) (setf (strategy-rank s) :A))
-            ((>= sharpe 0.1) (setf (strategy-rank s) :B))
-            (t (setf (strategy-rank s) :graveyard))))))
+        (let ((sharpe (or (strategy-sharpe s) 0.0))
+              (trades (or (strategy-trades s) 0)))
+          ;; Only rank/purge strategies that have actually traded.
+          (when (> trades 0)
+            (cond
+              ((>= sharpe 0.5) (setf (strategy-rank s) :S))
+              ((>= sharpe 0.3) (setf (strategy-rank s) :A))
+              ((>= sharpe 0.1) (setf (strategy-rank s) :B))
+              (t (setf (strategy-rank s) :graveyard)))))))
     
     ;; Physically remove graveyard ones once after processing
     (setf *strategy-knowledge-base* 
@@ -87,9 +90,8 @@
                                 nil))
            (final-batch (append batch-strategies wrap-strategies))
            (cached-count 0)
-           (requested-count 0))
-      
-      (setf swimmy.globals:*rr-expected-backtest-count* (length final-batch))
+           (requested-count 0)
+           (skipped-count 0))
       
       ;; Update cursor for next time
       (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
@@ -103,12 +105,13 @@
         (dolist (strat final-batch)
           (let* ((sym (or (strategy-symbol strat) "USDJPY"))
                  (snapshot (or (gethash sym *candle-histories*)
-                              *candle-history*
-                              (gethash "USDJPY" *candle-histories*))))
-            (when (and snapshot (> (length snapshot) 100))
-              (let ((cached (get-cached-backtest (strategy-name strat))))
-                (if cached
-                    (progn
+                               *candle-history*
+                               (gethash "USDJPY" *candle-histories*))))
+            (if (and snapshot (> (length snapshot) 100))
+                (progn
+                  ;; Apply cached metrics if available, but still request fresh BT
+                  (let ((cached (get-cached-backtest (strategy-name strat))))
+                    (when cached
                       (incf cached-count)
                       ;; V48.5: Apply cached metrics to strategy and prune if weak
                       (let ((sharpe (float (getf cached :sharpe 0.0)))
@@ -120,11 +123,19 @@
                               (strategy-win-rate strat) wr
                               (strategy-trades strat) trades)
                         (when (< sharpe 0.1)
-                          (prune-to-graveyard strat "Cached Sharpe < 0.1"))))
-                      (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))))))
-                    
-        (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d (Cursor: ~d)~%" 
-                cached-count requested-count *backtest-cursor*)
+                          (prune-to-graveyard strat "Cached Sharpe < 0.1")))))
+                  (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")
+                  (incf requested-count))
+                (progn
+                  (incf skipped-count)
+                  (format t "[L] ⚠️ Skipping BT (no candles) for ~a (~a)~%"
+                          (strategy-name strat) sym))))))
+        
+        ;; Expected count should reflect actual enqueued requests
+        (setf swimmy.globals:*rr-expected-backtest-count* requested-count)
+                     
+        (format t "[L] 🏁 Batch Request Complete. Cached: ~d, Queued: ~d, Skipped: ~d (Cursor: ~d)~%" 
+                cached-count requested-count skipped-count *backtest-cursor*)
         
         ;; Notify Discord only if actual requests were made
         (when (> requested-count 0)

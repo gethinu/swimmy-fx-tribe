@@ -121,6 +121,29 @@
 
 ## 🎯 ランク体系 (B/A/S)
 
+**B-RANK (Selection)**  
+- 条件: Sharpe ≥ 0.1 / PF ≥ 1.0 / WR ≥ 30% / MaxDD < 30%  
+- 判定: Phase 1 Backtest合格でBへ昇格  
+
+**A-RANK (Pro)**  
+- 条件: Sharpe ≥ 0.3 / PF ≥ 1.2 / WR ≥ 40% / MaxDD < 20% / OOS Sharpe ≥ 0.3  
+- 判定: OOS検証 (CPCV Lite) 合格でAへ昇格  
+
+**S-RANK (Verified Elite)**  
+- 条件: Sharpe ≥ 0.5 / PF ≥ 1.5 / WR ≥ 45% / MaxDD < 15% / CPCV Median Sharpe ≥ 0.5  
+- 判定: CPCV合格でSへ昇格 (ライブ実行許可)
+
+**昇格フロー**  
+`B → (OOS) → A → (CPCV) → S`
+
+**関連コード**  
+- `src/lisp/school/school-rank-system.lisp`  
+- `src/lisp/school/school-validation.lisp`  
+
+**確認方法**  
+- `data/reports/evolution_factory_report.txt`  
+- Discord Reports チャンネル
+
 
 
 

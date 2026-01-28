@@ -42,6 +42,55 @@
 
 (defparameter *missing-strategy-name-log-limit* 3)
 (defparameter *missing-strategy-name-log-count* 0)
+(defparameter *backtest-recv-count* 0)
+(defparameter *backtest-recv-last-log* 0)
+(defparameter *backtest-recv-last-name* nil)
+(defparameter *backtest-recv-last-sharpe* 0.0)
+(defparameter *backtest-recv-last-trades* 0)
+(defparameter *backtest-recv-last-ts* (get-universal-time))
+(defparameter *backtest-stale-threshold* 900)
+(defparameter *backtest-stale-alert-interval* 1800)
+(defparameter *backtest-stale-last-alert* 0)
+
+(defun maybe-log-backtest-recv ()
+  "Log and persist backtest receive status periodically."
+  (let ((now (get-universal-time)))
+    (when (> (- now *backtest-recv-last-log*) 60)
+      (setf *backtest-recv-last-log* now)
+      (format t "[BACKTEST] ✅ Received ~d results (last: ~a S=~,2f T=~d)~%"
+              *backtest-recv-count*
+              (or *backtest-recv-last-name* "N/A")
+              *backtest-recv-last-sharpe*
+              *backtest-recv-last-trades*)
+      (handler-case
+          (progn
+            (ensure-directories-exist "data/reports/")
+            (with-open-file (s "data/reports/backtest_status.txt"
+                               :direction :output
+                               :if-exists :supersede
+                               :if-does-not-exist :create)
+              (format s "timestamp: ~a~%" now)
+              (format s "count: ~d~%" *backtest-recv-count*)
+              (format s "last_name: ~a~%" (or *backtest-recv-last-name* "N/A"))
+              (format s "last_sharpe: ~,4f~%" *backtest-recv-last-sharpe*)
+              (format s "last_trades: ~d~%" *backtest-recv-last-trades*)))
+        (error (e)
+          (format t "[BACKTEST] ⚠️ Failed to write status file: ~a~%" e))))))
+
+(defun maybe-alert-backtest-stale ()
+  "Alert if backtest results have not arrived for a while."
+  (let ((now (get-universal-time)))
+    (when (and (> (- now *backtest-recv-last-ts*) *backtest-stale-threshold*)
+               (> (- now *backtest-stale-last-alert*) *backtest-stale-alert-interval*))
+      (setf *backtest-stale-last-alert* now)
+      (format t "[BACKTEST] ⚠️ No results for ~d sec (count=~d)~%"
+              (- now *backtest-recv-last-ts*) *backtest-recv-count*)
+      (when (fboundp 'swimmy.core:notify-discord-alert)
+        (swimmy.core:notify-discord-alert
+         (format nil "Backtest停滞: ~d秒間結果なし (count=~d, last=~a)"
+                 (- now *backtest-recv-last-ts*)
+                 *backtest-recv-count*
+                 (or *backtest-recv-last-name* "N/A")))))))
 
 (defun %invalid-name-p (name)
   "Return T if strategy name is empty/absent/placeholder."
@@ -54,7 +103,8 @@
   (handler-case
       (progn
         (if (and (> (length msg) 0) (char= (char msg 0) #\())
-            (let* ((sexp (read-from-string msg))
+            (let* ((sexp (let ((*package* (find-package :swimmy.main)))
+                           (read-from-string msg)))
                    (type (cdr (assoc 'type sexp)))
                    (type-str (cond ((stringp type) type)
                                    ((symbolp type) (symbol-name type))
@@ -93,6 +143,12 @@
                        (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
                      (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
                      (return-from internal-process-msg nil))
+                   (incf *backtest-recv-count*)
+                   (setf *backtest-recv-last-name* name
+                         *backtest-recv-last-sharpe* sharpe
+                         *backtest-recv-last-trades* trades
+                         *backtest-recv-last-ts* (get-universal-time))
+                   (maybe-log-backtest-recv)
                    (cond
                      (is-oos
                       (swimmy.school:cache-backtest-result full-name metrics)
@@ -174,9 +230,11 @@
                  (handler-case
                      (when (fboundp 'swimmy.school:continuous-learning-step)
                        (swimmy.school:continuous-learning-step))
-                   (error () nil)))
+                   (error () nil))
+                 (maybe-alert-backtest-stale))
                 ((string= type swimmy.core:+MSG-HEARTBEAT+)
-                 (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time)))
+                 (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
+                 (maybe-alert-backtest-stale))
                 ((string= type swimmy.core:+MSG-ACCOUNT-INFO+)
                  (swimmy.executor:process-account-info json))
                 ((string= type "SYSTEM_COMMAND")

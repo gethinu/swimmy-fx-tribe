@@ -1,77 +1,30 @@
- Evolution Factory Report
- Evolution Factory Report
+
+ **Evolution Factory Report**
 Current status of the autonomous strategy generation pipeline.
 
  Knowledge Base (Active)
-1541 Strategies
+3 Strategies
 
- S-Rank (Elite)
-0 (Sharpe > 0.5)
+ **S-Rank (Verified Elite)**
+0 (Sharpe0.5 PF1.5 WR45% MaxDD<15% + CPCV)
 
- A-Rank (Pro)
-38 (Sharpe > 0.3)
+ **A-Rank (Pro)**
+0 (Sharpe0.3 PF1.2 WR40% MaxDD<20% + OOS)
 
- B-Rank (Selection)
-1499 (Sharpe > 0.1)
+ **B-Rank (Selection)**
+0 (Sharpe0.1 PF1.0 WR30% MaxDD<30%)
 
  New Recruits (24h)
-1503
+3
 
  Graveyard
-82546
+345769
 
 
- Top Candidates:
-RECRUIT-RND-1768778854-7 (S=0.54, A),
-RECRUIT-RND-1768782010-12 (S=0.47, A),
-RECRUIT-RND-1768781596-0 (S=0.46, A),
-RECRUIT-RND-1768781571-4 (S=0.45, A),
-RECRUIT-RND-1768782422-5 (S=0.41, A),
-
+ **Top Candidates:**
+  - error: The variable SWIMMY.SCHOOL::ST-SHARPE is unbound.
 
  System Status
  Evolution Daemon Active
  Native Lisp Orchestration (V28)
-01/24 09:40 JST / 00:40 UTC
-:fire:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-
-reports
-アプリ
- — 9:452026年1月24日 土曜日 9:45
- Daily Report
- TEST: Daily Report Channel
-:fire:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:45]2026年1月24日 土曜日 9:45
- Weekly Summary
- TEST: Weekly Report Channel
-:fire:
-クリックしてリアクション
-:laughing:
-クリックしてリアクション
-:100:
-クリックしてリアクション
-リアクションを付ける
-返信
-転送
-その他
-[9:45]2026年1月24日 土曜日 9:45
- Journal Test
- TEST: Journal Channel
+01/28 09:28 JST / 00:28 UTC

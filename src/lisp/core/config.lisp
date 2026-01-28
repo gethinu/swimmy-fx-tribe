@@ -42,6 +42,38 @@
       (string-trim '(#\" #\Space #\Tab #\Newline #\Return) str)
       str))
 
+(defparameter *dotenv-cache* nil
+  "Cached .env key/value pairs for fallback env loading.")
+
+(defun load-dotenv (&optional (path (merge-pathnames ".env" *swimmy-home*)))
+  "Load .env file into a hash-table (one-time cache)."
+  (unless *dotenv-cache*
+    (setf *dotenv-cache* (make-hash-table :test 'equal)))
+  (when (probe-file path)
+    (with-open-file (in path :direction :input)
+      (loop for line = (read-line in nil nil)
+            while line do
+              (let* ((s (string-trim '(#\Space #\Tab) line))
+                     (s (if (uiop:string-prefix-p "export " s)
+                            (string-trim '(#\Space #\Tab) (subseq s 7))
+                            s)))
+                (when (and (> (length s) 0)
+                           (not (char= (aref s 0) #\#)))
+                  (let ((pos (position #\= s)))
+                    (when pos
+                      (let ((key (string-trim '(#\Space #\Tab) (subseq s 0 pos)))
+                            (val (string-trim '(#\Space #\Tab) (subseq s (1+ pos)))))
+                        (when (> (length key) 0)
+                          (setf (gethash key *dotenv-cache*) (strip-quotes val)))))))))))
+  *dotenv-cache*)
+
+(defun getenv-or-dotenv (key)
+  "Get environment variable from process env or .env fallback."
+  (or (uiop:getenv key)
+      (let* ((cache (or *dotenv-cache* (load-dotenv)))
+             (val (and cache (gethash key cache))))
+        val)))
+
 (defun get-discord-webhook (key)
   "Webhook URLを取得 (Consolidated 2026-01-10)
    Maps logical keys to consolidated environmental variables.
@@ -55,22 +87,22 @@
      (cond
        ;; [MICRO] Live Feed
        ((member k '("usdjpy" "eurusd" "gbpusd") :test #'equal)
-        (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED"))
+        (getenv-or-dotenv "SWIMMY_DISCORD_LIVE_FEED"))
        
        ;; [MESO] System Logs
        ((member k '("status" "backtest" "recruit" "fallback" "apex") :test #'equal)
-        (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
+        (getenv-or-dotenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
        
        ;; [MACRO] Reports
        ((member k '("daily" "weekly" "journal") :test #'equal)
-        (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
+        (getenv-or-dotenv "SWIMMY_DISCORD_REPORTS"))
        
        ;; [URGENT] Alerts
        ((member k '("emergency" "alerts" "heartbeat") :test #'equal)
-        (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+        (getenv-or-dotenv "SWIMMY_DISCORD_ALERTS"))
         
        ;; Default to Alerts if unknown
-       (t (uiop:getenv "SWIMMY_DISCORD_ALERTS"))))))
+       (t (getenv-or-dotenv "SWIMMY_DISCORD_ALERTS"))))))
 
 ;; フォールバックなしでシンプルに取得
 ;; (Legacy variables initialization below remains valid)
@@ -130,7 +162,7 @@
 ;;; API KEYS
 ;;; ==========================================
 
-(defparameter *gemini-api-key* (uiop:getenv "SWIMMY_GEMINI_API_KEY")
+(defparameter *gemini-api-key* (getenv-or-dotenv "SWIMMY_GEMINI_API_KEY")
   "Gemini AI API key for strategy generation")
 
 ;;; ==========================================

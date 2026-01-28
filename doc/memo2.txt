@@ -1,124 +1,81 @@
+あなたは「実戦投入前のEAを“稼ぐ仕様”に変換するクオンツ監査AI」です。
+目的は「勝率やPFを最大化すること」ではなく、
+**破産せず、再現性を保ったまま長期間資金を増やせるか**を判定・修正することです。
 
-1
-A Tutorial on the
-Cross-Entropy Method
-Pieter-Tjerk de Boer
-Electrical Engineering, Mathematics and Computer Science department
-University of Twente ptdeboer@cs.utwente.nl
-Dirk P. Kroese
-Department of Mathematics
-The University of Queensland
-Brisbane 4072, Australia
-kroese@maths.uq.edu.au
-Shie Mannor
-Laboratory for Information and Decision Systems
-Massachusetts Institute of Technology
-Cambridge, MA 02139
-shie@mit.edu
-Reuven Y. Rubinstein
-Department of Industrial Engineering
-Technion, Israel Institute of Technology
-Haifa 32000, Israel
-ierrr01@ie.technion.ac.il
-Last updated: September 2, 2003
-Abstract
-The cross-entropy (CE) method is a new generic approach to combi-
-natorial and multi-extremal optimization and rare event simulation. The
-purpose of this tutorial is to give a gentle introduction to the CE method.
-We present the CE methodology, the basic algorithm and its modifica-
-tions, and discuss applications in combinatorial optimization and machine
-learning.
-1
-1 Introduction
-Many everyday tasks in operations research involve solving complicated op-
-timization problems. The travelling salesman problem (TSP), the quadratic
-assignment problem (QAP) and the max-cut problem are a representative sam-
-ple of combinatorial optimization problems (COP) where the problem being
-studied is completely known and static. In contrast, the buffer allocation prob-
-lem (BAP) is a noisy estimation problem where the objective function needs to
-be estimated since it is unknown. Discrete event simulation is one method for
-estimating an unknown objective function.
-The purpose of this tutorial is to show that the CE method provides a
-simple, efficient and general method for solving such problems. Moreover, we
-wish to show that the CE method is also valuable for rare event-simulation,
-where very small probabilities need to be accurately estimated – for example
-in reliability analysis, or performance analysis of telecommunication systems.
-This tutorial is intended for a broad audience of operations research specialists,
-computer scientists, mathematicians, statisticians and engineers. Our aim is to
-explain the foundations of the CE method and consider various applications.
-The CE method was motivated by an adaptive algorithm for estimating
-probabilities of rare events in complex stochastic networks (Rubinstein, 1997),
-which involves variance minimization. It was soon realized (Rubinstein, 1999,
-2001) that a simple cross-entropy modification of (Rubinstein, 1997) could be
-used not only for estimating probabilities of rare events but for solving difficult
-COPs as well. This is done by translating the “deterministic” optimization
-problem into a related “stochastic” optimization one and then using rare event
-simulation techniques similar to (Rubinstein, 1997). Several recent applications
-demonstrate the power of the CE method (Rubinstein, 1999) as a generic and
-practical tool for solving NP-hard problems.
-The CE method involves an iterative procedure where each iteration can be
-broken down into two phases:
-1. Generate a random data sample (trajectories, vectors, etc.) according to
-a specified mechanism.
-2. Update the parameters of the random mechanism based on the data to
-produce “better” sample in the next iteration.
-The significance of the CE method is that it defines a precise mathematical
-framework for deriving fast, and in some sense “optimal” updating/learning
-rules, based on advanced simulation theory. Other well-known randomized
-methods for combinatorial optimization problems are simulated annealing (Aarts
-and Korst, 1989), tabu search (Glover and Laguna, 1993), and genetic algo-
-rithms (Goldberg, 1989). Recent related work on randomized combinatorial
-optimization includes the nested partitioning method (Shi and Olafsson, 2000)
-and the ant colony optimization meta-heuristic (Colorni et al., 1996; Dorigo
-et al., 1999; Gutjahr, 2000).
-Many COPs can be formulated as optimization problems concerning a weight-
-ed graph. As mentioned before, in CE a deterministic optimization problem
-2
-is translated into an associated stochastic optimization problem. Depending
-on the particular problem, we introduce randomness in either (a) the nodes or
-(b) the edges of the graph. We speak of stochastic node networks (SNN) in
-the former case and stochastic edge networks (SEN) in the latter. Examples of
-SNN problems are the maximal cut (max-cut) problem, the buffer allocation
-problem and clustering problems. Examples of SEN problems are the travelling
-salesman problem, the quadratic assignment problem, the clique problem, and
-optimal policy search in Markovian decision problems (MDPs).
-It should be emphasized that the CE method may be successfully applied
-to both deterministic and stochastic COPs. In the latter the objective func-
-tion itself is random or needs to be estimated via simulation. Stochastic COPs
-typically occur in stochastic scheduling, flow control and routing of data net-
-works and in various simulation-based optimization problems (Rubinstein and
-Melamed, 1998), such as the optimal buffer allocation problem (Alon et al.,
-2004).
-Estimation of the probability of rare events is essential for guaranteeing ad-
-equate performance of engineering systems. For example, consider a telecom-
-munications system that accepts calls from many customers. Under normal
-operating conditions each client may be rejected with a very small probability.
-Naively, in order to estimate this small probability we would need to simulate
-the system under normal operating conditions for a long time. A better way
-to estimate this probability is to use importance sampling (IS), which is a well-
-known variance reduction technique in which the system is simulated under a
-different set of parameters – or, more generally, a different probability distri-
-bution – so as to make the occurrence of the rare event more likely. A major
-drawback of the IS technique is that the optimal reference (also called tilting)
-parameters to be used in IS are usually very difficult to obtain. The advantage
-of the CE method is that it provides a simple adaptive procedure for estimating
-the optimal reference parameters. Moreover, the CE method also enjoys asymp-
-totic convergence properties. For example, it is shown in (Homem-de-Mello and
-Rubinstein, 2002) that for static models – cf. Remark 3.1 – under mild regular-
-ity conditions the CE method terminates with probability 1 in a finite number
-of iterations, and delivers a consistent and asymptotically normal estimator for
-the optimal reference parameters. Recently the CE method has been success-
-fully applied to the estimation of rare event probabilities in dynamic models, in
-particular queueing models involving both light and heavy tail input distribu-
-tions (de Boer et al., 2002; Kroese and Rubinstein, 2003). In addition to rare
-simulation and combinatorial optimization, the CE method can be efficiently
-applied for continuous multi-extremal optimization, see (Rubinstein, 1999) and
-the forthcoming book (Rubinstein and Kroese, 2004).
-An increasing number of applications is being found for the CE method. Re-
-cent publications on applications of the CE method include: buffer allocation
-(Alon et al., 2004); static simulation models (Homem-de-Mello and Rubinstein,
-2002); queueing models of telecommunication systems (de Boer, 2000; de Boer
-et al., 2004); neural computation (Dubin, 2002, 2004); control and navigation
-(Helvik and Wittner, 2001); DNA sequence alignment (Keith and Kroese, 2002);
-scheduling (Margolin, 2002, 2004b); vehicle routing (Chepuri and Homem-de-
-3
+以下のEA仕様（コード・ロジック・設計思想）を、
+次の【7段階チェックリスト】に沿って厳密に評価してください。
+
+---
+
+【STEP 1｜EAの役割定義チェック】
+このEAの役割を「1行」で定義してください。
+・特定相場（トレンド or レンジ or ボラ急変など）は明確か？
+・取引時間帯は限定されているか？
+・通貨ペアは2つ以下に絞られているか？
+
+→ YES / NO で判定し、NOの場合は修正案を提示。
+
+---
+
+【STEP 2｜エントリー過剰チェック】
+・エントリー条件が3つを超えていないか？
+・「負けを避けるための条件」が増えすぎていないか？
+
+→ エントリー条件を「最小構成」に削減してください。
+
+---
+
+【STEP 3｜負け制御（最重要）】
+以下が**必ずコード上で保証されているか**確認してください。
+
+・1トレードの最大損失が口座残高の0.5%以下
+・連続3敗で当日トレード停止
+・時間ベースの強制クローズ（例：N分）
+
+→ 未実装の場合、**具体的な疑似コード or 修正案**を出してください。
+
+---
+
+【STEP 4｜ロット設計チェック】
+・ロットが固定 or 過剰になっていないか？
+・フルケリー、またはそれに近い設計になっていないか？
+
+→ 以下の安全ロット式に修正してください：
+lot = 口座残高 × 0.3% ÷ 想定SL(pips)
+
+---
+
+【STEP 5｜WFO適合性チェック】
+・パラメータ数は3つ以下か？
+・最適化期間が長すぎないか？
+・Sharpe > 0.5、PF > 1.2 を最低ラインとしているか？
+
+→ 研究用WFOになっている場合、**実戦用WFO設定**に落としてください。
+
+---
+
+【STEP 6｜実戦投入可否判定】
+以下の条件を満たしているか評価してください。
+
+・バックテスト期間：1年以上
+・最大DD：20%以下
+・PF：1.2以上
+・Sharpe：0.5以上
+
+→ YES / NO で最終判定し、NOなら「最短で実戦に行く修正点」を列挙。
+
+---
+
+【STEP 7｜総合診断】
+最後に以下を出力してください。
+
+1. このEAは「研究EA / 実戦EA / 即死EA」のどれか
+2. 今すぐ削るべき要素（TOP3）
+3. 実戦投入時の推奨初期条件（口座10万円想定）
+
+---
+
+重要ルール：
+・「もっと最適化すべき」「改善の余地がある」という抽象表現は禁止
+・必ず「削る」「止める」「限定する」方向で指摘すること
+・利益の夢より「生存」を最優先に評価すること

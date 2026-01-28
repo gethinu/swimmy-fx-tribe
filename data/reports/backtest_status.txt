@@ -1,0 +1,5 @@
+timestamp: 3978472665
+count: 334
+last_name: Legend-RSI-Reversion-V1
+last_sharpe: 0.0000
+last_trades: 45

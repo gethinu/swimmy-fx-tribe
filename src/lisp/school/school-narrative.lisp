@@ -150,6 +150,30 @@
       ""))
 
 
+(defun build-top-candidates-snippet (strategies)
+  "Build top candidates snippet with fault isolation."
+  (handler-case
+      (let* ((sorted (sort (copy-list strategies) #'> :key (lambda (s) (or (strategy-sharpe s) -1.0))))
+             (limit (min (length sorted) 5)))
+        (with-output-to-string (s)
+          (format s "~%🌟 **Top Candidates:**~%")
+          (loop for i from 0 below limit
+                for st = (nth i sorted)
+                do (let* ((rank (strategy-rank st))
+                          (st-sharpe (or (strategy-sharpe st) 0.0))
+                          ;; V49.0: Identification of high-potential A-Rank
+                          (label (cond
+                                   ((and (eq rank :A) (>= st-sharpe 0.5))
+                                    "A: READY FOR CPCV")
+                                   (rank (symbol-name rank))
+                                   (t "UNRANKED"))))
+                     (format s "- `~a` (S=~,2f, ~a)~%"
+                             (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                             st-sharpe
+                             label))))
+    (error (e)
+      (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
+
 (defun generate-evolution-report ()
   "Generate the Evolution Factory Report (formerly Python).
    Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."
@@ -164,23 +188,8 @@
          (new-recruits (count-if (lambda (s) 
                                    (and (strategy-creation-time s)
                                         (> (strategy-creation-time s) one-day-ago))) 
-                                 all))
-         ;; V49.0: Top Strategies Snippet (Expert Panel: Visibility)
-         (top-snippet 
-          (let ((sorted (sort (copy-list all) #'> :key (lambda (s) (or (strategy-sharpe s) -1.0)))))
-            (with-output-to-string (s)
-              (format s "~%🌟 **Top Candidates:**~%")
-              (dolist (st (subseq sorted 0 (min (length sorted) 5)))
-                (let* ((rank (strategy-rank st))
-                       (sharpe (or (strategy-sharpe st) 0.0))
-                       ;; V49.0: Identification of high-potential A-Rank
-                       (label (if (and (eq rank :A) (>= sharpe 0.5))
-                                  "A: READY FOR CPCV"
-                                  (symbol-name rank))))
-                  (format s "- `~a` (S=~,2f, ~a)~%" 
-                          (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
-                          sharpe
-                          label)))))))
+                                 all)))
+    (let ((top-snippet (build-top-candidates-snippet all)))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -190,13 +199,13 @@ Current status of the autonomous strategy generation pipeline.
 ~d Strategies
 
 🏆 **S-Rank (Verified Elite)**
-~d (Sharpe > 0.5 + Multi-Verify)
+~d (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
 🎖️ **A-Rank (Pro)**
-~d (Sharpe > 0.3)
+~d (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
 🪜 **B-Rank (Selection)**
-~d (Sharpe > 0.1)
+~d (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
 👶 New Recruits (24h)
 ~d
@@ -217,19 +226,32 @@ Current status of the autonomous strategy generation pipeline.
             new-recruits
             graveyard
             top-snippet
-            (format-timestamp (get-universal-time)))))
+            (format-timestamp (get-universal-time))))))
+
+(defun write-evolution-report-files (report)
+  "Persist the Evolution Factory Report to local files."
+  (let* ((memo-report (coerce (remove-if (lambda (ch) (> (char-code ch) 127)) report) 'string))
+         (paths (list (list "data/reports/evolution_factory_report.txt" report)
+                      (list "doc/memo5.txt" memo-report))))
+    (dolist (entry paths)
+      (destructuring-bind (path content) entry
+        (ensure-directories-exist path)
+        (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
+          (write-string content stream))))))
+
+(defun send-evolution-report (report &optional webhook)
+  "Send the Evolution Factory Report to Discord."
+  (let ((final-webhook (or webhook swimmy.core:*discord-daily-webhook* swimmy.globals:*discord-webhook-url*)))
+    (if final-webhook
+        (swimmy.core:queue-discord-notification 
+         final-webhook
+         report 
+         :color 3447003 
+         :title "🏭 Evolution Factory Report")
+        (format t "[REPORT] ⚠️ Discord webhook missing; report saved locally only.~%"))))
 
 (defun notify-evolution-report ()
   "Send the Evolution Factory Report to Discord AND save to file."
-  (let ((report (generate-evolution-report))
-        (path "data/reports/evolution_factory_report.txt"))
-    ;; 1. Save to File (Restoring missing functionality)
-    (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
-      (write-string report stream))
-    ;; 2. Send to Discord (Targeting REPORTS channel via *discord-daily-webhook*)
-    ;; Use queue-discord-notification directly to control Title and Webhook
-    (swimmy.core:queue-discord-notification 
-      swimmy.core:*discord-daily-webhook* 
-      report 
-      :color 3447003 
-      :title "🏭 Evolution Factory Report")))
+  (let ((report (generate-evolution-report)))
+    (write-evolution-report-files report)
+    (send-evolution-report report)))
