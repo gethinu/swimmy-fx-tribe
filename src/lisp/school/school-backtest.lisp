@@ -172,6 +172,25 @@
         ((= tf 43200) "MN")
         (t "M1")))
 
+(defun get-tf-minutes (tf)
+  "Convert a numeric timeframe or a timeframe string to total minutes.
+   Handles 'M1', 'M5', 'H1', 'H4', 'D1', 'W1', 'MN'."
+  (cond ((numberp tf) (round tf))
+        ((stringp tf)
+         (let ((up (string-upcase tf)))
+           (cond ((string= up "M1") 1)
+                 ((string= up "M5") 5)
+                 ((string= up "M15") 15)
+                 ((string= up "M30") 30)
+                 ((string= up "H1") 60)
+                 ((string= up "H4") 240)
+                 ((string= up "D1") 1440)
+                 ((string= up "W1") 10080)
+                 ((string= up "MN") 43200)
+                 (t 1))))
+        (t 1)))
+
+
 ;; Request backtest from Rust
 (defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil))
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
@@ -181,7 +200,7 @@
   ;; V8.0: Multi-Timeframe Logic
   ;; Strategy decides its own destiny (timeframe)
   (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
-         (timeframe (if (numberp tf-slot) tf-slot 1))
+         (timeframe (get-tf-minutes tf-slot))
          (tf-str (get-tf-string timeframe))
          
          ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits

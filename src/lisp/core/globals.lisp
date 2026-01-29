@@ -6,7 +6,7 @@
 
 ;;; CORE STRUCTURES
 (defstruct candle timestamp open high low close volume)
-(defstruct arm-state position entry-price sl tp streak)
+(defstruct arm-state position entry-price sl tp streak size symbol)
 
 (defstruct elder
   name              ; Strategy name

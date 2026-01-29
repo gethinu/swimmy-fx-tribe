@@ -38,82 +38,174 @@
       (swimmy.school::apply-london-edge symbol direction)
       1.0))
 
+;;; ==========================================
+;;; MECU: CURRENCY DECOMPOSITION & EXPOSURE
+;;; ==========================================
+
+(defun decompose-pair (symbol)
+  "Split a symbol like 'USDJPY' into (BASE QUOTE) list."
+  (let ((str (if (symbolp symbol) (symbol-name symbol) symbol)))
+    (cond
+      ((= (length str) 6)
+       (list (subseq str 0 3) (subseq str 3 6)))
+      ((search "JPY" str)
+       (list (subseq str 0 (search "JPY" str)) "JPY"))
+      (t (list str "USD"))))) ; Fallback
+
+(defun get-price-to-jpy (currency)
+  "Get conversion rate from CURRENCY to JPY (Account Currency)."
+  (let ((pairs (list (format nil "~aJPY" currency) "USDJPY")))
+    (block found
+      (dolist (p pairs)
+        (let ((price (gethash p swimmy.globals::*current-candles*)))
+          (when price 
+            (return-from found (swimmy.globals::candle-close price)))))
+      1.0))) ; Fallback or JPY itself
+
+(defun calculate-portfolio-exposure ()
+  "Calculate aggregate currency exposure (Gross & Net Notional) as ratio of Equity.
+   Returns (values exposures gross-total net-directional)."
+  (let ((exposures (make-hash-table :test 'equal))
+        (equity (get-effective-risk-capital))
+        (gross 0.0)
+        (net 0.0)
+        (lot-size 100000.0)) ; Standard FX Lot
+    
+    (flet ((add-exposure (currency amount-jpy)
+             (incf (gethash currency exposures 0.0) amount-jpy)))
+      
+      ;; 1. Scan Arm States (Active Positions)
+      (when (boundp 'swimmy.engine::*arm-states*)
+        (maphash (lambda (idx state)
+                   (let ((pos (swimmy.globals::arm-state-position state))
+                         (symbol (swimmy.globals::arm-state-symbol state))
+                         (size (swimmy.globals::arm-state-size state)))
+                     (when (and pos symbol size)
+                       (let* ((parts (decompose-pair symbol))
+                              (base (first parts))
+                              (quote (second parts))
+                              (price (get-price-to-jpy base))
+                              (notional-base (* size lot-size price))
+                              (dir (if (eq pos :LONG) 1.0 -1.0)))
+                         ;; Long Base, Short Quote
+                         (add-exposure base (* dir notional-base))
+                         (add-exposure quote (* dir -1.0 notional-base))))))
+                 swimmy.engine::*arm-states*))
+      
+      ;; 2. Scan Pending Orders (Future Exposure)
+      (when (boundp 'swimmy.globals::*pending-orders*)
+        (maphash (lambda (uuid entry)
+                   (declare (ignore uuid))
+                   (let* ((msg (third entry))
+                          (symbol (jsown:val msg "symbol"))
+                          (action (jsown:val msg "action"))
+                          (size (jsown:val msg "volume"))
+                          (parts (decompose-pair symbol))
+                          (base (first parts))
+                          (quote (second parts))
+                          (price (get-price-to-jpy base))
+                          (notional-base (* size lot-size price))
+                          (dir (if (string= action "BUY") 1.0 -1.0)))
+                     (add-exposure base (* dir notional-base))
+                     (add-exposure quote (* dir -1.0 notional-base))))
+                 swimmy.globals::*pending-orders*)))
+
+    ;; 3. Aggregate totals normalized by Equity
+    (maphash (lambda (curr val-jpy)
+               (let ((ratio (/ val-jpy equity)))
+                 (setf (gethash curr exposures) ratio)
+                 (incf gross (abs ratio))
+                 (incf net ratio)))
+             exposures)
+    
+    (values exposures gross net)))
+
 (defun risk-check-all (symbol direction lot category)
-  "Unified risk check before trade execution. Returns (approved-p adjusted-lot reason)"
+  "Unified risk check before trade execution (MECU Integrated). 
+   Returns (values approved-p adjusted-lot reason)"
   (let ((checks nil)
         (final-lot lot)
         (approved t))
     
-    ;; 0. PRIORITY GUARD: Dynamic Drawdown Check (Hard Stop at 25%)
-    (when (and (boundp '*monitoring-drawdown*) 
-               (>= *monitoring-drawdown* 25.0))
+    ;; 0. MECU HARD GATES (Highest Priority)
+    (multiple-value-bind (exposures gross net) (calculate-portfolio-exposure)
+      (let* ((parts (decompose-pair symbol))
+             (base (first parts))
+             (quote (second parts))
+             (price (get-price-to-jpy base))
+             (equity (get-effective-risk-capital))
+             (candidate-notional (* lot 100000.0 price))
+             (candidate-ratio (/ candidate-notional equity))
+             (dir (if (eq direction :BUY) 1.0 -1.0)))
+        
+        ;; A. Gross Exposure Gate
+        (when (> (+ gross (abs (* 2.0 candidate-ratio))) (or (bound-and-true-p 'swimmy.school::*max-gross-exposure-pct*) 0.30))
+          (push "MECU_GROSS_EXCEEDED" checks)
+          (setf approved nil))
+        
+        ;; B. Net Directional Gate
+        (when (> (abs (+ net (* dir candidate-ratio))) (or (bound-and-true-p 'swimmy.school::*max-net-exposure-pct*) 0.15))
+          (push "MECU_NET_EXCEEDED" checks)
+          (setf approved nil))
+          
+        ;; C. Single Currency Gate (Base & Quote)
+        (let ((base-after (+ (gethash base exposures 0.0) (* dir candidate-ratio)))
+              (quote-after (+ (gethash quote exposures 0.0) (* dir -1.0 candidate-ratio)))
+              (limit (or (bound-and-true-p 'swimmy.school::*max-currency-exposure-pct*) 0.10)))
+          (when (or (> (abs base-after) limit) (> (abs quote-after) limit))
+            (push "MECU_CURRENCY_LIMIT" checks)
+            (setf approved nil)))))
+
+    ;; 1. PRIORITY GUARD: Dynamic Drawdown Check (Hard Stop at 25%)
+    (when (and (boundp 'swimmy.globals::*monitoring-drawdown*) 
+               (>= swimmy.globals::*monitoring-drawdown* 25.0))
       (push "DYNAMIC_DD_LIMIT_25%" checks)
-      (format t "[L] 🛑 BLOCKED: Dynamic DD ~,1f% exceeds 25% limit~%" *monitoring-drawdown*)
       (setf approved nil))
 
-    ;; 1. Danger cooldown check
+    ;; 2. Danger/Resignation checks
     (when (and (fboundp 'danger-cooldown-active-p) (danger-cooldown-active-p))
-      (push "DANGER_COOLDOWN" checks)
-      (setf approved nil))
+      (push "DANGER_COOLDOWN" checks) (setf approved nil))
+    (when (and (boundp 'swimmy.school::*has-resigned-today*) swimmy.school::*has-resigned-today*)
+      (push "RESIGNED" checks) (setf approved nil))
     
-    ;; 2. Resignation check
-    (when (and (boundp '*has-resigned-today*) *has-resigned-today*)
-      (push "RESIGNED" checks)
-      (setf approved nil))
-    
-    ;; 3. Correlation exposure check (Relaxed V7.0: 0.8 -> 0.95)
-    (when (fboundp 'check-correlation-risk)
+    ;; 3. SIZING PHASE (If still approved)
+    (when approved
+      ;; Apply Regime Sizing
+      (when (and (boundp 'swimmy.globals::*volatility-regime*)
+                 (eq swimmy.globals::*volatility-regime* :high))
+        (setf final-lot (* final-lot 0.5))
+        (push "HIGH_VOL_SIZING" checks))
+      
+      ;; Apply Correlation/Exposure reductions (Legacy Layer)
       (let ((corr-risk (check-correlation-risk symbol direction)))
         (when (> corr-risk 0.95)
           (push "HIGH_CORRELATION" checks)
           (setf final-lot (* final-lot 0.5)))))
-    
-    ;; 4. Symbol exposure check (Relaxed V7.0: 0.15 -> 0.30)
-    (when (fboundp 'get-symbol-exposure)
-      (let ((exposure (get-symbol-exposure symbol)))
-        (when (> exposure (or *max-symbol-exposure* 0.30))
-          (push "SYMBOL_EXPOSURE_LIMIT" checks)
-          (setf final-lot (* final-lot 0.5)))))
-    
-    ;; 5. P0: Daily loss limit PRE-OPEN CHECK (BLOCK, not just warn)
-    ;; This prevents opening new positions after hitting loss limit
-    (when (and (boundp '*daily-pnl*)
-               (boundp '*daily-loss-limit*)
-               (< *daily-pnl* *daily-loss-limit*))
-      (push "DAILY_LOSS_LIMIT_EXCEEDED" checks)
-      (format t "[L] 🛑 PRE-OPEN BLOCK: Daily loss ¥~,0f exceeds ¥~,0f limit~%"
-              *daily-pnl* *daily-loss-limit*)
-      (setf approved nil))
-    
-    ;; 6. Gotobi adjustment (USDJPY only)
-    (when (and (fboundp 'apply-gotobi-adjustment) (string= symbol "USDJPY"))
-      (let ((adj (apply-gotobi-adjustment symbol direction)))
-        (when adj (setf final-lot (* final-lot adj)))))
-    
-    ;; 7. London edge adjustment (EURUSD/GBPUSD)
-    (when (and (fboundp 'apply-london-edge) 
-               (or (string= symbol "EURUSD") (string= symbol "GBPUSD")))
-      (let ((adj (apply-london-edge symbol direction)))
-        (when adj (setf final-lot (* final-lot adj)))))
-    
-    ;; 8. Volatility check - V6.5: Just log, don't reduce further (already handled by school-volatility)
-    (when (and (boundp '*current-volatility-state*) 
-               (eq *current-volatility-state* :extreme))
-      (push "EXTREME_VOLATILITY" checks))
-      
-    ;; 9. TALEB'S GATEKEEPER - V8.5: Allow 0.01 for tiered sizing
-    (when (< final-lot 0.01)
-      (setf final-lot 0.01))  ; Minimum for proving ground strategies
-    
-    ;; 10. MUSK'S PANEL DECISION: Tiered lot sizing for low-Sharpe strategies
-    ;; Sharpe 0.0 ~ 0.3 = cap at 0.01 lot (proving ground)
-    ;; Sharpe > 0.3 = normal lot calculation allowed
-    ;; Note: Strategy sharpe is not available here, this is handled in school.lisp
-    
-    ;; Return results (Max cap increased to 0.50, min lowered to 0.01)
-    (values approved 
-            (max 0.01 (min 0.50 final-lot))
-            (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
+
+    ;; 4. MIN/MAX CAPS
+    (setf final-lot (max 0.01 (min 0.50 final-lot)))
+
+    ;; 5. NOTIFY MECU STATUS (If denied)
+    (unless approved
+      (notify-mecu-snapshot symbol direction lot (format nil "~{~a~^, ~}" checks)))
+
+    (values approved final-lot (if checks (format nil "~{~a~^, ~}" checks) "APPROVED"))))
+
+(defun bound-and-true-p (sym)
+  (if (and (boundp sym) (symbol-value sym)) (symbol-value sym) nil))
+
+(defun notify-mecu-snapshot (symbol direction lot reason)
+  "Log current exposure snapshot to Discord when MECU blocks a trade."
+  (multiple-value-bind (exposures gross net) (calculate-portfolio-exposure)
+    (let ((msg (format nil "🛡️ **MECU BLOCK: ~a ~a (~,2f lot)**~%**Reason:** ~a~%~%**Current Portfolio:**~%• Gross Exposure: ~,2f% (Limit: ~a%)~%• Net Directional: ~,2f% (Limit: ~a%)~%~%**Currency Breakdown:**~%"
+                       direction symbol lot reason
+                       (* 100 gross) (or (bound-and-true-p 'swimmy.school::*max-gross-exposure-pct*) 30)
+                       (* 100 net) (or (bound-and-true-p 'swimmy.school::*max-net-exposure-pct*) 15))))
+      (maphash (lambda (curr ratio)
+                 (setf msg (concatenate 'string msg (format nil "  - ~a: ~,1f%~%" curr (* 100 ratio)))))
+               exposures)
+      (when (fboundp 'swimmy.core:notify-discord)
+        (swimmy.core:notify-discord msg :color 15158332)))))
 
 (defun safe-order (action symbol lot sl tp &optional (magic 0) (comment nil))
   "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks via CENTRALIZED RISK GATEWAY."

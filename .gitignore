@@ -51,3 +51,4 @@ data/memory/
 *.db
 *.sexp
 doc/memo4.txt
+data/macro/

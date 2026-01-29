@@ -70,18 +70,21 @@
 ;;; LOGIC INTEGRITY & SYMBOLIC HASHING (Phase 24 - Graham/Ng)
 ;;; ============================================================================
 
+;; ----------------------------------------------------------------------------
+;; Logic Integrity check moved to school-ast.lisp (canonicalize-logic)
+
 (defun compute-strategy-hash (strategy)
-  "Compute a symbolic hash of the strategy logic (indicators + entry/exit).
+  "Compute a structural hash of the strategy logic (indicators + entry/exit).
    This creates a canonical representation of 'what the strategy does'
-   ignoring names or minor parameter shifts."
-  (let* ((params (list (strategy-symbol strategy)
-                       (strategy-timeframe strategy)
-                       (strategy-direction strategy)
-                       (strategy-entry strategy)  ; S-exp logic
-                       (strategy-exit strategy)   ; S-exp logic
-                       (strategy-indicators strategy))) ; Param list
-         (canonical (prin1-to-string params))) ; Convert to canonical string
-    (sxhash canonical))) ; Use Lisp's standardized hash
+   ignoring names, whitespace, or operator order (commutative)."
+  (let* ((entry (canonicalize-logic (strategy-entry strategy)))
+         (exit (canonicalize-logic (strategy-exit strategy)))
+         (indicators (canonicalize-logic (strategy-indicators strategy)))
+         (sym (or (strategy-symbol strategy) "USDJPY"))
+         (tf (or (strategy-timeframe strategy) 1))
+         ;; We still use prin1-to-string on the CANONICALIZED list to get a stable hash
+         (canonical (prin1-to-string (list sym tf entry exit indicators))))
+    (sxhash canonical)))
 
 (defun is-logic-duplicate-p (strategy kb)
   "Check if logic already exists in KB (under different name)."

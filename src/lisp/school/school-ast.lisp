@@ -12,6 +12,23 @@
 (in-package :swimmy.school)
 
 ;;; ----------------------------------------------------------------------------
+;;; LOGIC CANONICALIZATION (Rich Hickey/Jim Simons)
+;;; ----------------------------------------------------------------------------
+
+(defun canonicalize-logic (sexp)
+  "Recursively canonicalize an S-expression logic tree.
+   Sorts arguments of commutative operators (and, or, counts, *) to ensure 
+   structural identity regardless of order."
+  (cond ((atom sexp) sexp)
+        ((listp sexp)
+         (let ((op (car sexp))
+               (args (mapcar #'canonicalize-logic (cdr sexp))))
+           (if (member op '(and or + * counts)) ; 'counts' for indicator sets
+               (cons op (sort args #'string< :key (lambda (x) (prin1-to-string x))))
+               (cons op args))))
+        (t sexp)))
+
+;;; ----------------------------------------------------------------------------
 ;;; AST NODE DEFS (Must match strategy_ast.rs)
 ;;; ----------------------------------------------------------------------------
 

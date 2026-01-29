@@ -71,12 +71,13 @@
     (if clan (clan-battle-cry clan) "")))
 
 (defun calculate-strategy-hash (strat)
-  "Generate a stable hash string for strategy logic (Indicators/Entry/Exit)"
-  (format nil "~x"
-          (sxhash (format nil "~s|~s|~s" 
-                          (strategy-indicators strat)
-                          (strategy-entry strat)
-                          (strategy-exit strat)))))
+  "Generate a stable hash string for strategy logic (Indicators/Entry/Exit).
+   Now uses structural canonicalization (Phase 31)."
+  (let* ((entry (canonicalize-logic (strategy-entry strat)))
+         (exit (canonicalize-logic (strategy-exit strat)))
+         (indicators (canonicalize-logic (strategy-indicators strat)))
+         (canonical (prin1-to-string (list entry exit indicators))))
+    (format nil "~x" (sxhash canonical))))
 
 (defun generate-clan-narrative (category-id direction confidence symbol price)
   "Generate natural language narrative for clan trade entry"

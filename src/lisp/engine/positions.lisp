@@ -187,6 +187,8 @@
                     ((eql type :BUY)
                      (setf (arm-state-position state) :LONG
                            (arm-state-entry-price state) bid
+                           (arm-state-size state) dynamic-vol
+                           (arm-state-symbol state) symbol
                            (arm-state-sl state) (- bid sl-p)
                            (arm-state-tp state) (+ bid tp-p))
                      (when active
@@ -201,6 +203,8 @@
                     ((eql type :SELL)
                      (setf (arm-state-position state) :SHORT
                            (arm-state-entry-price state) ask
+                           (arm-state-size state) dynamic-vol
+                           (arm-state-symbol state) symbol
                            (arm-state-sl state) (+ ask sl-p)
                            (arm-state-tp state) (- ask tp-p))
                      (when active

@@ -314,6 +314,8 @@
     #:record-swap-data
     ;; Phase 30: Breakout/Tactician
     #:deploy-breakout-strategy
+    ;; Phase 31: Backtest V2 Logic
+    #:handle-v2-result
     ))
 
 ;;; 5. SHELL (Interface Layer) ---------------------------------------------------

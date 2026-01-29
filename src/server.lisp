@@ -34,6 +34,9 @@
                   ;; Broadcasts Constitutional Verdicts and Commands to Rust Body
                   (pzmq:bind efferent-nerve "tcp://*:5556")
                   (format t "   [MOTOR]   Broadcasting on tcp://*:5556 (PUB)~%")
+
+                  ;; Bind Global Publisher for Backtest Commands (Phase 31)
+                  (setf swimmy.globals:*cmd-publisher* efferent-nerve)
                   
                   (loop
                     (format t "Thinking... (Waiting for input)~%")
@@ -108,6 +111,38 @@
                                                                     (float swap-short 0.0d0) 
                                                                     (float spread 0.0d0))
                                  ;; Less verbose logging (dot per update)
+                                 (format t ".")))
+
+                              ;; CASE 5: TEST COMMANDS (Backtest Verification)
+                               ((string= msg-type "run_test_backtest")
+                                (format t "🧪 DEBUG: Triggering Test Backtest for Breakout...~%")
+                                (let ((strat (or (swimmy.school::find-strategy "Breakout-Staircase-USDJPY-M1")
+                                                 (progn
+                                                   (format t "⚠️ Strategy Not Found. Auto-Deploying...~%")
+                                                   (swimmy.school::deploy-breakout-strategy "USDJPY")))))
+                                  (if strat
+                                      (progn 
+                                        (format t "🚀 Strategy Found/Deployed. Launching V2 Backtest (2023)...~%")
+                                        ;; Call Phase 1 Screening range for test
+                                        (swimmy.school:request-backtest-v2 strat :start-date "2023.01.01" :end-date "2023.12.31"))
+                                      (format t "❌ Strategy Creation Failed!~%"))))
+                              
+                              ;; CASE 6: BACKTEST RESULT (Phase 31)
+                              ((string= msg-type "recruit_hunted")
+                                (format t "🏹 Admin Trigger: Recruiting Hunted Batch...~%")
+                                (swimmy.school::recruit-hunted-batch))
+                              ((string= msg-type "BACKTEST_RESULT")
+                               (let* ((res-obj (jsown:val data "result"))
+                                      (strat-name (if (jsown:keyp res-obj "strategy_name") 
+                                                      (jsown:val res-obj "strategy_name") 
+                                                      (if (jsown:keyp res-obj "name")
+                                                          (jsown:val res-obj "name")
+                                                          "UNKNOWN_STRATEGY"))))
+                                 (let ((lisp-result (list :sharpe (float (jsown:val res-obj "sharpe") 0.0)
+                                                          :profit-factor (float (jsown:val res-obj "profit_factor") 0.0)
+                                                          :trades (jsown:val res-obj "trades")
+                                                          :pnl (float (jsown:val res-obj "pnl") 0.0))))
+                                   (swimmy.school:handle-v2-result strat-name lisp-result))
                                  (format t ".")))
 
                               (t

@@ -26,7 +26,7 @@
    start-date/end-date: 'YYYY.MM.DD' strings."
   (let* ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY"))
          (tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
-         (timeframe (if (numberp tf-slot) tf-slot 1))
+         (timeframe (get-tf-minutes tf-slot))
          (start-ts (if start-date (- (parse-date-to-timestamp start-date) 2208988800) nil)) ; Lisp Time -> Unix
          (end-ts (if end-date (- (parse-date-to-timestamp end-date) 2208988800) nil)))      ; 2208988800 = 1970 offset
     
@@ -40,14 +40,17 @@
     
     (let* ((strategy-alist (strategy-to-alist strat :name-suffix (format nil "_~a" (or start-date "FULL"))))
            (strategy-json (alist-to-json strategy-alist))
-           (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
+           (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
+           ;; V31.0: Fetch historical swaps for more accurate PnL
+           (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
 
       (let* ((payload (jsown:new-js
                        ("action" "BACKTEST")
                        ("strategy" strategy-json)
                        ("candles_file" data-file)
-                       ("data_id" (format nil "~a_FULL" actual-symbol)) ; Usage of cache
+                       ("data_id" (format nil "~a_FULL" actual-symbol))
                        ("symbol" actual-symbol)
+                       ("swap_history" swaps)
                        ("timeframe" timeframe))))
         
         ;; Add Range if present

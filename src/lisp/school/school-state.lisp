@@ -93,6 +93,13 @@
 (defparameter *consecutive-loss-threshold* 3 "Number of losses in window to trip breaker")
 (defparameter *breaker-cooldown-seconds* 900 "Duration to Halt trading (15m)")
 
+;;; ==========================================
+;;; P31: MECU (Maximum Exposure Control Unit)
+;;; ==========================================
+(defparameter *max-gross-exposure-pct* 0.30 "Max Σ|Nominal| / Equity (30%)")
+(defparameter *max-net-exposure-pct* 0.15 "Max Σ(Nominal) / Equity (15%)")
+(defparameter *max-currency-exposure-pct* 0.10 "Max Single Currency Exposure / Equity (10%)")
+
 ;; Warrior System (school-danger.lisp)
 ;; *warrior-allocation* moved to globals.lisp
 
