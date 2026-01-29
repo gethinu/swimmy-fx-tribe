@@ -63,6 +63,28 @@
       hold_time INTEGER
     )")
 
+  ;; Table: Swap History (QS Architecture Data Lake)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS swap_history (
+      symbol TEXT,
+      timestamp INTEGER,
+      swap_long REAL,
+      swap_short REAL,
+      spread REAL,
+      PRIMARY KEY (symbol, timestamp)
+    )")
+
+  ;; Table: Swap History (QS Architecture Data Lake)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS swap_history (
+      symbol TEXT,
+      timestamp INTEGER,
+      swap_long REAL,
+      swap_short REAL,
+      spread REAL,
+      PRIMARY KEY (symbol, timestamp)
+    )")
+
   ;; Indices for fast draft/selection
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_strat_rank ON strategies(rank)")
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_strat_sharpe ON strategies(sharpe)")
@@ -233,5 +255,31 @@
 ;; Graceful shutdown hook
 (defun close-db ()
   (swimmy.core:close-db-connection))
+
+
+(defun record-swap-data (symbol swap-long swap-short spread)
+  "Log daily swap/spread data to SQL."
+  (let ((now (get-universal-time)))
+    ;; Quantize to day (midnight) to avoid duplicates if called multiple times
+    (let ((day-timestamp (* (floor now 86400) 86400)))
+      (handler-case
+          (execute-non-query
+           "INSERT OR REPLACE INTO swap_history (symbol, timestamp, swap_long, swap_short, spread)
+            VALUES (?, ?, ?, ?, ?)"
+           symbol day-timestamp (float swap-long) (float swap-short) (float spread))
+        (error (e) 
+          (format t "[DB] ⚠️ Failed to record swap data for ~a: ~a~%" symbol e))))))
+
+(defun get-top-carry-pairs (&key (limit 5))
+  "SQL-Screening: Get top symbols by Swap Long value for today (or latest).
+   Equivalent to: 'Find High Earnings Yield Stocks'"
+  (let ((query "SELECT symbol, swap_long FROM swap_history 
+                WHERE timestamp = (SELECT MAX(timestamp) FROM swap_history)
+                AND swap_long > 0
+                ORDER BY swap_long DESC
+                LIMIT ?"))
+    (let ((rows (execute-to-list query limit)))
+      ;; Returns list of (symbol swap-val)
+      rows)))
 
 (init-db)

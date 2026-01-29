@@ -22,6 +22,15 @@
         (setf ema (float (+ (* (candle-close c) k) (* ema (- 1 k))))))
       ema)))
 
+(defun ind-smma (n history)
+  (when (>= (length history) n)
+    (let* ((seed (or (ind-sma n (reverse (subseq history 0 n))) (candle-close (first history))))
+           (smma (float seed)))
+      (dolist (c (reverse (subseq history 0 n)))
+        (let ((close (candle-close c)))
+          (setf smma (float (/ (+ (* smma (- n 1)) close) n)))))
+      smma)))
+
 (defun ind-rsi (n history)
   (when (>= (length history) (1+ n))
     (let ((gains 0.0) (losses 0.0))
@@ -120,6 +129,7 @@
                           ind-ichimoku ind-donchian
                           ind-session-high ind-session-low
                           ind-kalman ind-kalman-velocity ind-kalman-trend
+                          ind-smma is-staircase-pattern is-volume-increasing confirm-breakout
                           cross-above cross-below defstrategy sma ema rsi macd bb stoch atr cci kalman close high low open
                           session-high session-low ichimoku donchian))
 
@@ -171,17 +181,19 @@
             ;; V50.3: Validation Gates Metrics
             (oos-sharpe 0.0)
             (cpcv-median-sharpe 0.0)
-            (cpcv-pass-rate 0.0))
-
-
+            (cpcv-pass-rate 0.0)
+            ;; Phase 21: Breeding & Competition DNA (Survival of the Fittest)
+            (age 0) (immortal nil) (parents nil))
 
 (defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY") (direction :BOTH)
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
-                         (oos-sharpe 0.0) (cpcv-median-sharpe 0.0) (cpcv-pass-rate 0.0))
+                         (oos-sharpe 0.0) (cpcv-median-sharpe 0.0) (cpcv-pass-rate 0.0)
+                         (age 0) (immortal nil) (parents nil))
   `(make-strategy :name (string ',name) :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
                   :filter-enabled ,(or filter-enabled regime-filter) :filter-tf ,filter-tf :filter-period ,filter-period :filter-logic ,filter-logic :tier ,tier :rank ,rank :symbol ,symbol :direction ,direction
                   :sharpe ,sharpe :profit-factor ,profit-factor :win-rate ,win-rate :trades ,trades :max-dd ,max-dd
-                  :oos-sharpe ,oos-sharpe :cpcv-median-sharpe ,cpcv-median-sharpe :cpcv-pass-rate ,cpcv-pass-rate))
+                  :oos-sharpe ,oos-sharpe :cpcv-median-sharpe ,cpcv-median-sharpe :cpcv-pass-rate ,cpcv-pass-rate
+                  :age ,age :immortal ,immortal :parents ,parents))
 
 (defmacro with-trend-filter ((tf logic period) strategy-form)
   "Wraps a strategy definition with MTF trend filter parameters.

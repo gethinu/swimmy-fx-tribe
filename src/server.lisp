@@ -4,7 +4,9 @@
 
 (defpackage :swimmy.server
   (:use :cl)
-  (:import-from :swimmy.constitution :judge-action))
+  (:import-from :swimmy.constitution :judge-action)
+  ;; Ensure DB is loaded for recording
+  (:import-from :swimmy.school.db :record-swap-data))
 
 (in-package :swimmy.server)
 
@@ -74,6 +76,40 @@
                                ;; For now just acknowledge
                                (format t "👁️ Market Data Received~%"))
                               
+                              ;; CASE 3: ADMIN COMMAND (Phase 29: Morning Ritual)
+                              ((string= msg-type "admin_command")
+                               (let ((cmd (if (jsown:keyp data "command") (jsown:val data "command") "")))
+                                 (format t "🛠️ ADMIN COMMAND: ~A~%" cmd)
+                                 (cond 
+                                   ((string= cmd "run_morning_ritual")
+                                    (format t "🌅 Executing Morning Ritual...~%")
+                                    ;; Call Alchemy Deployment
+                                    ;; Note: use ignore-errors to prevent crash
+                                    (handler-case 
+                                        (if (find-package :swimmy.school.founders.alchemy)
+                                            (funcall (intern "DEPLOY-ALCHEMY-TEAM" :swimmy.school.founders.alchemy))
+                                            (format t "⚠️ Alchemy Package not found!~%"))
+                                      (error (e) (format t "❌ Error in Morning Ritual: ~A~%" e)))
+                                    (format t "✅ Morning Ritual Complete.~%"))
+                                   
+                                   (t (format t "⚠️ Unknown Admin Command~%")))))
+                                   
+                              ;; CASE 4: SWAP DATA (Phase 29: Pipeline)
+                              ((string= msg-type "SWAP_DATA")
+                               (let ((symbol (if (jsown:keyp data "symbol") (jsown:val data "symbol") "UNKNOWN"))
+                                     (swap-long (if (jsown:keyp data "swap_long") (jsown:val data "swap_long") 0.0))
+                                     (swap-short (if (jsown:keyp data "swap_short") (jsown:val data "swap_short") 0.0))
+                                     (spread (if (jsown:keyp data "spread") (jsown:val data "spread") 0)))
+                                 
+                                 ;; Type conversion (jsown might parse as int or float)
+                                 ;; record-swap-data expects numbers
+                                 (swimmy.school.db:record-swap-data symbol 
+                                                                    (float swap-long 0.0d0) 
+                                                                    (float swap-short 0.0d0) 
+                                                                    (float spread 0.0d0))
+                                 ;; Less verbose logging (dot per update)
+                                 (format t ".")))
+
                               (t
                                (format t "❓ Unknown signal type: ~A~%" msg-type))))
                         

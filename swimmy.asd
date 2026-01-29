@@ -4,11 +4,14 @@
   :version "41.5.0"
   :author "Antigravity Team"
   :license "Proprietary"
-  :depends-on ("cl-ppcre" "pzmq" "sqlite" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "postmodern")
+  :depends-on ("cl-ppcre" "pzmq" "sqlite" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "ironclad" "postmodern")
   :serial t
   :components ((:file "src/lisp/packages")
                (:file "src/lisp/packages-school")
                (:file "src/lisp/school/school-state") ; Moved to top (Dependency Fix)
+               (:file "src/lisp/school/school-integrity") ; Phase 25: Integrity
+               (:file "src/lisp/school/school-scribe") ; Phase 25: Isolation
+               (:file "src/lisp/school/school-watchdog") ; Phase 25: Watchdog
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
                (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
@@ -61,6 +64,7 @@
                 
                 ;; SCHOOL
                 (:file "src/lisp/school/school-db")
+                (:file "src/lisp/school/school-ast") ; Phase 23: Native AST Protocol
                 (:file "src/lisp/school/school-cemetery")
                 (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
                 (:file "src/lisp/school/school-constitution")
@@ -72,6 +76,8 @@
                (:file "src/lisp/school/school-analytics") ; Metrics & Analysis
                 (:file "src/lisp/school/school-backtest-utils")
                 (:file "src/lisp/school/school-backtest")  ; Backtesting & WFV
+                (:file "src/lisp/school/school-backtest-v2") ; V20.0: 2-Stage Backtest Logic
+                (:file "src/lisp/school/school-ranking")     ; V20.0: Ranking Ladder (B->A->S)
                (:file "src/lisp/school/school-validation") ; P9: OOS Validation for A-RANK
                (:file "src/lisp/school/school-pruning")    ; P10: KB Pruning & Optimization
                (:file "src/lisp/school/school-monte-carlo") ; Phase 11: Monte Carlo
@@ -81,7 +87,7 @@
                (:file "src/lisp/school/school-ecosystem")
                (:file "src/lisp/school/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
                (:file "src/lisp/school/school-evolution") ; Genetic & LLM Generation (Dreamer)
-
+               
                (:file "src/lisp/school/school-adaptation") ; Adaptation Engine (Phase 4)
                (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
                (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
@@ -94,22 +100,26 @@
                 (:file "src/lisp/school/school-portfolio")   ; V49.6: Portfolio & Global Draft
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
                (:file "src/lisp/school/school-volatility")
-
+               
                (:file "src/lisp/school/school-founders") ; Headhunting Protocol
                (:file "src/lisp/school/school-founders-hunted") ; Hunted Strategies
+               (:file "src/lisp/school/school-founders-dalio") ; Phase 27: Uncorrelated Return Streams
                (:file "src/lisp/school/school-telemetry") ; V9.5: Gene Kim Telemetry
                ;; (:file "src/lisp/school-hunter") ; V9.2: Loaded dynamically for safety (safely-load-hunter-strategies)
                (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school/school-risk")      ; SRP Refactor
                (:file "src/lisp/school/school-danger")    ; Found during Audit
+               (:file "src/lisp/school/school-macro")     ; Phase 23: Dynamic Correlation
+               (:file "src/lisp/school/school-dalio")     ; Phase 27: Holy Grail (Dalio)
                (:file "src/lisp/school/school-market")    ; SRP Refactor
+               (:file "src/lisp/school/school-alchemy")   ; Phase 28: FX Pivoting (Carry/Vol)
+               (:file "src/lisp/school/school-founders-alchemy") ; Phase 28: Hybrid Strategy
+               (:file "src/lisp/school/school-founders-breakout") ; Phase 30: Staircase Breakout
                (:file "src/lisp/school/school-narrative") ; SRP Refactor
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
                (:file "src/lisp/school/school-execution") ; SRP Refactor
-               (:file "src/lisp/school/school-swarm-core") ; P13: Swarm Core
-               (:file "src/lisp/school/school-factory")    ; P13: Predictor Factory
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
                (:file "src/lisp/transfer-learning") ; Added V7.0
@@ -135,7 +145,7 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
-
+               
                (:file "src/lisp/tests/school-split-tests")
                 (:file "src/lisp/tests/stress-test-kb")
                (:file "src/lisp/tests/school-mc-tests")   ; Phase 11: MC Tests

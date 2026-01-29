@@ -307,7 +307,14 @@
     #:prune-strategies-by-graveyard-hash
     #:cemetery-audit-db
     #:record-graveyard-pattern
-   ))
+    
+    ;; Phase 28: FX Alchemy Screeners
+    #:get-top-carry-pairs
+    ;; Phase 29: Swap Data Persistence
+    #:record-swap-data
+    ;; Phase 30: Breakout/Tactician
+    #:deploy-breakout-strategy
+    ))
 
 ;;; 5. SHELL (Interface Layer) ---------------------------------------------------
 (defpackage :swimmy.shell
