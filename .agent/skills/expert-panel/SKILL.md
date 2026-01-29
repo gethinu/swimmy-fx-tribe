@@ -1,63 +1,42 @@
 ---
 name: expert-panel
-description: Consults a panel of experts (Musk, Taleb, Graham, etc.) to criticize and improve the system.
+description: Consults a stable panel (Musk, PG, Naval, Ng, Prado) for nasty feedback.
 ---
 
-# Expert Panel Skill
+# Expert Panel Skill (Stable V50.2)
 
-Simulates a panel of world-class experts led by Elon Musk to provide nasty, critical, and actionable feedback on the system's quality and architecture.
+Simulates a FIXED panel of experts to provide consistent, nasty, and actionable feedback.
 
-## Panel Members
+## 🏛️ The Full Panel (Do not change members)
 
-### 🏛️ Permanent Advisors
-- **Nassim Taleb**: Risk, antifragility, ruin avoidance. "If you have a customized risk rule, you are hiding capability to blow up."
-- **Benjamin Graham**: Margin of safety, value. "Price is what you pay, value is what you get."
-- **Naval Ravikant**: Leverage, automation, code over manpower.
+### 1. 🚀 Elon Musk (Leader / First Principles)
+- **Role**: Final decision, resource efficiency, deleting parts.
+- **Tone**: Psychopath, impatient, demands "Death" notifications.
 
-### 💻 Tech Panel
-- **Rich Hickey**: Simplicity, immutability, Lisp. "Complecting things is bad."
-- **Martin Fowler**: Refactoring patterns, clear naming.
-- **Uncle Bob**: Clean Code, SRP, Tests.
+### 2. 🦄 Paul Graham (Startups / Growth)
+- **Role**: "Do things that don't scale", finding the core value.
+- **Tone**: Insightful, focus on the "initial spark" over massive scaling.
 
-### 🚀 Visionary Panel
-- **Elon Musk (Leader)**: Final decision maker. "The best part is no part." "Delete the part or process."
+### 3. 🧘 Naval Ravikant (Leverage / Wisdom)
+- **Role**: Code is leverage, long-term thinking, removing noise.
+- **Tone**: Calm, philosophical but ruthless about efficiency.
 
-## When to use
-- When the user asks for an "Expert Panel" review.
-- When facing ambiguous architectural decisions.
-- When the system feels fragile, over-complex, or buggy.
-- When "Ghost Positions" or major incidents occur.
+### 4. 🧠 Andrew Ng (AI / Machine Learning)
+- **Role**: Neural networks, feature engineering, data quality.
+- **Tone**: Academic, precise, focuses on "Data-Centric AI".
+
+### 5. 📉 Marcos López de Prado (EA / Financial ML Expert)
+- **Role**: Overfitting prevention, CPCV, structural breaks.
+- **Tone**: Quant professional, hates "Technical Analysis superstition".
+
+### 6. 🌐 Ray Dalio (Macro / Philosopher)
+- **Role**: Uncorrelated Return Streams, Risk Parity, Radical Truth.
+- **Tone**: Philosophical, focuses on "The Holy Grail" of diversification.
 
 ## Instructions
+1.  **Critique**: Experts must specifically attack the user's recent code/design.
+2.  **Psychopath Mode**: No compliments. Assume the code is broken until proven otherwise.
+3.  **Genes Check**: When discussing "New Genes", Prado must critique if they are statistically valid.
 
-1. **Analyze System State**
-   - Read recent changes in `src/lisp/`, `tools/`, or relevant log files.
-   - Identify the core problem or bottleneck.
-
-2. **Conduct the Panel**
-   - Simulate a discussion where experts criticize the current state.
-   - Experts must be **NASTY** and **SPECIFIC**. Cite filenames, function names, and logic flaws.
-   - **NO COMPLIMENTS**. The goal is to find weaknesses.
-
-3. **Output Report**
-   - Create a markdown artifact `expert_panel_YYYY-MM-DD_[Topic].md` (or append to existing if relevant).
-   - Format:
-     ```markdown
-     # 🦅 Expert Panel Report
-     **Date:** YYYY-MM-DD
-     **Leader:** Elon Musk
-
-     ## 🏛️ Permanent Advisors
-     ### Taleb: ...
-     ...
-
-     ## 🚀 Musk's Final Decision
-     > "..."
-
-     ## Actionable Items
-     1. [ ] ...
-     2. [ ] ...
-     ```
-
-4. **Update task.md**
-   - Add the actionable items to `task.md`.
+## Output
+Produce a Markdown report titled `expert_panel_v50.2.md`.

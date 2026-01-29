@@ -18,22 +18,10 @@
     :sl 1.0 ; Wide stop
     :tp 2.0 ; Trend following target
     :volume 0.1
-    :generation 0))
+    :generation 0
+    :immortal t))
 
-(defun create-legend-london-breakout ()
-  "Create the London Breakout Strategy (Hunter)"
-  (make-strategy
-    :name "Legend-London-Breakout-V1"
-    ;; :symbol "GBPUSD"
-    :timeframe 3600 ; H1 (Logic handles time)
-    :category :breakout
-    :indicators '((:time-range "08:00-09:00")) ; Concept only, requires special logic
-    :entry '((:break-high-low "08:00-09:00"))
-    :exit '((:time-close "16:00"))
-    :sl 0.20 ; 20 pips
-    :tp 0.60 ; 60 pips (1:3 RR)
-    :volume 0.1
-    :generation 0))
+;; [DELETED] London Breakout (Fragile Time-Logic)
 
 (defun create-legend-rsi-reversion ()
   "Create the RSI Reversion Strategy (Raider)"
@@ -48,13 +36,14 @@
     :sl 0.10 ; 10 pips
     :tp 0.10 ; 10 pips
     :volume 0.05
-    :generation 0))
+    :generation 0
+    :immortal t))
 
 (defun summon-legends ()
   "Inject legends into the Knowledge Base"
   (format t "[LEGENDS] ⚡ Summoning Legendary Warriors...~%")
   (let ((legends (list (create-legend-golden-cross)
-                       (create-legend-london-breakout)
+                       ;; (create-legend-london-breakout) ; Pruned
                        (create-legend-rsi-reversion))))
     (dolist (l legends)
       ;; Add to KB if not exists

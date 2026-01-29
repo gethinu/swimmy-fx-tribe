@@ -272,8 +272,9 @@
    #:+MSG-ORDER-ACK+
    #:+MSG-TRADE-CLOSED+
    #:+MSG-ACCOUNT-INFO+
-   #:+MSG-HISTORY+
-   #:+MSG-TICK+
+    #:+MSG-HISTORY+
+    #:+MSG-TICK+
+    #:+MSG-SWAP-DATA+
 
    ;; V49.8: SQL Connection Management
    #:execute-non-query

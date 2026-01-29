@@ -14,12 +14,24 @@
 (defvar *last-new-day* nil "Tracks the last day number we processed for day rollover")
 (defvar *daily-report-sent-today* nil "Prevents duplicate daily reports")
 (defvar *advisor-report-sent-today* nil "Prevents duplicate advisor reports")
+;; (defvar *breeding-cycle-run-today* nil) ;; REMOVED: V50.3 Now run periodically
+
+(defparameter *last-evolution-time* 0 "Timestamp of last evolution run")
+(defparameter *evolution-interval* 1800 "30 minutes (Musk's Order)")
 
 ;; V49.1: Data-driven Schedule (Martin Fowler Refactor)
 (defparameter *scheduled-events*
   '((:advisor-report :hour 8  :sent-flag *advisor-report-sent-today* :fn send-morning-papers)
     (:daily-report   :hour 23 :sent-flag *daily-report-sent-today*   :fn send-nightly-reports))
+    ;; (:breeding-cycle ...) REMOVED -> Moved to periodic maintenance
   "List of scheduled tasks with their trigger hour and tracking flags.")
+
+(defun run-evolution-factory ()
+  "Evolution Factory Trigger (Phase 21) - 30min Loop"
+  (format t "[SCHEDULER] 🧬 Evolution Factory Triggered (~d sec since last)...~%" 
+          (- (get-universal-time) *last-evolution-time*))
+  (when (fboundp 'swimmy.school::process-breeding-cycle)
+    (funcall 'swimmy.school::process-breeding-cycle)))
 
 (defun send-morning-papers ()
   "Morning paper trigger"
@@ -61,7 +73,19 @@
         
         ;; Phase 6: Lifecycle Review (Unbenching Check)
         (when (fboundp 'perform-daily-lifecycle-review)
-          (perform-daily-lifecycle-review))))
+          (perform-daily-lifecycle-review))
+        
+        ;; Phase 19: Global Macro Data Reload (Every 15 mins)
+        (when (> (- now (or swimmy.school::*last-macro-load-time* 0)) 900) ; 15 mins * 60s
+          (when (fboundp 'swimmy.school::load-macro-data)
+            (funcall 'swimmy.school::load-macro-data)
+            (setf swimmy.school::*last-macro-load-time* now)))
+            
+        ;; Phase 21: Evolution Factory (Every 30 mins) - V50.3 Musk Speedup
+        (when (> (- now *last-evolution-time*) *evolution-interval*)
+          (setf *last-evolution-time* now)
+          (run-evolution-factory))))
+            
     ;; PROFILE SECTION 2
     (with-profiling "maintenance-section-2"
       ;; SECTION 2: Self-Throttled Operations (Dream Cycle - 1hr)
@@ -79,6 +103,7 @@
         (incf *dream-cycle*)
         (when (and (zerop (mod *dream-cycle* 60)) (fboundp 'save-state))
           (funcall 'save-state))))
+          
     ;; PROFILE SECTION 3
     (with-profiling "maintenance-section-3"
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
@@ -100,6 +125,7 @@
       (setf *last-new-day* date)
       (setf *daily-report-sent-today* nil)
       (setf *advisor-report-sent-today* nil)
+      ;; *breeding-cycle-run-today* removed
       (setf *daily-pnl* 0.0)
       (setf *daily-trades* 0)
       (setf *consecutive-wins* 0)

@@ -53,9 +53,9 @@
             (cond
               ((listp p) (mutate-indicator-params p))
               ((numberp p)
-               (let ((new-val (mutate-value p 0.1))) ;; +/- 10% Mutation
+               (let ((new-val (mutate-value p 0.1))) 
                  (if (integerp p) (round new-val) new-val)))
-              (t p))) ; Keep symbols (rsi, macd)
+              (t p))) 
           params))
 (defun breed-strategies (parent1 parent2)
   "Create a child strategy from two parents.
@@ -115,7 +115,8 @@
       :entry (strategy-entry parent1)
       :exit (strategy-exit parent1)
       :tier :incubator ;; Born in the Incubator
-      :status :active)))
+      :status :active
+      :parents (list (strategy-name parent1) (strategy-name parent2)))))
 
 
 
@@ -134,13 +135,15 @@
       (let* ((all-warriors (loop for tier in tiers
                                  append (get-strategies-by-tier tier cat)))
              ;; V48.7: Rank-aware and raw Sharpe priority. 
-             ;; Reduced generation bonus from 0.1 to 0.01 to avoid "recent junk" bias.
              (sorted (sort (copy-list all-warriors) #'> 
                            :key (lambda (s) 
                                   (+ (case (strategy-rank s) (:legend 3.0) (:S 2.0) (:A 1.0) (t 0.0))
                                      (or (strategy-sharpe s) 0)
                                      (* (or (strategy-generation s) 0) 0.01))))))
         
+        ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
+        (cull-pool-overflow cat)
+
         (loop for i from 0 below (* 2 max-pairs-per-category) by 2
               while (< (1+ i) (length sorted))
               for p1 = (nth i sorted)
@@ -150,17 +153,76 @@
                            (1+ (/ i 2)) cat
                            (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
                            (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
-                   ;; V49.2: Correlation Check (Taleb's Safety Guard)
+                   
+                   ;; V49.2: Correlation Check
                    (when (strategies-correlation-ok-p p1 p2)
                      (let ((child (breed-strategies p1 p2)))
                        (increment-breeding-count p1)
                        (increment-breeding-count p2)
+                       
                        ;; V49.2: Inherit Regime Intent
                        (setf (strategy-regime-intent child) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
+                       
+                       ;; Add to KB (No Backtest req for Incubator -> will be screened in Phase 1)
                        (when (add-to-kb child :breeder :require-bt nil :notify nil)
                          (save-recruit-to-lisp child)
-                         (format t "[BREEDER] 👶 Born: ~a (Gen~d) Intended for: ~a~%"
-                                 (strategy-name child) (strategy-generation child) (strategy-regime-intent child)))))))))))
+                         (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%" (strategy-name child) (strategy-generation child))
+                         
+                         ;; V50.2: Immediate Culling (Survival of the Fittest)
+                         ;; If pool > 20, kill the weakest B-Rank to make room
+                         (cull-pool-overflow cat))))))))))
+
+(defun increment-breeding-count (strat)
+  (incf (strategy-breeding-count strat))
+  ;; V50.2: Aging (Max 3 breeds)
+  (when (>= (strategy-breeding-count strat) 3)
+    (format t "[BREEDER] 👴 Strategy ~a has retired from breeding (count=3).~%" (strategy-name strat))))
+
+(defun can-breed-p (strat)
+  (and strat
+       (< (strategy-breeding-count strat) 3) ; Max 3 breeds
+       (> (or (strategy-sharpe strat) 0) 0.1))) ; Must be decent
+
+(defun cull-pool-overflow (category)
+  "Enforce Musk's '20 or Die' rule. 
+   If pool size > *b-rank-pool-size*, kill the weakest."
+  (let* ((pool (gethash category *category-pools*))
+         (limit (if (boundp '*b-rank-pool-size*) *b-rank-pool-size* 20))
+         (survivors nil)
+         (victims nil))
+    (when (> (length pool) limit)
+      ;; Sort by Sharpe (High to Low)
+      (let ((sorted (sort (copy-list pool) #'> :key (lambda (s) (or (strategy-sharpe s) -999)))))
+        (setf survivors (subseq sorted 0 limit))
+        (setf victims (subseq sorted limit))
+        
+        ;; Update Pool
+        (setf (gethash category *category-pools*) survivors)
+        
+        ;; Kill Victims
+        (dolist (victim victims)
+          (format t "[DEATHMATCH] 💀 Killing Weakest: ~a (Sharpe: ~,2f)~%" 
+                  (strategy-name victim) (strategy-sharpe victim))
+          ;; Notify Discord (Musk Requirement)
+          (notify-death victim "Pool Overflow (Weakest Link)")
+          ;; Remove from KB (Graveyard logic could be added here)
+          (setf *strategy-knowledge-base* (delete victim *strategy-knowledge-base*))
+          ;; Remove from SQL
+          (handler-case 
+              (sqlite:execute-non-query *db-conn* "UPDATE strategies SET rank = ':GRAVEYARD' WHERE name = ?" (strategy-name victim))
+            (error () nil)))))))
+
+(defun notify-death (strat reason)
+  "Musk: 'I want to see Death.'"
+  (swimmy.core:notify-discord-recruit
+   (format nil "💀 **STRATEGY EXECUTION**
+━━━━━━━━━━━━━━━━━━━━━━
+⚰️ Victim: `~a`
+📉 Sharpe: ~,2f
+⚖️ Verdict: ~a
+🛑 Status: TERMINATED"
+           (strategy-name strat) (or (strategy-sharpe strat) 0) reason)
+   :color 0)) ; Black/Dark for Death
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation
@@ -245,3 +307,97 @@
         (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
     
     (length genes)))
+
+;;; ============================================================================
+;;; DEATHMATCH ARENA (Phase 21)
+;;; ============================================================================
+
+(defun compete-parent-child (parent child)
+  "Parent vs Child Deathmatch (Expert Panel 2026-01-28).
+   - If Child is proven stronger (Sharpe), Parent is killed (unless Immortal).
+   - If Child is weaker, Child is killed.
+   - If Child is untested (Sharpe NIL), it is spared for now."
+   (let ((p-sharpe (or (strategy-sharpe parent) -999.0))
+         (c-sharpe (strategy-sharpe child))) ;; Child might be untested
+     
+     (unless c-sharpe
+       (format t "[DEATHMATCH] 🐣 Child ~a is untested. Spared for now.~%" (strategy-name child))
+       (return-from compete-parent-child :child-untested))
+
+     (cond
+       ;; Child Stronger
+       ((> c-sharpe p-sharpe)
+        (if (strategy-immortal parent)
+            (progn
+               (format t "[DEATHMATCH] 🛡️ Parent ~a (Sharpe ~,2f) is IMMORTAL. Child ~a (Sharpe ~,2f) co-exists.~%"
+                       (strategy-name parent) p-sharpe (strategy-name child) c-sharpe)
+               :both-survive)
+            (progn
+               (format t "[DEATHMATCH] ⚔️ Child ~a (Sharpe ~,2f) KILLS Parent ~a (Sharpe ~,2f)!~%"
+                       (strategy-name child) c-sharpe (strategy-name parent) p-sharpe)
+               (kill-strategy (strategy-name parent) (format nil "Killed by Child ~a" (strategy-name child)))
+               :child-wins)))
+       
+       ;; Parent Stronger or Equal
+       (t
+        (format t "[DEATHMATCH] ⚰️ Child ~a (Sharpe ~,2f) failed to surpass Parent ~a (Sharpe ~,2f). Terminated.~%"
+                (strategy-name child) c-sharpe (strategy-name parent) p-sharpe)
+        (kill-strategy (strategy-name child) (format nil "Failed to beat Parent ~a" (strategy-name parent)))
+        :parent-wins))))
+
+;;; ============================================================================
+;;; BREEDING CYCLE CONTROLLER
+;;; ============================================================================
+
+(defun increment-strategy-ages ()
+  "Increment age of all active strategies (Daily)"
+  (dolist (s *strategy-knowledge-base*)
+    (when (eq (strategy-status s) :active)
+      (incf (strategy-age s))
+      (when (strategy-immortal s)
+        (format t "[AGE] 🛡️ Legendary ~a is Ageless (Age: ~d)~%" (strategy-name s) (strategy-age s))))))
+
+(defun cull-weak-strategies ()
+  "Cull weak strategies (Rank C/D) that are older than 5 days.
+   (Weekly Friday Close)"
+  (format t "[CULL] 🔪 Weekly Culling Initiated...~%")
+  (dolist (s *strategy-knowledge-base*)
+    (when (and (eq (strategy-status s) :active)
+               (not (strategy-immortal s))
+               (> (strategy-age s) 5))
+      ;; Check Performance (using existing Grade logic or simple Sharpe)
+      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+        (cond
+          ((< sharpe 0.0) 
+           (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe)))
+          ((and (< sharpe 0.6) (> (strategy-age s) 10))
+           (kill-strategy (strategy-name s) (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe))))))))
+
+(defun process-breeding-cycle ()
+  "Main Entry Point: Aging, Culling, and Breeding.
+   Called by Morning Ritual."
+  (format t "[EVOLUTION] 🧬 Processing Breeding Cycle...~%")
+  
+  ;; 1. Global Aging
+  (increment-strategy-ages)
+  
+  ;; 2. Culling (Fridays Only)
+  (when (should-weekly-unbench-p) ;; Reusing Monday logic? No, need Friday.
+    ;; Actually, Morning Ritual is daily. Culling usually Fri Close or Sat Morning.
+    ;; Let's do it if it's Saturday Morning.
+    (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
+      (declare (ignore s m h d mo y))
+      (when (= dow 6) ;; Saturday
+        (cull-weak-strategies))))
+  
+  ;; 3. Forced Breeding (Old Age)
+  (dolist (s *strategy-knowledge-base*)
+    (when (and (eq (strategy-status s) :active)
+               (not (strategy-immortal s))
+               (> (strategy-age s) 30))
+      (format t "[EVOLUTION] 👴 ~a reached Max Age (30). Forced Retirement/Breeding...~%" (strategy-name s))
+      ;; Logic: Breed a child, then retire parent
+      ;; For now, just Kill (Retire) to make room, assuming Breeding happens via other triggers
+      ;; Or trigger a breed event here?
+      (kill-strategy (strategy-name s) "Max Age Retirement"))))
+

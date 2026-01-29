@@ -36,7 +36,14 @@
               ((>= sharpe 0.5) (setf (strategy-rank s) :S))
               ((>= sharpe 0.3) (setf (strategy-rank s) :A))
               ((>= sharpe 0.1) (setf (strategy-rank s) :B))
-              (t (setf (strategy-rank s) :graveyard)))))))
+              (t (setf (strategy-rank s) :graveyard))))
+      
+      ;; V50.2: Auto-Immortalize Legends (Expert Panel Audit)
+      (when (eq (strategy-rank s) :legend)
+        (setf (strategy-immortal s) t)
+        ;; (format t "[LEGENDS] 🛡️ Restored Immortality to ~a~%" (strategy-name s)) ; Optional log
+        ))
+      ))
     
     ;; Physically remove graveyard ones once after processing
     (setf *strategy-knowledge-base* 
@@ -453,6 +460,7 @@
 
 (defun evaluate-strategy-performance (strat sharpe trades win-rate &optional (profit-factor 0.0))
   "Adjust strategy parameters based on backtest performance (Kodoku Standard)"
+  (let ((name (strategy-name strat)))
       ;; THE PROVING GROUNDS (Tribal Selection 2026-01-16)
       
       ;; TIER 1: DEATH (Sharpe < 0) - Soft Kill / Bench
@@ -518,4 +526,4 @@
            (let ((rr (/ (strategy-tp strat) (max 0.01 (strategy-sl strat)))))
              (when (< rr 2.0)
                (setf (strategy-tp strat) (* 1.05 (strategy-tp strat)))
-               (format t "[L] ⚙️ 🎯 ~a: Improving R:R ratio~%" name)))))))
+               (format t "[L] ⚙️ 🎯 ~a: Improving R:R ratio~%" name))))))))

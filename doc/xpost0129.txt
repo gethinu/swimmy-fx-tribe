@@ -1,0 +1,205 @@
+
+Koroush AK
+@KoroushAK
+My Breakout Trading Strategy
+I’ve longed resistance and shorted support for 9 years… This is the exact opposite of what every trader tries to do.
+In this article, I will share my entire strategy so you can skip years of testing and losses.
+
+It includes:
+Lesson 1: The Only  2 Trading Strategies
+Lesson 2: Optimal Trade Environment
+Lesson 3: Identifying Setups
+Lesson 4: Stop Loss and Take Profit
+Bonus: Further Materials
+This isn’t one of those articles that you read and forget about.
+This is something you will want to bookmark, take notes on, and set time aside to think about.
+Lesson 1: The Only 2 Trading Strategies
+Before you can identify good momentum setups, you need to understand what momentum trading actually is.
+Momentum and mean reversion are opposite strategies based on opposite assumptions.
+The Two Trading Styles
+ Momentum (where you take a trade betting on a continuation of the current trend)
+Mean Reversion (where you take a trade betting on a reversal of the current trend)
+One assumes strength continues; the other assumes strength exhausts.
+Let’s consider this through a visual example. 
+
+Suppose price is approaching a resistance level (in other words, a level where there was previously selling pressure, preventing the price from moving higher).
+Momentum assumes the level will break.
+You’re betting on continuation.
+Price approaches resistance, you buy, expecting it to push through and keep running.
+The level becomes support once broken.
+Mean reversion assumes the level will hold.
+You’re betting on rejection.
+Price approaches resistance, you short, expecting it to bounce back down.
+The level acts as a ceiling.
+Same chart. Same resistance level. Opposite strategies.
+There is no right or wrong. The key is to understand when you are in a momentum trade environment, such that momentum strategies are highly aligned.
+The next section shows you exactly how to identify when the environment favours momentum (my best strategy).
+By the way, if you want a PDF of this lesson, it's available on my Telegram, link here.
+🎓Lesson 1 Summary
+There are 2 trading styles: momentum and mean reversion
+Mean reversion bets levels will hold; momentum bets levels will break
+One is not better than the other; it depends entirely on the trade environment
+Lesson 2: Optimal Trade Environment
+Just opening a long every time price hits resistance won't make us any money.
+
+Without the right conditions, momentum dies immediately after the breakout. 
+You enter. It reverses. You're stopped out.
+That's not bad luck, that's a bad trading environment.
+🚣 The Rowing Analogy
+Imagine you’re rowing a boat.
+You either row against or with the current.
+One makes it easier to row while the other takes a lot more effort.
+Your boat, or rowing technique, didn’t change… Only your environment did.
+Trading is the same.
+Your strategy is your boat.
+Your optimal trade environment is the current.
+Now use this 3-filter checklist to ensure you only take trades where a breakout is likely (with the current).
+Filter 1: How Did Price Approach the Level?
+What you WANT:
+A slow, grinding staircase pattern approaching resistance.
+Each candle makes incremental progress.
+Higher lows are stacking up.
+Controlled, deliberate movement.
+What you DON’T want:
+A fast vertical spike into resistance.
+Price shoots up in one or two large candles.
+After a spike, buyers' strength is depleted and price typically consolidates or reverses.
+This is exhaustion, not momentum.
+The staircase pattern shows sustained buying pressure building gradually. When this breaks through resistance, buyers are still engaged and ready to push further.
+Common mistake: Traders see a strong candle break resistance and assume momentum is strong. But these fast moves often reverse quickly.
+
+→ Do this instead: Take momentum trades when price approaches resistance in a slow, grinding staircase over multiple candles.
+Real Trade Example:
+Slow clear grind into resistance showing an optimal ‘price approach to level’ for momentum. 
+
+Filter 1: slow grindy staircase ✅
+Filter 2: What Did Volume Look Like?
+Volume confirms whether the price movement has conviction behind it.
+What you WANT:
+Gradual increase in volume as price approaches resistance
+This pattern shows controlled, sustainable momentum.
+What you DON’T want:
+Flat volume (no conviction) or sudden volume spikes (exhaustion).
+Flat volume means the move lacks participation.
+Volume spikes often mark climax points where momentum exhausts.
+Decreasing volume (why would price break out of resistance now, if volume was lower than before?)
+Volume should mirror the price pattern, steady and building, not erratic.
+This strategy works because momentum continuation is most likely when participation is sustained, supply is absorbed gradually, and structure remains intact.
+Real Trade Example:
+Around the time the grindy staircase begins to emerge, we see a slow, consistent increase in volume.
+Filter 1: slow grindy staircase ✅
+Filter 2: clearly increasing volume ✅
+Lastly,
+Filter 3: Moving Average Crossovers
+This filter distinguishes trending markets (good for momentum) from choppy, indecisive markets (bad for momentum).
+
+What you WANT to see: Moving averages with minimal crossovers. This indicates a directional trend.
+What you DON’T want to see: Frequent crossovers. This signals chop and indecision.
+Fewer crossovers = cleaner trend or range = better momentum continuation.
+
+Use the 30SMMA (Smoothed Moving Average).
+✍️Quick Actionable Step:
+To add the 30SMMA on your charts:
+Search for the Smoothed Moving Average Indicator in TradingView
+Add it to your chart
+Go into settings and change the "Length" to "30"
+Real Trade Example:
+Filter 1 (Price Action): slow grindy staircase ✅
+Filter 2 (Volume): clearly increasing volume ✅
+Filter 3 (Crossovers): minimal MA crossovers ✅
+🎓Lesson 2 Summary
+Slow grinding staircase approaches have better follow-through than fast spikes
+Volume should be gradual (increasing or decreasing), not flat or spiking
+Fewer MA crossovers indicate cleaner directional conditions for momentum
+Lesson 3: Identifying Setups
+Now you know what momentum is.
+You also know the optimal conditions for it.
+Next, you need to know where to execute these trades.
+Step 1: Draw Support and Resistance Levels
+Momentum trades happen at these key levels. You need to identify them consistently.
+I've already written an in-depth masterclass on how to set these levels. I'll link it at the end of this article.
+Common mistake: Traders draw levels randomly or inconsistently, leading to missed setups or false signals. 
+
+Do this instead: Use my step-by-step approach at the end of this article.
+Step 2: Await Your Entry Trigger on the 1-Minute Chart
+Once you’ve identified a resistance level on your primary timeframe, switch to the 1-minute chart for precise entry timing. 
+Why 1-minute chart?
+
+You learn faster.
+
+More trades, more chart exposure and more oppurtunities to practice psychology.
+I’ve added a bonus guide on why you should be trading the 1-minute chart at the end of this article.
+Real Trade Example:
+Step 3: Three Filters
+Before entering, check the three filters from Section 2:
+Is price approaching resistance in a slow staircase pattern?
+Is volume gradually increasing or decreasing (not flat or spiking)?
+Are there minimal MA crossovers (not choppy)?
+If any filter fails, reduce your risk on the trade. Only take full risk on A-grade setups, not forcing trades in poor conditions.
+🎓Lesson 3 Summary
+Draw levels using the ZCT masterclass approach at the end of this article
+Use your entry trigger on the 1-minute timeframe: 2 candle closes above for confirmation
+Check all three filters before entering, allocate risk and size accordingly
+Lesson 4: Strategy Logic: Stop Loss, and Take Profit
+You've drawn your levels. You've confirmed the setup aligns with optimal momentum conditions.
+Now you need precise execution.
+Entry timing, stop placement, and profit targets determine whether you capture the momentum move or get stopped out on a good setup.
+This is where most traders lose, not in analysis, but in execution.
+Step 4: Entry Trigger
+We have established to wait for two consecutive 1-minute candles to close fully above the resistance level. This confirms the level broke and momentum is continuing.
+Critical execution detail: After the second candle closes above resistance, place a limit order AT the resistance level (now acting as support), not above it. Price often pulls back slightly after breaking out. Your limit order gets filled on the pullback without chasing.
+Common mistake: Traders wait for confirmation, then market-buy above resistance as price runs away. They enter late with a wider stop and worse risk/reward.
+
+→ Do this instead: Preset your limit order AT resistance after the second candle closes. Let price come back to you.
+Real Trade Example:
+Step 5: Stop Loss
+A swing low is:
+the lowest wick in a pullback.
+Real Trade Example:
+Your stop loss goes at the most recent swing low before the breakout.
+Common mistake: Traders place stops at the nearest swing low, even if it’s only 0.3% away, leading to frequent stop-outs from normal volatility 
+
+Do this instead: Always measure the distance of your stop loss using the ruler tool on TradingView. If it’s less than 1%, use the next swing low down.
+Step 6: Take Profit 1R (Equal Distance to Stop)
+Your take profit target is 1R, the same distance as your stop loss, but in the profit direction
+If your stop loss is 1.982% away from entry, your target is also 1.982% away, but on the upside. This gives you a 1:1 risk/reward ratio.
+Why 1R? It’s conservative and achievable. Momentum trades often hit 1R quickly because the breakout has follow-through. You’re not trying to catch the entire move, you’re taking a high-probability piece of it.
+Over time, as you get data in your journal, you can start extending your profit targets when you see how far your average winning trades go beyond 1R. This way, you’re not guessing where to take profits, but following a systematic approach.
+Real Trade Example:
+🎓Lesson 4 summary
+Enter after two 1-minute candle closes above resistance, using a limit order at prior resistance (now support) to avoid chasing price.
+Place stop losses at the most recent valid swing low, ensuring enough distance to avoid normal volatility and minor stop hunts.
+Set initial profit targets at 1R to capture high-probability momentum continuation in a repeatable, systematic way.
+Immediate Next Steps✍️:
+Read the Support and Resistance Masterclass to learn how to draw levels (shared at end of article)
+Look at 3 charts using the 3 filter checklist to identify a momentum trade environment
+Use the strategy steps to enter your trade
+Gather 30 trades using this method, journalled and reviewed against the criteria
+🎓 Final Summary
+Lesson 1: Momentum vs Mean Reversion
+Momentum trades bet that price will continue through a level, while mean reversion trades bet that a level will hold and reject price.
+Both strategies are valid, but performance depends entirely on matching the strategy to the correct trade environment.
+Understanding this distinction prevents applying breakout logic in conditions where it has no edge.
+Lesson 2: Optimal Trade Environment
+High-quality breakouts form when price approaches resistance in a slow, grinding staircase rather than fast vertical spikes.
+Volume should build gradually to confirm sustained participation, not remain flat or spike from exhaustion.
+Minimal moving average crossovers indicate cleaner directional conditions where momentum continuation is more likely.
+Lesson 3: Identifying Setups
+Momentum trades should be executed at consistently drawn support and resistance levels.
+Entries are triggered on the 1-minute chart using two consecutive candle closes above resistance for confirmation.
+All three environment filters must align before taking full risk; weaker conditions require reduced sizing or passing the trade.
+Lesson 4: Stop Loss and Take Profit
+Enter using a limit order at prior resistance (now support) after two confirmed 1-minute candle closes to avoid chasing price.
+Stop losses should be placed at the most recent valid swing low with enough distance to avoid normal volatility and minor stop hunts.
+Initial profit targets are set at 1R to capture high-probability momentum continuation in a repeatable way.
+🎓What Changes From Here
+The next time price approaches resistance, you won’t have to guess if it will break out.
+You’ll know when a breakout has real momentum, when volume confirms it, and when conditions support follow-through.
+You’ll also execute with defined entries, stops, and targets.
+That’s how this breakout strategy will help you make repeatable profits in the market.
+If this article was useful and you want access to a PDF version of it,
+Click the link here and get your free copy from the pinned message in my Telegram.
+If you made it to the end of my article, I hope you find it helpful in your trading.
+Bookmark and revisit this again to solidify the concepts.
+I'll see you for the next one.
+All the best🫡

@@ -290,9 +290,9 @@
   (let ((taleb (cl-user::generate-taleb-report)))
     (assert-true (search "Taleb" taleb) "Taleb report should contain title"))
 
-  ;; Test Graham
-  (let ((graham (cl-user::generate-graham-report)))
-    (assert-true (search "Graham" graham) "Graham report should contain title"))
+  ;; Test Graham (PG)
+  (let ((graham (cl-user::generate-pg-report)))
+    (assert-true (search "Graham" graham) "PG report should contain title"))
 
   ;; Test Naval
   (let ((naval (cl-user::generate-naval-report)))

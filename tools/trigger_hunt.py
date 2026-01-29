@@ -57,6 +57,7 @@ def get_templates(clan):
         p_fast = random.randint(10, 14)
         p_slow = random.randint(24, 28)
         p_sig = random.randint(8, 10)
+
         return [
             {
                 "logic": f"MACD_CROSS({p_fast},{p_slow},{p_sig})",
@@ -75,7 +76,14 @@ def get_templates(clan):
    :indicators '((rsi {p_rsi}))
    :entry '(< rsi 30)
    :exit '(> rsi 50)""",
-            }
+            },
+            {
+                "logic": "TURTLE_SOUP_FALSE_BREAK",
+                "code": """
+   :indicators '((donchian 20))
+   :entry '(and (> high donchian-upper) (< close donchian-upper))
+   :exit '(or (> pnl tp) (< pnl (- sl)))""",
+            },
         ]
     elif clan == "breakout":
         p_don = random.randint(18, 25)
@@ -93,7 +101,9 @@ def get_templates(clan):
 
 BASE_DIR = str(resolve_base_dir())
 TARGET_FILE = os.path.join(BASE_DIR, "src", "lisp", "school", "school-hunter.lisp")
-TEMPLATE_FILE = os.path.join(BASE_DIR, "src", "lisp", "templates", "founder.lisp.template")
+TEMPLATE_FILE = os.path.join(
+    BASE_DIR, "src", "lisp", "templates", "founder.lisp.template"
+)
 
 
 def generate_lisp_code(clan, base_timestamp):

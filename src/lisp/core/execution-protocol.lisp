@@ -16,6 +16,7 @@
 (defparameter +MSG-ACCOUNT-INFO+ "ACCOUNT_INFO") ;; Incoming
 (defparameter +MSG-HISTORY+ "HISTORY") ;; Incoming
 (defparameter +MSG-TICK+ "TICK") ;; Incoming
+(defparameter +MSG-SWAP-DATA+ "SWAP_DATA") ;; Incoming (Phase 28: Data Lake)
 
 (defun generate-uuid ()
   "Generate a pseudo-UUID v4 string."

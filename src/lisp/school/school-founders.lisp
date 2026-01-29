@@ -211,6 +211,32 @@
               (< pnl (- sl)))))
 
 ;;; ----------------------------------------------------------------------------
+;;; ----------------------------------------------------------------------------
+
+;;; 7. TURTLE SOUP (Reversion - False Breakout)
+;;; ----------------------------------------------------------------------------
+;;; Clan: Reversion (Swingers)
+;;; Source: Linda Raschke
+;;; Logic: Reversal after 20-day breakout fails.
+
+(def-founder :turtle-soup "Turtle-Soup-Gen0"
+  "Turtle Soup (False Breakout Reversion)."
+  (make-strategy 
+   :name "Turtle-Soup-Gen0"
+   :category :reversion
+   :timeframe 1440 ;; D1
+   :generation 0
+   :sl 0.0100
+   :tp 0.0200
+   :volume 0.02
+   :indicators '((donchian 20))
+   :entry '(and (> high donchian-upper)
+                 (< close donchian-upper))
+
+   :exit '(or (> pnl tp)
+              (< pnl (- sl)))))
+
+;;; ----------------------------------------------------------------------------
 ;;; HEADHUNTING PROTOCOL (Injection)
 ;;; ----------------------------------------------------------------------------
 

@@ -50,3 +50,4 @@ data/historical/
 data/memory/
 *.db
 *.sexp
+doc/memo4.txt

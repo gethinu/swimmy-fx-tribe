@@ -248,8 +248,13 @@
                              ("symbol" actual-symbol)
                              ("timeframe" timeframe)))
                    (msg (jsown:to-json payload)))
-              (send-zmq-msg msg :target :backtest)
-              (format t "[L] 📤 Sent Backtest Request (Inline Candles / TF: M~d)~%" timeframe))))))))
+              
+              ;; V8.2 FIX: Use Main Command Publisher (5556) instead of Dead 5580
+              (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+                  (progn
+                    (pzmq:send swimmy.globals:*cmd-publisher* msg)
+                    (format t "[L] 📤 Sent Backtest Request (PUB -> 5556 | TF: M~d)~%" timeframe))
+                  (format t "[L] ❌ CMD Publisher NOT BOUND. Cannot send backtest.~%")))))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)

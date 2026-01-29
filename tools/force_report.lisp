@@ -1,0 +1,6 @@
+(load "swimmy.asd")
+(ql:quickload :swimmy)
+(format t "~%--- REPORT START ---~%")
+(format t "~a" (swimmy.school::generate-evolution-report))
+(format t "~%--- REPORT END ---~%")
+(sb-ext:exit)

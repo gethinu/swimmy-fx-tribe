@@ -328,22 +328,12 @@
           (select-optimal-model history)
           (detect-regime-hmm history))
       
-        (let* ((swarm-decision (swarm-trade-decision symbol history))
-               (consensus (swarm-decision-consensus-strength swarm-decision))
-               (swarm-direction (swarm-decision-direction swarm-decision))
-               (memory-suggestion (memory-suggests-direction symbol))
-               (dual-trend (when research-analysis (getf research-analysis :dual-trend)))
-               (trend-agrees (or (null dual-trend) (not (listp dual-trend))
-                                (eq (getf dual-trend :agreement) :aligned)
-                                (eq (getf dual-trend :direction) (case swarm-direction (:BUY :UP) (:SELL :DOWN) (t :FLAT))))))
-          (setf *last-swarm-consensus* consensus)
-          (elect-leader)
-          (let ((boosted-decision (get-leader-boosted-decision swarm-decision)))
-            (setf swarm-decision boosted-decision))
+          (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
+          ;; Swarm Logic Removed (Center of gravity restored to individual strategies)
           (handler-case
               (let* ((min-consensus-to-trade 0.25)
                      (any-strong-signal nil))
-                (when (or t (> consensus min-consensus-to-trade))
+                (when t ;; Swarm Consensus removed
                   (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
                   (let ((strat-signals (collect-strategy-signals symbol history)))
                     (setf any-strong-signal (and strat-signals t))
@@ -352,7 +342,7 @@
                       ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
                       ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
                       (let* ((all-sorted 
-                              (sort (shuffle-list strat-signals)
+                              (sort (copy-list strat-signals)
                                     (lambda (a b)
                                       (let* ((name-a (getf a :strategy-name))
                                              (name-b (getf b :strategy-name))
@@ -378,7 +368,7 @@
                                   (record-clan-trade-time strat-key)
                                   (when (fboundp 'record-strategy-trade) 
                                     (record-strategy-trade top-name :trade 0))))))))))))
-            (error (e) nil)))))))
+            (error (e) nil))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING

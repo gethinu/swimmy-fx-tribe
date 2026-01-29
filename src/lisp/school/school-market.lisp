@@ -7,6 +7,9 @@
 ;;; ==========================================
 ;;; MARKET STATE DEFINITIONS (V5.0 Granular)
 ;;; ==========================================
+;;; ==========================================
+;;; MARKET STATE DEFINITIONS (V5.0 Granular)
+;;; ==========================================
 (defparameter *market-regimes* 
   '(:trend-early :trend-mature :trend-exhausted 
     :range-expansion :range-compression 
@@ -14,6 +17,8 @@
 
 (defparameter *current-regime* :unknown)
 (defparameter *volatility-regime* :normal)  ; :low, :normal, :high
+
+;; V50.2 Global Macro Matrix definitions moved to school-state.lisp (Phase 23)
 
 (defparameter *regime-history* nil)          ; Rich history with features
 (defparameter *max-regime-history* 120)      ; Keep 2 hours of data
@@ -124,6 +129,11 @@
     scores))
 
 (defun detect-market-regime ()
+  (unless (and *candle-history* (> (length *candle-history*) 60))
+    (format t "[L] ⚠️ Not enough history for regime detection. Forcing :ILLIQUID.~%")
+    (setf *current-regime* :illiquid)
+    (return-from detect-market-regime :illiquid))
+
   (when (and *candle-history* (> (length *candle-history*) 60))
     (let* ((closes (mapcar #'candle-close (subseq *candle-history* 0 60)))
            (close (first closes))
@@ -135,7 +145,9 @@
            (spread-abs-pct (abs spread-pct))
            (vol (or (calculate-price-volatility closes 20) 0.001))
            (vol-prev (or (calculate-price-volatility (subseq closes 10 30) 20) 0.001))
-           (vol-change (/ (- vol vol-prev) vol-prev))
+           (vol-change (if (> vol-prev 1.0e-6) 
+                           (/ (- vol vol-prev) vol-prev)
+                           0.0))
            (momentum-10 (/ (- close (nth 10 closes)) (nth 10 closes))))
 
       ;; 1. Determine Volatility Regime
@@ -163,6 +175,21 @@
                   (car (nth 0 sorted)) (cdr (nth 0 sorted))
                   (car (nth 1 sorted)) (cdr (nth 1 sorted)))))
       
+      ;; 3. MACRO OVERRIDE (Simons Phase 23 Logic)
+      ;; Check for Correlation Breakdown (Broken Arrow)
+      (let ((arrow-status (detect-broken-arrow))
+            (vix (get-macro-latest "VIX")))
+        
+        ;; VIX Check
+        (when (> vix 30.0)
+          (format t "[L] ⚠️ MACRO ALERT: VIX at ~a (Risk-OFF). Forcing :VOLATILE-SPIKE~%" vix)
+          (setf *current-regime* :volatile-spike))
+          
+        ;; Broken Arrow Check (US10Y/USDJPY Decoupling)
+        (when (eq arrow-status :decoupled)
+          (format t "[L] 🏹 MACRO ALERT: Broken Arrow Detected. Forcing :TREND-EXHAUSTED (Pivot Imminent)~%")
+          (setf *current-regime* :trend-exhausted)))
+
       *current-regime*)))
 
 ;;; ==========================================

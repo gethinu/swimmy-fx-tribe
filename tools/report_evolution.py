@@ -25,6 +25,7 @@ def resolve_base_dir() -> Path:
             return parent
     return here.parent
 
+
 # Configuration
 ZMQ_PORT = 5562
 BASE_DIR = str(resolve_base_dir())
@@ -64,10 +65,10 @@ def main():
     # 1. Count from Filesystem (Source of Truth)
     # V45: Use actual Tier names consistently
     count_battlefield = count_strategies("BATTLEFIELD")
-    count_training = count_strategies("training")  # lowercase
+    count_training = count_strategies("TRAINING")  # Uppercase
     count_recruits = count_strategies("INCUBATOR")
     count_graveyard = count_strategies("GRAVEYARD")
-    count_selection = count_strategies("selection")  # lowercase
+    count_selection = count_strategies("SELECTION")  # Uppercase
     count_legend = count_strategies("LEGEND")
 
     # Total Active

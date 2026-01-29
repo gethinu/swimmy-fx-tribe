@@ -104,6 +104,12 @@
       (when (fboundp 'run-metabolism)
         (run-metabolism))
     (error (e) (format t "[L] Metabolism error: ~a~%" e)))
+
+  ;; V50.2: Phase 21 - The Evolution Factory (Breeding Cycle)
+  (handler-case
+      (when (fboundp 'process-breeding-cycle)
+        (process-breeding-cycle))
+    (error (e) (format t "[L] Breeding Cycle error: ~a~%" e)))
   
   (format t "[L] ═══════════════════════════════════════~%~%"))
 

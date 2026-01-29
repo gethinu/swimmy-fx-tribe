@@ -548,6 +548,35 @@ void ExecuteCommand(string cmd) {
    else if(type == "GET_POSITIONS" || StringFind(cmd, "\"GET_POSITIONS\"") >= 0) {
       SendOpenPositions();
    }
+   else if(type == "GET_SWAP" || StringFind(cmd, "\"GET_SWAP\"") >= 0) {
+      SendSwapData();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| V30: Send Swap Data (Phase 28/29)                                 |
+//+------------------------------------------------------------------+
+void SendSwapData() {
+   if(!g_pub_connected) return;
+   
+   double swap_long = SymbolInfoDouble(_Symbol, SYMBOL_SWAP_LONG);
+   double swap_short = SymbolInfoDouble(_Symbol, SYMBOL_SWAP_SHORT);
+   
+   // Check swap mode (0=disabled, 1=points, 2=currency, 3=interests, 4=currency_margin)
+   // We will normalize to "points" roughly or just send raw and let Python handle it.
+   // Let's send raw values + mode.
+   long swap_mode = SymbolInfoInteger(_Symbol, SYMBOL_SWAP_MODE);
+   
+   // Get Spread as well
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+   
+   string json = StringFormat("{\"type\":\"SWAP_DATA\",\"symbol\":\"%s\",\"swap_long\":%.5f,\"swap_short\":%.5f,\"swap_mode\":%d,\"spread\":%d}",
+                              _Symbol, swap_long, swap_short, swap_mode, spread);
+   
+   uchar data[];
+   StringToCharArray(json, data);
+   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   LogInfo("📊 SWAP DATA sent: L=" + DoubleToString(swap_long, 2) + " S=" + DoubleToString(swap_short, 2));
 }
 
 // Helper to send ACK

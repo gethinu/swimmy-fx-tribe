@@ -159,18 +159,17 @@
           (format s "~%🌟 **Top Candidates:**~%")
           (loop for i from 0 below limit
                 for st = (nth i sorted)
-                do (let* ((rank (strategy-rank st))
-                          (st-sharpe (or (strategy-sharpe st) 0.0))
-                          ;; V49.0: Identification of high-potential A-Rank
-                          (label (cond
-                                   ((and (eq rank :A) (>= st-sharpe 0.5))
-                                    "A: READY FOR CPCV")
-                                   (rank (symbol-name rank))
-                                   (t "UNRANKED"))))
-                     (format s "- `~a` (S=~,2f, ~a)~%"
-                             (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
-                             st-sharpe
-                             label))))
+                  do (let ((rank (strategy-rank st))
+                           (st-sharpe (or (strategy-sharpe st) 0.0)))
+                       (let ((label (cond
+                                      ((and (eq rank :A) (>= st-sharpe 0.5))
+                                       "A: READY FOR CPCV")
+                                      (rank (symbol-name rank))
+                                      (t "UNRANKED"))))
+                         (format s "- `~a` (S=~,2f, ~a)~%"
+                                 (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                                 st-sharpe
+                                 label))))))
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 

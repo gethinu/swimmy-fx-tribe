@@ -1,0 +1,13 @@
+[Unit]
+Description=Swimmy Historical Data Update (Request to Guardian)
+After=network.target swimmy-guardian.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/swimmy
+ExecStartPre=/usr/bin/systemctl --user stop swimmy-guardian.service
+ExecStart=%h/swimmy/.venv/bin/python3 %h/swimmy/tools/update_history_smart.py
+ExecStartPost=/usr/bin/systemctl --user start swimmy-guardian.service
+EnvironmentFile=%h/swimmy/.env
+StandardOutput=append:%h/swimmy/logs/history_update.log
+StandardError=append:%h/swimmy/logs/history_update.log

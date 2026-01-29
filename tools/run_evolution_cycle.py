@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 import os
 import json
-import json
-import json
 import shutil
 import sys
 import subprocess
+import zmq  # Added for notification
 
 
 def run_command(cmd, description):
@@ -180,6 +179,55 @@ def run_cycle():
     print(
         "    To make this permanent in code, we need to apply the params to .lisp files."
     )
+
+    # 8. Send "Cycle Complete" Notification (Phase 21 Fix)
+    try:
+        ZMQ_PORT = 5562
+        context = zmq.Context()
+        socket = context.socket(zmq.PUSH)
+        socket.connect(f"tcp://localhost:{ZMQ_PORT}")
+
+        # Load Webhook from env (or re-load)
+        # Note: We can reuse the one from load_env() if we extracted it, but let's keep it simple.
+        # We assume notifier.py is running and we just need to push to 5562 with a generic webhook
+        # Wait, notifier.py expects "webhook" in the payload. We need to fetch it.
+        # Let's do a quick env load or rely on hardcoded/derived defaults if possible, but safely we need ENV.
+
+        def get_webhook():
+            # Basic resolution override
+            val = os.getenv("SWIMMY_DISCORD_REPORTS")
+            if val:
+                return val
+            # Try .env
+            env_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "..", ".env"
+            )
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f:
+                        if "SWIMMY_DISCORD_REPORTS" in line:
+                            return line.split("=", 1)[1].strip().strip('"')
+            return None
+
+        webhook = get_webhook()
+        if webhook:
+            payload = {
+                "embeds": [
+                    {
+                        "title": "♾️ Evolution Cycle Complete",
+                        "description": "The Super Soldier Program has finished a generation cycle.\nCheck `data/graveyard.json` for new Wisdom.",
+                        "color": 0x9B59B6,  # Purple for Wisdom/Evolution
+                        "footer": {"text": "Swimmy Evolution Engine"},
+                    }
+                ]
+            }
+            socket.send_json({"webhook": webhook, "data": payload})
+            print("✅ 'Cycle Complete' notification sent.")
+        else:
+            print("⚠️ DISCORD_REPORTS webhook not found, skipping notification.")
+
+    except Exception as e:
+        print(f"⚠️ Failed to send completion notification: {e}")
 
 
 if __name__ == "__main__":

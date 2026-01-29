@@ -161,6 +161,10 @@
                      (t
                       (swimmy.school:cache-backtest-result name metrics)
                       (swimmy.school:apply-backtest-result name metrics)
+
+                      ;; V50.2: Trigger V2 Handler (Screening/Validation)
+                      (when (fboundp 'swimmy.school::handle-v2-result)
+                           (swimmy.school::handle-v2-result full-name metrics))
                       (cond
                         (is-qual
                          (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
@@ -215,6 +219,14 @@
             (let* ((json (jsown:parse msg))
                    (type (jsown:val json "type")))
               (cond
+                ((string= type swimmy.core:+MSG-SWAP-DATA+)
+                 ;; Phase 28: Data Lake (Swap History)
+                 (format t "[DISPATCH] 📥 Received SWAP_DATA for ~a~%" (jsown:val json "symbol"))
+                 (let ((sym (jsown:val json "symbol"))
+                       (s-long (%normalize-rate (jsown:val json "swap_long")))
+                       (s-short (%normalize-rate (jsown:val json "swap_short")))
+                       (spread (%normalize-rate (jsown:val json "spread"))))
+                   (swimmy.school.scribe:scribe-record :RECORD-SWAPS sym s-long s-short spread)))
                 ((string= type swimmy.core:+MSG-TICK+)
                  (swimmy.main:update-candle (jsown:val json "bid")
                                             (jsown:val json "symbol"))
@@ -243,7 +255,9 @@
                      ((string= action "REPORT_STATUS")
                       (swimmy.school:report-active-positions))
                      ((string= action "BACKTEST_SUMMARY")
-                      (swimmy.core:notify-backtest-summary)))))
+                      (swimmy.core:notify-backtest-summary :rr))
+                     ((string= action "BACKTEST_SUMMARY_QUAL")
+                      (swimmy.core:notify-backtest-summary :qual)))))
                 ((string= type "BACKTEST_RESULT")
                  (let* ((result (jsown:val json "result"))
                         (full-name (%normalize-strategy-name (or (%json-val result '("strategy_name" "strategy-name" "name") nil)

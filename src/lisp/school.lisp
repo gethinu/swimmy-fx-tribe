@@ -73,6 +73,10 @@
   (when (fboundp 'run-rank-evaluation)
     (run-rank-evaluation))
   
+  ;; Phase 25: Start Scribe Service (I/O Isolation)
+  (when (fboundp 'swimmy.school.scribe:start-scribe)
+    (swimmy.school.scribe:start-scribe))
+  
   (format t "[SCHOOL] Swimmy School ready (Strategies Reclassified & Pools Built)~%"))
 
 (format t "[SCHOOL] 🦅 Refactored School System Loaded (Musk/Uncle Bob Edition)~%")

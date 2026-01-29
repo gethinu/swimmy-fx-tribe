@@ -29,14 +29,16 @@
 
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
-TARGET: :backtest routes to backtest service; :cmd routes to main guardian."
+   TARGET: :backtest routes to backtest service; :cmd routes to main guardian.
+   V8.2 FIX: Use Main Command Publisher (5556) for ALL traffic (Backtest 5580 is dead)."
   ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
   (sleep 0.005)
-  (if (and (eq target :backtest)
-           (boundp 'swimmy.globals:*backtest-requester*)
-           swimmy.globals:*backtest-requester*)
-      (pzmq:send swimmy.globals:*backtest-requester* msg)
-      (pzmq:send swimmy.globals:*cmd-publisher* msg)))
+  ;; Always use valid *cmd-publisher* (PUB 5556)
+  ;; *backtest-requester* (PUSH 5580) is deprecated/broken.
+  (if (and (boundp 'swimmy.globals:*cmd-publisher*)
+           swimmy.globals:*cmd-publisher*)
+      (pzmq:send swimmy.globals:*cmd-publisher* msg)
+      (format t "[ZMQ] ❌ CMD Publisher NOT BOUND. Msg dropped.~%")))
 
 (defun load-backtest-cache ()
   "Load backtest results from disk."

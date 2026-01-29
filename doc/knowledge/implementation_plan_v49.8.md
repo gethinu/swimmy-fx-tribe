@@ -551,25 +551,20 @@ graph TD
 | **P10** | **KB Pruning + SRP Fix** | **2026-01-22** |
 | **P11** | **Expert Panel Items (3/4)** | **2026-01-22** |
 | **P12** | **True CPCV Lisp-Rust** | **2026-01-22** |
+| **P24** | **Logic Integrity (Symbolic Hash)** | **2026-01-28** |
+| **P25** | **Isolation & Watchdog** | **2026-01-28** |
 
 ---
 
-## 🚀 総合ステータス: 100% 完了 (V47.12)
+## 🚀 総合ステータス: 100% 完了 (V50.5 System Hardened)
 
-### P12 Implementation Details
-- **Guardian CPCV_VALIDATE action**: CpcvRequest struct + handler in main.rs
-- **request-cpcv-validation**: Lisp→Rust ZMQ call in school-validation.lisp
-- **validate-for-s-rank-promotion**: S-RANK with CPCV validation (Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%)
+### P24 Implementation Details (Logic Integrity)
+- **Symbolic Hashing**: `school-kb.lisp` checks logic similarity (Jaccard).
+- **Highlander Rule**: Correlation > 95% triggers "Survival of the Fittest".
+- **AI Auditor**: `failure_auditor.py` (XGBoost) culls toxic patterns from Graveyard.
 
-## P11: System Hardening (v49.4) ✅ 完了 (2026-01-24)
-
-### Phase 1: Hot Reload (Gene Kim) ✅
-- [x] SIGHUP Handler in `main.lisp`
-- [x] `tools/reload.sh` Script
-- [x] Zero-Downtime Code Update
-
-### Phase 2: Regime Hard Lock (Musk) ✅
-- [x] `test-regime-lock.lisp` Verification
-- [x] Physical lock-out of Trend strategies in Range markets
-- [x] Quality Gate Integration
+### P25 Implementation Details (Resilience)
+- **Service Isolation**: `school-scribe.lisp` (Async Block I/O).
+- **Broken Arrow**: `school-watchdog.lisp` (100ms Latency Monitor).
+- **DNA Verify**: `school-integrity.lisp` (SHA256 Pre-flight).
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Swimmy Global Macro Data Fetcher (Phase 19)
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/tools/download_macro_data.py
+StandardOutput=append:/home/swimmy/swimmy/logs/macro_fetch.log
+StandardError=append:/home/swimmy/swimmy/logs/macro_fetch.log

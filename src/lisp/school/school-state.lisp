@@ -103,6 +103,26 @@
 ;; Tribe signal integration (moved to globals.lisp)
 
 ;;; ==========================================
+;;; GLOBAL MACRO STATE (Phase 19/23 - Simons)
+;;; ==========================================
+(defparameter *macro-drivers* 
+  '("DXY" "US10Y" "JP10Y" "DE10Y" "UK10Y" 
+    "VIX" "WTI" "XAU" "SPX" "NI225" "DAX" "FTSE"
+    "JXY" "EXY" "GXY")
+  "List of global macro drivers to track.")
+
+(defparameter *macro-state* (make-hash-table :test 'equal)
+  "Hash: Driver -> List of (Date . Close) history.")
+
+(defparameter *last-macro-load-time* 0)
+
+(defstruct macro-snapshot
+  timestamp
+  drivers  ; Hash of driver -> value
+  regime   ; Determined regime
+  alerts)  ; List of active alerts (e.g. Broken Arrow)
+
+;;; ==========================================
 ;;; CORRELATION & EXPOSURE MANAGEMENT
 ;;; ==========================================
 (defparameter *pair-correlations*

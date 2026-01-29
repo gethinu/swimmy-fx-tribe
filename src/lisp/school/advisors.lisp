@@ -2,7 +2,7 @@
 ;;; =======================================================
 ;;; THE ADVISOR COUNCIL (Unified Module)
 ;;; =======================================================
-;;; Taleb (Risk), Naval (Simplicity), Graham (Value)
+;;; Taleb (Risk), Naval (Simplicity), Paul Graham (Startup), Jim Simons (Quant)
 ;;; Consolidated per Musk's Order (2026-01-04)
 
 
@@ -69,40 +69,57 @@
             total-strats zombies (if candidates (subseq candidates 0 (min 5 (length candidates))) '("None")))))
 
 ;;; -------------------------------------------------------
-;;; 3. BENJAMIN GRAHAM (Value & Safety)
+;;; 3. PAUL GRAHAM (Startup & Do Things That Don't Scale)
 ;;; -------------------------------------------------------
 
-(defun generate-graham-report ()
-  "Generate Graham's Value Analysis Report."
-  (let* ((equity (if (boundp '*current-equity*) *current-equity* 100000.0))
-         (locked (if (boundp '*locked-treasury*) *locked-treasury* 0.0))
-         (pnl (if (boundp '*daily-pnl*) *daily-pnl* 0.0))
-         (margin (if (> equity 0) (/ locked equity) 0.0))
-         (safety-status (cond ((> margin 0.5) "Fortress")
-                              ((> margin 0.2) "Secure")
-                              ((> margin 0.05) "Building...")
-                              (t "Vulnerable"))))
+(defun generate-pg-report ()
+  "Generate Paul Graham's Startup Report."
+  (let* ((manual-trades (if (boundp '*manual-interventions*) *manual-interventions* 0))
+         (users (if (boundp '*active-users*) *active-users* 1)) ; Always at least 1 (You)
+         (message (if (zerop manual-trades)
+                      "Automated. Are you talking to users?"
+                      "Good. You are doing things that don't scale.")))
     
-    (format nil "💰 **Graham's Value Report**~%~
-                 - Status: ~a~%~
-                 - Current Equity: ¥~,0f~%~
-                 - Locked Treasury: ¥~,0f~%~
-                 - Margin of Safety: ~,1f%~%~
-                 - Today's PnL: ¥~,0f~%~
-                 - Message: 'Rule No.1: Never lose money. Rule No.2: Never forget Rule No.1.'"
-            safety-status equity locked (* margin 100) pnl)))
+    (format nil "🦄 **Paul Graham's Startup Report**~%~
+                 - Stage: Early Stage~%~
+                 - Users: ~d~%~
+                 - Manual Ops: ~d~%~
+                 - Message: '~a'"
+            users manual-trades message)))
 
 ;;; -------------------------------------------------------
-;;; 4. CORE ORCHESTRATOR
+;;; 4. JIM SIMONS (Quant & Patterns)
+;;; -------------------------------------------------------
+
+(defun generate-simons-report ()
+  "Generate Jim Simons' Quant Report."
+  (let* ((signal-count (if (boundp '*signal-count*) *signal-count* 0))
+         (alpha (if (boundp '*current-alpha*) *current-alpha* 0.0))
+         (win-rate (if (boundp '*global-win-rate*) *global-win-rate* 0.0))
+         (status (cond ((> win-rate 0.55) "Renaissance")
+                       ((> win-rate 0.51) "Mediocre")
+                       (t "Random Walk"))))
+    
+    (format nil "📐 **Jim Simons' Quant Report**~%~
+                 - Status: ~a~%~
+                 - Signal Count: ~d~%~
+                 - Win Rate: ~5f%~%~
+                 - Alpha: ~5f~%~
+                 - Message: 'Patterns exist, but they are faint. Don't override the models.'"
+            status signal-count (* win-rate 100) alpha)))
+
+;;; -------------------------------------------------------
+;;; 5. CORE ORCHESTRATOR
 ;;; -------------------------------------------------------
 
 (defun generate-advisor-reports ()
   "Generate and publish all advisor reports."
   (let ((taleb (if (fboundp 'generate-taleb-report) (generate-taleb-report) "Taleb: Absent"))
         (naval (if (fboundp 'generate-naval-report) (generate-naval-report) "Naval: Absent"))
-        (graham (if (fboundp 'generate-graham-report) (generate-graham-report) "Graham: Absent")))
+        (pg    (if (fboundp 'generate-pg-report) (generate-pg-report) "PG: Absent"))
+        (simons (if (fboundp 'generate-simons-report) (generate-simons-report) "Simons: Absent")))
     
-    (format nil "~a~%~%~a~%~%~a" taleb naval graham)))
+    (format nil "~a~%~%~a~%~%~a~%~%~a" taleb naval pg simons)))
 
 (defun run-advisor-council ()
   "Run the council and notify Discord."
