@@ -22,7 +22,13 @@ This workflow runs a full diagnostic on the Swimmy system. Use this when the sys
    /home/swimmy/swimmy/.agent/skills/system-audit/scripts/audit_ports.sh
    ```
 
-3. **Quick Log Scan**
+3. **Persistence Integrity Check**
+   Verify that the strategy database is accessible and populated.
+   ```bash
+   python3 -c "import sqlite3; conn = sqlite3.connect('/home/swimmy/swimmy/data/memory/swimmy.db'); print(f'Strategies in DB: {conn.execute('SELECT count(*) FROM strategies').fetchone()[0]}'); conn.close()"
+   ```
+
+4. **Quick Log Scan**
    Check for recent critical errors in Brain and Guardian logs.
    ```bash
    echo "--- BRAIN ERRORS ---"

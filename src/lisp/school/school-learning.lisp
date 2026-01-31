@@ -338,8 +338,11 @@
                  (sq-diffs (mapcar (lambda (x) (expt (- x mean) 2)) history))
                  (variance (/ (reduce #'+ sq-diffs) count))
                  (std-dev (sqrt (max 0.000001 variance))))
-            (setf (strategy-sharpe strategy) 
-                  (if (> std-dev 0) (/ mean std-dev) 0.0))))))))
+             (setf (strategy-sharpe strategy) 
+                   (if (> std-dev 0) (/ mean std-dev) 0.0))
+                   
+            ;; V50.5.1 Persistence Fix: Save metrics to DB immediately
+            (swimmy.school:upsert-strategy strategy)))))))
 
 (defun record-trade-outcome (symbol direction category strategy-name pnl &key (hit :unknown) (hold-time 0))
   "Record trade outcome for learning (both wins and losses)"

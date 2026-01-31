@@ -9,6 +9,7 @@
   :components ((:file "src/lisp/packages")
                (:file "src/lisp/packages-school")
                (:file "src/lisp/school/school-state") ; Moved to top (Dependency Fix)
+               (:file "src/lisp/school/school-agent") ; V7.9++: Agent Skills (Extracted)
                (:file "src/lisp/school/school-integrity") ; Phase 25: Integrity
                (:file "src/lisp/school/school-scribe") ; Phase 25: Isolation
                (:file "src/lisp/school/school-watchdog") ; Phase 25: Watchdog

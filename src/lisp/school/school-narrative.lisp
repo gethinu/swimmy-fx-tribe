@@ -176,6 +176,9 @@
 (defun generate-evolution-report ()
   "Generate the Evolution Factory Report (formerly Python).
    Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."
+  ;; V50.x Fix: Force sync metrics from DB to ensure Report is accurate (User Req)
+  (refresh-strategy-metrics-from-db :force t)
+  
   (let* ((all swimmy.globals:*strategy-knowledge-base*)
          ;; Filter by Rank (V47.8: Updated to use Rank System instead of Tiers)
          (s-rank (count-if (lambda (s) (eq (strategy-rank s) :S)) all))

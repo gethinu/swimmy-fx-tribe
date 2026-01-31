@@ -79,10 +79,14 @@
 (defun phase-7-report ()
   "Send report if interval passed"
   (let ((now (get-universal-time)))
-    (when (> (- now *last-report-time*) +report-interval+)
-      (setf *last-report-time* now) ;; Claim execution first
-      (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
-      (swimmy.school::notify-evolution-report))))
+    (if (> (- now *last-report-time*) +report-interval+)
+        (progn
+          (setf *last-report-time* now) ;; Claim execution first
+          (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
+          (swimmy.school::notify-evolution-report))
+        (when (= (mod now 60) 0) ;; Log every minute only
+          (format t "[CONNECTOR] ⏳ Report cooldown: ~ds remaining~%" 
+                  (- +report-interval+ (- now *last-report-time*)))))))
 
 ;; P11: KB Pruning every 6 hours (V48.0: Changed from weekly)
 (defparameter *last-prune-time* 0)
@@ -157,9 +161,37 @@
     
     ;; 9. V48.2 Expert Panel: Heartbeat 2.0 (Watcher)
     (check-notifier-health)
+    
+    ;; V50.3 Expert Panel 2: Honest Heartbeat (File Touch)
+    (update-heartbeat-file)
+
+    ;; V50.4: User Request "Cycle Complete" Notification
+    (notify-cycle-complete)
+    
     ;; V49.5: Flush stagnant notification buffers (Expert Panel)
     (swimmy.core:check-timeout-flushes)
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)
     (sleep 1)))
+
+(defun update-heartbeat-file ()
+  "Touch the heartbeat file to prove the loop is spinning."
+  (let ((path "data/heartbeat/school.tick"))
+    (ensure-directories-exist path)
+    (with-open-file (out path :direction :output :if-exists :supersede)
+      (format out "~d" (get-universal-time)))))
+
+(defparameter *last-cycle-notify-time* 0)
+(defconstant +cycle-notify-interval* 300) ; 5 Minutes (Prevent Spam)
+
+(defun notify-cycle-complete ()
+  "Notify Discord of Cycle Completion (Throttled)"
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-cycle-notify-time*) +cycle-notify-interval*)
+      (setf *last-cycle-notify-time* now)
+      (swimmy.core:queue-discord-notification 
+       swimmy.globals:*status-webhook-url*
+       "🔄 **Cycle Complete**\nSystem is healthy and processing strategies."
+       :color 10070709
+       :title "♻️ System Pulse"))))

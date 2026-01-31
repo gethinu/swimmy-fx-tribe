@@ -1,125 +1,2007 @@
-([Past chat][1])([Past chat][1])([Past chat][2])([Past chat][2])([Past chat][2])
+reports
+アプリ
+ — 0:072026年1月30日 金曜日 0:07
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-結論：**方向性はかなり良い**です。特に「構造が完璧でも、通貨エクスポージャが上限ならブロック」という“硬いゲート”は、EAが壊れる典型パターン（同一テーマに偏って積み上がる）を潰せます。
+ Knowledge Base (Active)
+2 Strategies
 
-ただし、この計画のままだと実装で事故りやすいポイントがいくつかあるので、**定義（何をExposureと呼ぶか）と計算仕様**を先に固定すると一気に堅牢になります。
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
----
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
-## 良い点（そのまま採用でOK）
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
-* **Hard-capを「通貨ごと」に置く**：USD絡みが積み上がる事故（USDJPY/ EURUSD/ GBPUSD など）を横断で止められる。
-* **Net Directional（ポートフォリオ偏り）を別ゲートにする**：通貨エクスポージャと“方向”は別物なので分けるのは正しい。
-* **テストが具体的**：USDJPY 5本→6本目ブロックは回帰テストとして強い。
+ New Recruits (24h)
+2
 
----
+ Graveyard
+345836
 
-## 要修正ポイント（ここを曖昧にするとバグる）
 
-### 1) “Exposure”の単位と定義
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
 
-最低でも下のどれで管理するか決めないと、ゲートの意味が崩れます。
 
-* **Notional（名目額）ベース**（推奨：まずはこれで良い）
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:07 JST / 15:07 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:07]2026年1月30日 金曜日 0:07
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-  * 例：USDJPY 1 lot の USD名目 = 100,000 USD（FXの契約仕様次第）
-* **マージン（必要証拠金）ベース**
-* **想定損失（ATR/ストップ距離）ベース**（本来はこれが“リスク”だが実装が重い）
+ Knowledge Base (Active)
+2 Strategies
 
-Taleb/Simonsっぽくやるなら最終的には「損失側の上限」を管理したいけど、**第一段は Notional で十分に効果**が出ます。
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
-> 重要：**基準は equity**（balance じゃなく）で統一。ゲートが一貫します。
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
----
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
-### 2) クロス通貨の扱い（USDJPY以外で破綻しがち）
+ New Recruits (24h)
+2
 
-`calculate-currency-exposure` は **ペアを2通貨に分解**して両方に計上しないとダメです。
+ Graveyard
+345836
 
-* EURJPY ロング = **+EUR / -JPY**
-* EURUSD ショート = **-EUR / +USD**
-* USDJPY ロング = **+USD / -JPY**
 
-そして各通貨エクスポージャを equity 比にするには、**基準通貨（例：口座JPY）への換算**が必要です。
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
 
-* “USDの名目額”を equity 比にするなら、USD→口座通貨へのレートで換算してから割る（もしくは最初からUSD建てequityに揃える）
 
-ここを曖昧にすると「EURJPYを積み上げてもUSDゲートが効かない」みたいな穴が出ます。
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:07 JST / 15:07 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
 
----
+reports
+アプリ
+ — 0:262026年1月30日 金曜日 0:26
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-### 3) “Net”だけでなく “Gross” も欲しい（ヘッジで無限に積める問題）
+ Knowledge Base (Active)
+47 Strategies
 
-Net exposure だけだと、
-USDJPY ロング 10本 + USDJPY ショート 10本 → net 0 で通過
-みたいな **総量（総リスク）が肥大化**します。
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
-なのでおすすめは二段：
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
-* **Gross Exposure Gate（総量）**：|+| の合計で上限
-* **Net Exposure Gate（偏り）**：符号付き合計で上限
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
-方向性としては Taleb 的にも “gross管理” はかなり効きます。
+ New Recruits (24h)
+47
 
----
+ Graveyard
+345836
 
-### 4) ゲートは「新規注文を入れた後の想定値」で判定
 
-`risk-check-all` は必ず
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
 
-* 現在のエクスポージャ
-* **+ 新規トレードで増える分**
-  を合算して判定しないと、「ギリギリを超える注文」が通ってしまいます。
 
----
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:26 JST / 15:26 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:26]2026年1月30日 金曜日 0:26
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-### 5) apply-regime-sizing の順序
+ Knowledge Base (Active)
+47 Strategies
 
-安全なのはこの順番：
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
-1. **Hard gate（通貨・gross/net・デルタ）** → 超えたら即ブロック
-2. 次に **regime sizing（縮小）**
-3. 最後に **通常のロット計算**
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
-“縮小すれば通る”を許すと、結局上限が形骸化しがちなので、**上限は絶対、regime はその内側**が安定です。
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
----
+ New Recruits (24h)
+47
 
-## 実装に入れるべき仕様（追加提案）
+ Graveyard
+345836
 
-* **対象に含めるもの**：保有ポジションだけでなく、未約定の指値/逆指値（pending）も含める（これを漏らすと簡単に上限突破する）
-* **失敗時のフェイルセーフ**：露出計算に失敗したら「通す」ではなく **ブロック**（安全側）
-* **ログ設計**：
 
-  * `exposure_snapshot`: {USD: +0.07, JPY: -0.05, ...}
-  * `gate_decision`: pass/block と理由（どの通貨がどれだけ超過）
-* **パフォーマンス**：OnTickごとに全スキャンは重いので、可能なら「取引イベントで更新」「一定間隔で再計算」などキャッシュ戦略も検討
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
 
----
 
-## テスト計画の拡張（最低これだけ足すと安心）
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:26 JST / 15:26 UTC
+[0:32]2026年1月30日 金曜日 0:32
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
 
-* **クロス通貨テスト**：EURJPY を増やした時に EUR と JPY の露出が正しく増減するか
-* **ヘッジテスト**：net 0 でも gross が上がったら止まるか（gross gate導入時）
-* **pending含むテスト**：未約定注文が露出に入ってブロックされるか
-* **換算レート欠損テスト**：レート取得不可時にフェイルセーフで止まるか
+ Knowledge Base (Active)
+47 Strategies
 
----
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
-## まとめ（採点）
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
-* 設計思想：**A（かなり良い）**
-* 実装の危険箇所：**Exposure定義 / クロス通貨 / gross管理 / 新規後判定**
-* 改修優先度：
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
-  1. 通貨分解 + 換算仕様を固定
-  2. net に加えて gross を追加
-  3. pending含める
-  4. ログとフェイルセーフ
+ New Recruits (24h)
+47
 
-この4点を入れると、MECUは「名前負けしない」実用ユニットになります。
+ Graveyard
+345836
 
-必要なら、あなたの `risk-check-all` の既存チェック順（PF/Sharpe/SL距離/同時ポジ数など）を前提に、**MECUをどこに挿すのが一番事故らないか**の“差し込み設計”まで一段具体化して書きます。
 
-[1]: https://chatgpt.com/c/695ef51b-44c4-8323-ab86-1d2105359327 "MT5 EA コーディング指南"
-[2]: https://chatgpt.com/c/696a391c-7074-832e-8766-8cc90c7b64bd "MT5 EA 分析方法"
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:32 JST / 15:32 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:33]2026年1月30日 金曜日 0:33
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:33 JST / 15:33 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+
+reports
+アプリ
+ — 0:412026年1月30日 金曜日 0:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:41 JST / 15:41 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[0:41]2026年1月30日 金曜日 0:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 00:41 JST / 15:41 UTC
+
+reports
+アプリ
+ — 1:412026年1月30日 金曜日 1:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 01:41 JST / 16:41 UTC
+[1:41]2026年1月30日 金曜日 1:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 01:41 JST / 16:41 UTC
+
+reports
+アプリ
+ — 2:412026年1月30日 金曜日 2:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 02:41 JST / 17:41 UTC
+[2:41]2026年1月30日 金曜日 2:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 02:41 JST / 17:41 UTC
+
+reports
+アプリ
+ — 3:412026年1月30日 金曜日 3:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 03:41 JST / 18:41 UTC
+[3:41]2026年1月30日 金曜日 3:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 03:41 JST / 18:41 UTC
+
+reports
+アプリ
+ — 4:412026年1月30日 金曜日 4:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 04:41 JST / 19:41 UTC
+[4:41]2026年1月30日 金曜日 4:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 04:41 JST / 19:41 UTC
+
+reports
+アプリ
+ — 5:412026年1月30日 金曜日 5:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 05:41 JST / 20:41 UTC
+[5:41]2026年1月30日 金曜日 5:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 05:41 JST / 20:41 UTC
+
+reports
+アプリ
+ — 6:412026年1月30日 金曜日 6:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 06:41 JST / 21:41 UTC
+[6:41]2026年1月30日 金曜日 6:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 06:41 JST / 21:41 UTC
+
+reports
+アプリ
+ — 7:412026年1月30日 金曜日 7:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 07:41 JST / 22:41 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[7:41]2026年1月30日 金曜日 7:41
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 07:41 JST / 22:41 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+
+reports
+アプリ
+ — 8:252026年1月30日 金曜日 8:25
+ FAST-TEST: Reports
+[8:27]2026年1月30日 金曜日 8:27
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:27 JST / 23:27 UTC
+[8:27]2026年1月30日 金曜日 8:27
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:27 JST / 23:27 UTC
+[8:28]2026年1月30日 金曜日 8:28
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:28 JST / 23:28 UTC
+[8:28]2026年1月30日 金曜日 8:28
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:28 JST / 23:28 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[8:29]2026年1月30日 金曜日 8:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:29 JST / 23:29 UTC
+[8:29]2026年1月30日 金曜日 8:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 08:29 JST / 23:29 UTC
+
+reports
+アプリ
+ — 9:292026年1月30日 金曜日 9:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 09:29 JST / 00:29 UTC
+[9:29]2026年1月30日 金曜日 9:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 09:29 JST / 00:29 UTC
+
+reports
+アプリ
+ — 10:292026年1月30日 金曜日 10:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 10:29 JST / 01:29 UTC
+[10:30]2026年1月30日 金曜日 10:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 10:29 JST / 01:29 UTC
+
+reports
+アプリ
+ — 11:292026年1月30日 金曜日 11:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 11:29 JST / 02:29 UTC
+[11:30]2026年1月30日 金曜日 11:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 11:29 JST / 02:29 UTC
+
+reports
+アプリ
+ — 12:292026年1月30日 金曜日 12:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 12:29 JST / 03:29 UTC
+[12:30]2026年1月30日 金曜日 12:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 12:30 JST / 03:30 UTC
+
+reports
+アプリ
+ — 13:292026年1月30日 金曜日 13:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 13:29 JST / 04:29 UTC
+[13:30]2026年1月30日 金曜日 13:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 13:30 JST / 04:30 UTC
+
+reports
+アプリ
+ — 14:292026年1月30日 金曜日 14:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 14:29 JST / 05:29 UTC
+[14:30]2026年1月30日 金曜日 14:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 14:30 JST / 05:30 UTC
+
+reports
+アプリ
+ — 15:292026年1月30日 金曜日 15:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 15:29 JST / 06:29 UTC
+[15:30]2026年1月30日 金曜日 15:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 15:30 JST / 06:30 UTC
+
+reports
+アプリ
+ — 16:292026年1月30日 金曜日 16:29
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 16:29 JST / 07:29 UTC
+[16:30]2026年1月30日 金曜日 16:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 16:30 JST / 07:30 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+
+reports
+アプリ
+ — 17:302026年1月30日 金曜日 17:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 17:30 JST / 08:30 UTC
+[17:30]2026年1月30日 金曜日 17:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 17:30 JST / 08:30 UTC
+
+reports
+アプリ
+ — 18:302026年1月30日 金曜日 18:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 18:29 JST / 09:29 UTC
+[18:30]2026年1月30日 金曜日 18:30
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 18:30 JST / 09:30 UTC
+
+reports
+アプリ
+ — 19:102026年1月30日 金曜日 19:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 19:10 JST / 10:10 UTC
+[19:10]2026年1月30日 金曜日 19:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+47 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+47
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Turtle-Soup-Gen0 (S=0.00, UNRANKED),
+RSI-2-Gen0 (S=0.00, UNRANKED),
+MACD-Cross-Gen0 (S=0.00, UNRANKED),
+BB-Bounce-Gen0 (S=0.00, UNRANKED),
+Donchian-Trend-Gen0 (S=0.00, UNRANKED),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 19:10 JST / 10:10 UTC
+
+reports
+アプリ
+ — 20:102026年1月30日 金曜日 20:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 20:10 JST / 11:10 UTC
+[20:10]2026年1月30日 金曜日 20:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 20:10 JST / 11:10 UTC
+
+reports
+アプリ
+ — 21:102026年1月30日 金曜日 21:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 21:10 JST / 12:10 UTC
+:fire:
+クリックしてリアクション
+:face_holding_back_tears:
+クリックしてリアクション
+:laughing:
+クリックしてリアクション
+リアクションを付ける
+返信
+転送
+その他
+[21:10]2026年1月30日 金曜日 21:10
+ Evolution Factory Report
+ Evolution Factory Report
+Current status of the autonomous strategy generation pipeline.
+
+ Knowledge Base (Active)
+2 Strategies
+
+ S-Rank (Verified Elite)
+0 (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+
+ A-Rank (Pro)
+0 (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+
+ B-Rank (Selection)
+0 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+
+ New Recruits (24h)
+2
+
+ Graveyard
+345836
+
+
+ Top Candidates:
+Legend-RSI-Reversion-V1 (S=0.00, LEGEND),
+Legend-Golden-Cross-Class (S=0.00, LEGEND),
+
+
+ System Status
+ Evolution Daemon Active
+ Native Lisp Orchestration (V28)
+01/30 21:10 JST / 12:10 UTC

@@ -31,16 +31,24 @@
         *graveyard-cache*
         (progn
           (setf *last-graveyard-load* now)
-          (setf *graveyard-cache* 
+                  (setf *graveyard-cache* 
                 (or (handler-case 
-                        (let ((rows (sqlite:execute-to-list (or *db-conn* (init-db)) 
-                                                           "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
-                          (mapcar (lambda (row) (read-from-string (first row))) rows))
+                        (let* ((pkg (find-package :swimmy.school))
+                               (rows (sqlite:execute-to-list (or *db-conn* (init-db)) 
+                                                            "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
+                          (mapcar (lambda (row)
+                                    (let ((sexp-str (first row)))
+                                      (handler-case 
+                                          (let ((*package* pkg))
+                                            (read-from-string sexp-str))
+                                        (error () nil))))
+                                  rows))
                       (error () nil))
                     (when (probe-file "data/memory/graveyard.sexp")
                       (with-open-file (stream "data/memory/graveyard.sexp" :direction :input :if-does-not-exist nil)
-                        (let ((data (read stream nil nil)))
-                          (if (and data (listp data) (listp (car data))) data (list data)))))))))))
+                        (let ((*package* (find-package :swimmy.school)))
+                          (loop for data = (handler-case (read stream nil nil) (error () nil))
+                                while data collect data))))))))))
 
 (defun is-graveyard-pattern-p (strategy)
   "Check if strategy matches a known failure pattern."

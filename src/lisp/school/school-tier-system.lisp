@@ -39,6 +39,10 @@
     (when (eq new-tier :battlefield)
       (ensure-rank strategy :veteran "Entering Battlefield")
       (format t "[SELECTOR] RANK UP: ~a is now a VETERAN!~%" (strategy-name strategy)))
+    
+    ;; V50.5.1 Persistence Fix
+    (upsert-strategy strategy)
+    
     (format t "[SELECTOR] PROMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
             (strategy-name strategy) old-tier new-tier reason)))
 
@@ -46,6 +50,10 @@
   "Demote a strategy to a lower tier."
   (let ((old-tier (strategy-tier strategy)))
     (setf (strategy-tier strategy) new-tier)
+    
+    ;; V50.5.1 Persistence Fix
+    (upsert-strategy strategy)
+    
     (format t "[SELECTOR] DEMOTE: ~a (~a -> ~a) | Reason: ~a~%" 
             (strategy-name strategy) old-tier new-tier reason)))
 

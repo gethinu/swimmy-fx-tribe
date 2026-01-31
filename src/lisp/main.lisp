@@ -113,7 +113,9 @@
              (format t "[SYSTEM] Loaded ~d candles for ~a (~a)~%" (length tf-hist) sym tf))))))
              
   ;; V9.2: Init School Strategy System (AFTER History Load for Safety Gate)
-  (swimmy.school::init-school)
+  (swimmy.school::init-db)             ; V49.8 SQL Init
+  (swimmy.school::init-knowledge-base) ; Restoration from SQL + Files
+  (swimmy.school::init-school)         ; Clan & Pool Init
   
   ;; P8: End startup mode to enable notifications
   (when (fboundp 'swimmy.school::end-startup-mode)

@@ -175,10 +175,13 @@
                   (car (nth 0 sorted)) (cdr (nth 0 sorted))
                   (car (nth 1 sorted)) (cdr (nth 1 sorted)))))
       
-      ;; 3. MACRO OVERRIDE (Simons Phase 23 Logic)
-      ;; Check for Correlation Breakdown (Broken Arrow)
+      ;; 3. MACRO x MICRO MATRIX (Phase 33: 2-Axis Detection)
+      ;; "The Market can remain irrational longer than you can remain solvent." - Keynes
+      ;; "But Price is Truth." - Simons
+      
       (let ((arrow-status (detect-broken-arrow))
-            (vix (get-macro-latest "VIX")))
+            (vix (get-macro-latest "VIX"))
+            (micro-trend-strength spread-abs-pct)) ;; 0.002 = 0.2% = Strong Trend
         
         ;; VIX Check
         (when (> vix 30.0)
@@ -187,8 +190,22 @@
           
         ;; Broken Arrow Check (US10Y/USDJPY Decoupling)
         (when (eq arrow-status :decoupled)
-          (format t "[L] 🏹 MACRO ALERT: Broken Arrow Detected. Forcing :TREND-EXHAUSTED (Pivot Imminent)~%")
-          (setf *current-regime* :trend-exhausted)))
+          (cond
+            ;; Case A: Broken Arrow + STRONG MICRO TREND (> 0.2%)
+            ;; The market is ignoring the macro disconnect. FOLLOW THE PRICE.
+            ((> micro-trend-strength 0.002)
+             (format t "[L] ⚔️ REGIME CONFLICT: Broken Arrow (Macro) vs Strong Trend (Micro).~%")
+             (format t "[L] 🛡️ DECISION: Price is Truth. IGNORING Macro override. Regime stays: ~a~%" *current-regime*)
+             ;; Ensure we don't accidentally default to a weak regime if Micro score was split
+             (unless (or (eq *current-regime* :trend-mature) (eq *current-regime* :volatile-spike))
+               (format t "[L] 🔧 UPGRADING regime to :TREND-MATURE based on price action.~%")
+               (setf *current-regime* :trend-mature)))
+
+            ;; Case B: Broken Arrow + WEAK/RANGING MICRO
+            ;; Standard "Trend Exhaustion" logic applies.
+            (t
+             (format t "[L] 🏹 MACRO ALERT: Broken Arrow + Weak Price. Forcing :TREND-EXHAUSTED~%")
+             (setf *current-regime* :trend-exhausted)))))
 
       *current-regime*)))
 

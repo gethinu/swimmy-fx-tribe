@@ -44,23 +44,27 @@
            ;; V31.0: Fetch historical swaps for more accurate PnL
            (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
 
-      (let* ((payload (jsown:new-js
-                       ("action" "BACKTEST")
-                       ("strategy" strategy-json)
-                       ("candles_file" data-file)
-                       ("data_id" (format nil "~a_FULL" actual-symbol))
-                       ("symbol" actual-symbol)
-                       ("swap_history" swaps)
-                       ("timeframe" timeframe))))
-        
+      (let* ((*print-case* :downcase) ;; Ensure symbols become "action" etc.
+             (payload `((action . "BACKTEST")
+                        (strategy . ,strategy-json) ;; strategy-json here is actually an SXP structure if we updated strategy-to-alist? NO wait.
+                        ;; strategy-to-alist returns an alist. strategy-json was (alist-to-json ...).
+                        ;; We need to CHANGE `strategy-json` variable above to be just `strategy-alist`.
+                        ;; Let's fix line 42 first.
+                        (candles_file . ,data-file)
+                        (data_id . ,(format nil "~a_FULL" actual-symbol))
+                        (symbol . ,actual-symbol)
+                        (swap_history . ,swaps)
+                        (timeframe . ,timeframe))))
+         
         ;; Add Range if present
-        (when start-ts (jsown:extend-js payload ("start_time" start-ts)))
-        (when end-ts (jsown:extend-js payload ("end_time" end-ts)))
+        (when start-ts (push `(start_time . ,start-ts) payload))
+        (when end-ts (push `(end_time . ,end-ts) payload))
 
         ;; Send
-        (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-            (pzmq:send swimmy.globals:*cmd-publisher* (jsown:to-json payload))
-            (format t "[BT-V2] ❌ CMD Publisher NOT BOUND.~%"))))))
+        (let ((msg (format nil "~s" payload)))
+          (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+              (pzmq:send swimmy.globals:*cmd-publisher* msg)
+              (format t "[BT-V2] ❌ CMD Publisher NOT BOUND.~%")))))))
 
 
 ;;; =========================================================

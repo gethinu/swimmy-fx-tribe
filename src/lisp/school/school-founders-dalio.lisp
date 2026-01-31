@@ -17,9 +17,9 @@
           :symbol "USDJPY"
           :timeframe 240 ; H4
           :direction :LONG
-          :entry-logic '((> (atr 14) (* (sma (atr 14) 100) 1.5)) ; Volatility Spike > 1.5x Normal
+          :entry '((> (atr 14) (* (sma (atr 14) 100) 1.5)) ; Volatility Spike > 1.5x Normal
                          (> close (high 20)))              ; Donchian Breakout
-          :exit-logic  '((< close (low 10)))
+          :exit  '((< close (low 10)))
           :indicators  '((atr 14) (sma 100)))))
     (add-to-kb vix-hunter "Dalio-Recruiter" :verify-logic t))
 
@@ -32,9 +32,9 @@
           :symbol "EURUSD"
           :timeframe 30
           :direction :SHORT
-          :entry-logic '((> rsi 85)          ; Extreme Overbought
+          :entry '((> rsi 85)          ; Extreme Overbought
                          (> close (bb-upper 20 2.5))) ; Outside 2.5 Sigma
-          :exit-logic  '((< rsi 50))
+          :exit  '((< rsi 50))
           :indicators  '((rsi 14) (bb 20 2.5)))))
     (add-to-kb counter-punch "Dalio-Recruiter" :verify-logic t))
 
@@ -47,10 +47,10 @@
           :symbol "GBPUSD"
           :timeframe 60
           :direction :SHORT
-          :entry-logic '((= dow 5)           ; Friday
+          :entry '((= dow 5)           ; Friday
                          (>= hour 15)        ; NY Open / London Close
                          (> rsi 60))         ; Still bullish, trap late bulls
-          :exit-logic  '((>= hour 20))       ; Close before market close
+          :exit  '((>= hour 20))       ; Close before market close
           :indicators  '((rsi 14)))))
     (add-to-kb time-bandit "Dalio-Recruiter" :verify-logic t)))
 

@@ -12,9 +12,16 @@
     (load "src/lisp/core/persistence.lisp")))
 
 (defun init-knowledge-base ()
-  "Initialize with strategies from The Great Library (Sharded Persistence)"
-  (setf *strategy-knowledge-base*
-        (swimmy.persistence:load-all-strategies))
+  "Initialize with strategies from The Great Library + SQL database."
+  (let ((file-strats (swimmy.persistence:load-all-strategies))
+        (db-strats (fetch-all-strategies-from-db)))
+    
+    ;; Merge lists, prioritizing DB records if duplicates exist (Name based)
+    (let ((kb (copy-list db-strats)))
+      (dolist (fs file-strats)
+        (unless (find (strategy-name fs) kb :key #'strategy-name :test #'string=)
+          (push fs kb)))
+      (setf *strategy-knowledge-base* kb)))
   
   ;; P8: P7 Recruit Strategies Injection DELETED - use add-to-kb
 
@@ -104,7 +111,9 @@
       (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
       
       ;; V48.0: Detect cycle completion (cursor wrapped around)
-      (let ((cycle-completed (and (> old-cursor 0) (< *backtest-cursor* old-cursor))))
+      ;; V50.9 Fix: Handle single-batch completion (old=0 -> new=0)
+      (let ((cycle-completed (or (and (> old-cursor 0) (< *backtest-cursor* old-cursor))
+                                 (and (= old-cursor 0) (= *backtest-cursor* 0) (> total 0)))))
         (format t "[L] 🧪 Batch testing ~d strategies (Round-Robin: ~d -> ~d)...~%" 
                 (length final-batch) start-idx *backtest-cursor*)
         
@@ -173,7 +182,7 @@
                 :key (lambda (s) (or (strategy-sharpe s) 0))))))
 
 ;; Auto-initialize
-(init-knowledge-base)
+;; (init-knowledge-base)
 
 ;;; ==========================================
 ;;; V7.9++: INDICATOR TYPE INFERENCE (Sharpe=-3.75 Bug Fix)

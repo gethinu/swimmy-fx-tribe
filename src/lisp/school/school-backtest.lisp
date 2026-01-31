@@ -237,43 +237,45 @@
            (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
            (large-m1 (and (numberp timeframe) (= timeframe 1) (>= len 50000)))
            (use-file (and (probe-file data-file)
-                          (not wfv-suffix)
-                          (or default-candles-p large-m1))))
+                          (not wfv-suffix))))
 
-      (let* ((strategy-alist (strategy-to-alist strat :name-suffix suffix))
-             (strategy-json (alist-to-json strategy-alist)))
+      (let* ((strategy-alist (strategy-to-alist strat :name-suffix suffix)))
         (if use-file
             (progn
-              (format t "[L] 🚀 Using Direct CSV: ~a~%" data-file)
-              (let* ((payload (jsown:new-js
-                               ("action" "BACKTEST")
-                               ("strategy" strategy-json)
-                               ("candles_file" data-file)
-                               ("symbol" actual-symbol)
-                               ("timeframe" timeframe)))
-                     (msg (jsown:to-json payload)))
-                (send-zmq-msg msg :target :backtest)))
+              (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
+              (let* ((*print-case* :downcase) ;; Ensure symbols like ACTION become "action"
+                     (payload `((action . "BACKTEST")
+                                (strategy . ,strategy-alist)
+                                (data_id . ,(format nil "~a_M1" actual-symbol))
+                                (candles_file . ,data-file)
+                                (symbol . ,actual-symbol)
+                                (timeframe . ,timeframe)))
+                     (msg (format nil "~s" payload)))
+                (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+                    (pzmq:send swimmy.globals:*cmd-publisher* msg)
+                    (format t "[L] ❌ CMD Publisher NOT BOUND.~%"))))
 
-            ;; Fallback / WFV / In-Memory (send candles inline via JSON)
+            ;; Fallback / WFV (Must send candles, but in SXP)
             (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
                                       using (hash-value v)
                                       collect (cons k v)))
-                   (aux-candles-json (alist-to-json aux-candles))
-                   (payload (jsown:new-js
-                             ("action" "BACKTEST")
-                             ("strategy" strategy-json)
-                             ("candles" (candles-to-json target-candles))
-                             ("aux_candles" aux-candles-json)
-                             ("symbol" actual-symbol)
-                             ("timeframe" timeframe)))
-                   (msg (jsown:to-json payload)))
+                   ;; Convert candles to simple struct-alists for efficiency if we must send them
+                   ;; But for now, SXP serialization of 100k structs is heavy.
+                   ;; WARNING: This path should be RARE.
+                   (*print-case* :downcase) ;; Ensure symbols like ACTION become "action"
+                   (payload `((action . "BACKTEST")
+                              (strategy . ,strategy-alist)
+                              (candles . ,(candles-to-sexp target-candles))
+                              (aux_candles . ,aux-candles)
+                              (symbol . ,actual-symbol)
+                              (timeframe . ,timeframe)))
+                   (msg (format nil "~s" payload)))
               
-              ;; V8.2 FIX: Use Main Command Publisher (5556) instead of Dead 5580
               (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
                   (progn
                     (pzmq:send swimmy.globals:*cmd-publisher* msg)
-                    (format t "[L] 📤 Sent Backtest Request (PUB -> 5556 | TF: M~d)~%" timeframe))
-                  (format t "[L] ❌ CMD Publisher NOT BOUND. Cannot send backtest.~%")))))))))
+                    (format t "[L] 📤 Sent Backtest Request (SXP -> 5556 | TF: M~d)~%" timeframe))
+                  (format t "[L] ❌ CMD Publisher NOT BOUND.~%")))))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
@@ -406,12 +408,12 @@
     ;; Register in pending table
     (setf (gethash (strategy-name new-strat) *pending-clone-checks*) new-strat)
     
-    (let ((msg (jsown:to-json 
-                 (jsown:new-js 
-                   ("action" "CHECK_CLONE")
-                   ("new_strategy" (strategy-to-json new-strat))
-                   ("existing_strategies" (evolved-strategies-to-json))
-                   ("threshold" *clone-threshold*)))))
+    (let* ((*print-case* :downcase)
+           (payload `((action . "CHECK_CLONE")
+                      (new_strategy . ,(strategy-to-alist new-strat)) ;; Use alist, assuming strategy-to-alist returns one
+                      (existing_strategies . ,(mapcar #'strategy-to-alist *evolved-strategies*))
+                      (threshold . ,*clone-threshold*)))
+           (msg (format nil "~s" payload)))
       (pzmq:send *cmd-publisher* msg))))
 
 (defun process-clone-check-result (candidate-name is-clone similar sim)

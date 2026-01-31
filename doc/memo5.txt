@@ -3,7 +3,7 @@
 Current status of the autonomous strategy generation pipeline.
 
  Knowledge Base (Active)
-48 Strategies
+3 Strategies
 
  **S-Rank (Verified Elite)**
 0 (Sharpe0.5 PF1.5 WR45% MaxDD<15% + CPCV)
@@ -15,21 +15,19 @@ Current status of the autonomous strategy generation pipeline.
 0 (Sharpe0.1 PF1.0 WR30% MaxDD<30%)
 
  New Recruits (24h)
-48
+0
 
  Graveyard
-345836
+345839
 
 
  **Top Candidates:**
-- `Turtle-Soup-Gen0` (S=0.00, UNRANKED)
-- `RSI-2-Gen0` (S=0.00, UNRANKED)
-- `MACD-Cross-Gen0` (S=0.00, UNRANKED)
-- `BB-Bounce-Gen0` (S=0.00, UNRANKED)
-- `Donchian-Trend-Gen0` (S=0.00, UNRANKED)
+- `Legend-RSI-Reversion-V1` (S=0.00, LEGEND)
+- `Legend-London-Breakout-V1` (S=0.00, LEGEND)
+- `Legend-Golden-Cross-Class` (S=0.00, LEGEND)
 
 
  System Status
  Evolution Daemon Active
  Native Lisp Orchestration (V28)
-01/29 20:07 JST / 11:07 UTC
+01/31 15:49 JST / 06:49 UTC

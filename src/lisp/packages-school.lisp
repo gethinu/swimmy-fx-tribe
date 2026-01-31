@@ -99,6 +99,7 @@
    #:update-reputation
    
    ;; Strategy Struct Accessors
+   #:strategy
    #:make-strategy
    #:strategy-name
    #:strategy-indicators

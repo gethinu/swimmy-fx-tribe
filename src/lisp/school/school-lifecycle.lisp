@@ -57,6 +57,9 @@
     ;; Sync with legacy system (if using *benched-strategies* hash)
     ;; REMOVED: Expert Panel Cleanup (Hickey) - Single Source of Truth
     
+    ;; V50.5.1 Persistence Fix
+    (upsert-strategy strategy)
+    
     (format t "[LIFECYCLE] 🧊 ~a BENCHED! Reason: ~a (Cooldown: ~dS)~%" 
             name reason *cooldown-duration*)))
 
@@ -69,6 +72,9 @@
     (setf (strategy-cooldown-until strategy) (+ (get-universal-time) (* 7 *cooldown-duration*))) 
     
     ;; REMOVED: Expert Panel Cleanup (Hickey)
+    
+    ;; V50.5.1 Persistence Fix
+    (upsert-strategy strategy)
     
     (format t "[LIFECYCLE] 💀 ~a SOFT KILLED! Reason: ~a~%" name reason)))
 
@@ -84,6 +90,9 @@
     (setf (strategy-cooldown-until strategy) 0)
     
     ;; REMOVED: Expert Panel Cleanup (Hickey)
+    
+    ;; V50.5.1 Persistence Fix
+    (upsert-strategy strategy)
     
     (format t "[LIFECYCLE] 🔥 ~a UNBENCHED! Ready for battle.~%" (strategy-name strategy))))
 

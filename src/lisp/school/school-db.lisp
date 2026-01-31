@@ -86,12 +86,18 @@
     )")
 
   ;; Indices for fast draft/selection
-  (execute-non-query "CREATE INDEX IF NOT EXISTS idx_strat_rank ON strategies(rank)")
-  (execute-non-query "CREATE INDEX IF NOT EXISTS idx_strat_sharpe ON strategies(sharpe)")
-  (execute-non-query "CREATE INDEX IF NOT EXISTS idx_strat_hash ON strategies(hash)")
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
   
-  (format t "[DB] 🗄️ SQLite tables ensured.~%"))
+  (format t "[DB] 🗄️ SQLite tables ensured.~%")
+  
+  ;; Auto-Migration Check (Phase 39 Recovery)
+  (handler-case
+      ;; Check for VALID strategies (starting with #S), ignoring legacy lists
+      (let ((count (execute-single "SELECT count(*) FROM strategies WHERE data_sexp LIKE '#S(%'")))
+        (when (< count 100) ;; If fewer than 100 valid strategies, assume migration needed
+          (format t "[DB] 🆕 Low valid strategy count (~d). Triggering data migration from file...~%" count)
+          (migrate-existing-data)))
+    (error (e) (format t "[DB] ⚠️ Auto-migration check failed: ~a~%" e))))
 
 (defun upsert-strategy (strat)
   "Save or update strategy in SQL."
@@ -207,7 +213,36 @@
   (let ((query (format nil "SELECT data_sexp FROM strategies WHERE sharpe >= ? AND rank IN (~{~a~^,~})"
                        (mapcar (lambda (r) (format nil "'~a'" r)) ranks))))
     (let ((rows (execute-to-list query min-sharpe)))
-      (mapcar (lambda (row) (read-from-string (first row))) rows))))
+      (remove-if #'null 
+                 (mapcar (lambda (row) 
+                           (let ((sexp-str (first row)))
+                             (handler-case
+                                 (let ((*package* (find-package :swimmy.school)))
+                                   (let ((obj (read-from-string sexp-str)))
+                                     (if (strategy-p obj) obj nil)))
+                               (error (e)
+                                 (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%" 
+                                         *package*
+                                         (subseq sexp-str 0 (min 30 (length sexp-str))) e)
+                                 nil))))
+                         rows)))))
+
+(defun fetch-all-strategies-from-db ()
+  "Fetch EVERY strategy from the DB, including unranked and legends."
+  (let ((rows (execute-to-list "SELECT data_sexp FROM strategies")))
+    (remove-if #'null 
+               (mapcar (lambda (row) 
+                         (let ((sexp-str (first row)))
+                           (handler-case
+                               (let ((*package* (find-package :swimmy.school)))
+                                 (let ((obj (read-from-string sexp-str)))
+                                   (if (strategy-p obj) obj nil)))
+                             (error (e)
+                               (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%" 
+                                       *package*
+                                       (subseq sexp-str 0 (min 30 (length sexp-str))) e)
+                               nil))))
+                       rows))))
 
 (defun get-db-stats ()
   "Return summary of DB contents."
@@ -216,9 +251,33 @@
     (list :strategies strat-count :trades trade-count)))
 
 (defun migrate-existing-data ()
-  "Migrate existing flat-files (ranks and graveyard) to SQLite."
-  (let ((count 0))
-    ;; 1. & 2. Migrate Ranks and evolved strategies
+  "Migrate existing flat-files (ranks, graveyard, legacy KB) to SQLite."
+  (let ((count 0)
+        (legacy-kb-path "data/knowledge_base.sexp"))
+    
+    ;; 1. Migrate Legacy Knowledge Base File (The Mother Lode)
+    (when (probe-file legacy-kb-path)
+      (format t "[DB] 🚜 Migrating ~a to SQL... (This may take a moment)~%" legacy-kb-path)
+      (with-transaction
+        (with-open-file (in legacy-kb-path :direction :input :if-does-not-exist nil)
+          (let ((*package* (find-package :swimmy.school)))
+            (loop for obj = (handler-case (read in nil :eof) 
+                                (error (e) 
+                                  (format t "[DB] ⚠️ Corrupted entry in KB: ~a~%" e) 
+                                  :error))
+                  until (eq obj :eof)
+                  do (cond
+                       ((strategy-p obj) 
+                        (upsert-strategy obj) 
+                        (incf count))
+                       ((listp obj) 
+                        ;; Handle file being a single list of strategies
+                        (dolist (item obj)
+                          (when (strategy-p item)
+                            (upsert-strategy item)
+                            (incf count)))))))))
+
+    ;; 2. Migrate In-Memory Ranks (if any)
     (with-transaction
       (when (boundp '*strategy-knowledge-base*)
         (dolist (strat *strategy-knowledge-base*)
@@ -237,7 +296,12 @@
         (with-open-file (in graveyard-path :direction :input :if-does-not-exist nil)
           (let ((g-count 0))
             (with-transaction
-              (loop for p = (read in nil :eof)
+              (loop for p = (handler-case
+                                (let ((*package* (find-package :swimmy.school)))
+                                  (read in nil :eof))
+                              (error (e)
+                                (format t "[DB] 💥 Corrupted Graveyard SEXP: ~a~%" e)
+                                :eof))
                     until (eq p :eof)
                     do (when (and p (listp p) (getf p :name))
                          (let ((g-name (format nil "GY-~a" (getf p :name))))
@@ -249,7 +313,7 @@
                               "INSERT OR REPLACE INTO strategies (name, rank, hash, data_sexp) VALUES (?, ?, ?, ?)"
                               g-name ":GRAVEYARD" hash (format nil "~s" p))
                              (incf g-count))))))
-            (format t "[DB] 🪦 Migrated ~d graveyard patterns to SQL.~%" g-count)))))
+            (format t "[DB] 🪦 Migrated ~d graveyard patterns to SQL.~%" g-count))))))
     count))
 
 ;; Graceful shutdown hook
@@ -295,4 +359,4 @@
                 (list :t (first row) :sl (second row) :ss (third row)))
               rows))))
 
-(init-db)
+;; (init-db) ; Moved to initialize-system in main.lisp for bootstrap safety.

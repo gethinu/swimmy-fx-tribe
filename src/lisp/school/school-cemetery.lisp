@@ -31,6 +31,7 @@
         (unless (eq (strategy-rank strat) :GRAVEYARD)
           (format t "[CEMETERY] 🚫 BANNED: ~a matches graveyard pattern!~%" (strategy-name strat))
           (setf (strategy-rank strat) :GRAVEYARD)
+          (upsert-strategy strat) ;; V50.5.1 Fix
           (incf banned-count))))
           
     (when (> banned-count 0)
@@ -49,7 +50,10 @@
                (dolist (row rows)
                  (let* ((name (first row))
                         ;; V49.8: Data S-Exp might be large, handler-case for safety
-                        (strat (handler-case (read-from-string (second row)) (error () nil))))
+                        (strat (handler-case 
+                                   (let ((*package* (find-package :swimmy.school)))
+                                     (read-from-string (second row)))
+                                 (error () nil))))
                    (if (and strat (strategy-p strat))
                        (let ((hash (calculate-strategy-hash strat)))
                          (execute-non-query "UPDATE strategies SET hash = ? WHERE name = ?" hash name))

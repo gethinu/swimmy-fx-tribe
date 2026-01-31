@@ -449,6 +449,10 @@
                 (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
                 (strategy-trades strat) (getf metrics :trades 0)
                 (strategy-max-dd strat) (float (getf metrics :max-dd 0.0)))
+          ;; DEBUG V50.5.1
+          (let ((s (strategy-sharpe strat)))
+            (when (zerop s)
+               (format t "[DB] ⚠️ Appplying Metrics for ~a: Sharpe is zero! Metrics: ~a~%" name metrics)))
           (upsert-strategy strat)
           ;; Trigger Phase 1 Evaluation if currently unranked
           (when (null (strategy-rank strat))

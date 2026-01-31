@@ -43,27 +43,38 @@
   (format t "[LIB] 📚 Library initialized at ~a~%" *library-path*))
 
 (defun save-strategy (strategy-obj)
-  "Save a strategy object to a file"
-  ;; We rely on the strategy object having accessible slots (using accessors from swimmy.school)
-  ;; However, to avoid circular dependencies, we might need to be passed the slot values or a property list.
-  ;; Better: We assume this package is used by swimmy.school, so we can't depend on swimmy.school here easily.
-  ;; Strategy 2: Pass a PLIST or STRUCTURE-OBJECT generic print.
+  "Save a strategy object to a file ATOMICALLY (Expert Panel 2).
+   Writes to .tmp first, then renames to prevent corruption."
   
   (let* ((name (slot-value strategy-obj 'swimmy.school::name))
          (tier (slot-value strategy-obj 'swimmy.school::tier))
-         (path (get-strategy-path name tier)))
+         (path (get-strategy-path name tier))
+         (temp-path (merge-pathnames (format nil "~a.tmp" (pathname-name path)) path)))
+    
     (ensure-directories-exist path)
-    (with-open-file (out path :direction :output :if-exists :supersede)
+    
+    ;; 1. Write to Temp File
+    (with-open-file (out temp-path :direction :output :if-exists :supersede)
       (with-standard-io-syntax
         (let ((*print-readably* t)
               (*print-pretty* t))
           (write strategy-obj :stream out))))
-    (format t "[LIB] 💾 Saved ~a to ~a~%" name path)))
+    
+    ;; 2. Atomic Rename
+    (rename-file temp-path path)
+    
+    (format t "[LIB] 💾 Saved ~a to ~a (Atomic)~%" name path)))
 
 (defun load-strategy (path)
+  "Load a strategy with package protection (Expert Panel 2026-01-30)."
   (with-open-file (in path)
     (with-standard-io-syntax
-      (read in))))
+      (let ((*package* (find-package :swimmy.school)))
+        (handler-case
+            (read in)
+          (error (e)
+            (format t "[PERSISTENCE] ⚠️ Failed to read strategy from ~a: ~a~%" path e)
+            nil))))))
 
 (defun load-all-strategies ()
   "Load all strategies from the library"
