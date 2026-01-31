@@ -185,6 +185,7 @@
    #:make-trade-prediction
    #:trade-prediction-symbol
    #:trade-prediction-confidence
+   #:summarize-status-prediction
    
    ;; Danger/Risk
    #:danger-cooldown-active-p

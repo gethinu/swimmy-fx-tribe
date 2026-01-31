@@ -37,14 +37,25 @@
                         ((< tick-age 60) "🟢 LIVE")
                         ((< tick-age 300) "🟡 Delayed")
                         (t "🔴 OFFLINE")))
-         ;; Strategy counts
-         (active-count (if (boundp 'swimmy.globals::*evolved-strategies*)
-                           (length swimmy.globals::*evolved-strategies*) 0))
-         (kb-count (if (boundp 'swimmy.globals::*strategy-knowledge-base*)
-                       (length swimmy.globals::*strategy-knowledge-base*) 0))
-         ;; Single Source of Truth (Hickey Cleanup)
-         (benched-count (if (fboundp 'swimmy.school::count-benched-strategies)
-                            (swimmy.school:count-benched-strategies)
+         ;; Strategy counts (prefer KB as single source of truth)
+         (strategy-source (cond
+                            ((boundp 'swimmy.globals::*strategy-knowledge-base*)
+                             swimmy.globals::*strategy-knowledge-base*)
+                            ((boundp 'swimmy.globals::*evolved-strategies*)
+                             swimmy.globals::*evolved-strategies*)
+                            (t nil)))
+         (kb-count (if strategy-source (length strategy-source) 0))
+         (active-count (if strategy-source
+                           (count-if (lambda (s)
+                                       (let ((status (swimmy.school:strategy-status s)))
+                                         (or (null status)
+                                             (eq status :active))))
+                                     strategy-source)
+                           0))
+         (benched-count (if strategy-source
+                            (count-if (lambda (s)
+                                        (eq (swimmy.school:strategy-status s) :benched))
+                                      strategy-source)
                             0))
          ;; Equity
          (equity (if (boundp 'swimmy.globals::*current-equity*)

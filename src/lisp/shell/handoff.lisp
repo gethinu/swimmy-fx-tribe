@@ -203,12 +203,15 @@
    Includes Regime (Soros), Volatility (Taleb), and Category-based S-Rank monitoring."
   (let* ((now (get-universal-time))
          (last-time (gethash symbol *last-status-notification-time* 0)))
-    (when (> (- now last-time) *status-notification-interval*)
+    (when (and (> (- now last-time) *status-notification-interval*)
+               (fx-market-open-p now))
       (let* ((regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
              (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
-             (pred (if (boundp '*last-prediction*) (symbol-value '*last-prediction*) "HOLD"))
-             (conf (if (and (boundp '*last-confidence*) (symbol-value '*last-confidence*)) (symbol-value '*last-confidence*) 0.5))
              (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
+             (pred :hold)
+             (conf 0.0))
+        (multiple-value-setq (pred conf)
+          (swimmy.school:summarize-status-prediction symbol))
              
              ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
              ;; 3 Directions x 6 TFs = 18 possible categories per symbol
@@ -241,9 +244,20 @@
 
 ⚔️ **配置中の精鋭戦略 (S-Rank Watchers):**
 ~{~a~^~%~}"
-                  symbol bid regime vol pred (* 100 conf) danger 
+                  symbol bid regime vol (string-upcase (symbol-name pred)) (* 100 conf) danger 
                   (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
           :color swimmy.core:+color-status+)
         (setf (gethash symbol *last-status-notification-time*) now)))))
+
+(defun fx-market-open-p (&optional (timestamp (get-universal-time)))
+  "Return T when FX market is open (weekend close based on UTC)."
+  (multiple-value-bind (_sec _min hour _day _month _year dow)
+      (decode-universal-time timestamp 0)
+    (declare (ignore _sec _min _day _month _year))
+    (cond
+      ((= dow 6) nil)               ; Saturday
+      ((and (= dow 5) (>= hour 22)) nil) ; Friday 22:00 UTC onward
+      ((and (= dow 0) (< hour 22)) nil)  ; Sunday before 22:00 UTC
+      (t t))))
 
 (format t "[SHELL] handoff.lisp loaded~%")

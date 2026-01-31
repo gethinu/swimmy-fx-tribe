@@ -112,7 +112,7 @@
               (list :active-session (not (null active-session)) :session session)))))
 
 ;;; V18: Simplified main prediction function (Hickey: reduce complexity)
-(defun predict-trade-outcome (symbol direction)
+(defun predict-trade-outcome (symbol direction &key (record t))
   "Predict whether a trade will be profitable - V18: Refactored"
   (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
          (factors nil)
@@ -169,11 +169,35 @@
       (format t "[L] 🔮 PREDICTION: ~a ~a → ~a (~,0f% confidence)~%"
               direction symbol predicted-outcome (* 100 confidence))
       
-      (push prediction *prediction-history*)
-      (when (> (length *prediction-history*) 100)
-        (setf *prediction-history* (subseq *prediction-history* 0 100)))
+      (when record
+        (push prediction *prediction-history*)
+        (when (> (length *prediction-history*) 100)
+          (setf *prediction-history* (subseq *prediction-history* 0 100))))
       
       prediction)))
+
+(defun summarize-status-prediction (symbol)
+  "Summarize prediction intent for status reports.
+Returns (values action confidence reason), where action is :buy/:sell/:hold."
+  (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
+         (min-confidence *prediction-min-confidence*))
+    (if (or (null history) (<= (length history) 50))
+        (values :hold 0.0 :insufficient-history)
+        (let* ((buy (predict-trade-outcome symbol :buy :record nil))
+               (sell (predict-trade-outcome symbol :sell :record nil))
+               (buy-conf (trade-prediction-confidence buy))
+               (sell-conf (trade-prediction-confidence sell))
+               (buy-win (eq (trade-prediction-predicted-outcome buy) :win))
+               (sell-win (eq (trade-prediction-predicted-outcome sell) :win))
+               (best-conf (max buy-conf sell-conf)))
+          (cond
+            ((and buy-win (>= buy-conf min-confidence)
+                  (or (not sell-win) (>= buy-conf sell-conf)))
+             (values :buy buy-conf :ok))
+            ((and sell-win (>= sell-conf min-confidence))
+             (values :sell sell-conf :ok))
+            (t
+             (values :hold best-conf :low-confidence)))))))
 
 (defun get-predicted-win-rate ()
   "Get recent prediction win rate"
