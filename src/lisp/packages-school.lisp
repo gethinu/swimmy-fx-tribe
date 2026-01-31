@@ -112,6 +112,8 @@
    #:strategy-win-rate
    #:strategy-trades
    #:strategy-max-dd
+   #:strategy-status
+   #:strategy-status-reason
    #:strategy-benched-p
    #:strategy-symbol
    #:strategy-direction
