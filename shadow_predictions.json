@@ -1,7 +1,7 @@
 {
   "records": [
     {
-      "timestamp": "2026-01-25T14:21:56.442137907+00:00",
+      "timestamp": "2026-01-29T08:34:40.086099281+00:00",
       "symbol": "USDJPY",
       "ensemble_action": 0,
       "actual_action": 1,
@@ -11,7 +11,7 @@
       "pnl_actual": null
     },
     {
-      "timestamp": "2026-01-25T14:21:56.442355743+00:00",
+      "timestamp": "2026-01-29T08:34:40.086282367+00:00",
       "symbol": "USDJPY",
       "ensemble_action": 0,
       "actual_action": 0,

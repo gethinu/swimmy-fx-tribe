@@ -72,6 +72,10 @@ impl StrategyParams {
             filter_tf: String::new(),
             filter_period: 0,
             filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
         }
     }
 }
@@ -224,7 +228,7 @@ impl MctsSearch {
     #[allow(dead_code)]
     fn simulate(&self, params: &StrategyParams, candles: &[Candle]) -> f64 {
         let strat = params.to_strategy("MCTS-Sim");
-        let result = run_backtest(&strat, candles, &HashMap::new());
+        let result = run_backtest(&strat, candles, &HashMap::new(), &[]);
         
         // Calculate composite score
         let score = CompositeScore::calculate(
@@ -264,7 +268,7 @@ impl MctsSearch {
                 
                 // Simulate (now self is not borrowed mutably)
                 let strat = child_params.to_strategy("MCTS-Sim");
-                let result = run_backtest(&strat, candles, &HashMap::new());
+                let result = run_backtest(&strat, candles, &HashMap::new(), &[]);
                 let score = CompositeScore::calculate(
                     result.sharpe, result.win_rate, 1.0 + result.sharpe.max(0.0),
                     result.max_drawdown, result.trades as u32
@@ -284,7 +288,7 @@ impl MctsSearch {
                 
                 // Simulate
                 let strat = child_params.to_strategy("MCTS-Sim");
-                let result = run_backtest(&strat, candles, &HashMap::new());
+                let result = run_backtest(&strat, candles, &HashMap::new(), &[]);
                 let score = CompositeScore::calculate(
                     result.sharpe, result.win_rate, 1.0 + result.sharpe.max(0.0),
                     result.max_drawdown, result.trades as u32
@@ -344,7 +348,7 @@ pub fn optimize_strategy(
     
     // Get final composite score
     let strat = best_params.to_strategy("MCTS-Optimized");
-    let result = run_backtest(&strat, candles, &HashMap::new());
+    let result = run_backtest(&strat, candles, &HashMap::new(), &[]);
     let score = CompositeScore::calculate(
         result.sharpe,
         result.win_rate,

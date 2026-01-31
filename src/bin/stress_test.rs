@@ -9,7 +9,11 @@ fn main() {
     let socket = ctx.socket(zmq::PUSH).unwrap();
     
     // Brain Binds *:5555, so we Connect to localhost:5555
-    let endpoint = "tcp://127.0.0.1:5555";
+    let port = std::env::var("SWIMMY_PORT_SENSORY")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(5555);
+    let endpoint = format!("tcp://127.0.0.1:{}", port);
     println!("Connecting to {}...", endpoint);
     socket.connect(endpoint).expect("Failed to connect to Brain");
 

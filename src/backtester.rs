@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::error::Error;
+use crate::strategy_ast::{StrategyNode, EvalContext}; // Phase 23: AST Integration
 
 // Internal struct for CSV parsing (matches file header)
 #[derive(Debug, Deserialize)]
@@ -52,6 +53,16 @@ pub struct Candle {
     pub close: f64,
     #[serde(rename = "v", default)]
     pub volume: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SwapRecord {
+    #[serde(rename = "t")]
+    pub timestamp: i64,
+    #[serde(rename = "sl")]
+    pub swap_long: f64,
+    #[serde(rename = "ss")]
+    pub swap_short: f64,
 }
 
 // V6.11: Indicator type for multi-strategy backtesting
@@ -115,6 +126,16 @@ pub struct Strategy {
     pub filter_period: usize,   // e.g. 200 (SMA200)
     #[serde(default)]
     pub filter_logic: String,   // e.g. "PRICE_ABOVE_SMA"
+
+    // Phase 23: AST-based Logic (Simons/PG)
+    #[serde(default)]
+    pub entry_long_ast: Option<StrategyNode>,
+    #[serde(default)]
+    pub entry_short_ast: Option<StrategyNode>,
+    #[serde(default)]
+    pub exit_long_ast: Option<StrategyNode>,
+    #[serde(default)]
+    pub exit_short_ast: Option<StrategyNode>,
 }
 
 #[derive(Debug, Serialize)]
@@ -431,7 +452,8 @@ enum Position {
 /// Run backtest on given strategy and candles
 /// V6.11: Now supports multiple indicator types (SMA/RSI/BB/MACD/Stoch)
 /// V9.0: MTF Support with aux_candles
-pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashMap<String, Vec<Candle>>) -> BacktestResult {
+/// V31.0: Swap Integration
+pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashMap<String, Vec<Candle>>, swap_history: &[SwapRecord]) -> BacktestResult {
     // V6.11: Minimum bars depends on indicator type
     let min_bars = match strategy.indicator_type {
         IndicatorType::Sma | IndicatorType::Ema => strategy.sma_long.max(strategy.sma_short) + 2,
@@ -456,6 +478,7 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
     let mut daily_pnl: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
     
     let mut position = Position::None;
+    let mut entry_time = 0;
     let mut trades = 0;
     let mut wins = 0;
     let mut losses = 0;
@@ -476,6 +499,27 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
          None
     };
 
+    // Phase 23: Pre-calculate columnar data if AST is present
+    let (ast_closes, ast_opens, ast_highs, ast_lows, ast_volumes) = 
+        if strategy.entry_long_ast.is_some() || strategy.entry_short_ast.is_some() {
+            let n = candles.len();
+            let mut c = Vec::with_capacity(n);
+            let mut o = Vec::with_capacity(n);
+            let mut h = Vec::with_capacity(n);
+            let mut l = Vec::with_capacity(n);
+            let mut v = Vec::with_capacity(n);
+            for candle in candles {
+                c.push(candle.close);
+                o.push(candle.open);
+                h.push(candle.high);
+                l.push(candle.low);
+                v.push(candle.volume);
+            }
+            (Some(c), Some(o), Some(h), Some(l), Some(v))
+        } else {
+            (None, None, None, None, None)
+        };
+
     // First pass: Calculate PnL and populate daily_pnl
     let total_candles = candles.len();
     for i in min_bars..total_candles {
@@ -490,26 +534,45 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
         let day_idx = timestamp / 86400; // Unix timestamp to day index
 
         // V6.11: Generate entry/exit signals based on indicator type
-        let (buy_signal, sell_signal, exit_long, exit_short) = match strategy.indicator_type {
-            IndicatorType::Sma | IndicatorType::Ema => generate_sma_signals(candles, strategy, i),
-            IndicatorType::Rsi => generate_rsi_signals(candles, strategy, i),
-            IndicatorType::Bb => generate_bb_signals(candles, strategy, i, price),
-            IndicatorType::Macd => {
-                // Optimized O(1) Access
-                if let Some((macd_vec, sig_vec, _)) = macd_data.as_ref() {
-                    let macd_line = macd_vec[i];
-                    let signal = sig_vec[i];
-                    let prev_macd = macd_vec[i-1];
-                    let prev_signal = sig_vec[i-1];
-                    
-                    let buy = prev_macd < prev_signal && macd_line > signal;
-                    let sell = prev_macd > prev_signal && macd_line < signal;
-                    (buy, sell, sell, buy)
-                } else {
-                    (false, false, false, false)
-                }
-            },
-            IndicatorType::Stoch => generate_stoch_signals(candles, strategy, i),
+        // Phase 23: Check for AST first
+        let (buy_signal, sell_signal, exit_long, exit_short) = if let (Some(c), Some(o), Some(h), Some(l), Some(v)) = (&ast_closes, &ast_opens, &ast_highs, &ast_lows, &ast_volumes) {
+             let ctx = EvalContext {
+                closes: c, 
+                opens: o, 
+                highs: h, 
+                lows: l, 
+                volumes: v, 
+                index: i 
+             };
+             
+             let buy = strategy.entry_long_ast.as_ref().map(|ast| ast.eval_bool(&ctx)).unwrap_or(false);
+             let sell = strategy.entry_short_ast.as_ref().map(|ast| ast.eval_bool(&ctx)).unwrap_or(false);
+             let ex_long = strategy.exit_long_ast.as_ref().map(|ast| ast.eval_bool(&ctx)).unwrap_or(false);
+             let ex_short = strategy.exit_short_ast.as_ref().map(|ast| ast.eval_bool(&ctx)).unwrap_or(false);
+             
+             (buy, sell, ex_long, ex_short)
+        } else {
+             match strategy.indicator_type {
+                IndicatorType::Sma | IndicatorType::Ema => generate_sma_signals(candles, strategy, i),
+                IndicatorType::Rsi => generate_rsi_signals(candles, strategy, i),
+                IndicatorType::Bb => generate_bb_signals(candles, strategy, i, price),
+                IndicatorType::Macd => {
+                    // Optimized O(1) Access
+                    if let Some((macd_vec, sig_vec, _)) = macd_data.as_ref() {
+                        let macd_line = macd_vec[i];
+                        let signal = sig_vec[i];
+                        let prev_macd = macd_vec[i-1];
+                        let prev_signal = sig_vec[i-1];
+                        
+                        let buy = prev_macd < prev_signal && macd_line > signal;
+                        let sell = prev_macd > prev_signal && macd_line < signal;
+                        (buy, sell, sell, buy)
+                    } else {
+                        (false, false, false, false)
+                    }
+                },
+                IndicatorType::Stoch => generate_stoch_signals(candles, strategy, i),
+            }
         };
         
         // Initialize daily PnL for this day if not exists (to ensure we capture 0 PnL days later properly if we iterate candles)
@@ -523,6 +586,11 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                 let exit = price <= sl || price >= tp || exit_long;
                 if exit {
                     trade_pnl = (price - SLIPPAGE) - entry;
+                    
+                    // V31.0: Apply Swap (Long)
+                    let swap_points = calculate_swap(entry_time, timestamp, true, swap_history);
+                    trade_pnl += swap_points;
+
                     pnl += trade_pnl;
                     trades += 1;
                     if trade_pnl > 0.0 { 
@@ -550,6 +618,11 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                 let exit = price >= sl || price <= tp || exit_short;
                 if exit {
                     trade_pnl = entry - (price + SLIPPAGE);
+
+                    // V31.0: Apply Swap (Short)
+                    let swap_points = calculate_swap(entry_time, timestamp, false, swap_history);
+                    trade_pnl += swap_points;
+
                     pnl += trade_pnl;
                     trades += 1;
                     if trade_pnl > 0.0 { 
@@ -591,6 +664,7 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                     sl: entry_price - strategy.sl,
                     tp: entry_price + strategy.tp,
                 };
+                entry_time = timestamp;
             } else if sell_signal {
                 let entry_price = price - SLIPPAGE;
                 position = Position::Short {
@@ -598,6 +672,7 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                     sl: entry_price + strategy.sl,
                     tp: entry_price - strategy.tp,
                 };
+                entry_time = timestamp;
             }
          } // End filter_passed
         }
@@ -828,6 +903,7 @@ pub fn walk_forward_validate(
     strategy: &Strategy,
     candles: &[Candle],
     aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
     n_windows: usize,
     train_pct: f64,  // e.g., 0.7 = 70% train, 30% test per window
 ) -> WalkForwardResult {
@@ -853,8 +929,8 @@ pub fn walk_forward_validate(
         let test_data = &window_data[train_end..];
         
         // Backtest on both
-        let train_result = run_backtest(strategy, train_data, aux_candles);
-        let test_result = run_backtest(strategy, test_data, aux_candles);
+        let train_result = run_backtest(strategy, train_data, aux_candles, swap_history);
+        let test_result = run_backtest(strategy, test_data, aux_candles, swap_history);
         
         is_sharpes.push(train_result.adjusted_sharpe);
         oos_sharpes.push(test_result.adjusted_sharpe);
@@ -958,17 +1034,17 @@ mod tests {
     #[test]
     fn test_clone_detection() {
         let existing = vec![
-            Strategy { name: "s1".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new() },
+            Strategy { name: "s1".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None },
         ];
         
         // Almost identical - should be clone
-        let clone = Strategy { name: "s2".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new() };
+        let clone = Strategy { name: "s2".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None };
         let (is_clone, _, sim) = check_clone(&clone, &existing, 0.99);
         assert!(is_clone);
         assert!(sim > 0.99);
         
         // Different - should not be clone
-        let different = Strategy { name: "s3".to_string(), sma_short: 50, sma_long: 200, sl: 0.5, tp: 1.0, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new() };
+        let different = Strategy { name: "s3".to_string(), sma_short: 50, sma_long: 200, sl: 0.5, tp: 1.0, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None };
         let (is_clone2, _, _) = check_clone(&different, &existing, 0.99);
         assert!(!is_clone2);
     }
@@ -1020,6 +1096,10 @@ mod tests {
             filter_tf: String::new(),
             filter_period: 0,
             filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
         };
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new());
@@ -1053,6 +1133,10 @@ mod tests {
             filter_tf: String::new(),
             filter_period: 0,
             filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
         };
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new());
@@ -1125,4 +1209,32 @@ pub fn resample_candles(candles: &[Candle], tf_seconds: i64) -> Vec<Candle> {
     }
     
     resampled
+}
+
+pub fn calculate_swap(entry_time: i64, exit_time: i64, is_long: bool, swap_history: &[SwapRecord]) -> f64 {
+    if swap_history.is_empty() { return 0.0; }
+    
+    let mut total_swap = 0.0;
+    // Rollover occurs at 00:00 server time. 
+    // We calculate how many rollover events occurred between entry and exit.
+    let entry_day = entry_time / 86400;
+    let exit_day = exit_time / 86400;
+    let days = exit_day - entry_day;
+    
+    if days > 0 {
+        // Find the most recent swap rate at exit_time
+        let mut best_swap = 0.0;
+        let mut latest_ts = -1;
+        
+        for record in swap_history {
+            if record.timestamp <= exit_time && record.timestamp > latest_ts {
+                latest_ts = record.timestamp;
+                best_swap = if is_long { record.swap_long } else { record.swap_short };
+            }
+        }
+        
+        total_swap = best_swap * (days as f64);
+    }
+    
+    total_swap
 }

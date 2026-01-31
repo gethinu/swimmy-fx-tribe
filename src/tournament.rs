@@ -89,9 +89,14 @@ pub fn parallel_backtest(
                     filter_tf: String::new(),
                     filter_period: 0,
                     filter_logic: String::new(),
+                    entry_long_ast: None,
+                    entry_short_ast: None,
+                    exit_long_ast: None,
+                    exit_short_ast: None,
                 },
                 candles,
                 &HashMap::new(),
+                &[],
             );
             (strat.name.clone(), result)
         })
@@ -117,9 +122,14 @@ fn run_match(
             filter_tf: String::new(),
             filter_period: 0,
             filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
         },
         candles,
         &HashMap::new(),
+        &[],
     );
     let result_b = crate::backtester::run_backtest(
         &crate::backtester::Strategy {
@@ -134,9 +144,14 @@ fn run_match(
             filter_tf: String::new(),
             filter_period: 0,
             filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
         },
         candles,
         &HashMap::new(),
+        &[],
     );
     (result_a.sharpe, result_b.sharpe)
 }

@@ -9,6 +9,7 @@
 // ============================================================================
 
 use crate::backtester::BacktestResult;
+use crate::strategy_ast::StrategyNode; // Phase 23
 use rayon::prelude::*;
 
 /// Default number of blocks to divide data into (Expert Panel V48.2)
@@ -217,10 +218,15 @@ fn run_backtest_range(
         filter_tf: String::new(),
         filter_period: 0,
         filter_logic: String::new(),
+        // Phase 23: AST deserialization
+        entry_long_ast: strategy_params.get("entry_long_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
+        entry_short_ast: strategy_params.get("entry_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
+        exit_long_ast: strategy_params.get("exit_long_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
+        exit_short_ast: strategy_params.get("exit_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
     };
     
     // Run backtest on the range
-    let result = run_backtest(&strategy, &range_candles, &std::collections::HashMap::new());
+    let result = run_backtest(&strategy, &range_candles, &std::collections::HashMap::new(), &[]);
     
     Ok(result)
 }
@@ -236,10 +242,21 @@ fn calculate_aggregate(results: &[CpcvPathResult]) -> CpcvAggregateResult {
     let mut wrs: Vec<f64> = results.iter().map(|r| r.win_rate).collect();
     let mut dds: Vec<f64> = results.iter().map(|r| r.max_dd).collect();
     
-    sharpes.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    pfs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    wrs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    dds.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // V50.2: Fix panic sort_by (Total Ordering for NaN)
+    let float_cmp = |a: &f64, b: &f64| {
+        if a.is_nan() {
+            std::cmp::Ordering::Greater // Move NaNs to end
+        } else if b.is_nan() {
+            std::cmp::Ordering::Less
+        } else {
+            a.partial_cmp(b).unwrap()
+        }
+    };
+
+    sharpes.sort_by(float_cmp);
+    pfs.sort_by(float_cmp);
+    wrs.sort_by(float_cmp);
+    dds.sort_by(float_cmp);
     
     let median = |v: &[f64]| -> f64 {
         let mid = v.len() / 2;
