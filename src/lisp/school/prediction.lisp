@@ -112,7 +112,7 @@
               (list :active-session (not (null active-session)) :session session)))))
 
 ;;; V18: Simplified main prediction function (Hickey: reduce complexity)
-(defun predict-trade-outcome (symbol direction)
+(defun predict-trade-outcome (symbol direction &key (record t))
   "Predict whether a trade will be profitable - V18: Refactored"
   (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
          (factors nil)
@@ -169,9 +169,10 @@
       (format t "[L] 🔮 PREDICTION: ~a ~a → ~a (~,0f% confidence)~%"
               direction symbol predicted-outcome (* 100 confidence))
       
-      (push prediction *prediction-history*)
-      (when (> (length *prediction-history*) 100)
-        (setf *prediction-history* (subseq *prediction-history* 0 100)))
+      (when record
+        (push prediction *prediction-history*)
+        (when (> (length *prediction-history*) 100)
+          (setf *prediction-history* (subseq *prediction-history* 0 100))))
       
       prediction)))
 
@@ -182,8 +183,8 @@ Returns (values action confidence reason), where action is :buy/:sell/:hold."
          (min-confidence *prediction-min-confidence*))
     (if (or (null history) (<= (length history) 50))
         (values :hold 0.0 :insufficient-history)
-        (let* ((buy (predict-trade-outcome symbol :buy))
-               (sell (predict-trade-outcome symbol :sell))
+        (let* ((buy (predict-trade-outcome symbol :buy :record nil))
+               (sell (predict-trade-outcome symbol :sell :record nil))
                (buy-conf (trade-prediction-confidence buy))
                (sell-conf (trade-prediction-confidence sell))
                (buy-win (eq (trade-prediction-predicted-outcome buy) :win))

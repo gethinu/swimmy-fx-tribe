@@ -203,7 +203,8 @@
    Includes Regime (Soros), Volatility (Taleb), and Category-based S-Rank monitoring."
   (let* ((now (get-universal-time))
          (last-time (gethash symbol *last-status-notification-time* 0)))
-    (when (> (- now last-time) *status-notification-interval*)
+    (when (and (> (- now last-time) *status-notification-interval*)
+               (fx-market-open-p now))
       (let* ((regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
              (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
              (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
@@ -247,5 +248,16 @@
                   (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
           :color swimmy.core:+color-status+)
         (setf (gethash symbol *last-status-notification-time*) now)))))
+
+(defun fx-market-open-p (&optional (timestamp (get-universal-time)))
+  "Return T when FX market is open (weekend close based on UTC)."
+  (multiple-value-bind (_sec _min hour _day _month _year dow)
+      (decode-universal-time timestamp 0)
+    (declare (ignore _sec _min _day _month _year))
+    (cond
+      ((= dow 6) nil)               ; Saturday
+      ((and (= dow 5) (>= hour 22)) nil) ; Friday 22:00 UTC onward
+      ((and (= dow 0) (< hour 22)) nil)  ; Sunday before 22:00 UTC
+      (t t))))
 
 (format t "[SHELL] handoff.lisp loaded~%")
