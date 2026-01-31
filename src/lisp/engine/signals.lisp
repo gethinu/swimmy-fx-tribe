@@ -83,7 +83,10 @@
         ((and (< s-prev l-prev) (> s-now l-now))
          (multiple-value-bind (nn-ok conf) (check-neural-confirmation :BUY)
            (if nn-ok
-               (list :BUY conf sl-p tp-p vol)
+               (progn
+                 (setf *last-prediction* "BUY")
+                 (setf *last-confidence* conf)
+                 (list :BUY conf sl-p tp-p vol))
                (progn
                  (format t "[SIGNAL] Filtered BUY (NN: ~,0f%)~%" (* conf 100))
                  nil))))
@@ -92,7 +95,10 @@
         ((and (> s-prev l-prev) (< s-now l-now))
          (multiple-value-bind (nn-ok conf) (check-neural-confirmation :SELL)
            (if nn-ok
-               (list :SELL conf sl-p tp-p vol)
+               (progn
+                 (setf *last-prediction* "SELL")
+                 (setf *last-confidence* conf)
+                 (list :SELL conf sl-p tp-p vol))
                (progn
                  (format t "[SIGNAL] Filtered SELL (NN: ~,0f%)~%" (* conf 100))
                  nil))))
