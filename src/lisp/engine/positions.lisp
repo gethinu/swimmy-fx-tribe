@@ -76,6 +76,8 @@
 (defun update-arm-stats (idx won pnl)
   "Update arm statistics after a trade."
   (incf *total-trades*)
+  (when (boundp '*daily-trade-count*)
+    (incf *daily-trade-count*))
   (incf *daily-pnl* pnl)
   (let* ((arm (nth idx *arms*)) (stats (cdr arm))
          (a (ensure-real (car stats))) (b (ensure-real (cdr stats)))
