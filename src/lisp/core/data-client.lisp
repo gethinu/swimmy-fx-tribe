@@ -14,7 +14,7 @@
 
 (in-package :swimmy.core)
 
-(defparameter *data-keeper-address* "tcp://localhost:5561"
+(defparameter *data-keeper-address* (zmq-connect-endpoint *port-data-keeper*)
   "ZMQ address of the Data Keeper service")
 
 (defparameter *data-keeper-socket* nil

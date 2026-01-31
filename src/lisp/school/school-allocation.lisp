@@ -180,8 +180,7 @@
     ;; --- 1. Process Actual MT5 Positions ---
     (dolist (pos mt5-positions)
       (let* ((magic (if (jsown:keyp pos "magic") (jsown:val pos "magic") 0))
-             (ticket (jsown:val pos "ticket"))
-             (profit (jsown:val pos "profit")))
+             (ticket (jsown:val pos "ticket")))
         
         (setf (gethash magic active-magics) t)
         
@@ -272,7 +271,6 @@
                    (when v
                      (let* ((cat (getf v :category))
                             (sym (getf v :symbol))
-                            (dir (getf v :direction))
                             (magic (getf v :magic))
                             (entry (getf v :entry))
                             ;; Strat name might not be directly in warrior, fallback to active team leader if needed

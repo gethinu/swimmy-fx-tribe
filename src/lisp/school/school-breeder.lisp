@@ -114,7 +114,8 @@
       ;; For now, inherit P1 entry/exit logic directly, but mutation should happen here too eventually
       :entry (strategy-entry parent1)
       :exit (strategy-exit parent1)
-      :tier :incubator ;; Born in the Incubator
+      :rank :incubator
+      :tier :incubator ;; Legacy storage tier
       :status :active
       :parents (list (strategy-name parent1) (strategy-name parent2)))))
 
@@ -129,11 +130,13 @@
    - Mutation rate increased: 10% -> 30%"
   (format t "[BREEDER] 🧬 Starting Breeding Cycle (V49.0 INTENSIFIED)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
-        (tiers '(:battlefield :training :selection :incubator))
         (max-pairs-per-category 20)) ;; EXPLOSION: 4x throughput
     (dolist (cat categories)
-      (let* ((all-warriors (loop for tier in tiers
-                                 append (get-strategies-by-tier tier cat)))
+      (let* ((all-warriors (remove-if-not
+                            (lambda (s)
+                              (and (eq (strategy-category s) cat)
+                                   (not (eq (strategy-rank s) :graveyard))))
+                            *strategy-knowledge-base*))
              ;; V48.7: Rank-aware and raw Sharpe priority. 
              (sorted (sort (copy-list all-warriors) #'> 
                            :key (lambda (s) 
@@ -172,17 +175,6 @@
                          ;; If pool > 20, kill the weakest B-Rank to make room
                          (cull-pool-overflow cat))))))))))
 
-(defun increment-breeding-count (strat)
-  (incf (strategy-breeding-count strat))
-  ;; V50.2: Aging (Max 3 breeds)
-  (when (>= (strategy-breeding-count strat) 3)
-    (format t "[BREEDER] 👴 Strategy ~a has retired from breeding (count=3).~%" (strategy-name strat))))
-
-(defun can-breed-p (strat)
-  (and strat
-       (< (strategy-breeding-count strat) 3) ; Max 3 breeds
-       (> (or (strategy-sharpe strat) 0) 0.1))) ; Must be decent
-
 (defun cull-pool-overflow (category)
   "Enforce Musk's '20 or Die' rule. 
    If pool size > *b-rank-pool-size*, kill the weakest."
@@ -208,8 +200,10 @@
           ;; Remove from KB (Graveyard logic could be added here)
           (setf *strategy-knowledge-base* (delete victim *strategy-knowledge-base*))
           ;; Remove from SQL
-          (handler-case 
-              (sqlite:execute-non-query *db-conn* "UPDATE strategies SET rank = ':GRAVEYARD' WHERE name = ?" (strategy-name victim))
+          (handler-case
+              (progn
+                (init-db)
+                (execute-non-query "UPDATE strategies SET rank = ':GRAVEYARD' WHERE name = ?" (strategy-name victim)))
             (error () nil)))))))
 
 (defun notify-death (strat reason)
@@ -285,12 +279,7 @@
   "Analyze the Knowledge Base and extract 'Wisdom' (Best Genes).
    Replaces extract_wisdom.py."
   (format t "[WISDOM] 🧠 Analyzing Veterans for Gene Extraction...~%")
-  (let* ((all-strats (append *strategy-knowledge-base* 
-                             (get-strategies-by-tier :battlefield :trend) 
-                             (get-strategies-by-tier :battlefield :reversion))) 
-                             ;; Note: get-strategies-by-tier might duplicates KB if KB holds everything.
-                             ;; *strategy-knowledge-base* usually holds ALL.
-         (unique-strats (remove-duplicates all-strats :key #'strategy-name :test #'string=))
+  (let* ((unique-strats (remove-duplicates *strategy-knowledge-base* :key #'strategy-name :test #'string=))
          ;; Filter: Positive Sharpe only, or just take top N?
          ;; For now, let's take anyone with Sharpe > 0.1 to allow early evolution.
          (candidates (remove-if-not (lambda (s) (and (strategy-sharpe s) (> (strategy-sharpe s) 0.1))) unique-strats))
@@ -400,4 +389,3 @@
       ;; For now, just Kill (Retire) to make room, assuming Breeding happens via other triggers
       ;; Or trigger a breed event here?
       (kill-strategy (strategy-name s) "Max Age Retirement"))))
-

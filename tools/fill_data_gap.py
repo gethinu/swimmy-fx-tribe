@@ -16,6 +16,7 @@ import sys
 import zmq
 import json
 import time
+import os
 from datetime import datetime, timedelta
 import pytz
 
@@ -35,7 +36,16 @@ DATA_KEEPER_HOST = (
 # If WSL2 is used, localhost on Windows might not map to WSL2 unless ports are forwarded.
 # BUT, usually people access Windows FROM WSL via /mnt/c... or network.
 # Accessing WSL FROM Windows: localhost works if service bound to 0.0.0.0.
-DATA_KEEPER_PORT = 5561
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+DATA_KEEPER_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEFRAMES = {
     "M1": mt5.TIMEFRAME_M1,

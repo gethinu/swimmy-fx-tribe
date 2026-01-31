@@ -72,7 +72,7 @@
      (check-evolution))
     ;; V4.0: Every 300 cycles (~5 min): Dream new strategy via Gemini
     ((zerop (mod *learning-cycle* 300))
-     (handler-case (dream-code) (error (e) nil)))
+     (handler-case (dream-code) (error () nil)))
     
     ;; V7.1: Every 100 cycles (~1.5 min): Evolve from Wisdom (Transfer Learning)
     ((zerop (mod *learning-cycle* 100))

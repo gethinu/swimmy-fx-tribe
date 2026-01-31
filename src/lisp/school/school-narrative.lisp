@@ -44,10 +44,8 @@
 
 (defun generate-trade-result-narrative (symbol direction pnl pnl-currency entry-price exit-price lot strategy duration-seconds category)
   "Generate natural language explanation for trade RESULT (Win/Loss)"
+  (declare (ignore symbol direction))
   (let* ((clan (get-clan category))
-         (roi (if (> pnl 0) 
-                  (if (> pnl-currency 0) (/ pnl-currency (* lot 100000)) 0) ;; Simple ROI estimate
-                  0)) ;; ROI is tricky without exact margin, using pips/price approx? No, user wants ROI.
          ;; Actually user asked for "利益率" (Profit Rate).
          ;; Pips based? Or Money/Margin?
          ;; For simplicty and robustness, let's show Pips and Raw Amount first.
@@ -100,7 +98,7 @@
     (declare (ignore s y))
     ;; JST is UTC+9, so calculate UTC by subtracting 9 hours
     (multiple-value-bind (us um uh ud umo uy) (decode-universal-time u-time 0) ; 0 = UTC
-      (declare (ignore us uy))
+      (declare (ignore us ud umo uy))
       (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST / ~2,'0d:~2,'0d UTC" 
               mo d h m uh um))))
 
@@ -116,8 +114,7 @@
 (defun get-clan-positions-summary ()
   "Generate a compact summary of active positions for all clans"
   (if (hash-table-p *warrior-allocation*)
-      (let ((hunters nil) (breakers nil) (raiders nil) (shamans nil)
-            (summary ""))
+      (let ((hunters nil) (breakers nil) (raiders nil) (shamans nil))
         
         ;; Aggregate positions
         (maphash (lambda (k v)

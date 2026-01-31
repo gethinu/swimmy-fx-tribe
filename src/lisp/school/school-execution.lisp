@@ -61,6 +61,7 @@
 
 (defun close-opposing-clan-positions (category new-direction symbol price reason)
   "Close positions in the opposite direction for Doten (Stop and Reverse) logic"
+  (declare (ignore reason))
   (let ((opposing-direction (if (eq new-direction :buy) :short :long))
         (closed-count 0))
     (maphash 
@@ -112,6 +113,7 @@
 
 (defun guard-execution-status (symbol now)
   "Check system state, market hours, and circuit breakers. Returns T if safe."
+  (declare (ignore symbol))
   (cond
     ;; 1. Warmup Check
     ((eq *system-state* :warmup)
@@ -134,8 +136,8 @@
 (defun calc-execution-lot (category symbol history rank base-lot lead-name direction)
   "Calculate dynamic lot size based on Volatility, Risk Parity, and Rank."
   (let* ((rank-mult (calculate-rank-multiplier rank))
-         (vol-scaled (if (and (fboundp 'volatility-scaled-lot) history)
-                         (volatility-scaled-lot base-lot history)
+         (vol-scaled (if (and (fboundp 'swimmy.core::volatility-scaled-lot) history)
+                         (swimmy.core::volatility-scaled-lot base-lot history)
                          base-lot))
          (vol-mult (handler-case (get-volatility-lot-multiplier) (error () 1.0)))
          (rp-lot (handler-case (get-risk-parity-lot category) (error () base-lot)))
@@ -186,6 +188,7 @@
 
 (defun verify-signal-authority (symbol direction category lot rank lead-name)
   "Helper: Verify signal with Council, AI, and Blocking rules."
+  (declare (ignore lead-name))
   (cond
     ((should-block-trade-p symbol direction category) nil)
     ((should-unlearn-p symbol) nil)
@@ -203,6 +206,7 @@
 
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override)
   "Helper: atomic reservation and execution."
+  (declare (ignore magic-override))
   ;; Reservation
   (multiple-value-bind (slot-index magic) 
       (try-reserve-warrior-slot category lead-name symbol direction)
@@ -322,53 +326,51 @@
       (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
       (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
     
-      (let ((research-analysis nil))
-        (when (>= (length history) 50)
-          (setf research-analysis (research-enhanced-analysis history))
-          (select-optimal-model history)
-          (detect-regime-hmm history))
-      
-          (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
-          ;; Swarm Logic Removed (Center of gravity restored to individual strategies)
-          (handler-case
-              (let* ((min-consensus-to-trade 0.25)
-                     (any-strong-signal nil))
-                (when t ;; Swarm Consensus removed
-                  (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
-                  (let ((strat-signals (collect-strategy-signals symbol history)))
-                    (setf any-strong-signal (and strat-signals t))
-                    (when strat-signals
-                      (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                      (let* ((all-sorted 
-                              (sort (copy-list strat-signals)
-                                    (lambda (a b)
-                                      (let* ((name-a (getf a :strategy-name))
-                                             (name-b (getf b :strategy-name))
-                                             (cache-a (get-cached-backtest name-a))
-                                             (cache-b (get-cached-backtest name-b))
-                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                        (> sharpe-a sharpe-b)))))
-                             (top-sig (first all-sorted))
-                             (top-name (when top-sig (getf top-sig :strategy-name)))
-                             (top-cat (when top-sig (getf top-sig :category)))
-                             (top-cache (when top-name (get-cached-backtest top-name)))
-                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                        (when top-sig
-                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                                  top-name top-cat top-sharpe (length strat-signals))
-                          (let* ((direction (getf top-sig :direction))
-                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                            (when (can-clan-trade-p strat-key)
-                              (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
-                                (when trade-executed
-                                  (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                                  (record-clan-trade-time strat-key)
-                                  (when (fboundp 'record-strategy-trade) 
-                                    (record-strategy-trade top-name :trade 0))))))))))))
-            (error (e) nil))))))
+      (when (>= (length history) 50)
+        (research-enhanced-analysis history)
+        (select-optimal-model history)
+        (detect-regime-hmm history))
+    
+      (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
+      ;; Swarm Logic Removed (Center of gravity restored to individual strategies)
+      (handler-case
+          (when t ;; Swarm Consensus removed
+            (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
+            (let ((strat-signals (collect-strategy-signals symbol history)))
+              (when strat-signals
+                (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
+                (let* ((all-sorted 
+                        (sort (copy-list strat-signals)
+                              (lambda (a b)
+                                (let* ((name-a (getf a :strategy-name))
+                                       (name-b (getf b :strategy-name))
+                                       (cache-a (get-cached-backtest name-a))
+                                       (cache-b (get-cached-backtest name-b))
+                                       (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                       (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                  (> sharpe-a sharpe-b)))))
+                       (top-sig (first all-sorted))
+                       (top-name (when top-sig (getf top-sig :strategy-name)))
+                       (top-cat (when top-sig (getf top-sig :category)))
+                       (top-cache (when top-name (get-cached-backtest top-name)))
+                       (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                  (when top-sig
+                    (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                            top-name top-cat top-sharpe (length strat-signals))
+                    (let* ((direction (getf top-sig :direction))
+                           (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                      (when (can-clan-trade-p strat-key)
+                        (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
+                          (when trade-executed
+                            (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
+                            (record-clan-trade-time strat-key)
+                            (when (fboundp 'record-strategy-trade) 
+                              (record-strategy-trade top-name :trade 0)))))))))))
+        (error (e)
+          (declare (ignore e))
+          nil)))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING

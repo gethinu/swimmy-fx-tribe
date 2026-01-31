@@ -3,17 +3,26 @@
 report_system_status.py
 =======================
 Generates a "factory report" on the state of the evolution system.
-Counts active strategies, recruits, and graveyard entries directly from Lisp files.
+Counts active strategies, recruits, and graveyard entries from rank directories.
 Sends an Embed notification to Discord via the Notifier service.
 """
 
 import zmq
-import re
 import os
 import sys
 import json
 from datetime import datetime
 from pathlib import Path
+
+
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
 
 
 def resolve_base_dir() -> Path:
@@ -27,7 +36,7 @@ def resolve_base_dir() -> Path:
     return here.parent
 
 # Configuration
-ZMQ_PORT = 5562
+ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 BASE_DIR = str(resolve_base_dir())
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 LISP_GRAVEYARD = os.path.join(BASE_DIR, "src/lisp/school/graveyard-persistence.lisp")
@@ -80,56 +89,26 @@ def main():
     # Initialize Counters
     stats = {
         "INCUBATOR": 0,
-        "TRAINING": 0,
-        "BATTLEFIELD": 0,
-        "VETERAN": 0,
+        "B": 0,
+        "A": 0,
+        "S": 0,
         "LEGEND": 0,
         "GRAVEYARD": 0,
-        "s_rank": 0,
-        "a_rank": 0,
     }
 
     if os.path.exists(library_path):
-        for tier in stats.keys():
-            if tier in ["s_rank", "a_rank"]:
-                continue
-            tier_path = os.path.join(library_path, tier)
+        for rank_dir in stats.keys():
+            tier_path = os.path.join(library_path, rank_dir)
             if os.path.exists(tier_path):
-                # Count .lisp files
                 files = [f for f in os.listdir(tier_path) if f.endswith(".lisp")]
-                stats[tier] = len(files)
-
-                # For Battlefield/Veteran/Legend, calculate Ranks (approximate via text parsing for speed)
-                if tier in ["BATTLEFIELD", "VETERAN", "LEGEND"]:
-                    for f in files:
-                        try:
-                            with open(os.path.join(tier_path, f), "r") as lf:
-                                content = lf.read()
-                                # Parse Sharpe/PF (Simplified)
-                                # Assuming :sharpe -0.00
-                                sharpe_m = re.search(
-                                    r":sharpe\s+(-?\d+\.?\d*)", content
-                                )
-                                pf_m = re.search(
-                                    r":profit-factor\s+(-?\d+\.?\d*)", content
-                                )
-
-                                sharpe = float(sharpe_m.group(1)) if sharpe_m else 0.0
-                                pf = float(pf_m.group(1)) if pf_m else 0.0
-
-                                if sharpe >= 1.2 and pf >= 1.5:
-                                    stats["s_rank"] += 1
-                                elif sharpe >= 1.0:
-                                    stats["a_rank"] += 1
-                        except:
-                            pass  # Skip malformed files
+                stats[rank_dir] = len(files)
 
     # Total Active (Everything except Graveyard)
     active_count = (
         stats["INCUBATOR"]
-        + stats["TRAINING"]
-        + stats["BATTLEFIELD"]
-        + stats["VETERAN"]
+        + stats["B"]
+        + stats["A"]
+        + stats["S"]
         + stats["LEGEND"]
     )
     recruit_count = stats["INCUBATOR"]
@@ -139,7 +118,7 @@ def main():
     )  # Keep this for genes
 
     print(
-        f"📊 Stats (Sharded): Active={active_count}, S-Rank={stats['s_rank']}, A-Rank={stats['a_rank']}, Graveyard={graveyard_count}"
+        f"📊 Stats (Sharded): Active={active_count}, S-Rank={stats['S']}, A-Rank={stats['A']}, Graveyard={graveyard_count}"
     )
 
     # Construct Payload
@@ -157,12 +136,17 @@ def main():
                     },
                     {
                         "name": "🏆 S-Rank (Elite)",
-                        "value": f"**{stats['s_rank']}**",
+                        "value": f"**{stats['S']}**",
                         "inline": True,
                     },
                     {
                         "name": "🎖️ A-Rank (Pro)",
-                        "value": f"**{stats['a_rank']}**",
+                        "value": f"**{stats['A']}**",
+                        "inline": True,
+                    },
+                    {
+                        "name": "🪜 B-Rank (Selection)",
+                        "value": f"**{stats['B']}**",
                         "inline": True,
                     },
                     {

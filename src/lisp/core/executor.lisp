@@ -13,6 +13,8 @@
 ;;; ============================================================================
 
 (defparameter *total-ticks-count* 0)
+(defvar *processed-tickets* (make-hash-table :test 'equal))
+(defvar *current-drawdown* 0.0)
 
 ;;; --------------------------------------
 ;;; STATUS & MONITORING
@@ -54,7 +56,7 @@
       (when (and (= (mod (floor now 30) 10) 0)
                  (boundp 'swimmy.school::*warrior-allocation*)
                  (> (hash-table-count swimmy.school::*warrior-allocation*) 0))
-        (handler-case (swimmy.school:report-active-positions) (error (e) nil)))
+        (handler-case (swimmy.school:report-active-positions) (error () nil)))
       ;; V8.5: ACCOUNT_INFO Monitoring
       (when (and (> *last-account-info-time* 0)
                  (> (- now *last-account-info-time*) 60)
@@ -101,6 +103,7 @@
 
 (defun train-nn-from-trade (symbol pnl direction)
   "Train NN from trade outcome - online learning"
+  (declare (ignore symbol direction))
   (when (and *candle-history* (> (length *candle-history*) 30))
     (handler-case
         (let* ((target (cond
@@ -268,6 +271,7 @@
   (handler-case
       (let ((equity (if (jsown:keyp json "equity") (jsown:val json "equity") nil))
             (balance (if (jsown:keyp json "balance") (jsown:val json "balance") nil)))
+        (declare (ignore balance))
         ;; V8.5: Track last ACCOUNT_INFO time for monitoring
         (setf *last-account-info-time* (get-universal-time))
         ;; V8.5: Recovery notification

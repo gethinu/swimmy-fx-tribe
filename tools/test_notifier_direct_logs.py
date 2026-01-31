@@ -3,7 +3,16 @@ import zmq
 import json
 import os
 
-NOTIFIER_PORT = 5562
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+NOTIFIER_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 # The URL from .env (System Logs)
 WEBHOOK_URL = "https://discord.com/api/webhooks/1460946551580004515/CSTIPAVwzqBdhnon9_KZ38hNVgfrK3AhoRPNXcOW_0aeLtUuN53IFlz0csvIiUXM7qiy"
 

@@ -32,7 +32,16 @@ import threading
 from collections import deque
 
 # Configuration
-ZMQ_PORT = 5562  # Notifier Port
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)  # Notifier Port
 RETRY_LIMIT = 3
 RATE_LIMIT_DELAY = 1.0  # Seconds between requests to same webhook
 

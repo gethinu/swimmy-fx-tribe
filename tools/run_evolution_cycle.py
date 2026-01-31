@@ -7,6 +7,16 @@ import subprocess
 import zmq  # Added for notification
 
 
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
 def run_command(cmd, description):
     print(f"\n{description}")
     # Use sys.executable to ensure we use the same Python interpreter (and permissions)
@@ -182,7 +192,7 @@ def run_cycle():
 
     # 8. Send "Cycle Complete" Notification (Phase 21 Fix)
     try:
-        ZMQ_PORT = 5562
+        ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
         context = zmq.Context()
         socket = context.socket(zmq.PUSH)
         socket.connect(f"tcp://localhost:{ZMQ_PORT}")

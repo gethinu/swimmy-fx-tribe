@@ -15,6 +15,8 @@
 
 // ★ User-configurable parameters
 input string InpWSL_IP = "172.18.199.122";  // WSL IP Address
+input int    InpPortMarket = 5557;          // ZMQ Market Data (MT5 -> Guardian)
+input int    InpPortExec = 5560;            // ZMQ Execution (Guardian -> MT5)
 input bool   InpVerboseLog = false;         // Verbose Logging (Debug)
 input bool   InpUseOnTick = false;          // Use OnTick() for tick sending (high-freq)
 input int    InpReconnectInterval = 30;     // Reconnect interval (seconds)
@@ -118,7 +120,7 @@ bool ConnectPubSocket() {
       g_pub_socket = zmq_socket(g_context, ZMQ_PUB);
    }
    
-   string addr_pub_str = "tcp://" + InpWSL_IP + ":5557";
+   string addr_pub_str = "tcp://" + InpWSL_IP + ":" + IntegerToString(InpPortMarket);
    uchar addr_pub[]; 
    StringToCharArray(addr_pub_str, addr_pub);
    int rc = zmq_connect(g_pub_socket, addr_pub);
@@ -139,7 +141,7 @@ bool ConnectSubSocket() {
       g_sub_socket = zmq_socket(g_context, ZMQ_SUB);
    }
    
-   string addr_sub_str = "tcp://" + InpWSL_IP + ":5560";
+   string addr_sub_str = "tcp://" + InpWSL_IP + ":" + IntegerToString(InpPortExec);
    uchar addr_sub[]; 
    StringToCharArray(addr_sub_str, addr_sub);
    int rc = zmq_connect(g_sub_socket, addr_sub);

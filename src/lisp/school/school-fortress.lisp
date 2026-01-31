@@ -91,6 +91,7 @@
 
 (defun apply-london-edge (symbol direction)
   "Apply session-based edge adjustments for EURUSD/GBPUSD (Naval - Specific Knowledge)"
+  (declare (ignore direction))
   (when (or (string= symbol "EURUSD") (string= symbol "GBPUSD"))
     (cond
       ;; Best: London-NY overlap
@@ -128,6 +129,7 @@
 (defun calculate-dynamic-tp-sl (symbol candles &key (direction :buy))
   "Calculate ATR-based dynamic Take Profit and Stop Loss
    Returns (values tp sl) in price units"
+  (declare (ignore direction))
   (let* ((atr (calculate-atr candles 14))
          (multiplier (get-volatility-multiplier))
          (base-sl-atr 1.5)  ; Base SL = 1.5 ATR
@@ -147,6 +149,7 @@
   "Calculate position size based on ATR stop-loss and risk percentage
    max-risk-pct: Maximum % of capital to risk (e.g., 1.0 for 1%)"
   (multiple-value-bind (tp sl) (calculate-dynamic-tp-sl symbol candles)
+    (declare (ignore tp))
     (if (and sl (> sl 0))
         (let* ((capital (if (boundp '*monthly-goal*) *monthly-goal* 100000))
                (max-risk-amount (* capital (/ max-risk-pct 100.0)))
@@ -248,6 +251,7 @@
 
 (defun verify-parallel-scenarios (symbol direction category)
   "Run 3 parallel simulations to verify trade robustness (DeepMind)"
+  (declare (ignore direction))
   (let ((optimistic-pass nil)
         (pessimistic-pass nil)
         (chaos-pass nil))
@@ -297,7 +301,7 @@
   "Taleb: Block trades during known high-risk periods"
   (multiple-value-bind (sec min hour day dow) 
       (decode-universal-time (get-universal-time))
-    (declare (ignore sec min))
+    (declare (ignore sec min day))
     (let ((blocked nil)
           (reason ""))
       ;; 1. High-risk hours check

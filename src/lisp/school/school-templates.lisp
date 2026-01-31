@@ -192,8 +192,6 @@ Output ONLY the s-expression."
     (when template
       (let* ((desc (cdr template))
              (param-ranges (getf desc :param-ranges))
-             (params (or custom-params nil)) ; Fixed bug: params undefined in original? Wait. params is not used here.
-             ;; Check original code. Line 217.
              ;; Mutate ranges slightly
              (new-ranges 
               (mapcar (lambda (range)

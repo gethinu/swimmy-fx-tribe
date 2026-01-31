@@ -3,8 +3,18 @@ import zmq
 import json
 import os
 
+
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
 # Port 5562 is where tools/notifier.py listens
-NOTIFIER_PORT = 5562
+NOTIFIER_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 
 # We need a valid webhook URL to test.
 # We will read it from the environment or use a hardcoded fallback if accessible.

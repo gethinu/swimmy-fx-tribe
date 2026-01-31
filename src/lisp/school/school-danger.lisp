@@ -30,6 +30,7 @@
           (setf *cooldown-tier* (max 0 (1- *cooldown-tier*)))))))
 
 (defun get-current-price (symbol type)
+  (declare (ignore type))
   (let ((candles (gethash symbol swimmy.globals:*candle-histories*)))
     (if (and candles (first candles))
         (swimmy.globals:candle-close (first candles))
@@ -60,7 +61,7 @@
     (when (> closed-count 0)
       (swimmy.core:notify-discord-alert (format nil "TACTICAL RETREAT: Closed ~d losing positions." closed-count)))))
 
-(defun format-duration (seconds)
+(defun format-duration-short (seconds)
   (cond
     ((< seconds 60) (format nil "~ds" seconds))
     ((< seconds 3600) (format nil "~dm" (floor seconds 60)))

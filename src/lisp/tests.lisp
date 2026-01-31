@@ -128,6 +128,7 @@
 (deftest test-reputation-update
   "Test reputation update on win"
   (let ((rep (cl-user::get-reputation "Winner-Strategy")))
+    (declare (ignore rep))
     (cl-user::update-reputation "Winner-Strategy" :win :pnl 100)
     (let ((updated-rep (cl-user::get-reputation "Winner-Strategy")))
       (assert-true (> (cl-user::reputation-trust-score updated-rep) 0.5)

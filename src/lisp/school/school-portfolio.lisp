@@ -67,8 +67,8 @@
 
 (defun get-strategy-trades (name)
   "Extract all recorded trades for a specific strategy from SQL (V49.8)."
-  (unless *db-conn* (init-db))
-  (let ((rows (sqlite:execute-to-list *db-conn* "SELECT pnl FROM trade_logs WHERE strategy_name = ?" name)))
+  (init-db)
+  (let ((rows (execute-to-list "SELECT pnl FROM trade_logs WHERE strategy_name = ?" name)))
     (mapcar (lambda (row) (make-trade-record :pnl (first row))) rows)))
 
 (defun calculate-pearson-correlation (v1 v2)

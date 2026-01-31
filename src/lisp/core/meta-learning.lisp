@@ -29,6 +29,22 @@
 (defparameter *learning-rate* 0.1)        ; How fast to adapt
 (defparameter *performance-decay* 0.99)   ; Decay old data slightly
 (defparameter *min-trades-for-adjust* 10) ; Minimum trades before adjusting
+(defparameter *best-strategy-by-regime* (make-hash-table :test 'eq)
+  "Regime -> best strategy reference (manual/optional).")
+
+(defun get-best-strategy-for-regime (regime)
+  "Return the best-known strategy for REGIME (or NIL)."
+  (gethash regime *best-strategy-by-regime*))
+
+(defun update-best-strategy-for-regime (regime &optional strategy)
+  "Update best strategy mapping for REGIME when STRATEGY is provided."
+  (when strategy
+    (setf (gethash regime *best-strategy-by-regime*) strategy))
+  (gethash regime *best-strategy-by-regime*))
+
+(defun save-meta-learning ()
+  "Persist meta-learning state (placeholder)."
+  nil)
 
 (defun get-or-create-stats (key)
   "Get or initialize performance stats for a key"

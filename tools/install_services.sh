@@ -4,13 +4,13 @@
 echo "🔧 Installing Systemd Services..."
 mkdir -p ~/.config/systemd/user
 
-cp tools/systemd/*.service ~/.config/systemd/user/
+cp systemd/*.service systemd/*.timer ~/.config/systemd/user/ 2>/dev/null || true
 
 echo "🔄 Reloading Daemon..."
 systemctl --user daemon-reload
 
 echo "🚀 Enabling and Starting Services..."
-SERVICES="swimmy-backtest swimmy-notifier swimmy-keeper swimmy-risk"
+SERVICES="swimmy-backtest swimmy-notifier swimmy-data-keeper swimmy-risk"
 
 for svc in $SERVICES; do
     echo "   - $svc"

@@ -6,6 +6,16 @@ import sys
 from pathlib import Path
 
 
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
 def resolve_base_dir() -> Path:
     env = os.getenv("SWIMMY_HOME")
     if env:
@@ -17,7 +27,7 @@ def resolve_base_dir() -> Path:
     return here.parent
 
 # Test configuration
-ZMQ_PORT = 5561
+ZMQ_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
 SYMBOL = "USDJPY"
 TF = "M5"
 TEST_TIMESTAMP = int(time.time()) - (int(time.time()) % 300)  # Current M5 candle

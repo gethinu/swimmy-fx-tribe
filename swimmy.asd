@@ -62,6 +62,7 @@
                 (:file "src/lisp/strategies/strategies")
                 (:file "src/lisp/strategies/strategies-recruits") ; P7: Recruited Strategies
                 (:file "src/lisp/strategies/legends") ; P7: Legendary Warriors
+                (:file "src/lisp/strategies/legend-61") ; V3.0 (61-Strategy Signal System) revival
                 
                 ;; SCHOOL
                 (:file "src/lisp/school/school-db")
@@ -92,9 +93,9 @@
                (:file "src/lisp/school/school-adaptation") ; Adaptation Engine (Phase 4)
                (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
                (:file "src/lisp/school/school-lifecycle")  ; Lifecycle Management (Phase 6)
-               (:file "src/lisp/school/school-tier-system")   ; The Proving Grounds (Phase 2): Tier System
                (:file "src/lisp/school/school-kb")        ; P8: Single KB Entry Point
                 (:file "src/lisp/school/indicators-library")
+               (:file "src/lisp/school/school-p3-learning") ; P3: Advanced Learning
                 (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
                (:file "src/lisp/school/school-connector")
                (:file "src/lisp/school/school-learning")
@@ -120,6 +121,7 @@
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
+               (:file "src/lisp/school/school-pip-audit") ; Phase 28: Live Trade Audit
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added

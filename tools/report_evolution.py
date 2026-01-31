@@ -3,7 +3,7 @@
 report_evolution.py
 ===================
 Generates the "Evolution Factory Report" using the filesystem as the source of truth.
-Counts .lisp strategy files in data/library/ Tiers.
+Counts .lisp strategy files in data/library/ Rank directories.
 """
 
 import zmq
@@ -13,6 +13,16 @@ import sys
 import glob
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
 
 
 def resolve_base_dir() -> Path:
@@ -27,7 +37,7 @@ def resolve_base_dir() -> Path:
 
 
 # Configuration
-ZMQ_PORT = 5562
+ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 BASE_DIR = str(resolve_base_dir())
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 LIBRARY_PATH = os.path.join(BASE_DIR, "data", "library")
@@ -46,8 +56,8 @@ def load_env():
     return env_vars
 
 
-def count_strategies(tier_dir):
-    path = os.path.join(LIBRARY_PATH, tier_dir, "*.lisp")
+def count_strategies(rank_dir):
+    path = os.path.join(LIBRARY_PATH, rank_dir, "*.lisp")
     return len(glob.glob(path))
 
 
@@ -63,22 +73,15 @@ def main():
         sys.exit(1)
 
     # 1. Count from Filesystem (Source of Truth)
-    # V45: Use actual Tier names consistently
-    count_battlefield = count_strategies("BATTLEFIELD")
-    count_training = count_strategies("TRAINING")  # Uppercase
+    count_s = count_strategies("S")
+    count_a = count_strategies("A")
+    count_b = count_strategies("B")
     count_recruits = count_strategies("INCUBATOR")
     count_graveyard = count_strategies("GRAVEYARD")
-    count_selection = count_strategies("SELECTION")  # Uppercase
     count_legend = count_strategies("LEGEND")
 
     # Total Active
-    active_total = (
-        count_battlefield
-        + count_training
-        + count_recruits
-        + count_selection
-        + count_legend
-    )
+    active_total = count_s + count_a + count_b + count_recruits + count_legend
 
     # 2. Build Payload (V45: Unified Terminology)
     jst = timezone(timedelta(hours=9))
@@ -89,14 +92,14 @@ def main():
 🧠 Knowledge Base
 {active_total} Active Strategies
 
-⚔️ Battlefield (Elite)
-{count_battlefield} (Sharpe ≥0.5, Trades ≥10)
+🏆 S-Rank (Verified Elite)
+{count_s} (Sharpe ≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
 
-🎯 Training
-{count_training} (Sharpe ≥0.3, Trades ≥5)
+🎖️ A-Rank (Pro)
+{count_a} (Sharpe ≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
 
-📋 Selection
-{count_selection} (Sharpe ≥0.1)
+🪜 B-Rank (Selection)
+{count_b} (Sharpe ≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
 👶 Incubator
 {count_recruits}
@@ -106,7 +109,7 @@ def main():
 
 ⚙️ System Status
 ✅ Evolution Daemon Active
-✅ Multi-Gen Breeding V45.0
+✅ Rank Lifecycle Active
 {now} JST"""
 
     payload = {

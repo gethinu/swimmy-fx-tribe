@@ -24,6 +24,27 @@
 (defvar *graveyard-cache* nil)
 (defvar *last-graveyard-load* 0)
 
+(defun normalize-graveyard-entry (entry)
+  "Normalize graveyard entry into a plist with :sl/:tp/:symbol keys."
+  (cond
+    ((null entry) nil)
+    ;; Already a plist pattern
+    ((and (listp entry) (or (getf entry :sl) (getf entry :tp)))
+     entry)
+    ;; Strategy struct stored in SQL data_sexp
+    ((and (fboundp 'strategy-p) (strategy-p entry))
+     (list :name (strategy-name entry)
+           :timeframe (strategy-timeframe entry)
+           :direction (strategy-direction entry)
+           :symbol (or (strategy-symbol entry) "USDJPY")
+           :sl (strategy-sl entry)
+           :tp (strategy-tp entry)
+           :sharpe (strategy-sharpe entry)
+           :profit-factor (strategy-profit-factor entry)
+           :win-rate (strategy-win-rate entry)
+           :max-dd (strategy-max-dd entry)))
+    (t nil)))
+
 (defun load-graveyard-cache ()
   "Load failure patterns from SQL (V49.8) or graveyard.sexp."
   (let ((now (get-universal-time)))
@@ -31,24 +52,28 @@
         *graveyard-cache*
         (progn
           (setf *last-graveyard-load* now)
-                  (setf *graveyard-cache* 
-                (or (handler-case 
-                        (let* ((pkg (find-package :swimmy.school))
-                               (rows (sqlite:execute-to-list (or *db-conn* (init-db)) 
-                                                            "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
-                          (mapcar (lambda (row)
-                                    (let ((sexp-str (first row)))
-                                      (handler-case 
-                                          (let ((*package* pkg))
-                                            (read-from-string sexp-str))
-                                        (error () nil))))
-                                  rows))
+          (setf *graveyard-cache*
+                (or (handler-case
+                        (let* ((pkg (find-package :swimmy.school)))
+                          (init-db)
+                          (let ((rows (execute-to-list
+                                       "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
+                            (remove-if #'null
+                                       (mapcar (lambda (row)
+                                                 (let ((sexp-str (first row)))
+                                                   (handler-case
+                                                       (let ((*package* pkg))
+                                                         (normalize-graveyard-entry
+                                                          (read-from-string sexp-str)))
+                                                     (error () nil))))
+                                               rows))))
                       (error () nil))
                     (when (probe-file "data/memory/graveyard.sexp")
                       (with-open-file (stream "data/memory/graveyard.sexp" :direction :input :if-does-not-exist nil)
                         (let ((*package* (find-package :swimmy.school)))
-                          (loop for data = (handler-case (read stream nil nil) (error () nil))
-                                while data collect data))))))))))
+                          (remove-if #'null
+                                     (loop for data = (handler-case (read stream nil nil) (error () nil))
+                                           while data collect (normalize-graveyard-entry data))))))))))))
 
 (defun is-graveyard-pattern-p (strategy)
   "Check if strategy matches a known failure pattern."
@@ -64,7 +89,7 @@
           ;; Match Criteria:
           ;; 1. Same Symbol
           ;; 2. SL and TP within 5% tolerance
-          (when (and (string= s-sym g-sym)
+          (when (and g-sym (string= s-sym g-sym)
                      (numberp g-sl) (numberp s-sl)
                      (numberp g-tp) (numberp s-tp)
                      (< (abs (- s-sl g-sl)) (* 0.05 g-sl))
@@ -252,7 +277,7 @@
 🏛️ Clan: ~a
 📈 Sharpe: ~,2f"
              source name cat sharpe)
-     :color (if (eq source :founder) 3447003 9b59b6))))
+     :color (if (eq source :founder) 3447003 #x9B59B6))))
 
 (defun end-startup-mode ()
   "Call this after initial system load to enable notifications."

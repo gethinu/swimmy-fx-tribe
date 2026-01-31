@@ -103,16 +103,31 @@
   (cond
     ;; Phase 1 Result
     ((search "_2006" strat-name)
-     (let ((sharpe (getf result :sharpe))
-           (pf (getf result :profit-factor)))
+     (let* ((base-name (subseq strat-name 0 (search "_2006" strat-name)))
+            (strat (find-strategy base-name))
+            (sharpe (getf result :sharpe))
+            (pf (getf result :profit-factor)))
        (format t "[BT-V2] 📊 Phase 1 Result for ~a: Sharpe=~,2f PF=~,2f~%" strat-name sharpe pf)
-       (if (and (>= sharpe *phase1-min-sharpe*) (>= pf 1.0))
+       (if (null strat)
+           (format t "[BT-V2] ⚠️ Strategy not found for Phase 1 result: ~a~%" base-name)
            (progn
-             (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B pool.~%")
-             ;; Logic to move to Rank B pool goes here (school-manager)
-             ;; For now, just mark it?
-             )
-           (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%"))))
+             ;; Sync metrics to the actual strategy object
+             (setf (strategy-sharpe strat) (float (getf result :sharpe 0.0))
+                   (strategy-profit-factor strat) (float (getf result :profit-factor 0.0))
+                   (strategy-win-rate strat) (float (getf result :win-rate 0.0))
+                   (strategy-trades strat) (getf result :trades 0)
+                   (strategy-max-dd strat) (float (getf result :max-dd 0.0)))
+             (when (slot-exists-p strat 'status-reason)
+               (setf (strategy-status-reason strat) "Phase1 Screening Result"))
+             (upsert-strategy strat)
+
+             (if (and (>= sharpe *phase1-min-sharpe*) (>= pf 1.0))
+                 (progn
+                   (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B.~%")
+                   (ensure-rank strat :B "Phase1 Screening Passed (V2)"))
+                 (progn
+                   (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
+                   (send-to-graveyard strat "Phase1 Screening Failed (V2)")))))))
 
     ;; Phase 2 Result
     ((search "_2021" strat-name)

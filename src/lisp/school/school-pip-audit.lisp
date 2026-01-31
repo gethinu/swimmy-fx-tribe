@@ -213,7 +213,6 @@
     (if (< count 5)
         (list :sharpe 0 :pf 0 :avg-pips 0 :wr 0)
         (let* ((wins (count-if #'plusp history))
-               (losses (count-if #'minusp history))
                (wr (/ wins (max 1 count)))
                (avg-pnl (/ (reduce #'+ history) count))
                (mean avg-pnl)
@@ -255,6 +254,7 @@
 (defun run-live-trade-audit (strategy trade-result)
   "Run after each S-RANK trade. Check if demotion needed.
    V47.5: Owner's Vision - S-RANK strategies are not permanent."
+  (declare (ignore trade-result))
   (when (eq (strategy-rank strategy) :S)
     (increment-strategy-trade-count (strategy-name strategy))
     
@@ -287,4 +287,3 @@
         action))))
 
 (format t "[P4/P5] 📊 V47.5 Pip Audit + Live Monitor Loaded~%")
-

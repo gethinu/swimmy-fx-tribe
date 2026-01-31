@@ -2,15 +2,17 @@
 # Send REPORT_STATUS to verify connectivity
 echo "Sending REPORT_STATUS to Brain..."
 
-python3 - <<EOF
+python3 - <<'EOF'
 import zmq
 import json
 import time
+import os
 
 try:
     ctx = zmq.Context()
     sock = ctx.socket(zmq.PUSH)
-    sock.connect("tcp://localhost:5555") 
+    port = int(os.getenv("SWIMMY_PORT_SENSORY", "5555"))
+    sock.connect(f"tcp://localhost:{port}") 
     
     msg = {
         "type": "SYSTEM_COMMAND",

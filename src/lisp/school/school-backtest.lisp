@@ -201,13 +201,12 @@
   ;; Strategy decides its own destiny (timeframe)
   (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
          (timeframe (get-tf-minutes tf-slot))
-         (tf-str (get-tf-string timeframe))
          
          ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
          (target-candles candles)
          (len (length target-candles))
          (aux-candles-ht (make-hash-table :test 'equal))  ;; Initialize aux candles as hash table
-         (msg nil)) ;; Initialize msg
+         (msg nil))    ;; Message payload (string)
     
     ;; V8.10: Fetch Aux Candles for MTF
     (when (and (slot-exists-p strat 'filter-enabled)
@@ -233,49 +232,40 @@
             (strategy-name strat) actual-symbol suffix len timeframe)
     
     (let* ((data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
-           (default-candles-p (or (null target-candles) (eq target-candles *candle-history*)))
            (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
-           (large-m1 (and (numberp timeframe) (= timeframe 1) (>= len 50000)))
            (use-file (and (probe-file data-file)
-                          (not wfv-suffix))))
+                          (not wfv-suffix)))
+           (strategy-alist (strategy-to-alist strat :name-suffix suffix)))
 
-      (let* ((strategy-alist (strategy-to-alist strat :name-suffix suffix)))
-        (if use-file
-            (progn
-              (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
-              (let* ((*print-case* :downcase) ;; Ensure symbols like ACTION become "action"
-                     (payload `((action . "BACKTEST")
-                                (strategy . ,strategy-alist)
-                                (data_id . ,(format nil "~a_M1" actual-symbol))
-                                (candles_file . ,data-file)
-                                (symbol . ,actual-symbol)
-                                (timeframe . ,timeframe)))
-                     (msg (format nil "~s" payload)))
-                (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-                    (pzmq:send swimmy.globals:*cmd-publisher* msg)
-                    (format t "[L] ❌ CMD Publisher NOT BOUND.~%"))))
+      (if use-file
+          ;; Fast path: CSV on disk (recommended)
+          (let* ((*print-case* :downcase)
+                 (payload-sexpr `((action . "BACKTEST")
+                                  (strategy . ,strategy-alist)
+                                  (data_id . ,(format nil "~a_M1" actual-symbol))
+                                  (candles_file . ,data-file)
+                                  (symbol . ,actual-symbol)
+                                  (timeframe . ,timeframe))))
+            (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
+            (setf msg (format nil "~s" payload-sexpr)))
 
-            ;; Fallback / WFV (Must send candles, but in SXP)
-            (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
-                                      using (hash-value v)
-                                      collect (cons k v)))
-                   ;; Convert candles to simple struct-alists for efficiency if we must send them
-                   ;; But for now, SXP serialization of 100k structs is heavy.
-                   ;; WARNING: This path should be RARE.
-                   (*print-case* :downcase) ;; Ensure symbols like ACTION become "action"
-                   (payload `((action . "BACKTEST")
-                              (strategy . ,strategy-alist)
-                              (candles . ,(candles-to-sexp target-candles))
-                              (aux_candles . ,aux-candles)
-                              (symbol . ,actual-symbol)
-                              (timeframe . ,timeframe)))
-                   (msg (format nil "~s" payload)))
-              
-              (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-                  (progn
-                    (pzmq:send swimmy.globals:*cmd-publisher* msg)
-                    (format t "[L] 📤 Sent Backtest Request (SXP -> 5556 | TF: M~d)~%" timeframe))
-                  (format t "[L] ❌ CMD Publisher NOT BOUND.~%")))))))))
+          ;; Fallback / WFV: send candles inline (避けたいが必要時のみ)
+          (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
+                                    using (hash-value v)
+                                    collect (cons k v)))
+                 (*print-case* :downcase)
+                 (payload-sexpr `((action . "BACKTEST")
+                                  (strategy . ,strategy-alist)
+                                  (candles . ,(candles-to-sexp target-candles))
+                                  (aux_candles . ,aux-candles)
+                                  (symbol . ,actual-symbol)
+                                  (timeframe . ,timeframe))))
+            (setf msg (format nil "~s" payload-sexpr))
+            (format t "[L] 📤 Sent Backtest Request (TF: M~d)~%" timeframe))))
+
+      ;; Dispatch
+      (when msg
+        (send-zmq-msg msg :target :backtest)))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)
@@ -455,8 +445,7 @@
 (defun prune-to-graveyard (strat reason)
   "V48.1 Expert Panel P0: Delete strategy from KB immediately.
    Pattern is saved to graveyard.sexp for Q-Learning before deletion."
-  (let ((name (strategy-name strat))
-        (old-tier (strategy-tier strat)))
+  (let ((name (strategy-name strat)))
     
     ;; 1. Save pattern for Q-Learning (before deletion)
     (handler-case
@@ -477,7 +466,7 @@
       (error (e)
         (format t "[PRUNER] ⚠️ File move failed: ~a~%" e)))
     
-    (format t "[PRUNER] 🗑️ DELETED: ~a (~a) | Reason: ~a~%" name old-tier reason)))
+    (format t "[PRUNER] 🗑️ DELETED: ~a | Reason: ~a~%" name reason)))
 
 (defparameter *last-qual-cycle* 0)
 (defparameter *qual-cycle-interval* 300
@@ -493,7 +482,8 @@
     (setf *last-qual-cycle* now))
   (let ((candidates (remove-if-not 
                      (lambda (s) 
-                       (and (member (strategy-tier s) '(:incubator :scout))
+                       (and (or (null (strategy-rank s))
+                                (eq (strategy-rank s) :incubator))
                             (= (or (strategy-trades s) 0) 0)
                             (= (or (strategy-sharpe s) 0.0) 0.0)))
                      *strategy-knowledge-base*))
@@ -519,13 +509,16 @@
 
 (defun init-backtest-zmq ()
   "Initialize ZMQ connection to backtest service for the school daemon.
-   Connects PUSH -> 5580 (Backtest Service PULL)."
+   Connects PUSH -> *port-backtest-req* (Backtest Service PULL)."
+  (unless *backtest-service-enabled*
+    (format t "[BACKTEST] ℹ️ Backtest Service disabled. Using Guardian direct mode.~%")
+    (return-from init-backtest-zmq nil))
   (unless (and (boundp 'swimmy.globals:*backtest-requester*) swimmy.globals:*backtest-requester*)
     (handler-case
         (let* ((ctx (pzmq:ctx-new))
                (req (pzmq:socket ctx :push)))
-          (pzmq:connect req "tcp://localhost:5580")
+          (pzmq:connect req (zmq-connect-endpoint *port-backtest-req*))
           (setf swimmy.globals:*backtest-requester* req)
-          (format t "[BACKTEST] 🔌 Connected to Backtest Service (PUSH -> 5580)~%"))
+          (format t "[BACKTEST] 🔌 Connected to Backtest Service (PUSH -> ~d)~%" *port-backtest-req*))
       (error (e)
         (format t "[BACKTEST] ❌ Failed to initialize ZMQ: ~a~%" e)))))

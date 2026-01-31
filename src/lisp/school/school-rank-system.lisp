@@ -102,6 +102,11 @@
 (defun %ensure-rank-no-lock (strategy new-rank &optional reason)
   "Internal version of ensure-rank that assumes *kb-lock* is already held."
   (let ((old-rank (strategy-rank strategy)))
+    ;; LEGEND保護: レジェンドは墓場送りしない（子世代は別扱い）
+    (when (and (eq old-rank :legend) (eq new-rank :graveyard))
+      (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
+      (return-from %ensure-rank-no-lock old-rank))
+
     (when (not (eq old-rank new-rank))
       ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
       (setf (strategy-rank strategy) new-rank)

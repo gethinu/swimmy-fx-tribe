@@ -14,6 +14,8 @@
    #:candle-timestamp #:candle-open #:candle-high #:candle-low #:candle-close #:candle-volume
    #:arm-state #:make-arm-state
    #:arm-state-position #:arm-state-entry-price #:arm-state-sl #:arm-state-tp #:arm-state-streak
+   #:elder #:make-elder
+   #:elder-name #:elder-peak-pnl #:elder-era #:elder-speciality #:elder-wisdom #:elder-vote-weight
    
    ;; Configuration
    #:*debug-mode*
@@ -199,6 +201,19 @@
    
    ;; Config
    #:load-config
+   #:*zmq-host*
+   #:*port-market*
+   #:*port-exec*
+   #:*port-sensory*
+   #:*port-motor*
+   #:*port-external*
+   #:*port-data-keeper*
+   #:*port-notifier*
+   #:*port-backtest-req*
+   #:*port-backtest-res*
+   #:*backtest-service-enabled*
+   #:zmq-connect-endpoint
+   #:zmq-bind-endpoint
    
    ;; Re-export Globals
    #:*debug-mode*
@@ -313,6 +328,7 @@
    
    ;; Heartbeat
    #:start-heartbeat
+   #:heartbeat-now
    
    ;; Learning
    #:train-neural

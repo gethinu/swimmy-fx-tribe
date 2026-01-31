@@ -16,11 +16,25 @@ import json
 import subprocess
 import time
 import os
+import re
 
 import sys
 from pathlib import Path
 import urllib.request
 import urllib.error
+
+# Port configuration (env override)
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+BACKTEST_REQ_PORT = _env_int("SWIMMY_PORT_BACKTEST_REQ", 5580)
+BACKTEST_RES_PORT = _env_int("SWIMMY_PORT_BACKTEST_RES", 5581)
 
 # Force unbuffered output for debugging
 sys.stdout.reconfigure(line_buffering=True)
@@ -210,11 +224,11 @@ class BacktestService:
         if self.use_zmq:
             # Receive backtest requests
             self.receiver = self.context.socket(zmq.PULL)
-            self.receiver.bind("tcp://*:5580")
+            self.receiver.bind(f"tcp://*:{BACKTEST_REQ_PORT}")
 
             # Send results back to Brain (Backtest PULL port 5581)
             self.sender = self.context.socket(zmq.PUSH)
-            self.sender.connect("tcp://localhost:5581")
+            self.sender.connect(f"tcp://localhost:{BACKTEST_RES_PORT}")
 
         # Path to guardian binary
         self.guardian_bin = (
@@ -272,6 +286,62 @@ class BacktestService:
         if tail:
             print(f"[BACKTEST-SVC] ⚠️ ERROR_INPUT_TAIL: {tail}")
         self._error_dumped += 1
+
+    @staticmethod
+    def _is_sexpr(msg: str) -> bool:
+        return msg.lstrip().startswith("(")
+
+    @staticmethod
+    def _extract_name_from_sexpr(msg: str) -> str:
+        m = re.search(r'\(name\\s+\\.\\s+"([^"]+)"\\)', msg)
+        if not m:
+            m = re.search(r'"name"\\s+"([^"]+)"', msg)
+        return m.group(1) if m else "unknown"
+
+    def _handle_sexpr(self, msg: str):
+        strategy_name = self._extract_name_from_sexpr(msg)
+        proc = self._get_guardian_process()
+        if proc is None:
+            return {
+                "type": "BACKTEST_RESULT",
+                "result": {
+                    "strategy_name": strategy_name,
+                    "error": "Guardian binary missing",
+                    "sharpe": 0.0,
+                },
+            }
+
+        input_data = msg.strip()
+        try:
+            proc.stdin.write(input_data + "\n")
+            proc.stdin.flush()
+        except Exception as e:
+            print(f"[BACKTEST-SVC] ❌ Failed to send S-exp to guardian: {e}")
+            self._reset_guardian_process()
+            return {
+                "type": "BACKTEST_RESULT",
+                "result": {
+                    "strategy_name": strategy_name,
+                    "error": str(e),
+                    "sharpe": 0.0,
+                },
+            }
+
+        output_line = self._read_result_line(proc, strategy_name, input_data)
+
+        if not output_line:
+            print("[BACKTEST-SVC] ❌ Guardian process died or returned empty line.")
+            self._reset_guardian_process()
+            return {
+                "type": "BACKTEST_RESULT",
+                "result": {
+                    "strategy_name": strategy_name,
+                    "error": "Empty output",
+                    "sharpe": 0.0,
+                },
+            }
+
+        return output_line
 
     @staticmethod
     def _normalize_timeframe(tf):
@@ -389,7 +459,7 @@ class BacktestService:
     def run(self):
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
         print("[BACKTEST-SVC] 🧪 Backtest Service Started (Persistent Mode)")
-        print("[BACKTEST-SVC] Listening on port 5580")
+        print(f"[BACKTEST-SVC] Listening on port {BACKTEST_REQ_PORT}")
         print(f"[BACKTEST-SVC] Guardian binary: {self.guardian_bin}")
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
 
@@ -397,12 +467,23 @@ class BacktestService:
             while True:
                 try:
                     msg = self.receiver.recv_string()
+
+                    if self._is_sexpr(msg):
+                        result = self._handle_sexpr(msg)
+                        if result is None:
+                            continue
+                        if isinstance(result, str):
+                            self.sender.send_string(result)
+                        else:
+                            self.sender.send_string(json.dumps(result))
+                        continue
+
                     request = json.loads(msg)
 
                     action = request.get("action", "")
 
                     if action == "BACKTEST":
-                        # Standard Backtest Request
+                        # Standard Backtest Request (JSON legacy)
                         result = self.run_backtest(request)
                         if isinstance(result, str):
                             self.sender.send_string(result)

@@ -10,15 +10,15 @@ echo "========================================================"
 # 1. Count Strategy Populations (Snapshot)
 echo -e "\n📊 Population Census:"
 INCUBATOR=$(find data/library -ipath "*/incubator/*.lisp" 2>/dev/null | wc -l)
-SELECTION=$(find data/library -ipath "*/selection/*.lisp" 2>/dev/null | wc -l)
-TRAINING=$(find data/library -ipath "*/training/*.lisp" 2>/dev/null | wc -l)
-BATTLEFIELD=$(find data/library -ipath "*/battlefield/*.lisp" 2>/dev/null | wc -l)
+BRANK=$(find data/library -ipath "*/b/*.lisp" 2>/dev/null | wc -l)
+ARANK=$(find data/library -ipath "*/a/*.lisp" 2>/dev/null | wc -l)
+SRANK=$(find data/library -ipath "*/s/*.lisp" 2>/dev/null | wc -l)
 GRAVEYARD=$(find data/library -ipath "*/graveyard/*.lisp" 2>/dev/null | wc -l)
 
 echo -e "   🍼 Incubator:   $INCUBATOR"
-echo -e "   🪜 Selection:   $SELECTION (S > 0.1)"
-echo -e "   🏋️ Training:    $TRAINING (S > 0.5)"
-echo -e "   ⚔️  Battlefield: $BATTLEFIELD (S > 1.0)"
+echo -e "   🪜 B-Rank:      $BRANK"
+echo -e "   🎖️ A-Rank:      $ARANK"
+echo -e "   🏆 S-Rank:      $SRANK"
 echo -e "   🪦 Graveyard:   $GRAVEYARD"
 
 echo "========================================================"

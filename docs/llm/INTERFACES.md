@@ -10,6 +10,8 @@
   - `5556`: Motor Output (Lisp PUB -> Rust SUB)
   - `5559`: External Command (Legacy) -> Rust SUB
   - `5562`: Notifications (Rust PUSH -> Notifier Service)
+  - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
+  - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
 ## データスキーマ (JSON)
 
@@ -73,6 +75,13 @@ RustからMT5へ送信される。
 Rust -> Lispへ内部状態や正規化されたデータを送る。
 (スキーマはTICK/ACCOUNT_INFOとほぼ同じだが、Rust側で前処理が入る場合あり)
 
+**System Commands (Port 5555 / type=SYSTEM_COMMAND)**  
+Brainが即時で処理する管理系コマンド。  
+- `REPORT_STATUS`: アクティブポジションの一覧を返送（既存）。  
+- `BACKTEST_SUMMARY`: 最新RRバックテスト概要をDiscord通知（既存）。  
+- `BACKTEST_SUMMARY_QUAL`: 最新QUALバックテスト概要をDiscord通知（既存）。  
+- `HEARTBEAT_NOW`: Discord向けHeartbeatを即時送信（新設、2026-01-31）。
+
 ### 4. Motor Output (Port 5556)
 Lisp -> Rustへ「意図」を送る。
 スキーマはExecution用とほぼ同じだが、Risk Gate用のメタデータが含まれる場合がある。
@@ -89,6 +98,32 @@ Lisp -> Rustへ「意図」を送る。
   "estimated_loss": 2000.0
 }
 ```
+
+### 5. Backtest Service (Ports 5580/5581)
+Brainのバックテスト要求を専用サービスへオフロードする。  
+**S式プロトコルに統一**（2026-01-31）。Backtest Service側でS式を受け取り、そのままGuardian `--backtest-only` に流し、結果もS式/JSONをそのまま返却する。  
+（Backtest Service が無い場合は 5556 経由の Guardian 直バックテストにフォールバック可能）
+
+**BACKTEST (Request, S-Expression)**:
+```
+((action . "BACKTEST")
+ (strategy . ((name . "Volvo-Scalp-Gen0")
+              (timeframe . 1)
+              (sma_short . 5)
+              (sma_long . 20)
+              (sl . 0.0010)
+              (tp . 0.0015)
+              (volume . 0.02)))
+ (data_id . "USDJPY_M1")          ; CSVを使う場合
+ (candles_file . "data/historical/USDJPY_M1.csv")
+ (symbol . "USDJPY")
+ (timeframe . 1))
+```
+
+**BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
+- S式またはJSON文字列として返却。Brain側は `type=BACKTEST_RESULT` を検出して処理する。  
+
+**備考**: 以前のJSON要求形式は廃止（後方互換なし）。Brain/School・Backtest ServiceともS式で送受信する。
 
 ## エラーとタイムアウト
 - **タイムアウト**:

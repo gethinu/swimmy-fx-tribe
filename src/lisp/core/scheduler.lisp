@@ -127,7 +127,7 @@
       (setf *advisor-report-sent-today* nil)
       ;; *breeding-cycle-run-today* removed
       (setf *daily-pnl* 0.0)
-      (setf *daily-trades* 0)
+      (setf *daily-trade-count* 0)
       (setf *consecutive-wins* 0)
       (setf *consecutive-losses* 0)
       (setf swimmy.engine::*daily-pnl* 0.0)

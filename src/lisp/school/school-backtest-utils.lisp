@@ -29,16 +29,21 @@
 
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
-   TARGET: :backtest routes to backtest service; :cmd routes to main guardian.
-   V8.2 FIX: Use Main Command Publisher (5556) for ALL traffic (Backtest 5580 is dead)."
+   TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
   ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
   (sleep 0.005)
-  ;; Always use valid *cmd-publisher* (PUB 5556)
-  ;; *backtest-requester* (PUSH 5580) is deprecated/broken.
-  (if (and (boundp 'swimmy.globals:*cmd-publisher*)
-           swimmy.globals:*cmd-publisher*)
-      (pzmq:send swimmy.globals:*cmd-publisher* msg)
-      (format t "[ZMQ] ❌ CMD Publisher NOT BOUND. Msg dropped.~%")))
+  (cond
+    ((and (eq target :backtest)
+          (boundp 'swimmy.globals:*backtest-requester*)
+          swimmy.globals:*backtest-requester*)
+     (pzmq:send swimmy.globals:*backtest-requester* msg))
+    ((and (boundp 'swimmy.globals:*cmd-publisher*)
+          swimmy.globals:*cmd-publisher*)
+     (when (eq target :backtest)
+       (format t "[ZMQ] ⚠️ Backtest requester missing. Falling back to CMD publisher.~%"))
+     (pzmq:send swimmy.globals:*cmd-publisher* msg))
+    (t
+     (format t "[ZMQ] ❌ No publisher bound for target ~a. Msg dropped.~%" target))))
 
 (defun load-backtest-cache ()
   "Load backtest results from disk."
@@ -105,6 +110,10 @@
               (c . ,(candle-close c))
               (v . ,(candle-volume c))))
           candles))
+
+(defun candles-to-sexp (candles)
+  "Convert list of candle structs to S-expression (alist list) for backtest protocol."
+  (candles-to-alist candles))
 
 (defun candles-to-json (candles)
   "Convert list of candle structs to JSON array of jsown objects."

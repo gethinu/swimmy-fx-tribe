@@ -275,8 +275,7 @@ Respond with JSON only, no explanation.
   "Find matching expert sketch for current context."
   (dolist (sketch *expert-sketches*)
     (let* ((name (first sketch))
-           (props (rest sketch))
-           (precondition (getf props :precondition)))
+           (props (rest sketch)))
       ;; Simple pattern matching (in real impl, would eval precondition)
       (when (case name
               (:trend-follow (eq (getf context :regime) :trending))
@@ -305,7 +304,7 @@ Respond with JSON only, no explanation.
          (compressed-context (if (fboundp 'compress-for-llm)
                                  (funcall 'compress-for-llm context :trades)
                                  context))
-         (sketch (match-expert-sketch context))
+         (sketch (match-expert-sketch compressed-context))
          ;; Determine base direction from analysis
          (dual-trend (getf analysis :dual-trend))
          (base-direction (case (getf dual-trend :direction)

@@ -155,11 +155,13 @@ journalctl --user -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u sw
 - **堅牢性**: Systemdがプロセスの死活監視を行い、クラッシュ時に自動復旧します。
 
 ### 2. Sharded File Persistence (The Great Library)
-戦略データを単一の巨大ファイルではなく、戦略ごとに個別のファイル (`data/library/<tier>/<name>.lisp`) として管理します。
+戦略データを単一の巨大ファイルではなく、戦略ごとに個別のファイル (`data/library/<rank>/<name>.lisp`) として管理します。
 - **Incubator**: 生まれたて/テスト中
-- **Battlefield**: 交配待ちのエリート
+- **B**: Selection
+- **A**: Pro
+- **S**: Verified Elite
+- **Legend**: 外部から招喚された英雄
 - **Graveyard**: 敗者
-- **Legends**: 外部から招喚された英雄
 
 ### 2. 7つの市場状態 (Softmax Regime Detection V45.0)
 

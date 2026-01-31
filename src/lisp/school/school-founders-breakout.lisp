@@ -26,13 +26,13 @@
                            collect (- (candle-high (nth i history)) (candle-low (nth i history)))))
              (avg-range (/ (reduce #'+ ranges) period))
              (spike-found (some (lambda (r) (> r (* 3.0 avg-range))) ranges))
-             (slope (calculate-slope (reverse lows)))) ; Reverse because history is usually new->old
+             (slope (calculate-slope-simple (reverse lows)))) ; Reverse because history is usually new->old
         
         (and (> slope 0)
              (not spike-found)))
       nil))
 
-(defun calculate-slope (values)
+(defun calculate-slope-simple (values)
   "Simple Linear Regression Slope."
   (let* ((n (length values))
          (x-mean (/ (1- n) 2.0))
@@ -50,7 +50,7 @@
   "Check if volume is trending up."
   (if (> (length history) period)
       (let ((vols (loop for i from 0 to (1- period) collect (candle-volume (nth i history)))))
-        (> (calculate-slope (reverse vols)) 0))
+        (> (calculate-slope-simple (reverse vols)) 0))
       nil))
 
 (defun confirm-breakout (history period)

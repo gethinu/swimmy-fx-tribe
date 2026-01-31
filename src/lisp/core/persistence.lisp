@@ -24,22 +24,46 @@
 
 (defparameter *library-path* (merge-pathnames "data/library/" (resolve-library-root)))
 
+(defparameter *library-rank-dirs* '("GRAVEYARD" "INCUBATOR" "B" "A" "S" "LEGEND")
+  "Rank-based directories used for sharded file persistence.")
+
+(defparameter *legacy-tier-dirs* '("INCUBATOR" "SELECTION" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND" "GRAVEYARD")
+  "Legacy tier directories retained only for migration/cleanup.")
+
 (defun ensure-directory (path)
   (ensure-directories-exist path))
 
 (defun sanitize-filename (name)
   (substitute #\_ #\/ (substitute #\_ #\\ name)))
 
-(defun get-strategy-path (name tier)
-  (let ((tier-str (if (keywordp tier) (symbol-name tier) (string-upcase tier)))
+(defun normalize-rank-dir (rank)
+  "Normalize rank into a directory name."
+  (let ((r (cond
+             ((null rank) "INCUBATOR")
+             ((keywordp rank) (symbol-name rank))
+             ((symbolp rank) (symbol-name rank))
+             ((stringp rank) (string-upcase rank))
+             (t "INCUBATOR"))))
+    (string-upcase r)))
+
+(defun strategy-storage-rank (strategy-obj)
+  "Resolve the storage rank for a strategy (Rank-first, Incubator fallback)."
+  (let ((rank (slot-value strategy-obj 'swimmy.school::rank)))
+    (cond
+      ((null rank) :INCUBATOR)
+      ((member rank '(:B :A :S :LEGEND :GRAVEYARD :INCUBATOR) :test #'eq) rank)
+      (t :INCUBATOR))))
+
+(defun get-strategy-path (name rank)
+  (let ((rank-str (normalize-rank-dir rank))
         (name-str (sanitize-filename name)))
-    (merge-pathnames (format nil "~a/~a.lisp" tier-str name-str) *library-path*)))
+    (merge-pathnames (format nil "~a/~a.lisp" rank-str name-str) *library-path*)))
 
 (defun init-library ()
   "Initialize the data library directories"
   (ensure-directory *library-path*)
-  (dolist (tier '("GRAVEYARD" "INCUBATOR" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND"))
-    (ensure-directory (merge-pathnames (format nil "~a/" tier) *library-path*)))
+  (dolist (dir *library-rank-dirs*)
+    (ensure-directory (merge-pathnames (format nil "~a/" dir) *library-path*)))
   (format t "[LIB] 📚 Library initialized at ~a~%" *library-path*))
 
 (defun save-strategy (strategy-obj)
@@ -47,8 +71,8 @@
    Writes to .tmp first, then renames to prevent corruption."
   
   (let* ((name (slot-value strategy-obj 'swimmy.school::name))
-         (tier (slot-value strategy-obj 'swimmy.school::tier))
-         (path (get-strategy-path name tier))
+         (rank (strategy-storage-rank strategy-obj))
+         (path (get-strategy-path name rank))
          (temp-path (merge-pathnames (format nil "~a.tmp" (pathname-name path)) path)))
     
     (ensure-directories-exist path)
@@ -80,21 +104,12 @@
   "Load all strategies from the library"
   (let ((strategies nil)
         (count 0))
-    (dolist (tier '("INCUBATOR" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND"))
-      (let ((wildcard (merge-pathnames (format nil "~a/*.lisp" tier) *library-path*)))
+    (dolist (dir '("INCUBATOR" "B" "A" "S" "LEGEND"))
+      (let ((wildcard (merge-pathnames (format nil "~a/*.lisp" dir) *library-path*)))
         (dolist (file (directory wildcard))
           (handler-case
               (let ((strat (load-strategy file)))
-                ;; V28.1: Sync Rank with Tier on Load (Fixes Execution Block)
-                (when strat
-                  (let ((tier-kw (intern (string-upcase tier) :keyword)))
-                    ;; Force Tier to match Directory (Truth)
-                    (setf (slot-value strat 'swimmy.school::tier) tier-kw)
-                    ;; Force Rank logic
-                    (when (eq tier-kw :battlefield)
-                      (setf (slot-value strat 'swimmy.school::rank) :veteran)
-                      ;; (format t "[LIB] ⚔️ Restoring VETERAN rank for ~a~%" (slot-value strat 'swimmy.school::name))
-                      )))
+                ;; Rank is authoritative. Directory is storage only.
                 (push strat strategies)
                 (incf count))
             (error (e)
@@ -105,16 +120,25 @@
 (defun delete-strategy (strategy-obj)
   "Delete the file associated with the strategy."
   (let* ((name (slot-value strategy-obj 'swimmy.school::name))
-         (tier (slot-value strategy-obj 'swimmy.school::tier))
-         (path (get-strategy-path name tier)))
-    (if (probe-file path)
-        (progn
-          (delete-file path)
-          (format t "[LIB] 🗑️ Deleted ~a from ~a~%" name path))
-        (format t "[LIB] ⚠️ File not found for deletion: ~a~%" path))))
+         (rank (strategy-storage-rank strategy-obj))
+         (path (get-strategy-path name rank)))
+    (cond
+      ((probe-file path)
+       (delete-file path)
+       (format t "[LIB] 🗑️ Deleted ~a from ~a~%" name path))
+      ;; Legacy tier fallback (pre-migration files)
+      ((and (slot-exists-p strategy-obj 'swimmy.school::tier)
+            (let* ((tier (slot-value strategy-obj 'swimmy.school::tier))
+                   (legacy-path (get-strategy-path name tier)))
+              (when (probe-file legacy-path)
+                (delete-file legacy-path)
+                (format t "[LIB] 🗑️ Deleted ~a from legacy ~a~%" name legacy-path)
+                t))))
+      (t
+       (format t "[LIB] ⚠️ File not found for deletion: ~a~%" path)))))
 
-(defun move-strategy (strategy-obj new-tier &key (force nil))
-  "Move strategy to a new tier (delete old file, update slot, save new file).
+(defun move-strategy (strategy-obj new-rank &key (force nil))
+  "Move strategy to a new rank (delete old file, update slot, save new file).
    V49.3: Fortress Mode - Blocks moving A/S/Legend to Graveyard without :force t."
   
   ;; Fortress Safety Check
@@ -122,20 +146,20 @@
         (name (slot-value strategy-obj 'swimmy.school::name)))
     (when (and (member rank '(:A :S :legend))
                (not force)
-               (or (eq new-tier :graveyard) 
-                   (string-equal (string new-tier) "GRAVEYARD")))
+               (or (eq new-rank :graveyard) 
+                   (string-equal (string new-rank) "GRAVEYARD")))
        (error "[PERSISTENCE] 🛡️ FORTRESS BLOCK: Attempted to move protected ~a strategy '~a' to Graveyard without FORCE!" 
               rank name)))
 
-  ;; 1. Delete old file using CURRENT tier
+  ;; 1. Delete old file using CURRENT rank (legacy tier fallback supported)
   (delete-strategy strategy-obj)
   
-  ;; 2. Update tier slot
-  (setf (slot-value strategy-obj 'swimmy.school::tier) new-tier)
+  ;; 2. Update rank slot
+  (setf (slot-value strategy-obj 'swimmy.school::rank) new-rank)
   
   ;; 3. Save to new location
   (save-strategy strategy-obj)
-  (format t "[LIB] 🚚 Moved ~a to ~a~%" (slot-value strategy-obj 'swimmy.school::name) new-tier))
+  (format t "[LIB] 🚚 Moved ~a to ~a~%" (slot-value strategy-obj 'swimmy.school::name) new-rank))
 
-(defun strategy-exists-p (name tier)
-  (probe-file (get-strategy-path name tier)))
+(defun strategy-exists-p (name rank)
+  (probe-file (get-strategy-path name rank)))

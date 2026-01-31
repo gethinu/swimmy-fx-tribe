@@ -18,11 +18,10 @@
               ;; 1. Update Rank
               (setf (strategy-rank strat) :A)
               (setf (strategy-status strat) :active)
-              (setf (strategy-tier strat) :training) ;; Sync legacy tier
               
               ;; 2. Move File (Physical Rescue)
               ;; Note: move-strategy also saves the file
-              (swimmy.persistence:move-strategy strat :training)
+              (swimmy.persistence:move-strategy strat :A)
               
               ;; 3. Add to KB
               (add-to-kb strat :rescue :notify nil)

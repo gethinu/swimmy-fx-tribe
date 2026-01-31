@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SERVICE_FILE="$SCRIPT_DIR/swimmy.service"
+SERVICE_FILE="$SCRIPT_DIR/systemd/swimmy.service"
 SYSTEMD_PATH="/etc/systemd/system/swimmy.service"
 
 echo "🐟 Installing Swimmy systemd service..."

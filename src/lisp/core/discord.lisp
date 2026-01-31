@@ -10,7 +10,7 @@
 ;;; OLD: Lisp -> Dexador -> Discord API (Sync/Blocking or Threaded queue)
 ;;; NEW: Lisp -> ZMQ PUSH -> Notifier.py -> Discord API (Truly Async)
 
-(defparameter *notifier-endpoint* "tcp://localhost:5562")
+(defparameter *notifier-endpoint* (zmq-connect-endpoint *port-notifier*))
 (defparameter *notifier-socket* nil)
 (defparameter *notifier-context* nil)
 

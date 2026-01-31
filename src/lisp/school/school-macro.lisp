@@ -92,6 +92,7 @@
          (spx (get-macro-history "SPX"))
          (dxy (get-macro-history "DXY"))
          (vix (get-macro-history "VIX")))
+    (declare (ignore usdjpy vix))
     
     ;; WARNING: If USDJPY is not in *macro-drivers* fetched by Python, this fails.
     ;; Phase 19 Python script had: DXY, US10Y, SPX...

@@ -74,6 +74,53 @@
              (val (and cache (gethash key cache))))
         val)))
 
+;;; ==========================================
+;;; ZMQ PORTS & ENDPOINTS
+;;; ==========================================
+
+(defun parse-int-safe (val default)
+  "Parse integer safely with a default fallback."
+  (handler-case
+      (if (and val (stringp val) (> (length val) 0))
+          (parse-integer val)
+          default)
+    (error () default)))
+
+(defun env-int-or (key default)
+  "Read integer env var with a default fallback."
+  (parse-int-safe (getenv-or-dotenv key) default))
+
+(defun env-bool-or (key default)
+  "Read boolean env var with a default fallback."
+  (let ((val (getenv-or-dotenv key)))
+    (if val
+        (member (string-downcase val) '("1" "true" "yes" "on" "y" "t") :test #'string=)
+        default)))
+
+(defparameter *zmq-host* (or (getenv-or-dotenv "SWIMMY_ZMQ_HOST") "localhost")
+  "Default ZMQ host for local connections.")
+
+(defparameter *port-market* (env-int-or "SWIMMY_PORT_MARKET" 5557))
+(defparameter *port-exec* (env-int-or "SWIMMY_PORT_EXEC" 5560))
+(defparameter *port-sensory* (env-int-or "SWIMMY_PORT_SENSORY" 5555))
+(defparameter *port-motor* (env-int-or "SWIMMY_PORT_MOTOR" 5556))
+(defparameter *port-external* (env-int-or "SWIMMY_PORT_EXTERNAL" 5559))
+(defparameter *port-data-keeper* (env-int-or "SWIMMY_PORT_DATA_KEEPER" 5561))
+(defparameter *port-notifier* (env-int-or "SWIMMY_PORT_NOTIFIER" 5562))
+(defparameter *port-backtest-req* (env-int-or "SWIMMY_PORT_BACKTEST_REQ" 5580))
+(defparameter *port-backtest-res* (env-int-or "SWIMMY_PORT_BACKTEST_RES" 5581))
+
+(defparameter *backtest-service-enabled* (env-bool-or "SWIMMY_BACKTEST_SERVICE" nil)
+  "Enable dedicated backtest service (5580/5581) when true.")
+
+(defun zmq-connect-endpoint (port &optional (host *zmq-host*))
+  "Build ZMQ connect endpoint."
+  (format nil "tcp://~a:~d" host port))
+
+(defun zmq-bind-endpoint (port)
+  "Build ZMQ bind endpoint."
+  (format nil "tcp://*:~d" port))
+
 (defun get-discord-webhook (key)
   "Webhook URLを取得 (Consolidated 2026-01-10)
    Maps logical keys to consolidated environmental variables.

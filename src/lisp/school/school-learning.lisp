@@ -49,6 +49,7 @@
 
 (defun elder-vote (proposal context)
   "Ask elders to vote on a proposal. Returns :approve, :caution, or :reject"
+  (declare (ignore proposal))
   (let ((approve-votes 0)
         (reject-votes 0)
         (total-weight 0))
@@ -437,6 +438,30 @@
           (format t "[L] 🧠 FEEDBACK: Updated prediction for ~a ~a -> ~a~%" 
                   symbol direction (if won-p :win :loss)))))))
 
+;;; ==========================================
+;;; LEGACY HOOKS (NO-OP DEFAULTS)
+;;; ==========================================
+
+(defun learn-from-failure (context pnl)
+  "Legacy hook for failure learning (currently no-op)."
+  (declare (ignore context pnl))
+  nil)
+
+(defun on-trade-close-meta (regime strategy-name won-p pnl)
+  "Legacy hook for meta-learning on trade close (currently no-op)."
+  (declare (ignore regime strategy-name won-p pnl))
+  nil)
+
+(defun record-proof-trade (pnl)
+  "Legacy hook for proof-trade tracking (currently no-op)."
+  (declare (ignore pnl))
+  nil)
+
+(defun get-price-position (history)
+  "Legacy hook for price position extraction (currently no-op)."
+  (declare (ignore history))
+  nil)
+
 ;; Legacy compatibility
 (defun record-failure (symbol direction category strategy-name pnl)
   (record-trade-outcome symbol direction category strategy-name pnl))
@@ -460,8 +485,7 @@
 
 (defun get-failure-summary ()
   "Get detailed failure summary"
-  (let* ((patterns (analyze-failure-patterns))
-         (total-failures (length *failure-log*))
+  (let* ((total-failures (length *failure-log*))
          (total-successes (length *success-log*))
          (overall-rate (if (> (+ total-failures total-successes) 0)
                            (* 100 (/ total-successes (+ total-failures total-successes)))
@@ -470,4 +494,3 @@
             overall-rate total-successes total-failures)))
 
 ;;; P3: LEARNING ADVANCED functions moved to school-p3-learning.lisp (V47.3)
-

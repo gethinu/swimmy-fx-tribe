@@ -11,6 +11,10 @@
 
 (in-package :swimmy.school)
 
+(format t "[AUDIT] Initializing DB + Knowledge Base...~%")
+(init-db)
+(init-knowledge-base)
+
 (format t "════════════════════════════════════════════~%")
 (format t "🔍 DEEP DATA AUDIT: In-Memory vs SQL~%")
 (format t "════════════════════════════════════════════~%")

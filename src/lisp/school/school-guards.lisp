@@ -26,14 +26,7 @@
 ;;; ==========================================
 ;;; TRADING TIME SAFETY GUARD
 ;;; ==========================================
-
-(defun is-safe-trading-time-p (strategy-name)
-  "Check if current time is safe for trading this strategy.
-   Returns T if safe to trade, NIL if should wait."
-  (declare (ignore strategy-name))
-  ;; Currently always returns T (no time restrictions)
-  ;; Can be extended for session-based filtering
-  t)
+;; NOTE: is-safe-trading-time-p is defined in school-execution.lisp
 
 ;;; ==========================================
 ;;; STRATEGY COOLDOWN GUARD

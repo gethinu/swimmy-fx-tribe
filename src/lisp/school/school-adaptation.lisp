@@ -74,6 +74,14 @@
   (unless (hash-table-p (strategy-adapt-vector strategy))
     (setf (strategy-adapt-vector strategy) (make-hash-table :test 'eq))))
 
+(defun get-regime-key (context)
+  "Normalize a context object into a regime keyword."
+  (cond
+    ((keywordp context) context)
+    ((and (listp context) (getf context :regime)) (getf context :regime))
+    ((and (hash-table-p context) (gethash :regime context)) (gethash :regime context))
+    (t :unknown)))
+
 (defun update-adaptation-weights (strategy context pnl)
   "Update the adaptation vector using Bayesian Logic."
   (when strategy

@@ -16,10 +16,12 @@
               (ema (push (list (format nil "EMA-~d" (car p)) (float (ind-ema (car p) history))) values))
               (rsi (push (list (format nil "RSI-~d" (car p)) (float (ind-rsi (car p) history))) values))
               (macd (multiple-value-bind (m s) (ind-macd (first p) (second p) (third p) history)
+                      (declare (ignore s))
                       (push (list "MACD" (float m)) values)))
               (bb (multiple-value-bind (m u l) (ind-bb (first p) (second p) history)
+                    (declare (ignore u l))
                     (push (list "BB-Mid" (float m)) values))))
-          (error (e) nil))))
+          (error () nil))))
     (nreverse values)))
 
 (defun transform-cross-calls-helper (expr pkg)
@@ -156,6 +158,7 @@
           (push `(,(intern "EMA" pkg) ,(ind-ema 20 history)) bindings))
         (when (fboundp 'ind-bb)
            (multiple-value-bind (m u l) (ind-bb 20 2.0 history)
+             (declare (ignore m))
              (push `(,(intern "BB-WIDTH" pkg) ,(- u l)) bindings)))
         
         (multiple-value-bind (sec min hour day month year dow) (decode-universal-time (get-universal-time))

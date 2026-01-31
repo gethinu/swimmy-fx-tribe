@@ -116,12 +116,17 @@
   (swimmy.school::init-db)             ; V49.8 SQL Init
   (swimmy.school::init-knowledge-base) ; Restoration from SQL + Files
   (swimmy.school::init-school)         ; Clan & Pool Init
+
+  ;; Restore V3.0 61-strategy legends (commit 3f58795)
+  (let ((f (find-symbol "RESTORE-LEGEND-61" "SWIMMY.SCHOOL")))
+    (when (fboundp f)
+      (funcall f)))
   
   ;; P8: End startup mode to enable notifications
   (when (fboundp 'swimmy.school::end-startup-mode)
     (swimmy.school::end-startup-mode))
 
-  ;; V51.0: Ensure Brain uses Backtest Service (PUSH -> 5580)
+  ;; V51.0: Initialize Backtest Service if enabled (PUSH -> *port-backtest-req*)
   (when (fboundp 'swimmy.school::init-backtest-zmq)
     (swimmy.school::init-backtest-zmq))
     

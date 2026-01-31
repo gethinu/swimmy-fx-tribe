@@ -6,8 +6,7 @@
 
 (deftest test-rewrite-logic-symbols-sma
   "Test rewriting SMA parameters in logic"
-  (let ((logic '(and (> close sma-50) (cross-above sma-20 sma-50)))
-        (result (swimmy.school::rewrite-logic-symbols 
+  (let ((result (swimmy.school::rewrite-logic-symbols 
                  '(and (> close sma-50) (cross-above sma-20 sma-50)) 
                  50 60 "SMA")))
     ;; Should become: (and (> close sma-60) (cross-above sma-20 sma-60))

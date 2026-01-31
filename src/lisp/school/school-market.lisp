@@ -54,16 +54,8 @@
   "Calculate linear regression slope of last n points"
   (when (>= (length data) n)
     (let* ((y (subseq data 0 n))
-           (x (loop for i from 0 below n collect i))
-           (n-val (float n))
-           (sum-x (reduce #'+ x))
-           (sum-y (reduce #'+ y))
-           (sum-xy (loop for i from 0 below n sum (* (nth i x) (nth i y))))
-           (sum-xx (loop for i from 0 below n sum (* (nth i x) (nth i x)))))
-      ;; Slope formula: (N*sum(xy) - sum(x)sum(y)) / (N*sum(xx) - sum(x)^2)
-      ;; Note: X is 0,1,2... so recent is 0. Slope logic inverted (0 is recent).
-      ;; Standard slope: we want change over time.
-      ;; Let's simplify: just (first - last) / n for now as approximation
+           (n-val (float n)))
+      ;; Simplified slope: (first - last) / n
       (/ (- (first y) (car (last y))) n-val))))
 
 ;;; ==========================================
@@ -294,7 +286,6 @@
            (current *current-regime*)
            (trend-analysis (analyze-trend-momentum))
            (vol-trend (analyze-volatility-trend))
-           (hour (nth 2 (multiple-value-list (get-decoded-time))))
            ;; Transition probabilities
            (trending-count (gethash (cons current :trending) transition-matrix 0))
            (ranging-count (gethash (cons current :ranging) transition-matrix 0))

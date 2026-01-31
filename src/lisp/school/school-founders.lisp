@@ -24,6 +24,7 @@
   (let ((func-name (intern (format nil "MAKE-FOUNDER-~a" (symbol-name key)))))
     `(progn
        (defun ,func-name ()
+         ,doc-string
          ,@body)
        (setf (gethash ,key *founder-registry*) #',func-name)
        (format t "[REGISTRY] 📝 Registered Founder: ~a (~a)~%" ,key ,name))))
@@ -258,6 +259,7 @@
         t) ; Allow pass on startup
       (let ((pnl 0) (trades 0) (peak 0) (dd 0) (wins 0)
             (sub-history (subseq history (max 0 (- (length history) 500)))))
+        (declare (ignore pnl trades peak dd wins sub-history))
         ;; Placeholder: For V9.3, we check syntax and basic integrity.
         (format t "[SAFETY] 🔍 Verifying candidate ~a... OK.~%" (strategy-name strategy))
         t)))

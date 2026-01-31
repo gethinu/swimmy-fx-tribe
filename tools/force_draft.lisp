@@ -1,5 +1,5 @@
 ;; tools/force_draft.lisp
-;; EMERGENCY SCRIPT: Manually populate Battlefield from Incubator
+;; EMERGENCY SCRIPT: Manually populate S-Rank from Incubator
 ;; Triggered by Expert Panel "Laxative" Order.
 
 (require :sb-posix)
@@ -21,7 +21,10 @@
 
 (format t "[DRAFT] 📊 Loaded ~d strategies total.~%" (length *strategy-knowledge-base*))
 
-(let ((incubators (remove-if-not (lambda (s) (eq (strategy-tier s) :incubator)) *strategy-knowledge-base*))
+(let ((incubators (remove-if-not (lambda (s)
+                                   (or (null (strategy-rank s))
+                                       (eq (strategy-rank s) :incubator)))
+                                 *strategy-knowledge-base*))
       (promoted-count 0))
   
   (format t "[DRAFT] 🥚 Found ~d Incubator strategies.~%" (length incubators))
@@ -30,7 +33,7 @@
   (dolist (s incubators)
     (when (search "Legendary" (strategy-name s))
       (format t "[DRAFT] 👑 Found Legend: ~a. Promoting to LEGEND.~%" (strategy-name s))
-      (swimmy.persistence:move-strategy s :legend)
+      (ensure-rank s :legend "Force Draft Legend")
       (incf promoted-count)))
   
   ;; 3. Scan for "Top Talent" (Sharpe > 0.0 or just top 4)
@@ -46,12 +49,12 @@
       
       (dolist (pick top-picks)
         ;; Only promote if not already handled
-        (when (eq (strategy-tier pick) :incubator) 
+        (when (or (null (strategy-rank pick)) (eq (strategy-rank pick) :incubator))
            ;; Check if it has AT LEAST non-negative sharpe? Or just forced?
            ;; Expert Panel said "Force Draft". So JUST DO IT.
-           (format t "[DRAFT] 🎖️ Drafting ~a (Sharpe: ~a) to BATTLEFIELD.~%" 
+           (format t "[DRAFT] 🎖️ Drafting ~a (Sharpe: ~a) to S-RANK.~%" 
                    (strategy-name pick) (strategy-sharpe pick))
-           (swimmy.persistence:move-strategy pick :battlefield)
+           (ensure-rank pick :S "Force Draft S-Rank")
            (incf promoted-count)))))
 
   (format t "[DRAFT] ✅ Operation Complete. Promoted ~d strategies.~%" promoted-count))

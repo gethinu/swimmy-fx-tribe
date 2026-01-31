@@ -229,6 +229,7 @@
 (deftest test-learning-cycle-adjustment
   "V18: Test that learning cycle can adjust thresholds (Naval/Ng)"
   (let ((orig-threshold swimmy.school::*prediction-min-confidence*))
+    (declare (ignore orig-threshold))
     ;; Verify adjustment functions exist and threshold is settable
     (assert-true (numberp swimmy.school::*prediction-min-confidence*) "Threshold is number")
     (assert-true (and (>= swimmy.school::*prediction-min-confidence* 0.3)
@@ -277,27 +278,27 @@
   (format t "~%[TEST] Running Advisor Reports Test...~%")
   
   ;; Mock GLOBALS
-  (setf cl-user::*max-total-exposure* 5.0)
-  (setf cl-user::*danger-level* 3)
-  (setf cl-user::*consecutive-losses* 1)
-  (setf cl-user::*current-equity* 100000.0)
-  (setf cl-user::*locked-treasury* 20000.0)
-  (setf cl-user::*daily-pnl* 500.0)
-  (setf cl-user::*evolved-strategies* nil) 
-  (setf cl-user::*daily-loss-limit* -5000)
+  (setf swimmy.globals::*max-total-exposure* 5.0)
+  (setf swimmy.globals::*danger-level* 3)
+  (setf swimmy.globals::*consecutive-losses* 1)
+  (setf swimmy.globals::*current-equity* 100000.0)
+  (setf swimmy.globals::*locked-treasury* 20000.0)
+  (setf swimmy.globals::*daily-pnl* 500.0)
+  (setf swimmy.globals::*evolved-strategies* nil) 
+  (setf swimmy.globals::*daily-loss-limit* -5000)
 
   ;; Test Taleb
-  (let ((taleb (cl-user::generate-taleb-report)))
+  (let ((taleb (swimmy.school::generate-taleb-report)))
     (assert-true (search "Taleb" taleb) "Taleb report should contain title"))
 
   ;; Test Graham (PG)
-  (let ((graham (cl-user::generate-pg-report)))
+  (let ((graham (swimmy.school::generate-pg-report)))
     (assert-true (search "Graham" graham) "PG report should contain title"))
 
   ;; Test Naval
-  (let ((naval (cl-user::generate-naval-report)))
+  (let ((naval (swimmy.school::generate-naval-report)))
     (assert-true (search "Naval" naval) "Naval report should contain title"))
     
   ;; Test Orchestrator
-  (let ((full (cl-user::generate-advisor-reports)))
+  (let ((full (swimmy.school::generate-advisor-reports)))
     (assert-true (> (length full) 50) "Full report should not be empty")))

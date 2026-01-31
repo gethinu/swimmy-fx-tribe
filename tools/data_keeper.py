@@ -26,7 +26,16 @@ def load_apex_webhook():
 APEX_WEBHOOK = load_apex_webhook()
 
 # Configuration
-ZMQ_PORT = 5561
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+ZMQ_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
 # buffer to 5M candles (Sufficient for ~10 years M1)
 # M1 was causing OOM with 10M limit.
 MAX_CANDLES_PER_SYMBOL = 500_000

@@ -48,8 +48,7 @@
   (format t "═══════════════════════════════════════~%~%")
   
   (let ((files '("brain.lisp" "school.lisp" "dsl.lisp" "dreamer2.lisp"))
-        (total-functions 0)
-        (total-lines 0))
+        (total-functions 0))
     
     ;; Analyze each file
     (dolist (file files)

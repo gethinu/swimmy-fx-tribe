@@ -31,12 +31,11 @@
 (defun get-returns-vector (strategy &optional (period 30))
   "Extract last N daily PnL values for the strategy.
    Returns a vector of floats."
+  (declare (ignore strategy))
   ;; Placeholder: Requires trade history access from `school-analytics`
-  (let ((trades (get-strategy-trades strategy 100))
-        (daily-pnl (make-hash-table :test 'equal)))
-    ;; Aggregate trades by day... 
-    ;; For now, returning a mock random vector for architectural verification
-    (make-array period :initial-element (random 1.0))))
+  ;; Aggregate trades by day... 
+  ;; For now, returning a mock random vector for architectural verification
+  (make-array period :initial-element (random 1.0)))
 
 (defun pearson-correlation (v1 v2)
   "Calculate Pearson correlation coefficient between two vectors."

@@ -18,7 +18,6 @@
   (bt:with-lock-held (*kb-lock*)
     ;; 1. Update Rank
     (setf (strategy-rank strategy) :B)
-    (setf (strategy-tier strategy) :candidate) ;; Legacy tier mapping
     
     ;; 2. Update Persistance
     (upsert-strategy strategy)
@@ -75,7 +74,6 @@
   
   (bt:with-lock-held (*kb-lock*)
     (setf (strategy-rank strategy) :S)
-    (setf (strategy-tier strategy) :battlefield)
     (upsert-strategy strategy)
     
     ;; Notification

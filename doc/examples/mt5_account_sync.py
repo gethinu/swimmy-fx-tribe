@@ -15,24 +15,23 @@ Usage:
 Architecture:
     MT5 Terminal <-- (API) -- mt5_account_sync.py -- (ZMQ) --> Guardian --> Brain
 
-Port: 5580 (dedicated for account sync, avoids conflict with other services)
+Port: 5582 (dedicated for account sync, avoids conflict with other services)
 """
 
 import json
 import time
 import sys
+import os
 from datetime import datetime
 
 # Configuration
 SYNC_INTERVAL_SECONDS = 30  # Sync every 30 seconds
-ZMQ_PORT = 5580  # Dedicated port for account sync
+ZMQ_PORT = int(os.getenv("SWIMMY_PORT_ACCOUNT_SYNC", "5582"))  # Dedicated port for account sync
 MAX_CONSECUTIVE_FAILURES = 5  # Alert after 5 consecutive failures
 MT5_RECONNECT_INTERVAL = 60  # Retry MT5 connection every 60s
 
 
 # Load webhook from environment variable
-import os
-
 APEX_WEBHOOK = os.getenv("SWIMMY_DISCORD_APEX", "")
 
 if not APEX_WEBHOOK:

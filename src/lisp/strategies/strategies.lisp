@@ -31,9 +31,7 @@
   ;; Phase 10: Unlock the Alpha (Legacy Activation)
   (let ((strats *strategy-knowledge-base*))
     (dolist (s strats)
-      (unless (strategy-tier s)
-        (setf (strategy-tier s) :battlefield)
-        (unless (strategy-generation s) (setf (strategy-generation s) 0)))
+      (unless (strategy-generation s) (setf (strategy-generation s) 0))
       (unless (strategy-rank s)
         (let ((sharpe (or (strategy-sharpe s) 0.0))
               (trades (or (strategy-trades s) 0)))
@@ -328,7 +326,7 @@
 ;;; P1: SIMILARITY CHECK & PRUNING
 ;;; ==========================================
 
-(defun strategy-distance (strat-a strat-b)
+(defun strategy-distance-legacy (strat-a strat-b)
   "Calculate normalized parameter distance between two strategies.
    Returns 0.0 for identical, 1.0 for completely different.
    Compares: SL, TP, timeframe, indicator parameters."
@@ -362,9 +360,9 @@
 (defun strategies-similar-p (strat-a strat-b)
   "Check if two strategies are too similar (P1)"
   (and (eq (strategy-category strat-a) (strategy-category strat-b))
-       (< (strategy-distance strat-a strat-b) *similarity-threshold*)))
+       (< (strategy-distance-legacy strat-a strat-b) *similarity-threshold*)))
 
-(defun prune-similar-strategies (strategies &optional (min-per-category *min-strategies-per-category*))
+(defun prune-similar-strategies-legacy (strategies &optional (min-per-category *min-strategies-per-category*))
   "P1: Remove near-duplicate strategies, keeping the stronger one.
    Maintains minimum MIN-PER-CATEGORY strategies per category."
   (let ((category-counts (make-hash-table))

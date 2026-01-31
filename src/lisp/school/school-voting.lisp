@@ -66,6 +66,7 @@
 
 (defun collect-strategy-votes (symbol history &key timeframe-map)
   "Collect votes from all active strategies using their specific timeframes"
+  (declare (ignore symbol))
   (let ((votes nil))
     (maphash 
      (lambda (category strategies)

@@ -348,13 +348,13 @@
      ,@body))
 
 ;;; ─────────────────────────────────────────
-;;; MACRO: log-philosophy
+;;; MACRO: with-philosophy-log
 ;;; ─────────────────────────────────────────
 ;;; Automatically log the "Why" around an action
-(defmacro log-philosophy (action-type what &body body)
+(defmacro with-philosophy-log (action-type what &body body)
   "Execute body and log philosophical reasoning"
   `(let ((result (progn ,@body)))
-     (when (boundp 'log-philosophy)
+     (when (fboundp 'log-philosophy)
        (funcall 'log-philosophy ,action-type ,what (get-current-context)))
      result))
 
@@ -375,4 +375,3 @@
      (when it ,@body)))
 
 (format t "[DSL] Advanced Macros loaded (PG-style)~%")
-

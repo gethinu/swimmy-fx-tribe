@@ -308,6 +308,11 @@
   (let ((lots (calculate-risk-parity-lots)))
     (or (gethash category lots) 0.01)))
 
+;;; V50.x: Prediction trigger placeholder (startup hook)
+(defun request-prediction ()
+  "Trigger a prediction cycle (currently no-op placeholder)."
+  nil)
+
 ;;; V17: SELF-EXPLANATION system removed (Issue 4 - was unused dead code)
 ;;; If needed in future, implement a simpler version that actually gets called
 

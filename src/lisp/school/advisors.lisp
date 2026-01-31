@@ -5,6 +5,14 @@
 ;;; Taleb (Risk), Naval (Simplicity), Paul Graham (Startup), Jim Simons (Quant)
 ;;; Consolidated per Musk's Order (2026-01-04)
 
+(in-package :swimmy.school)
+
+;; Local defaults for advisor report inputs (override elsewhere as needed)
+(defvar *active-users* 1)
+(defvar *manual-interventions* 0)
+(defvar *signal-count* 0)
+(defvar *current-alpha* 0.0)
+(defvar *global-win-rate* 0.0)
 
 ;;; -------------------------------------------------------
 ;;; 1. NASSIM TALEB (Risk & Anti-Fragility)

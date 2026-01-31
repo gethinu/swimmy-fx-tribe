@@ -122,6 +122,7 @@
 
 (defun mutate-timeframe-param (strategy old-tf new-tf)
   "Create a new strategy with mutated timeframe"
+  (declare (ignore old-tf))
   (let* ((old-name (strategy-name strategy))
          (root (get-root-name old-name))
          (gen (if (slot-exists-p strategy 'generation) (strategy-generation strategy) 0))
@@ -192,6 +193,11 @@
 
 (defparameter *vs-candidate-count* 5)
 (defparameter *vs-temperature* 1.0)
+
+(defun dream-code (&optional requested-type)
+  "Dreamer hook (currently no-op placeholder)."
+  (declare (ignore requested-type))
+  nil)
 
 (defun generate-vs-prompt (strategy-type context)
   "Generate a Verbalized Sampling prompt with deep context."
@@ -291,6 +297,7 @@ Generate strategies now:"
 ;;; ==========================================
 
 (defun parse-json-safely (json-str)
+  (declare (ignore json-str))
   nil)
 
 (defun parse-vs-response (json-str)
@@ -590,5 +597,3 @@ Generate only the Lisp code:"
        (list :action :evolve
              :focus nil
              :message "Ecosystem healthy - continue evolution")))))
-
-

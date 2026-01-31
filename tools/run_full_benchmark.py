@@ -6,6 +6,16 @@ import sys
 from pathlib import Path
 
 
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
 def resolve_base_dir() -> Path:
     env = os.getenv("SWIMMY_HOME")
     if env:
@@ -17,8 +27,8 @@ def resolve_base_dir() -> Path:
     return here.parent
 
 # Configuration
-BACKTEST_PORT = 5580
-BRAIN_PORT = 5555
+BACKTEST_PORT = _env_int("SWIMMY_PORT_BACKTEST_REQ", 5580)
+BRAIN_PORT = _env_int("SWIMMY_PORT_SENSORY", 5555)
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 BASE_DIR = str(resolve_base_dir())
 CSV_BASE = os.path.join(BASE_DIR, "data", "historical")

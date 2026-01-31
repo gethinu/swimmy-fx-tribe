@@ -11,33 +11,6 @@
 (defvar *risk-alert-throttle* (make-hash-table :test 'equal)
   "Timestamp of last alert for (symbol action reason) to prevent spam")
 
-(defun check-correlation-risk (symbol direction)
-  "Engine-level wrapper for School correlation checks."
-  (if (fboundp 'swimmy.school::check-correlation-risk)
-      (swimmy.school::check-correlation-risk symbol direction)
-      0.0))
-
-(defun get-symbol-exposure (symbol)
-  "Engine-level wrapper for School exposure tracking."
-  (cond
-    ((fboundp 'swimmy.school::get-symbol-exposure)
-     (swimmy.school::get-symbol-exposure symbol))
-    ((boundp '*symbol-exposure*)
-     (gethash symbol *symbol-exposure* 0.0))
-    (t 0.0)))
-
-(defun apply-gotobi-adjustment (symbol direction)
-  "Engine-level wrapper for School Gotobi adjustments."
-  (if (fboundp 'swimmy.school::apply-gotobi-adjustment)
-      (swimmy.school::apply-gotobi-adjustment symbol direction)
-      1.0))
-
-(defun apply-london-edge (symbol direction)
-  "Engine-level wrapper for School London session adjustments."
-  (if (fboundp 'swimmy.school::apply-london-edge)
-      (swimmy.school::apply-london-edge symbol direction)
-      1.0))
-
 ;;; ==========================================
 ;;; MECU: CURRENCY DECOMPOSITION & EXPOSURE
 ;;; ==========================================

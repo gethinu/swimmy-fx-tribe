@@ -1,13 +1,15 @@
 import zmq
 import json
 import time
+import os
 
 
 def test_log_channel():
     context = zmq.Context()
     socket = context.socket(zmq.PUSH)
     # Connect to Notifier service
-    socket.connect("tcp://127.0.0.1:5562")
+    port = int(os.getenv("SWIMMY_PORT_NOTIFIER", "5562"))
+    socket.connect(f"tcp://127.0.0.1:{port}")
 
     time.sleep(1)
 

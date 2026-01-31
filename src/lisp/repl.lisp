@@ -140,11 +140,11 @@
   (format t "~%═══════════════════════════════════════~%")
   (format t "🗣️ TRIBAL DIALECT - Patterns~%")
   (format t "═══════════════════════════════════════~%")
-  (when (and (boundp 'cl-user::*tribal-dialect*) cl-user::*tribal-dialect*)
+  (when (and (boundp 'swimmy.core::*tribal-dialect*) swimmy.core::*tribal-dialect*)
     (maphash (lambda (name info)
                (format t "~a: ~a~%"
                        name (getf info :description)))
-             cl-user::*tribal-dialect*))
+             swimmy.core::*tribal-dialect*))
   (format t "═══════════════════════════════════════~%~%"))
 
 ;;; ─────────────────────────────────────────
@@ -179,10 +179,10 @@
 
 (defun print-reputation (name)
   "Print reputation for strategy"
-  (if (and (boundp 'cl-user::*reputation-scores*) 
-           cl-user::*reputation-scores*
+  (if (and (boundp 'swimmy.core::*reputation-scores*) 
+           swimmy.core::*reputation-scores*
            name)
-      (let ((rep (gethash name cl-user::*reputation-scores*)))
+      (let ((rep (gethash name swimmy.core::*reputation-scores*)))
         (if rep
             (progn
               (format t "~%═══════════════════════════════════════~%")

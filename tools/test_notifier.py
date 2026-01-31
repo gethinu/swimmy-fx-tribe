@@ -1,14 +1,25 @@
 import zmq
 import json
 import time
+import os
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1455351646962979000/p9cWLthwfP8gB1TgvukeJixren_kgJvjjIq-oVQ-doAsX_C4chGBQyf05Eh_iDmLu1Dy"
 
 
 def main():
+    def _env_int(key: str, default: int) -> int:
+        val = os.getenv(key, "").strip()
+        if not val:
+            return default
+        try:
+            return int(val)
+        except ValueError:
+            return default
+
     ctx = zmq.Context()
     sock = ctx.socket(zmq.PUSH)
-    sock.connect("tcp://localhost:5562")
+    port = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
+    sock.connect(f"tcp://localhost:{port}")
 
     print("Sending test notification...")
 

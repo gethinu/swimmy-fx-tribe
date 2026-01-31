@@ -16,6 +16,7 @@
 
 (defun stress-test-strategy (strat symbol-name data-id)
   "Manually send BACKTEST request for a strategy against a specific ID"
+  (declare (ignore symbol-name))
   (let* ((tf (strategy-timeframe strat))
          (tf-num (if (numberp tf) tf 1))
          (msg (jsown:to-json 

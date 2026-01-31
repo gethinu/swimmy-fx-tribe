@@ -35,8 +35,8 @@
   (let ((ctx (pzmq:ctx-new)))
     (unwind-protect
          ;; V41.1: Fix ZMQ topology - Brain BINDS, Guardian CONNECTS
-         ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)  
-         ;; Brain: PULL<-5555 (bind), PUB->5556 (bind), PUSH->5580 (connect)
+         ;; Guardian: PUSH->5555 (connect), SUB<-5556 (connect)
+         ;; Brain: PULL<-5555 (bind), PUB->5556 (bind), Backtest PULL<-5581 (bind)
          (let ((pull (pzmq:socket ctx :pull))
                (pull-bt (pzmq:socket ctx :pull))
                (pub (pzmq:socket ctx :pub))
@@ -46,9 +46,9 @@
            (loop for i from 1 to 3 while (not bind-success) do
              (handler-case
                  (progn
-                   (pzmq:bind pull "tcp://*:5555")
-                   (pzmq:bind pull-bt "tcp://*:5581")
-                   (pzmq:bind pub "tcp://*:5556")
+                   (pzmq:bind pull (zmq-bind-endpoint *port-sensory*))
+                   (pzmq:bind pull-bt (zmq-bind-endpoint *port-backtest-res*))
+                   (pzmq:bind pub (zmq-bind-endpoint *port-motor*))
                    ;; V51.0: Backtest results use dedicated PULL 5581.
                    (setf bind-success t))
                (error (e)
@@ -62,7 +62,7 @@
                        (sb-ext:exit :code 1))))))
 
            (setf swimmy.globals:*cmd-publisher* pub)
-           ;; swimmy.globals:*backtest-requester* remains nil, triggering fallback to *cmd-publisher* in school-backtest.lisp
+           ;; Backtest requester is initialized in init-backtest-zmq when enabled.
 
            ;; V41.7: Set Receive Timeout to 100ms for non-blocking loop
            (pzmq:setsockopt pull :rcvtimeo 100)

@@ -14,6 +14,16 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
 def resolve_base_dir() -> Path:
     env = os.getenv("SWIMMY_HOME")
     if env:
@@ -25,7 +35,7 @@ def resolve_base_dir() -> Path:
     return here.parent
 
 # Configuration
-ZMQ_PORT = 5562
+ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 BASE_DIR = str(resolve_base_dir())
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 BACKTEST_CACHE = os.path.join(BASE_DIR, "data", "backtest_cache.json")

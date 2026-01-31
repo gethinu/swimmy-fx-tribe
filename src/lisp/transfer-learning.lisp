@@ -41,6 +41,8 @@
   "Naval: Minimum similarity to consider assets related - STRICT (was 0.7)")
 (defparameter *structural-similarity-threshold* 0.9
   "Naval: FFT-based structural similarity threshold - STRICT")
+(defparameter *regime-strategy-matrix* (make-hash-table :test 'equal)
+  "Regime x symbol -> (wins losses) matrix for transfer learning.")
 
 ;;; ==========================================
 ;;; PATTERN STRUCTURES
@@ -66,7 +68,7 @@
         (history (gethash symbol *candle-histories*)))
     (when (and history (> (length history) 100))
       ;; Pattern 1: Trend continuation after pullback
-      (let* ((wins 0) (total 0) (params nil))
+      (let* ((wins 0) (total 0))
         (maphash
          (lambda (key stats)
            (when (and (eq (car key) :trending)

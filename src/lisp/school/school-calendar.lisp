@@ -153,6 +153,7 @@
 
 (defun apply-calendar-adjustment (symbol direction lot)
   "Apply economic calendar adjustment to lot size"
+  (declare (ignore direction))
   (multiple-value-bind (mult reason)
       (get-calendar-risk-adjustment symbol)
     (let ((adjusted-lot (* lot mult)))
