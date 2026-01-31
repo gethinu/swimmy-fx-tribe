@@ -206,9 +206,11 @@
     (when (> (- now last-time) *status-notification-interval*)
       (let* ((regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
              (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
-             (pred (if (boundp '*last-prediction*) (symbol-value '*last-prediction*) "HOLD"))
-             (conf (if (and (boundp '*last-confidence*) (symbol-value '*last-confidence*)) (symbol-value '*last-confidence*) 0.5))
              (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
+             (pred :hold)
+             (conf 0.0))
+        (multiple-value-setq (pred conf)
+          (swimmy.school:summarize-status-prediction symbol))
              
              ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
              ;; 3 Directions x 6 TFs = 18 possible categories per symbol
@@ -241,7 +243,7 @@
 
 ⚔️ **配置中の精鋭戦略 (S-Rank Watchers):**
 ~{~a~^~%~}"
-                  symbol bid regime vol pred (* 100 conf) danger 
+                  symbol bid regime vol (string-upcase (symbol-name pred)) (* 100 conf) danger 
                   (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
           :color swimmy.core:+color-status+)
         (setf (gethash symbol *last-status-notification-time*) now)))))

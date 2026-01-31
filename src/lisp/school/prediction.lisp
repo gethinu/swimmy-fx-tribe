@@ -175,6 +175,29 @@
       
       prediction)))
 
+(defun summarize-status-prediction (symbol)
+  "Summarize prediction intent for status reports.
+Returns (values action confidence reason), where action is :buy/:sell/:hold."
+  (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
+         (min-confidence *prediction-min-confidence*))
+    (if (or (null history) (<= (length history) 50))
+        (values :hold 0.0 :insufficient-history)
+        (let* ((buy (predict-trade-outcome symbol :buy))
+               (sell (predict-trade-outcome symbol :sell))
+               (buy-conf (trade-prediction-confidence buy))
+               (sell-conf (trade-prediction-confidence sell))
+               (buy-win (eq (trade-prediction-predicted-outcome buy) :win))
+               (sell-win (eq (trade-prediction-predicted-outcome sell) :win))
+               (best-conf (max buy-conf sell-conf)))
+          (cond
+            ((and buy-win (>= buy-conf min-confidence)
+                  (or (not sell-win) (>= buy-conf sell-conf)))
+             (values :buy buy-conf :ok))
+            ((and sell-win (>= sell-conf min-confidence))
+             (values :sell sell-conf :ok))
+            (t
+             (values :hold best-conf :low-confidence)))))))
+
 (defun get-predicted-win-rate ()
   "Get recent prediction win rate"
   (let ((validated (remove-if-not #'trade-prediction-actual-outcome *prediction-history*))
