@@ -73,5 +73,5 @@ graph TD
 
 ## フェイルセーフ & 監視
 - **Watchdog**: Lisp内に `school-watchdog` (Broken Arrow) 実装。100msフリーズを検知。
-- **Systemd**: `swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper` の4サービスを自動再起動。
+- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）を自動再起動。
 - **DNA Verify**: 起動時のファイル改ざん検知 (SHA256)。

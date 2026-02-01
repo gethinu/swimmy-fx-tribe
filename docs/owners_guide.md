@@ -128,16 +128,16 @@
 
 ```bash
 # 全サービス再起動 (推奨)
-sudo systemctl restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
+sudo systemctl restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
 # 停止
-sudo systemctl stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
+sudo systemctl stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
 # ステータス確認
-sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
+sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
 # リアルタイムログ監視
-journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-school
+journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-school -u swimmy-watchdog
 
 # 🧬 進化状況モニター (Multi-Currency Visualizer)
 ./tools/monitor_evolution.sh
@@ -265,6 +265,7 @@ V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました�
 | Risk Gateway | `swimmy-risk` | リスクチェック (5563) |
 | Notifier | `swimmy-notifier` | Discord通知 (5562) |
 | Evolution | `swimmy-evolution` | 進化デーモン (SBCL runner) |
+| Watchdog | `swimmy-watchdog` | Brain/Guardianの生存監視 |
 
 ---
 

@@ -7,7 +7,10 @@ cd "$SWIMMY_HOME"
 
 # Load Environment Variables
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
 fi
 
 # Create log directory

@@ -4,11 +4,13 @@
 
 ### 1.1 通常起動 (systemd)
 ```bash
-# Brain と Guardian を起動
-sudo systemctl start swimmy-brain swimmy-guardian
+# 全サービスを起動
+sudo systemctl start swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper \
+  swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
 # 状態確認
-systemctl --user status swimmy-brain swimmy-guardian
+sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper \
+  swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 ```
 
 ### 1.2 開発モード起動
@@ -20,6 +22,13 @@ make run  # Brain + Guardian を tmux で起動
 ### 1.3 起動確認チェックリスト
 - [ ] `swimmy-brain` が active (running)
 - [ ] `swimmy-guardian` が active (running)
+- [ ] `swimmy-school` が active (running)
+- [ ] `swimmy-data-keeper` が active (running)
+- [ ] `swimmy-backtest` が active (running)
+- [ ] `swimmy-risk` が active (running)
+- [ ] `swimmy-notifier` が active (running)
+- [ ] `swimmy-evolution` が active (running)
+- [ ] `swimmy-watchdog` が active (running)
 - [ ] Discord heartbeat が受信されている
 - [ ] MT5 EA が接続されている (heartbeat)
 
@@ -29,7 +38,8 @@ make run  # Brain + Guardian を tmux で起動
 
 ### 2.1 通常停止
 ```bash
-sudo systemctl stop swimmy-guardian swimmy-brain
+sudo systemctl stop swimmy-guardian swimmy-brain swimmy-school swimmy-data-keeper \
+  swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 ```
 
 ### 2.2 緊急停止 (EMERGENCY_CLOSE_ALL)

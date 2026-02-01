@@ -1,0 +1,23 @@
+[Unit]
+Description=Swimmy Watchdog - Liveness Monitor (Fowler Edition)
+Documentation=https://github.com/swimmy/swimmy
+After=network.target swimmy-brain.service swimmy-guardian.service
+Wants=swimmy-brain.service swimmy-guardian.service
+
+[Service]
+Type=simple
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/watchdog.py
+Restart=always
+RestartSec=10
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+
+# Logs
+StandardOutput=append:/home/swimmy/swimmy/logs/watchdog.log
+StandardError=append:/home/swimmy/swimmy/logs/watchdog.log
+
+[Install]
+WantedBy=default.target

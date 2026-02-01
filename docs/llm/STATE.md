@@ -12,7 +12,7 @@
 ## 決定事項
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
-- **サービス管理**: Systemdによる4サービス体制。
+- **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
@@ -27,8 +27,8 @@
 - **2026-02-01**: systemdの `swimmy-guardian` をRust Guardian実行に修正し、evolution daemonのSBCLメモリ設定を `SWIMMY_SBCL_DYNAMIC_SPACE_MB` に統一。watchdogのsystemdユニットを追加。
 - **2026-02-01**: owners guide / runbook のsystemd操作をsystemレベル（`sudo systemctl ...`）に一本化。`.env` の読み込み方法を修正してコメント行エラーを解消。
 - **2026-02-01**: Backtest ServiceのS式戦略名抽出正規表現を修正（`re.error: unbalanced parenthesis` 対策）。
-- **2026-02-01**: monolith `swimmy.service` をrepoから削除（systemd 4サービス構成へ完全移行）。
-- **2026-02-01**: systemdのsystemレベル正本ユニット（brain/guardian/school/data-keeper）をrepo側に整備し、`User=swimmy`/絶対パス指定で統一。
+- **2026-02-01**: monolith `swimmy.service` をrepoから削除（systemdコア4サービス構成へ完全移行）。
+- **2026-02-01**: systemdのsystemレベル正本ユニット（brain/guardian/school/data-keeper/backtest/risk/notifier/evolution/watchdog）をrepo側に整備し、`User=swimmy`/絶対パス指定で統一。
 - **2026-02-01**: arXiv Scout の `last_sent` をリセットし、手動通知を実行。
 - **2026-01-31**: SBCLロード時WARNING/STYLE-WARNINGの解消（未定義関数/変数・ロード順・重複定義の整理）。
 - **2026-01-31**: SBCLロード時STYLE-WARNING追加整理（未使用変数の無視/削除、LLM圧縮コンテキスト適用、Founders docstring登録）。

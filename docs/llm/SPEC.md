@@ -54,7 +54,7 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
-- **Systemd**: 4サービス構成 (`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`)。
+- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）。
 - **Hot Reload**: `./tools/reload.sh` でLispプロセスを停止せずにコード更新可能。
 
 ## 8. 非要件
