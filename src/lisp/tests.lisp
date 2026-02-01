@@ -297,6 +297,8 @@
                   ;; Backtest DB sync regression
                   test-apply-backtest-result-updates-data-sexp
                   test-collect-all-strategies-unpruned
+                  test-map-strategies-from-db-batched
+                  test-map-strategies-from-db-limit
                   ;; V6.18: Dynamic TP/SL tests
                   test-volatility-multiplier
                   test-atr-empty-candles
