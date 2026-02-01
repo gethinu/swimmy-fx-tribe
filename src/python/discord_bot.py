@@ -12,6 +12,7 @@ Commands:
 
 import discord
 from discord.ext import commands
+import aiohttp
 import asyncio
 import os
 import json
@@ -226,6 +227,43 @@ def format_progress():
 ARXIV_DATA_DIR = "/home/swimmy/arxiv-scout/data"
 LAST_REPORT_FILE = f"{ARXIV_DATA_DIR}/last_report.json"
 STOCK_PAPERS_FILE = f"{ARXIV_DATA_DIR}/stock_papers.json"
+ARXIV_REPORT_WEBHOOK = (
+    os.getenv("SWIMMY_ARXIV_REPORT_WEBHOOK", "").strip().strip('"').strip("'")
+)
+
+
+def mask_webhook(url: str) -> str:
+    if not url:
+        return "unset"
+    tail = url[-6:] if len(url) > 6 else url
+    return f"...{tail}"
+
+
+async def send_daily_arxiv_report(webhook_url: str) -> None:
+    """Send arXiv report to the configured webhook once per day at 08:00."""
+    await bot.wait_until_ready()
+    last_sent_date = None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            webhook = discord.Webhook.from_url(webhook_url, session=session)
+            while not bot.is_closed():
+                now = datetime.now()
+                if now.hour == 8 and now.minute == 0:
+                    today = now.date().isoformat()
+                    if last_sent_date != today:
+                        report_msg = arxiv_show_list()
+                        try:
+                            await webhook.send(report_msg)
+                            last_sent_date = today
+                        except Exception as e:
+                            print(f"❌ Failed to send arXiv report webhook: {e}")
+
+                    await asyncio.sleep(60)
+                else:
+                    await asyncio.sleep(20)
+    except Exception as e:
+        print(f"❌ Invalid arXiv report webhook ({mask_webhook(webhook_url)}): {e}")
 
 
 def arxiv_add_to_stock(number: int) -> str:
@@ -348,6 +386,14 @@ def arxiv_show_stock() -> str:
 async def on_ready():
     print(f"🐟 Swimmy Bot connected as {bot.user}")
     print(f"🌐 Serving {len(bot.guilds)} guild(s)")
+    if ARXIV_REPORT_WEBHOOK:
+        bot.loop.create_task(send_daily_arxiv_report(ARXIV_REPORT_WEBHOOK))
+        print(
+            "📚 arXiv daily report scheduler enabled "
+            f"(webhook={mask_webhook(ARXIV_REPORT_WEBHOOK)})."
+        )
+    else:
+        print("⚠️ arXiv daily report scheduler disabled (no webhook set).")
 
 
 @bot.event
