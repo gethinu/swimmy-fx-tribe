@@ -296,6 +296,7 @@
                   test-risk-summary
                   ;; Backtest DB sync regression
                   test-apply-backtest-result-updates-data-sexp
+                  test-collect-all-strategies-unpruned
                   ;; V6.18: Dynamic TP/SL tests
                   test-volatility-multiplier
                   test-atr-empty-candles
