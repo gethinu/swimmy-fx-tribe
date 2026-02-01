@@ -148,6 +148,7 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+               (:file "src/lisp/tests/backtest-db-tests")
                
                (:file "src/lisp/tests/school-split-tests")
                 (:file "src/lisp/tests/stress-test-kb")

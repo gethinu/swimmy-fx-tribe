@@ -294,6 +294,8 @@
                   test-leader-info-struct
                   ;; V6.18: Risk tests
                   test-risk-summary
+                  ;; Backtest DB sync regression
+                  test-apply-backtest-result-updates-data-sexp
                   ;; V6.18: Dynamic TP/SL tests
                   test-volatility-multiplier
                   test-atr-empty-candles
