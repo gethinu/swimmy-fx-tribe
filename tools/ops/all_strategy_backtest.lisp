@@ -43,44 +43,44 @@
   (format t "[OPS] Using SWIMMY_HOME: ~a~%" swimmy.core::*swimmy-home*)
 
   (init-db)
-  (init-knowledge-base)
-  (setf swimmy.core:*backtest-service-enabled* t)
-  (init-backtest-zmq)
+  (let ((all-strats (collect-all-strategies-unpruned)))
+    (setf kb-size (length all-strats))
+    (setf swimmy.core:*backtest-service-enabled* t)
+    (init-backtest-zmq)
 
-  (setf kb-size (length *strategy-knowledge-base*))
-  (when limit
-    (format t "[OPS] Limit enabled: ~d strategies~%" limit))
-  (when dry-run
-    (format t "[OPS] Dry run enabled: no backtest requests will be sent.~%"))
+    (when limit
+      (format t "[OPS] Limit enabled: ~d strategies~%" limit))
+    (when dry-run
+      (format t "[OPS] Dry run enabled: no backtest requests will be sent.~%"))
 
-  (dolist (strat *strategy-knowledge-base*)
-    (when (and limit (>= processed limit))
-      (return))
-    (incf processed)
-    (let* ((raw-sym (or (strategy-symbol strat) "USDJPY"))
-           (sym (string-upcase raw-sym))
-           (path (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" sym))))
-      (if (probe-file path)
-          (progn
-            (unless dry-run
-              (request-backtest strat :candles nil :symbol sym :suffix "-FULL")
-              (sleep 0.01))
-            (incf queued))
-          (progn
-            (incf skipped)
-            (setf (gethash sym missing) t)))))
+    (dolist (strat all-strats)
+      (when (and limit (>= processed limit))
+        (return))
+      (incf processed)
+      (let* ((raw-sym (or (strategy-symbol strat) "USDJPY"))
+             (sym (string-upcase raw-sym))
+             (path (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" sym))))
+        (if (probe-file path)
+            (progn
+              (unless dry-run
+                (request-backtest strat :candles nil :symbol sym :suffix "-FULL")
+                (sleep 0.01))
+              (incf queued))
+            (progn
+              (incf skipped)
+              (setf (gethash sym missing) t)))))
 
-  (write-lines (swimmy.core::swimmy-path "data/reports/backtest_all_start.txt")
-               (list (format nil "~d" start-time)))
+    (write-lines (swimmy.core::swimmy-path "data/reports/backtest_all_start.txt")
+                 (list (format nil "~d" start-time)))
 
-  (let ((missing-list nil))
-    (maphash (lambda (k v) (declare (ignore v)) (push k missing-list)) missing)
-    (setf missing-list (sort missing-list #'string<))
-    (write-lines (swimmy.core::swimmy-path "data/reports/backtest_all_missing_symbols.txt")
-                 (if missing-list missing-list (list "(none)"))))
+    (let ((missing-list nil))
+      (maphash (lambda (k v) (declare (ignore v)) (push k missing-list)) missing)
+      (setf missing-list (sort missing-list #'string<))
+      (write-lines (swimmy.core::swimmy-path "data/reports/backtest_all_missing_symbols.txt")
+                   (if missing-list missing-list (list "(none)"))))
 
-  (format t "[OPS] KB size: ~d~%" kb-size)
-  (format t "[OPS] Processed: ~d~%" processed)
-  (format t "[OPS] Queued: ~d~%" queued)
-  (format t "[OPS] Skipped (missing CSV): ~d~%" skipped)
-  (format t "[OPS] Start time (unix): ~d~%" start-time))
+    (format t "[OPS] KB size: ~d~%" kb-size)
+    (format t "[OPS] Processed: ~d~%" processed)
+    (format t "[OPS] Queued: ~d~%" queued)
+    (format t "[OPS] Skipped (missing CSV): ~d~%" skipped)
+    (format t "[OPS] Start time (unix): ~d~%" start-time)))

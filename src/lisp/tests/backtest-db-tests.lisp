@@ -44,3 +44,49 @@
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-collect-all-strategies-unpruned
+  "Ensure DB strategies are returned even if rank is graveyard."
+  (let* ((name-a "TEST-ALL-STRATS-A")
+         (name-g "TEST-ALL-STRATS-GRAVE")
+         (tmp-db (format nil "/tmp/swimmy-test-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            (let ((strat-a (make-strategy
+                            :name name-a
+                            :indicators '((sma 20))
+                            :entry '(> close (sma 20))
+                            :exit '(< close (sma 20))
+                            :sharpe 0.2
+                            :symbol "USDJPY"
+                            :timeframe 1
+                            :direction :BOTH
+                            :rank :A))
+                  (strat-g (make-strategy
+                            :name name-g
+                            :indicators '((sma 10))
+                            :entry '(> close (sma 10))
+                            :exit '(< close (sma 10))
+                            :sharpe -0.5
+                            :symbol "USDJPY"
+                            :timeframe 1
+                            :direction :BOTH
+                            :rank :graveyard)))
+              (upsert-strategy strat-a)
+              (upsert-strategy strat-g)
+              (let ((all (swimmy.school::collect-all-strategies-unpruned)))
+                (assert-true (= 2 (length all)) "Should return both strategies")
+                (assert-true (find name-a all :key #'strategy-name :test #'string=)
+                             "A-rank strategy should be present")
+                (assert-true (find name-g all :key #'strategy-name :test #'string=)
+                             "Graveyard strategy should be present"))))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name IN (?,?)" name-a name-g))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))

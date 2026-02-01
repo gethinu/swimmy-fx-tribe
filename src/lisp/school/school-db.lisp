@@ -244,6 +244,16 @@
                                nil))))
                        rows))))
 
+(defun collect-all-strategies-unpruned ()
+  "Return all strategies from DB + Library without pruning."
+  (let* ((db-strats (fetch-all-strategies-from-db))
+         (file-strats (ignore-errors (swimmy.persistence:load-all-strategies)))
+         (all (copy-list db-strats)))
+    (dolist (fs (or file-strats '()))
+      (unless (find (strategy-name fs) all :key #'strategy-name :test #'string=)
+        (push fs all)))
+    all))
+
 (defun get-db-stats ()
   "Return summary of DB contents."
   (let ((strat-count (execute-single "SELECT count(*) FROM strategies"))
