@@ -15,7 +15,7 @@ fn main() {
         .unwrap_or(5555);
     let endpoint = format!("tcp://127.0.0.1:{}", port);
     println!("Connecting to {}...", endpoint);
-    socket.connect(endpoint).expect("Failed to connect to Brain");
+    socket.connect(&endpoint).expect("Failed to connect to Brain");
 
     let total_messages = 100_000;
     let start = Instant::now();

@@ -220,8 +220,14 @@ fn sharpe_ratio(returns: &[f64]) -> f64 {
     if returns.is_empty() {
         return 0.0;
     }
-    let mean = returns.iter().sum::<f64>() / returns.len() as f64;
-    let variance = returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / returns.len() as f64;
+    let active: Vec<f64> = returns
+        .iter()
+        .copied()
+        .filter(|r| r.abs() > 1e-12)
+        .collect();
+    let sample = if active.len() >= 2 { &active[..] } else { returns };
+    let mean = sample.iter().sum::<f64>() / sample.len() as f64;
+    let variance = sample.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / sample.len() as f64;
     let std = variance.sqrt();
     if std == 0.0 {
         return 0.0;
@@ -1009,6 +1015,13 @@ mod tests {
         let sharpe = sharpe_ratio(&returns);
         assert!(sharpe > 0.0);
     }
+
+    #[test]
+    fn test_sharpe_ratio_ignores_zero_returns() {
+        let returns = vec![0.0, 0.0, 0.01, 0.02];
+        let sharpe = sharpe_ratio(&returns);
+        assert!(sharpe > 30.0);
+    }
     
     #[test]
     fn test_sma() {
@@ -1102,7 +1115,7 @@ mod tests {
             exit_short_ast: None,
         };
         
-        let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new());
+        let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
         
         // Assert trade happened
         assert_eq!(result.trades, 1, "Should have executed 1 trade");
@@ -1139,7 +1152,7 @@ mod tests {
             exit_short_ast: None,
         };
         
-        let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new());
+        let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
         assert!(!result.sharpe.is_nan());
     }
 }
