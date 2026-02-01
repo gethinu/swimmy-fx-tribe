@@ -53,6 +53,21 @@
      (error (or ,message (format nil "Expected non-nil: ~a" ',expr)))))
 
 ;;; ─────────────────────────────────────────
+;;; SAFE READ TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-safe-read-rejects-read-eval
+  "safe-read-sexp rejects read-time eval (#.)"
+  (let ((form (swimmy.core:safe-read-sexp "#.(+ 1 2)")))
+    (assert-true (null form) "Expected nil for read-time eval")))
+
+(deftest test-safe-read-allows-simple-alist
+  "safe-read-sexp allows simple alist"
+  (let ((form (swimmy.core:safe-read-sexp "((action . \"PING\"))")))
+    (let ((key (find-symbol "ACTION" :swimmy.main)))
+      (assert-true (and (listp form) key (assoc key form)) "Expected alist"))))
+
+;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
 
@@ -278,6 +293,8 @@
   
   ;; Run each test
   (dolist (test '(;; Clan tests
+                  test-safe-read-rejects-read-eval
+                  test-safe-read-allows-simple-alist
                   test-clan-exists
                   test-get-clan
                   test-clan-display

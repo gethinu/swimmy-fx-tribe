@@ -191,6 +191,7 @@
    #:get-jst-timestamp
    #:get-time-string
    #:get-date-string
+   #:safe-read-sexp
    
    ;; Logger
    #:log-info
