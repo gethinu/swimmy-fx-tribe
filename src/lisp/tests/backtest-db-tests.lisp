@@ -90,3 +90,71 @@
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name IN (?,?)" name-a name-g))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-map-strategies-from-db-batched
+  "Ensure batched DB iteration yields all strategies."
+  (let* ((name-a "TEST-MAP-A")
+         (name-b "TEST-MAP-B")
+         (name-c "TEST-MAP-C")
+         (tmp-db (format nil "/tmp/swimmy-test-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (dolist (name (list name-a name-b name-c))
+              (upsert-strategy
+               (make-strategy
+                :name name
+                :indicators '((sma 20))
+                :entry '(> close (sma 20))
+                :exit '(< close (sma 20))
+                :sharpe 0.2
+                :symbol "USDJPY"
+                :timeframe 1
+                :direction :BOTH)))
+            (let* ((names nil)
+                   (count (swimmy.school::map-strategies-from-db
+                           (lambda (s) (push (strategy-name s) names))
+                           :batch-size 2)))
+              (assert-true (= 3 count) "Should visit all rows")
+              (assert-true (find name-a names :test #'string=) "Name A present")
+              (assert-true (find name-b names :test #'string=) "Name B present")
+              (assert-true (find name-c names :test #'string=) "Name C present")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name IN (?,?,?)" name-a name-b name-c))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-map-strategies-from-db-limit
+  "Ensure limit stops DB iteration early."
+  (let* ((name-a "TEST-MAP-LIMIT-A")
+         (name-b "TEST-MAP-LIMIT-B")
+         (tmp-db (format nil "/tmp/swimmy-test-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (dolist (name (list name-a name-b))
+              (upsert-strategy
+               (make-strategy
+                :name name
+                :indicators '((sma 20))
+                :entry '(> close (sma 20))
+                :exit '(< close (sma 20))
+                :sharpe 0.2
+                :symbol "USDJPY"
+                :timeframe 1
+                :direction :BOTH)))
+            (let* ((names nil)
+                   (count (swimmy.school::map-strategies-from-db
+                           (lambda (s) (push (strategy-name s) names))
+                           :batch-size 1
+                           :limit 1)))
+              (assert-true (= 1 count) "Should stop at limit")
+              (assert-true (= 1 (length names)) "Only one strategy should be visited")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name IN (?,?)" name-a name-b))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))

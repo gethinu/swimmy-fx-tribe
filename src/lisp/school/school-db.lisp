@@ -254,6 +254,33 @@
         (push fs all)))
     all))
 
+(defun map-strategies-from-db (fn &key (batch-size 1000) limit)
+  "Call FN for each strategy in DB, processing in batches. Returns count."
+  (block done
+    (let ((offset 0)
+          (processed 0))
+      (loop
+        (when (and limit (>= processed limit))
+          (return-from done processed))
+        (let ((rows (execute-to-list "SELECT data_sexp FROM strategies LIMIT ? OFFSET ?" batch-size offset)))
+          (when (null rows)
+            (return-from done processed))
+          (dolist (row rows)
+            (when (and limit (>= processed limit))
+              (return-from done processed))
+            (let ((sexp-str (first row)))
+              (handler-case
+                  (let ((*package* (find-package :swimmy.school)))
+                    (let ((obj (read-from-string sexp-str)))
+                      (when (strategy-p obj)
+                        (funcall fn obj)
+                        (incf processed))))
+                (error (e)
+                  (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%"
+                          *package*
+                          (subseq sexp-str 0 (min 30 (length sexp-str))) e))))))
+          (incf offset batch-size)))))
+
 (defun get-db-stats ()
   "Return summary of DB contents."
   (let ((strat-count (execute-single "SELECT count(*) FROM strategies"))
