@@ -67,6 +67,33 @@
     (let ((key (find-symbol "ACTION" :swimmy.main)))
       (assert-true (and (listp form) key (assoc key form)) "Expected alist"))))
 
+(deftest test-internal-process-msg-rejects-read-eval
+  "internal-process-msg should ignore unsafe sexp"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let ((orig swimmy.globals:*danger-level*))
+      (unwind-protect
+          (progn
+            (setf swimmy.globals:*danger-level* 0)
+            (funcall fn "((type . \"PING\") (payload . #.(setf swimmy.globals::*danger-level* 999)))")
+            (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms"))
+        (setf swimmy.globals:*danger-level* orig)))))
+
+(deftest test-safe-read-used-for-db-rank
+  "DB rank parsing should ignore unsafe read-time eval"
+  (let ((fn (find-symbol "%PARSE-RANK-SAFE" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "%parse-rank-safe exists")
+    (let ((orig swimmy.globals:*danger-level*))
+      (unwind-protect
+          (progn
+            (setf swimmy.globals:*danger-level* 0)
+            (multiple-value-bind (rank ok)
+                (funcall fn "#.(setf swimmy.globals::*danger-level* 999)")
+              (declare (ignore rank))
+              (assert-true (null ok) "Expected invalid rank")
+              (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms")))
+        (setf swimmy.globals:*danger-level* orig)))))
+
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
@@ -295,6 +322,8 @@
   (dolist (test '(;; Clan tests
                   test-safe-read-rejects-read-eval
                   test-safe-read-allows-simple-alist
+                  test-internal-process-msg-rejects-read-eval
+                  test-safe-read-used-for-db-rank
                   test-clan-exists
                   test-get-clan
                   test-clan-display

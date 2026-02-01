@@ -218,6 +218,11 @@
     ((atom e) (or (numberp e) (stringp e) (and (symbolp e) (or (member e *allowed*) (indicator-ref-p e) (keywordp e)))))
     ((listp e) (every #'validate e))))
 
+(defun safe-read-dsl-form (code)
+  "Safely read and validate DSL form. Returns form or NIL."
+  (let ((form (swimmy.core:safe-read-sexp code :package :swimmy.school)))
+    (when (and form (validate form)) form)))
+
 (defun safe-eval-strategy (code-string)
   "Safely evaluate generated strategy code. Returns (strategy, valid-p)."
   (let ((opens (count #\( code-string))

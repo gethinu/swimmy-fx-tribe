@@ -103,119 +103,121 @@
   (handler-case
       (progn
         (if (and (> (length msg) 0) (char= (char msg 0) #\())
-            (let* ((sexp (let ((*package* (find-package :swimmy.main)))
-                           (read-from-string msg)))
-                   (type (cdr (assoc 'type sexp)))
-                   (type-str (cond ((stringp type) type)
-                                   ((symbolp type) (symbol-name type))
-                                   (t ""))))
-              (cond
-                ((or (member type '(backtest-result :backtest-result) :test #'eq)
-                     (string-equal type-str "BACKTEST_RESULT"))
-                 (let* ((result (cdr (assoc 'result sexp)))
-                        (result (if (and (listp result)
-                                         (not (assoc 'strategy_name result))
-                                         (listp (car result)))
-                                    (car result)
-                                    result))
-                        (full-name (%normalize-strategy-name (%result-strategy-name result)))
-                        (sharpe (float (%alist-val result '(sharpe sharpe_ratio sharpe-ratio) 0.0)))
-                        (trades (or (%alist-val result '(trades total_trades total-trades) 0) 0))
-                        (pnl (float (%alist-val result '(pnl total_profit total-profit) 0.0)))
-                        (win-rate (%normalize-rate (%alist-val result '(win_rate winrate win-rate) 0.0)))
-                        (profit-factor (float (%alist-val result '(profit_factor profit-factor pf) 0.0)))
-                        (max-dd (%normalize-rate (%alist-val result '(max_dd max-drawdown max_drawdown max-dd) 1.0)))
-                        (is-rr (and full-name (search "-RR" full-name)))
-                        (is-qual (and full-name (search "-QUAL" full-name)))
-                        (is-oos (and full-name (search "-OOS" full-name)))
-                        (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
-                                                   (search "_OOS" full-name :from-end t))))
-                        (name (when full-name
-                                (cond (is-rr (subseq full-name 0 is-rr))
-                                      (is-qual (subseq full-name 0 is-qual))
-                                      (is-oos (subseq full-name 0 is-oos))
-                                      (t full-name))))
-                        (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                       :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
-                   (when (%invalid-name-p name)
-                     (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
-                       (incf *missing-strategy-name-log-count*)
-                       (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
-                     (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
-                     (return-from internal-process-msg nil))
-                   (incf *backtest-recv-count*)
-                   (setf *backtest-recv-last-name* name
-                         *backtest-recv-last-sharpe* sharpe
-                         *backtest-recv-last-trades* trades
-                         *backtest-recv-last-ts* (get-universal-time))
-                   (maybe-log-backtest-recv)
-                   (cond
-                     (is-oos
-                      (swimmy.school:cache-backtest-result full-name metrics)
-                      (when (fboundp 'swimmy.school:handle-oos-backtest-result)
-                        (swimmy.school:handle-oos-backtest-result name metrics)))
-                     (is-wfv
-                      (swimmy.school:cache-backtest-result full-name metrics)
-                      (when (fboundp 'swimmy.school:process-wfv-result)
-                        (swimmy.school:process-wfv-result full-name metrics)))
-                     (t
-                      (swimmy.school:cache-backtest-result name metrics)
-                      (swimmy.school:apply-backtest-result name metrics)
+            (let* ((sexp (swimmy.core:safe-read-sexp msg :package :swimmy.main)))
+              (unless (and sexp (listp sexp))
+                (format t "[DISPATCH] ⚠️ Unsafe/invalid SEXP ignored~%")
+                (return-from internal-process-msg nil))
+              (let* ((type (cdr (assoc 'type sexp)))
+                     (type-str (cond ((stringp type) type)
+                                     ((symbolp type) (symbol-name type))
+                                     (t ""))))
+                (cond
+                  ((or (member type '(backtest-result :backtest-result) :test #'eq)
+                       (string-equal type-str "BACKTEST_RESULT"))
+                   (let* ((result (cdr (assoc 'result sexp)))
+                          (result (if (and (listp result)
+                                           (not (assoc 'strategy_name result))
+                                           (listp (car result)))
+                                      (car result)
+                                      result))
+                          (full-name (%normalize-strategy-name (%result-strategy-name result)))
+                          (sharpe (float (%alist-val result '(sharpe sharpe_ratio sharpe-ratio) 0.0)))
+                          (trades (or (%alist-val result '(trades total_trades total-trades) 0) 0))
+                          (pnl (float (%alist-val result '(pnl total_profit total-profit) 0.0)))
+                          (win-rate (%normalize-rate (%alist-val result '(win_rate winrate win-rate) 0.0)))
+                          (profit-factor (float (%alist-val result '(profit_factor profit-factor pf) 0.0)))
+                          (max-dd (%normalize-rate (%alist-val result '(max_dd max-drawdown max_drawdown max-dd) 1.0)))
+                          (is-rr (and full-name (search "-RR" full-name)))
+                          (is-qual (and full-name (search "-QUAL" full-name)))
+                          (is-oos (and full-name (search "-OOS" full-name)))
+                          (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
+                                                     (search "_OOS" full-name :from-end t))))
+                          (name (when full-name
+                                  (cond (is-rr (subseq full-name 0 is-rr))
+                                        (is-qual (subseq full-name 0 is-qual))
+                                        (is-oos (subseq full-name 0 is-oos))
+                                        (t full-name))))
+                          (metrics (list :sharpe sharpe :trades trades :pnl pnl
+                                         :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                     (when (%invalid-name-p name)
+                       (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
+                         (incf *missing-strategy-name-log-count*)
+                         (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
+                       (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
+                       (return-from internal-process-msg nil))
+                     (incf *backtest-recv-count*)
+                     (setf *backtest-recv-last-name* name
+                           *backtest-recv-last-sharpe* sharpe
+                           *backtest-recv-last-trades* trades
+                           *backtest-recv-last-ts* (get-universal-time))
+                     (maybe-log-backtest-recv)
+                     (cond
+                       (is-oos
+                        (swimmy.school:cache-backtest-result full-name metrics)
+                        (when (fboundp 'swimmy.school:handle-oos-backtest-result)
+                          (swimmy.school:handle-oos-backtest-result name metrics)))
+                       (is-wfv
+                        (swimmy.school:cache-backtest-result full-name metrics)
+                        (when (fboundp 'swimmy.school:process-wfv-result)
+                          (swimmy.school:process-wfv-result full-name metrics)))
+                       (t
+                        (swimmy.school:cache-backtest-result name metrics)
+                        (swimmy.school:apply-backtest-result name metrics)
 
-                      ;; V50.2: Trigger V2 Handler (Screening/Validation)
-                      (when (fboundp 'swimmy.school::handle-v2-result)
-                           (swimmy.school::handle-v2-result full-name metrics))
-                      (cond
-                        (is-qual
-                         (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
-                         (let ((count (length swimmy.globals:*qual-backtest-results-buffer*))
-                               (expected swimmy.globals:*qual-expected-backtest-count*))
-                           (when (and (> expected 0)
-                                      (>= count (max 1 (floor (* expected 0.9)))))
-                             (swimmy.core:notify-backtest-summary :qual))))
-                        (t
-                         (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
-                         (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
-                               (expected swimmy.globals:*rr-expected-backtest-count*))
-                           (when (and (> expected 0)
-                                      (>= count (max 1 (floor (* expected 0.9)))))
-                             (swimmy.core:notify-backtest-summary :rr)))))))))
-                ((or (member type '(cpcv-result :cpcv-result) :test #'eq)
-                     (string-equal type-str "CPCV_RESULT"))
-                 (let* ((result (cdr (assoc 'result sexp)))
-                        (name (cdr (assoc 'strategy_name result)))
-                        (median (cdr (assoc 'median_sharpe result)))
-                        (paths (cdr (assoc 'path_count result)))
-                        (passed (cdr (assoc 'passed_count result)))
-                        (failed (cdr (assoc 'failed_count result)))
-                        (pass-rate (cdr (assoc 'pass_rate result)))
-                        (is-passed (cdr (assoc 'is_passed result))))
-                   (let ((result-plist (list :strategy-name name :median-sharpe median
-                                             :path-count paths :passed-count passed
-                                             :failed-count failed :pass-rate pass-rate
-                                             :is-passed is-passed)))
-                     (swimmy.core:notify-cpcv-result result-plist)
-                     (push result-plist swimmy.globals:*cpcv-results-buffer*)
-                     (let ((count (length swimmy.globals:*cpcv-results-buffer*))
-                           (expected swimmy.globals:*expected-cpcv-count*))
-                       (when (and (> expected 0)
-                                  (>= count (max 1 (floor (* expected 0.9)))))
-                         (swimmy.core:notify-cpcv-summary)))
-                     (when (and is-passed (not (eq is-passed 'nil)))
-                       (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
-                                              :key #'swimmy.school:strategy-name :test #'string=)
-                                        (find name swimmy.globals:*evolved-strategies*
-                                              :key #'swimmy.school:strategy-name :test #'string=))))
-                         (when strat
-                           (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
-                           (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
-                           (swimmy.school:upsert-strategy strat)
-                           (if (swimmy.school:check-rank-criteria strat :S)
-                               (swimmy.school:ensure-rank strat :S
-                                                          "CPCV Passed and Criteria Met")
-                               (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
-                                       name))))))))
-                (t nil)))
+                        ;; V50.2: Trigger V2 Handler (Screening/Validation)
+                        (when (fboundp 'swimmy.school::handle-v2-result)
+                          (swimmy.school::handle-v2-result full-name metrics))
+                        (cond
+                          (is-qual
+                           (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
+                           (let ((count (length swimmy.globals:*qual-backtest-results-buffer*))
+                                 (expected swimmy.globals:*qual-expected-backtest-count*))
+                             (when (and (> expected 0)
+                                        (>= count (max 1 (floor (* expected 0.9)))))
+                               (swimmy.core:notify-backtest-summary :qual))))
+                          (t
+                           (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
+                           (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
+                                 (expected swimmy.globals:*rr-expected-backtest-count*))
+                             (when (and (> expected 0)
+                                        (>= count (max 1 (floor (* expected 0.9)))))
+                               (swimmy.core:notify-backtest-summary :rr)))))))))
+                  ((or (member type '(cpcv-result :cpcv-result) :test #'eq)
+                       (string-equal type-str "CPCV_RESULT"))
+                   (let* ((result (cdr (assoc 'result sexp)))
+                          (name (cdr (assoc 'strategy_name result)))
+                          (median (cdr (assoc 'median_sharpe result)))
+                          (paths (cdr (assoc 'path_count result)))
+                          (passed (cdr (assoc 'passed_count result)))
+                          (failed (cdr (assoc 'failed_count result)))
+                          (pass-rate (cdr (assoc 'pass_rate result)))
+                          (is-passed (cdr (assoc 'is_passed result))))
+                     (let ((result-plist (list :strategy-name name :median-sharpe median
+                                               :path-count paths :passed-count passed
+                                               :failed-count failed :pass-rate pass-rate
+                                               :is-passed is-passed)))
+                       (swimmy.core:notify-cpcv-result result-plist)
+                       (push result-plist swimmy.globals:*cpcv-results-buffer*)
+                       (let ((count (length swimmy.globals:*cpcv-results-buffer*))
+                             (expected swimmy.globals:*expected-cpcv-count*))
+                         (when (and (> expected 0)
+                                    (>= count (max 1 (floor (* expected 0.9)))))
+                           (swimmy.core:notify-cpcv-summary)))
+                       (when (and is-passed (not (eq is-passed 'nil)))
+                         (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
+                                                :key #'swimmy.school:strategy-name :test #'string=)
+                                          (find name swimmy.globals:*evolved-strategies*
+                                                :key #'swimmy.school:strategy-name :test #'string=))))
+                           (when strat
+                             (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
+                             (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
+                             (swimmy.school:upsert-strategy strat)
+                             (if (swimmy.school:check-rank-criteria strat :S)
+                                 (swimmy.school:ensure-rank strat :S
+                                                            "CPCV Passed and Criteria Met")
+                                 (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
+                                         name))))))))
+                  (t nil))))
             (let* ((json (jsown:parse msg))
                    (type (jsown:val json "type")))
               (cond
@@ -319,6 +321,4 @@
     (error (e)
       (format t "[L] Msg Error: ~a" e)
       nil)))
-
-
 (defun process-msg (msg) (internal-process-msg msg))
