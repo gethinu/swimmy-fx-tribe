@@ -398,8 +398,11 @@
   "Check if strategy can be used for breeding.
    Returns T if under breeding limit or is Legend."
   (and strategy
+       (not (and (slot-exists-p strategy 'revalidation-pending)
+                 (strategy-revalidation-pending strategy)))
        (not (eq (strategy-status strategy) :killed))
        (not (eq (strategy-status strategy) :benched))
+       (not (eq (strategy-rank strategy) :legend-archive))
        ;; Sanity checks to avoid pathological SL/TP values
        (numberp (strategy-sl strategy))
        (< (abs (strategy-sl strategy)) 1000.0)
@@ -412,8 +415,15 @@
   "Breed Legend strategies with random B-rank strategies.
    V47.0: Owner's Vision - Legends participate in periodic random breeding."
   (format t "[LEGEND] 👑 Starting Legend Breeding Cycle...~%")
-  (let ((legends (get-strategies-by-rank :legend))
-        (b-ranks (get-strategies-by-rank :B))
+  (let* ((legends (remove-if (lambda (s)
+                               (or (eq (strategy-rank s) :legend-archive)
+                                   (and (slot-exists-p s 'revalidation-pending)
+                                        (strategy-revalidation-pending s))))
+                             (get-strategies-by-rank :legend)))
+         (b-ranks (remove-if (lambda (s)
+                               (and (slot-exists-p s 'revalidation-pending)
+                                    (strategy-revalidation-pending s)))
+                             (get-strategies-by-rank :B)))
         (bred-count 0))
     
     (when (and legends b-ranks)
@@ -454,6 +464,9 @@
                 (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
                 (strategy-trades strat) (getf metrics :trades 0)
                 (strategy-max-dd strat) (float (getf metrics :max-dd 0.0)))
+          (when (and (slot-exists-p strat 'revalidation-pending)
+                     (strategy-revalidation-pending strat))
+            (setf (strategy-revalidation-pending strat) nil))
           ;; DEBUG V50.5.1
           (let ((s (strategy-sharpe strat)))
             (when (zerop s)

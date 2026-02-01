@@ -129,6 +129,11 @@
   ;; V51.0: Initialize Backtest Service if enabled (PUSH -> *port-backtest-req*)
   (when (fboundp 'swimmy.school::init-backtest-zmq)
     (swimmy.school::init-backtest-zmq))
+  
+  ;; Queue legend revalidation (S-Expression BACKTEST requests) once backtest sockets are ready
+  (let ((f (find-symbol "QUEUE-LEGEND-REVALIDATION" "SWIMMY.SCHOOL")))
+    (when (fboundp f)
+      (funcall f)))
     
   (format t "[SYSTEM] Initialization complete.~%"))
 

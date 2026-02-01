@@ -24,6 +24,10 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-01**: systemdの `swimmy-guardian` をRust Guardian実行に修正し、evolution daemonのSBCLメモリ設定を `SWIMMY_SBCL_DYNAMIC_SPACE_MB` に統一。watchdogのsystemdユニットを追加。
+- **2026-02-01**: owners guide / runbook のsystemd操作をsystemレベル（`sudo systemctl ...`）に一本化。`.env` の読み込み方法を修正してコメント行エラーを解消。
+- **2026-02-01**: Backtest ServiceのS式戦略名抽出正規表現を修正（`re.error: unbalanced parenthesis` 対策）。
+- **2026-02-01**: monolith `swimmy.service` をrepoから削除（systemd 4サービス構成へ完全移行）。
 - **2026-02-01**: systemdのsystemレベル正本ユニット（brain/guardian/school/data-keeper）をrepo側に整備し、`User=swimmy`/絶対パス指定で統一。
 - **2026-02-01**: arXiv Scout の `last_sent` をリセットし、手動通知を実行。
 - **2026-01-31**: SBCLロード時WARNING/STYLE-WARNINGの解消（未定義関数/変数・ロード順・重複定義の整理）。
@@ -39,6 +43,7 @@
 - **2026-02-01**: SBCLサニティチェックを追加（`tools/sbcl_sanity_check.sh`）。
 - **2026-02-01**: V3.0「61-STRATEGY SIGNAL SYSTEM」を `tools/restore_legend_61.lisp` で再登録（59本追加、2本は重複判定で除外）。弱体Legendは `archive-weak-legends` で LEGEND-ARCHIVE へ退避。
 - **2026-02-01**: Legend保護テストスクリプト `tools/test_legend_protection.lisp` 追加（Fortress/ensure-rank を検証）。
+- **2026-02-01**: Legend再検証フラグ `strategy-revalidation-pending` を追加し、起動時に `queue-legend-revalidation` を自動実行。`restore_legend_61.lisp` を swimmy-school の `ExecStartPre` に組み込み、LEGEND-ARCHIVE もライブラリロード対象に追加。
 - **2026-01-31**: arXiv Scout 通知に S/A/B/C の優先度ラベルを追加（スコア閾値: S=9-10, A=8, B=6-7, C<=5）。
 - **2026-01-31**: arXiv Scout の手動再送（`last_sent` リセット → `--daily` 実行）を実施。
 - **2026-01-31**: arXiv Scout の `last_sent` をリセットして手動再送を実施。
@@ -64,6 +69,7 @@
 - V3.0「61-STRATEGY SIGNAL SYSTEM」を初期化時に自動復元＆再検証キュー投入（`initialize-system` / `tools/restore_legend_61.lisp`）。重複はHighlanderで排除。
 - 再検証完了まで `strategy-revalidation-pending` を立て、Breedingから除外。BACKTEST_RESULT 適用時に自動クリア。
 - LEGENDは墓場送りをブロック。弱いLegendは `archive-weak-legends` で `:legend-archive` として退避可能（`data/library/LEGEND-ARCHIVE/`）。LEGEND-ARCHIVE もロード対象に追加。
+- `swimmy-school.service` の `ExecStartPre` で `tools/restore_legend_61.lisp` を実行し、起動時に Legends を自動復元＆再検証フラグセット（BACKTESTは本起動後に送信）。
 - Breeding時のLegend占有率を各カテゴリ上位5本に制限、遺伝的距離しきい値を0.35へ強化。
 - 保護テストは `tools/test_legend_protection.lisp`（CIでも実行）。
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Swimmy Guardian Service (Watchdog)
+Description=Swimmy Guardian Service (Rust)
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
 
@@ -8,18 +8,22 @@ Type=simple
 User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/watchdog.py
-Restart=always
-RestartSec=10
-
-# Environment
+# Phase 1: Kill any existing guardian processes
+ExecStartPre=-/usr/bin/pkill -9 -u swimmy -x guardian
+# Phase 2: Wait for OS to release sockets
+ExecStartPre=/bin/sleep 2
+# Phase 3: Force-release ZMQ ports (5557=Guardian PUB)
+ExecStartPre=-/usr/bin/fuser -k 5557/tcp
+# Phase 4: Final cooldown
+ExecStartPre=/bin/sleep 1
+ExecStart=/home/swimmy/swimmy/guardian/target/release/guardian
+StandardOutput=append:/home/swimmy/swimmy/logs/guardian.log
+StandardError=append:/home/swimmy/swimmy/logs/guardian.log
 Environment=HOME=/home/swimmy
 EnvironmentFile=/home/swimmy/swimmy/.env
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=swimmy-guardian
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
 
 [Install]
 WantedBy=default.target

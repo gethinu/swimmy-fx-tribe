@@ -115,6 +115,7 @@
    #:strategy-status
    #:strategy-status-reason
    #:strategy-benched-p
+   #:strategy-revalidation-pending
    #:strategy-symbol
    #:strategy-direction
    #:strategy-timeframe
@@ -175,6 +176,7 @@
    #:run-b-rank-culling
    #:can-breed-p
    #:run-legend-breeding
+   #:queue-legend-revalidation
    
    ;; P8: Single Entry Point for KB
    #:add-to-kb

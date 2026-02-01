@@ -3,7 +3,7 @@
 Current status of the autonomous strategy generation pipeline.
 
  Knowledge Base (Active)
-105 Strategies
+99 Strategies
 
  **S-Rank (Verified Elite)**
 0 (Sharpe0.5 PF1.5 WR45% MaxDD<15% + CPCV)
@@ -15,21 +15,21 @@ Current status of the autonomous strategy generation pipeline.
 4 (Sharpe0.1 PF1.0 WR30% MaxDD<30%)
 
  New Recruits (24h)
-102
+94
 
  Graveyard
-345843
+345854
 
 
  **Top Candidates:**
-- `Hunted-D1-ADX-Trend` (S=0.18, B)
-- `Hunted-D1-Williams-R` (S=0.15, B)
-- `Hunted-W1-EMA-Trend` (S=0.12, B)
-- `Hunted-W1-Volume-Trend` (S=0.11, B)
-- `Legend-Golden-Cross-Class` (S=0.09, LEGEND)
+- `Hunted-W1-EMA-Trend` (S=3.52, B)
+- `Hunted-W1-Volume-Trend` (S=2.73, B)
+- `Hunted-D1-ADX-Trend` (S=1.65, B)
+- `Hunted-D1-Williams-R` (S=1.37, B)
+- `Hunted-W1-Pullback` (S=0.03, UNRANKED)
 
 
  System Status
  Evolution Daemon Active
  Native Lisp Orchestration (V28)
-01/31 22:48 JST / 13:48 UTC
+02/01 23:38 JST / 14:38 UTC

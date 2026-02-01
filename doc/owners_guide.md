@@ -183,16 +183,16 @@
 
 ```bash
 # 全サービス再起動 (推奨)
-systemctl --user restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
+sudo systemctl restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
 
 # 停止
-systemctl --user stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
+sudo systemctl stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
 
 # ステータス確認
-systemctl --user status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier
+sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution
 
 # リアルタイムログ監視
-journalctl --user -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-school
+journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-school
 
 # 🧬 進化状況モニター (Multi-Currency Visualizer)
 ./tools/monitor_evolution.sh
@@ -314,8 +314,12 @@ V44.2で「椅子取りゲーム (Musical Chairs)」バグを修正しました�
 |----------|--------------|------|
 | Brain | `swimmy-brain` | シグナル生成、学習、進化 |
 | Guardian | `swimmy-guardian` | MT5通信、注文執行、バックテスト |
-| Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ永続化 |
 | School | `swimmy-school` | **Hyper-Time Evolution (無限進化ループ)**, Purge, Wisdom |
+| Data Keeper | `swimmy-data-keeper` | ヒストリカルデータ永続化 |
+| Backtest | `swimmy-backtest` | BACKTEST専用ZMQ (5580/5581) |
+| Risk Gateway | `swimmy-risk` | リスクチェック (5563) |
+| Notifier | `swimmy-notifier` | Discord通知 (5562) |
+| Evolution | `swimmy-evolution` | 進化デーモン (SBCL runner) |
 
 ---
 
@@ -366,7 +370,7 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 ./tools/quality_gate.sh
 
 # 2. サービス状態確認
-systemctl --user status swimmy-school swimmy-brain
+sudo systemctl status swimmy-school swimmy-brain
 
 # 3. MT5 EA バージョン確認
 # → EA ログで "Ver 15.2" を確認
@@ -385,7 +389,7 @@ journalctl --user -u swimmy-brain -f
 ./tools/kill_zombies.sh
 
 # 2. 正常に再起動
-systemctl --user restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-school
+sudo systemctl restart swimmy-brain swimmy-guardian swimmy-data-keeper swimmy-school
 ```
 
 ---

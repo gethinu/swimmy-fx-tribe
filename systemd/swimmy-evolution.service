@@ -13,6 +13,7 @@ ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/evolut
 Restart=always
 RestartSec=10
 Environment=HOME=/home/swimmy
+Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
 EnvironmentFile=/home/swimmy/swimmy/.env
 Environment=PYTHONUNBUFFERED=1
 Nice=19

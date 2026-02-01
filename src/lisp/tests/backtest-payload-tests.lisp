@@ -3,27 +3,15 @@
 
 (in-package :swimmy.tests)
 
-(defun normalize-whitespace (s)
-  "Collapse all whitespace to single spaces for robust substring checks."
-  (with-output-to-string (out)
-    (let ((prev-space nil))
-      (loop for ch across s do
-        (if (find ch '(#\Space #\Tab #\Newline #\Return))
-            (unless prev-space
-              (write-char #\Space out)
-              (setf prev-space t))
-            (progn
-              (write-char ch out)
-              (setf prev-space nil)))))))
+(defun parse-sexpr-payload (payload-str)
+  "Read the S-expression payload emitted by backtest requests."
+  (car (read-from-string payload-str)))
 
-(defun payload-has-option-list (payload key)
-  "Check that KEY is followed by a list value like '(key (value))'."
-  (let* ((normalized (normalize-whitespace payload))
-         (needle (format nil "~a (" key)))
-    (search needle normalized)))
+(defun field (key payload)
+  (cdr (assoc key payload :test #'eq)))
 
-(deftest test-request-backtest-wraps-optionals
-  "request-backtest should emit JSON with option fields as strings"
+(deftest test-request-backtest-emits-sexpr
+  "request-backtest should emit an S-expression payload with action BACKTEST."
   (let ((captured nil)
         (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
     (unwind-protect
@@ -47,17 +35,16 @@
             (swimmy.school:request-backtest strat :candles candles)))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
     (assert-not-nil captured "Expected backtest payload to be sent")
-    (let ((json (jsown:parse captured)))
-      (assert-equal "BACKTEST" (jsown:val json "action") "Expected action=BACKTEST")
-      (assert-true (stringp (jsown:val json "data_id"))
-                   "Expected data_id to be a string")
-      (assert-true (stringp (jsown:val json "candles_file"))
-                   "Expected candles_file to be a string")
-      (assert-true (numberp (jsown:val json "timeframe"))
+    (assert-true (char= (char captured 0) #\() "Payload should be S-expression")
+    (let ((payload (parse-sexpr-payload captured)))
+      (assert-equal "BACKTEST" (field 'action payload) "Expected action=BACKTEST")
+      (assert-true (or (field 'candles_file payload) (field 'candles payload))
+                   "Expected either candles_file or candles present")
+      (assert-true (numberp (field 'timeframe payload))
                    "Expected timeframe to be numeric"))))
 
 (deftest test-request-backtest-single-line
-  "request-backtest should emit a single-line JSON payload."
+  "request-backtest should emit a single-line S-expression payload."
   (let ((captured nil)
         (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
     (unwind-protect
@@ -81,14 +68,14 @@
             (swimmy.school:request-backtest strat :candles candles)))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
     (assert-not-nil captured "Expected backtest payload to be sent")
-    (assert-true (char= (char captured 0) #\{)
-                 "Expected JSON payload to start with '{'")
+    (assert-true (char= (char captured 0) #\()
+                 "Expected payload to start with '('")
     (assert-true (not (or (find #\Newline captured)
                           (find #\Return captured)))
                  "Expected payload to be single-line (no newlines)")))
 
 (deftest test-request-backtest-no-package-prefix
-  "request-backtest should not leak package prefixes into JSON payload."
+  "request-backtest should not leak package prefixes into S-expression payload."
   (let ((captured nil)
         (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
     (unwind-protect
@@ -116,7 +103,7 @@
                  "Expected payload keys without package prefixes")))
 
 (deftest test-request-backtest-v2-wraps-optionals
-  "request-backtest-v2 should wrap option fields and send alist strategy"
+  "request-backtest-v2 should send S-expression payload with alist strategy"
   (let ((captured nil)
         (orig-send (symbol-function 'pzmq:send))
         (orig-fetch (symbol-function 'swimmy.school::fetch-swap-history)))
@@ -144,16 +131,13 @@
       (setf (symbol-function 'pzmq:send) orig-send)
       (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
     (assert-not-nil captured "Expected V2 backtest payload to be sent")
-    (assert-true (search "strategy (" (normalize-whitespace captured))
-                 "Expected strategy to be an alist in S-expression")
-    (assert-true (payload-has-option-list captured "timeframe")
-                 "Expected timeframe to be wrapped as option list")
-    (assert-true (payload-has-option-list captured "candles_file")
-                 "Expected candles_file to be wrapped as option list")
-    (assert-true (payload-has-option-list captured "data_id")
-                 "Expected data_id to be wrapped as option list")
-    (assert-true (payload-has-option-list captured "start_time")
-                 "Expected start_time to be wrapped as option list")
-    (assert-true (payload-has-option-list captured "end_time")
-                 "Expected end_time to be wrapped as option list")
-    ))
+    (assert-true (char= (char captured 0) #\() "Expected S-expression payload")
+    (let ((payload (parse-sexpr-payload captured)))
+      (let ((strategy (field 'strategy payload)))
+        (assert-true (consp strategy) "Strategy should be an alist")
+        (assert-equal "USDJPY" (field 'symbol payload) "Symbol should be USDJPY")
+        (assert-true (numberp (field 'timeframe payload)) "Timeframe should be numeric"))
+      (assert-true (field 'data_id payload) "Expected data_id present")
+      (assert-true (field 'candles_file payload) "Expected candles_file present")
+      (assert-true (field 'start_time payload) "Expected start_time present")
+      (assert-true (field 'end_time payload) "Expected end_time present"))))

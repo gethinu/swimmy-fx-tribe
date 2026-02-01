@@ -69,6 +69,10 @@ def _post_webhook(url: str, payload: dict) -> bool:
         print(f"[BACKTEST-SVC] ⚠️ Failed to send webhook: {e}")
         return False
 
+_SEXP_NAME_RE = re.compile(r'\(name\s+\.\s+"([^"]+)"\)')
+_SEXP_NAME_JSONISH_RE = re.compile(r'"name"\s+"([^"]+)"')
+
+
 def _sexp_key(key) -> str:
     return str(key).lower()
 
@@ -293,9 +297,9 @@ class BacktestService:
 
     @staticmethod
     def _extract_name_from_sexpr(msg: str) -> str:
-        m = re.search(r'\(name\\s+\\.\\s+"([^"]+)"\\)', msg)
+        m = _SEXP_NAME_RE.search(msg)
         if not m:
-            m = re.search(r'"name"\\s+"([^"]+)"', msg)
+            m = _SEXP_NAME_JSONISH_RE.search(msg)
         return m.group(1) if m else "unknown"
 
     def _handle_sexpr(self, msg: str):

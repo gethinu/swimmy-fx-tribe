@@ -70,6 +70,13 @@
     "Sweet-Chariot-SMA-40"
     "CCI-Trend-Breakout"))
 
+(defun mark-revalidation-pending (strat)
+  "Flag STRAT as pending revalidation (Legend gating)."
+  (when (slot-exists-p strat 'revalidation-pending)
+    (setf (strategy-revalidation-pending strat) t))
+  (setf (strategy-status strat) :active)
+  (upsert-strategy strat))
+
 (defun %walk-and-collect (form names)
   "Recursively collect (make-strategy ...) forms inside FORM that match NAMES."
   (cond
@@ -106,6 +113,7 @@
       (setf (strategy-rank s) :legend)
       (when (slot-exists-p s 'generation) (setf (strategy-generation s) 0))
       (when (slot-exists-p s 'immortal) (setf (strategy-immortal s) t))
+      (mark-revalidation-pending s)
       (let* ((name (strategy-name s))
              (existing (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
         (if existing
@@ -119,3 +127,20 @@
               (incf count-added)))))
     (format t "[LEGENDS-61] ✅ Restoration complete. Added: ~d | Updated: ~d~%"
             count-added count-updated)))
+
+(defun queue-legend-revalidation (&key (send-requests t))
+  "Flag all :legend strategies for revalidation and enqueue backtests.
+   When SEND-REQUESTS is NIL, only flags are set."
+  (let ((queued 0))
+    (dolist (s *strategy-knowledge-base*)
+      (when (eq (strategy-rank s) :legend)
+        (unless (and (slot-exists-p s 'revalidation-pending)
+                     (strategy-revalidation-pending s))
+          (mark-revalidation-pending s))
+        (incf queued)
+        (when (and send-requests (fboundp 'request-backtest))
+          (ignore-errors
+            (request-backtest s)))))
+    (format t "[LEGENDS-61] 🔄 Revalidation queued for ~d legends (~a).~%"
+            queued (if send-requests "sent BACKTEST" "flag-only"))
+    queued))

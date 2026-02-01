@@ -39,28 +39,24 @@
     ;; If we use the same file, we can use "USDJPY_M1" as data_id.
     
     (let* ((strategy-alist (strategy-to-alist strat :name-suffix (format nil "_~a" (or start-date "FULL"))))
-           (strategy-json (alist-to-json strategy-alist))
            (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
            ;; V31.0: Fetch historical swaps for more accurate PnL
            (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
 
-      (let* ((*print-case* :downcase) ;; Ensure symbols become "action" etc.
-             (payload `((action . "BACKTEST")
-                        (strategy . ,strategy-json) ;; strategy-json here is actually an SXP structure if we updated strategy-to-alist? NO wait.
-                        ;; strategy-to-alist returns an alist. strategy-json was (alist-to-json ...).
-                        ;; We need to CHANGE `strategy-json` variable above to be just `strategy-alist`.
-                        ;; Let's fix line 42 first.
-                        (candles_file . ,data-file)
-                        (data_id . ,(format nil "~a_FULL" actual-symbol))
-                        (symbol . ,actual-symbol)
-                        (swap_history . ,swaps)
-                        (timeframe . ,timeframe))))
-         
+      (let* ((*print-case* :downcase)
+             (payload (list
+                       (cons 'action "BACKTEST")
+                       (cons 'strategy strategy-alist)
+                       (cons 'candles_file data-file)
+                       (cons 'data_id (format nil "~a_FULL" actual-symbol))
+                       (cons 'symbol actual-symbol)
+                       (cons 'swap_history swaps)
+                       (cons 'timeframe timeframe))))
         ;; Add Range if present
         (when start-ts (push `(start_time . ,start-ts) payload))
         (when end-ts (push `(end_time . ,end-ts) payload))
 
-        ;; Send
+        ;; Send S-expression payload to Backtest Service
         (let ((msg (format nil "~s" payload)))
           (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
               (pzmq:send swimmy.globals:*cmd-publisher* msg)
