@@ -1,5 +1,5 @@
 [Unit]
-Description=Swimmy Trading System
+Description=Swimmy School Service
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
 
@@ -8,7 +8,7 @@ Type=simple
 User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/run.sh
+ExecStart=/usr/bin/sbcl --dynamic-space-size ${SWIMMY_SBCL_DYNAMIC_SPACE_MB} --noinform --load /home/swimmy/swimmy/src/lisp/school/school-daemon.lisp
 Restart=always
 RestartSec=10
 
@@ -17,17 +17,10 @@ Environment=HOME=/home/swimmy
 Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
 EnvironmentFile=/home/swimmy/swimmy/.env
 
-# Security
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/home/swimmy/swimmy/doc/logs
-ReadWritePaths=/home/swimmy/swimmy/.opus
-ReadWritePaths=/home/swimmy/swimmy/logs
-
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=swimmy
+SyslogIdentifier=swimmy-school
 
 [Install]
 WantedBy=default.target

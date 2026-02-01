@@ -1,0 +1,19 @@
+--- a/src/generic.lisp
++++ b/src/generic.lisp
+@@ -33,12 +33,13 @@
+ is returned if CIPHER does not name a known cipher or is not a
+ cipher object."))
+ 
+-(defgeneric block-length (cipher)
+-  (:documentation "Return the number of bytes in an encryption or
++(unless (fboundp 'block-length)
++  (defgeneric block-length (cipher)
++    (:documentation "Return the number of bytes in an encryption or
+ decryption block for CIPHER.  CIPHER may either be a cipher name
+ as accepted by MAKE-CIPHER or a cipher object as returned by
+ MAKE-CIPHER.  NIL is returned if CIPHER does not name a known
+-cipher or is not a cipher object."))
++cipher or is not a cipher object.")))
+ 
+ (defgeneric encrypted-message-length (cipher mode length &optional handle-final-block)
+   (:documentation "Return the length a message of LENGTH would be if it

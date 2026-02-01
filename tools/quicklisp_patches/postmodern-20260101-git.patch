@@ -1,0 +1,23 @@
+--- a/postmodern/table.lisp
++++ b/postmodern/table.lisp
+@@ -119,8 +119,9 @@
+ 
+     (oid :col-type integer :ghost t :accessor get-oid)"))
+ 
+-(defgeneric dao-keys (class)
+-  (:documentation "Returns list of slot names that are the primary key of DAO
++(unless (fboundp 'dao-keys)
++  (defgeneric dao-keys (class)
++    (:documentation "Returns list of slot names that are the primary key of DAO
+ class. Explicit keys takes priority over col-identity which takes priority
+ over col-primary-key.
+ 
+@@ -128,7 +129,7 @@
+ more than one slot. Pay careful attention to situations where the primary key
+ not only has more than one column, but they are actually in a different order
+ than they are in the database table itself. Obviously the table needs to have
+-been defined. You can provide a quoted class-name or an instance of a dao."))
++been defined. You can provide a quoted class-name or an instance of a dao.")))
+ 
+ (defmethod dao-keys :before ((class dao-class))
+   (unless (class-finalized-p class)

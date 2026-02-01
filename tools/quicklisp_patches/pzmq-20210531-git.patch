@@ -1,0 +1,29 @@
+--- a/pzmq.asd
++++ b/pzmq.asd
+@@ -12,22 +12,22 @@
+                (:file "c-api") ; C API and obvious wrappers
+                (:file "lisp-api") ; more elaborate wrappers
+                )
+-  :in-order-to ((test-op (load-op :pzmq-test)))
++  :in-order-to ((test-op (load-op :pzmq/test)))
+   :perform (test-op (o c) (symbol-call :fiveam :run! :pzmq)))
+ 
+-(asdf:defsystem pzmq-compat
++(asdf:defsystem pzmq/compat
+   :description "ZeroMQ 3.2+ bindings: Unexported upstream-deprecated functions."
+   :depends-on (pzmq)
+   :encoding :utf-8
+   :components ((:file "compat")))
+ 
+-(asdf:defsystem pzmq-test
++(asdf:defsystem pzmq/test
+   :description "ZeroMQ 3.2+ bindings: Tests (asdf:test-system :pzmq)."
+   :depends-on (pzmq fiveam let-plus bordeaux-threads babel)
+   :encoding :utf-8
+   :components ((:file "tests")))
+ 
+-(asdf:defsystem pzmq-examples
++(asdf:defsystem pzmq/examples
+   :description "ZeroMQ 3.2+ bindings: Usage examples."
+   :depends-on (pzmq split-sequence iterate local-time bordeaux-threads)
+   :encoding :utf-8

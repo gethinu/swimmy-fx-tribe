@@ -1,5 +1,5 @@
 [Unit]
-Description=Swimmy Trading System
+Description=Swimmy Guardian Service (Watchdog)
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
 
@@ -8,26 +8,18 @@ Type=simple
 User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
-ExecStart=/home/swimmy/swimmy/run.sh
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/watchdog.py
 Restart=always
 RestartSec=10
 
 # Environment
 Environment=HOME=/home/swimmy
-Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
 EnvironmentFile=/home/swimmy/swimmy/.env
-
-# Security
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/home/swimmy/swimmy/doc/logs
-ReadWritePaths=/home/swimmy/swimmy/.opus
-ReadWritePaths=/home/swimmy/swimmy/logs
 
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=swimmy
+SyslogIdentifier=swimmy-guardian
 
 [Install]
 WantedBy=default.target
