@@ -465,13 +465,40 @@
           t)
         ;; Fallback: update DB even if in-memory strategy is missing
         (progn
-          (execute-non-query
-           "UPDATE strategies SET sharpe=?, profit_factor=?, win_rate=?, trades=?, max_dd=?, last_bt_time=? WHERE name=?"
-           (float (getf metrics :sharpe 0.0))
-           (float (getf metrics :profit-factor 0.0))
-           (float (getf metrics :win-rate 0.0))
-           (getf metrics :trades 0)
-           (float (getf metrics :max-dd 0.0))
-           (get-universal-time)
-           name)
+          (let ((updated nil)
+                (sexp-str (ignore-errors
+                           (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))))
+            (when (and sexp-str (stringp sexp-str))
+              (handler-case
+                  (let* ((*package* (find-package :swimmy.school))
+                         (obj (read-from-string sexp-str)))
+                    (when (strategy-p obj)
+                      (setf (strategy-sharpe obj) (float (getf metrics :sharpe 0.0))
+                            (strategy-profit-factor obj) (float (getf metrics :profit-factor 0.0))
+                            (strategy-win-rate obj) (float (getf metrics :win-rate 0.0))
+                            (strategy-trades obj) (getf metrics :trades 0)
+                            (strategy-max-dd obj) (float (getf metrics :max-dd 0.0))
+                            (strategy-oos-sharpe obj) (float (getf metrics :oos-sharpe 0.0))
+                            (strategy-cpcv-median-sharpe obj) (float (getf metrics :cpcv-median 0.0))
+                            (strategy-cpcv-pass-rate obj) (float (getf metrics :cpcv-pass-rate 0.0)))
+                      (when (fboundp '(setf strategy-revalidation-pending))
+                        (setf (strategy-revalidation-pending obj) nil))
+                      (upsert-strategy obj)
+                      (execute-non-query
+                       "UPDATE strategies SET last_bt_time=? WHERE name=?"
+                       (get-universal-time)
+                       name)
+                      (setf updated t)))
+                (error (e)
+                  (format t "[DB] ⚠️ Failed to parse data_sexp for ~a: ~a~%" name e))))
+            (unless updated
+              (execute-non-query
+               "UPDATE strategies SET sharpe=?, profit_factor=?, win_rate=?, trades=?, max_dd=?, last_bt_time=? WHERE name=?"
+               (float (getf metrics :sharpe 0.0))
+               (float (getf metrics :profit-factor 0.0))
+               (float (getf metrics :win-rate 0.0))
+               (getf metrics :trades 0)
+               (float (getf metrics :max-dd 0.0))
+               (get-universal-time)
+               name)))
           nil))))
