@@ -390,6 +390,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-safe-read-used-for-db-rank
+                  test-sexp-io-roundtrip
                   test-clan-exists
                   test-get-clan
                   test-clan-display

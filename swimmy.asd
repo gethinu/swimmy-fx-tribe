@@ -16,6 +16,7 @@
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
                (:file "src/lisp/core/safe-read")
+               (:file "src/lisp/core/sexp-io")
                (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
                (:file "src/lisp/core/execution-protocol") ; P7
                (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
@@ -149,6 +150,7 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+               (:file "src/lisp/tests/local-storage-sexp-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
                
