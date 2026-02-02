@@ -53,6 +53,8 @@
 (defparameter *backtest-stale-last-alert* 0)
 (defparameter *backtest-debug-env* "SWIMMY_BACKTEST_DEBUG_RECV")
 (defparameter *backtest-debug-log* "data/reports/backtest_debug.log")
+(defparameter *backtest-dead-letter* nil
+  "Dead-letter queue for BACKTEST_RESULT messages that failed processing.")
 
 (defun backtest-debug-enabled-p ()
   (let ((val (uiop:getenv *backtest-debug-env*)))
@@ -70,6 +72,32 @@
             (terpri s)))
       (error (e)
         (format t "[BACKTEST] ⚠️ Debug log write failed: ~a~%" e)))))
+
+(defun %dlq-record (reason payload &optional context)
+  "Record a failed BACKTEST_RESULT payload into the DLQ."
+  (push (list :ts (get-universal-time)
+              :reason reason
+              :payload payload
+              :context context)
+        *backtest-dead-letter*)
+  (format t "[DISPATCH] 📨 DLQ recorded (~a) count=~d~%" reason (length *backtest-dead-letter*)))
+
+(defun replay-dead-letter (&key limit)
+  "Replay BACKTEST_RESULT messages stored in the DLQ."
+  (let ((processed 0)
+        (remaining nil))
+    (dolist (entry *backtest-dead-letter*)
+      (when (and limit (>= processed limit))
+        (setf remaining (append remaining (list entry)))
+        (return))
+      (handler-case
+          (progn
+            (internal-process-msg (getf entry :payload))
+            (incf processed))
+        (error ()
+          (push entry remaining))))
+    (setf *backtest-dead-letter* (nreverse remaining))
+    processed))
 
 (defun maybe-log-backtest-recv ()
   "Log and persist backtest receive status periodically."
@@ -156,26 +184,34 @@
                                         (is-qual (subseq full-name 0 is-qual))
                                         (is-oos (subseq full-name 0 is-oos))
                                         (t full-name))))
+                          (request-id (%alist-val result '(request_id request-id) nil))
                           (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                         :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                                         :win-rate win-rate :profit-factor profit-factor :max-dd max-dd
+                                         :request-id request-id)))
                      (backtest-debug-log "recv sexp name=~a full=~a sharpe=~,4f trades=~d"
                                          (or name "N/A") (or full-name "N/A") sharpe trades)
                      (when (%invalid-name-p name)
                        (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
                          (incf *missing-strategy-name-log-count*)
                          (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
+                       (%dlq-record "missing/invalid strategy_name" msg result)
                        (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
                        (return-from internal-process-msg nil))
                      (incf *backtest-recv-count*)
-                     (setf *backtest-recv-last-name* name
-                           *backtest-recv-last-sharpe* sharpe
-                           *backtest-recv-last-trades* trades
-                           *backtest-recv-last-ts* (get-universal-time))
-                     (maybe-log-backtest-recv)
-                     (cond
-                       (is-oos
-                        (swimmy.school:cache-backtest-result full-name metrics)
-                        (when (fboundp 'swimmy.school:handle-oos-backtest-result)
+                    (setf *backtest-recv-last-name* name
+                          *backtest-recv-last-sharpe* sharpe
+                          *backtest-recv-last-trades* trades
+                          *backtest-recv-last-ts* (get-universal-time))
+                    (maybe-log-backtest-recv)
+                    ;; Attach latency if request-id matches queue entry
+                    (when request-id
+                      (multiple-value-bind (req-id req-at status) (swimmy.school:lookup-oos-request name)
+                        (when (and req-id req-at (string= req-id request-id))
+                          (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
+                    (cond
+                      (is-oos
+                       (swimmy.school:cache-backtest-result full-name metrics)
+                       (when (fboundp 'swimmy.school:handle-oos-backtest-result)
                           (swimmy.school:handle-oos-backtest-result name metrics)))
                        (is-wfv
                         (swimmy.school:cache-backtest-result full-name metrics)
@@ -285,67 +321,74 @@
                       (if (fboundp 'swimmy.engine::heartbeat-now)
                           (swimmy.engine:heartbeat-now)
                           (format t "[DISPATCH] ⚠️ HEARTBEAT_NOW ignored (function missing)."))))))
-                ((string= type "BACKTEST_RESULT")
-                 (let* ((result (jsown:val json "result"))
-                        (full-name (%normalize-strategy-name (or (%json-val result '("strategy_name" "strategy-name" "name") nil)
-                                                                 (jsown:val result "strategy_name"))))
-                        (sharpe (float (%json-val result '("sharpe" "sharpe_ratio" "sharpeRatio") 0.0)))
-                        (trades (or (%json-val result '("trades" "total_trades" "totalTrades") 0) 0))
-                        (pnl (float (%json-val result '("pnl" "total_profit" "totalProfit") 0.0)))
-                        (win-rate (%normalize-rate (%json-val result '("win_rate" "winrate" "winRate") 0.0)))
-                        (profit-factor (float (%json-val result '("profit_factor" "profitFactor" "pf") 0.0)))
-                        (max-dd (%normalize-rate (%json-val result '("max_dd" "max_drawdown" "maxDrawdown") 1.0)))
-                        (is-rr (and full-name (search "-RR" full-name)))
-                        (is-qual (and full-name (search "-QUAL" full-name)))
-                        (is-oos (and full-name (search "-OOS" full-name)))
-                        (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
-                                                   (search "_OOS" full-name :from-end t))))
-                        (name (when full-name
-                                (cond (is-rr (subseq full-name 0 is-rr))
-                                      (is-qual (subseq full-name 0 is-qual))
-                                      (is-oos (subseq full-name 0 is-oos))
-                                      (t full-name))))
-                        (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                       :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
-                   (backtest-debug-log "recv json name=~a full=~a sharpe=~,4f trades=~d"
-                                       (or name "N/A") (or full-name "N/A") sharpe trades)
-                   (when (%invalid-name-p name)
-                     (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
-                       (incf *missing-strategy-name-log-count*)
-                       (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
-                     (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
-                     (return-from internal-process-msg nil))
-                   ;; Attach latency if request-id matches queue timestamp
-                   (when request-id
-                     (multiple-value-bind (req-id req-at status) (swimmy.school:lookup-oos-request name)
-                       (when (and req-id req-at (string= req-id request-id))
-                         (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
-                   (cond
-                     (is-oos
-                      (when (fboundp 'swimmy.school:handle-oos-backtest-result)
-                        (swimmy.school:handle-oos-backtest-result name metrics)))
-                     (is-wfv
-                      (when (fboundp 'swimmy.school:process-wfv-result)
-                        (swimmy.school:process-wfv-result full-name metrics)))
-                     (t
-                      (swimmy.school:cache-backtest-result name metrics)
-                      (swimmy.school:apply-backtest-result name metrics)
+               ((string= type "BACKTEST_RESULT")
+                (handler-case
+                    (let* ((result (jsown:val json "result"))
+                           (full-name (%normalize-strategy-name (or (%json-val result '("strategy_name" "strategy-name" "name") nil)
+                                                                    (jsown:val result "strategy_name"))))
+                           (sharpe (float (%json-val result '("sharpe" "sharpe_ratio" "sharpeRatio") 0.0)))
+                           (trades (or (%json-val result '("trades" "total_trades" "totalTrades") 0) 0))
+                           (pnl (float (%json-val result '("pnl" "total_profit" "totalProfit") 0.0)))
+                           (win-rate (%normalize-rate (%json-val result '("win_rate" "winrate" "winRate") 0.0)))
+                           (profit-factor (float (%json-val result '("profit_factor" "profitFactor" "pf") 0.0)))
+                           (max-dd (%normalize-rate (%json-val result '("max_dd" "max_drawdown" "maxDrawdown") 1.0)))
+                           (is-rr (and full-name (search "-RR" full-name)))
+                           (is-qual (and full-name (search "-QUAL" full-name)))
+                           (is-oos (and full-name (search "-OOS" full-name)))
+                           (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
+                                                      (search "_OOS" full-name :from-end t))))
+                           (name (when full-name
+                                   (cond (is-rr (subseq full-name 0 is-rr))
+                                         (is-qual (subseq full-name 0 is-qual))
+                                         (is-oos (subseq full-name 0 is-oos))
+                                         (t full-name))))
+                           (request-id (%json-val result '("request_id" "request-id" "requestId") nil))
+                           (metrics (list :sharpe sharpe :trades trades :pnl pnl
+                                          :win-rate win-rate :profit-factor profit-factor :max-dd max-dd
+                                          :request-id request-id)))
+                      (backtest-debug-log "recv json name=~a full=~a sharpe=~,4f trades=~d"
+                                          (or name "N/A") (or full-name "N/A") sharpe trades)
+                      (when (%invalid-name-p name)
+                        (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
+                          (incf *missing-strategy-name-log-count*)
+                          (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
+                        (%dlq-record "missing/invalid strategy_name" msg result)
+                        (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
+                        (return-from internal-process-msg nil))
+                      ;; Attach latency if request-id matches queue timestamp
+                      (when request-id
+                        (multiple-value-bind (req-id req-at status) (swimmy.school:lookup-oos-request name)
+                          (when (and req-id req-at (string= req-id request-id))
+                            (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
                       (cond
-                        (is-qual
-                         (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
-                         (let ((count (length swimmy.globals:*qual-backtest-results-buffer*))
-                               (expected swimmy.globals:*qual-expected-backtest-count*))
-                           (when (and (> expected 0)
-                                      (>= count (max 1 (floor (* expected 0.9)))))
-                             (swimmy.core:notify-backtest-summary :qual))))
+                        (is-oos
+                         (when (fboundp 'swimmy.school:handle-oos-backtest-result)
+                           (swimmy.school:handle-oos-backtest-result name metrics)))
+                        (is-wfv
+                         (when (fboundp 'swimmy.school:process-wfv-result)
+                           (swimmy.school:process-wfv-result full-name metrics)))
                         (t
-                         (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
-                         (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
-                               (expected swimmy.globals:*rr-expected-backtest-count*))
-                           (when (and (> expected 0)
-                                      (>= count (max 1 (floor (* expected 0.9)))))
-                             (swimmy.core:notify-backtest-summary :rr)))))))))
-                (t nil)))))
+                         (swimmy.school:cache-backtest-result name metrics)
+                         (swimmy.school:apply-backtest-result name metrics)
+                         (cond
+                           (is-qual
+                            (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
+                            (let ((count (length swimmy.globals:*qual-backtest-results-buffer*))
+                                  (expected swimmy.globals:*qual-expected-backtest-count*))
+                              (when (and (> expected 0)
+                                         (>= count (max 1 (floor (* expected 0.9)))))
+                                (swimmy.core:notify-backtest-summary :qual))))
+                           (t
+                            (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
+                            (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
+                                  (expected swimmy.globals:*rr-expected-backtest-count*))
+                              (when (and (> expected 0)
+                                         (>= count (max 1 (floor (* expected 0.9)))))
+                                (swimmy.core:notify-backtest-summary :rr))))))
+                         (maybe-alert-backtest-stale))))
+                  (error (e)
+                    (%dlq-record (format nil "BACKTEST_RESULT json exception: ~a" e) msg json))))
+               (t nil))))
     (error (e)
       (format t "[L] Msg Error: ~a" e)
       nil)))

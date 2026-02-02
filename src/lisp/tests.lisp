@@ -79,6 +79,35 @@
             (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms"))
         (setf swimmy.globals:*danger-level* orig)))))
 
+(deftest test-internal-process-msg-backtest-request-id-bound
+  "internal-process-msg should handle BACKTEST_RESULT with request_id"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"BACKTEST_RESULT\") (result (strategy_name . \"UT-REQ\") (sharpe . 0.2) (trades . 1) (pnl . 0.1) (request_id . \"RID-1\")))")
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result))))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when (fboundp 'swimmy.school::handle-v2-result)
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (funcall fn msg)
+            (assert-true t "backtest result handled without error"))
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
+
 (deftest test-safe-read-used-for-db-rank
   "DB rank parsing should ignore unsafe read-time eval"
   (let ((fn (find-symbol "%PARSE-RANK-SAFE" :swimmy.school)))
@@ -389,6 +418,7 @@
                   test-safe-read-rejects-read-eval
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
+                  test-internal-process-msg-backtest-request-id-bound
                   test-safe-read-used-for-db-rank
                   test-clan-exists
                   test-get-clan

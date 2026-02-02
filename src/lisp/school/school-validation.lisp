@@ -24,6 +24,9 @@
 (defparameter *oos-metrics* (make-hash-table :test 'equal)
   "Simple counters and latency stats for OOS. Keys: :sent :success :failure :retry :latency-count :latency-sum :latency-min :latency-max.")
 
+(defparameter *oos-failure-stats* (list :data-invalid 0 :send-failure 0 :db-error 0)
+  "Per-cycle failure counters for OOS pipeline.")
+
 (defun %oos-metric-inc (key &optional (delta 1))
   (incf (gethash key *oos-metrics* 0) delta))
 
@@ -39,49 +42,151 @@
           (gethash :latency-min *oos-metrics*) mn
           (gethash :latency-max *oos-metrics*) mx)))
 
+(defun %oos-failure-inc (key &optional (delta 1))
+  (let ((cur (getf *oos-failure-stats* key 0)))
+    (setf (getf *oos-failure-stats* key) (+ cur delta))))
+
+(defun reset-oos-failure-stats ()
+  (setf *oos-failure-stats* (list :data-invalid 0 :send-failure 0 :db-error 0)))
+
+(defun report-oos-failure-stats ()
+  *oos-failure-stats*)
+
+(defun %numeric-string-p (s)
+  "Return T if S cleanly parses to a number without trailing junk."
+  (when (and s (> (length s) 0))
+    (handler-case
+        (let ((*read-eval* nil))
+          (multiple-value-bind (val pos)
+              (read-from-string s nil nil :start 0 :end (length s))
+            (and val (= pos (length s)) (numberp val))))
+      (error () nil))))
+
+(defun validate-oos-data-file (path)
+  "Lightweight CSV gate: ensure basic schema/row is present."
+  (handler-case
+      (progn
+        (unless (probe-file path)
+          (return-from validate-oos-data-file (values nil "missing data file")))
+        (let ((size (ignore-errors (with-open-file (s path :direction :input) (file-length s)))))
+          (when (or (null size) (<= size 0))
+            (return-from validate-oos-data-file (values nil "empty file"))))
+        (with-open-file (s path :direction :input)
+          (let ((header (read-line s nil nil)))
+            (unless header
+              (return-from validate-oos-data-file (values nil "empty file")))
+            (let* ((cols (mapcar #'string-downcase
+                                 (remove "" (split-sequence:split-sequence #\, header) :test #'string=)))
+                   (required '("timestamp" "open" "high" "low" "close")))
+              (unless (every (lambda (c) (member c cols :test #'string=)) required)
+                (return-from validate-oos-data-file (values nil "missing required columns")))
+              (let ((row (read-line s nil nil)))
+                (unless row
+                  (return-from validate-oos-data-file (values nil "no data rows")))
+                (let ((cells (remove "" (split-sequence:split-sequence #\, row) :test #'string=)))
+                  (unless (>= (length cells) 5)
+                    (return-from validate-oos-data-file (values nil "row missing columns")))
+                  (unless (every #'%numeric-string-p (subseq cells 0 5))
+                    (return-from validate-oos-data-file (values nil "non-numeric data")))
+                  (values t nil)))))))
+    (error (e) (values nil (format nil "validation error: ~a" e)))))
+
 (defun maybe-request-oos-backtest (strat)
   "Dispatch async OOS backtest if not requested recently. Returns request-id or NIL."
+  (ignore-errors (init-db))
   (let* ((name (strategy-name strat))
          (now (get-universal-time))
          (req-id nil)
-         (last-req (multiple-value-list (lookup-oos-request name)))
-         (last-time (second last-req)))
-    (when (or (null last-time) (> (- now last-time) *oos-request-interval*))
-      (setf req-id (swimmy.core:generate-uuid))
-      (enqueue-oos-request name req-id)
-      (request-backtest strat :suffix "-OOS" :request-id req-id)
-      (%oos-metric-inc :sent)
-      (format t "[OOS] 📤 Dispatched OOS backtest for ~a (req ~a)~%" name req-id))
-    req-id))
+         (last-req (handler-case
+                       (multiple-value-list (lookup-oos-request name))
+                     (error (e)
+                       (%oos-failure-inc :db-error)
+                       (format t "[OOS] ⚠️ lookup-oos-request failed (~a); recreating queue~%" e)
+                       (init-db)
+                       (multiple-value-list (lookup-oos-request name)))))
+         (last-id (first last-req))
+         (last-time (second last-req))
+         (last-status (third last-req))
+         (age (and last-time (- now last-time))))
+    (cond
+      ;; Throttle if a recent non-error request is still pending
+      ((and age (<= age *oos-request-interval*) (not (and (stringp last-status) (string= last-status "error"))))
+      (format t "[OOS] ⏳ Request throttled for ~a (age ~ds)~%" name age)
+      nil)
+      (t
+       (setf req-id (or last-id (swimmy.core:generate-uuid)))
+       (let ((status (if last-id "retry" "sent")))
+         (handler-case
+             (progn
+               (enqueue-oos-request name req-id :status status :requested-at now)
+               (request-backtest strat :suffix "-OOS" :request-id req-id)
+               (%oos-metric-inc (if last-id :retry :sent))
+               (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a)~%" name status req-id)
+               req-id)
+           (error (e)
+             (%oos-failure-inc :send-failure)
+             (record-oos-error name req-id (format nil "~a" e))
+             (format t "[OOS] ❌ Failed to dispatch OOS for ~a (~a)~%" name e)
+             nil)))))))
 
 (defun handle-oos-backtest-result (name metrics)
   "Apply OOS backtest result to strategy and attempt promotion."
   (let ((strat (find-strategy name)))
+    (unless strat
+      (%oos-metric-inc :failure)
+      (record-oos-error name (getf metrics :request-id) "Strategy not found for OOS result")
+      (return-from handle-oos-backtest-result nil))
     (when strat
-      (let ((sharpe (float (or (getf metrics :sharpe) 0.0))))
+      (let ((sharpe (float (or (getf metrics :sharpe) 0.0)))
+            (req-id (getf metrics :request-id)))
         (setf (strategy-oos-sharpe strat) sharpe)
-        (complete-oos-request name (getf metrics :request-id))
+        ;; Queue bookkeeping
+        (handler-case (complete-oos-request name req-id)
+          (error (e) (record-oos-error name req-id (format nil "~a" e))))
         (%oos-metric-inc :success)
         (when (getf metrics :oos-latency)
           (%oos-latency-record (getf metrics :oos-latency)))
         (upsert-strategy strat)
-        (format t "[OOS] 📥 ~a OOS Sharpe=~,2f~%" name sharpe)
+        (format t "[OOS] 📥 ~a OOS Sharpe=~,2f (req ~a)~%" name sharpe req-id)
         ;; Attempt promotion if core metrics are already strong enough
         (when (meets-a-rank-criteria strat)
           (if (>= sharpe *oos-min-sharpe*)
               (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe))
               (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))))))
 
+(defun report-oos-metrics ()
+  "Snapshot of OOS counters and latency stats (for narrative/reporting)."
+  (let* ((cnt (gethash :latency-count *oos-metrics* 0))
+         (sum (gethash :latency-sum *oos-metrics* 0.0)))
+    (list :sent (gethash :sent *oos-metrics* 0)
+          :retry (gethash :retry *oos-metrics* 0)
+          :success (gethash :success *oos-metrics* 0)
+          :failure (gethash :failure *oos-metrics* 0)
+          :latency-count cnt
+          :latency-avg (if (> cnt 0) (/ sum cnt) 0.0)
+          :latency-min (gethash :latency-min *oos-metrics* nil)
+          :latency-max (gethash :latency-max *oos-metrics* nil))))
+
 (defun run-oos-validation (strat)
   "Run Out-of-Sample validation for A-RANK promotion candidates.
    Returns (values passed-p oos-sharpe message)"
   (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
          (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol)))))
-    
+
     (unless (probe-file data-file)
-      (return-from run-oos-validation 
+      (%oos-failure-inc :data-invalid)
+      (%oos-metric-inc :failure)
+      (return-from run-oos-validation
         (values nil 0.0 (format nil "No data file for ~a" symbol))))
-    
+
+    ;; Data quality gate (fast, non-blocking)
+    (multiple-value-bind (valid reason) (validate-oos-data-file data-file)
+      (unless valid
+        (%oos-failure-inc :data-invalid)
+        (%oos-metric-inc :failure)
+        (return-from run-oos-validation
+          (values nil 0.0 (format nil "Invalid data file (~a)" reason)))))
+
     (let ((oos (strategy-oos-sharpe strat)))
       (when (numberp oos)
         (return-from run-oos-validation

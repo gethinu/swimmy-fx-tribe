@@ -285,3 +285,20 @@ Current status of the autonomous strategy generation pipeline.
   (let ((report (generate-evolution-report)))
     (write-evolution-report-files report)
     (send-evolution-report report)))
+
+(defun oos-metrics-summary-line ()
+  "Human-readable summary of OOS pipeline health for reports/Discord."
+  (let* ((m (report-oos-metrics))
+         (f (report-oos-failure-stats))
+         (avg (getf m :latency-avg 0.0))
+         (mn (or (getf m :latency-min) "-"))
+         (mx (or (getf m :latency-max) "-")))
+    (format nil "OOS sent: ~d retry: ~d success: ~d failure: ~d (data ~d send ~d db ~d) latency(avg/min/max): ~,2f/~a/~a sec"
+            (getf m :sent 0)
+            (getf m :retry 0)
+            (getf m :success 0)
+            (getf m :failure 0)
+            (getf f :data-invalid 0)
+            (getf f :send-failure 0)
+            (getf f :db-error 0)
+            avg mn mx)))

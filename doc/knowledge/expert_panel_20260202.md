@@ -56,3 +56,166 @@
 3. **Backtest Serviceの返却統一**：S式入力時にJSON返却する箇所を廃止し、結果もS式で返す。`tools/backtest_service.py:520-528`
 4. **ローカル保存の優先順位**：JSONL/telemetry/live_status/backtest_cacheのどれをS式に変えるかを優先順で決め、移行スクリプトを用意。`src/lisp/core/db-adapter.lisp:14-54`, `src/lisp/school/school-telemetry.lisp:7-34`, `src/lisp/shell/notifications.lisp:123-167`, `src/lisp/school/school-backtest-utils.lisp:9-80`
 5. **テスト再設計**：JSON前提の統合テストをS式対応に改修し、互換モード/強制モード両方を検証する。`src/lisp/tests/integration-tests.lisp:13-31`
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-02  
+**Leader:** Elon Musk  
+**Trigger:** /expert-panel「どれを『正』とする？ DB / Library / In-memory KB」
+
+## 🏛️ 常設顧問の意見
+### Taleb: “3つの真実は、どれも真実じゃない”
+- KBはDB+Libraryのマージで作られ、さらに**墓場はメモリから除去**される。報告で墓場数が0になっても当たり前。これは運用上の**隠れた脆弱性**。`src/lisp/strategies/strategies.lisp:14-59`
+- Evolution Reportは**メモリKBでS/A/Bを数え、墓場だけLibraryのファイル数**を使う。混血は事故の始まり。`src/lisp/school/school-narrative.lisp:206-212`
+
+### Graham: “報告の正義が割れている”
+- Owner’s Guideは「Evolution Factory Reportで確認」と言うが、そのReportは混血ソース。**確認方法が嘘**。`doc/owners_guide.md:175-177`, `src/lisp/school/school-narrative.lisp:203-212`
+- 仕様上はSQL移行完了。ならDBを真実にする以外ない。迷ってる時点で設計が死んでる。`doc/knowledge/implementation_plan_v49.8.md:8-14`
+
+### Naval: “レバレッジがない三重化”
+- DBに同期しないLibraryは**運用コストだけ増える**。`refresh-strategy-metrics-from-db`がある時点でDBが主戦場。`src/lisp/school/school-narrative.lisp:203-205`, `src/lisp/school/school-db.lisp:247-292`
+- “真実は一つ”の宣言が無いと、**毎回整合作業で人生を失う**。
+
+### Jim Simons: “統計の足場が崩れている”
+- Backtest Summaryのランク分布は**メモリKB**由来。墓場が落ちているならサンプルバイアス確定。`src/lisp/core/discord.lisp:198-206`, `src/lisp/strategies/strategies.lisp:53-55`
+- 集計軸が揺れるとSharpeや勝率の比較は無意味。**データの一貫性が最大のアルファ**だ。
+
+## 💻 技術パネルの意見
+### Fowler: “層の汚染が致命傷”
+- `generate-evolution-report`がDB→KB同期しつつ、墓場はLibrary直参照。**レイヤー違反**の典型。`src/lisp/school/school-narrative.lisp:203-212`
+- `init-knowledge-base`はDB優先マージだが、最終的にKBが真実かどうかが曖昧。Repository層が不在。`src/lisp/strategies/strategies.lisp:14-24`
+
+### Hickey: “シンプルさの敵は二重のDB”
+- DBパスが**2系統**ある。`data/memory/swimmy.db`と`data/swimmy.db`。これ自体が真実を崩す。`src/lisp/core/sqlite-manager.lisp:6-12`, `src/lisp/core/schema.lisp:16-20`
+- “Libraryが真実”と言いながら、ReportでDB同期を強制している。**設計が言葉に勝っている**。`src/lisp/school/school-narrative.lisp:203-205`
+
+### Uncle Bob: “テスト不在の合意は幻想”
+- ソース整合性を検証するテストが無い。**壊れるまで誰も気づかない**。`src/lisp/tests/backtest-db-tests.lisp`, `src/lisp/tests/school-split-tests.lisp`
+- 仕様の真実がないので、テストが書けないのが根本原因。
+
+## 🚀 ビジョナリーの意見
+### Ng: “データドリフトが静かに学習を殺す”
+- KB/DB/Libraryの整合が崩れると、学習データもラベルも崩れる。**静かな劣化**が最悪。`src/lisp/school/school-db.lisp:247-292`
+
+### López de Prado: “選別基準が揺れると過学習が再来する”
+- Backtest結果とRank分布の母集団が一致しない。**選択バイアス**の温床。`src/lisp/core/discord.lisp:198-206`, `src/lisp/strategies/strategies.lisp:53-55`
+
+### Gene Kim: “運用は数字の信頼で成り立つ”
+- レポートの数が一致しない時点で、監視は無意味になる。**Opsの信用を壊すな**。`src/lisp/school/school-narrative.lisp:203-212`, `doc/owners_guide.md:175-177`
+
+## 🚀 Musk's Decision (Final)
+> 「DBを真実にする。Libraryは**派生スナップショット**、In-memoryは**キャッシュ**だ。  
+>  混血レポートは今すぐやめる。ソースを一本化し、数字の信用を回復しろ。」
+
+## Actionable Items
+1. **真実の宣言**：DBを公式ソース・Libraryを派生・KBをキャッシュと明記。`doc/owners_guide.md:175-177`, `doc/knowledge/implementation_plan_v49.8.md:8-14`
+2. **Reportの統一**：`notify-backtest-summary` と `generate-evolution-report` を**DB集計**に統一。墓場数もDB基準に。`src/lisp/core/discord.lisp:198-206`, `src/lisp/school/school-narrative.lisp:203-212`, `src/lisp/school/school-db.lisp:247-292`
+3. **DBパスの一本化**：旧 `data/swimmy.db` 系の参照を整理・廃止。`src/lisp/core/sqlite-manager.lisp:6-12`, `src/lisp/core/schema.lisp:16-20`
+4. **整合性テスト**：Report生成時にDB/KB/Libraryの差分を検出するスモークテストを追加。`src/lisp/tests/backtest-db-tests.lisp`, `src/lisp/tests/school-split-tests.lisp`
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-02  
+**Leader:** Elon Musk  
+**Trigger:** /expert-panel「ローカル保存S式化の対象範囲（最小/中間/最大）を1つ選定して進めたい」
+
+## 🏛️ 常設顧問の意見
+### Taleb: “最大はRuin。観測の目が潰れるなら終わり”
+- ローカル保存は運用の生命線。`live_status.json`と`system_metrics.json`は**運用可観測性そのもの**。ここを一気に変えるなら移行失敗が即死。`src/lisp/shell/notifications.lisp:123-167`, `src/lisp/school/school-telemetry.lisp:7-34`
+- `data/`や`db/data/`のJSON/JSONL全面変換は「破壊的な一括手術」。**復旧不能リスク**を積む。最大は却下。`tools/report_status.py:35-96`
+
+### Graham: “問題は範囲。やり過ぎはスピードを殺す”
+- SPECはローカル保存S式化の**対象範囲が未確定**と明記。ここを決めずに実装へ進むと失速する。`docs/llm/SPEC.md:51-75`
+- 最小は成果が薄い。最大は失速。**中間が唯一、意思決定として合理的**。`docs/llm/SPEC.md:51-56`
+
+### Naval: “レバレッジのない改修はやめろ”
+- 価値のある出力はDiscord/報告系。`report_backtest_summary.py`と`discord_bot.py`はJSON前提。全部をS式にするのは**レバレッジが低い**。`tools/report_backtest_summary.py:41-106`, `src/python/discord_bot.py:38-99`
+- 影響範囲が広いのに利益が薄い（最大）。やるなら**運用の3ファイルだけ**に絞れ。`tools/report_status.py:35-96`
+
+### Jim Simons: “比較可能性を壊すな”
+- `backtest_cache.json`はランキング/報告の基準。形式変更で**過去比較が壊れる**。移行スクリプトなしの最大は論外。`src/lisp/school/school-backtest-utils.lisp:9-80`, `tools/report_status.py:80-107`
+
+## 💻 技術パネルの意見
+### Fowler: “境界がここ。変えるなら変換層を作れ”
+- `live_status.json`はLisp→Pythonの境界。**この境界を一括破壊するなら変換層が必須**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
+- `system_metrics.json`と`backtest_cache.json`は報告系の入口。ここだけ変えるなら中間で十分。`src/lisp/school/school-telemetry.lisp:7-34`, `tools/report_status.py:35-96`
+
+### Hickey: “Lisp最適化で他言語を殺すな”
+- S式はLisp内では簡潔だが、Python側では**自前パーサが必要**。最大は複雑性を爆増させる。`tools/report_backtest_summary.py:58-106`, `src/python/discord_bot.py:75-99`
+- 中間なら「Lisp側のS式化 + Python側の最小アダプタ」で済む。  
+
+### Uncle Bob: “テストがない範囲はやるな”
+- JSON前提の実運用ツールが複数ある。**互換テストなしに最大は事故**。`tools/report_status.py:35-96`, `tools/report_backtest_summary.py:58-106`
+- 中間に絞ってテストを書け。最大は今の体制では無謀。  
+
+## 🚀 ビジョナリーの意見
+### Ng: “観測系を壊すと学習が止まる”
+- テレメトリは学習/運用の血流。ここを壊すと不具合が見えなくなる。**中間で止めるのが安全**。`src/lisp/school/school-telemetry.lisp:7-34`
+
+### López de Prado: “履歴の連続性を守れ”
+- JSONL全面変換は**統計的連続性の破壊**。最大は分析の前提を壊す。`tools/report_status.py:35-96`
+
+### Gene Kim: “運用のフィードバックループは最優先”
+- `live_status.json`はDiscord運用の中心。ここはS式化の対象に含めるべきだが、**全域変換は不要**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
+
+## 🚀 Musk's Decision (Final)
+> 「**中間**で行く。  
+>  Backtest + Telemetry/Status だけをS式化し、`data/`と`db/data/`のJSON/JSONLは温存する。  
+>  いま必要なのは“動く運用”だ。全面移行は勝ってからだ。」
+
+## Actionable Items
+1. **決定の記録**：`docs/llm/SPEC.md` の「ローカル保存S式化の対象範囲」を **中間**に確定し、`docs/llm/STATE.md` の決定事項と次アクションを更新。`docs/llm/SPEC.md:51-75`, `docs/llm/STATE.md:12-82`
+2. **対象ファイルの明確化**：`data/backtest_cache.json`、`data/system_metrics.json`、`.opus/live_status.json` のS式化を対象に固定（最大は見送り）。`src/lisp/school/school-backtest-utils.lisp:9-80`, `src/lisp/school/school-telemetry.lisp:7-34`, `src/lisp/shell/notifications.lisp:123-167`
+3. **互換・移行**：S式への移行スクリプトを用意し、Python側はS式対応または変換アダプタで対応。`tools/report_status.py:35-96`, `tools/report_backtest_summary.py:41-106`, `src/python/discord_bot.py:75-99`
+4. **テスト**：ローカル保存の読み書き（S式/旧JSON）を最小テストで保証。最大範囲の変換は保留。  
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-02  
+**Leader:** Elon Musk  
+**Trigger:** /expert-panel「S式即時単独で進める。さらに提案があれば意見して」
+
+## 🏛️ 常設顧問の意見
+### Taleb: “停止許容でも、壊れる設計はRuinだ”
+- 即時単独は「止めて直す」前提だが、**部分書き込み/壊れたS式**で再起不能になる。現状のJSON書き込みは逐次`format`で**原子的でない**。S式化で同じ設計なら事故る。`src/lisp/shell/notifications.lisp:123-179`, `src/lisp/school/school-telemetry.lisp:22-34`
+- Python側に**安全なS式リーダがない**。Lisp側は`safe-read-sexp`で守っているが、Pythonは裸。`src/lisp/core/safe-read.lisp:5-13`, `tools/report_status.py:40-48`
+
+### Graham: “仕様を書かずに統一を叫ぶな”
+- S式即時単独なら、**保存スキーマの正義**が必要。`backtest_cache`/`system_metrics`/`live_status`のS式フォーマットを明文化しないと、1週間で破綻する。`src/lisp/school/school-backtest-utils.lisp:48-80`, `src/lisp/school/school-telemetry.lisp:22-34`, `src/lisp/shell/notifications.lisp:123-179`
+
+### Naval: “レバレッジのある最小工数に絞れ”
+- JSON読み込みが3箇所に散っている。S式即時単独なら**Python共通パーサ**を作り、1箇所変更で済む設計にしろ。`tools/report_status.py:40-48`, `tools/report_backtest_summary.py:58-66`, `src/python/discord_bot.py:75-83`
+
+### Jim Simons: “比較可能性の死”
+- `backtest_cache`はランキングの基準。S式化に**バージョンタグ**が無いと、将来の再計算ができない。`src/lisp/school/school-backtest-utils.lisp:48-80`
+
+## 💻 技術パネルの意見
+### Fowler: “書き込み経路を一本化しろ”
+- JSON書き込みが**3つの独立実装**に散らばっている。S式化は**共通I/Oモジュール**を作らないと再び分裂する。`src/lisp/shell/notifications.lisp:123-179`, `src/lisp/school/school-telemetry.lisp:22-34`, `src/lisp/school/school-backtest-utils.lisp:48-80`
+
+### Hickey: “S式を使うなら、最小の形にしろ”
+- alistのキー形式がバラつくとPython側で地獄。**symbol/keywordを一貫**させる設計が必須。現状はJSONキー前提で揺れている。`tools/report_backtest_summary.py:89-98`
+
+### Uncle Bob: “テスト不在の即時単独は自殺”
+- JSON前提のコードがまだ生きている。**最小のパーサテスト**と**ファイルI/Oテスト**なしで切り替えるのは事故。`tools/report_status.py:40-48`, `tools/report_backtest_summary.py:58-66`, `src/python/discord_bot.py:75-83`
+
+## 🚀 ビジョナリーの意見
+### Ng: “観測は止めない。止めるなら復旧設計を先に”
+- 停止許容でも、復旧時に**何を信頼するか**が未定義。`system_metrics`のschema_version/last_updatedを必須にしろ。`src/lisp/school/school-telemetry.lisp:22-34`
+
+### López de Prado: “データの系譜が切れる”
+- 旧JSONをバックアップするだけでは不十分。**S式変換後の検算**が必要。`tools/report_status.py:80-107`, `src/lisp/school/school-backtest-utils.lisp:48-80`
+
+### Gene Kim: “運用は痛みを可視化しろ”
+- S式移行の失敗は静かに死ぬ。**書き込み失敗のアラート**を最優先で作れ。`src/lisp/shell/notifications.lisp:127-135`, `src/lisp/school/school-telemetry.lisp:22-34`
+
+## 🚀 Musk's Decision (Final)
+> 「S式即時単独はやる。だが“事故の温床”は今のままだ。  
+>  **スキーマ定義・原子書き込み・Python共通パーサ・最小テスト**の4点セットを先に固めろ。  
+>  それが終わるまで移行開始はしない。」
+
+## Actionable Items
+1. **S式スキーマ定義**：`backtest_cache/system_metrics/live_status`のS式構造と`schema_version`を文書化。`src/lisp/school/school-backtest-utils.lisp:48-80`, `src/lisp/school/school-telemetry.lisp:22-34`, `src/lisp/shell/notifications.lisp:123-179`
+2. **原子書き込み**：S式保存は必ず`tmp→rename`で原子化（部分書き込み回避）。`src/lisp/shell/notifications.lisp:127-135`, `src/lisp/school/school-telemetry.lisp:22-34`, `src/lisp/school/school-backtest-utils.lisp:68-79`
+3. **Python共通S式パーサ**：3箇所のJSON読み込みを共通S式パーサへ集約。`tools/report_status.py:40-48`, `tools/report_backtest_summary.py:58-66`, `src/python/discord_bot.py:75-83`
+4. **最小テスト**：S式読み書きのスモークテストを追加（空/破損/正常の3ケース）。  

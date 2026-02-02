@@ -242,6 +242,10 @@
    #:complete-oos-request
    #:record-oos-error
    #:handle-oos-backtest-result
+   #:report-oos-metrics
+   #:report-oos-failure-stats
+   #:reset-oos-failure-stats
+   #:oos-metrics-summary-line
    
    ;; Meta Learning
    #:get-best-strategy-for-regime

@@ -52,7 +52,7 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Sharded Files**: 戦略本体 (S式)。
-  - **Local Storage (方針)**: ローカル保存（cache/telemetry/status/logs/JSONL等）はS式へ統一予定（対象範囲は未確定）。
+- **Local Storage (方針)**: ローカル保存のS式化対象は**中間**（Backtest cache + Telemetry/Status）に固定。`data/` と `db/data/` のJSON/JSONLは当面維持。
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
@@ -71,7 +71,7 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
 ## 10. 未確定事項
 - `libzmq.dll` のバージョン管理。
 - Data Keeperの具体的なデータスキーマ詳細。
-- ローカル保存S式化の対象範囲（どのファイル/形式を移行するか）。
+- ローカル保存S式化の**ファイル命名/互換モード**（S式/JSON併存期間の設計）。
 
 ## 11. Metrics & Reporting Logic (Reference)
 

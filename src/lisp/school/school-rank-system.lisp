@@ -346,6 +346,7 @@
    3. Validate A-RANK via CPCV (→ S or back)
    V49.3: Added missing A-Rank evaluation loop."
   (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
+  (reset-oos-failure-stats)
   ;; Normalize legacy OOS defaults so validation is re-triggered
   (normalize-oos-defaults)
   

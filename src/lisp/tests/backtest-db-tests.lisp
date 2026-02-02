@@ -45,6 +45,46 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-sqlite-wal-mode-enabled
+  "Ensure init-db sets SQLite to WAL mode for concurrency."
+  (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((mode (execute-single "PRAGMA journal_mode")))
+               (assert-true (member (string-downcase mode) '("wal" "wal2") :test #'string=)
+                            "journal_mode should be WAL")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-refresh-strategy-metrics-incremental
+  "Incremental refresh should update only rows changed since timestamp."
+  (let ((tmp-db (format nil "/tmp/swimmy-inc-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let* ((s1 (make-strategy :name "INC-A" :sharpe 0.1 :symbol "USDJPY"))
+                    (s2 (make-strategy :name "INC-B" :sharpe 0.1 :symbol "USDJPY")))
+               (setf *strategy-knowledge-base* (list s1 s2))
+               (upsert-strategy s1)
+               (upsert-strategy s2)
+               (let ((ts (get-universal-time)))
+                 (sleep 1)
+                 (setf (strategy-sharpe s1) 0.9)
+                 (upsert-strategy s1)
+                 ;; Corrupt in-memory s2 to ensure it doesn't refresh without update
+                 (setf (strategy-sharpe s2) 5.0)
+                 (refresh-strategy-metrics-from-db :force t :since-timestamp ts)
+                (assert-true (> (strategy-sharpe s1) 0.8) "s1 should refresh to latest DB sharpe")
+                (assert-true (= (strategy-sharpe s2) 5.0) "s2 should remain unchanged without update"))))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-collect-all-strategies-unpruned
   "Ensure DB strategies are returned even if rank is graveyard."
   (let* ((name-a "TEST-ALL-STRATS-A")
