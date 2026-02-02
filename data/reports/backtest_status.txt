@@ -1,5 +1,0 @@
-timestamp: 3978850979
-count: 153
-last_name: Legend-Golden-Cross-Classic
-last_sharpe: 0.0863
-last_trades: 16

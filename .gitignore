@@ -50,6 +50,9 @@ data/library/TRAINING/
 data/historical/
 
 # Runtime Data (too large or ephemeral)
+data/heartbeat/
+data/logs/
+data/reports/
 data/memory/
 *.db
 *.sexp
