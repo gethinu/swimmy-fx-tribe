@@ -392,6 +392,8 @@
                   test-safe-read-used-for-db-rank
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
+                  test-telemetry-sexp
+                  test-live-status-sexp
                   test-clan-exists
                   test-get-clan
                   test-clan-display

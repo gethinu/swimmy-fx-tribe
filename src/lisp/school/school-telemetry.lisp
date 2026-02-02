@@ -4,7 +4,7 @@
 
 (in-package :swimmy.school)
 
-(defparameter *telemetry-file* "data/system_metrics.json")
+(defparameter *telemetry-file* "data/system_metrics.sexp")
 (defparameter *memory-warning-threshold* (* 1024 1024 1024)) ; 1GB in bytes
 (defparameter *last-telemetry-time* 0)
 
@@ -19,19 +19,15 @@
         :active (length *active-team*)
         :pending 0)) ; Pending is managed by Python service, Lisp considers them external for now
 
-(defun save-telemetry-json (metrics)
-  "Writes metrics to JSON file for external dashboards"
-  (with-open-file (stream *telemetry-file* 
-                          :direction :output 
-                          :if-exists :supersede
-                          :if-does-not-exist :create)
-    (format stream "{~%")
-    (format stream "  \"timestamp\": ~d,~%" (get-universal-time))
-    (format stream "  \"heap_used_bytes\": ~d,~%" (getf metrics :heap))
-    (format stream "  \"heap_used_mb\": ~,2f,~%" (/ (getf metrics :heap) 1024.0 1024.0))
-    (format stream "  \"strategy_count\": ~d,~%" (getf metrics :strategy-count))
-    (format stream "  \"uptime_seconds\": ~d~%" (- (get-universal-time) swimmy.globals::*system-start-time*))
-    (format stream "}~%")))
+(defun save-telemetry-sexp (metrics)
+  "Writes metrics to S-expression file for external dashboards."
+  (let ((payload `((schema_version . 1)
+                   (timestamp . ,(get-universal-time))
+                   (heap_used_bytes . ,(getf metrics :heap))
+                   (heap_used_mb . ,(/ (getf metrics :heap) 1024.0 1024.0))
+                   (strategy_count . ,(getf metrics :strategy-count))
+                   (uptime_seconds . ,(- (get-universal-time) swimmy.globals::*system-start-time*)))))
+    (swimmy.core:write-sexp-atomic *telemetry-file* payload)))
 
 
 (defun check-memory-health (heap-bytes)
@@ -53,7 +49,7 @@
     (format t "[TELEMETRY] Heap: ~,2f MB | Strategies: ~d~%" 
             (/ heap 1024.0 1024.0) strat-count)
     
-    ;; 2. JSON Dump (Observability)
-    (save-telemetry-json metrics)
+    ;; 2. S-expression Dump (Observability)
+    (save-telemetry-sexp metrics)
     
     (values metrics alert)))
