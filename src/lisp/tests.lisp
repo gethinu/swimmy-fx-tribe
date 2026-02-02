@@ -83,7 +83,7 @@
   "internal-process-msg should handle BACKTEST_RESULT with request_id"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
     (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
-    (let* ((msg "((type . \"BACKTEST_RESULT\") (result (strategy_name . \"UT-REQ\") (sharpe . 0.2) (trades . 1) (pnl . 0.1) (request_id . \"RID-1\")))")
+    (let* ((msg "{\"type\":\"BACKTEST_RESULT\",\"result\":{\"strategy_name\":\"UT-REQ\",\"sharpe\":0.2,\"trades\":1,\"pnl\":0.1,\"request_id\":\"RID-1\"}}")
            (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
            (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
            (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
@@ -100,8 +100,12 @@
             (when (fboundp 'swimmy.school::handle-v2-result)
               (setf (symbol-function 'swimmy.school::handle-v2-result)
                     (lambda (&rest args) (declare (ignore args)) nil)))
-            (funcall fn msg)
-            (assert-true t "backtest result handled without error"))
+            (let* ((out-stream (make-string-output-stream))
+                   (*standard-output* out-stream))
+              (funcall fn msg)
+              (let ((output (get-output-stream-string out-stream)))
+                (assert-true (null (search "Msg Error" output))
+                             "Expected no Msg Error during BACKTEST_RESULT"))))
         (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
         (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
         (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
@@ -441,6 +445,8 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
+                  test-db-rank-counts
+                  test-report-source-drift-detects-mismatch
                   ;; Backtest payload S-expression tests
                   test-request-backtest-indicator-type-symbol
                   ;; V6.18: Dynamic TP/SL tests

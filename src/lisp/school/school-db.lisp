@@ -291,6 +291,195 @@
               (when (> updated 0)
                 (format t "[DB] 🔄 Synced metrics for ~d strategies (full scan fallback)~%" updated))))))))
 
+
+;;; ---------------------------------------------------------------------------
+;;; Strategy retrieval helpers (protected re-definitions to ensure availability)
+;;; These are wrapped in UNLESS so we don't clobber existing bindings but still
+;;; guarantee the functions exist when tests load this module.
+;;; ---------------------------------------------------------------------------
+
+(unless (fboundp 'fetch-candidate-strategies)
+  (defun fetch-candidate-strategies (&key (min-sharpe 0.1) (ranks '(":B" ":A" ":S")))
+    "Fetch strategies from DB matching criteria for the global draft."
+    (let ((query (format nil "SELECT data_sexp FROM strategies WHERE sharpe >= ? AND rank IN (~{~a~^,~})"
+                         (mapcar (lambda (r) (format nil \"'~a'\" r)) ranks))))
+      (let ((rows (execute-to-list query min-sharpe)))
+        (remove-if #'null
+                   (mapcar (lambda (row)
+                             (let ((sexp-str (first row)))
+                               (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                                 (if (strategy-p obj)
+                                     obj
+                                     (progn
+                                       (when (and sexp-str (> (length sexp-str) 0))
+                                         (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                                                 (subseq sexp-str 0 (min 30 (length sexp-str)))))
+                                       nil)))))
+                         rows))))))
+
+(unless (fboundp 'fetch-all-strategies-from-db)
+  (defun fetch-all-strategies-from-db ()
+    "Fetch EVERY strategy from the DB, including unranked and legends."
+    (let ((rows (execute-to-list "SELECT data_sexp FROM strategies")))
+      (remove-if #'null
+                 (mapcar (lambda (row)
+                           (let ((sexp-str (first row)))
+                             (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                               (if (strategy-p obj)
+                                   obj
+                                   (progn
+                                     (when (and sexp-str (> (length sexp-str) 0))
+                                       (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                                               (subseq sexp-str 0 (min 30 (length sexp-str)))))
+                                     nil)))))
+                         rows))))))
+
+(unless (fboundp 'collect-all-strategies-unpruned)
+  (defun collect-all-strategies-unpruned ()
+    "Return all strategies from DB + Library without pruning."
+    (let* ((db-strats (fetch-all-strategies-from-db))
+           (file-strats (ignore-errors (swimmy.persistence:load-all-strategies)))
+           (all (copy-list db-strats)))
+      (dolist (fs (or file-strats '()))
+        (unless (find (strategy-name fs) all :key #'strategy-name :test #'string=)
+          (push fs all)))
+      all)))
+
+(unless (fboundp 'map-strategies-from-db)
+  (defun map-strategies-from-db (fn &key (batch-size 1000) limit)
+    "Call FN for each strategy in DB, processing in batches. Returns count."
+    (block done
+      (let ((offset 0)
+            (processed 0))
+        (loop
+          (when (and limit (>= processed limit))
+            (return-from done processed))
+          (let ((rows (execute-to-list "SELECT data_sexp FROM strategies LIMIT ? OFFSET ?" batch-size offset)))
+            (when (null rows)
+              (return-from done processed))
+            (dolist (row rows)
+              (when (and limit (>= processed limit))
+                (return-from done processed))
+              (let ((sexp-str (first row)))
+                (handler-case
+                    (let ((*package* (find-package :swimmy.school)))
+                      (let ((obj (read-from-string sexp-str)))
+                        (when (strategy-p obj)
+                          (funcall fn obj)
+                          (incf processed))))
+                  (error (e)
+                    (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%"
+                            *package*
+                            (subseq sexp-str 0 (min 30 (length sexp-str))) e))))))
+          (incf offset batch-size))))))
+
+(unless (fboundp 'get-db-stats)
+  (defun get-db-stats ()
+    "Return summary of DB contents."
+    (let ((strat-count (execute-single "SELECT count(*) FROM strategies"))
+          (trade-count (execute-single "SELECT count(*) FROM trade_logs")))
+      (list :strategies strat-count :trades trade-count))))
+
+(unless (fboundp 'migrate-existing-data)
+  (defun migrate-existing-data ()
+    "Migrate existing flat-files (ranks, graveyard, legacy KB) to SQLite."
+    (let ((count 0)
+          (legacy-kb-path "data/knowledge_base.sexp"))
+      (when (probe-file legacy-kb-path)
+        (format t "[DB] 🚜 Migrating ~a to SQL... (This may take a moment)~%" legacy-kb-path)
+        (with-transaction
+          (with-open-file (in legacy-kb-path :direction :input :if-does-not-exist nil)
+            (let ((*package* (find-package :swimmy.school)))
+              (loop for obj = (handler-case (read in nil :eof)
+                                  (error (e)
+                                    (format t "[DB] ⚠️ Corrupted entry in KB: ~a~%" e)
+                                    :error))
+                    until (eq obj :eof)
+                    do (cond
+                         ((strategy-p obj)
+                          (upsert-strategy obj)
+                          (incf count))
+                         ((listp obj)
+                          (dolist (item obj)
+                            (when (strategy-p item)
+                              (upsert-strategy item)
+                              (incf count))))))))))
+      (with-transaction
+        (when (boundp '*strategy-knowledge-base*)
+          (dolist (strat *strategy-knowledge-base*)
+            (upsert-strategy strat)
+            (incf count)))
+        (when (boundp '*evolved-strategies*)
+          (dolist (strat *evolved-strategies*)
+            (upsert-strategy strat)
+            (incf count))))
+      (format t "[DB] 🚜 Migrated ~d strategies to SQL.~%" count)
+      (let ((graveyard-path "data/memory/graveyard.sexp"))
+        (when (probe-file graveyard-path)
+          (with-open-file (in graveyard-path :direction :input :if-does-not-exist nil)
+            (let ((g-count 0))
+              (with-transaction
+                (loop for p = (handler-case
+                                  (let ((*package* (find-package :swimmy.school)))
+                                    (read in nil :eof))
+                                (error (e)
+                                  (format t "[DB] 💥 Corrupted Graveyard SEXP: ~a~%" e)
+                                  :eof))
+                      until (eq p :eof)
+                      do (when (and p (listp p) (getf p :name))
+                           (let ((g-name (format nil "GY-~a" (getf p :name))))
+                             (let* ((fake-strat (make-strategy :indicators (getf p :indicators)
+                                                              :entry (getf p :entry)
+                                                              :exit (getf p :exit)))
+                                    (hash (calculate-strategy-hash fake-strat)))
+                               (execute-non-query
+                                "INSERT OR REPLACE INTO strategies (name, rank, hash, data_sexp) VALUES (?, ?, ?, ?)"
+                                g-name ":GRAVEYARD" hash (format nil "~s" p))
+                               (incf g-count))))))
+              (format t "[DB] 🪦 Migrated ~d graveyard patterns to SQL.~%" g-count)))))
+      count)))
+
+(unless (fboundp 'close-db)
+  (defun close-db ()
+    (swimmy.core:close-db-connection)))
+
+(unless (fboundp 'record-swap-data)
+  (defun record-swap-data (symbol swap-long swap-short spread)
+    "Log daily swap/spread data to SQL."
+    (let ((now (get-universal-time)))
+      (let ((day-timestamp (* (floor now 86400) 86400)))
+        (handler-case
+            (execute-non-query
+             "INSERT OR REPLACE INTO swap_history (symbol, timestamp, swap_long, swap_short, spread)
+              VALUES (?, ?, ?, ?, ?)"
+             symbol day-timestamp (float swap-long) (float swap-short) (float spread))
+          (error (e)
+            (format t "[DB] ⚠️ Failed to record swap data for ~a: ~a~%" symbol e)))))))
+
+(unless (fboundp 'get-top-carry-pairs)
+  (defun get-top-carry-pairs (&key (limit 5))
+    "SQL-Screening: Get top symbols by Swap Long value for today (or latest)."
+    (let ((query "SELECT symbol, swap_long FROM swap_history 
+                WHERE timestamp = (SELECT MAX(timestamp) FROM swap_history)
+                AND swap_long > 0
+                ORDER BY swap_long DESC
+                LIMIT ?"))
+      (execute-to-list query limit)))
+
+(unless (fboundp 'fetch-swap-history)
+  (defun fetch-swap-history (symbol &key start-ts end-ts)
+    "Fetch historical swap data for a symbol within a time range."
+    (let ((query (format nil "SELECT timestamp, swap_long, swap_short FROM swap_history WHERE symbol = ?")))
+      (when start-ts
+        (setf query (format nil "~a AND timestamp >= ~d" query start-ts)))
+      (when end-ts
+        (setf query (format nil "~a AND timestamp <= ~d" query end-ts)))
+      (setf query (format nil "~a ORDER BY timestamp ASC" query))
+      (let ((rows (execute-to-list query symbol)))
+        (mapcar (lambda (row)
+                  (list :t (first row) :sl (second row) :ss (third row)))
+                rows)))))
+
 (defun fetch-candidate-strategies (&key (min-sharpe 0.1) (ranks '(":B" ":A" ":S")))
   "Fetch strategies from DB matching criteria for the global draft."
   (let ((query (format nil "SELECT data_sexp FROM strategies WHERE sharpe >= ? AND rank IN (~{~a~^,~})"

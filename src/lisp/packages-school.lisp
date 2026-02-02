@@ -81,6 +81,13 @@
    #:save-backtest-cache
    #:load-backtest-cache
    #:get-cached-backtest
+   #:refresh-strategy-metrics-from-db
+   #:fetch-candidate-strategies
+   #:fetch-all-strategies-from-db
+   #:collect-all-strategies-unpruned
+   #:map-strategies-from-db
+   #:get-top-carry-pairs
+   #:fetch-swap-history
    
    ;; Special Forces
    #:force-recruit-strategy
