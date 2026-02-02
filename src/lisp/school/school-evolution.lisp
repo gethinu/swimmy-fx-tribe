@@ -334,29 +334,32 @@ except Exception as e:
         
         (when (and lisp-code-str (> (length lisp-code-str) 0) (not (string= (string-trim '(#\Space #\Newline) lisp-code-str) "NIL")))
           (handler-case
-              (let ((parsed-list (read-from-string lisp-code-str)))
-                (dolist (item parsed-list)
-                  (let ((name (getf item :name))
-                        (entry-str (getf item :entry))
-                        (exit-str (getf item :exit))
-                        (sl (getf item :sl))
-                        (tp (getf item :tp))
-                        (tf (getf item :timeframe))
-                        (prob (getf item :probability)))
-                    
-                    (let ((entry (if (string= entry-str "") nil (read-from-string entry-str)))
-                          (exit (if (string= exit-str "") nil (read-from-string exit-str))))
-                      
-                      (when (and name entry exit)
-                        (let ((s (make-strategy :name (format nil "~a-Gen0" name)
-                                                :entry entry 
-                                                :exit exit 
-                                                :sl sl :tp tp 
-                                                :category :trend
-                                                :timeframe (if (numberp tf) tf 15) ; Default M15
-                                                :generation 0)))
-                          (setf (strategy-regime-intent s) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
-                          (push (cons s prob) strategies)))))))
+              (let ((parsed-list (swimmy.core:safe-read-sexp lisp-code-str :package :swimmy.school)))
+                (when (listp parsed-list)
+                  (dolist (item parsed-list)
+                    (let ((name (getf item :name))
+                          (entry-str (getf item :entry))
+                          (exit-str (getf item :exit))
+                          (sl (getf item :sl))
+                          (tp (getf item :tp))
+                          (tf (getf item :timeframe))
+                          (prob (getf item :probability)))
+                      (let ((entry (and (stringp entry-str)
+                                        (not (string= entry-str ""))
+                                        (safe-read-dsl-form entry-str)))
+                            (exit (and (stringp exit-str)
+                                       (not (string= exit-str ""))
+                                       (safe-read-dsl-form exit-str))))
+                        (when (and name entry exit)
+                          (let ((s (make-strategy :name (format nil "~a-Gen0" name)
+                                                  :entry entry
+                                                  :exit exit
+                                                  :sl sl :tp tp
+                                                  :category :trend
+                                                  :timeframe (if (numberp tf) tf 15) ; Default M15
+                                                  :generation 0)))
+                            (setf (strategy-regime-intent s) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
+                            (push (cons s prob) strategies))))))))
             (error (e)
               (format t "[PARSE ERROR] Transpilation failed: ~a~%" e)
               nil)))))
@@ -417,18 +420,25 @@ Generate only the Lisp code:"
       (let* ((start (search "(STRATEGY" lisp-str))
              (end (search ")" lisp-str :from-end t)))
         (when (and start end)
-          (let ((data (read-from-string (subseq lisp-str start (1+ end)))))
-            ;; Format: (STRATEGY :name "X" :entry ... )
-            (let ((plist (cdr data))) ; Skip STRATEGY symbol
-               (make-strategy 
-                :name (getf plist :name)
-                :entry (getf plist :entry)
-                :exit (getf plist :exit)
-                :indicators (getf plist :indicators)
-                :sl (or (getf plist :sl) 1.0)
-                :tp (or (getf plist :tp) 2.0)
-                :category :trend ; Todo: Infer or inherit
-                :generation 1)))))
+          (let ((data (swimmy.core:safe-read-sexp (subseq lisp-str start (1+ end))
+                                                  :package :swimmy.school)))
+            (when (and (listp data)
+                       (symbolp (first data))
+                       (string-equal (symbol-name (first data)) "STRATEGY"))
+              ;; Format: (STRATEGY :name "X" :entry ... )
+              (let* ((plist (cdr data))
+                     (entry (getf plist :entry))
+                     (exit (getf plist :exit)))
+                (when (and entry exit)
+                  (make-strategy
+                   :name (getf plist :name)
+                   :entry entry
+                   :exit exit
+                   :indicators (getf plist :indicators)
+                   :sl (or (getf plist :sl) 1.0)
+                   :tp (or (getf plist :tp) 2.0)
+                   :category :trend ; Todo: Infer or inherit
+                   :generation 1)))))))
     (error (e) 
       (format t "[PARSE ERROR] ~a~%" e) 
       nil)))

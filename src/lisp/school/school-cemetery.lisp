@@ -49,11 +49,8 @@
              (with-transaction
                (dolist (row rows)
                  (let* ((name (first row))
-                        ;; V49.8: Data S-Exp might be large, handler-case for safety
-                        (strat (handler-case 
-                                   (let ((*package* (find-package :swimmy.school)))
-                                     (read-from-string (second row)))
-                                 (error () nil))))
+                        ;; V49.8: Data S-Exp might be large, safe-read for safety
+                        (strat (swimmy.core:safe-read-sexp (second row) :package :swimmy.school)))
                    (if (and strat (strategy-p strat))
                        (let ((hash (calculate-strategy-hash strat)))
                          (execute-non-query "UPDATE strategies SET hash = ? WHERE name = ?" hash name))

@@ -99,6 +99,18 @@
           (migrate-existing-data)))
     (error (e) (format t "[DB] ⚠️ Auto-migration check failed: ~a~%" e))))
 
+(defun %parse-rank-safe (rank-str)
+  "Safely parse rank string from DB. Returns rank and valid-p."
+  (when (and rank-str (stringp rank-str))
+    (let ((trimmed (string-upcase (string-trim '(#\Space #\Newline #\Tab) rank-str))))
+      (cond
+        ((string= trimmed "NIL") (values nil t))
+        (t
+         (let ((rank (swimmy.core:safe-read-sexp rank-str :package :swimmy.school)))
+           (if (and (symbolp rank) (keywordp rank))
+               (values rank t)
+               (values nil nil))))))))
+
 (defun upsert-strategy (strat)
   "Save or update strategy in SQL."
   (unless (strategy-hash strat)
@@ -201,8 +213,8 @@
                 (when cpcv-median (setf (strategy-cpcv-median-sharpe strat) (float cpcv-median 0.0)))
                 (when cpcv-pass (setf (strategy-cpcv-pass-rate strat) (float cpcv-pass 0.0)))
                 (when (and rank (stringp rank))
-                  (let ((rank-sym (ignore-errors (read-from-string rank))))
-                    (when (symbolp rank-sym)
+                  (multiple-value-bind (rank-sym ok) (%parse-rank-safe rank)
+                    (when ok
                       (setf (strategy-rank strat) rank-sym))))
                 (incf updated)))))
         (when (> updated 0)
@@ -216,15 +228,14 @@
       (remove-if #'null 
                  (mapcar (lambda (row) 
                            (let ((sexp-str (first row)))
-                             (handler-case
-                                 (let ((*package* (find-package :swimmy.school)))
-                                   (let ((obj (read-from-string sexp-str)))
-                                     (if (strategy-p obj) obj nil)))
-                               (error (e)
-                                 (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%" 
-                                         *package*
-                                         (subseq sexp-str 0 (min 30 (length sexp-str))) e)
-                                 nil))))
+                             (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                               (if (strategy-p obj)
+                                   obj
+                                   (progn
+                                     (when (and sexp-str (> (length sexp-str) 0))
+                                       (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                                               (subseq sexp-str 0 (min 30 (length sexp-str)))))
+                                     nil)))))
                          rows)))))
 
 (defun fetch-all-strategies-from-db ()
@@ -233,15 +244,14 @@
     (remove-if #'null 
                (mapcar (lambda (row) 
                          (let ((sexp-str (first row)))
-                           (handler-case
-                               (let ((*package* (find-package :swimmy.school)))
-                                 (let ((obj (read-from-string sexp-str)))
-                                   (if (strategy-p obj) obj nil)))
-                             (error (e)
-                               (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%" 
-                                       *package*
-                                       (subseq sexp-str 0 (min 30 (length sexp-str))) e)
-                               nil))))
+                           (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                             (if (strategy-p obj)
+                                 obj
+                                 (progn
+                                   (when (and sexp-str (> (length sexp-str) 0))
+                                     (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                                             (subseq sexp-str 0 (min 30 (length sexp-str)))))
+                                   nil)))))
                        rows))))
 
 (defun collect-all-strategies-unpruned ()

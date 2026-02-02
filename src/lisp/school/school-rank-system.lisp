@@ -504,8 +504,7 @@
                            (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))))
             (when (and sexp-str (stringp sexp-str))
               (handler-case
-                  (let* ((*package* (find-package :swimmy.school))
-                         (obj (read-from-string sexp-str)))
+                  (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
                     (when (strategy-p obj)
                       (setf (strategy-sharpe obj) (float (getf metrics :sharpe 0.0))
                             (strategy-profit-factor obj) (float (getf metrics :profit-factor 0.0))

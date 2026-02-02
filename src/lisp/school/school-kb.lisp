@@ -54,18 +54,16 @@
           (setf *last-graveyard-load* now)
           (setf *graveyard-cache*
                 (or (handler-case
-                        (let* ((pkg (find-package :swimmy.school)))
+                        (progn
                           (init-db)
                           (let ((rows (execute-to-list
                                        "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
                             (remove-if #'null
                                        (mapcar (lambda (row)
                                                  (let ((sexp-str (first row)))
-                                                   (handler-case
-                                                       (let ((*package* pkg))
-                                                         (normalize-graveyard-entry
-                                                          (read-from-string sexp-str)))
-                                                     (error () nil))))
+                                                   (let ((entry (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                                                     (when entry
+                                                       (normalize-graveyard-entry entry)))))
                                                rows))))
                       (error () nil))
                     (when (probe-file "data/memory/graveyard.sexp")

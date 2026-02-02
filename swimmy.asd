@@ -15,6 +15,7 @@
                (:file "src/lisp/school/school-watchdog") ; Phase 25: Watchdog
                (:file "src/lisp/core/globals")
                (:file "src/lisp/core/config")
+               (:file "src/lisp/core/safe-read")
                (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
                (:file "src/lisp/core/execution-protocol") ; P7
                (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
