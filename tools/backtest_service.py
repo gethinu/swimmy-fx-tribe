@@ -73,12 +73,25 @@ _SEXP_NAME_RE = re.compile(r'\(name\s+\.\s+"([^"]+)"\)')
 _SEXP_NAME_JSONISH_RE = re.compile(r'"name"\s+"([^"]+)"')
 
 _DUMP_INCOMING_ENV = "SWIMMY_BACKTEST_DUMP_INCOMING"
+_DUMP_GUARDIAN_ENV = "SWIMMY_BACKTEST_DUMP_GUARDIAN"
 
 def _should_dump_incoming() -> bool:
     val = os.getenv(_DUMP_INCOMING_ENV, "").strip().lower()
     return val in ("1", "true", "yes", "on")
 
 def _format_incoming_preview(msg: str, limit: int = 240) -> str:
+    if msg is None:
+        return ""
+    cleaned = msg.replace("\r", " ").replace("\n", " ").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + "..."
+
+def _should_dump_guardian() -> bool:
+    val = os.getenv(_DUMP_GUARDIAN_ENV, "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+def _format_guardian_preview(msg: str, limit: int = 240) -> str:
     if msg is None:
         return ""
     cleaned = msg.replace("\r", " ").replace("\n", " ").strip()
@@ -388,10 +401,13 @@ class BacktestService:
     def _read_result_line(self, proc, strategy_name, input_data):
         """Read stdout until a BACKTEST_RESULT line is found (skip banner/log lines)."""
         skipped = 0
+        dump_guardian = _should_dump_guardian()
         while True:
             output_line = proc.stdout.readline()
             if not output_line:
                 return None
+            if dump_guardian:
+                print(f"[BACKTEST-SVC] OUT: {_format_guardian_preview(output_line)}")
             output_line = output_line.strip()
             if not output_line:
                 continue

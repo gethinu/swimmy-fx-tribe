@@ -47,7 +47,7 @@
                        (cons 'action "BACKTEST")
                        (cons 'strategy strategy-alist)
                        (cons 'candles_file data-file)
-                       (cons 'data_id (format nil "~a_FULL" actual-symbol))
+                       (cons 'data_id (format nil "~a_M1" actual-symbol))
                        (cons 'symbol actual-symbol)
                        (cons 'swap_history swaps)
                        (cons 'timeframe timeframe))))
@@ -62,9 +62,7 @@
               (*print-escape* t)
               (*package* (find-package :swimmy.school)))
           (let ((msg (format nil "~s" payload)))
-          (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-              (pzmq:send swimmy.globals:*cmd-publisher* msg)
-              (format t "[BT-V2] ❌ CMD Publisher NOT BOUND.~%"))))))))
+            (send-zmq-msg msg :target :backtest)))))))
 
 
 ;;; =========================================================
@@ -131,11 +129,21 @@
 
     ;; Phase 2 Result
     ((search "_2021" strat-name)
-     (let ((sharpe (getf result :sharpe)))
+     (let* ((base-name (subseq strat-name 0 (search "_2021" strat-name)))
+            (strat (find-strategy base-name))
+            (sharpe (float (or (getf result :sharpe) 0.0))))
        (format t "[BT-V2] 📊 Phase 2 Result for ~a: Sharpe=~,2f~%" strat-name sharpe)
-       (if (>= sharpe *phase2-min-sharpe*)
+       (if (null strat)
+           (format t "[BT-V2] ⚠️ Strategy not found for Phase 2 result: ~a~%" base-name)
            (progn
-             (format t "[BT-V2] 🌟 PASSED Phase 2! Candidate for Rank A/S.~%")
-             ;; Logic to promote to Rank A
-             )
-           (format t "[BT-V2] ❌ FAILED Phase 2. Back to Pool or Graveyard.~%"))))))
+             (setf (strategy-oos-sharpe strat) sharpe)
+             (when (slot-exists-p strat 'status-reason)
+               (setf (strategy-status-reason strat) "Phase2 Validation Result"))
+             (upsert-strategy strat)
+             (if (>= sharpe *phase2-min-sharpe*)
+                 (progn
+                   (format t "[BT-V2] 🌟 PASSED Phase 2! Promoting to Rank A.~%")
+                   (ensure-rank strat :A "Phase2 Validation Passed (V2)"))
+                 (progn
+                   (format t "[BT-V2] ❌ FAILED Phase 2. To Graveyard.~%")
+                   (send-to-graveyard strat "Phase2 Validation Failed (V2)")))))))))

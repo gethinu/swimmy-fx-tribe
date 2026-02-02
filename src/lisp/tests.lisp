@@ -301,6 +301,72 @@
   (let ((fn-sym (find-symbol "PROCESS-MSG" :swimmy.main)))
     (assert-true (and fn-sym (fboundp fn-sym)) "process-msg should be defined")))
 
+(deftest test-backtest-debug-enabled-p
+  "backtest debug env flag should be parsed consistently"
+  (require :sb-posix)
+  (let ((orig (uiop:getenv "SWIMMY_BACKTEST_DEBUG_RECV")))
+    (unwind-protect
+        (progn
+          (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" "1" 1)
+          (assert-true (swimmy.main::backtest-debug-enabled-p))
+          (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" "true" 1)
+          (assert-true (swimmy.main::backtest-debug-enabled-p))
+          (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" "false" 1)
+          (assert-true (not (swimmy.main::backtest-debug-enabled-p)))
+          (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" "" 1)
+          (assert-true (not (swimmy.main::backtest-debug-enabled-p))))
+      (when orig
+        (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" orig 1))
+      (unless orig
+        (sb-posix:unsetenv "SWIMMY_BACKTEST_DEBUG_RECV")))))
+
+(deftest test-backtest-v2-uses-alist
+  "request-backtest-v2 should send alist strategy payload"
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+        (orig-fetch (symbol-function 'swimmy.school::fetch-swap-history)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (setf (symbol-function 'swimmy.school::fetch-swap-history)
+                (lambda (&rest _) (declare (ignore _)) nil))
+          (let ((s (swimmy.school:make-strategy :name "T" :symbol "USDJPY")))
+            (swimmy.school::request-backtest-v2 s :start-date "2020.01.01" :end-date "2020.12.31")))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
+    (assert-not-nil captured "Expected V2 backtest payload to be sent")
+    (let ((*package* (find-package :swimmy.tests)))
+      (multiple-value-bind (payload _pos) (read-from-string captured)
+        (declare (ignore _pos))
+        (let ((strategy (cdr (assoc 'strategy payload))))
+          (assert-true (consp strategy) "Strategy should be an alist"))
+        (assert-equal "USDJPY" (cdr (assoc 'symbol payload)) "Symbol should be USDJPY")
+        (assert-true (numberp (cdr (assoc 'timeframe payload))) "Timeframe should be numeric")
+        (assert-true (cdr (assoc 'data_id payload)) "Expected data_id present")
+        (assert-true (cdr (assoc 'candles_file payload)) "Expected candles_file present")
+        (assert-true (cdr (assoc 'start_time payload)) "Expected start_time present")
+        (assert-true (cdr (assoc 'end_time payload)) "Expected end_time present")))))
+
+(deftest test-backtest-v2-phase2-promotes-to-a
+  "Phase2 result should promote to A when sharpe meets threshold"
+  (let* ((s (swimmy.school:make-strategy :name "Phase2" :symbol "USDJPY"))
+         (swimmy.school::*strategy-knowledge-base* (list s))
+         (called nil))
+    (let ((orig (symbol-function 'swimmy.school:ensure-rank)))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:ensure-rank)
+                  (lambda (strat rank &optional reason)
+                    (declare (ignore reason))
+                    (setf called (list strat rank))
+                    rank))
+            (swimmy.school::handle-v2-result "Phase2_2021" (list :sharpe 1.0)))
+        (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
+    (assert-equal :A (second called) "Expected A-RANK promotion")))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -345,6 +411,8 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
+                  ;; Backtest payload S-expression tests
+                  test-request-backtest-indicator-type-symbol
                   ;; V6.18: Dynamic TP/SL tests
                   test-volatility-multiplier
                   test-atr-empty-candles
@@ -372,6 +440,9 @@
                   test-maintenance-throttle-60s
                   test-dream-cycle-self-throttle
                   test-processing-step-no-maintenance
+                  test-backtest-debug-enabled-p
+                  test-backtest-v2-uses-alist
+                  test-backtest-v2-phase2-promotes-to-a
                   ;; V8.5: Evolution Tests (Genetic Mutation)
                   test-rewrite-logic-symbols-sma
                   test-mutate-strategy-structure

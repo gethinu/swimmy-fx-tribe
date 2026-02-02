@@ -65,6 +65,18 @@ def main():
     assert "\n" not in preview and "\r" not in preview
     assert len(preview) <= 43
 
+    # Guardian output preview helpers
+    os.environ.pop("SWIMMY_BACKTEST_DUMP_GUARDIAN", None)
+    assert svc._should_dump_guardian() is False
+    os.environ["SWIMMY_BACKTEST_DUMP_GUARDIAN"] = "yes"
+    assert svc._should_dump_guardian() is True
+    os.environ["SWIMMY_BACKTEST_DUMP_GUARDIAN"] = "0"
+    assert svc._should_dump_guardian() is False
+
+    out_preview = svc._format_guardian_preview("out1\nout2\r\n" + ("y" * 200), limit=32)
+    assert "\n" not in out_preview and "\r" not in out_preview
+    assert len(out_preview) <= 35
+
     print("ok")
 
 
