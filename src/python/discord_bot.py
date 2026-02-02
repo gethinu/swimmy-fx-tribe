@@ -227,8 +227,8 @@ def format_progress():
 ARXIV_DATA_DIR = "/home/swimmy/arxiv-scout/data"
 LAST_REPORT_FILE = f"{ARXIV_DATA_DIR}/last_report.json"
 STOCK_PAPERS_FILE = f"{ARXIV_DATA_DIR}/stock_papers.json"
-ARXIV_REPORT_WEBHOOK = (
-    os.getenv("SWIMMY_ARXIV_REPORT_WEBHOOK", "").strip().strip('"').strip("'")
+ARXIV_REPORT_DAILY_WEBHOOK = (
+    os.getenv("SWIMMY_ARXIV_REPORT_WEBHOOK_BOT", "").strip().strip('"').strip("'")
 )
 
 
@@ -386,11 +386,11 @@ def arxiv_show_stock() -> str:
 async def on_ready():
     print(f"🐟 Swimmy Bot connected as {bot.user}")
     print(f"🌐 Serving {len(bot.guilds)} guild(s)")
-    if ARXIV_REPORT_WEBHOOK:
-        bot.loop.create_task(send_daily_arxiv_report(ARXIV_REPORT_WEBHOOK))
+    if ARXIV_REPORT_DAILY_WEBHOOK:
+        bot.loop.create_task(send_daily_arxiv_report(ARXIV_REPORT_DAILY_WEBHOOK))
         print(
             "📚 arXiv daily report scheduler enabled "
-            f"(webhook={mask_webhook(ARXIV_REPORT_WEBHOOK)})."
+            f"(webhook={mask_webhook(ARXIV_REPORT_DAILY_WEBHOOK)})."
         )
     else:
         print("⚠️ arXiv daily report scheduler disabled (no webhook set).")

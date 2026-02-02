@@ -147,6 +147,30 @@
       ""))
 
 
+(defun candidate-rank-label (strategy)
+  "Generate a human-friendly rank status label for reports."
+  (let* ((rank (strategy-rank strategy))
+         (s-eligible (check-rank-criteria strategy :S))
+         (s-base (check-rank-criteria strategy :S :include-cpcv nil))
+         (a-eligible (check-rank-criteria strategy :A))
+         (a-base (check-rank-criteria strategy :A :include-oos nil))
+         (sharpe (or (strategy-sharpe strategy) 0.0))
+         (cpcv (or (strategy-cpcv-median-sharpe strategy) 0.0))
+         (cpcv-pass (or (strategy-cpcv-pass-rate strategy) 0.0))
+         (oos (or (strategy-oos-sharpe strategy) 0.0)))
+    (cond
+      ((eq rank :S) "S")
+      (s-eligible (if (eq rank :A) "A: S-ELIGIBLE" "S: PROMOTION PENDING"))
+      ((and (eq rank :A) s-base)
+       (format nil "CPCV PENDING (median=~,2f pass=~,0f%%)" cpcv (* 100 cpcv-pass)))
+      ((and a-eligible (eq rank :B)) "A: PROMOTION PENDING")
+      ((and (eq rank :B) (>= sharpe 0.3) (not a-base)) "A: BASE METRICS FAIL")
+      ((and a-eligible (eq rank :A)) "A")
+      ((and (eq rank :B) a-base)
+       (format nil "OOS PENDING (OOS=~,2f)" oos))
+      (rank (symbol-name rank))
+      (t "UNRANKED"))))
+
 (defun build-top-candidates-snippet (strategies)
   "Build top candidates snippet with fault isolation."
   (handler-case
@@ -156,19 +180,22 @@
           (format s "~%🌟 **Top Candidates:**~%")
           (loop for i from 0 below limit
                 for st = (nth i sorted)
-                  do (let ((rank (strategy-rank st))
-                           (st-sharpe (or (strategy-sharpe st) 0.0)))
-                       (let ((label (cond
-                                      ((and (eq rank :A) (>= st-sharpe 0.5))
-                                       "A: READY FOR CPCV")
-                                      (rank (symbol-name rank))
-                                      (t "UNRANKED"))))
-                         (format s "- `~a` (S=~,2f, ~a)~%"
-                                 (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
-                                 st-sharpe
-                                 label))))))
+                for label = (candidate-rank-label st)
+                do (format s "- `~a` (S=~,2f, ~a)~%"
+                           (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                           (or (strategy-sharpe st) 0.0)
+                           label))))
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
+
+(defun build-cpcv-status-snippet ()
+  "Build CPCV status snippet for reports."
+  (let* ((expected swimmy.globals:*expected-cpcv-count*)
+         (received (length (or swimmy.globals:*cpcv-results-buffer* nil)))
+         (start-time swimmy.globals:*cpcv-start-time*)
+         (start-text (if (> start-time 0) (format-timestamp start-time) "N/A")))
+    (format nil "🔬 CPCV Status~%~d queued | ~d received | last start: ~a"
+            expected received start-text)))
 
 (defun generate-evolution-report ()
   "Generate the Evolution Factory Report (formerly Python).
@@ -188,7 +215,8 @@
                                    (and (strategy-creation-time s)
                                         (> (strategy-creation-time s) one-day-ago))) 
                                  all)))
-    (let ((top-snippet (build-top-candidates-snippet all)))
+    (let ((top-snippet (build-top-candidates-snippet all))
+          (cpcv-snippet (build-cpcv-status-snippet)))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -214,6 +242,8 @@ Current status of the autonomous strategy generation pipeline.
 
 ~a
 
+~a
+
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
@@ -224,6 +254,7 @@ Current status of the autonomous strategy generation pipeline.
             b-rank
             new-recruits
             graveyard
+            cpcv-snippet
             top-snippet
             (format-timestamp (get-universal-time))))))
 

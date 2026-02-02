@@ -233,6 +233,67 @@
 6. 3通貨ペアでの最良選択フローを実装し、戦略のsymbolを上書きする。`doc/設計.txt`, `src/lisp/strategies/strategies.lisp`
 7. timeframesの単一ソース化（MNをculling/評価対象に含める）とBランク閾値の整合。`src/lisp/school/school-constants.lisp`, `src/lisp/school/school-rank-system.lisp`
 
+---
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-01  
+**Leader:** Elon Musk  
+**Trigger:** /expert-panel「ZMQ通信をすべてS式に統一したい。どこまでの範囲にすべきか（保守性のため）」
+
+## 🏛️ 常設顧問の意見
+### Taleb: “S式全域化は“読む＝実行”の破滅面を拡張する”
+- 現状でもS式経路は`read-from-string`で外部入力を直読している。これを全ZMQへ拡張すれば、攻撃面が指数的に広がる。まず「安全なリーダ」の設計無しに全域化は自殺。`src/lisp/core/message-dispatcher.lisp:105-108`
+- 仕様がJSONとS式で揺れている時点で、監査不能＝破滅。**統一前に“安全境界”を明文化**しろ。`docs/llm/INTERFACES.md:5-16`, `docs/llm/INTERFACES.md:102-126`
+
+### Graham: “仕様の真実が分裂している”
+- インターフェース仕様は**JSONと明記**。一方でBacktestはS式と書かれている。全域S式にすると、SPEC/INTERFACES/STATEの再定義が必須。真実が曖昧なままスケールは不可能。`docs/llm/INTERFACES.md:5-16`, `docs/llm/INTERFACES.md:102-126`, `docs/llm/STATE.md:52`
+- MQL5/Rust/Data Keeperの外部仕様がJSON前提で書かれている。設計思想を壊す変更は、プロダクトの説明責任を破壊する。`docs/llm/SPEC.md:1-7`, `docs/llm/ARCHITECTURE.md:12-24`
+
+### Naval: “保守性という言葉で巨大リライトを正当化するな”
+- Lisp側だけでもJSON依存が広範囲。`risk-manager`や`runner`など実運用経路がJSON前提。全域S式化は自動化を壊し、保守性を逆に下げる。`src/lisp/risk-manager.lisp:69-83`, `src/lisp/system/runner.lisp:73-103`
+- **多言語でS式パーサを維持するコスト**が保守性の敵。最小の変更で最大の効果を狙え。
+
+### Jim Simons: “統計的な比較が消える”
+- 既存の統合テストはJSON入力/出力で成り立っている。全域S式化は検証基盤の断絶。比較可能性が崩れる。`src/lisp/tests/integration-tests.lisp:13-31`
+- JSONLの監査/集計パイプラインが動いているのに、S式へ変えると継続性が途切れる。`src/lisp/core/db-adapter.lisp:15-54`
+
+## 💻 技術パネルの意見
+### Fowler: “境界を壊すのが一番高い”
+- `internal-process-msg`でS式/JSONの二重処理が既に負債。ここを**共通内部表現へ吸収**せずに全域S式化すると“巨大なビッグバン”になる。`src/lisp/core/message-dispatcher.lisp:102-317`
+- 本当に保守性を上げたいなら「ワイヤ形式統一」ではなく「**境界での変換層**」を設計すべきだ。
+
+### Hickey: “Lispに都合の良い形式を、全員に押し付けるな”
+- Lisp内部はS式で正しいが、MQL5/Rust/Pythonは違う。**単一形式で全員に痛みを押し付けるのはシンプルではない**。
+- S式は“正規形”がない。メッセージの正規化設計が無いとログ/ハッシュ/比較が壊れる。`src/lisp/core/message-dispatcher.lisp:105-108`
+
+### Uncle Bob: “テストがない統一は事故になる”
+- JSON前提の統合テストが存在する以上、S式化はテストの全面改修が必須。TDDなしの全域移行は壊れる。`src/lisp/tests/integration-tests.lisp:13-31`
+- Backtest ServiceがS式/JSON混在で返すのも事実。規約化とテストで封じるべき。`tools/backtest_service.py:475-495`
+
+## 🚀 ビジョナリーの意見
+### Ng: “学習/推論基盤と監視の互換性が落ちる”
+- 推論/監視/テレメトリはJSON前提で動いている。全域S式化はML運用ツールの互換性を落とす。`src/lisp/core/inference-client.lisp:31-47`, `src/lisp/school/school-telemetry.lisp:7-22`
+
+### López de Prado: “履歴の互換性を捨てるのか？”
+- 既存のJSONL監査/履歴があるのに、S式へ変えると過去比較が断裂する。**運用データの連続性**は統計の前提。`src/lisp/core/db-adapter.lisp:15-54`
+
+### Gene Kim: “オブザーバビリティが死ぬ”
+- 現状ログや監視はJSONで集計しやすい。S式全域化は運用ツールとの相性を悪化させる。`src/lisp/logger.lisp:7-35`, `src/lisp/core/discord.lisp:45-52`
+
+## 🚀 Musk's Decision (Final)
+> 「“全S式”は、今はやらない。  
+>  保守性は“境界を減らすこと”であって、他言語にLispを強制することではない。  
+>  まずは**Backtest経路だけS式を完成**させ、外部I/FはJSON維持。  
+>  それでも全域S式に進むなら、**MQL5/Rust/PythonのS式パーサ・テスト・移行計画**が揃ってからだ。」
+
+## Actionable Items
+1. **最優先で仕様を一本化**：`docs/llm/INTERFACES.md` のJSON/S式混在記述を整理し、全域S式の是非を明文化。`docs/llm/INTERFACES.md:3-126`
+2. **BacktestのみS式完全化**：Backtest ServiceはJSON要求/JSON返却を禁止し、S式のみで返却する設計に固定。`tools/backtest_service.py:475-495`
+3. **境界変換レイヤの設計**：Lisp内部はS式でも良いが、外部I/FはJSONを維持する“翻訳層”を設計・実装。`src/lisp/core/message-dispatcher.lisp:102-317`
+4. **全域S式をやるなら前提条件**：MQL5/Rust/PythonでS式パーサの実装・テスト・移行計画を作り、JSON互換モードを段階的に廃止。`docs/llm/ARCHITECTURE.md:12-24`, `docs/llm/SPEC.md:1-7`
+5. **テスト再設計**：統合テストをS式対応に書き換え、JSON前提の既存テストを更新。`src/lisp/tests/integration-tests.lisp:13-31`
+
 # 🦅 Expert Panel Report
 
 **Date:** 2026-02-01

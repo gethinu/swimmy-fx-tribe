@@ -42,23 +42,27 @@
   "Get criteria plist for a given rank."
   (cdr (assoc rank *rank-criteria*)))
 
-(defun check-rank-criteria (strategy target-rank)
+(defun check-rank-criteria (strategy target-rank &key (include-oos t) (include-cpcv t))
   "Check if strategy meets all criteria for target-rank.
-   Returns T if all conditions pass, NIL otherwise."
+   Returns T if all conditions pass, NIL otherwise.
+   Optional gates: INCLUDE-OOS/INCLUDE-CPCV can be disabled for pre-validation checks."
   (let* ((criteria (get-rank-criteria target-rank))
          (sharpe (or (strategy-sharpe strategy) 0.0))
          (pf (or (strategy-profit-factor strategy) 0.0))
          (wr (or (strategy-win-rate strategy) 0.0))
          (maxdd (or (strategy-max-dd strategy) 1.0)))
-    
     (and (>= sharpe (getf criteria :sharpe-min 0))
          (>= pf (getf criteria :pf-min 0))
          (>= wr (getf criteria :wr-min 0))
          (< maxdd (getf criteria :maxdd-max 1.0))
          ;; V50.3: Gate Lockdown
          (cond
-           ((eq target-rank :A) (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0)))
-           ((eq target-rank :S) (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0)))
+           ((eq target-rank :A)
+            (or (not include-oos)
+                (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
+           ((eq target-rank :S)
+            (or (not include-cpcv)
+                (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))))
            (t t)))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
@@ -221,6 +225,21 @@
 (defparameter *supported-directions* '(:BUY :SELL :BOTH))
 (defparameter *supported-symbols* '("EURUSD" "GBPUSD" "USDJPY"))
 
+(defun normalize-oos-defaults ()
+  "Convert legacy OOS defaults of 0.0 to NIL so they trigger fresh validation.
+   Applies to B/A rank strategies only, to avoid touching higher ranks with confirmed OOS."
+  (let ((count 0))
+    (dolist (s *strategy-knowledge-base*)
+      (when (and (member (strategy-rank s) '(:B :A))
+                 (numberp (strategy-oos-sharpe s))
+                 (<= (abs (strategy-oos-sharpe s)) 1e-6))
+        (setf (strategy-oos-sharpe s) nil)
+        (ignore-errors (upsert-strategy s))
+        (incf count)))
+    (when (> count 0)
+      (format t "[RANK] 🧼 Normalized ~d strategies with default OOS=0.0 → nil~%" count))
+    count))
+
 (defun run-b-rank-culling-for-category (timeframe direction symbol)
   "Cull B-RANK strategies for a specific TF × Direction × Symbol category."
   (let* ((b-strategies (get-strategies-by-rank :B timeframe direction symbol))
@@ -327,6 +346,8 @@
    3. Validate A-RANK via CPCV (→ S or back)
    V49.3: Added missing A-Rank evaluation loop."
   (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
+  ;; Normalize legacy OOS defaults so validation is re-triggered
+  (normalize-oos-defaults)
   
   ;; 1. Culling
   (run-b-rank-culling)

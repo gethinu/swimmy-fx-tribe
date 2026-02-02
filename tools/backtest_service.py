@@ -72,6 +72,27 @@ def _post_webhook(url: str, payload: dict) -> bool:
 _SEXP_NAME_RE = re.compile(r'\(name\s+\.\s+"([^"]+)"\)')
 _SEXP_NAME_JSONISH_RE = re.compile(r'"name"\s+"([^"]+)"')
 
+_DUMP_INCOMING_ENV = "SWIMMY_BACKTEST_DUMP_INCOMING"
+
+def _should_dump_incoming() -> bool:
+    val = os.getenv(_DUMP_INCOMING_ENV, "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+def _format_incoming_preview(msg: str, limit: int = 240) -> str:
+    if msg is None:
+        return ""
+    cleaned = msg.replace("\r", " ").replace("\n", " ").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + "..."
+
+def _parse_incoming_message(msg: str):
+    if not msg:
+        return None, None
+    if msg.lstrip().startswith("("):
+        return "sexpr", msg.strip()
+    return None, None
+
 
 def _sexp_key(key) -> str:
     return str(key).lower()
@@ -467,13 +488,21 @@ class BacktestService:
         print(f"[BACKTEST-SVC] Guardian binary: {self.guardian_bin}")
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
 
+        dump_incoming = _should_dump_incoming()
+
         try:
             while True:
                 try:
                     msg = self.receiver.recv_string()
+                    kind, payload = _parse_incoming_message(msg)
 
-                    if self._is_sexpr(msg):
-                        result = self._handle_sexpr(msg)
+                    if dump_incoming:
+                        label = "SXP" if kind == "sexpr" else "RAW"
+                        preview_src = payload if payload is not None else msg
+                        print(f"[BACKTEST-SVC] IN {label}: {_format_incoming_preview(preview_src)}")
+
+                    if kind == "sexpr":
+                        result = self._handle_sexpr(payload)
                         if result is None:
                             continue
                         if isinstance(result, str):
@@ -482,33 +511,8 @@ class BacktestService:
                             self.sender.send_string(json.dumps(result))
                         continue
 
-                    request = json.loads(msg)
-
-                    action = request.get("action", "")
-
-                    if action == "BACKTEST":
-                        # Standard Backtest Request (JSON legacy)
-                        result = self.run_backtest(request)
-                        if isinstance(result, str):
-                            self.sender.send_string(result)
-                        else:
-                            self.sender.send_string(json.dumps(result))
-
-                    elif action == "HEALTH_CHECK":
-                        self.sender.send_string(
-                            json.dumps(
-                                {
-                                    "type": "HEALTH_RESPONSE",
-                                    "status": "ok",
-                                    "service": "backtest",
-                                    "cache_size": len(self.data_cache),
-                                }
-                            )
-                        )
-                    # Note: CACHE_DATA and BATCH_BACKTEST legacy handlers removed for clarity/Focus on Direct CSV
-
-                except json.JSONDecodeError as e:
-                    print(f"[BACKTEST-SVC] JSON decode error: {e}")
+                    if msg.strip():
+                        print("[BACKTEST-SVC] ⚠️ Ignoring non-S-expression message")
                 except Exception as e:
                     print(f"[BACKTEST-SVC] Error in loop: {e}")
                     # If fatal, maybe break or restart?

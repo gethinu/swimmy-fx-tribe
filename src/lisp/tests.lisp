@@ -317,6 +317,7 @@
                   ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
+                  test-oos-validation-dispatches-when-unset
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)

@@ -74,10 +74,14 @@
   (format t "[A-RANK] 🎯 Validating ~a for A-RANK promotion...~%"
           (strategy-name strat))
   
-  ;; Check basic rank criteria first
-  (unless (meets-a-rank-criteria strat)
-    (format t "[A-RANK] ❌ ~a: Does not meet basic A-RANK criteria~%"
-            (strategy-name strat))
+  ;; Check basic rank criteria first (without OOS gate)
+  (unless (check-rank-criteria strat :A :include-oos nil)
+    (format t "[A-RANK] ❌ ~a: Base A-RANK metrics failed (S=~,2f PF=~,2f WR=~,1f%% DD=~,1f%%)~%"
+            (strategy-name strat)
+            (or (strategy-sharpe strat) 0.0)
+            (or (strategy-profit-factor strat) 0.0)
+            (* 100 (or (strategy-win-rate strat) 0.0))
+            (* 100 (or (strategy-max-dd strat) 1.0)))
     (return-from validate-for-a-rank-promotion nil))
   
   ;; Run OOS validation (async)
@@ -184,11 +188,11 @@
       (return-from run-a-rank-cpcv-batch nil))
     (setf *last-cpcv-cycle* now)
     ;; Get A-RANK strategies that meet basic S-RANK criteria
-    (let* ((a-rank-strategies (remove-if-not 
-                                (lambda (s) 
+    (let* ((a-rank-strategies (remove-if-not
+                                (lambda (s)
                                   (and (eq (strategy-rank s) :A)
                                        ;; Only try to promote if it meets basic S-RANK stats (Sharpe > 0.5 etc)
-                                       (check-rank-criteria s :S)))
+                                       (check-rank-criteria s :S :include-cpcv nil)))
                                 *strategy-knowledge-base*))
            ;; Shuffle to avoid getting stuck on the same failing strategies if pool is large
            (shuffled (sort (copy-list a-rank-strategies) 

@@ -43,8 +43,7 @@
            ;; V31.0: Fetch historical swaps for more accurate PnL
            (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
 
-      (let* ((*print-case* :downcase)
-             (payload (list
+      (let* ((payload (list
                        (cons 'action "BACKTEST")
                        (cons 'strategy strategy-alist)
                        (cons 'candles_file data-file)
@@ -57,10 +56,15 @@
         (when end-ts (push `(end_time . ,end-ts) payload))
 
         ;; Send S-expression payload to Backtest Service
-        (let ((msg (format nil "~s" payload)))
+        (let ((*print-case* :downcase)
+              (*print-pretty* nil)
+              (*print-right-margin* most-positive-fixnum)
+              (*print-escape* t)
+              (*package* (find-package :swimmy.school)))
+          (let ((msg (format nil "~s" payload)))
           (if (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
               (pzmq:send swimmy.globals:*cmd-publisher* msg)
-              (format t "[BT-V2] ❌ CMD Publisher NOT BOUND.~%")))))))
+              (format t "[BT-V2] ❌ CMD Publisher NOT BOUND.~%"))))))))
 
 
 ;;; =========================================================

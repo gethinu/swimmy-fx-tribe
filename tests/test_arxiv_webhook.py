@@ -70,8 +70,8 @@ class TestArxivWebhookConfig(unittest.TestCase):
 
     def test_arxiv_webhook_env_is_exposed(self):
         os.environ["SWIMMY_DISCORD_BOT_TOKEN"] = "test-token"
-        os.environ["SWIMMY_ARXIV_REPORT_WEBHOOK"] = "https://example.com/webhook"
-        os.environ.pop("SWIMMY_ARXIV_REPORT_CHANNEL_ID", None)
+        os.environ["SWIMMY_ARXIV_REPORT_WEBHOOK_BOT"] = "https://example.com/webhook"
+        os.environ.pop("SWIMMY_ARXIV_REPORT_WEBHOOK", None)
 
         try:
             discord_bot = importlib.import_module("discord_bot")
@@ -80,10 +80,10 @@ class TestArxivWebhookConfig(unittest.TestCase):
         except Exception as exc:
             self.fail(f"discord_bot import should not error: {exc}")
 
-        if not hasattr(discord_bot, "ARXIV_REPORT_WEBHOOK"):
-            self.fail("Expected ARXIV_REPORT_WEBHOOK to be defined on discord_bot")
+        if not hasattr(discord_bot, "ARXIV_REPORT_DAILY_WEBHOOK"):
+            self.fail("Expected ARXIV_REPORT_DAILY_WEBHOOK to be defined on discord_bot")
 
         self.assertEqual(
-            discord_bot.ARXIV_REPORT_WEBHOOK,
+            discord_bot.ARXIV_REPORT_DAILY_WEBHOOK,
             "https://example.com/webhook",
         )

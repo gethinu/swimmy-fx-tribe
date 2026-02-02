@@ -30,6 +30,41 @@ def main():
     _assert_in('aux_candles_files', sexp, "aux_candles_files key")
     _assert_in('(("a.csv" "b.csv"))', sexp, "aux_candles_files nested list")
 
+    # Incoming message parsing: JSON should never be parsed
+    import backtest_service as svc
+    called = {"value": False}
+
+    def _boom(*_args, **_kwargs):
+        called["value"] = True
+        raise AssertionError("json.loads must not be called for incoming messages")
+
+    orig_json_loads = svc.json.loads
+    try:
+        svc.json.loads = _boom
+        kind, payload = svc._parse_incoming_message("not-a-sexp")
+        assert kind is None and payload is None
+
+        kind, payload = svc._parse_incoming_message("  (foo . bar)")
+        assert kind == "sexpr"
+        assert payload == "(foo . bar)"
+    finally:
+        svc.json.loads = orig_json_loads
+
+    assert called["value"] is False
+
+    # Incoming message preview helpers
+    import os
+    os.environ.pop("SWIMMY_BACKTEST_DUMP_INCOMING", None)
+    assert svc._should_dump_incoming() is False
+    os.environ["SWIMMY_BACKTEST_DUMP_INCOMING"] = "1"
+    assert svc._should_dump_incoming() is True
+    os.environ["SWIMMY_BACKTEST_DUMP_INCOMING"] = "false"
+    assert svc._should_dump_incoming() is False
+
+    preview = svc._format_incoming_preview("line1\nline2\r\n" + ("x" * 200), limit=40)
+    assert "\n" not in preview and "\r" not in preview
+    assert len(preview) <= 43
+
     print("ok")
 
 
