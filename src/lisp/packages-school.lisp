@@ -237,6 +237,10 @@
    #:process-wfv-result
    
    ;; OOS Backtest
+   #:enqueue-oos-request
+   #:lookup-oos-request
+   #:complete-oos-request
+   #:record-oos-error
    #:handle-oos-backtest-result
    
    ;; Meta Learning

@@ -169,7 +169,7 @@
 
 (deftest test-oos-validation-dispatches-when-unset
   "OOS validation should dispatch a backtest when no OOS Sharpe is set."
-  (let* ((data-path (cl-user::swimmy-path "data/historical/USDJPY_M1.csv"))
+  (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
          (created-file nil)
          (swimmy.school::*oos-pending* (make-hash-table :test 'equal)))
     ;; Ensure data fixture exists (empty CSV is sufficient for probe-file)
@@ -180,11 +180,11 @@
       (setf created-file t))
 
     (let ((dispatch-count 0)
-          (orig-request (symbol-function 'cl-user::request-backtest)))
+          (orig-request (symbol-function 'swimmy.school::request-backtest)))
       (unwind-protect
            (progn
              ;; Stub request-backtest to count invocations
-             (setf (symbol-function 'cl-user::request-backtest)
+             (setf (symbol-function 'swimmy.school::request-backtest)
                    (lambda (strat &key suffix)
                      (declare (ignore strat suffix))
                      (incf dispatch-count)
@@ -194,13 +194,13 @@
                                                   :symbol "USDJPY"
                                                   :oos-sharpe nil)))
                (multiple-value-bind (passed sharpe msg)
-                   (cl-user::run-oos-validation strat)
-                 (assert-nil passed "OOS should be pending asynchronously")
+                   (swimmy.school::run-oos-validation strat)
+                 (assert-true (null passed) "OOS should be pending asynchronously")
                  (assert-equal 0.0 sharpe)
                  (assert-equal "OOS pending (async)" msg)
                  (assert-equal 1 dispatch-count))))
         ;; Cleanup
-        (setf (symbol-function 'cl-user::request-backtest) orig-request)
+        (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
         (when created-file (delete-file data-path)))))) 
 
 ;;; ==========================================

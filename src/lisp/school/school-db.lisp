@@ -85,6 +85,16 @@
       PRIMARY KEY (symbol, timestamp)
     )")
 
+  ;; Table: OOS Request Queue
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS oos_queue (
+      request_id TEXT PRIMARY KEY,
+      name TEXT,
+      requested_at INTEGER,
+      status TEXT,
+      last_error TEXT
+    )")
+
   ;; Indices for fast draft/selection
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
   
@@ -98,6 +108,40 @@
           (format t "[DB] 🆕 Low valid strategy count (~d). Triggering data migration from file...~%" count)
           (migrate-existing-data)))
     (error (e) (format t "[DB] ⚠️ Auto-migration check failed: ~a~%" e))))
+
+;; OOS queue helpers ----------------------------------------------------------
+
+(defun enqueue-oos-request (name request-id)
+  "Insert or replace an OOS request."
+  (let ((now (get-universal-time)))
+    (execute-non-query
+     "INSERT OR REPLACE INTO oos_queue (request_id, name, requested_at, status, last_error)
+      VALUES (?, ?, ?, 'sent', NULL)"
+     request-id name now)))
+
+(defun lookup-oos-request (name)
+  "Return (values request-id requested-at status) for the latest request by name, or NILs."
+  (let ((row (first (execute-to-list
+                     "SELECT request_id, requested_at, status FROM oos_queue WHERE name=? ORDER BY requested_at DESC LIMIT 1"
+                     name))))
+    (when row
+      (destructuring-bind (req-id req-at status) row
+        (values req-id req-at status)))))
+
+(defun complete-oos-request (name request-id)
+  "Mark OOS request done by request-id (preferred) or name fallback."
+  (if request-id
+      (execute-non-query "DELETE FROM oos_queue WHERE request_id=?" request-id)
+      (execute-non-query "DELETE FROM oos_queue WHERE name=?" name)))
+
+(defun record-oos-error (name request-id error-msg)
+  (let ((target (if request-id
+                    (list "request_id=?" request-id)
+                    (list "name=?" name))))
+    (apply #'execute-non-query
+           (format nil "UPDATE oos_queue SET status='error', last_error=?, requested_at=? WHERE ~a"
+                   (first target))
+           error-msg (get-universal-time) (rest target))))
 
 (defun %parse-rank-safe (rank-str)
   "Safely parse rank string from DB. Returns rank and valid-p."

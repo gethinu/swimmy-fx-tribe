@@ -16,6 +16,7 @@
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
+- **B案方針**: 内部ZMQ通信＋ローカル保存をS式へ統一。外部API境界はJSON維持（移行対象範囲は未確定）。
 
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) が手動。
@@ -77,6 +78,7 @@
 1. ドキュメント体系化（完了）
 2. Data Keeperのスキーマ定義確認
 3. 統合テスト手順の確立
+4. ローカル保存S式化の対象範囲決定
 
 ## リスク
 - **複雑性**: 3言語 + SQLite + Python(Data Keeper) の複合システム。

@@ -51,6 +51,25 @@
 (defparameter *backtest-stale-threshold* 900)
 (defparameter *backtest-stale-alert-interval* 1800)
 (defparameter *backtest-stale-last-alert* 0)
+(defparameter *backtest-debug-env* "SWIMMY_BACKTEST_DEBUG_RECV")
+(defparameter *backtest-debug-log* "data/reports/backtest_debug.log")
+
+(defun backtest-debug-enabled-p ()
+  (let ((val (uiop:getenv *backtest-debug-env*)))
+    (and val (> (length val) 0)
+         (member (string-downcase val) '("1" "true" "yes" "on") :test #'string=))))
+
+(defun backtest-debug-log (fmt &rest args)
+  (when (backtest-debug-enabled-p)
+    (handler-case
+        (let ((path (swimmy.core::swimmy-path *backtest-debug-log*)))
+          (ensure-directories-exist path)
+          (with-open-file (s path :direction :output :if-exists :append :if-does-not-exist :create)
+            (format s "~d " (get-universal-time))
+            (apply #'format s fmt args)
+            (terpri s)))
+      (error (e)
+        (format t "[BACKTEST] ⚠️ Debug log write failed: ~a~%" e)))))
 
 (defun maybe-log-backtest-recv ()
   "Log and persist backtest receive status periodically."
@@ -139,6 +158,8 @@
                                         (t full-name))))
                           (metrics (list :sharpe sharpe :trades trades :pnl pnl
                                          :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                     (backtest-debug-log "recv sexp name=~a full=~a sharpe=~,4f trades=~d"
+                                         (or name "N/A") (or full-name "N/A") sharpe trades)
                      (when (%invalid-name-p name)
                        (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
                          (incf *missing-strategy-name-log-count*)
@@ -286,12 +307,19 @@
                                       (t full-name))))
                         (metrics (list :sharpe sharpe :trades trades :pnl pnl
                                        :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                   (backtest-debug-log "recv json name=~a full=~a sharpe=~,4f trades=~d"
+                                       (or name "N/A") (or full-name "N/A") sharpe trades)
                    (when (%invalid-name-p name)
                      (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
                        (incf *missing-strategy-name-log-count*)
                        (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
                      (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
                      (return-from internal-process-msg nil))
+                   ;; Attach latency if request-id matches queue timestamp
+                   (when request-id
+                     (multiple-value-bind (req-id req-at status) (swimmy.school:lookup-oos-request name)
+                       (when (and req-id req-at (string= req-id request-id))
+                         (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
                    (cond
                      (is-oos
                       (when (fboundp 'swimmy.school:handle-oos-backtest-result)

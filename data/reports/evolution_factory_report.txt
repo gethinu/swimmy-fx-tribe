@@ -15,7 +15,7 @@ Current status of the autonomous strategy generation pipeline.
 4 (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
 
 👶 New Recruits (24h)
-64
+63
 
 👻 Graveyard
 345855
@@ -32,4 +32,4 @@ Current status of the autonomous strategy generation pipeline.
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
-02/02 12:15 JST / 03:15 UTC
+02/02 20:15 JST / 11:15 UTC

@@ -52,15 +52,15 @@
 ;; V7.13: Detect indicator type from strategy indicators (PROPERLY)
 (defun detect-indicator-type (indicators)
   "Detect primary indicator type from indicators list for Rust backtester.
-   Returns a string or nil."
+   Returns a symbol or nil."
   (when (and indicators (listp indicators))
     (let ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators))))
       (cond
-        ((member first-ind '(rsi RSI :rsi)) "rsi")
-        ((member first-ind '(bb BB :bb bollinger)) "bb")
-        ((member first-ind '(macd MACD :macd)) "macd")
-        ((member first-ind '(stoch STOCH :stoch stochastic)) "stoch")
-        (t "sma")))))
+        ((member first-ind '(rsi RSI :rsi)) 'rsi)
+        ((member first-ind '(bb BB :bb bollinger)) 'bb)
+        ((member first-ind '(macd MACD :macd)) 'macd)
+        ((member first-ind '(stoch STOCH :stoch stochastic)) 'stoch)
+        (t 'sma)))))
 
 ;; V7.13: Convert strategy to Alist for S-Expression Protocol
 (defun strategy-to-alist (strat &key (name-suffix ""))
@@ -192,7 +192,7 @@
 
 
 ;; Request backtest from Rust
-(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil))
+(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil))
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
    Uses strategy's native symbol if not overridden."
   (let ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
@@ -241,6 +241,7 @@
           ;; Fast path: CSV on disk (recommended)
           (let* ((payload-sexpr `((action . "BACKTEST")
                                   (strategy . ,strategy-alist)
+                                  (request_id . ,request-id)
                                   (data_id . ,(format nil "~a_M1" actual-symbol))
                                   (candles_file . ,data-file)
                                   (symbol . ,actual-symbol)
@@ -259,6 +260,7 @@
                                     collect (cons k v)))
                  (payload-sexpr `((action . "BACKTEST")
                                   (strategy . ,strategy-alist)
+                                  (request_id . ,request-id)
                                   (candles . ,(candles-to-sexp target-candles))
                                   (aux_candles . ,aux-candles)
                                   (symbol . ,actual-symbol)

@@ -15,22 +15,44 @@
 (defparameter *oos-min-sharpe* 0.3
   "Minimum Sharpe ratio required to pass OOS validation for A-RANK")
 
-(defparameter *oos-pending* (make-hash-table :test 'equal)
-  "Tracks OOS backtest requests to avoid spamming. name -> last-request time")
+(defparameter *oos-pending* nil
+  "Deprecated (use SQLite oos_queue). Kept for backward compatibility.")
 
 (defparameter *oos-request-interval* 600
   "Minimum seconds between OOS requests per strategy.")
 
+(defparameter *oos-metrics* (make-hash-table :test 'equal)
+  "Simple counters and latency stats for OOS. Keys: :sent :success :failure :retry :latency-count :latency-sum :latency-min :latency-max.")
+
+(defun %oos-metric-inc (key &optional (delta 1))
+  (incf (gethash key *oos-metrics* 0) delta))
+
+(defun %oos-latency-record (seconds)
+  (let* ((cnt (1+ (gethash :latency-count *oos-metrics* 0)))
+         (sum (+ (gethash :latency-sum *oos-metrics* 0.0) seconds))
+         (mn (if (and (gethash :latency-min *oos-metrics*) (> (gethash :latency-count *oos-metrics* 0) 0))
+                 (min (gethash :latency-min *oos-metrics*) seconds)
+                 seconds))
+         (mx (max (gethash :latency-max *oos-metrics* 0.0) seconds)))
+    (setf (gethash :latency-count *oos-metrics*) cnt
+          (gethash :latency-sum *oos-metrics*) sum
+          (gethash :latency-min *oos-metrics*) mn
+          (gethash :latency-max *oos-metrics*) mx)))
+
 (defun maybe-request-oos-backtest (strat)
-  "Dispatch async OOS backtest if not requested recently."
+  "Dispatch async OOS backtest if not requested recently. Returns request-id or NIL."
   (let* ((name (strategy-name strat))
          (now (get-universal-time))
-         (last (gethash name *oos-pending* 0)))
-    (when (> (- now last) *oos-request-interval*)
-      (setf (gethash name *oos-pending*) now)
-      (request-backtest strat :suffix "-OOS")
-      (format t "[OOS] 📤 Dispatched OOS backtest for ~a~%" name)
-      t)))
+         (req-id nil)
+         (last-req (multiple-value-list (lookup-oos-request name)))
+         (last-time (second last-req)))
+    (when (or (null last-time) (> (- now last-time) *oos-request-interval*))
+      (setf req-id (swimmy.core:generate-uuid))
+      (enqueue-oos-request name req-id)
+      (request-backtest strat :suffix "-OOS" :request-id req-id)
+      (%oos-metric-inc :sent)
+      (format t "[OOS] 📤 Dispatched OOS backtest for ~a (req ~a)~%" name req-id))
+    req-id))
 
 (defun handle-oos-backtest-result (name metrics)
   "Apply OOS backtest result to strategy and attempt promotion."
@@ -38,7 +60,10 @@
     (when strat
       (let ((sharpe (float (or (getf metrics :sharpe) 0.0))))
         (setf (strategy-oos-sharpe strat) sharpe)
-        (remhash name *oos-pending*)
+        (complete-oos-request name (getf metrics :request-id))
+        (%oos-metric-inc :success)
+        (when (getf metrics :oos-latency)
+          (%oos-latency-record (getf metrics :oos-latency)))
         (upsert-strategy strat)
         (format t "[OOS] 📥 ~a OOS Sharpe=~,2f~%" name sharpe)
         ;; Attempt promotion if core metrics are already strong enough
@@ -64,9 +89,10 @@
                   oos
                   (format nil "OOS cached: Sharpe=~,2f" oos)))))
     
-    (if (maybe-request-oos-backtest strat)
-        (values nil 0.0 "OOS pending (async)")
-        (values nil 0.0 "OOS request throttled"))))
+    (let ((req (maybe-request-oos-backtest strat)))
+      (if req
+          (values nil 0.0 "OOS pending (async)")
+          (values nil 0.0 "OOS request throttled")))))
 
 (defun validate-for-a-rank-promotion (strat)
   "Validate strategy is ready for A-RANK promotion using OOS validation.
