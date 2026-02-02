@@ -219,3 +219,64 @@
 2. **原子書き込み**：S式保存は必ず`tmp→rename`で原子化（部分書き込み回避）。`src/lisp/shell/notifications.lisp:127-135`, `src/lisp/school/school-telemetry.lisp:22-34`, `src/lisp/school/school-backtest-utils.lisp:68-79`
 3. **Python共通S式パーサ**：3箇所のJSON読み込みを共通S式パーサへ集約。`tools/report_status.py:40-48`, `tools/report_backtest_summary.py:58-66`, `src/python/discord_bot.py:75-83`
 4. **最小テスト**：S式読み書きのスモークテストを追加（空/破損/正常の3ケース）。  
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-02  
+**Leader:** Elon Musk  
+**Trigger:** /expert-panel「単独レポート（oos_status.txt）の更新タイミングを決めたい」
+
+## 🏛️ 常設顧問の意見
+### Taleb: “メモリ計測は幻影。再起動で事故が消える”
+- OOSメトリクスと失敗カウンタが**プロセス内メモリのみ**で、再起動でゼロになる。Ruinの兆候を消している。`src/lisp/school/school-validation.lisp:24` `src/lisp/school/school-validation.lisp:27`
+- OOSキューはDBにあるのに**報告で無視**される。滞留や失敗が視界ゼロ。`src/lisp/school/school-db.lisp:92`
+
+### Graham: “確認方法が嘘になってる”
+- Owner’s GuideはEvolution Reportで確認と言うが、**ReportにOOS健康情報が無い**。ユーザーは真実に辿り着けない。`doc/owners_guide.md:175` `src/lisp/school/school-narrative.lisp:200`
+- `oos-metrics-summary-line`は定義済みなのに未使用。**設計と実装の断絶**。`src/lisp/school/school-narrative.lisp:289`
+
+### Naval: “レバレッジのある場所を捨ててる”
+- 送信/受信のホットパスがあるのにstdoutログだけ。**イベント駆動でステータス更新**すれば最小工数で最大効果。`src/lisp/school/school-validation.lisp:94` `src/lisp/school/school-validation.lisp:132`
+- DBキューがあるのに、集計はメモリ。**再起動耐性ゼロ**。`src/lisp/school/school-db.lisp:128` `src/lisp/school/school-validation.lisp:24`
+
+### Jim Simons: “統計が死んでいる”
+- レイテンシはrequest-id一致時のみ。**欠落が観測バイアス**になる。`src/lisp/core/message-dispatcher.lisp:206`
+- 平均しか持たず、分散や履歴が消える。**統計の足場が無い**。`src/lisp/school/school-validation.lisp:157`
+
+## 💻 技術パネルの意見
+### Fowler: “レイヤー分断で設計が割れている”
+- Report生成はOOSメトリクスを**一切参照しない**。責務分離のまま接続が無い。`src/lisp/school/school-narrative.lisp:200` `src/lisp/school/school-narrative.lisp:289`
+- 報告は定期処理に依存だが、OOSはイベント駆動が自然。**更新タイミングがレイヤーで不一致**。`src/lisp/school/school-connector.lisp:79`
+
+### Hickey: “状態が増えすぎてシンプルさを殺してる”
+- 可変hash/listで状態保持、reset契約が曖昧。**複雑性の温床**。`src/lisp/school/school-validation.lisp:24` `src/lisp/school/school-validation.lisp:49`
+- 真実はDBに置け。キューがあるなら**集計もDB**で良い。`src/lisp/school/school-db.lisp:92`
+
+### Uncle Bob: “テストが無い場所は壊れる”
+- OOS検証のテストはあるが、**レポート更新のテストがゼロ**。回帰に気づけない。`src/lisp/tests/school-split-tests.lisp:170`
+- 仕様に更新タイミングが明記されていない。**テストの書きようがない**。`doc/owners_guide.md:175`
+
+## 🚀 ビジョナリーの意見
+### Ng: “OOS可観測性が薄いと品質が崩れる”
+- OOSは品質ゲート。Reportに載らないのは**学習監査の放棄**。`src/lisp/school/school-narrative.lisp:200`
+
+### López de Prado: “過学習を再輸入する設計”
+- OOSキューの滞留を可視化しないと**選択バイアスの温床**になる。`src/lisp/school/school-db.lisp:92`
+
+### Gene Kim: “Opsの視界がない”
+- 定期報告に依存するのにOOSの失敗が入らない。**運用の盲点**。`src/lisp/school/school-connector.lisp:79`
+- 既存のアラート経路をOOSに使っていない。**Ops負債**。`src/lisp/shell/notifications.lisp:87`
+
+## 🚀 Musk's Decision (Final)
+> 「更新は**イベント駆動が主**、**1時間ごとの再生成**が保険だ。  
+>  OOSは品質ゲート。statusを“その場で”更新し、取りこぼしは定期で埋める。  
+>  さらにEvolution ReportにOOS行を追加して、確認導線を一本化する。  
+>  余計な履歴や可視化の過剰実装は今はやらない。」
+
+## Actionable Items
+1. **Evolution ReportにOOS行を埋め込む**：`oos-metrics-summary-line`を`generate-evolution-report`に組み込み。`src/lisp/school/school-narrative.lisp:200` `src/lisp/school/school-narrative.lisp:289`
+2. **イベント駆動更新**：`maybe-request-oos-backtest` と `handle-oos-backtest-result` から `oos_status.txt` を更新。`src/lisp/school/school-validation.lisp:94` `src/lisp/school/school-validation.lisp:132`
+3. **定期リカバリ更新**：`phase-7-report` と同タイミングで `oos_status.txt` を再生成。`src/lisp/school/school-connector.lisp:79`
+4. **真実の一本化**：OOS status の集計はDBの `oos_queue` をソースにする。`src/lisp/school/school-db.lisp:92`
+5. **監視アラート**：pending最古が閾値超ならDiscordに警告。`src/lisp/shell/notifications.lisp:87`
+6. **テスト追加**：OOS status更新/Report統合のスモークテスト追加。`src/lisp/tests/school-split-tests.lisp:170`
