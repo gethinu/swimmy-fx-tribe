@@ -435,6 +435,7 @@
                   test-internal-process-msg-backtest-request-id-bound
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
+                  test-telemetry-event-schema
                   test-clan-exists
                   test-get-clan
                   test-clan-display

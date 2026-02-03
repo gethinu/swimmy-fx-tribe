@@ -131,6 +131,7 @@
                
                ;; SYSTEM & UTILS
                (:file "src/lisp/logger")
+               (:file "src/lisp/core/telemetry")
                (:file "src/lisp/core/rituals")
                (:file "src/lisp/core/comomentum") ;; V48.0: Replaced mixseek (4-clan removal)
                ;; (:file "src/lisp/research") MOVED to CORE
@@ -149,6 +150,7 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+               (:file "src/lisp/tests/telemetry-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
                

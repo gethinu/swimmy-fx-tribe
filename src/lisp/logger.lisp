@@ -8,6 +8,13 @@
 (defparameter *enable-json-log* t)
 (defparameter *log-level* :info) ; :debug, :info, :warn, :error
 
+(defun %stringify-log-field (value default)
+  (cond
+    ((stringp value) value)
+    ((keywordp value) (string-downcase (symbol-name value)))
+    ((symbolp value) (string-downcase (symbol-name value)))
+    (t default)))
+
 (defun get-iso-8601-time ()
   "Get current time in ISO 8601 format"
   (multiple-value-bind (s m h d mo y) (decode-universal-time (get-universal-time))
@@ -34,6 +41,32 @@
                 (t (setf (jsown:val entry "data") data))))
             (write-line (jsown:to-json entry) out)))
       (error (e) (format t "[LOG_ERROR] Failed to write log: ~a~%" e)))))
+
+(defun log-telemetry (event-type &key service severity correlation-id data)
+  "Append telemetry entry to JSON log file. Returns T on success, NIL on failure."
+  (when *enable-json-log*
+    (multiple-value-bind (value err)
+        (ignore-errors
+          (with-open-file (out *log-file-path*
+                               :direction :output
+                               :if-exists :append
+                               :if-does-not-exist :create)
+            (let ((entry (jsown:new-js
+                           ("schema_version" (or (and (boundp '*telemetry-schema-version*)
+                                                      *telemetry-schema-version*)
+                                                 1))
+                           ("timestamp" (get-iso-8601-time))
+                           ("log_type" "telemetry")
+                           ("event_type" (or event-type "unknown"))
+                           ("service" (%stringify-log-field service "unknown"))
+                           ("severity" (%stringify-log-field severity "info"))
+                           ("correlation_id" (or correlation-id "unknown"))
+                           ("data" (or data (jsown:new-js))))))
+              (write-line (jsown:to-json entry) out)))
+          t)
+      (when err
+        (format t "[LOG_ERROR] Failed to write telemetry: ~a~%" err))
+      (and value (null err)))))
 
 (defun safe-format-t (control-string &rest args)
   "Safely write to *standard-output*, ignoring broken pipe errors"

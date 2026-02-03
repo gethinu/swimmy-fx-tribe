@@ -336,6 +336,13 @@
 (defparameter *philosophy-log-max* 500)
 (defparameter *philosophy-log-path* (swimmy-path ".opus/philosophy_log.md"))
 
+;;; ==========================================
+;;; TELEMETRY
+;;; ==========================================
+
+(defparameter *telemetry-enabled* t)
+(defparameter *telemetry-schema-version* 1)
+
 
 
 ;;; ==========================================
