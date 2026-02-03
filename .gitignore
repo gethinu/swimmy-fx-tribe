@@ -57,4 +57,6 @@ data/memory/
 *.db
 *.sexp
 doc/memo4.txt
+doc/memo5.txt
 data/macro/
+src/lisp/school/school-optimized-params.lisp

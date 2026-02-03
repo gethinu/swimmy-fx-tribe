@@ -13,7 +13,7 @@ System overview:
 - Brain (Lisp): brain.lisp and src/lisp/engine/*
 - School/Evolution (Lisp): src/lisp/school/*
 - Discord notifier (Python + ZMQ): tools/notifier.py (port 5562)
-- Reports: data/reports/evolution_factory_report.txt (primary), doc/memo5.txt (ASCII mirror)
+- Reports: data/reports/evolution_factory_report.txt (primary)
 
 Key code paths:
 - src/lisp/core/config.lisp (env + webhook config, .env fallback)

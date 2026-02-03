@@ -187,7 +187,7 @@ Run:
 ```bash
 sbcl --script tools/ops/finalize_rank_report.lisp
 ```
-Expected: Evolution Factory Report updated in `data/reports/evolution_factory_report.txt` and `doc/memo5.txt`.
+Expected: Evolution Factory Report updated in `data/reports/evolution_factory_report.txt`.
 
 **Step 5: Commit (optional)**
 

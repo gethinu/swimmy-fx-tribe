@@ -31,3 +31,14 @@ class TestArxivScoutWebhook(unittest.TestCase):
             arxiv_scout.resolve_discord_webhook(),
             "https://example.com/webhook",
         )
+
+    def test_resolve_discord_webhook_strips_inline_comment(self):
+        arxiv_scout = importlib.import_module("arxiv_scout")
+        os.environ["SWIMMY_ARXIV_REPORT_WEBHOOK"] = (
+            "https://example.com/webhook # REQUIRED for arXiv Scout"
+        )
+
+        self.assertEqual(
+            arxiv_scout.resolve_discord_webhook(),
+            "https://example.com/webhook",
+        )
