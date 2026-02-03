@@ -23,6 +23,21 @@ from pathlib import Path
 import urllib.request
 import urllib.error
 
+
+def _resolve_base_dir() -> Path:
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = _resolve_base_dir()
+sys.path.insert(0, str(BASE_DIR / "src" / "python"))
+
+from sexp_serialize import sexp_serialize as _sexp_serialize
+from sexp_serialize import coerce_bool as _coerce_bool
+
 # Port configuration (env override)
 def _env_int(key: str, default: int) -> int:
     val = os.getenv(key, "").strip()
@@ -39,9 +54,6 @@ BACKTEST_RES_PORT = _env_int("SWIMMY_PORT_BACKTEST_RES", 5581)
 # Force unbuffered output for debugging
 sys.stdout.reconfigure(line_buffering=True)
 
-_SYMBOL_VALUE_KEYS = {"indicator_type"}
-_BOOL_VALUE_KEYS = {"filter_enabled"}
-_OPTIONAL_LIST_KEYS = {"data_id", "timeframe", "candles_file", "aux_candles_files", "start_time", "end_time"}
 _ALERT_WEBHOOK_ENV = ("SWIMMY_DISCORD_ALERTS", "SWIMMY_DISCORD_SYSTEM_LOGS")
 _STRATEGY_FIELDS = {
     "name",
@@ -107,82 +119,6 @@ def _parse_incoming_message(msg: str):
     return None, None
 
 
-def _sexp_key(key) -> str:
-    return str(key).lower()
-
-def _sexp_symbol(value: str) -> str:
-    return str(value).lower()
-
-def _coerce_bool(value) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value != 0
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in {"", "0", "false", "nil", "null", "none", "no", "off"}:
-            return False
-        if v in {"1", "true", "yes", "on", "t"}:
-            return True
-    if isinstance(value, (list, tuple)):
-        if len(value) == 0:
-            return False
-        if len(value) == 1:
-            return _coerce_bool(value[0])
-    return bool(value)
-
-def _sexp_serialize(value) -> str:
-    if value is None:
-        return "()"
-    if isinstance(value, bool):
-        return "#t" if value else "#f"
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        if isinstance(value, float):
-            return format(value, ".10g")
-        return str(value)
-    if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    if isinstance(value, dict):
-        parts = []
-        for k, v in value.items():
-            key_norm = _sexp_key(k)
-            if (key_norm in _BOOL_VALUE_KEYS or
-                    key_norm.endswith("enabled") or
-                    key_norm.startswith("is_") or
-                    key_norm.startswith("has_")):
-                v = _coerce_bool(v)
-            if key_norm in _OPTIONAL_LIST_KEYS:
-                if v is not None:
-                    if key_norm == "aux_candles_files":
-                        if not (isinstance(v, (list, tuple)) and len(v) == 1 and isinstance(v[0], (list, tuple))):
-                            v = [v]
-                    elif not isinstance(v, (list, tuple)):
-                        v = [v]
-            if v is None:
-                if (key_norm in _BOOL_VALUE_KEYS or
-                        key_norm.endswith("enabled") or
-                        key_norm.startswith("is_") or
-                        key_norm.startswith("has_")):
-                    v = False
-                else:
-                    continue
-            if (isinstance(v, list) and len(v) == 0 and
-                    (key_norm in _BOOL_VALUE_KEYS or
-                     key_norm.endswith("enabled") or
-                     key_norm.startswith("is_") or
-                     key_norm.startswith("has_"))):
-                v = False
-            if key_norm in _SYMBOL_VALUE_KEYS and isinstance(v, str):
-                v_str = _sexp_symbol(v)
-            else:
-                v_str = _sexp_serialize(v)
-            parts.append(f"({key_norm} . {v_str})")
-        return f"({' '.join(parts)})"
-    if isinstance(value, (list, tuple)):
-        return f"({' '.join(_sexp_serialize(v) for v in value)})"
-    return json.dumps(str(value), ensure_ascii=False)
 
 def _sanitize_strategy(raw):
     """Normalize strategy payload to match Guardian backtest schema."""

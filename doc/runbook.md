@@ -117,6 +117,15 @@ pkill -9 guardian
 
 ---
 
+## 6.1 MCP Gateway
+
+- 起動: `sudo systemctl start swimmy-mcp-gateway`
+- 停止: `sudo systemctl stop swimmy-mcp-gateway`
+- 状態: `sudo systemctl status swimmy-mcp-gateway`
+- 監視: `journalctl -u swimmy-mcp-gateway -f`
+
+---
+
 ## 7. コマンドリファレンス
 
 | コマンド | 説明 |
