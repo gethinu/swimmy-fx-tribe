@@ -57,6 +57,49 @@ pkill -9 sbcl
 pkill -9 guardian
 ```
 
+### 2.4 旧戦略データ S式移行（オフライン）
+**目的**: `strategies.data_sexp` の plist 形式を `#S(STRATEGY ...)` に完全移行する。
+
+**手順**:
+```bash
+# 1) 停止
+sudo systemctl stop swimmy-brain swimmy-backtest
+
+# 2) バックアップ
+mkdir -p data/memory/backup
+cp data/memory/swimmy.db data/memory/backup/swimmy.db.$(date +%Y%m%d%H%M%S)
+
+# 3) 移行実行
+sbcl --noinform --disable-debugger --load tools/migrate_strategy_sexp.lisp
+
+# 4) 検証（件数と #S 率）
+python3 - <<'PY'
+import sqlite3
+conn = sqlite3.connect('data/memory/swimmy.db.migrated')
+cur = conn.cursor()
+total = cur.execute('SELECT count(*) FROM strategies').fetchone()[0]
+valid = cur.execute("SELECT count(*) FROM strategies WHERE data_sexp LIKE '#S(%'").fetchone()[0]
+print('total', total)
+print('#S', valid)
+conn.close()
+PY
+
+# 5) スワップ
+mv data/memory/swimmy.db data/memory/swimmy.db.pre_migration
+mv data/memory/swimmy.db.migrated data/memory/swimmy.db
+
+# 6) 再起動
+sudo systemctl start swimmy-brain swimmy-backtest
+```
+
+**ロールバック**:
+```bash
+sudo systemctl stop swimmy-brain swimmy-backtest
+mv data/memory/swimmy.db data/memory/swimmy.db.failed
+cp data/memory/backup/swimmy.db.<timestamp> data/memory/swimmy.db
+sudo systemctl start swimmy-brain swimmy-backtest
+```
+
 ---
 
 ## 3. 緊急対応
