@@ -43,8 +43,8 @@
 
 (defun run-migration ()
   (when (probe-file *dest-db*) (delete-file *dest-db*))
-  (setf swimmy.core:*sqlite-conn* nil)
-  (setf swimmy.core:*db-path-default* *dest-db*)
+  (setf swimmy.core::*sqlite-conn* nil)
+  (setf swimmy.core::*db-path-default* *dest-db*)
   (swimmy.school:init-db)
   (let ((conn (swimmy.core:get-db-connection)))
     (sqlite:execute-non-query conn (format nil "ATTACH DATABASE '~a' AS old" *source-db*))
