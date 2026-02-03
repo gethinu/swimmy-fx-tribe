@@ -13,7 +13,7 @@
 (in-package :swimmy.db)
 
 ;; Core DB Settings
-(defparameter *db-path* "data/swimmy.db")
+(defparameter *db-path* "data/memory/swimmy.db")
 
 (defmacro with-db ((db-var) &body body)
   `(sqlite:with-open-database (,db-var *db-path*)

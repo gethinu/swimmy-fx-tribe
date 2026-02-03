@@ -191,6 +191,10 @@
 
 OOS自動審査の稼働状況は Evolution Report と oos_status.txt で確認。
 
+> [!IMPORTANT]
+> **真実のソースはSQLite（data/memory/swimmy.db）**。  
+> Libraryは派生スナップショット、In-memory KBはキャッシュとして扱う。
+
 
 
 

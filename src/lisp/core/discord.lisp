@@ -197,12 +197,12 @@
     
       ;; 0. Rank Distribution (Only for RR cycles or if KB is relevant)
       (when (or (eq type :rr) (null type))
-        (let* ((all swimmy.globals:*strategy-knowledge-base*)
-               (s-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :S)) all))
-               (a-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :A)) all))
-               (b-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :B)) all))
-               (grave-count (count-if (lambda (s) (eq (swimmy.school:strategy-rank s) :graveyard)) all)))
-          (setf report-msg (concatenate 'string report-msg 
+        (let* ((counts (swimmy.school:get-db-rank-counts))
+               (s-count (getf counts :s 0))
+               (a-count (getf counts :a 0))
+               (b-count (getf counts :b 0))
+               (grave-count (getf counts :graveyard 0)))
+          (setf report-msg (concatenate 'string report-msg
                                         (format nil "**Current Rank Distribution:**~%🏆 S-Rank: ~d | 🎯 A-Rank: ~d | 📋 B-Rank: ~d~%⚰️ Graveyard/Pending: ~d~%~%"
                                                 s-count a-count b-count grave-count)))))
 

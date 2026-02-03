@@ -253,3 +253,32 @@
               (assert-true (> (length warnings) 0) "Drift warnings should be reported")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-evolution-report-uses-db-counts
+  "Evolution report should reflect DB counts, not KB/library drift."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-report-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; DB: 1 active (B) + 1 graveyard
+            (swimmy.school::upsert-strategy (make-strategy :name "ER-B" :sharpe 0.2 :symbol "USDJPY" :rank :B))
+            (swimmy.school::upsert-strategy (make-strategy :name "ER-G" :sharpe -0.2 :symbol "USDJPY" :rank :graveyard))
+            ;; KB empty to force mismatch if KB used
+            (setf *strategy-knowledge-base* nil)
+            (let* ((report (swimmy.school::generate-evolution-report))
+                   (report-clean (remove #\Return report))
+                   (active-needle (format nil "Knowledge Base (Active)~%1 Strategies"))
+                   (grave-needle (format nil "👻 Graveyard~%1")))
+              (assert-true (search active-needle report-clean)
+                           "Active count should be 1 (DB)")
+              (assert-true (search grave-needle report-clean)
+                           "Graveyard count should be 1 (DB)")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))

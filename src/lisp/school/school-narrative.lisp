@@ -188,6 +188,36 @@
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 
+(defun %format-db-rank-label (rank)
+  (cond
+    ((null rank) "UNRANKED")
+    ((stringp rank)
+     (let ((r (string-upcase rank)))
+       (if (and (> (length r) 0) (char= (char r 0) #\:))
+           (subseq r 1)
+           r)))
+    ((symbolp rank) (symbol-name rank))
+    (t "UNRANKED")))
+
+(defun build-top-candidates-snippet-from-db ()
+  "Build top candidates snippet using DB as source of truth."
+  (handler-case
+      (let* ((rows (execute-to-list "SELECT name, sharpe, rank FROM strategies ORDER BY sharpe DESC LIMIT 5"))
+             (limit (length rows)))
+        (with-output-to-string (s)
+          (format s "~%🌟 **Top Candidates:**~%")
+          (loop for i from 0 below limit
+                for row = (nth i rows)
+                do (destructuring-bind (name sharpe rank) row
+                     (let* ((safe-name (or name ""))
+                            (label (%format-db-rank-label rank)))
+                       (format s "- `~a` (S=~,2f, ~a)~%"
+                               (subseq safe-name 0 (min 25 (length safe-name)))
+                               (float (or sharpe 0.0))
+                               label))))))
+    (error (e)
+      (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
+
 (defun build-cpcv-status-snippet ()
   "Build CPCV status snippet for reports."
   (let* ((expected swimmy.globals:*expected-cpcv-count*)
@@ -204,18 +234,19 @@
   (refresh-strategy-metrics-from-db :force t)
   
   (let* ((all swimmy.globals:*strategy-knowledge-base*)
-         ;; Filter by Rank (V47.8: Updated to use Rank System instead of Tiers)
-         (s-rank (count-if (lambda (s) (eq (strategy-rank s) :S)) all))
-         (a-rank (count-if (lambda (s) (eq (strategy-rank s) :A)) all))
-         (b-rank (count-if (lambda (s) (eq (strategy-rank s) :B)) all)) ; Selection
-         (graveyard (length (directory (merge-pathnames "GRAVEYARD/*.lisp" swimmy.persistence:*library-path*))))
+         (counts (get-db-rank-counts))
+         (active-count (getf counts :active 0))
+         (s-rank (getf counts :s 0))
+         (a-rank (getf counts :a 0))
+         (b-rank (getf counts :b 0)) ; Selection
+         (graveyard (getf counts :graveyard 0))
          ;; New Recruits (24h) - using new creation-time slot (P13)
          (one-day-ago (- (get-universal-time) 86400))
-         (new-recruits (count-if (lambda (s) 
+         (new-recruits (count-if (lambda (s)
                                    (and (strategy-creation-time s)
-                                        (> (strategy-creation-time s) one-day-ago))) 
+                                        (> (strategy-creation-time s) one-day-ago)))
                                  all)))
-    (let ((top-snippet (build-top-candidates-snippet all))
+    (let ((top-snippet (build-top-candidates-snippet-from-db))
           (cpcv-snippet (build-cpcv-status-snippet))
           (oos-snippet (oos-metrics-summary-line))
           (phase2-end-text
@@ -258,7 +289,7 @@ Current status of the autonomous strategy generation pipeline.
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
 ~a"
-            (length all)
+            active-count
             s-rank
             a-rank
             b-rank

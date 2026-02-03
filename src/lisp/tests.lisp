@@ -461,8 +461,9 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
-                  ;; (Missing) test-db-rank-counts
-                  ;; (Missing) test-report-source-drift-detects-mismatch
+                  test-db-rank-counts
+                  test-report-source-drift-detects-mismatch
+                  test-evolution-report-uses-db-counts
                   ;; Backtest payload S-expression tests
                   test-request-backtest-indicator-type-symbol
                   ;; V6.18: Dynamic TP/SL tests
