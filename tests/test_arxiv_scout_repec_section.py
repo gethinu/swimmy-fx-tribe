@@ -84,6 +84,35 @@ class TestRepecSection(unittest.TestCase):
         self.assertTrue(any("# 📚 RePEc Picks - AI/ML" in c for c in contents))
         self.assertTrue(any("HIGH: 0件" in c for c in contents))
 
+    def test_repec_sections_show_zero_when_empty(self):
+        os.environ["SWIMMY_ARXIV_REPORT_WEBHOOK"] = "https://example.com/webhook"
+        arxiv_scout = importlib.import_module("arxiv_scout")
+
+        dummy_requests = DummyRequests()
+        arxiv_scout.requests = dummy_requests
+        arxiv_scout.time.sleep = lambda *args, **kwargs: None
+
+        papers = [
+            {
+                "id": "2602.00001",
+                "title": "Arxiv X",
+                "summary_ja": "s",
+                "key_tech": "-",
+                "how_to_use": "u",
+                "score": 9,
+                "relevance": "HIGH",
+                "link": "http://arxiv.org/abs/2602.00001",
+                "categories": ["q-fin.TR"],
+            }
+        ]
+
+        arxiv_scout.send_summary_to_discord(papers)
+
+        contents = [p["content"] for p in dummy_requests.payloads]
+        self.assertTrue(any("# 📚 RePEc Picks - トレーディング" in c for c in contents))
+        self.assertTrue(any("# 📚 RePEc Picks - AI/ML" in c for c in contents))
+        self.assertTrue(any("HIGH: 0件" in c for c in contents))
+
 
 if __name__ == "__main__":
     unittest.main()
