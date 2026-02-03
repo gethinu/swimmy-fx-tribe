@@ -82,6 +82,7 @@ class TestRepecSection(unittest.TestCase):
         contents = [p["content"] for p in dummy_requests.payloads]
         self.assertTrue(any("# 📚 RePEc Picks - トレーディング" in c for c in contents))
         self.assertTrue(any("# 📚 RePEc Picks - AI/ML" in c for c in contents))
+        self.assertTrue(any("HIGH: 0件" in c for c in contents))
 
 
 if __name__ == "__main__":
