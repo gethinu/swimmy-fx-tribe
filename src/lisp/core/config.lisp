@@ -343,6 +343,15 @@
 (defparameter *telemetry-enabled* t)
 (defparameter *telemetry-schema-version* 1)
 
+;;; ==========================================
+;;; WFV SCHEDULING
+;;; ==========================================
+
+(defparameter *wfv-enabled* t)
+(defparameter *wfv-interval-sec* (* 60 60)) ; default 1h
+(defparameter *wfv-max-pending* 2)
+(defparameter *wfv-max-per-run* 1)
+
 
 
 ;;; ==========================================

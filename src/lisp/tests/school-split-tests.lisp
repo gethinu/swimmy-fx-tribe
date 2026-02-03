@@ -163,6 +163,38 @@
         (setf (symbol-function 'cl-user::request-backtest) orig-req)
         (setf (symbol-function 'cl-user::notify-discord-alert) orig-not)))))
 
+(deftest test-wfv-scheduling-respects-interval-and-pending
+  (let ((calls 0)
+        (orig-start (symbol-function 'swimmy.school::start-walk-forward-validation))
+        (orig-top (symbol-function 'swimmy.school::get-top-strategies)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::start-walk-forward-validation)
+                (lambda (strat) (declare (ignore strat)) (incf calls)))
+          (setf (symbol-function 'swimmy.school::get-top-strategies)
+                (lambda (n) (declare (ignore n)) (list (swimmy.school:make-strategy :name "WFV-1"))))
+          (let ((swimmy.school::*wfv-pending-strategies* (make-hash-table :test 'equal))
+                (swimmy.school::*last-wfv-qualify-time* (get-universal-time))
+                (swimmy.core::*wfv-enabled* t)
+                (swimmy.core::*wfv-interval-sec* 3600)
+                (swimmy.core::*wfv-max-pending* 0)
+                (swimmy.core::*wfv-max-per-run* 1))
+            (setf (gethash "PENDING" swimmy.school::*wfv-pending-strategies*)
+                  (list :started-at (- (get-universal-time) 10)))
+            (swimmy.school::maybe-run-wfv-qualification)
+            (assert-equal 0 calls)))
+      (setf (symbol-function 'swimmy.school::start-walk-forward-validation) orig-start)
+      (setf (symbol-function 'swimmy.school::get-top-strategies) orig-top))))
+
+(deftest test-wfv-pending-stats-oldest-age
+  (let* ((now 1000)
+         (swimmy.school::*wfv-pending-strategies* (make-hash-table :test 'equal)))
+    (setf (gethash "A" swimmy.school::*wfv-pending-strategies*) (list :started-at 900))
+    (setf (gethash "B" swimmy.school::*wfv-pending-strategies*) (list :started-at 950))
+    (multiple-value-bind (count oldest-age) (swimmy.school::wfv-pending-stats :now now)
+      (assert-equal 2 count)
+      (assert-equal 100 oldest-age))))
+
 ;;; ==========================================
 ;;; OOS VALIDATION TESTS
 ;;; ==========================================

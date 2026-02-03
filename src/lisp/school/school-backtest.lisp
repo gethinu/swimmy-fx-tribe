@@ -284,6 +284,18 @@
 (defparameter *wfv-pending-strategies* (make-hash-table :test 'equal)
   "Stores strategies currently undergoing WFV. Key: strategy-name")
 
+(defun wfv-pending-stats (&key (now (get-universal-time)))
+  (let ((count 0)
+        (oldest nil))
+    (maphash (lambda (_ entry)
+               (declare (ignore _))
+               (incf count)
+               (let ((started (getf entry :started-at)))
+                 (when started
+                   (setf oldest (if oldest (min oldest started) started)))))
+             *wfv-pending-strategies*)
+    (values count (and oldest (- now oldest)))))
+
 (defun start-walk-forward-validation (strat)
   "Initiate OOS validation for a strategy by splitting data."
   (unless (and *candle-history* (> (length *candle-history*) 100))
@@ -303,7 +315,7 @@
             
     ;; Register in pending table
     (setf (gethash (strategy-name strat) *wfv-pending-strategies*) 
-          (list :is-result nil :oos-result nil :strategy strat))
+          (list :is-result nil :oos-result nil :strategy strat :started-at (get-universal-time)))
     
     ;; Request IS Backtest
     (request-backtest strat :candles is-candles :suffix "_IS")

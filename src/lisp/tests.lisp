@@ -479,6 +479,8 @@
                   ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
+                  test-wfv-scheduling-respects-interval-and-pending
+                  test-wfv-pending-stats-oldest-age
                   test-oos-validation-dispatches-when-unset
                   test-oos-status-updated-on-dispatch
                   test-evolution-report-includes-oos-status
