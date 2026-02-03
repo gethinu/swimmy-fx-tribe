@@ -13,6 +13,12 @@
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
+## MCP Tools (Gateway)
+- `health.ping` (read-only)
+- `system.status` / `system.metrics` (read-only)
+- `backtest.submit` / `backtest.status` (backtest-exec)
+- `trade.submit` (trade-capable; disabled / 403)
+
 ## データスキーマ (S-expression)
 S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。
 

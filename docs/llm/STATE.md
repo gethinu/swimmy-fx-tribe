@@ -5,6 +5,7 @@
 - **Rust (Guardian)**: `V15.x` Full Duplex, Risk Gate実装済み。Daily Loss Limit: -¥5000。
 - **MQL5 (Bridge)**: `V15.2` Multi-TF対応。
 - **Lisp (Brain/School)**: `V50.5` Pure Lisp Daemon。SQLite移行完了。
+- **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
 - **Graveyard 指標**: `data/library/GRAVEYARD/*.lisp` のファイル数が正義（学習用のsexp/DBは補助データ）。
