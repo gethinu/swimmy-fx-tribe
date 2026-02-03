@@ -27,6 +27,9 @@
 (defparameter *oos-failure-stats* (list :data-invalid 0 :send-failure 0 :db-error 0)
   "Per-cycle failure counters for OOS pipeline.")
 
+(defparameter *oos-status-path* (swimmy.core::swimmy-path "data/reports/oos_status.txt")
+  "Path for OOS status summary report.")
+
 (defun %oos-metric-inc (key &optional (delta 1))
   (incf (gethash key *oos-metrics* 0) delta))
 
@@ -51,6 +54,36 @@
 
 (defun report-oos-failure-stats ()
   *oos-failure-stats*)
+
+(defun build-oos-status-line ()
+  "Build a one-line OOS status summary."
+  (let* ((base (oos-metrics-summary-line))
+         (q (fetch-oos-queue-stats)))
+    (if (getf q :error)
+        (format nil "~a | queue error: ~a" base (getf q :error))
+        (let* ((pending (getf q :pending 0))
+               (errors (getf q :errors 0))
+               (age (getf q :oldest-age))
+               (age-text (if age (format nil "~ds" age) "-")))
+          (format nil "~a | queue pending: ~d error: ~d oldest: ~a"
+                  base pending errors age-text)))))
+
+(defun write-oos-status-file (&key (reason "event"))
+  "Persist OOS status summary to file."
+  (handler-case
+      (let* ((line (build-oos-status-line))
+             (ts (get-universal-time))
+             (stamp (if (fboundp 'format-timestamp)
+                        (format-timestamp ts)
+                        (format nil "~a" ts)))
+             (content (format nil "~a~%updated: ~a reason: ~a" line stamp reason)))
+        (ensure-directories-exist *oos-status-path*)
+        (with-open-file (out *oos-status-path* :direction :output :if-exists :supersede :if-does-not-exist :create)
+          (write-string content out))
+        t)
+    (error (e)
+      (format t "[OOS] ⚠️ Failed to write oos_status.txt: ~a~%" e)
+      nil)))
 
 (defun %numeric-string-p (s)
   "Return T if S cleanly parses to a number without trailing junk."
@@ -122,6 +155,7 @@
                (request-backtest strat :suffix "-OOS" :request-id req-id)
                (%oos-metric-inc (if last-id :retry :sent))
                (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a)~%" name status req-id)
+               (ignore-errors (write-oos-status-file :reason status))
                req-id)
            (error (e)
              (%oos-failure-inc :send-failure)
@@ -152,7 +186,8 @@
         (when (meets-a-rank-criteria strat)
           (if (>= sharpe *oos-min-sharpe*)
               (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe))
-              (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))))))
+              (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))
+        (ignore-errors (write-oos-status-file :reason "result"))))))
 
 (defun report-oos-metrics ()
   "Snapshot of OOS counters and latency stats (for narrative/reporting)."

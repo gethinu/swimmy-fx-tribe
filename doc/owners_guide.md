@@ -174,7 +174,10 @@
 
 **確認方法**  
 - `data/reports/evolution_factory_report.txt`  
+- `data/reports/oos_status.txt`  
 - Discord Reports チャンネル
+
+OOS自動審査の稼働状況は Evolution Report と oos_status.txt で確認。
 
 
 

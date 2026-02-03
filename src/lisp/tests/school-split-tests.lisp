@@ -309,9 +309,9 @@
                         (swimmy.school::run-oos-validation strat)
                         (assert-true (> write-count 0) "OOS status should update on dispatch")))
                  (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
-                 (if had-write
-                     (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)
-                     (fmakunbound 'swimmy.school::write-oos-status-file))))))
+                (if had-write
+                    (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)
+                    (fmakunbound 'swimmy.school::write-oos-status-file)))))
         (swimmy.core:close-db-connection)
         (when created-file (delete-file data-path))
         (when (probe-file tmp-db) (delete-file tmp-db))))))

@@ -479,6 +479,8 @@
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
                   test-oos-validation-dispatches-when-unset
+                  test-oos-status-updated-on-dispatch
+                  test-evolution-report-includes-oos-status
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)
