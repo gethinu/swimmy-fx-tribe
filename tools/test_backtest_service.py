@@ -77,6 +77,27 @@ def main():
     assert "\n" not in out_preview and "\r" not in out_preview
     assert len(out_preview) <= 35
 
+    # Guardian payload passthrough (range + aux fields)
+    payload = svc._build_guardian_payload(
+        {
+            "strategy": {"name": "t"},
+            "start_time": 100,
+            "end_time": 200,
+            "data_id": "USDJPY_M1",
+            "aux_candles": [{"t": 1}],
+            "aux_candles_files": ["a.csv"],
+            "swap_history": [{"t": 1, "sl": 0.1, "ss": 0.1}],
+            "timeframe": 1,
+            "candles_file": "file.csv",
+        }
+    )
+    _assert_in("start_time", payload, "start_time")
+    _assert_in("end_time", payload, "end_time")
+    _assert_in("data_id", payload, "data_id")
+    _assert_in("aux_candles", payload, "aux_candles")
+    _assert_in("aux_candles_files", payload, "aux_candles_files")
+    _assert_in("swap_history", payload, "swap_history")
+
     print("ok")
 
 

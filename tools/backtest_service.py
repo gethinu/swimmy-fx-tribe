@@ -41,7 +41,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 _SYMBOL_VALUE_KEYS = {"indicator_type"}
 _BOOL_VALUE_KEYS = {"filter_enabled"}
-_OPTIONAL_LIST_KEYS = {"data_id", "timeframe", "candles_file", "aux_candles_files"}
+_OPTIONAL_LIST_KEYS = {"data_id", "timeframe", "candles_file", "aux_candles_files", "start_time", "end_time"}
 _ALERT_WEBHOOK_ENV = ("SWIMMY_DISCORD_ALERTS", "SWIMMY_DISCORD_SYSTEM_LOGS")
 _STRATEGY_FIELDS = {
     "name",
@@ -246,6 +246,35 @@ def _sanitize_strategy(raw):
         "filter_period": filter_period,
         "filter_logic": filter_logic,
     }
+
+
+def _build_guardian_payload(request: dict) -> dict:
+    strategy = _sanitize_strategy(request.get("strategy", {}))
+    payload = {"action": "BACKTEST", "strategy": strategy}
+
+    if request.get("candles_file"):
+        payload["candles_file"] = request["candles_file"]
+    elif "candles" in request:
+        payload["candles"] = request.get("candles", [])
+
+    for key in (
+        "data_id",
+        "start_time",
+        "end_time",
+        "aux_candles",
+        "aux_candles_files",
+        "swap_history",
+        "timeframe",
+        "phase",
+        "range_id",
+    ):
+        if key in request and request[key] is not None:
+            payload[key] = request[key]
+
+    if "timeframe" in payload:
+        strategy["timeframe"] = payload["timeframe"]
+
+    return payload
 
 class BacktestService:
     def __init__(self, use_zmq=True):
@@ -566,18 +595,14 @@ class BacktestService:
         strategy["timeframe"] = tf_norm
 
         # Prepare input for guardian (S-Expression protocol)
-        input_payload = {"action": "BACKTEST", "strategy": strategy}
         if candles_file:
-            input_payload["candles_file"] = candles_file
+            request["candles_file"] = candles_file
         else:
-            input_payload["candles"] = candles
-
-        # V10.2: Forward timeframe for resizing (MTF Fix)
-        if "timeframe" in request:
-            input_payload["timeframe"] = request["timeframe"]
+            request["candles"] = candles
+        input_payload = _build_guardian_payload(request)
 
         # Wrap Option<T> fields as one-element lists for serde_lexpr Option decoding.
-        for key in ("data_id", "timeframe", "candles_file", "aux_candles_files"):
+        for key in _OPTIONAL_LIST_KEYS:
             if key in input_payload and input_payload[key] is not None and not isinstance(input_payload[key], (list, tuple)):
                 input_payload[key] = [input_payload[key]]
 
