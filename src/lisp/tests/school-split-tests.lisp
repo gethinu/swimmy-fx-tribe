@@ -351,25 +351,43 @@
 
 (deftest test-evolution-report-includes-oos-status
   "Evolution report should include OOS status line."
-  (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
-    (unwind-protect
-         (progn
-           (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
-                 (lambda (&rest _args) (declare (ignore _args)) nil))
-           (let ((report (swimmy.school::generate-evolution-report)))
-             (assert-true (search "OOS sent:" report) "Report should contain OOS status line")))
-      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-oos-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "OOS sent:" report) "Report should contain OOS status line")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
 
 (deftest test-evolution-report-includes-phase2-end-time
   "Evolution report should include Phase2 end_time line."
-  (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
-    (unwind-protect
-         (progn
-           (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
-                 (lambda (&rest _args) (declare (ignore _args)) nil))
-           (let ((report (swimmy.school::generate-evolution-report)))
-             (assert-true (search "Phase2 EndTime:" report) "Report should contain Phase2 EndTime line")))
-      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-phase2-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "Phase2 EndTime:" report) "Report should contain Phase2 EndTime line")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
 
 (deftest test-backtest-dead-letter-replay
   "Malformed BACKTEST_RESULT should go to DLQ and be replayable."
