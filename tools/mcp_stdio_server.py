@@ -1,5 +1,8 @@
+import datetime
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 from mcp_gateway import handle_backtest_submit, handle_trade_submit
@@ -105,3 +108,45 @@ def load_system_metrics(metrics_path=None):
     if not Path(metrics_path).exists():
         return {}
     return load_sexp_alist(metrics_path)
+
+
+def build_log_entry(request_id, method, duration_ms, status, error=None):
+    entry = {
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "request_id": request_id,
+        "method": method,
+        "duration_ms": duration_ms,
+        "status": status,
+    }
+    if error:
+        entry["error"] = error
+    return entry
+
+
+def append_log(entry, path=None):
+    path = path or str(BASE_DIR / "logs" / "mcp_gateway.jsonl")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def main():
+    api_key = os.getenv("SWIMMY_MCP_API_KEY", "")
+    while True:
+        req = read_jsonrpc_message(sys.stdin.buffer)
+        if req is None:
+            break
+        start = time.time()
+        res = handle_jsonrpc_request(req, api_key=api_key)
+        duration_ms = int((time.time() - start) * 1000)
+        status = "ok" if "result" in res else "error"
+        append_log(
+            build_log_entry(
+                req.get("id"), req.get("method"), duration_ms, status, res.get("error")
+            )
+        )
+        write_jsonrpc_message(sys.stdout.buffer, res)
+
+
+if __name__ == "__main__":
+    main()

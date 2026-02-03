@@ -10,6 +10,7 @@ from mcp_stdio_server import (
     handle_jsonrpc_request,
     load_system_status,
     load_system_metrics,
+    build_log_entry,
 )
 
 
@@ -76,6 +77,11 @@ def test_system_metrics_reads_sexp():
         assert data["uptime_seconds"] == 10
 
 
+def test_build_log_entry():
+    entry = build_log_entry("req-1", "health.ping", 12, "ok")
+    assert entry["request_id"] == "req-1"
+
+
 def main():
     test_read_jsonrpc_message()
     test_write_jsonrpc_message()
@@ -85,6 +91,7 @@ def main():
     test_backtest_submit_returns_request_id()
     test_system_status_reads_files()
     test_system_metrics_reads_sexp()
+    test_build_log_entry()
 
 
 if __name__ == "__main__":
