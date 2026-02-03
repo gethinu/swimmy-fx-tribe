@@ -1,3 +1,15 @@
+## 🆕 V50.6 新機能 (2026-02-03) - Structured Telemetry
+
+### 1. JSONLイベント統合
+- **イベントログ**: `/home/swimmy/swimmy/logs/swimmy.json.log` に統一 (`log_type="telemetry"`)
+- **対象**: OOS / WFV / Heartbeat / System metrics / Live status
+- **ローテーション**: `swimmy.json.log.1`（既定10MB上限）
+
+### 2. 監視ファイルの原子書き込み
+- **system_metrics.json / live_status.json** を tmp→rename で破損防止
+
+---
+
 ## 🆕 V50.5 新機能 (2026-01-28) - Phase 24/25: System Hardening II
 
 ### 1. Symbolic Hashing / Logic Integrity (Jim Simons)

@@ -51,5 +51,14 @@
     
     ;; 2. S-expression Dump (Observability)
     (save-telemetry-sexp metrics)
+    (swimmy.core::emit-telemetry-event "metrics.snapshot"
+      :service "school"
+      :severity "info"
+      :correlation-id (format nil "~a" (get-universal-time))
+      :data (jsown:new-js
+              ("heap_used_bytes" heap)
+              ("heap_used_mb" (/ heap 1024.0 1024.0))
+              ("strategy_count" strat-count)
+              ("uptime_seconds" (- (get-universal-time) swimmy.globals::*system-start-time*))))
     
     (values metrics alert)))

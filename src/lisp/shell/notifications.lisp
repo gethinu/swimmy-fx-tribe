@@ -131,7 +131,6 @@
       (setf *last-status-write* now)
       (handler-case
           (progn
-            (ensure-directories-exist *live-status-path*)
             (let* ((progress (get-goal-progress))
                    (ecosystem-health (if (fboundp 'calculate-ecosystem-health)
                                          (* 100 (funcall 'calculate-ecosystem-health))
@@ -180,7 +179,21 @@
                                                   (strength . ,(* 100 (if (boundp '*tribe-consensus*) (or *tribe-consensus* 0) 0)))))
                               (last_updated . ,(get-jst-str)))))
               (swimmy.core:write-sexp-atomic *live-status-path* payload)
-              (format t "[SHELL] 📝 Live status saved~%")))
+              (swimmy.core::emit-telemetry-event "status.snapshot"
+                :service "shell"
+                :severity "info"
+                :correlation-id (format nil "~a" (get-universal-time))
+                :data (jsown:new-js
+                        ("daily_pnl" *daily-pnl*)
+                        ("accumulated_pnl" *accumulated-pnl*)
+                        ("goal_progress" (or (getf progress :progress-pct) 0))
+                        ("regime" regime-str)
+                        ("volatility" volatility-str)
+                        ("leader" leader-name)
+                        ("danger_level" danger)
+                        ("ecosystem_health" ecosystem-health)
+                        ("total_trades" *total-trades*))))
+            (format t "[SHELL] 📝 Live status saved~%"))
         (error (e)
           (format t "[SHELL] ⚠️ Failed to save live status: ~a~%" e))))))
 

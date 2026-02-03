@@ -101,6 +101,14 @@ MT5: ~a (~d秒前)
                   :title "💓 Heartbeat" 
                   :color 3066993)
                 (setf *last-heartbeat-sent* (get-universal-time))
+                (let ((hb-id (swimmy.core:generate-uuid)))
+                  (swimmy.core::emit-telemetry-event "heartbeat.discord_sent"
+                    :service "engine"
+                    :severity "info"
+                    :correlation-id hb-id
+                    :data (jsown:new-js
+                            ("heartbeat_id" hb-id)
+                            ("status" "queued"))))
                 (format t "[HEARTBEAT] 💓 Queued to Discord (ZMQ)~%"))
             (error (e)
               (format t "[HEARTBEAT] ❌ Failed: ~a~%" e)))

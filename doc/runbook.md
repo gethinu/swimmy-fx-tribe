@@ -107,7 +107,17 @@ pkill -9 guardian
 
 ---
 
-## 6. コマンドリファレンス
+## 6. テレメトリ / 監視
+
+- **JSONLログ**: `/home/swimmy/swimmy/logs/swimmy.json.log`（`log_type="telemetry"` がイベント）
+- **ローテーション**: `swimmy.json.log.1`（サイズ上限超過時、既定10MB）
+- **システムメトリクス**: `data/system_metrics.json`
+- **ライブステータス**: `.opus/live_status.json`
+- **スキーマ**: `schema_version` は破壊的変更時にインクリメント
+
+---
+
+## 7. コマンドリファレンス
 
 | コマンド | 説明 |
 |:---|:---|

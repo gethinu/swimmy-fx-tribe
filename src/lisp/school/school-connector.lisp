@@ -31,12 +31,39 @@
 ;; Logic is now handled dynamically by the evolution loop.
 
 
+(defparameter *last-wfv-qualify-time* 0)
+
+(defun maybe-run-wfv-qualification ()
+  (let ((now (get-universal-time)))
+    (unless (and (boundp 'swimmy.core::*wfv-enabled*) swimmy.core::*wfv-enabled*)
+      (format t "[CONNECTOR] [Phase 3] WFV Qualification disabled.~%")
+      (return-from maybe-run-wfv-qualification nil))
+    (when (< (- now *last-wfv-qualify-time*) swimmy.core::*wfv-interval-sec*)
+      (return-from maybe-run-wfv-qualification nil))
+    (multiple-value-bind (pending-count _oldest-age) (wfv-pending-stats :now now)
+      (declare (ignore _oldest-age))
+      (when (>= pending-count swimmy.core::*wfv-max-pending*)
+        (return-from maybe-run-wfv-qualification nil))
+      (let* ((max-per-run (or swimmy.core::*wfv-max-per-run* 0))
+             (candidates (and (fboundp 'get-top-strategies)
+                              (get-top-strategies max-per-run)))
+             (started 0))
+        (when (<= max-per-run 0)
+          (return-from maybe-run-wfv-qualification nil))
+        (dolist (strat candidates)
+          (when (and strat (strategy-name strat)
+                     (not (gethash (strategy-name strat) *wfv-pending-strategies*)))
+            (start-walk-forward-validation strat)
+            (incf started)
+            (when (>= started max-per-run)
+              (return))))
+        (when (> started 0)
+          (setf *last-wfv-qualify-time* now))
+        started))))
+
 (defun phase-3-qualify ()
   "Run WFV Qualification (Native Lisp Loop)"
-  (format t "[CONNECTOR] [Phase 3] WFV Qualification (Deferred)...~%")
-  ;; WFV is not yet scheduled in the live loop to avoid duplicate qualification floods.
-  ;; Placeholder for future WFV batch runner.
-  nil)
+  (maybe-run-wfv-qualification))
 
 (defun phase-4-purge ()
   "Run The Selector (Native Lisp Battle Royale)

@@ -305,6 +305,17 @@
                    (error () nil))
                  (maybe-alert-backtest-stale))
                 ((string= type swimmy.core:+MSG-HEARTBEAT+)
+                 (let ((hb-id (ignore-errors (jsown:val json "id")))
+                       (hb-status (ignore-errors (jsown:val json "status")))
+                       (hb-source (ignore-errors (jsown:val json "source"))))
+                   (swimmy.core::emit-telemetry-event "heartbeat.recv"
+                     :service "dispatcher"
+                     :severity "info"
+                     :correlation-id hb-id
+                     :data (jsown:new-js
+                             ("heartbeat_id" hb-id)
+                             ("status" hb-status)
+                             ("source" hb-source))))
                  (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
                  (maybe-alert-backtest-stale))
                 ((string= type swimmy.core:+MSG-ACCOUNT-INFO+)
