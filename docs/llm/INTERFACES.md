@@ -111,8 +111,15 @@ Brainのバックテスト要求を専用サービスへオフロードする。
               (sl . 0.0010)
               (tp . 0.0015)
               (volume . 0.02)))
+ (phase . "phase1")               ; optional
+ (range_id . "P1")                ; optional
+ (start_time . 1293840000)        ; optional (Unix seconds)
+ (end_time . 1700000000)          ; optional (Unix seconds)
  (data_id . "USDJPY_M1")          ; CSVを使う場合
  (candles_file . "data/historical/USDJPY_M1.csv")
+ (aux_candles . ((t . 1)))        ; optional
+ (aux_candles_files . ("a.csv"))  ; optional
+ (swap_history . ((t . 1) (sl . 0.1) (ss . 0.1))) ; optional
  (symbol . "USDJPY")
  (timeframe . 1))
 ```
