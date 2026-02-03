@@ -303,19 +303,32 @@
     (return-from start-walk-forward-validation))
 
   (let* ((len (length *candle-history*))
-         (split-idx (floor (* len 0.2))) ; Top 20% is OOS (Newest)
+         (split-ratio 0.2)
+         (split-idx (floor (* len split-ratio))) ; Top 20% is OOS (Newest)
          ;; *candle-history* is Newest-First.
          ;; Index 0 to split-idx-1: Recent Data (OOS)
          ;; Index split-idx to End: Past Data (IS)
          (oos-candles (subseq *candle-history* 0 split-idx))
-         (is-candles (subseq *candle-history* split-idx)))
+         (is-candles (subseq *candle-history* split-idx))
+         (wfv-id (swimmy.core:generate-uuid)))
     
     (format t "[L] 🚦 Starting WFV for ~a. IS: ~d bars, OOS: ~d bars~%" 
             (strategy-name strat) (length is-candles) (length oos-candles))
             
     ;; Register in pending table
     (setf (gethash (strategy-name strat) *wfv-pending-strategies*) 
-          (list :is-result nil :oos-result nil :strategy strat :started-at (get-universal-time)))
+          (list :is-result nil :oos-result nil :strategy strat :started-at (get-universal-time)
+                :wfv-id wfv-id :split-ratio split-ratio))
+
+    (swimmy.core::emit-telemetry-event "wfv.started"
+      :service "school"
+      :severity "info"
+      :correlation-id wfv-id
+      :data (jsown:new-js
+              ("wfv_id" wfv-id)
+              ("split_ratio" split-ratio)
+              ("is_bars" (length is-candles))
+              ("oos_bars" (length oos-candles))))
     
     ;; Request IS Backtest
     (request-backtest strat :candles is-candles :suffix "_IS")
@@ -333,6 +346,16 @@
     (when entry
       (setf (getf entry type) result-map)
       (format t "[L] 📥 WFV Part Rcvd: ~a (~a) Sharpe: ~,2f~%" base-name type (getf result-map :sharpe))
+      (let* ((wfv-id (getf entry :wfv-id))
+             (part (if (search "_IS" name-with-suffix) "IS" "OOS")))
+        (swimmy.core::emit-telemetry-event "wfv.part_received"
+          :service "school"
+          :severity "info"
+          :correlation-id wfv-id
+          :data (jsown:new-js
+                  ("wfv_id" wfv-id)
+                  ("part" part)
+                  ("sharpe" (getf result-map :sharpe)))))
       
       ;; Check if both parts are ready
       (when (and (getf entry :is-result) (getf entry :oos-result))
@@ -360,7 +383,10 @@
          (required-oos (calculate-required-oos-sharpe gen))
          (degradation (if (> is-sharpe 0.1) 
                           (/ (- is-sharpe oos-sharpe) is-sharpe)
-                          0.0))) ; Avoid div by zero
+                          0.0))
+         (wfv-id (getf entry :wfv-id))
+         (split-ratio (getf entry :split-ratio))
+         (decision nil)) ; Avoid div by zero
     
     (format t "[L] ⚖️ WFV VERDICT for ~a (Gen ~d): IS=~,2f OOS=~,2f (Req: ~,2f) Degradation: ~,1f%~%"
             base-name gen is-sharpe oos-sharpe required-oos (* degradation 100))
@@ -368,6 +394,7 @@
     (cond
       ;; Scenario 1: Robust Strategy (OOS > Threshold AND Degradation < 50%)
       ((and (> oos-sharpe required-oos) (< degradation 0.5))
+       (setf decision "validated")
        (format t "[L] ✅ VALIDATED: ~a is robust! Promoted.~%" base-name)
        (notify-discord-alert (format nil "Valid Strategy: ~a (Gen ~d | OOS: ~,2f)" base-name gen oos-sharpe) :color 3066993)
        ;; V17c: Persist Promotion to Battlefield
@@ -375,6 +402,7 @@
       
       ;; Scenario 2: Overfit (Good IS, Bad OOS)
       ((> degradation 0.7)
+       (setf decision "overfit")
        (format t "[L] 🚮 OVERFIT: ~a discarded. (Good past, bad future)~%" base-name)
        (setf *evolved-strategies* 
              (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
@@ -383,6 +411,7 @@
        
       ;; Scenario 3: Weak (OOS < Required)
       (t
+       (setf decision "weak")
        (format t "[L] 🗑️ WEAK: ~a (OOS ~,2f < ~,2f) discarded.~%" base-name oos-sharpe required-oos)
        (setf *evolved-strategies* 
              (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
@@ -391,6 +420,20 @@
              (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
        ;; V17c: Move to Graveyard
        (swimmy.persistence:move-strategy strat :graveyard)))
+
+    (swimmy.core::emit-telemetry-event "wfv.result"
+      :service "school"
+      :severity "info"
+      :correlation-id wfv-id
+      :data (jsown:new-js
+              ("wfv_id" wfv-id)
+              ("split_ratio" split-ratio)
+              ("generation" gen)
+              ("required_oos" required-oos)
+              ("degradation" degradation)
+              ("decision" decision)
+              ("is_sharpe" is-sharpe)
+              ("oos_sharpe" oos-sharpe)))
     
     ;; Cleanup pending
     (remhash base-name *wfv-pending-strategies*)))

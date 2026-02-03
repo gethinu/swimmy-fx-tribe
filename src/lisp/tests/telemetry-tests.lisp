@@ -57,3 +57,36 @@
       (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
       (when orig-write
         (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)))))
+
+(deftest test-wfv-telemetry-result-emitted-on-complete
+  (let ((events nil)
+        (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+        (orig-move (symbol-function 'swimmy.persistence:move-strategy))
+        (orig-notify (symbol-function 'swimmy.school::notify-discord-alert)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (push (list event-type data) events)))
+          (setf (symbol-function 'swimmy.persistence:move-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (let ((swimmy.school::*wfv-pending-strategies* (make-hash-table :test 'equal)))
+            (setf (gethash "WFV" swimmy.school::*wfv-pending-strategies*)
+                  (list :is-result nil :oos-result nil
+                        :strategy (swimmy.school:make-strategy :name "WFV" :generation 2)
+                        :wfv-id "WFV-1" :split-ratio 0.2))
+            (swimmy.school::process-wfv-result "WFV_IS" (list :sharpe 1.2))
+            (swimmy.school::process-wfv-result "WFV_OOS" (list :sharpe 0.8)))
+          (let* ((ev (find "wfv.result" events :key #'first :test #'string=))
+                 (data (second ev)))
+            (assert-true (jsown:val data "wfv_id"))
+            (assert-true (jsown:val data "split_ratio"))
+            (assert-true (jsown:val data "generation"))
+            (assert-true (jsown:val data "required_oos"))
+            (assert-true (jsown:val data "degradation"))
+            (assert-true (jsown:val data "decision"))))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function 'swimmy.persistence:move-strategy) orig-move)
+      (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))))
