@@ -169,6 +169,14 @@ sudo systemctl start swimmy-brain swimmy-backtest
 
 ---
 
+## 6.2 MCP stdio (JSON-RPC)
+
+- 手動起動: `SWIMMY_MCP_API_KEY=... python3 tools/mcp_stdio_server.py`
+- 停止: 標準入力を閉じる（MCPホスト停止）
+- ログ: `logs/mcp_gateway.jsonl`
+
+---
+
 ## 7. コマンドリファレンス
 
 | コマンド | 説明 |

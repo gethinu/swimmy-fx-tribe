@@ -19,6 +19,11 @@
 - `backtest.submit` / `backtest.status` (backtest-exec)
 - `trade.submit` (trade-capable; disabled / 403)
 
+## MCP stdio (JSON-RPC 2.0)
+- **Transport**: stdio（Content-Length フレーミング）
+- **Methods**: `health.ping` / `system.status` / `system.metrics` / `backtest.submit` / `backtest.status` / `trade.submit`(403)
+- **Params**: `api_key` 必須（`SWIMMY_MCP_API_KEY` と一致）
+
 ## データスキーマ (S-expression)
 S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。
 

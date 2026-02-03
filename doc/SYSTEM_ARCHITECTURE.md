@@ -10,6 +10,7 @@
 Lispベースの自律進化型FX取引システム。4つの氏族（Clan）が協力し、61の戦略を基盤に学習・進化を続ける。
 
 ```
+MCP Host (stdio JSON-RPC) -> MCP Server (Python) -> ZMQ 5559 -> Guardian (Rust)
 MT5 <--ZeroMQ--> Guardian (Rust) <--ZeroMQ--> Brain (Lisp)
                      |                            |
                      +--> backtester.rs           +--> school.lisp (戦略)
