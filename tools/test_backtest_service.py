@@ -89,6 +89,8 @@ def main():
             "swap_history": [{"t": 1, "sl": 0.1, "ss": 0.1}],
             "timeframe": 1,
             "candles_file": "file.csv",
+            "phase": "phase2",
+            "range_id": "P2",
         }
     )
     _assert_in("start_time", payload, "start_time")
@@ -97,6 +99,8 @@ def main():
     _assert_in("aux_candles", payload, "aux_candles")
     _assert_in("aux_candles_files", payload, "aux_candles_files")
     _assert_in("swap_history", payload, "swap_history")
+    _assert_in("phase", payload, "phase")
+    _assert_in("range_id", payload, "range_id")
 
     print("ok")
 
