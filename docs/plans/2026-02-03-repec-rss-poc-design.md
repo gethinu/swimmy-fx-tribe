@@ -26,7 +26,7 @@ Status: Draft
 - AI keywords (example): ai, artificial intelligence, machine learning, deep learning, transformer, llm, reinforcement learning, neural
 
 ## 4. Architecture (Minimal)
-- Add the following functions to `/home/swimmy/arxiv-scout/arxiv_scout.py`:
+- Add the following functions to `/home/swimmy/swimmy/tools/arxiv-scout/arxiv_scout.py`:
   - `fetch_repec_rss(feed_url)` -> raw XML or None
   - `parse_repec_rss(xml)` -> list of raw items
   - `normalize_repec_item(item, default_categories)` -> paper dict

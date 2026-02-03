@@ -8,7 +8,7 @@ class TestArxivScoutWebhook(unittest.TestCase):
     def setUp(self):
         self._orig_env = os.environ.copy()
         self._module_name = "arxiv_scout"
-        self._scout_path = "/home/swimmy/arxiv-scout"
+        self._scout_path = "/home/swimmy/swimmy/tools/arxiv-scout"
         if self._scout_path not in sys.path:
             sys.path.insert(0, self._scout_path)
         sys.modules.pop(self._module_name, None)

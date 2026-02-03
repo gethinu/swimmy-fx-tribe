@@ -224,7 +224,7 @@ def format_progress():
 # arXiv Scout連携機能
 # =============================================================================
 
-ARXIV_DATA_DIR = "/home/swimmy/arxiv-scout/data"
+ARXIV_DATA_DIR = "/home/swimmy/swimmy/tools/arxiv-scout/data"
 LAST_REPORT_FILE = f"{ARXIV_DATA_DIR}/last_report.json"
 STOCK_PAPERS_FILE = f"{ARXIV_DATA_DIR}/stock_papers.json"
 ARXIV_REPORT_DAILY_WEBHOOK = (

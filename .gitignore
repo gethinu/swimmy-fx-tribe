@@ -60,3 +60,7 @@ doc/memo4.txt
 doc/memo5.txt
 data/macro/
 src/lisp/school/school-optimized-params.lisp
+
+# arXiv Scout runtime data
+tools/arxiv-scout/data/
+tools/arxiv-scout/logs/
