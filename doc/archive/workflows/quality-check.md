@@ -13,7 +13,7 @@ This workflow runs quality gate tests and auto-commits if everything passes.
    - Runs Unit Tests (Lisp/Rust)
    - Runs System Integrity Checks (Lisp/Python/Env/JSON/Systemd)
 ```bash
-cd /home/swimmy/swimmy && make quality-gate
+cd /home/swimmy/swimmy && ./tools/quality_gate.sh
 ```
 
 

@@ -122,7 +122,7 @@ pkill -9 guardian
 | コマンド | 説明 |
 |:---|:---|
 | `make run` | 開発モード起動 |
-| `make quality-gate` | テスト＆整合性チェック |
+| `./tools/quality_gate.sh` | テスト＆整合性チェック |
 | `/deploy` | 本番デプロイ (systemd restart) |
 | `CLOSE_ALL` | 全ポジション決済 |
 | `CLOSE_SHORT_TF` | H4以下のポジション決済 |
