@@ -137,6 +137,21 @@
               (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms")))
         (setf swimmy.globals:*danger-level* orig)))))
 
+(deftest test-req-history-uses-count
+  "REQ_HISTORY bootstrap request should use count key (not volume)"
+  (let* ((path "src/lisp/system/runner.lisp")
+         (content (with-open-file (in path :direction :input)
+                    (let ((out (make-string-output-stream)))
+                      (loop for line = (read-line in nil nil)
+                            while line do (write-line line out))
+                      (get-output-stream-string out))))
+         (has-req (search "\"REQ_HISTORY\"" content))
+         (has-count (search "\"count\"" content))
+         (has-volume (search "\"volume\"" content)))
+    (assert-true has-req "REQ_HISTORY should exist in runner.lisp")
+    (assert-true has-count "REQ_HISTORY should use count key")
+    (assert-false has-volume "REQ_HISTORY should not use volume key")))
+
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
@@ -435,6 +450,7 @@
                   test-internal-process-msg-backtest-request-id-bound
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
+                  test-req-history-uses-count
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip

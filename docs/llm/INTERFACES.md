@@ -51,6 +51,53 @@ MT5からブロードキャストされる。
  (leverage . 25))
 ```
 
+**HISTORY**:
+```
+((type . "HISTORY")
+ (symbol . "USDJPY")
+ (tf . "M1")
+ (batch . 0)
+ (total . 3)
+ (data . (((t . 1709234500) (o . 145.10000) (h . 145.20000) (l . 145.05000) (c . 145.18000))
+          ((t . 1709234560) (o . 145.18000) (h . 145.24000) (l . 145.12000) (c . 145.21000)))))
+```
+
+**POSITIONS**:
+```
+((type . "POSITIONS")
+ (symbol . "USDJPY")
+ (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10))
+          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05)))))
+```
+
+**SWAP_DATA**:
+```
+((type . "SWAP_DATA")
+ (symbol . "USDJPY")
+ (swap_long . -0.12)
+ (swap_short . 0.05)
+ (swap_mode . 1)
+ (spread . 12))
+```
+
+**ORDER_ACK**:
+```
+((type . "ORDER_ACK")
+ (id . "uuid-v4")
+ (ticket . 123456789)
+ (symbol . "USDJPY"))
+```
+
+**TRADE_CLOSED**:
+```
+((type . "TRADE_CLOSED")
+ (won . true)
+ (pnl . 1234.56)
+ (symbol . "USDJPY")
+ (ticket . 123456789)
+ (magic . 123456))
+```
+
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
 
@@ -73,6 +120,33 @@ RustからMT5へ送信される。
  (close_all . false)
  (magic . 123456)
  (instrument . "USDJPY"))
+```
+
+**REQ_HISTORY**:
+```
+((type . "REQ_HISTORY")
+ (symbol . "USDJPY")
+ (tf . "M1")
+ (count . 2000)
+ (start . 1709234567))  ; optional (Unix seconds)
+```
+
+**GET_POSITIONS**:
+```
+((type . "GET_POSITIONS")
+ (symbol . "USDJPY"))  ; optional
+```
+
+**GET_SWAP**:
+```
+((type . "GET_SWAP")
+ (symbol . "USDJPY"))  ; optional
+```
+
+**CLOSE_SHORT_TF**:
+```
+((type . "CLOSE_SHORT_TF")
+ (symbol . "USDJPY"))  ; optional
 ```
 
 ### 3. Sensory Input (Port 5555)

@@ -10,13 +10,13 @@
     (:NAME "Legend-Golden-Cross-Classic" :TIMEFRAME 3600 :SL 1.0 :TP 2.0
      :INDICATORS ((:SMA 50) (:SMA 200)))
     (:NAME "Hunted-W1-EMA-Trend" :TIMEFRAME "W1" :SL 0.02 :TP 0.05 :INDICATORS
-     ((SWIMMY.SCHOOL::EMA 13) (SWIMMY.SCHOOL::EMA 26)))
+     ((EMA 13) (EMA 26)))
     (:NAME "Hunted-W1-Volume-Trend" :TIMEFRAME "W1" :SL 0.02 :TP 0.06
-     :INDICATORS ((SWIMMY.SCHOOL::SMA 20)))
+     :INDICATORS ((SMA 20)))
     (:NAME "Hunted-D1-ADX-Trend" :TIMEFRAME "D1" :SL 0.01 :TP 0.03 :INDICATORS
-     ((SWIMMY.SCHOOL::ADX 14)))
+     ((ADX 14)))
     (:NAME "Hunted-D1-Williams-R" :TIMEFRAME "D1" :SL 0.008 :TP 0.015
-     :INDICATORS ((SWIMMY.SCHOOL::WILLIAMS 14)))
+     :INDICATORS ((WILLIAMS 14)))
     (:NAME "Legend-London-Breakout-V1" :TIMEFRAME 3600 :SL 0.2 :TP 0.6
      :INDICATORS ((:TIME-RANGE "08:00-09:00")))
    ))

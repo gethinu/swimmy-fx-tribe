@@ -28,6 +28,8 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-03**: REQ_HISTORY の要求キーを `count` に統一（`volume` は廃止）。
+- **2026-02-03**: MT5系メッセージ（HISTORY/POSITIONS/SWAP_DATA/ORDER_ACK/TRADE_CLOSED）と管理コマンド（GET_POSITIONS/GET_SWAP/CLOSE_SHORT_TF）をINTERFACESに明記。
 - **2026-02-01**: systemdの `swimmy-guardian` をRust Guardian実行に修正し、evolution daemonのSBCLメモリ設定を `SWIMMY_SBCL_DYNAMIC_SPACE_MB` に統一。watchdogのsystemdユニットを追加。
 - **2026-02-01**: owners guide / runbook のsystemd操作をsystemレベル（`sudo systemctl ...`）に一本化。`.env` の読み込み方法を修正してコメント行エラーを解消。
 - **2026-02-01**: Backtest ServiceのS式戦略名抽出正規表現を修正（`re.error: unbalanced parenthesis` 対策）。

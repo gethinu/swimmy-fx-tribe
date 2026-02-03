@@ -99,7 +99,7 @@
                (format t "[L] 📊 Requesting history for ~a...~%" sym)
                (dolist (tf tfs)
                  (format t "[L]    → Requesting ~a ~a history...~%" sym tf)
-                 (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("volume" 2000) ("tf" tf))))
+                (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("count" 2000) ("tf" tf))))
                  (sleep 0.2))  ; Stagger requests
                (sleep 0.5)))   ; Stagger symbols
            
