@@ -52,3 +52,11 @@
 - [ ] `system_metrics.sexp` を正本とし、JSONは境界のみと文書化する: `tools/report_status.py`, `docs/llm/INTERFACES.md`
 - [ ] JSON-RPC契約テスト（403/202/エラー構造）を追加する: `tools/mcp_gateway.py`
 - [ ] MCP境界をアーキ図とrunbookに追記する: `doc/SYSTEM_ARCHITECTURE.md`, `doc/owners_guide.md`
+
+## Expert Panel 2026-02-03 (Lifecycle Stall)
+- [ ] rank更新→moveの順序を修正し、旧rankファイルが確実に削除されるようにする: `src/lisp/school/school-rank-system.lisp`, `src/lisp/core/persistence.lisp`
+- [ ] 新生児（trades=0/BT未完了/creation-time新鮮）はprune対象外にするガードを追加: `src/lisp/school/school-pruning.lisp`
+- [ ] Breeder生成物はBT/Phase1を必須化し、`require-bt nil` を撤廃: `src/lisp/school/school-breeder.lisp`, `src/lisp/school/school-kb.lisp`
+- [ ] DB/Library/KBドリフト検知をEvolution Reportに露出する: `src/lisp/school/school-db-stats.lisp`, `src/lisp/school/school-narrative.lisp`
+- [ ] OOS=0.00のキャッシュを「未検証扱い」に戻して再リクエストする: `src/lisp/school/school-validation.lisp`
+- [ ] ライフサイクル不変条件（旧ファイル削除/初回BT前にpruneしない）のテスト追加: `src/lisp/tests.lisp`

@@ -405,3 +405,62 @@
 3. `system_metrics.sexp` を正本とし、JSONは境界のみと文書化する（`tools/report_status.py:33-83`）。
 4. JSON-RPC契約テスト（403/202/エラー構造）を追加する（`tools/mcp_gateway.py:33-43`）。
 5. MCP境界をアーキ図とrunbookに追記する（`doc/SYSTEM_ARCHITECTURE.md:12-18`、`doc/owners_guide.md:1-20`）。
+
+---
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-03
+**Leader:** Elon Musk
+**Trigger:** ライフサイクル停滞（リクルート即死/DB-ライブラリ乖離/OOS停滞）
+
+## 🏛️ 常設顧問の意見
+### Taleb:
+- 「真実のソースはSQLite」と書いておきながら、rank更新→moveの順序でLibraryに幽霊が残るのは“ルール破りの破滅”。DB/Libraryの一貫性が壊れているのに安全装置は無い。`doc/owners_guide.md:195` `src/lisp/school/school-rank-system.lisp:116` `src/lisp/school/school-rank-system.lisp:135` `src/lisp/core/persistence.lisp:154`
+- 新生児が測定前に死ぬのは“統計的自殺”。Sharpe=0を即墓場に送る設計は評価前の淘汰であり、過学習とデータ欠損を呼ぶ。`src/lisp/school/school-pruning.lisp:18` `src/lisp/school/school-pruning.lisp:49` `src/lisp/school/school-connector.lisp:181` `src/lisp/school/school-connector.lisp:188`
+
+### Graham:
+- `add-to-kb` のコメントで「BreederはBT必須」と書いておきながら、Breeder側が `require-bt nil` で回避している。仕様と実装が矛盾している時点で“動いているフリ”。`src/lisp/school/school-kb.lisp:166` `src/lisp/school/school-breeder.lisp:169`
+- まず“量産パイプライン”の一箇所だけを直せ。rank/persistence順序とpruneガードの2点が直れば、見た目の数字は戻る。
+
+### Naval:
+- 自動化のレバレッジがゼロ。作っては消える仕組みは“自己破壊ループ”。Breeder → prune の順で何も残らない。`src/lisp/school/school-breeder.lisp:169` `src/lisp/school/school-connector.lisp:188`
+- OOSが「0.00でキャッシュ済み」扱いになっている限り、昇格レバーは永遠に引かれない。`src/lisp/school/school-validation.lisp:266`
+
+### Simons:
+- 評価前の刈り取りは“統計的に無意味”。Sharpe=0は未知であって失敗ではない。`src/lisp/school/school-pruning.lisp:49`
+- レポートはDBカウントを使っているのに、DBとLibraryのドリフト検知は存在するだけで反映されていない。`src/lisp/school/school-narrative.lisp:236` `src/lisp/school/school-db-stats.lisp:63`
+
+## 💻 技術パネルの意見
+### Fowler:
+- `ensure-rank` で rank を先に書き換え、`move-strategy` が“現在のrank”で削除するので旧ファイルが残る。これはトランザクション境界の設計ミス。`src/lisp/school/school-rank-system.lisp:116` `src/lisp/core/persistence.lisp:154`
+- “週次prune”と書いて1時間ごとに回す実装は、設計と運用の約束を破っている。`src/lisp/school/school-connector.lisp:120` `src/lisp/school/school-connector.lisp:122`
+
+### Hickey:
+- S式とDBの正本が揺れている。正本はSQLiteと宣言しているのに、ファイルが真実のように残る。これは“二つの真実”。`doc/owners_guide.md:195` `src/lisp/core/persistence.lisp:154`
+- `report-source-drift` があるのに運用に出てこない。整合性チェックを“死んだコード”にするな。`src/lisp/school/school-db-stats.lisp:63`
+
+### Uncle Bob:
+- ライフサイクルの不変条件（「rank変更したら旧ファイルは必ず消える」「初回BT前にpruneしない」）をテストで固定していない。品質ゲート不在。`src/lisp/tests.lisp:19` `src/lisp/school/school-pruning.lisp:49`
+
+## 🚀 ビジョナリーの意見
+### Ng:
+- 学習ループが“測定なし淘汰”になっている。これは学習ではなくノイズ削除。`src/lisp/school/school-pruning.lisp:49` `src/lisp/school/school-breeder.lisp:169`
+
+### López de Prado:
+- OOSが0.00を“キャッシュ済み”扱いする限り、Aランクは統計的に永久不可能。`src/lisp/school/school-validation.lisp:266`
+- B/A/Sの分布はprune時点で偏る。評価の前に母集団を削るのは過剰最適化そのもの。`src/lisp/school/school-pruning.lisp:49`
+
+### Gene Kim:
+- ドリフト検知があるのにレポートに出てこない。運用の可観測性が壊れている。`src/lisp/school/school-db-stats.lisp:63` `src/lisp/school/school-narrative.lisp:236`
+- ループ順序にガードが無い。最小限の運用ルールをコード化せよ。`src/lisp/school/school-connector.lisp:181` `src/lisp/school/school-connector.lisp:188`
+
+## 🚀 Musk's Decision (Final)
+> 「rank変更→moveの順序ミスは即修正。新生児は“初回BT完了まで”護衛し、prune対象から外す。ドリフト検知はレポートに出せ。OOSの0.00キャッシュは“未検証”に戻せ。」
+
+## Actionable Items
+1. `ensure-rank` のrank書き換え順序を修正し、旧rankのファイル削除が確実になるようにする。`src/lisp/school/school-rank-system.lisp:116` `src/lisp/core/persistence.lisp:154`
+2. 新生児（`trades=0` or `last_bt_time未設定`）はprune対象外とするガードを追加する。`src/lisp/school/school-pruning.lisp:49`
+3. Breeder経由の新規は `require-bt` を明示し、BT未実施のまま生存/淘汰されないようにする。`src/lisp/school/school-breeder.lisp:169` `src/lisp/school/school-kb.lisp:166`
+4. `report-source-drift` の警告をEvolution Reportに追加して運用に露出させる。`src/lisp/school/school-db-stats.lisp:63` `src/lisp/school/school-narrative.lisp:236`
+5. 0.00のOOSを“未検証”として再リクエストする。`src/lisp/school/school-validation.lisp:266`
