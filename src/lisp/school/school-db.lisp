@@ -149,6 +149,26 @@
                    (first target))
            error-msg (get-universal-time) (rest target))))
 
+(defun %coerce-int (v)
+  (cond
+    ((numberp v) (truncate v))
+    ((stringp v) (ignore-errors (parse-integer v)))
+    (t nil)))
+
+(defun fetch-oos-queue-stats ()
+  "Return plist: :pending :errors :oldest-age :oldest-requested-at."
+  (handler-case
+      (progn
+        (ignore-errors (init-db))
+        (let* ((pending (or (execute-single "SELECT count(*) FROM oos_queue WHERE status != 'error'") 0))
+               (errors (or (execute-single "SELECT count(*) FROM oos_queue WHERE status = 'error'") 0))
+               (oldest-raw (execute-single "SELECT MIN(requested_at) FROM oos_queue WHERE status != 'error'"))
+               (oldest (and oldest-raw (%coerce-int oldest-raw)))
+               (age (and oldest (- (get-universal-time) oldest))))
+          (list :pending pending :errors errors :oldest-requested-at oldest :oldest-age age)))
+    (error (e)
+      (list :error (format nil "~a" e)))))
+
 (defun %parse-rank-safe (rank-str)
   "Safely parse rank string from DB. Returns rank and valid-p."
   (when (and rank-str (stringp rank-str))

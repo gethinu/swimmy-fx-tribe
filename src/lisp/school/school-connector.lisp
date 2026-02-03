@@ -83,7 +83,9 @@
         (progn
           (setf *last-report-time* now) ;; Claim execution first
           (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
-          (swimmy.school::notify-evolution-report))
+          (swimmy.school::notify-evolution-report)
+          (when (fboundp 'swimmy.school::write-oos-status-file)
+            (ignore-errors (swimmy.school::write-oos-status-file :reason "scheduled"))))
         (when (= (mod now 60) 0) ;; Log every minute only
           (format t "[CONNECTOR] ⏳ Report cooldown: ~ds remaining~%" 
                   (- +report-interval+ (- now *last-report-time*)))))))

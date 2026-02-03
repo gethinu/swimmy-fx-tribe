@@ -216,7 +216,8 @@
                                         (> (strategy-creation-time s) one-day-ago))) 
                                  all)))
     (let ((top-snippet (build-top-candidates-snippet all))
-          (cpcv-snippet (build-cpcv-status-snippet)))
+          (cpcv-snippet (build-cpcv-status-snippet))
+          (oos-snippet (oos-metrics-summary-line)))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -244,6 +245,8 @@ Current status of the autonomous strategy generation pipeline.
 
 ~a
 
+~a
+
 ⚙️ System Status
 ✅ Evolution Daemon Active
 ✅ Native Lisp Orchestration (V28)
@@ -255,8 +258,9 @@ Current status of the autonomous strategy generation pipeline.
             new-recruits
             graveyard
             cpcv-snippet
+            oos-snippet
             top-snippet
-            (format-timestamp (get-universal-time))))))
+            (format-timestamp (get-universal-time)))))) 
 
 (defun write-evolution-report-files (report)
   "Persist the Evolution Factory Report to local files."

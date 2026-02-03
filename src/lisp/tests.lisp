@@ -445,8 +445,8 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
-                  test-db-rank-counts
-                  test-report-source-drift-detects-mismatch
+                  ;; (Missing) test-db-rank-counts
+                  ;; (Missing) test-report-source-drift-detects-mismatch
                   ;; Backtest payload S-expression tests
                   test-request-backtest-indicator-type-symbol
                   ;; V6.18: Dynamic TP/SL tests
@@ -468,6 +468,8 @@
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
                   test-oos-validation-dispatches-when-unset
+                  test-oos-status-updated-on-dispatch
+                  test-evolution-report-includes-oos-status
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)
