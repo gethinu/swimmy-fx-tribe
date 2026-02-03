@@ -145,6 +145,16 @@
       ;; Throttle if a recent non-error request is still pending
       ((and age (<= age *oos-request-interval*) (not (and (stringp last-status) (string= last-status "error"))))
       (format t "[OOS] ⏳ Request throttled for ~a (age ~ds)~%" name age)
+      (let ((data (jsown:new-js
+                    ("request_id" last-id)
+                    ("oos_kind" "a-rank")
+                    ("status" "throttled")
+                    ("age_sec" age))))
+        (swimmy.core::emit-telemetry-event "oos.throttled"
+          :service "school"
+          :severity "info"
+          :correlation-id last-id
+          :data data))
       nil)
       (t
        (setf req-id (or last-id (swimmy.core:generate-uuid)))
@@ -155,12 +165,31 @@
                (request-backtest strat :suffix "-OOS" :request-id req-id)
                (%oos-metric-inc (if last-id :retry :sent))
                (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a)~%" name status req-id)
+               (let ((data (jsown:new-js
+                             ("request_id" req-id)
+                             ("oos_kind" "a-rank")
+                             ("status" status))))
+                 (swimmy.core::emit-telemetry-event "oos.requested"
+                   :service "school"
+                   :severity "info"
+                   :correlation-id req-id
+                   :data data))
                (ignore-errors (write-oos-status-file :reason status))
                req-id)
            (error (e)
              (%oos-failure-inc :send-failure)
              (record-oos-error name req-id (format nil "~a" e))
              (format t "[OOS] ❌ Failed to dispatch OOS for ~a (~a)~%" name e)
+             (let ((data (jsown:new-js
+                           ("request_id" req-id)
+                           ("oos_kind" "a-rank")
+                           ("status" "error")
+                           ("error" (format nil "~a" e)))))
+               (swimmy.core::emit-telemetry-event "oos.dispatch_failed"
+                 :service "school"
+                 :severity "error"
+                 :correlation-id req-id
+                 :data data))
              nil)))))))
 
 (defun handle-oos-backtest-result (name metrics)
@@ -182,6 +211,18 @@
           (%oos-latency-record (getf metrics :oos-latency)))
         (upsert-strategy strat)
         (format t "[OOS] 📥 ~a OOS Sharpe=~,2f (req ~a)~%" name sharpe req-id)
+        (let* ((latency (getf metrics :oos-latency))
+               (data (jsown:new-js
+                       ("request_id" req-id)
+                       ("oos_kind" "a-rank")
+                       ("status" "received"))))
+          (when latency
+            (setf (jsown:val data "latency_sec") latency))
+          (swimmy.core::emit-telemetry-event "oos.result"
+            :service "school"
+            :severity "info"
+            :correlation-id req-id
+            :data data))
         ;; Attempt promotion if core metrics are already strong enough
         (when (meets-a-rank-criteria strat)
           (if (>= sharpe *oos-min-sharpe*)
