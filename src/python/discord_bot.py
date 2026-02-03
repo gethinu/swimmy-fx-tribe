@@ -18,6 +18,7 @@ import os
 import json
 from datetime import datetime
 from pathlib import Path
+from sexp_utils import load_sexp_alist
 
 # Bot configuration - token MUST be set via environment variable
 TOKEN = os.environ.get("SWIMMY_DISCORD_BOT_TOKEN")
@@ -38,7 +39,7 @@ def resolve_base_dir() -> Path:
 BASE_DIR = str(resolve_base_dir())
 SWIMMY_QUERY_FILE = os.path.join(BASE_DIR, ".opus", "query.txt")
 SWIMMY_RESPONSE_FILE = os.path.join(BASE_DIR, ".opus", "response.txt")
-SWIMMY_STATUS_FILE = os.path.join(BASE_DIR, ".opus", "live_status.json")
+SWIMMY_STATUS_FILE = os.path.join(BASE_DIR, ".opus", "live_status.sexp")
 
 # Singleton check
 import fcntl
@@ -77,8 +78,7 @@ def load_status():
     global status_cache
     try:
         if os.path.exists(SWIMMY_STATUS_FILE):
-            with open(SWIMMY_STATUS_FILE, "r") as f:
-                status_cache = json.load(f)
+            status_cache = load_sexp_alist(SWIMMY_STATUS_FILE)
     except Exception as e:
         print(f"Could not load status: {e}")
 

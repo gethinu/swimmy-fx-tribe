@@ -192,6 +192,8 @@
    #:get-time-string
    #:get-date-string
    #:safe-read-sexp
+   #:write-sexp-atomic
+   #:read-sexp-file
    
    ;; Logger
    #:log-info

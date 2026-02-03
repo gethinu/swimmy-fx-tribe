@@ -171,7 +171,8 @@
   "OOS validation should dispatch a backtest when no OOS Sharpe is set."
   (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
          (created-file nil)
-         (tmp-db (format nil "data/memory/test-oos-dispatch-~a.db" (get-universal-time))))
+         (tmp-db (format nil "/tmp/swimmy-test-~a.db" (get-universal-time)))
+         (swimmy.school::*oos-pending* (make-hash-table :test 'equal)))
     ;; Ensure data fixture exists with one valid row
     (unless (probe-file data-path)
       (ensure-directories-exist data-path)

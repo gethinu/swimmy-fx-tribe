@@ -4,8 +4,8 @@ report_status.py
 ================
 Generates a status report of the Swimmy system.
 Reads from:
-- data/backtest_cache.json (Strategy Performance)
-- data/system_metrics.json (System Health)
+- data/backtest_cache.sexp (Strategy Performance)
+- data/system_metrics.sexp (System Health)
 
 Outputs:
 - Total Strategies
@@ -14,7 +14,6 @@ Outputs:
 - Count by Category/Clan
 """
 
-import json
 import os
 import sys
 from datetime import datetime, timezone, timedelta
@@ -31,21 +30,38 @@ def resolve_base_dir() -> Path:
             return parent
     return here.parent
 
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from sexp_utils import load_sexp_alist, load_sexp_list
+
 # Paths
-BASE_DIR = str(resolve_base_dir())
-BACKTEST_CACHE = os.path.join(BASE_DIR, "data", "backtest_cache.json")
-METRICS_FILE = os.path.join(BASE_DIR, "data", "system_metrics.json")
+BACKTEST_CACHE = BASE_DIR / "data" / "backtest_cache.sexp"
+METRICS_FILE = BASE_DIR / "data" / "system_metrics.sexp"
 
 
-def load_json(path):
-    if not os.path.exists(path):
-        return [] if "cache" in path else {}
+def load_backtest_cache(path):
+    path = Path(path)
+    if not path.exists():
+        return []
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        return load_sexp_list(str(path))
     except Exception as e:
         print(f"❌ Error loading {path}: {e}")
         return []
+
+
+def load_system_metrics(path):
+    path = Path(path)
+    if not path.exists():
+        return {}
+    try:
+        return load_sexp_alist(str(path))
+    except Exception as e:
+        print(f"❌ Error loading {path}: {e}")
+        return {}
 
 
 def format_timestamp(ts):
@@ -61,7 +77,7 @@ def main():
     print("===================================")
 
     # 1. System Metrics
-    metrics = load_json(METRICS_FILE)
+    metrics = load_system_metrics(METRICS_FILE)
     if metrics:
         uptime = metrics.get("uptime_seconds", 0)
         u_str = str(timedelta(seconds=uptime))
@@ -72,7 +88,7 @@ def main():
         print("⚠️  System metrics not available.")
 
     # 2. Strategy Performance
-    cache = load_json(BACKTEST_CACHE)
+    cache = load_backtest_cache(BACKTEST_CACHE)
     if not cache:
         print("\n⚠️  No backtest data found.")
         return

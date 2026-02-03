@@ -6,7 +6,7 @@
 (defvar *backtest-cache* (make-hash-table :test 'equal)
   "In-memory cache of backtest results. Key: STRATEGY-NAME, Value: RESULT-PLIST")
 
-(defvar *backtest-cache-file* "data/backtest_cache.json"
+(defvar *backtest-cache-file* "data/backtest_cache.sexp"
   "Path to the persistent backtest cache file.")
 
 (defvar *backtest-cache-validity* (* 24 3600)
@@ -49,34 +49,35 @@
   "Load backtest results from disk."
   (handler-case
       (when (probe-file *backtest-cache-file*)
-        (let ((content (uiop:read-file-string *backtest-cache-file*)))
-          (when (> (length content) 0)
-            (let ((json (jsown:parse content)))
-              (clrhash *backtest-cache*)
-              (dolist (obj json)
-                (let ((name (jsown:val obj "name"))
-                      (timestamp (jsown:val obj "timestamp"))
-                      (result (jsown:val obj "result")))
+        (let* ((sexp (swimmy.core:read-sexp-file *backtest-cache-file* :package :swimmy.school))
+               (entries (and (listp sexp) (cdr (assoc 'entries sexp)))))
+          (when (listp entries)
+            (clrhash *backtest-cache*)
+            (dolist (entry entries)
+              (let ((name (cdr (assoc 'name entry)))
+                    (timestamp (cdr (assoc 'timestamp entry)))
+                    (result (cdr (assoc 'result entry))))
+                (when name
                   (setf (gethash name *backtest-cache*)
-                        (list :timestamp timestamp :result result))))
-              (format t "[BACKTEST] 📂 Loaded ~d cached results.~%" (hash-table-count *backtest-cache*))))))
+                        (list :timestamp timestamp :result result)))))
+            (format t "[BACKTEST] 📂 Loaded ~d cached results.~%" (hash-table-count *backtest-cache*)))))
     (error (e)
       (format t "[BACKTEST] ⚠️ Failed to load cache: ~a~%" e))))
 
 (defun save-backtest-cache ()
   "Save backtest results to disk."
   (handler-case
-      (let ((list nil))
+      (let ((entries nil))
         (maphash (lambda (k v)
-                   (push (jsown:new-js
-                           ("name" k)
-                           ("timestamp" (getf v :timestamp))
-                           ("result" (getf v :result)))
-                         list))
+                   (push `((name . ,k)
+                           (timestamp . ,(getf v :timestamp))
+                           (result . ,(getf v :result)))
+                         entries))
                  *backtest-cache*)
-        (ensure-directories-exist *backtest-cache-file*)
-        (with-open-file (s *backtest-cache-file* :direction :output :if-exists :supersede)
-          (write-string (jsown:to-json list) s)))
+        (swimmy.core:write-sexp-atomic
+         *backtest-cache-file*
+         `((schema_version . 1)
+           (entries . ,(nreverse entries)))))
     (error (e)
       (format t "[BACKTEST] ❌ Failed to save cache: ~a~%" e))))
 

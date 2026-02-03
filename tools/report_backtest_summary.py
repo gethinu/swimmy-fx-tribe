@@ -6,12 +6,11 @@ Generates a performance report based on the latest backtest results.
 Identifies S-Rank and SR-Rank candidates and sends a digest to Discord.
 """
 
-import zmq
-import json
 import os
 import sys
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import zmq
+from datetime import datetime, timezone, timedelta
 
 
 def _env_int(key: str, default: int) -> int:
@@ -34,11 +33,17 @@ def resolve_base_dir() -> Path:
             return parent
     return here.parent
 
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from sexp_utils import load_sexp_list
+
 # Configuration
 ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
-BASE_DIR = str(resolve_base_dir())
-ENV_FILE = os.path.join(BASE_DIR, ".env")
-BACKTEST_CACHE = os.path.join(BASE_DIR, "data", "backtest_cache.json")
+ENV_FILE = str(BASE_DIR / ".env")
+BACKTEST_CACHE = BASE_DIR / "data" / "backtest_cache.sexp"
 
 
 def load_env():
@@ -55,12 +60,12 @@ def load_env():
     return env_vars
 
 
-def load_json(path):
-    if not os.path.exists(path):
+def load_backtest_cache(path):
+    path = Path(path)
+    if not path.exists():
         return []
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        return load_sexp_list(str(path))
     except Exception as e:
         print(f"❌ Error loading {path}: {e}")
         return []
@@ -78,7 +83,7 @@ def main():
         sys.exit(1)
 
     # Load Backtest Data
-    cache = load_json(BACKTEST_CACHE)
+    cache = load_backtest_cache(BACKTEST_CACHE)
     if not cache:
         print("⚠️ No backtest data found.")
         return
