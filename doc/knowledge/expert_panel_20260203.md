@@ -2,59 +2,59 @@
 
 **Date:** 2026-02-03
 **Leader:** Elon Musk
-**Trigger:** /expert-panel 意見ください（OOSログ追加とOOS送信状況レポート出力の方針レビュー）
+**Trigger:** 旧データ完全移行（A: オフライン一括移行）設計レビュー
 
 ## 🏛️ 常設顧問の意見
-### Taleb: 
-- いまの案は「見える化」止まりで、リスク管理には足りない。*oos_queue* に `status` と `last_error` があるのに運用指標に出ていないのは“事故の芽”を見逃す設計（`src/lisp/school/school-db.lisp:95-154`）。
-- 失敗統計が `run-rank-evaluation` 開始でリセットされるため、日次レポートの数値が“その日の全体像”にならない（`src/lisp/school/school-rank-system.lisp:342-351`、`src/lisp/school/school-validation.lisp:49-53`）。リスクは累積で見るべき。
+### Taleb:
+- 「戦略だけ」移行は危険。`trade_logs` と `oos_queue` を落とせば運用の監査と回復力が死ぬ（`src/lisp/school/school-db.lisp:59-103`）。
+- 自動マイグレーションが `#S` 件数<100 で走る設計は“後戻り爆弾”。スワップ直後に再移行されるリスクを遮断しろ（`src/lisp/school/school-db.lisp:6-118`）。
+- 構造体変更の互換性注意が出ているのに、移行設計に「互換性検証」が無いのは自殺行為（`doc/owners_guide.md:38-41`）。
 
 ### Graham:
-- まず「死んでいるコード」をつなげ。`oos-metrics-summary-line` は定義済みなのにレポートに使われていない（`src/lisp/school/school-narrative.lisp:200-259` と `:289-304`）。Option1は正解だが、それだけ。
-- Option3はスコープ過大。やるならOption1に“最小の可観測性”を足すだけで十分。
+- いまの案は実装が重い。既に `INSERT OR REPLACE` で戦略を“正しい形式”に書き直す経路がある。それを使わないのは無駄（`src/lisp/school/school-db.lisp:218-249`）。
+- `safe-read-sexp` と `read-from-string` が混在している時点で設計がぶれている。移行の最小単位は「既存の正規経路に乗せること」だけでいい（`src/lisp/school/school-db.lisp:334-357`、`src/lisp/school/school-db.lisp:388-393`）。
 
 ### Naval:
-- 既にエクスポート済みの機能を“レバレッジ”しろ。`oos-metrics-summary-line` がパッケージに公開されているのに使っていないのは無駄（`src/lisp/packages-school.lisp:249-258`）。
-- 1回のレポート生成でOOS健康状態が出るなら、運用コストはほぼゼロになる。まずそこ。
+- レバレッジ不足。S式互換性は既に仕様に書いてある（`doc/owners_guide.md:52-54`）。ここを守るなら、変換ロジックは“1箇所”で良い。
+- 新しい移行スクリプトより、既存のアップサート関数を再利用した方が運用コストが低い（`src/lisp/school/school-db.lisp:218-249`）。
 
 ### Simons:
-- “OOS”が2種類ある。`-OOS` はAランク検証（`src/lisp/school/school-validation.lisp:94-155`）、`_OOS` はWFVで別系統（`src/lisp/school/school-backtest.lisp:287-311`）。同じ「OOS」として集計すると誤解を生む。
-- レイテンシは `request_id` マッチ時にしか記録されない（`src/lisp/core/message-dispatcher.lisp:188-211`）。この前提をレポートに明記しないと数字が“ゼロでも成功”に見える。
+- 指標を落とすとランクが崩壊する。`sharpe`/`profit_factor` などは表カラムにも構造体にも存在する。移行で 0 に潰す設計は統計的に致命傷（`src/lisp/school/school-db.lisp:13-36`、`src/lisp/dsl.lisp:155-166`）。
+- `rank` は `:RANK` 文字列として保存される。ここを落とすと昇格/降格が初期化される（`src/lisp/school/school-db.lisp:241`）。
 
 ## 💻 技術パネルの意見
 ### Fowler:
-- レポート構築は `school-narrative.lisp` で完結すべき。`oos-metrics-summary-line` を単に挿入するだけでも“設計と実装の断絶”は解消できる（`src/lisp/school/school-narrative.lisp:200-259` と `:289-304`）。
-- ただし“スニペット関数”として `build-oos-status-snippet` のように分け、`build-cpcv-status-snippet` と同等の構造にしないとメンテ性が落ちる（`src/lisp/school/school-narrative.lisp:191-198`）。
+- 移行ロジックは DB 層に閉じるべき。`init-db` と `migrate-existing-data` があるのに、別途スクリプトを作るのは設計の逸脱（`src/lisp/school/school-db.lisp:9-118`、`src/lisp/school/school-db.lisp:407-419`）。
+- スキーマの重複定義（swap_history が二重）を見る限り、設計の“正本”が曖昧だ。移行手順には schema の出典を明記せよ（`src/lisp/school/school-db.lisp:73-93`）。
 
 ### Hickey:
-- `validate-for-a-rank-promotion` は既に状態をログ出力している。`run-oos-validation` へログを増やすとノイズ化しやすい（`src/lisp/school/school-validation.lisp:202-223`）。
-- 追加するなら“今あるログでは分からない事実”だけに限定し、単純な重複ログは避けろ。
+- 手書きマッピングは壊れる。`strategy` はスロットが多く、追加も頻繁。plist→`make-strategy` の手動対応は必ず抜ける（`src/lisp/dsl.lisp:155-188`）。
+- 読み込みは `safe-read-sexp` で統一しろ。現状は `read-from-string` が混ざっており、安全性と互換性の両方を毀損している（`src/lisp/school/school-db.lisp:334-357`、`src/lisp/school/school-db.lisp:388-393`）。
 
 ### Uncle Bob:
-- レポートにOOS行を出すならテストで保証すべき。`generate-evolution-report` は出力仕様の中心なのにテストがない（`src/lisp/school/school-narrative.lisp:200-259`）。
-- 追加した行の存在を検証する単体テストを作らないと、次の変更で簡単に消える。
+- テストがないのは論外。移行は“壊れたら全損”の機能なのに、自動テストが存在しない（`src/lisp/tests.lisp:1-48`）。
+- 少なくとも「plist を入れると `strategy-p` が真になる」「全件が `#S` に再シリアライズされる」テストを追加すべきだ。
 
 ## 🚀 ビジョナリーの意見
 ### Ng:
-- データ不正の理由は `validate-oos-data-file` で詳細に分かっているのに、集計は `:data-invalid` 一括（`src/lisp/school/school-validation.lisp:65-92` と `:176-188`）。
-- “なぜ落ちたか”の内訳がないなら、品質改善の学習ができない。理由の簡易集計（missing/empty/schema）くらいは持て。
+- 学習/評価の指標が 0 に戻れば、A/S の育成が止まる。`oos_sharpe` と `cpcv` 指標は必ず保持しろ（`src/lisp/school/school-db.lisp:34-36`、`src/lisp/dsl.lisp:183-186`）。
 
 ### López de Prado:
-- WFV（20%最新OOS）とAランクOOS（30%）は設計上まったく別物。混同した健全性指標は“過剰最適化の見逃し”につながる（`src/lisp/school/school-backtest.lisp:287-311`、`src/lisp/school/school-validation.lisp:12-16`）。
-- “OOS”という語をレポート上で区別しないのは統計的に危険。
+- 変換不能データの“隔離”は正しいが、隔離率と理由が見えないと、統計的にバイアスが増える。カテゴリ・方向・ランクの分布を保持したまま移行しないと過剰最適化を助長する（`src/lisp/school/school-db.lisp:26-31`、`src/lisp/dsl.lisp:164-176`）。
 
 ### Gene Kim:
-- 送信状況はDiscord日次レポートに乗せるべき。運用はレポートを見て判断する（`src/lisp/school/school-narrative.lisp:272-281`）。
-- ただのログは埋もれる。レポートに「pending数」「最古経過」「error件数」くらいは出せ。
+- ランブックに移行手順が無い。運用で再現できない改善は“存在しない”のと同じ（`doc/runbook.md:1-60`）。
+- systemd停止/起動手順と検証観測点（ログ/件数/レポート）を明文化しろ。
 
 ## 🚀 Musk's Decision (Final)
-> 「Option1で即日つなげる。ただし“運用で使える”レベルまで最小限強化しろ。OOSの健全性はDiscordレポートで一目で分かるべきだ。Option3は今はやらない。」
+> 「A案はやる。ただし“完全移行”と言うなら、戦略以外のテーブルも含めること、そして正規のアップサート経路で再シリアライズすること。テストとランブックが無い状態で本番移行は許可しない。」
 
 ## Actionable Items
-1. `oos-metrics-summary-line` を Evolution Report に組み込み、OOSの送信/成功/失敗/レイテンシを日次で可視化する（`src/lisp/school/school-narrative.lisp:200-259`、`src/lisp/school/school-narrative.lisp:289-304`）。
-2. `oos_queue` の pending数・最古経過・error件数を1行で出す“軽量ヘルス行”を追加し、Discordレポートに載せる（`src/lisp/school/school-db.lisp:95-154`、`src/lisp/school/school-narrative.lisp:272-281`）。
-3. OOS失敗理由の簡易内訳（missing/empty/schema）を集計し、レポートに表示できるようにする（`src/lisp/school/school-validation.lisp:65-92`）。
-4. Evolution ReportにOOS行が含まれることを検証する単体テストを追加する（`src/lisp/school/school-narrative.lisp:200-259`）。
+1. `strategies` だけでなく `trade_logs` と `oos_queue` を含む全テーブルの移行方針を明文化する（`src/lisp/school/school-db.lisp:59-103`）。
+2. 変換は既存のアップサート経路（`format nil "~s" strat`）を必ず使い、手書きマッピングは最小限にする（`src/lisp/school/school-db.lisp:218-249`）。
+3. 移行時は自動マイグレーションが走らないことを保証する（`src/lisp/school/school-db.lisp:6-118`）。
+4. 移行テストを追加し、旧 plist → `strategy-p` 成功 と `#S` 再シリアライズを自動検証する（`src/lisp/tests.lisp:1-48`）。
+5. runbook に停止/バックアップ/検証/復旧の手順を追記する（`doc/runbook.md:1-60`）。
 
 ---
 
