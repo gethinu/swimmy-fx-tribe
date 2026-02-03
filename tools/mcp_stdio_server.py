@@ -1,6 +1,9 @@
 import json
+import sys
+from pathlib import Path
 
 from mcp_gateway import handle_backtest_submit, handle_trade_submit
+from mcp_gateway_observer import read_status_file
 
 
 def read_jsonrpc_message(stream):
@@ -64,4 +67,41 @@ def handle_jsonrpc_request(req, api_key=None):
         payload.pop("api_key", None)
         res = handle_backtest_submit(payload)
         return jsonrpc_result(req["id"], res)
+    if method == "system.status":
+        return jsonrpc_result(req["id"], load_system_status())
+    if method == "system.metrics":
+        return jsonrpc_result(req["id"], load_system_metrics())
+    if method == "backtest.status":
+        data = load_system_status()["backtest"]
+        data["mode"] = "latest"
+        return jsonrpc_result(req["id"], data)
     return jsonrpc_error(req.get("id"), -32601, "Method not found")
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from sexp_utils import load_sexp_alist
+
+
+def load_system_status(swimmy_status_path="/tmp/swimmy_status", backtest_status_path=None):
+    backtest_status_path = backtest_status_path or str(
+        BASE_DIR / "data" / "reports" / "backtest_status.txt"
+    )
+    swimmy = read_status_file(swimmy_status_path) if Path(swimmy_status_path).exists() else {}
+    backtest = (
+        read_status_file(backtest_status_path) if Path(backtest_status_path).exists() else {}
+    )
+    return {
+        "swimmy": {k.lower(): v for k, v in swimmy.items()},
+        "backtest": {k.lower(): v for k, v in backtest.items()},
+    }
+
+
+def load_system_metrics(metrics_path=None):
+    metrics_path = metrics_path or str(BASE_DIR / "data" / "system_metrics.sexp")
+    if not Path(metrics_path).exists():
+        return {}
+    return load_sexp_alist(metrics_path)

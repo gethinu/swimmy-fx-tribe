@@ -1,11 +1,15 @@
 import io
 import json
+import tempfile
+from pathlib import Path
 
 from mcp_stdio_server import (
     read_jsonrpc_message,
     write_jsonrpc_message,
     validate_jsonrpc_request,
     handle_jsonrpc_request,
+    load_system_status,
+    load_system_metrics,
 )
 
 
@@ -53,6 +57,25 @@ def test_backtest_submit_returns_request_id():
     assert "request_id" in res["result"]
 
 
+def test_system_status_reads_files():
+    with tempfile.TemporaryDirectory() as d:
+        backtest = Path(d) / "backtest_status.txt"
+        backtest.write_text("timestamp: 1\ncount: 2\n", encoding="utf-8")
+        swimmy_status = Path(d) / "swimmy_status"
+        swimmy_status.write_text("TIME: now\nTICKS: 3\n", encoding="utf-8")
+        data = load_system_status(str(swimmy_status), str(backtest))
+        assert data["backtest"]["count"] == "2"
+        assert data["swimmy"]["ticks"] == "3"
+
+
+def test_system_metrics_reads_sexp():
+    with tempfile.TemporaryDirectory() as d:
+        metrics = Path(d) / "system_metrics.sexp"
+        metrics.write_text("((uptime_seconds . 10) (strategy_count . 2))", encoding="utf-8")
+        data = load_system_metrics(str(metrics))
+        assert data["uptime_seconds"] == 10
+
+
 def main():
     test_read_jsonrpc_message()
     test_write_jsonrpc_message()
@@ -60,6 +83,8 @@ def main():
     test_auth_missing()
     test_trade_disabled()
     test_backtest_submit_returns_request_id()
+    test_system_status_reads_files()
+    test_system_metrics_reads_sexp()
 
 
 if __name__ == "__main__":
