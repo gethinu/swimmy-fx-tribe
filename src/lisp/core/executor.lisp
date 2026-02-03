@@ -50,8 +50,20 @@
   (let ((now (get-universal-time)))
     (when (> (- now *last-heartbeat-sent*) 30)
       (pulse-check) ; Added Pulse Check here
-      (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
-        (pzmq:send *cmd-publisher* (jsown:to-json (make-heartbeat-message))))
+      (let* ((heartbeat-msg (make-heartbeat-message))
+             (hb-id (ignore-errors (jsown:val heartbeat-msg "id")))
+             (hb-status (ignore-errors (jsown:val heartbeat-msg "status")))
+             (hb-source (ignore-errors (jsown:val heartbeat-msg "source"))))
+        (swimmy.core::emit-telemetry-event "heartbeat.sent"
+          :service "executor"
+          :severity "info"
+          :correlation-id hb-id
+          :data (jsown:new-js
+                  ("heartbeat_id" hb-id)
+                  ("status" hb-status)
+                  ("source" hb-source)))
+        (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
+          (pzmq:send *cmd-publisher* (jsown:to-json heartbeat-msg))))
       ;; V43.0: Position Status Report every 5 minutes (10 heartbeats)
       (when (and (= (mod (floor now 30) 10) 0)
                  (boundp 'swimmy.school::*warrior-allocation*)

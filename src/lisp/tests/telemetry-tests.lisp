@@ -90,3 +90,26 @@
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function 'swimmy.persistence:move-strategy) orig-move)
       (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))))
+
+(deftest test-heartbeat-emits-telemetry
+  (let ((events nil)
+        (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+        (orig-make (symbol-function 'swimmy.core::make-heartbeat-message)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (declare (ignore data))
+                  (push event-type events)))
+          (setf (symbol-function 'swimmy.core::make-heartbeat-message)
+                (lambda (&optional status)
+                  (declare (ignore status))
+                  (jsown:new-js
+                    ("type" swimmy.core:+MSG-HEARTBEAT+)
+                    ("id" "HB-1"))))
+          (let ((swimmy.executor::*last-heartbeat-sent* 0)
+                (swimmy.executor::*cmd-publisher* nil))
+            (swimmy.executor::send-heartbeat))
+          (assert-true (find "heartbeat.sent" events :test #'string=)))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function 'swimmy.core::make-heartbeat-message) orig-make))))
