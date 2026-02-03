@@ -113,3 +113,9 @@
           (assert-true (find "heartbeat.sent" events :test #'string=)))
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function 'swimmy.core::make-heartbeat-message) orig-make))))
+
+(deftest test-atomic-write-json
+  (let ((path "data/memory/atomic-test.json"))
+    (swimmy.core::atomic-write-text path "{\"ok\":true}")
+    (with-open-file (in path)
+      (assert-equal "{\"ok\":true}" (read-line in nil nil)))))

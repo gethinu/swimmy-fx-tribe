@@ -21,17 +21,16 @@
 
 (defun save-telemetry-json (metrics)
   "Writes metrics to JSON file for external dashboards"
-  (with-open-file (stream *telemetry-file* 
-                          :direction :output 
-                          :if-exists :supersede
-                          :if-does-not-exist :create)
-    (format stream "{~%")
-    (format stream "  \"timestamp\": ~d,~%" (get-universal-time))
-    (format stream "  \"heap_used_bytes\": ~d,~%" (getf metrics :heap))
-    (format stream "  \"heap_used_mb\": ~,2f,~%" (/ (getf metrics :heap) 1024.0 1024.0))
-    (format stream "  \"strategy_count\": ~d,~%" (getf metrics :strategy-count))
-    (format stream "  \"uptime_seconds\": ~d~%" (- (get-universal-time) swimmy.globals::*system-start-time*))
-    (format stream "}~%")))
+  (let ((content
+          (with-output-to-string (stream)
+            (format stream "{~%")
+            (format stream "  \"timestamp\": ~d,~%" (get-universal-time))
+            (format stream "  \"heap_used_bytes\": ~d,~%" (getf metrics :heap))
+            (format stream "  \"heap_used_mb\": ~,2f,~%" (/ (getf metrics :heap) 1024.0 1024.0))
+            (format stream "  \"strategy_count\": ~d,~%" (getf metrics :strategy-count))
+            (format stream "  \"uptime_seconds\": ~d~%" (- (get-universal-time) swimmy.globals::*system-start-time*))
+            (format stream "}~%"))))
+    (swimmy.core::atomic-write-text *telemetry-file* content)))
 
 
 (defun check-memory-health (heap-bytes)
@@ -55,5 +54,14 @@
     
     ;; 2. JSON Dump (Observability)
     (save-telemetry-json metrics)
+    (swimmy.core::emit-telemetry-event "metrics.snapshot"
+      :service "school"
+      :severity "info"
+      :correlation-id (format nil "~a" (get-universal-time))
+      :data (jsown:new-js
+              ("heap_used_bytes" heap)
+              ("heap_used_mb" (/ heap 1024.0 1024.0))
+              ("strategy_count" strat-count)
+              ("uptime_seconds" (- (get-universal-time) swimmy.globals::*system-start-time*))))
     
     (values metrics alert)))
