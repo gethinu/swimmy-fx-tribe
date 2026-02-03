@@ -98,6 +98,7 @@
 (defparameter *qual-backtest-start-time* 0)
 
 (defparameter *sent-data-ids* (make-hash-table :test 'equal) "V50.9: Track Data IDs sent to Guardian")
+(defparameter *phase2-last-end-unix* 0 "Last Phase2 end_time (Unix seconds) used for backtests.")
 
 (defparameter *backtest-results-buffer* nil "DEPRECATED (Legacy fallback)")
 (defparameter *expected-backtest-count* 0 "DEPRECATED (Legacy fallback)")

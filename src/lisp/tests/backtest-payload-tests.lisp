@@ -176,3 +176,39 @@
       (assert-true (field 'candles_file payload) "Expected candles_file present")
       (assert-true (field 'start_time payload) "Expected start_time present")
       (assert-true (field 'end_time payload) "Expected end_time present"))))
+
+(deftest test-request-backtest-v2-emits-phase-range-id
+  "request-backtest-v2 should emit phase and range_id when provided"
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+        (orig-fetch (symbol-function 'swimmy.school::fetch-swap-history)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (setf (symbol-function 'swimmy.school::fetch-swap-history)
+                (lambda (symbol &key start-ts end-ts)
+                  (declare (ignore symbol start-ts end-ts))
+                  nil))
+          (let ((strat (swimmy.school:make-strategy
+                        :name "Test-BT-V2-PHASE"
+                        :indicators '((sma 5) (sma 20))
+                        :sl 0.001
+                        :tp 0.002
+                        :volume 0.01
+                        :indicator-type "sma"
+                        :timeframe 60
+                        :symbol "USDJPY")))
+            (swimmy.school::request-backtest-v2 strat
+                                                :start-date "2021.01.01"
+                                                :end-date "2021.12.31"
+                                                :phase "phase2"
+                                                :range-id "P2")))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
+    (assert-not-nil captured "Expected V2 backtest payload to be sent")
+    (let ((payload (parse-sexpr-payload captured)))
+      (assert-equal "phase2" (field 'phase payload) "Expected phase=phase2")
+      (assert-equal "P2" (field 'range_id payload) "Expected range_id=P2"))))

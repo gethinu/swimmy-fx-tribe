@@ -406,7 +406,7 @@
                     (declare (ignore reason))
                     (setf called (list strat rank))
                     rank))
-            (swimmy.school::handle-v2-result "Phase2_2021" (list :sharpe 1.0)))
+            (swimmy.school::handle-v2-result "Phase2_P2" (list :sharpe 1.0)))
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
     (assert-equal :A (second called) "Expected A-RANK promotion")))
 
@@ -488,6 +488,7 @@
                   test-oos-validation-dispatches-when-unset
                   test-oos-status-updated-on-dispatch
                   test-evolution-report-includes-oos-status
+                  test-evolution-report-includes-phase2-end-time
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)

@@ -137,6 +137,7 @@
    #:*initial-backtest-done*
    #:*backtest-webhook-url*
    #:*sent-data-ids*  ;; V50.9: Track sent data IDs to prevent spam
+   #:*phase2-last-end-unix*
    
    ;; Dream/Evolution State
    #:*dream-cycle*

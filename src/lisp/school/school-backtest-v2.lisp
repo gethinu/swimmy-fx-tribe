@@ -21,14 +21,19 @@
 ;;; CORE BACKTEST V2 (With Date Range)
 ;;; =========================================================
 
-(defun request-backtest-v2 (strat &key start-date end-date (symbol nil))
+(defun request-backtest-v2 (strat &key start-date end-date start-ts end-ts phase range-id (symbol nil))
   "Request backtest with specific date range.
    start-date/end-date: 'YYYY.MM.DD' strings."
   (let* ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY"))
          (tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
          (timeframe (get-tf-minutes tf-slot))
-         (start-ts (if start-date (- (parse-date-to-timestamp start-date) 2208988800) nil)) ; Lisp Time -> Unix
-         (end-ts (if end-date (- (parse-date-to-timestamp end-date) 2208988800) nil)))      ; 2208988800 = 1970 offset
+         (start-ts (or start-ts
+                       (and start-date (- (parse-date-to-timestamp start-date) 2208988800)))) ; Lisp Time -> Unix
+         (end-ts (or end-ts
+                     (and end-date (- (parse-date-to-timestamp end-date) 2208988800)))))      ; 2208988800 = 1970 offset
+
+    (when (and end-ts phase (string= phase "phase2"))
+      (setf swimmy.globals:*phase2-last-end-unix* end-ts))
     
     (format t "[BT-V2] 🚀 Requesting ~a Range: ~a - ~a (~a)~%" 
             (strategy-name strat) (or start-date "ALL") (or end-date "ALL") actual-symbol)
@@ -38,7 +43,7 @@
     ;; Actually, Guardian caches by 'data_id'.
     ;; If we use the same file, we can use "USDJPY_M1" as data_id.
     
-    (let* ((strategy-alist (strategy-to-alist strat :name-suffix (format nil "_~a" (or start-date "FULL"))))
+    (let* ((strategy-alist (strategy-to-alist strat :name-suffix (format nil "_~a" (or range-id start-date "FULL"))))
            (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
            ;; V31.0: Fetch historical swaps for more accurate PnL
            (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
@@ -54,6 +59,8 @@
         ;; Add Range if present
         (when start-ts (push `(start_time . ,start-ts) payload))
         (when end-ts (push `(end_time . ,end-ts) payload))
+        (when phase (push `(phase . ,phase) payload))
+        (when range-id (push `(range_id . ,range-id) payload))
 
         ;; Send S-expression payload to Backtest Service
         (let ((*print-case* :downcase)
@@ -71,22 +78,22 @@
 
 (defun get-screening-range ()
   (getf *backtest-range-1* :range)) 
-  ;; Wait, *backtest-range-1* is (:start "2006.01.01" :end "2020.12.31") logic
+  ;; Wait, *backtest-range-1* is (:start "2011.01.01" :end "2020.12.31") logic
   ;; Let's access the plist directly.
 
 (defun run-phase-1-screening (strat)
-  "Phase 1: Screening (2006-2020).
+  "Phase 1: Screening (2011-2020).
    Gate: Sharpe > 0.1, PF > 1.0."
   (let ((start (getf *backtest-range-1* :start))
         (end (getf *backtest-range-1* :end)))
-    (request-backtest-v2 strat :start-date start :end-date end)))
+    (request-backtest-v2 strat :start-date start :end-date end :phase "phase1" :range-id "P1")))
 
 (defun run-phase-2-validation (strat)
   "Phase 2: Validation (2021-Present).
-   Gate: Sharpe > 0.5."
+   Gate: Sharpe > 0.3."
   (let ((start (getf *backtest-range-2* :start))
-        (end (getf *backtest-range-2* :end)))
-    (request-backtest-v2 strat :start-date start :end-date end)))
+        (end-ts (- (get-universal-time) 2208988800)))
+    (request-backtest-v2 strat :start-date start :end-ts end-ts :phase "phase2" :range-id "P2")))
 
 ;;; =========================================================
 ;;; LOGIC HANDLER (Async Results)
@@ -100,8 +107,8 @@
   "Handle results from V2 backtests based on suffix."
   (cond
     ;; Phase 1 Result
-    ((search "_2006" strat-name)
-     (let* ((base-name (subseq strat-name 0 (search "_2006" strat-name)))
+    ((search "_P1" strat-name)
+     (let* ((base-name (subseq strat-name 0 (search "_P1" strat-name)))
             (strat (find-strategy base-name))
             (sharpe (getf result :sharpe))
             (pf (getf result :profit-factor)))
@@ -128,8 +135,8 @@
                    (send-to-graveyard strat "Phase1 Screening Failed (V2)")))))))
 
     ;; Phase 2 Result
-    ((search "_2021" strat-name)
-     (let* ((base-name (subseq strat-name 0 (search "_2021" strat-name)))
+    ((search "_P2" strat-name)
+     (let* ((base-name (subseq strat-name 0 (search "_P2" strat-name)))
             (strat (find-strategy base-name))
             (sharpe (float (or (getf result :sharpe) 0.0))))
        (format t "[BT-V2] 📊 Phase 2 Result for ~a: Sharpe=~,2f~%" strat-name sharpe)
