@@ -1,0 +1,14 @@
+[Unit]
+Description=Swimmy MCP Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+ExecStart=/usr/bin/python3 /home/swimmy/swimmy/tools/mcp_gateway.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
