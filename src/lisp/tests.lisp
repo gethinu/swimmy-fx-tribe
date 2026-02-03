@@ -435,6 +435,8 @@
                   test-internal-process-msg-backtest-request-id-bound
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
+                  test-normalize-legacy-plist->strategy
+                  test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
                   test-telemetry-sexp

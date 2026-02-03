@@ -72,6 +72,7 @@
                 (:file "src/lisp/school/school-db-stats")
                 (:file "src/lisp/school/school-db-strategy-query")
                 (:file "src/lisp/school/school-db-swap")
+                (:file "src/lisp/school/school-sexp-migration")
                 (:file "src/lisp/school/school-ast") ; Phase 23: Native AST Protocol
                 (:file "src/lisp/school/school-cemetery")
                 (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
@@ -161,6 +162,7 @@
                (:file "src/lisp/tests/telemetry-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
+               (:file "src/lisp/tests/strategy-migration-tests")
                
                (:file "src/lisp/tests/school-split-tests")
                 (:file "src/lisp/tests/stress-test-kb")
