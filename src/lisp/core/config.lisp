@@ -342,6 +342,7 @@
 
 (defparameter *telemetry-enabled* t)
 (defparameter *telemetry-schema-version* 1)
+(defparameter *telemetry-max-bytes* (* 10 1024 1024))
 
 ;;; ==========================================
 ;;; WFV SCHEDULING

@@ -119,3 +119,17 @@
     (swimmy.core::atomic-write-text path "{\"ok\":true}")
     (with-open-file (in path)
       (assert-equal "{\"ok\":true}" (read-line in nil nil)))))
+
+(deftest test-telemetry-rotation
+  (let* ((path "data/memory/telemetry-rotate.jsonl")
+         (orig swimmy.core::*log-file-path*)
+         (orig-max swimmy.core::*telemetry-max-bytes*))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*log-file-path* path)
+          (setf swimmy.core::*telemetry-max-bytes* 10)
+          (swimmy.core::log-telemetry "rotate.test"
+            :service "core" :severity "info" :correlation-id "CID" :data (list :x 1))
+          (assert-true (probe-file (format nil "~a.1" path))))
+      (setf swimmy.core::*log-file-path* orig)
+      (setf swimmy.core::*telemetry-max-bytes* orig-max))))

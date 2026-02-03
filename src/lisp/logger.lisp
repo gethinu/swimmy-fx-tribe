@@ -42,11 +42,26 @@
             (write-line (jsown:to-json entry) out)))
       (error (e) (format t "[LOG_ERROR] Failed to write log: ~a~%" e)))))
 
+(defun maybe-rotate-telemetry-log (path)
+  (when (and (boundp '*telemetry-max-bytes*) *telemetry-max-bytes*)
+    (when (probe-file path)
+      (with-open-file (in path :direction :input)
+        (when (> (file-length in) *telemetry-max-bytes*)
+          (let* ((target (merge-pathnames path))
+                 (target-name (namestring target))
+                 (rotated (format nil "~a.1" target-name)))
+            (when (probe-file rotated)
+              (delete-file rotated))
+            (rename-file target rotated)
+            (with-open-file (out target :direction :output :if-exists :supersede :if-does-not-exist :create)
+              (declare (ignore out)))))))))
+
 (defun log-telemetry (event-type &key service severity correlation-id data)
   "Append telemetry entry to JSON log file. Returns T on success, NIL on failure."
   (when *enable-json-log*
     (multiple-value-bind (value err)
         (ignore-errors
+          (maybe-rotate-telemetry-log *log-file-path*)
           (with-open-file (out *log-file-path*
                                :direction :output
                                :if-exists :append
@@ -63,6 +78,7 @@
                            ("correlation_id" (or correlation-id "unknown"))
                            ("data" (or data (jsown:new-js))))))
               (write-line (jsown:to-json entry) out)))
+          (maybe-rotate-telemetry-log *log-file-path*)
           t)
       (when err
         (format t "[LOG_ERROR] Failed to write telemetry: ~a~%" err))
