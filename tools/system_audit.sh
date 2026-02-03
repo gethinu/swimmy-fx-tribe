@@ -7,6 +7,12 @@ LOG_FILE="$LOG_DIR/system_audit.log"
 
 mkdir -p "$LOG_DIR"
 
+if [[ -f "$ROOT/tools/sbcl_env.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/tools/sbcl_env.sh"
+fi
+SWIMMY_SBCL_DYNAMIC_SPACE_MB="${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-4096}"
+
 usage() {
   cat <<'USAGE'
 Usage: tools/system_audit.sh [--help]
@@ -43,6 +49,30 @@ summary() {
   echo "Summary: FAIL=$fail_count WARN=$warn_count"
 }
 
+run_warn() {
+  local label="$1"
+  shift
+  log "[STEP] $label"
+  if "$@"; then
+    log "[OK] $label"
+  else
+    log "[WARN] $label failed"
+    mark_warn
+  fi
+}
+
+run_fail() {
+  local label="$1"
+  shift
+  log "[STEP] $label"
+  if "$@"; then
+    log "[OK] $label"
+  else
+    log "[FAIL] $label failed"
+    mark_fail
+  fi
+}
+
 log "[AUDIT] Starting system audit (system scope)"
 
 # systemctl status (best effort)
@@ -77,6 +107,14 @@ else
     mark_fail
   fi
 fi
+
+run_warn "Dashboard" python3 "$ROOT/tools/dashboard.py"
+run_warn "Notifier log" tail -n 200 "$ROOT/logs/notifier.log"
+run_warn "Notifier direct test" python3 "$ROOT/tools/test_notifier_direct.py"
+run_warn "Broadcast routing" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/broadcast_test_v2.lisp"
+run_warn "Evolution report" tail -n 120 "$ROOT/data/reports/evolution_factory_report.txt"
+run_fail "Integrity audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/integrity_audit.lisp"
+run_fail "Deep audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/deep_audit.lisp"
 
 summary
 
