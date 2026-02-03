@@ -22,6 +22,9 @@ const PURGE_BARS: usize = 131_400;
 /// Embargo period in bars (1.5 months of M1 = ~65,700) - Expert Panel V47.1
 const EMBARGO_BARS: usize = 65_700;
 
+/// Minimum bars required for any CPCV segment
+const MIN_RANGE_BARS: usize = 1000;
+
 /// A single block of time-series data
 #[derive(Clone)]
 pub struct DataBlock {
@@ -114,6 +117,124 @@ pub fn apply_purge(train_end: usize, test_start: usize, _purge_bars: usize) -> u
     }
 }
 
+fn ranges_from_blocks(blocks: &[DataBlock], indices: &[usize]) -> Vec<(usize, usize)> {
+    let mut ranges: Vec<(usize, usize)> = indices
+        .iter()
+        .filter_map(|idx| blocks.get(*idx))
+        .map(|b| (b.start_row, b.end_row))
+        .collect();
+    ranges.sort_by_key(|(start, _)| *start);
+    merge_ranges(ranges)
+}
+
+fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    ranges.sort_by_key(|(start, _)| *start);
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in ranges {
+        if start >= end {
+            continue;
+        }
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 {
+                if end > last.1 {
+                    last.1 = end;
+                }
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+    merged
+}
+
+fn exclude_range(range: (usize, usize), exclude: (usize, usize)) -> Vec<(usize, usize)> {
+    let (start, end) = range;
+    let (ex_start, ex_end) = exclude;
+    if ex_end <= start || ex_start >= end {
+        return vec![(start, end)];
+    }
+    let mut out = Vec::new();
+    if ex_start > start {
+        out.push((start, ex_start));
+    }
+    if ex_end < end {
+        out.push((ex_end, end));
+    }
+    out
+}
+
+fn apply_purge_embargo_to_ranges(
+    train_ranges: Vec<(usize, usize)>,
+    test_ranges: &[(usize, usize)],
+    purge_bars: usize,
+    embargo_bars: usize,
+) -> Vec<(usize, usize)> {
+    let mut current = train_ranges;
+    for (test_start, test_end) in test_ranges {
+        let exclude_start = test_start.saturating_sub(purge_bars);
+        let exclude_end = test_end.saturating_add(embargo_bars);
+        let exclude = (exclude_start, exclude_end);
+        let mut next = Vec::new();
+        for range in current {
+            next.extend(exclude_range(range, exclude));
+        }
+        current = next;
+    }
+    merge_ranges(current)
+}
+
+fn combine_results(results: &[BacktestResult]) -> BacktestResult {
+    let mut total_trades: i32 = 0;
+    let mut total_wins: i32 = 0;
+    let mut total_losses: i32 = 0;
+    let mut total_pnl: f64 = 0.0;
+    let mut weighted_sharpe: f64 = 0.0;
+    let mut weighted_sortino: f64 = 0.0;
+    let mut weighted_max_dd: f64 = 0.0;
+    let mut weighted_pf: f64 = 0.0;
+    let mut weighted_adj_sharpe: f64 = 0.0;
+    let mut weighted_ci_lower: f64 = 0.0;
+
+    for r in results {
+        let w = r.trades.max(1) as f64;
+        total_trades += r.trades;
+        total_wins += r.wins;
+        total_losses += r.losses;
+        total_pnl += r.pnl;
+        weighted_sharpe += r.sharpe * w;
+        weighted_sortino += r.sortino * w;
+        weighted_max_dd += r.max_drawdown * w;
+        weighted_pf += r.profit_factor * w;
+        weighted_adj_sharpe += r.adjusted_sharpe * w;
+        weighted_ci_lower += r.sharpe_ci_lower * w;
+    }
+
+    let weight = total_trades.max(1) as f64;
+    let win_rate = if total_trades > 0 {
+        total_wins as f64 / total_trades as f64
+    } else {
+        0.0
+    };
+
+    BacktestResult {
+        strategy_name: results
+            .first()
+            .map(|r| r.strategy_name.clone())
+            .unwrap_or_else(|| "cpcv_strat".to_string()),
+        trades: total_trades,
+        wins: total_wins,
+        losses: total_losses,
+        pnl: total_pnl,
+        sharpe: weighted_sharpe / weight,
+        sortino: weighted_sortino / weight,
+        max_drawdown: weighted_max_dd / weight,
+        win_rate,
+        profit_factor: weighted_pf / weight,
+        adjusted_sharpe: weighted_adj_sharpe / weight,
+        sharpe_ci_lower: weighted_ci_lower / weight,
+    }
+}
+
 /// Run CPCV validation on a strategy
 /// Returns aggregate statistics across all paths
 pub fn run_cpcv_validation(
@@ -144,26 +265,68 @@ pub fn run_cpcv_validation(
     // Run backtests in parallel for each path
     let results: Vec<CpcvPathResult> = paths.par_iter()
         .filter_map(|(train_idx, test_idx)| {
-            // For now, run backtest on test blocks only
-            // TODO: Implement full train/test split with parameter optimization
-            let test_start = blocks[*test_idx.iter().min().unwrap()].start_row;
-            let test_end = blocks[*test_idx.iter().max().unwrap()].end_row;
-            
-            match run_backtest_range(candles_path, strategy_params, test_start, test_end) {
-                Ok(bt) => Some(CpcvPathResult {
-                    train_blocks: train_idx.clone(),
-                    test_blocks: test_idx.clone(),
-                    sharpe: bt.sharpe,
-                    profit_factor: bt.profit_factor,
-                    win_rate: bt.win_rate,
-                    max_dd: bt.max_drawdown,
-                    trades: bt.trades,
-                }),
-                Err(e) => {
-                    eprintln!("[CPCV] Path {:?}/{:?} failed: {}", train_idx, test_idx, e);
-                    None
+            let test_ranges = ranges_from_blocks(&blocks, test_idx);
+            if test_ranges.is_empty() {
+                eprintln!("[CPCV] Path {:?}/{:?} skipped: empty test ranges", train_idx, test_idx);
+                return None;
+            }
+
+            let train_ranges = ranges_from_blocks(&blocks, train_idx);
+            let purged_train = apply_purge_embargo_to_ranges(
+                train_ranges,
+                &test_ranges,
+                PURGE_BARS,
+                EMBARGO_BARS,
+            );
+            let train_bars: usize = purged_train
+                .iter()
+                .map(|(start, end)| end.saturating_sub(*start))
+                .sum();
+            if train_bars < MIN_RANGE_BARS {
+                eprintln!(
+                    "[CPCV] Path {:?}/{:?} skipped: insufficient train bars after purge/embargo ({})",
+                    train_idx,
+                    test_idx,
+                    train_bars
+                );
+                return None;
+            }
+
+            let mut test_results = Vec::new();
+            for (start, end) in &test_ranges {
+                let bars = end.saturating_sub(*start);
+                if bars < MIN_RANGE_BARS {
+                    eprintln!(
+                        "[CPCV] Path {:?}/{:?} skipped: test range too small ({} bars)",
+                        train_idx,
+                        test_idx,
+                        bars
+                    );
+                    return None;
+                }
+                match run_backtest_range(candles_path, strategy_params, *start, *end) {
+                    Ok(bt) => test_results.push(bt),
+                    Err(e) => {
+                        eprintln!("[CPCV] Path {:?}/{:?} failed: {}", train_idx, test_idx, e);
+                        return None;
+                    }
                 }
             }
+
+            if test_results.is_empty() {
+                return None;
+            }
+
+            let bt = combine_results(&test_results);
+            Some(CpcvPathResult {
+                train_blocks: train_idx.clone(),
+                test_blocks: test_idx.clone(),
+                sharpe: bt.sharpe,
+                profit_factor: bt.profit_factor,
+                win_rate: bt.win_rate,
+                max_dd: bt.max_drawdown,
+                trades: bt.trades,
+            })
         })
         .collect();
     
@@ -302,5 +465,31 @@ mod tests {
     fn test_path_generation() {
         let paths = generate_cpcv_paths(5, 2);
         assert_eq!(paths.len(), 10); // 5C2 = 10
+    }
+
+    #[test]
+    fn test_apply_purge_embargo_trims_train_ranges() {
+        let blocks = create_blocks(1000, 5);
+        let train_idx = vec![0, 1, 3, 4];
+        let test_idx = vec![2];
+        let train_ranges = ranges_from_blocks(&blocks, &train_idx);
+        let test_ranges = ranges_from_blocks(&blocks, &test_idx);
+
+        let purged = apply_purge_embargo_to_ranges(train_ranges, &test_ranges, 50, 30);
+
+        assert_eq!(purged, vec![(0, 350), (630, 1000)]);
+    }
+
+    #[test]
+    fn test_apply_purge_embargo_can_empty_train_ranges() {
+        let blocks = create_blocks(300, 3);
+        let train_idx = vec![0, 2];
+        let test_idx = vec![1];
+        let train_ranges = ranges_from_blocks(&blocks, &train_idx);
+        let test_ranges = ranges_from_blocks(&blocks, &test_idx);
+
+        let purged = apply_purge_embargo_to_ranges(train_ranges, &test_ranges, 150, 150);
+
+        assert!(purged.is_empty());
     }
 }
