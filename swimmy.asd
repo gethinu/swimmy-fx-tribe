@@ -68,6 +68,10 @@
                 
                 ;; SCHOOL
                 (:file "src/lisp/school/school-db")
+                (:file "src/lisp/school/school-db-oos")
+                (:file "src/lisp/school/school-db-stats")
+                (:file "src/lisp/school/school-db-strategy-query")
+                (:file "src/lisp/school/school-db-swap")
                 (:file "src/lisp/school/school-ast") ; Phase 23: Native AST Protocol
                 (:file "src/lisp/school/school-cemetery")
                 (:file "src/lisp/school/school-constants") ; Phase 3: Magic Numbers
@@ -91,6 +95,8 @@
                (:file "src/lisp/school/school-ecosystem")
                (:file "src/lisp/school/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
                (:file "src/lisp/school/school-evolution") ; Genetic & LLM Generation (Dreamer)
+               (:file "src/lisp/school/school-evolution-llm")
+               (:file "src/lisp/school/school-evolution-orchestration")
                
                (:file "src/lisp/school/school-adaptation") ; Adaptation Engine (Phase 4)
                (:file "src/lisp/school/school-scoring")    ; Scoring Engine (Phase 5)
