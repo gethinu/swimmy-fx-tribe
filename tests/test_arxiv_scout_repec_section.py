@@ -62,7 +62,7 @@ class TestRepecSection(unittest.TestCase):
                 "score": 6,
                 "relevance": "MEDIUM",
                 "link": "https://d.repec.org/n?u=RePEc:nbr:nberwo:34588&r=&r=mon",
-                "categories": ["q-fin.RM"],
+                "categories": ["cs.LG"],
             },
             {
                 "id": "2602.00001",
@@ -80,7 +80,8 @@ class TestRepecSection(unittest.TestCase):
         arxiv_scout.send_summary_to_discord(papers)
 
         contents = [p["content"] for p in dummy_requests.payloads]
-        self.assertTrue(any("# 📚 RePEc Picks" in c for c in contents))
+        self.assertTrue(any("# 📚 RePEc Picks - トレーディング" in c for c in contents))
+        self.assertTrue(any("# 📚 RePEc Picks - AI/ML" in c for c in contents))
 
 
 if __name__ == "__main__":
