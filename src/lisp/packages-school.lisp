@@ -180,6 +180,9 @@
    #:evaluate-new-strategy
    #:apply-backtest-result
     #:upsert-strategy
+   #:get-db-rank-counts
+   #:get-library-rank-counts
+   #:report-source-drift
    #:run-b-rank-culling
    #:can-breed-p
    #:run-legend-breeding

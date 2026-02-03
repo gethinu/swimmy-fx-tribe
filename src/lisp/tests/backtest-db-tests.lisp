@@ -198,3 +198,58 @@
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name IN (?,?)" name-a name-b))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-db-rank-counts
+  "DB rank counts should reflect stored ranks (including graveyard and unranked)."
+  (let ((tmp-db (format nil "/tmp/swimmy-ranks-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (dolist (spec '(("R-S" :S) ("R-A" :A) ("R-B" :B) ("R-G" :GRAVEYARD) ("R-N" nil)))
+              (destructuring-bind (name rank) spec
+                (swimmy.school::upsert-strategy
+                 (make-strategy :name name :sharpe 0.2 :symbol "USDJPY" :rank rank))))
+            (let* ((counts (swimmy.school::get-db-rank-counts))
+                   (s (getf counts :s))
+                   (a (getf counts :a))
+                   (b (getf counts :b))
+                   (g (getf counts :graveyard))
+                   (u (getf counts :unranked))
+                   (total (getf counts :total))
+                   (active (getf counts :active)))
+              (assert-true (= 1 s) "S count")
+              (assert-true (= 1 a) "A count")
+              (assert-true (= 1 b) "B count")
+              (assert-true (= 1 g) "Graveyard count")
+              (assert-true (= 1 u) "Unranked count")
+              (assert-true (= 5 total) "Total count")
+              (assert-true (= 4 active) "Active excludes graveyard")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-report-source-drift-detects-mismatch
+  "Drift check should flag mismatched DB/KB/Library counts."
+  (let* ((tmp-db (format nil "/tmp/swimmy-drift-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-drift-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; DB: one graveyard, one active
+            (swimmy.school::upsert-strategy (make-strategy :name "D-A" :sharpe 0.2 :symbol "USDJPY" :rank :B))
+            (swimmy.school::upsert-strategy (make-strategy :name "D-G" :sharpe -0.2 :symbol "USDJPY" :rank :graveyard))
+            ;; KB: empty
+            (setf *strategy-knowledge-base* nil)
+            ;; Library: no graveyard files
+            (let ((warnings (swimmy.school::report-source-drift)))
+              (assert-true (> (length warnings) 0) "Drift warnings should be reported")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
