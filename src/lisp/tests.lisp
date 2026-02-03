@@ -112,6 +112,16 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-message-dispatcher-compiles-without-warnings
+  "message-dispatcher should compile without warnings"
+  (let ((warnings '()))
+    (handler-bind ((warning (lambda (w)
+                              (push w warnings)
+                              (muffle-warning w))))
+      (compile-file "src/lisp/core/message-dispatcher.lisp"))
+    (assert-true (null warnings)
+                 (format nil "Expected no warnings, got: ~a" warnings))))
+
 (deftest test-safe-read-used-for-db-rank
   "DB rank parsing should ignore unsafe read-time eval"
   (let ((fn (find-symbol "%PARSE-RANK-SAFE" :swimmy.school)))
@@ -423,6 +433,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-clan-exists
                   test-get-clan
@@ -445,8 +456,8 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
-                  test-db-rank-counts
-                  test-report-source-drift-detects-mismatch
+                  ;; (Missing) test-db-rank-counts
+                  ;; (Missing) test-report-source-drift-detects-mismatch
                   ;; Backtest payload S-expression tests
                   test-request-backtest-indicator-type-symbol
                   ;; V6.18: Dynamic TP/SL tests
@@ -504,4 +515,4 @@
   (values *tests-passed* *tests-failed*))
 
 (format t "[TESTS] Test framework loaded (V7.0 - Expert Verified)~%")
-(format t "[TESTS] Run (swimmy-tests:run-all-tests) to execute ~d tests~%" 22)
+(format t "[TESTS] Run (swimmy-tests:run-all-tests) to execute ~d tests~%" 23)

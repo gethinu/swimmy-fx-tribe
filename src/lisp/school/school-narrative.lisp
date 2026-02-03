@@ -260,9 +260,7 @@ Current status of the autonomous strategy generation pipeline.
 
 (defun write-evolution-report-files (report)
   "Persist the Evolution Factory Report to local files."
-  (let* ((memo-report (coerce (remove-if (lambda (ch) (> (char-code ch) 127)) report) 'string))
-         (paths (list (list "data/reports/evolution_factory_report.txt" report)
-                      (list "doc/memo5.txt" memo-report))))
+  (let ((paths (list (list "data/reports/evolution_factory_report.txt" report))))
     (dolist (entry paths)
       (destructuring-bind (path content) entry
         (ensure-directories-exist path)

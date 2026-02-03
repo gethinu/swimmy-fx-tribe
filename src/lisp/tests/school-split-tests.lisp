@@ -277,6 +277,56 @@
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
+(deftest test-oos-status-updated-on-dispatch
+  "OOS dispatch should update oos_status.txt via writer."
+  (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
+         (created-file nil)
+         (tmp-db (format nil "data/memory/test-oos-status-~a.db" (get-universal-time))))
+    (unless (probe-file data-path)
+      (ensure-directories-exist data-path)
+      (with-open-file (s data-path :direction :output :if-does-not-exist :create :if-exists :supersede)
+        (write-line "timestamp,open,high,low,close,volume" s)
+        (write-line "1700000000,145.1,145.2,145.0,145.15,1000" s))
+      (setf created-file t))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let* ((write-count 0)
+                    (had-write (fboundp 'swimmy.school::write-oos-status-file))
+                    (orig-write (and had-write (symbol-function 'swimmy.school::write-oos-status-file)))
+                    (orig-request (symbol-function 'swimmy.school::request-backtest)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::write-oos-status-file)
+                            (lambda (&rest _args) (declare (ignore _args)) (incf write-count) t))
+                      (setf (symbol-function 'swimmy.school::request-backtest)
+                            (lambda (&rest _args) (declare (ignore _args)) t))
+                      (let ((strat (cl-user::make-strategy :name "UnitTest-OOS-Status"
+                                                           :symbol "USDJPY"
+                                                           :oos-sharpe nil)))
+                        (swimmy.school::run-oos-validation strat)
+                        (assert-true (> write-count 0) "OOS status should update on dispatch")))
+                 (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+                 (if had-write
+                     (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)
+                     (fmakunbound 'swimmy.school::write-oos-status-file))))))
+        (swimmy.core:close-db-connection)
+        (when created-file (delete-file data-path))
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-evolution-report-includes-oos-status
+  "Evolution report should include OOS status line."
+  (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+    (unwind-protect
+         (progn
+           (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                 (lambda (&rest _args) (declare (ignore _args)) nil))
+           (let ((report (swimmy.school::generate-evolution-report)))
+             (assert-true (search "OOS sent:" report) "Report should contain OOS status line")))
+      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+
 (deftest test-backtest-dead-letter-replay
   "Malformed BACKTEST_RESULT should go to DLQ and be replayable."
   (let ((tmp-db (format nil "data/memory/test-dlq-~a.db" (get-universal-time))))
