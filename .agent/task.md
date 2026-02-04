@@ -76,3 +76,8 @@
 - [ ] `test-backtest-v2-uses-alist`を仕様準拠に修正（`(numberp (cadr ...))`等）: `src/lisp/tests.lisp`
 - [ ] Backtest V2の`Option`表現が仕様と一致していることを再確認・必要なら追記: `docs/llm/INTERFACES.md`
 - [ ] `STATE`に「Backtest V2の`Option`表現はリスト形式が正本」と明記: `docs/llm/STATE.md`
+
+## Expert Panel 2026-02-04 (Brain Bootstrap Decision)
+- [ ] run.sh に `brain.lisp` 存在チェックとフェイルファストの明確なエラーを追加: `run.sh`
+- [ ] systemd の ExecStart と owners_guide の運用手順を一致させる（正本を明記）: `/etc/systemd/system/swimmy-brain.service`, `doc/owners_guide.md`
+- [ ] `brain.lisp` の維持/廃止を決定し、`doc/SYSTEM_ARCHITECTURE.md` の記述を更新: `doc/SYSTEM_ARCHITECTURE.md`

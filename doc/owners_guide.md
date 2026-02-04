@@ -217,6 +217,34 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 ./tools/monitor_evolution.sh
 ```
 
+> [!IMPORTANT]
+> **運用注記（systemd状態と実稼働の不一致）**  
+> この環境では **systemd --user が inactive でもプロセスが稼働している**ケースがあります。  
+> そのまま再起動すると二重起動でポート競合が起きるため、**systemd状態と実稼働を必ず突き合わせてから操作**してください。
+> 
+> 判定フロー:
+> 1. systemd状態を確認（system / user 両方）
+> 2. プロセス稼働を確認
+> 3. ポートlistenを確認
+> 4. ログで稼働確認
+> 
+> 例:
+> ```bash
+> # 1) systemd状態（system / user 両方）
+> sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
+> systemctl --user status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
+> 
+> # 2) プロセス実体
+> ps aux | rg -i "sbcl|guardian|data_keeper|notifier|risk_gateway|backtest_service"
+> 
+> # 3) ポートlisten
+> ss -tulnp | rg "5555|5556|5557|5559|5560|5561|5562|5563|5580|5581"
+> 
+> # 4) 直近ログ（system / user）
+> sudo journalctl -n 50 -u swimmy-brain -u swimmy-guardian -u swimmy-school -u swimmy-data-keeper -u swimmy-notifier -u swimmy-backtest --no-pager
+> journalctl --user -n 50 -u swimmy-brain -u swimmy-guardian -u swimmy-school -u swimmy-data-keeper -u swimmy-notifier -u swimmy-backtest --no-pager
+> ```
+
 ---
 
 ## 🌊 Lisp Native Implementation (V46.0)
@@ -372,7 +400,8 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 - ✅ W1, D1, H4, H1, M30, M15, M5, M1 対応
 - ✅ 戦略名 (Comment) 対応
 - ✅ マルチカレンシー対応 (USDJPY, EURUSD, GBPUSD)
-- ✅ ZMQはS式（alist）を正本（ORDER_OPENは `instrument` + `side`）
+- ✅ コアZMQはS式（alist）を正本（ORDER_OPENは `instrument` + `side`）
+- ✅ 補助サービス境界（Data Keeper 5561 / Notifier 5562 / Risk Gateway 5563）はJSON
 
 **重要:**
 - `InpWSL_IP` は **空だと起動失敗**。MT5 EA の入力で必ず設定する。

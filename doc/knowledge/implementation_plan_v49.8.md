@@ -73,7 +73,7 @@
 | Rank | シンボル | 説明 |
 |------|---------|------|
 | B | `:B` | 初期審査通過 (Phase 1 BT クリア) |
-| A | `:A` | CPCV検証通過 (OOS耐性あり) |
+| A | `:A` | OOS検証通過 |
 | S | `:S` | 実弾許可 (The Elite) |
 | Graveyard | `:graveyard` | 廃棄・学習用データ |
 | Legend | `:legend` | 保護対象 (61戦略) |
@@ -88,9 +88,11 @@ graph TD
     B -->|Sharpe≥0.1| C[B-RANK]
     B -->|Fail| D[Graveyard]
     C -->|100戦略蓄積| E{Culling}
-    E -->|Top2/カテゴリ| F[A-RANK]
+    E -->|Top2/カテゴリ| F{OOS検証}
+    F -->|Sharpe≥0.3| AR[A-RANK]
+    F -->|Fail| C
     E -->|Others| D
-    F --> G{CPCV検証}
+    AR --> G{CPCV検証}
     G -->|Sharpe≥0.5| H[S-RANK]
     G -->|Fail| C
     
@@ -98,7 +100,7 @@ graph TD
     H --> I[ライブトレード]
     I -->|20トレード毎| J{Live Audit}
     J -->|0違反| I
-    J -->|1違反| F
+    J -->|1違反| AR
     J -->|2違反| C
     J -->|3違反| D
     
@@ -432,7 +434,9 @@ graph TD
     BT -->|Fail| GY[Graveyard]
     
     BRANK -->|100戦略| CULL{淘汰}
-    CULL -->|Top2| ARANK[A-RANK]
+    CULL -->|Top2| OOS{OOS検証}
+    OOS -->|Sharpe≥0.3| ARANK[A-RANK]
+    OOS -->|Fail| BRANK
     
     ARANK --> CPCV{CPCV}
     CPCV -->|Sharpe≥0.5| SRANK[S-RANK]
@@ -567,4 +571,3 @@ graph TD
 - **Service Isolation**: `school-scribe.lisp` (Async Block I/O).
 - **Broken Arrow**: `school-watchdog.lisp` (100ms Latency Monitor).
 - **DNA Verify**: `school-integrity.lisp` (SHA256 Pre-flight).
-
