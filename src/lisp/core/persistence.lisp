@@ -76,6 +76,16 @@
          (temp-path (merge-pathnames (format nil "~a.tmp" (pathname-name path)) path)))
     
     (ensure-directories-exist path)
+
+    ;; Preserve creation-time on re-save to avoid git noise and keep "new recruit"
+    ;; semantics stable (creation-time should mean "born", not "last saved").
+    (when (probe-file path)
+      (let ((existing (ignore-errors (load-strategy path))))
+        (when existing
+          (let ((existing-creation-time (ignore-errors (slot-value existing 'swimmy.school::creation-time))))
+            (when existing-creation-time
+              (setf (slot-value strategy-obj 'swimmy.school::creation-time)
+                    existing-creation-time))))))
     
     ;; 1. Write to Temp File
     (with-open-file (out temp-path :direction :output :if-exists :supersede)
