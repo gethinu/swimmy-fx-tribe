@@ -128,6 +128,9 @@
 (defparameter *deferred-flush-interval-sec* (env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 0)
   "Min seconds between deferred flushes. 0 means no interval.")
 
+(defparameter *backtest-csv-override* (getenv-or-dotenv "SWIMMY_BACKTEST_CSV_OVERRIDE")
+  "Optional override path for backtest CSV.")
+
 (defun zmq-connect-endpoint (port &optional (host *zmq-host*))
   "Build ZMQ connect endpoint."
   (format nil "tcp://~a:~d" host port))

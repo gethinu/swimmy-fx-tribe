@@ -22,6 +22,7 @@
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
+- **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
@@ -33,6 +34,7 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-04**: `SWIMMY_BACKTEST_CSV_OVERRIDE` でBacktestのCSV差し替えを許可する方針を明記。
 - **2026-02-04**: Backtest V2の`Option`表現（`timeframe`等）は空/1要素リストが正本と明記。
 - **2026-02-04**: `tools/system_audit.sh` と `tools/test_notifier_direct.py` で `.env` を自動読み込みする運用に統一。
 - **2026-02-04**: `tools/system_audit.sh` に `SUDO_CMD` で sudo 実行方法を上書きできる運用を追加（非対話 `sudo -n` 既定、必要時は対話式 `sudo`）。

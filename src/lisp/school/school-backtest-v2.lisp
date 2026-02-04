@@ -44,7 +44,10 @@
     ;; If we use the same file, we can use "USDJPY_M1" as data_id.
     
     (let* ((strategy-alist (strategy-to-alist strat :name-suffix (format nil "_~a" (or range-id start-date "FULL"))))
-           (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
+           (override swimmy.core::*backtest-csv-override*)
+           (data-file (if (and override (> (length override) 0))
+                          override
+                          (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
            ;; V31.0: Fetch historical swaps for more accurate PnL
            (swaps (fetch-swap-history actual-symbol :start-ts start-ts :end-ts end-ts)))
 

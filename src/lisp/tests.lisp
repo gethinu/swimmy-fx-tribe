@@ -770,6 +770,36 @@
       (setf swimmy.school::*deferred-flush-batch* orig-batch)
       (setf (symbol-function 'swimmy.school::request-backtest) orig-request))))
 
+(deftest test-backtest-uses-csv-override
+  "request-backtest should honor SWIMMY_BACKTEST_CSV_OVERRIDE when set"
+  (require :sb-posix)
+  (let* ((orig-env (uiop:getenv "SWIMMY_BACKTEST_CSV_OVERRIDE"))
+         (orig-override (and (boundp 'swimmy.core::*backtest-csv-override*)
+                             swimmy.core::*backtest-csv-override*))
+         (path "/tmp/swimmy-test.csv")
+         (captured nil)
+         (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (sb-posix:setenv "SWIMMY_BACKTEST_CSV_OVERRIDE" path 1)
+          (setf swimmy.core::*backtest-csv-override* path)
+          (with-open-file (s path :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (write-line "" s))
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (swimmy.school::request-backtest (swimmy.school:make-strategy :name "T" :symbol "USDJPY"))
+          (assert-true (and captured (search path captured))
+                       "payload should include override path"))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (ignore-errors (delete-file path))
+      (when orig-env
+        (sb-posix:setenv "SWIMMY_BACKTEST_CSV_OVERRIDE" orig-env 1))
+      (unless orig-env
+        (sb-posix:unsetenv "SWIMMY_BACKTEST_CSV_OVERRIDE"))
+      (setf swimmy.core::*backtest-csv-override* orig-override))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -962,6 +992,7 @@
                   test-backtest-send-throttles-when-pending-high
                   test-backtest-pending-count-decrements-on-recv
                   test-deferred-flush-respects-batch
+                  test-backtest-uses-csv-override
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
