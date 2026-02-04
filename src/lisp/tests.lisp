@@ -122,7 +122,9 @@
            (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
            (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
            (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
-                         (symbol-function 'swimmy.school::handle-v2-result))))
+                         (symbol-function 'swimmy.school::handle-v2-result)))
+           (orig-submit-count swimmy.globals::*backtest-submit-count*)
+           (orig-recv-count swimmy.main::*backtest-recv-count*))
       (unwind-protect
           (progn
             (setf (symbol-function 'swimmy.school:cache-backtest-result)
@@ -136,12 +138,15 @@
                     (lambda (&rest args) (declare (ignore args)) nil)))
             (setf swimmy.globals:*backtest-submit-last-id* "SUB-999")
             (setf swimmy.main::*backtest-recv-last-log* 0)
+            (setf swimmy.globals::*backtest-submit-count* 5)
+            (setf swimmy.main::*backtest-recv-count* 1)
             (funcall fn msg)
             (let ((content (with-open-file (s status-path :direction :input)
                              (let ((text (make-string (file-length s))))
                                (read-sequence text s)
                                text))))
               (assert-true (search "last_request_id: RID-123" content))
+              (assert-true (search "pending: 3" content))
               (assert-true (null (search "last_submit_id" content))
                            "Expected last_submit_id to be absent from backtest_status.txt")
               (assert-true (null (search "last_recv_id" content))
@@ -149,6 +154,8 @@
         (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
         (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
         (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (setf swimmy.globals::*backtest-submit-count* orig-submit-count)
+        (setf swimmy.main::*backtest-recv-count* orig-recv-count)
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
