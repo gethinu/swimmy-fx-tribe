@@ -60,3 +60,14 @@
 - [ ] DB/Library/KBドリフト検知をEvolution Reportに露出する: `src/lisp/school/school-db-stats.lisp`, `src/lisp/school/school-narrative.lisp`
 - [ ] OOS=0.00のキャッシュを「未検証扱い」に戻して再リクエストする: `src/lisp/school/school-validation.lisp`
 - [ ] ライフサイクル不変条件（旧ファイル削除/初回BT前にpruneしない）のテスト追加: `src/lisp/tests.lisp`
+
+## Expert Panel 2026-02-04 (CMD JSON Cleanup)
+- [ ] CMD送信のJSON残存箇所をS式化し、送信APIを統一: `src/lisp/school/school-stress.lisp`, `src/lisp/school/school-validation.lisp`, `src/lisp/school/school-strategy.lisp`, `src/lisp/school/school-founders.lisp`, `src/lisp/evolution.lisp`
+- [ ] CMD送信のJSON禁止を検知するテストを追加（回帰防止）: `src/lisp/tests.lisp`
+- [ ] 受信側のJSON許容を段階的に削除: `src/lisp/core/message-dispatcher.lisp`
+- [ ] 外部境界のJSON維持を明文化し、境界モジュールのみJSON許可を明記: `docs/llm/INTERFACES.md`, `src/lisp/core/discord.lisp`, `tools/mcp_gateway.py`
+
+## Expert Panel 2026-02-04 (Expert Panel Consultation Mode)
+- [ ] expert-panel ワークフローに mode（critique / consult）を追加し、注意事項を分離: `doc/archive/workflows/expert-panel.md`
+- [ ] 出力テンプレに「目的」「前提」「不確実性」を追加（相談モードのみ必須）: `doc/archive/workflows/expert-panel.md`
+- [ ] 相談モードでの2択/3択提案と対抗意見の必須化を明文化: `doc/archive/workflows/expert-panel.md`
