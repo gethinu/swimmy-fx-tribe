@@ -71,3 +71,8 @@
 - [ ] expert-panel ワークフローに mode（critique / consult）を追加し、注意事項を分離: `doc/archive/workflows/expert-panel.md`
 - [ ] 出力テンプレに「目的」「前提」「不確実性」を追加（相談モードのみ必須）: `doc/archive/workflows/expert-panel.md`
 - [ ] 相談モードでの2択/3択提案と対抗意見の必須化を明文化: `doc/archive/workflows/expert-panel.md`
+
+## Expert Panel 2026-02-04 (Backtest Option Format)
+- [ ] `test-backtest-v2-uses-alist`を仕様準拠に修正（`(numberp (cadr ...))`等）: `src/lisp/tests.lisp`
+- [ ] Backtest V2の`Option`表現が仕様と一致していることを再確認・必要なら追記: `docs/llm/INTERFACES.md`
+- [ ] `STATE`に「Backtest V2の`Option`表現はリスト形式が正本」と明記: `docs/llm/STATE.md`
