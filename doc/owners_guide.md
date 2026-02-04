@@ -222,6 +222,17 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 > この環境では **systemd --user が inactive でもプロセスが稼働している**ケースがあります。  
 > そのまま再起動すると二重起動でポート競合が起きるため、**systemd状態と実稼働を必ず突き合わせてから操作**してください。
 > 
+> **正本**: systemd(system) を正本とし、`systemctl --user` は診断用途のみ。  
+> **user unit 常用禁止**: 誤って起動した場合は停止・無効化してから system を再起動する。
+> 
+> 例（user unit の復旧）:
+> ```bash
+> systemctl --user stop swimmy-brain
+> systemctl --user disable swimmy-brain
+> sudo systemctl restart swimmy-brain
+> ss -tulnp | rg "5555|5556|5581"
+> ```
+> 
 > 判定フロー:
 > 1. systemd状態を確認（system / user 両方）
 > 2. プロセス稼働を確認
