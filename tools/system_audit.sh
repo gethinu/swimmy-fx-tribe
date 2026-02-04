@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$ROOT/logs"
 LOG_FILE="$LOG_DIR/system_audit.log"
+ENV_FILE="$ROOT/.env"
 
 mkdir -p "$LOG_DIR"
 
@@ -11,14 +12,45 @@ if [[ -f "$ROOT/tools/sbcl_env.sh" ]]; then
   # shellcheck disable=SC1091
   source "$ROOT/tools/sbcl_env.sh"
 fi
+
+load_env_file() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%$'\r'}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *"="* ]] && continue
+    local key="${line%%=*}"
+    local val="${line#*=}"
+    key="$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    key="${key#export }"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    val="$(printf '%s' "$val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    val="${val%\"}"
+    val="${val#\"}"
+    val="${val%\'}"
+    val="${val#\'}"
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=$val"
+    fi
+  done < "$env_file"
+}
+
+load_env_file "$ENV_FILE"
 SWIMMY_SBCL_DYNAMIC_SPACE_MB="${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-4096}"
+SUDO_CMD="${SUDO_CMD:-sudo -n}"
+# shellcheck disable=SC2206
+SUDO_CMD_ARR=($SUDO_CMD)
 
 usage() {
   cat <<'USAGE'
 Usage: tools/system_audit.sh [--help]
 Environment:
   DRY_RUN=1  Skip auto-repair steps
+  SUDO_CMD="sudo -n"  Override sudo invocation (e.g., "sudo" for interactive)
   SWIMMY_AUDIT_SERVICES="svc1 svc2"  Override default services
+  .env is auto-loaded (environment variables take precedence)
 USAGE
 }
 
@@ -76,9 +108,9 @@ run_fail() {
 log "[AUDIT] Starting system audit (system scope)"
 
 # systemctl status (best effort)
-if sudo -n true 2>/dev/null; then
+if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
   for svc in "${services[@]}"; do
-    if ! sudo systemctl status "$svc" >/dev/null 2>&1; then
+    if ! "${SUDO_CMD_ARR[@]}" systemctl status "$svc" >/dev/null 2>&1; then
       log "[WARN] service not healthy: $svc"
       mark_warn
     fi
@@ -92,15 +124,15 @@ fi
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
   log "[AUDIT] DRY_RUN=1; skipping auto-repair"
 else
-  if sudo -n true 2>/dev/null; then
+  if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
     log "[REPAIR] daemon-reload"
-    sudo systemctl daemon-reload || mark_fail
+    "${SUDO_CMD_ARR[@]}" systemctl daemon-reload || mark_fail
 
     for svc in "${services[@]}"; do
       log "[REPAIR] enable $svc"
-      sudo systemctl enable "$svc" || mark_fail
+      "${SUDO_CMD_ARR[@]}" systemctl enable "$svc" || mark_fail
       log "[REPAIR] restart $svc"
-      sudo systemctl restart "$svc" || mark_fail
+      "${SUDO_CMD_ARR[@]}" systemctl restart "$svc" || mark_fail
     done
   else
     log "[FAIL] sudo not available for auto-repair"

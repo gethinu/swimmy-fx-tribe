@@ -14,7 +14,7 @@
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
-- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。
+- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`.env` を自動読み込みして Discord 設定を拾う。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
@@ -28,6 +28,8 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-04**: `tools/system_audit.sh` と `tools/test_notifier_direct.py` で `.env` を自動読み込みする運用に統一。
+- **2026-02-04**: `tools/system_audit.sh` に `SUDO_CMD` で sudo 実行方法を上書きできる運用を追加（非対話 `sudo -n` 既定、必要時は対話式 `sudo`）。
 - **2026-02-03**: REQ_HISTORY の要求キーを `count` に統一（`volume` は廃止）。
 - **2026-02-03**: MT5系メッセージ（HISTORY/POSITIONS/SWAP_DATA/ORDER_ACK/TRADE_CLOSED）と管理コマンド（GET_POSITIONS/GET_SWAP/CLOSE_SHORT_TF）をINTERFACESに明記。
 - **2026-02-04**: 内部ZMQはS式のみ（JSON受理しない）に厳格化。ORDER_OPENは`action/symbol/lot`に固定。
