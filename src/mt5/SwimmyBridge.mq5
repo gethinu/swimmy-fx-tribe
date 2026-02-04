@@ -131,7 +131,9 @@ bool GetBoolFromSexp(string sexp, string key) {
    string raw;
    bool is_string = false;
    if(!FindSexpValue(sexp, key, raw, is_string)) return false;
-   string lowered = StringToLower(raw);
+   // MQL5 StringToLower mutates the string (returns bool), so don't assign its return value.
+   string lowered = raw;
+   StringToLower(lowered);
    if(lowered == "true" || lowered == "t" || lowered == "1") return true;
    if(lowered == "false" || lowered == "nil" || lowered == "0") return false;
    return false;

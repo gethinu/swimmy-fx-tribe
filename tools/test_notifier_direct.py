@@ -1,11 +1,46 @@
 #!/usr/bin/env python3
-import zmq
 import json
 import os
 import sys
+import zmq
+from pathlib import Path
+
+
+# Port 5562 is where tools/notifier.py listens
+_ENV_LOADED = False
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME", "").strip()
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[1]
+
+
+def load_env() -> None:
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    _ENV_LOADED = True
+    env_path = resolve_base_dir() / ".env"
+    if not env_path.exists():
+        return
+    with env_path.open("r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            if key.startswith("export "):
+                key = key[len("export ") :].strip()
+            val = val.strip().strip('"').strip("'")
+            if not os.getenv(key, "").strip():
+                os.environ[key] = val
 
 
 def _env_int(key: str, default: int) -> int:
+    load_env()
     val = os.getenv(key, "").strip()
     if not val:
         return default
@@ -14,11 +49,13 @@ def _env_int(key: str, default: int) -> int:
     except ValueError:
         return default
 
+
 # Port 5562 is where tools/notifier.py listens
 NOTIFIER_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 
 
 def get_webhook() -> str:
+    load_env()
     return os.getenv("SWIMMY_DISCORD_RECRUIT", "").strip()
 
 

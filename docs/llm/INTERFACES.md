@@ -243,6 +243,23 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 - Request: `CHECK_RISK:{...json...}`
 - Response: `{"status":"APPROVED"|"DENIED","reason":"..."}`
 
+### 6. Data Keeper Service (Port 5561)
+ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/data_keeper.py`）。
+
+- Request: `STATUS`
+- Request: `GET_HISTORY:SYMBOL:[TIMEFRAME:]COUNT`
+- Request: `GET_FILE_PATH:SYMBOL:TF`
+- Request: `ADD_CANDLE:SYMBOL:[TIMEFRAME:]JSON`
+- Request: `SAVE_ALL`
+
+### 7. Risk Gateway Service (Port 5563)
+取引許可の判定を行う補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/risk_gateway.py` / `src/lisp/core/risk-client.lisp`）。
+
+- Request: `CHECK_RISK:{...json...}`
+- Response: `{"status":"APPROVED"|"DENIED","reason":"..."}`
+
 ## エラーとタイムアウト
 - **タイムアウト**:
   - Heartbeat: 300秒 (Dead Man's Switch)
