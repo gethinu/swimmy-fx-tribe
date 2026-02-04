@@ -19,15 +19,21 @@
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
 - **B案方針**: 内部ZMQ通信＋ローカル保存をS式へ統一。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。
+- **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 
 ## 既知のバグ/課題
-- **WSL IP**: MT5側の設定 (`InpWSL_IP`) が手動。
+- **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
+- **Backtest Status**: `data/reports/backtest_status.txt` の `last_request_id` 監視。
 - **データ不整合**: MT5とLisp間のヒストリカルデータ差異。
 - **再起動耐性**: Guardianのリスク状態 (`risk_state.json`) の永続化は実装済みだが、クラッシュ時の整合性は要監視。
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-04**: MT5コマンド送信をS式に統一（ORDER_OPENは `instrument`/`side`）。`InpWSL_IP` のデフォルトを空に変更。
+- **2026-02-04**: `backtest_status.txt` に `last_request_id` を追加。
+- **2026-02-04**: MCPの `request_id` を JSON-RPC id/明示指定から引き回すよう統一。
+- **2026-02-04**: `tools/dashboard.py` は systemd(system) の状態を正として表示する方針に統一。
 - **2026-02-03**: REQ_HISTORY の要求キーを `count` に統一（`volume` は廃止）。
 - **2026-02-03**: MT5系メッセージ（HISTORY/POSITIONS/SWAP_DATA/ORDER_ACK/TRADE_CLOSED）と管理コマンド（GET_POSITIONS/GET_SWAP/CLOSE_SHORT_TF）をINTERFACESに明記。
 - **2026-02-01**: systemdの `swimmy-guardian` をRust Guardian実行に修正し、evolution daemonのSBCLメモリ設定を `SWIMMY_SBCL_DYNAMIC_SPACE_MB` に統一。watchdogのsystemdユニットを追加。
