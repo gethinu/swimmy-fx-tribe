@@ -112,6 +112,66 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-backtest-status-includes-last-request-id
+  "backtest_status.txt should include last_request_id only"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((status-path "data/reports/backtest_status.txt")
+           (msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-REQ-STATUS\") (sharpe . 0.2) (trades . 1) (pnl . 0.1) (request_id . \"RID-123\"))))")
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result))))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when (fboundp 'swimmy.school::handle-v2-result)
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (setf swimmy.globals:*backtest-submit-last-id* "SUB-999")
+            (setf swimmy.main::*backtest-recv-last-log* 0)
+            (funcall fn msg)
+            (let ((content (with-open-file (s status-path :direction :input)
+                             (let ((text (make-string (file-length s))))
+                               (read-sequence text s)
+                               text))))
+              (assert-true (search "last_request_id: RID-123" content))
+              (assert-true (null (search "last_submit_id" content))
+                           "Expected last_submit_id to be absent from backtest_status.txt")
+              (assert-true (null (search "last_recv_id" content))
+                           "Expected last_recv_id to be absent from backtest_status.txt")))
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
+
+(deftest test-request-backtest-sets-submit-id
+  "request-backtest should set submit request_id when none provided"
+  (let ((orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf swimmy.globals:*backtest-submit-last-id* nil)
+          (let ((s (swimmy.school:make-strategy :name "ReqIdTest" :symbol "USDJPY")))
+            (swimmy.school::request-backtest s :candles nil))
+          (assert-true swimmy.globals:*backtest-submit-last-id* "Expected submit request_id to be set"))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
+
+(deftest test-order-open-uses-instrument-side
+  (let* ((msg (swimmy.core:make-order-message "UT" "USDJPY" :buy 0.1 0 0 0))
+         (sexp (swimmy.core:encode-sexp msg))
+         (parsed (swimmy.core:safe-read-sexp sexp :package :swimmy.core)))
+    (assert-equal "USDJPY" (swimmy.core:sexp-alist-get parsed "instrument"))
+    (assert-equal "BUY" (swimmy.core:sexp-alist-get parsed "side"))))
+
 (deftest test-message-dispatcher-compiles-without-warnings
   "message-dispatcher should compile without warnings"
   (let ((warnings '()))
@@ -137,6 +197,66 @@
               (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms")))
         (setf swimmy.globals:*danger-level* orig)))))
 
+(deftest test-safe-eval-strategy-rejects-read-eval
+  "safe-eval-strategy should ignore read-time eval forms"
+  (let ((orig swimmy.globals:*danger-level*))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*danger-level* 0)
+          (multiple-value-bind (_strategy ok)
+              (swimmy.school::safe-eval-strategy
+               "#.(setf swimmy.globals::*danger-level* 999) (defstrategy ut-safe :indicators nil :entry nil :exit nil :sl 0 :tp 0 :volume 0)")
+            (declare (ignore _strategy))
+            (assert-false ok "Expected unsafe form to be rejected")
+            (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms")))
+      (setf swimmy.globals:*danger-level* orig))))
+
+(deftest test-map-strategies-from-db-rejects-read-eval
+  "map-strategies-from-db should ignore unsafe read-time eval"
+  (let ((fn (find-symbol "EXECUTE-TO-LIST" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "execute-to-list exists")
+    (let ((orig (symbol-function fn))
+          (orig-danger swimmy.globals:*danger-level*)
+          (calls 0))
+      (unwind-protect
+          (progn
+            (setf swimmy.globals:*danger-level* 0)
+            (setf (symbol-function fn)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    (incf calls)
+                    (if (= calls 1)
+                        (list (list "#.(setf swimmy.globals::*danger-level* 999)"))
+                        nil)))
+            (let ((count (swimmy.school::map-strategies-from-db (lambda (s) (declare (ignore s))))))
+              (assert-equal 0 count "Expected no strategies processed")
+              (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms")))
+        (setf (symbol-function fn) orig
+              swimmy.globals:*danger-level* orig-danger)))))
+
+(deftest test-parse-macro-csv-rejects-read-eval
+  "parse-macro-csv should ignore unsafe read-time eval"
+  (let* ((orig-danger swimmy.globals:*danger-level*)
+         (orig-dir swimmy.school::*macro-data-dir*)
+         (root (uiop:ensure-directory-pathname (uiop:getcwd)))
+         (temp-dir (uiop:ensure-directory-pathname (merge-pathnames "data/tmp/macro-test/" root)))
+         (driver "UT-MACRO")
+         (path (merge-pathnames (format nil "~a.csv" driver) temp-dir)))
+    (unwind-protect
+        (progn
+          (ensure-directories-exist temp-dir)
+          (with-open-file (out path :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (write-line "Date,Open,High,Low,Close" out)
+            (write-line "2024-01-01,1,2,3,#.(setf swimmy.globals::*danger-level* 999)" out))
+          (setf swimmy.globals:*danger-level* 0)
+          (let ((swimmy.school::*macro-data-dir* temp-dir))
+            (let ((data (swimmy.school::parse-macro-csv driver)))
+              (assert-true (null data) "Expected no parsed rows")
+              (assert-equal 0 swimmy.globals:*danger-level* "Should not evaluate read-time forms"))))
+      (setf swimmy.globals:*danger-level* orig-danger
+            swimmy.school::*macro-data-dir* orig-dir)
+      (ignore-errors (delete-file path)))))
+
 (deftest test-req-history-uses-count
   "REQ_HISTORY bootstrap request should use count key (not volume)"
   (let* ((path "src/lisp/system/runner.lisp")
@@ -145,27 +265,25 @@
                       (loop for line = (read-line in nil nil)
                             while line do (write-line line out))
                       (get-output-stream-string out))))
-         (has-type (search "(type . \"REQ_HISTORY\")" content))
-         (has-action (search "(action . \"REQ_HISTORY\")" content))
-         (has-count (search "(count . " content))
-         (has-volume (search "(volume . " content)))
-    (assert-true has-type "REQ_HISTORY should use type key")
-    (assert-false has-action "REQ_HISTORY should not use action key")
+         (has-req (search "REQ_HISTORY" content))
+         (has-count (search "(count ." content))
+         (has-volume (search "(volume ." content)))
+    (assert-true has-req "REQ_HISTORY should exist in runner.lisp")
     (assert-true has-count "REQ_HISTORY should use count key")
     (assert-false has-volume "REQ_HISTORY should not use volume key")))
 
 (deftest test-order-open-sexp-keys
-  "ORDER_OPEN should use action/symbol/lot and be S-expression"
+  "ORDER_OPEN should use instrument/side/lot and be S-expression"
   (let* ((msg (swimmy.core:make-order-message "UT" "USDJPY" "BUY" 0.1 0.0 1.0 2.0
                                               :magic 123 :comment "C"))
          (payload (if (stringp msg)
                       msg
-                      (swimmy.core::sexp->string msg))))
-    (assert-true (search "(action . \"BUY\")" payload) "Expected action key")
-    (assert-true (search "(symbol . \"USDJPY\")" payload) "Expected symbol key")
+                      (swimmy.core:encode-sexp msg))))
+    (assert-true (search "(instrument . \"USDJPY\")" payload) "Expected instrument key")
+    (assert-true (search "(side . \"BUY\")" payload) "Expected side key")
     (assert-true (search "(lot . 0.1" payload) "Expected lot key")
-    (assert-false (search "side" payload) "Should not contain side key")
-    (assert-false (search "instrument" payload) "Should not contain instrument key")))
+    (assert-false (search "action" payload) "Should not contain action key")
+    (assert-false (search "symbol" payload) "Should not contain symbol key")))
 
 (deftest test-heartbeat-message-is-sexp
   "Heartbeat should return S-expression alist"
@@ -179,17 +297,17 @@
   "Executor should send heartbeat as S-expression (not JSON)"
   (let* ((content (uiop:read-file-string "src/lisp/core/executor.lisp"))
          (uses-json (search "jsown:to-json heartbeat-msg" content))
-         (uses-sexp (search "sexp->string heartbeat-msg" content)))
+         (uses-sexp (search "encode-sexp heartbeat-msg" content)))
     (assert-false uses-json "Heartbeat should not use jsown:to-json")
-    (assert-true uses-sexp "Heartbeat should use sexp->string")))
+    (assert-true uses-sexp "Heartbeat should use encode-sexp")))
 
 (deftest test-executor-pending-orders-sends-sexp
   "Executor pending retry should resend S-expression (not JSON)"
   (let* ((content (uiop:read-file-string "src/lisp/core/executor.lisp"))
          (uses-json (search "jsown:to-json msg-obj" content))
-         (uses-sexp (search "sexp->string msg-obj" content)))
+         (uses-sexp (search "encode-sexp msg-obj" content)))
     (assert-false uses-json "Pending retries should not use jsown:to-json")
-    (assert-true uses-sexp "Pending retries should use sexp->string")))
+    (assert-true uses-sexp "Pending retries should use encode-sexp")))
 
 (deftest test-internal-cmd-json-disallowed
   "Internal CMD senders should not use jsown:to-json"
@@ -615,6 +733,39 @@
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
     (assert-equal :A (second called) "Expected A-RANK promotion")))
 
+(deftest test-evaluate-strategy-performance-sends-to-graveyard
+  "Evaluation failures should send strategies to graveyard (no benching)."
+  (let* ((s (swimmy.school:make-strategy :name "EvalFail" :symbol "USDJPY"))
+         (called nil)
+         (orig (symbol-function 'swimmy.school:send-to-graveyard)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (strat reason)
+                  (setf called (list strat reason))
+                  :graveyard))
+          (swimmy.school::evaluate-strategy-performance s -0.1 10 50 1.0)
+          (assert-true called "Expected send-to-graveyard to be invoked"))
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig))))
+
+(deftest test-lifecycle-retire-on-max-losses
+  "Lifecycle should retire strategies after max consecutive losses."
+  (let* ((s (swimmy.school:make-strategy :name "LifeFail" :symbol "USDJPY"))
+         (called nil)
+         (orig (symbol-function 'swimmy.school:send-to-graveyard))
+         (orig-max swimmy.school::*max-consecutive-losses*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*max-consecutive-losses* 1)
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (strat reason)
+                  (setf called (list strat reason))
+                  :graveyard))
+          (swimmy.school::manage-strategy-lifecycle s nil -1.0)
+          (assert-true called "Expected lifecycle to retire strategy"))
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig
+            swimmy.school::*max-consecutive-losses* orig-max))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -638,6 +789,9 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-backtest-status-includes-last-request-id
+                  test-request-backtest-sets-submit-id
+                  test-order-open-uses-instrument-side
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
@@ -718,6 +872,8 @@
                   test-backtest-debug-enabled-p
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
+                  test-evaluate-strategy-performance-sends-to-graveyard
+                  test-lifecycle-retire-on-max-losses
                   ;; V8.5: Evolution Tests (Genetic Mutation)
                   test-rewrite-logic-symbols-sma
                   test-mutate-strategy-structure

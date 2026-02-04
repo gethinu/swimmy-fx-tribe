@@ -33,7 +33,7 @@ GUARDIAN_LOG = os.path.join(BASE_DIR, "logs", "guardian.log")
 
 def get_service_status(service_name):
     try:
-        cmd = f"systemctl --user is-active {service_name}"
+        cmd = f"systemctl is-active {service_name}"
         result = subprocess.run(cmd.split(), capture_output=True, text=True)
         status = result.stdout.strip()
         if status == "active":

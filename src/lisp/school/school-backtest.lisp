@@ -195,7 +195,10 @@
 (defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil))
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
    Uses strategy's native symbol if not overridden."
-  (let ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
+  (let* ((req-id (or request-id (swimmy.core::generate-uuid)))
+         (actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
+  
+  (setf swimmy.globals:*backtest-submit-last-id* req-id)
   
   ;; V8.0: Multi-Timeframe Logic
   ;; Strategy decides its own destiny (timeframe)
@@ -241,7 +244,7 @@
           ;; Fast path: CSV on disk (recommended)
           (let* ((payload-sexpr `((action . "BACKTEST")
                                   (strategy . ,strategy-alist)
-                                  (request_id . ,request-id)
+                                  (request_id . ,req-id)
                                   (data_id . ,(format nil "~a_M1" actual-symbol))
                                   (candles_file . ,data-file)
                                   (symbol . ,actual-symbol)
@@ -260,7 +263,7 @@
                                     collect (cons k v)))
                  (payload-sexpr `((action . "BACKTEST")
                                   (strategy . ,strategy-alist)
-                                  (request_id . ,request-id)
+                                  (request_id . ,req-id)
                                   (candles . ,(candles-to-sexp target-candles))
                                   (aux_candles . ,aux-candles)
                                   (symbol . ,actual-symbol)

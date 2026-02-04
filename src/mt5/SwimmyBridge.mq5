@@ -14,7 +14,7 @@
 // - Multi-Timeframe History Support
 
 // ★ User-configurable parameters
-input string InpWSL_IP = "172.18.199.122";  // WSL IP Address
+input string InpWSL_IP = "";  // WSL IP Address
 input int    InpPortMarket = 5557;          // ZMQ Market Data (MT5 -> Guardian)
 input int    InpPortExec = 5560;            // ZMQ Execution (Guardian -> MT5)
 input bool   InpVerboseLog = false;         // Verbose Logging (Debug)
@@ -211,6 +211,11 @@ int OnInit() {
    LogInfo("📊 This EA handles: " + _Symbol + " only");
    LogInfo("📝 Verbose logging: " + (InpVerboseLog ? "ON" : "OFF"));
    LogInfo("⚡ High-freq OnTick: " + (InpUseOnTick ? "ON" : "OFF"));
+
+   if(InpWSL_IP == "") {
+      LogError("InpWSL_IP is empty. Set the WSL IP in EA inputs.");
+      return(INIT_FAILED);
+   }
    
    // Initialize warrior tracking
    for(int i = 0; i < 16; i++) {
@@ -492,7 +497,9 @@ void CloseShortTimeframePositions(string symbol) {
 //+------------------------------------------------------------------+
 void ExecuteCommand(string cmd) {
    string type = GetStringFromSexp(cmd, "type");
-   string cmd_symbol = GetStringFromSexp(cmd, "symbol");
+   string instrument = GetStringFromSexp(cmd, "instrument");
+   string cmd_symbol = instrument;
+   if(cmd_symbol == "") cmd_symbol = GetStringFromSexp(cmd, "symbol");
 
    // Only execute commands for THIS symbol (or ALL)
    if(cmd_symbol != "" && cmd_symbol != "ALL" && cmd_symbol != _Symbol) {
@@ -513,7 +520,15 @@ void ExecuteCommand(string cmd) {
 
    // ORDER_OPEN (Protocol V2)
    if(type == "ORDER_OPEN") {
-      string side = GetStringFromSexp(cmd, "action");
+      if(instrument == "") {
+         LogError("ORDER_OPEN missing instrument");
+         return;
+      }
+      string side = GetStringFromSexp(cmd, "side");
+      if(side != "BUY" && side != "SELL") {
+         LogError("ORDER_OPEN invalid side: " + side);
+         return;
+      }
       double sl = GetValueFromSexp(cmd, "sl");
       double tp = GetValueFromSexp(cmd, "tp");
       double vol = GetValueFromSexp(cmd, "lot");

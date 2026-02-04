@@ -28,7 +28,7 @@
                 (when (and date-str close-str)
                   ;; Parse Date (YYYY-MM-DD HH:MM:SS...) - Simplifying: using index/string for now or Universal Time if possible.
                   ;; For correlation, we assume aligned indices mostly.
-                  (let ((val (read-from-string close-str)))
+                  (let ((val (swimmy.core:safe-parse-number close-str)))
                     (when (numberp val)
                       (push (cons date-str val) history))))))))
     (nreverse history)))

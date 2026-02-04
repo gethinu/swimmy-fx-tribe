@@ -78,11 +78,10 @@
                          (- price entry)
                          (- entry price))))
            ;; Send CLOSE command
-           (let ((payload `((type . "CLOSE")
-                            (symbol . ,symbol)
-                            (magic . ,magic))))
-             (pzmq:send *cmd-publisher*
-                        (swimmy.core::sexp->string payload :package *package*)))
+           (let ((msg (swimmy.core:encode-sexp `((type . "CLOSE")
+                                                 (symbol . ,symbol)
+                                                 (magic . ,magic)))))
+             (pzmq:send *cmd-publisher* msg))
            ;; Free slot
            (remhash key *warrior-allocation*)
            (update-symbol-exposure symbol lot :close)
@@ -285,11 +284,10 @@
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed
-             (let ((payload `((type . "CLOSE")
-                              (symbol . ,symbol)
-                              (magic . ,magic))))
-               (pzmq:send *cmd-publisher*
-                          (swimmy.core::sexp->string payload :package *package*)))
+             (let ((msg (swimmy.core:encode-sexp `((type . "CLOSE")
+                                                   (symbol . ,symbol)
+                                                   (magic . ,magic)))))
+               (pzmq:send *cmd-publisher* msg))
              (remhash key *warrior-allocation*)
              (update-symbol-exposure symbol lot :close)
              (incf *daily-pnl* (round (* pnl 1000 100)))

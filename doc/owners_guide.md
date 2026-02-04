@@ -372,6 +372,10 @@ MT5のExpertsフォルダにコピーし、コンパイルして適用してく�
 - ✅ W1, D1, H4, H1, M30, M15, M5, M1 対応
 - ✅ 戦略名 (Comment) 対応
 - ✅ マルチカレンシー対応 (USDJPY, EURUSD, GBPUSD)
+- ✅ ZMQはS式（alist）を正本（ORDER_OPENは `instrument` + `side`）
+
+**重要:**
+- `InpWSL_IP` は **空だと起動失敗**。MT5 EA の入力で必ず設定する。
 
 **ログで確認:**
 ```

@@ -38,17 +38,44 @@
           (*package* (find-package package)))
       (format nil "~s" form))))
 
+(defun normalize-sexp-key (key)
+  (cond
+    ((symbolp key) key)
+    ((stringp key) (intern (string-upcase key) :swimmy.core))
+    (t key)))
+
+(defun sexp-alist-get (alist key)
+  (let ((key-str (string-upcase (if (symbolp key) (symbol-name key) key))))
+    (cdr (find-if (lambda (pair)
+                    (and (consp pair)
+                         (symbolp (car pair))
+                         (string-equal (symbol-name (car pair)) key-str)))
+                  alist))))
+
+(defun encode-sexp (alist)
+  "Serialize an alist into an S-expression string with stable formatting."
+  (let ((*print-case* :downcase)
+        (*print-pretty* nil)
+        (*print-right-margin* most-positive-fixnum)
+        (*print-escape* t)
+        (*package* (find-package :swimmy.core)))
+    (format nil "~s"
+            (mapcar (lambda (pair)
+                      (if (consp pair)
+                          (cons (normalize-sexp-key (car pair)) (cdr pair))
+                          pair))
+                    alist))))
+
 (defun make-protocol-message (type payload)
   "Construct a standard protocol message wrapper."
-  (let ((msg (jsown:new-js
-               ("type" type)
-               ("id" (generate-uuid))
-               ("timestamp" (local-time:format-timestring nil (local-time:now) :format '(:year "-" (:month 2) "-" (:day 2) "T" (:hour 2) ":" (:min 2) ":" (:sec 2) "Z")))
-               ("version" +protocol-version+))))
-    ;; Merge payload into message
-    (dolist (key (jsown:keywords payload))
-      (setf (jsown:val msg key) (jsown:val payload key)))
-    msg))
+  (append `((type . ,type)
+            (id . ,(generate-uuid))
+            (timestamp . ,(local-time:format-timestring nil (local-time:now)
+                                                       :format '(:year "-" (:month 2) "-" (:day 2) "T" (:hour 2) ":" (:min 2) ":" (:sec 2) "Z")))
+            (version . ,+protocol-version+))
+          (mapcar (lambda (pair)
+                    (cons (normalize-sexp-key (car pair)) (cdr pair)))
+                  payload)))
 
 (defun make-protocol-sexp (type payload-alist)
   "Construct a standard protocol alist for S-expression transport."
@@ -72,20 +99,22 @@
      tp: Take Profit
      magic: Magic number
      comment: Order comment"
-  (let ((action (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
-    (make-protocol-sexp +MSG-ORDER-OPEN+
+  (let ((side-str (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
+    (make-protocol-message +MSG-ORDER-OPEN+
       `((strategy_id . ,strategy-id)
-        (action . ,action)
-        (symbol . ,symbol)
-        (lot . ,(read-from-string (format nil "~,2f" lot))) ;; Ensure 2 decimal formatting
+        (instrument . ,symbol)
+        (side . ,side-str)
+        (lot . ,(/ (round (* (float lot) 100.0)) 100.0)) ;; Ensure 2 decimal formatting
         (price . ,(float price))
         (sl . ,(float sl))
         (tp . ,(float tp))
-        (magic . ,(if (numberp magic) magic (parse-integer (format nil "~a" magic) :junk-allowed t)))
+        (magic . ,(if (numberp magic)
+                      magic
+                      (parse-integer (format nil "~a" magic) :junk-allowed t)))
         (comment . ,comment)))))
 
 (defun make-heartbeat-message (&optional (status "OK"))
   "Construct a HEARTBEAT message."
-  (make-protocol-sexp +MSG-HEARTBEAT+
+  (make-protocol-message +MSG-HEARTBEAT+
     `((source . "BRAIN")
       (status . ,status))))

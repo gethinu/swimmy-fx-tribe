@@ -63,16 +63,6 @@
 ;;; ARM STATE MANAGEMENT
 ;;; ==========================================
 
-(defun arm-benched-p (idx)
-  "Check if arm is benched."
-  (member idx *benched-arms*))
-
-(defun bench-arm (idx)
-  "Bench an arm due to consecutive losses."
-  (unless (member idx *benched-arms*)
-    (push idx *benched-arms*)
-    (format t "[ENGINE] Arm ~d benched~%" idx)))
-
 (defun update-arm-stats (idx won pnl)
   "Update arm statistics after a trade."
   (incf *total-trades*)
@@ -104,10 +94,6 @@
           ((and (not won) (eql pos :LONG)) (train-neural 1))
           ((and (not won) (eql pos :SHORT)) (train-neural 0)))))
           
-    ;; Bench check
-    (when (<= (arm-state-streak state) (- *max-streak-losses*))
-      (bench-arm idx))
-    
     ;; Rebalance (using engine/portfolio.lisp)
     (when (fboundp 'rebalance-portfolio)
       (rebalance-portfolio))))
@@ -119,8 +105,7 @@
 (defun check-arm (idx symbol bid ask)
   "Check arm for entry/exit signals. Core execution logic."
   ;; 1. Global Risk Check
-  (when (and (if (fboundp 'trading-allowed-p) (trading-allowed-p) t)
-             (not (arm-benched-p idx))) ; 2. Arm Health Check
+  (when (if (fboundp 'trading-allowed-p) (trading-allowed-p) t)
     
     (let* ((params (car (nth idx *arms*)))
            (sma-s (nth 0 params))
@@ -161,10 +146,9 @@
               (update-arm-stats idx (> pnl 0) pnl)
               (setf (arm-state-position state) nil)
               (when active
-                (let ((payload `((type . "CLOSE")
-                                 (symbol . ,symbol))))
-                  (pzmq:send *cmd-publisher*
-                             (swimmy.core::sexp->string payload :package *package*)))
+                (let ((msg (swimmy.core:encode-sexp `((type . "CLOSE")
+                                                      (symbol . ,symbol)))))
+                  (pzmq:send *cmd-publisher* msg))
                 (notify-execution "CLOSE" symbol idx 0 pnl))))))
       
       ;; 4. Check Entries (using signals.lisp)
@@ -196,11 +180,10 @@
                            (arm-state-sl state) (- bid sl-p)
                            (arm-state-tp state) (+ bid tp-p))
                      (when active
-                       (let* ((order (swimmy.core:make-order-message
-                                      "Engine" symbol "BUY" dynamic-vol 0.0
-                                      (arm-state-sl state) (arm-state-tp state)))
-                              (msg (swimmy.core::sexp->string order :package :swimmy.core)))
-                         (pzmq:send *cmd-publisher* msg))
+                       (let ((order (swimmy.core:make-order-message
+                                     "Engine-Position" symbol :buy dynamic-vol 0.0
+                                     (arm-state-sl state) (arm-state-tp state))))
+                         (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
                        (notify-execution "OPEN" symbol idx dynamic-vol 0)))
                     
                     ((eql type :SELL)
@@ -211,11 +194,10 @@
                            (arm-state-sl state) (+ ask sl-p)
                            (arm-state-tp state) (- ask tp-p))
                      (when active
-                       (let* ((order (swimmy.core:make-order-message
-                                      "Engine" symbol "SELL" dynamic-vol 0.0
-                                      (arm-state-sl state) (arm-state-tp state)))
-                              (msg (swimmy.core::sexp->string order :package :swimmy.core)))
-                         (pzmq:send *cmd-publisher* msg))
+                       (let ((order (swimmy.core:make-order-message
+                                     "Engine-Position" symbol :sell dynamic-vol 0.0
+                                     (arm-state-sl state) (arm-state-tp state))))
+                         (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
                        (notify-execution "OPEN" symbol idx dynamic-vol 0)))))))))))))
 
 (format t "[ENGINE] positions.lisp loaded~%")

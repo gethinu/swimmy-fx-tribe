@@ -12,3 +12,16 @@
             (declare (ignore _))
             form))
       (error () nil))))
+
+(defun safe-parse-number (input)
+  "Safely parse a numeric string. Returns number or NIL."
+  (when (and input (stringp input))
+    (let* ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) input)))
+      (when (> (length trimmed) 0)
+        (when (and (some #'digit-char-p trimmed)
+                   (every (lambda (ch)
+                            (or (digit-char-p ch)
+                                (member ch '(#\. #\+ #\- #\e #\E))))
+                          trimmed))
+          (let ((form (safe-read-sexp trimmed :package :swimmy.main)))
+            (when (numberp form) form)))))))

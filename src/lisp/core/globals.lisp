@@ -32,6 +32,8 @@
 (defvar *candle-histories-tf* (make-hash-table :test 'equal) "V41.6: Multi-timeframe data: symbol -> tf -> candles")
 (defvar *current-candles* (make-hash-table :test 'equal))
 (defvar *current-minutes* (make-hash-table :test 'equal))
+(defvar *current-candle* nil)
+(defvar *current-minute* -1)
 
 ;;; TRADING STATE
 (defparameter *trading-enabled* t)
@@ -52,6 +54,7 @@
 (defvar *current-equity* 100000.0)
 (defvar *peak-equity* 100000.0 "Peak equity for all-time drawdown calculation")
 (defvar *max-drawdown* 0.0 "Maximum observed drawdown percentage (all-time)")
+(defvar *current-drawdown* 0.0 "Current drawdown percentage")
 (defparameter *max-dd-percent* 5.0)
 
 ;; V44.5: Dynamic (Session) Drawdown Monitoring (Expert Panel P2)
@@ -73,6 +76,12 @@
 (defparameter *failure-history* nil)
 (defparameter *failure-log* nil)
 (defparameter *success-log* nil)
+
+;;; KNOWLEDGE STATE
+(defparameter *tribal-dialect* (make-hash-table :test 'equal))
+(defparameter *reputation-scores* (make-hash-table :test 'equal))
+(defparameter *genome* nil)
+(defparameter *memory* nil)
 
 ;;; COMMUNICATION STATE
 (defparameter *discord-webhook-url* nil)
@@ -96,6 +105,7 @@
 (defparameter *qual-backtest-results-buffer* nil "Buffer for Qualification (Incubator/Scout) backtests")
 (defparameter *qual-expected-backtest-count* 0)
 (defparameter *qual-backtest-start-time* 0)
+(defparameter *backtest-submit-last-id* nil "Last request_id submitted for backtests.")
 
 (defparameter *sent-data-ids* (make-hash-table :test 'equal) "V50.9: Track Data IDs sent to Guardian")
 (defparameter *phase2-last-end-unix* 0 "Last Phase2 end_time (Unix seconds) used for backtests.")
@@ -105,6 +115,13 @@
 (defparameter *supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
 (defparameter *symbol-volatility-states* (make-hash-table :test 'equal))
 (defparameter *market-regime* :ranging)
+
+;;; SCHOOL STATE
+(defparameter *trade-history* (make-hash-table :test 'equal))
+(defparameter *strategy-ranks* (make-hash-table :test 'equal))
+(defparameter *category-positions* (make-hash-table :test 'eq))
+(defparameter *pair-correlations* (make-hash-table :test 'equal))
+(defparameter *symbol-exposure* (make-hash-table :test 'equal))
 
 ;;; MISSING GLOBALS (Cleanup)
 (defparameter *backtest-webhook-url* nil)
@@ -124,7 +141,6 @@
 (defparameter *discord-recruit-webhook* nil)
 
 ;;; MISSING GLOBALS (Engine/Manager)
-(defparameter *benched-arms* nil)
 (defparameter *max-streak-losses* 3)
 (defparameter *max-portfolio-size* 5)
 (defparameter *has-resigned-today* nil)
@@ -140,6 +156,11 @@
 (defparameter *monthly-goal* 100000.0)
 (defparameter *last-narrative-day* -1)
 (defparameter *daily-report-sent-today* nil)
+
+;;; GOVERNANCE STATE
+(defparameter *council-log* nil)
+(defparameter *constitution* nil)
+(defparameter *philosophy-log* nil)
 
 ;;; ADDITIONAL MISSING GLOBALS (Comprehensive Review)
 (defparameter *danger-cooldown-until* nil)

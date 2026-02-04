@@ -370,14 +370,12 @@
   ;; 1. Global Aging
   (increment-strategy-ages)
   
-  ;; 2. Culling (Fridays Only)
-  (when (should-weekly-unbench-p) ;; Reusing Monday logic? No, need Friday.
-    ;; Actually, Morning Ritual is daily. Culling usually Fri Close or Sat Morning.
-    ;; Let's do it if it's Saturday Morning.
-    (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
-      (declare (ignore s m h d mo y))
-      (when (= dow 6) ;; Saturday
-        (cull-weak-strategies))))
+  ;; 2. Culling (Weekly)
+  ;; Morning Ritual is daily. Culling usually Fri Close or Sat Morning.
+  (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
+    (declare (ignore s m h d mo y))
+    (when (= dow 6) ;; Saturday
+      (cull-weak-strategies)))
   
   ;; 3. Forced Breeding (Old Age)
   (dolist (s *strategy-knowledge-base*)

@@ -68,6 +68,8 @@ def handle_jsonrpc_request(req, api_key=None):
     if method == "backtest.submit":
         payload = dict(params)
         payload.pop("api_key", None)
+        if not payload.get("request_id"):
+            payload["request_id"] = str(req["id"])
         res = handle_backtest_submit(payload)
         return jsonrpc_result(req["id"], res)
     if method == "system.status":

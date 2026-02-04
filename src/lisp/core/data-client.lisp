@@ -153,13 +153,13 @@
                  (let ((request-bars (if (> missing-min 14400) 14400 (+ missing-min 10))))
                    (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" request-bars)
                    (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
-                     (let ((payload `((type . "REQ_HISTORY")
-                                      (symbol . ,symbol)
-                                      (tf . "M1")
-                                      (count . ,request-bars)
-                                      (start . ,now-unix)))) ; Force start from NOW to get latest data
-                       (pzmq:send swimmy.globals:*cmd-publisher*
-                                  (swimmy.core::sexp->string payload :package *package*)))))
+                     (let ((cmd (swimmy.core:encode-sexp
+                                 `((type . "REQ_HISTORY")
+                                   (symbol . ,symbol)
+                                   (tf . "M1")
+                                   (count . ,request-bars)
+                                   (start . ,now-unix))))) ; Force start from NOW to get latest data
+                       (pzmq:send swimmy.globals:*cmd-publisher* cmd))))
                  t)) ; Return T (Gap detected)
             nil)) ; No gap or throttled
       nil))

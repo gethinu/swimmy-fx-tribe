@@ -50,14 +50,13 @@
    Selects the best performing arms to fill *portfolio-indices*."
   (let ((scores nil))
     (dotimes (i (length *arms*))
-      (unless (arm-benched-p i) ; Dependencies: positions.lisp (loaded later, but checking at runtime)
-        (let* ((stats (cdr (nth i *arms*)))
-               (a (ensure-real (car stats))) (b (ensure-real (cdr stats)))
-               (ga (random-gamma a)) (gb (random-gamma b))
-               (base-score (/ ga (+ ga gb 1e-10)))
-               (boost (get-sharpe-boost i))
-               (score (+ base-score boost)))
-          (push (cons score i) scores))))
+      (let* ((stats (cdr (nth i *arms*)))
+             (a (ensure-real (car stats))) (b (ensure-real (cdr stats)))
+             (ga (random-gamma a)) (gb (random-gamma b))
+             (base-score (/ ga (+ ga gb 1e-10)))
+             (boost (get-sharpe-boost i))
+             (score (+ base-score boost)))
+        (push (cons score i) scores)))
     
     ;; Sort by score descending
     (setf scores (sort scores #'> :key #'car))

@@ -64,6 +64,7 @@
 (defparameter *backtest-recv-last-name* nil)
 (defparameter *backtest-recv-last-sharpe* 0.0)
 (defparameter *backtest-recv-last-trades* 0)
+(defparameter *backtest-recv-last-id* nil)
 (defparameter *backtest-recv-last-ts* (get-universal-time))
 (defparameter *backtest-stale-threshold* 900)
 (defparameter *backtest-stale-alert-interval* 1800)
@@ -137,7 +138,8 @@
               (format s "count: ~d~%" *backtest-recv-count*)
               (format s "last_name: ~a~%" (or *backtest-recv-last-name* "N/A"))
               (format s "last_sharpe: ~,4f~%" *backtest-recv-last-sharpe*)
-              (format s "last_trades: ~d~%" *backtest-recv-last-trades*)))
+              (format s "last_trades: ~d~%" *backtest-recv-last-trades*)
+              (format s "last_request_id: ~a~%" (or *backtest-recv-last-id* "N/A"))))
         (error (e)
           (format t "[BACKTEST] ⚠️ Failed to write status file: ~a~%" e))))))
 
@@ -215,10 +217,11 @@
                        (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
                        (return-from internal-process-msg nil))
                      (incf *backtest-recv-count*)
-                     (setf *backtest-recv-last-name* name
-                           *backtest-recv-last-sharpe* sharpe
-                           *backtest-recv-last-trades* trades
-                           *backtest-recv-last-ts* (get-universal-time))
+                    (setf *backtest-recv-last-name* name
+                          *backtest-recv-last-sharpe* sharpe
+                          *backtest-recv-last-trades* trades
+                          *backtest-recv-last-id* request-id
+                          *backtest-recv-last-ts* (get-universal-time))
                      (maybe-log-backtest-recv)
                      ;; Attach latency if request-id matches queue entry
                      (when request-id

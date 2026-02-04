@@ -55,6 +55,7 @@
    #:*current-equity*
    #:*peak-equity*
    #:*max-drawdown*
+   #:*current-drawdown*
    #:*max-dd-percent*
    #:*risk-tolerance*
    #:*max-streak-losses*
@@ -83,6 +84,8 @@
    #:*candle-histories*
    #:*current-candles*
    #:*current-minutes*
+   #:*current-candle*
+   #:*current-minute*
    #:*last-regime*
    #:*symbol-volatility-states*
    #:*candle-histories-tf*  ;; V41.6: Nested hash for multi-timeframe data: symbol -> timeframe -> candles
@@ -92,6 +95,11 @@
    #:*evolved-strategies*
    #:*active-team*
    #:*strategy-usage-stats*
+   #:*trade-history*
+   #:*strategy-ranks*
+   #:*category-positions*
+   #:*pair-correlations*
+   #:*symbol-exposure*
    #:*clans*
    
    ;; AI/ML State
@@ -103,6 +111,8 @@
    #:*tribe-status*
    #:*learned-patterns*
    #:*improvement-requests*
+   #:*tribal-dialect*
+   #:*reputation-scores*
    #:*nn-threshold*
    
    ;; Logging State
@@ -115,7 +125,8 @@
    #:*arms*
    #:*arm-states*
    #:*portfolio-indices*
-   #:*benched-arms*
+   #:*genome*
+   #:*memory*
    #:*current-leader*
    #:*warrior-allocation*
    #:*symbol-round-robin-index*
@@ -131,6 +142,7 @@
    #:*qual-backtest-results-buffer*
    #:*qual-expected-backtest-count*
    #:*qual-backtest-start-time*
+   #:*backtest-submit-last-id*
    #:*cpcv-results-buffer*
    #:*expected-cpcv-count*
    #:*cpcv-start-time*
@@ -145,6 +157,9 @@
    #:*last-dream-time*
    
    ;; Misc State
+   #:*council-log*
+   #:*constitution*
+   #:*philosophy-log*
    #:*daily-report-sent-today*
    #:*discord-recruit-webhook*
    #:*last-narrative-day*
@@ -193,6 +208,7 @@
    #:get-time-string
    #:get-date-string
    #:safe-read-sexp
+   #:safe-parse-number
    #:write-sexp-atomic
    #:read-sexp-file
    
@@ -282,6 +298,8 @@
    ;; Execution Protocol (Phase 7)
    #:make-order-message
    #:make-heartbeat-message
+   #:encode-sexp
+   #:sexp-alist-get
    #:generate-uuid ;; Utility
    
    ;; Message Constants
