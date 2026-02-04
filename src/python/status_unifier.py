@@ -69,3 +69,52 @@ def compute_updated_info(
 
     stale = delta > stale_threshold
     return UpdatedInfo(updated_at=updated_at, stale=stale, stale_seconds=int(delta), clock_skew=False, source=source)
+
+
+def _format_duration(seconds: int) -> str:
+    if seconds < 0:
+        seconds = 0
+    hrs = seconds // 3600
+    mins = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hrs:d}:{mins:02d}:{secs:02d}"
+
+
+def format_system_health(metrics: dict | None) -> str:
+    if not metrics:
+        return "UNKNOWN (metrics missing)"
+    parts = []
+    uptime = metrics.get("uptime_seconds")
+    if isinstance(uptime, (int, float)):
+        parts.append(f"uptime {_format_duration(int(uptime))}")
+    strategies = metrics.get("strategy_count")
+    if strategies is not None:
+        parts.append(f"strats {int(strategies)}")
+    if parts:
+        return "OK (" + ", ".join(parts) + ")"
+    return "OK"
+
+
+def format_updated_line(info: UpdatedInfo) -> str:
+    if not info.updated_at:
+        return "Updated: UNKNOWN"
+    time_str = info.updated_at.strftime("%H:%M:%S")
+    if info.clock_skew:
+        return f"Updated: {time_str} (Clock Skew?)"
+    mins = max(0, info.stale_seconds // 60)
+    if info.stale:
+        return f"Updated: {time_str} (STALE {mins}m)"
+    return f"Updated: {time_str} ({mins}m ago)"
+
+
+def format_status_message(snapshot: dict) -> str:
+    return (
+        "🐟 **Swimmy Status**\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        f"📊 **Daily PnL**: ¥{snapshot.get('daily_pnl', 0):,.0f}\n"
+        f"💰 **Total PnL**: ¥{snapshot.get('total_pnl', 0):,.0f}\n"
+        f"🎯 **Goal**: {snapshot.get('goal_progress', 0):.1f}%\n"
+        f"🖥️ **System Health**: {snapshot.get('system_health', 'UNKNOWN')}\n"
+        "━━━━━━━━━━━━━━━━━\n"
+        f"🕐 {snapshot.get('updated_line', 'Updated: UNKNOWN')}"
+    )
