@@ -7,16 +7,22 @@
 
 (defparameter *optimized-params*
   '(
-    (:NAME "Legend-Golden-Cross-Classic" :TIMEFRAME 3600 :SL 1.0 :TP 2.0
-     :INDICATORS ((:SMA 50) (:SMA 200)))
     (:NAME "Hunted-W1-EMA-Trend" :TIMEFRAME "W1" :SL 0.02 :TP 0.05 :INDICATORS
-     ((EMA 13) (EMA 26)))
+     NIL)
     (:NAME "Hunted-W1-Volume-Trend" :TIMEFRAME "W1" :SL 0.02 :TP 0.06
-     :INDICATORS ((SMA 20)))
+     :INDICATORS NIL)
     (:NAME "Hunted-D1-ADX-Trend" :TIMEFRAME "D1" :SL 0.01 :TP 0.03 :INDICATORS
-     ((ADX 14)))
+     NIL)
+    (:NAME "Hunted-D1-Golden-Cross" :TIMEFRAME "D1" :SL 0.01 :TP 0.03
+     :INDICATORS NIL)
     (:NAME "Hunted-D1-Williams-R" :TIMEFRAME "D1" :SL 0.008 :TP 0.015
-     :INDICATORS ((WILLIAMS 14)))
+     :INDICATORS NIL)
+    (:NAME "Hunted-W1-Pullback" :TIMEFRAME "W1" :SL 0.02 :TP 0.05 :INDICATORS
+     NIL)
     (:NAME "Legend-London-Breakout-V1" :TIMEFRAME 3600 :SL 0.2 :TP 0.6
      :INDICATORS ((:TIME-RANGE "08:00-09:00")))
+    (:NAME "Hunted-D1-MACD-Zero" :TIMEFRAME "D1" :SL 0.01 :TP 0.02 :INDICATORS
+     NIL)
+    (:NAME "Hunted-H4-MACD-Trend" :TIMEFRAME "H4" :SL 0.004 :TP 0.01
+     :INDICATORS NIL)
    ))

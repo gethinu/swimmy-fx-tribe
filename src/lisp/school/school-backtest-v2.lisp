@@ -51,14 +51,14 @@
       (let* ((payload (list
                        (cons 'action "BACKTEST")
                        (cons 'strategy strategy-alist)
-                       (cons 'candles_file data-file)
-                       (cons 'data_id (format nil "~a_M1" actual-symbol))
+                       (list 'candles_file data-file)
+                       (list 'data_id (format nil "~a_M1" actual-symbol))
                        (cons 'symbol actual-symbol)
                        (cons 'swap_history swaps)
-                       (cons 'timeframe timeframe))))
+                       (list 'timeframe timeframe))))
         ;; Add Range if present
-        (when start-ts (push `(start_time . ,start-ts) payload))
-        (when end-ts (push `(end_time . ,end-ts) payload))
+        (when start-ts (push (list 'start_time start-ts) payload))
+        (when end-ts (push (list 'end_time end-ts) payload))
         (when phase (push `(phase . ,phase) payload))
         (when range-id (push `(range_id . ,range-id) payload))
 

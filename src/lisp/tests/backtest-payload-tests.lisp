@@ -14,6 +14,18 @@
 (defun field (key payload)
   (cdr (assoc key payload :test #'eq)))
 
+(defun option-some (key payload)
+  "Return the single value from an Option<T> field encoded as a one-element list.
+
+Guardian `--backtest-only` uses serde_lexpr, which expects Option<T> values as:
+  - None: ()
+  - Some(x): (x)
+So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000)."
+  (let ((raw (field key payload)))
+    (assert-true (listp raw) (format nil "~a should be an Option list" key))
+    (assert-equal 1 (length raw) (format nil "~a should be Some(x) (one-element list)" key))
+    (first raw)))
+
 (deftest test-request-backtest-emits-sexpr
   "request-backtest should emit an S-expression payload with action BACKTEST."
   (let ((captured nil)
@@ -36,16 +48,52 @@
                  (candles (list (swimmy.globals:make-candle
                                  :timestamp 1700000000
                                  :open 1.0 :high 1.0 :low 1.0 :close 1.0 :volume 1.0))))
-            (swimmy.school:request-backtest strat :candles candles)))
+            ;; Force inline-candles path (avoid file mode) to make test deterministic.
+            (swimmy.school:request-backtest strat :candles candles :suffix "_IS")))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
     (assert-not-nil captured "Expected backtest payload to be sent")
     (assert-true (char= (char captured 0) #\() "Payload should be S-expression")
     (let ((payload (parse-sexpr-payload captured)))
       (assert-equal "BACKTEST" (field 'action payload) "Expected action=BACKTEST")
-      (assert-true (or (field 'candles_file payload) (field 'candles payload))
-                   "Expected either candles_file or candles present")
-      (assert-true (numberp (field 'timeframe payload))
-                   "Expected timeframe to be numeric"))))
+      (assert-true (field 'candles payload) "Expected candles present (inline mode)")
+      (assert-true (numberp (option-some 'timeframe payload))
+                   "Expected timeframe Option<i64> to contain a number"))))
+
+(deftest test-request-backtest-file-mode-wraps-optionals
+  "request-backtest (file mode) should wrap Option fields as one-element lists."
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          ;; Ensure the CSV exists so request-backtest takes the fast-path file mode.
+          (let* ((symbol "UTSYM")
+                 (csv-path (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol))))
+            (ensure-directories-exist csv-path)
+            (with-open-file (s csv-path :direction :output :if-exists :supersede :if-does-not-exist :create)
+              (format s "1700000000,1,1,1,1,1~%"))
+            (let* ((strat (swimmy.school:make-strategy
+                           :name "Test-BT-File"
+                           :indicators '((sma 5) (sma 20))
+                           :sl 0.001
+                           :tp 0.002
+                           :volume 0.01
+                           :indicator-type "sma"
+                           :timeframe 60
+                           :symbol symbol))
+                   (candles (list (swimmy.globals:make-candle
+                                   :timestamp 1700000000
+                                   :open 1.0 :high 1.0 :low 1.0 :close 1.0 :volume 1.0))))
+              (swimmy.school:request-backtest strat :candles candles))))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
+    (assert-not-nil captured "Expected backtest payload to be sent")
+    (let ((payload (parse-sexpr-payload captured)))
+      (assert-true (stringp (option-some 'data_id payload)) "Expected data_id Option<String>")
+      (assert-true (stringp (option-some 'candles_file payload)) "Expected candles_file Option<String>")
+      (assert-true (numberp (option-some 'timeframe payload)) "Expected timeframe Option<i64>"))))
 
 (deftest test-request-backtest-indicator-type-symbol
   "request-backtest should emit indicator_type as a symbol for Guardian S-exp parsing."
@@ -171,11 +219,11 @@
       (let ((strategy (field 'strategy payload)))
         (assert-true (consp strategy) "Strategy should be an alist")
         (assert-equal "USDJPY" (field 'symbol payload) "Symbol should be USDJPY")
-        (assert-true (numberp (field 'timeframe payload)) "Timeframe should be numeric"))
-      (assert-true (field 'data_id payload) "Expected data_id present")
-      (assert-true (field 'candles_file payload) "Expected candles_file present")
-      (assert-true (field 'start_time payload) "Expected start_time present")
-      (assert-true (field 'end_time payload) "Expected end_time present"))))
+        (assert-true (numberp (option-some 'timeframe payload)) "Timeframe Option<i64> should be numeric"))
+      (assert-true (stringp (option-some 'data_id payload)) "Expected data_id Option<String>")
+      (assert-true (stringp (option-some 'candles_file payload)) "Expected candles_file Option<String>")
+      (assert-true (numberp (option-some 'start_time payload)) "Expected start_time Option<i64>")
+      (assert-true (numberp (option-some 'end_time payload)) "Expected end_time Option<i64>"))))
 
 (deftest test-request-backtest-v2-emits-phase-range-id
   "request-backtest-v2 should emit phase and range_id when provided"

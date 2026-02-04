@@ -486,10 +486,19 @@ class BacktestService:
                         result = self._handle_sexpr(payload)
                         if result is None:
                             continue
+                        # Internal ZMQ is S-expression only (JSON is not accepted).
                         if isinstance(result, str):
-                            self.sender.send_string(result)
+                            out = result.strip()
+                            if out.startswith("{"):
+                                try:
+                                    obj = json.loads(out)
+                                except Exception:
+                                    obj = None
+                                if isinstance(obj, dict):
+                                    out = _sexp_serialize(obj)
+                            self.sender.send_string(out)
                         else:
-                            self.sender.send_string(json.dumps(result))
+                            self.sender.send_string(_sexp_serialize(result))
                         continue
 
                     if msg.strip():

@@ -165,6 +165,35 @@
           (assert-true swimmy.globals:*backtest-submit-last-id* "Expected submit request_id to be set"))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
 
+(deftest test-strategy-to-alist-omits-filter-enabled-when-false
+  "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
+  (let* ((fn (find-symbol "STRATEGY-TO-ALIST" :swimmy.school))
+         (key (find-symbol "FILTER_ENABLED" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "strategy-to-alist exists")
+    (assert-not-nil key "FILTER_ENABLED symbol exists")
+    (let* ((strat (swimmy.school:make-strategy
+                   :name "UT-FILTER-OFF"
+                   :indicators '((sma 5) (sma 20))
+                   :filter-enabled nil))
+           (alist (funcall fn strat)))
+      (assert-true (listp alist) "Expected an alist list")
+      (assert-true (null (assoc key alist)) "filter_enabled should be omitted when false"))))
+
+(deftest test-strategy-to-alist-includes-filter-enabled-when-true
+  "strategy-to-alist should include filter_enabled when filter is enabled"
+  (let* ((fn (find-symbol "STRATEGY-TO-ALIST" :swimmy.school))
+         (key (find-symbol "FILTER_ENABLED" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "strategy-to-alist exists")
+    (assert-not-nil key "FILTER_ENABLED symbol exists")
+    (let* ((strat (swimmy.school:make-strategy
+                   :name "UT-FILTER-ON"
+                   :indicators '((sma 5) (sma 20))
+                   :filter-enabled t))
+           (alist (funcall fn strat))
+           (pair (assoc key alist)))
+      (assert-not-nil pair "filter_enabled should exist when enabled")
+      (assert-true (eq (cdr pair) t) "filter_enabled should be t when enabled"))))
+
 (deftest test-order-open-uses-instrument-side
   (let* ((msg (swimmy.core:make-order-message "UT" "USDJPY" :buy 0.1 0 0 0))
          (sexp (swimmy.core:encode-sexp msg))
@@ -791,6 +820,8 @@
                   test-internal-process-msg-backtest-request-id-bound
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
+                  test-strategy-to-alist-omits-filter-enabled-when-false
+                  test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank

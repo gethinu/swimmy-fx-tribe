@@ -25,6 +25,8 @@
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
 - **Backtest Status**: `data/reports/backtest_status.txt` の `last_request_id` 監視。
+- **Backtest Debug**: `SWIMMY_BACKTEST_DEBUG_RECV=1` で受信状況を `data/reports/backtest_debug.log` に追記（内部ZMQはS式のみのため、Backtest Serviceの戻りもS式であることが前提）。
+- **Backtest Option値**: Guardian `--backtest-only` の `Option<T>` は「空/1要素リスト」で表現（例: `(data_id "USDJPY_M1")` / `(data_id)` / `(start_time 1700000000)`）。
 - **データ不整合**: MT5とLisp間のヒストリカルデータ差異。
 - **再起動耐性**: Guardianのリスク状態 (`risk_state.json`) の永続化は実装済みだが、クラッシュ時の整合性は要監視。
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。

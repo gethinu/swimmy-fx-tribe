@@ -190,6 +190,10 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 **S式プロトコルに統一**（2026-01-31）。Backtest Service側でS式を受け取り、そのままGuardian `--backtest-only` に流し、結果もS式で返却する。  
 （Backtest Service が無い場合は 5556 経由の Guardian 直バックテストにフォールバック可能）
 
+**Option値の表現（serde_lexpr）**: Guardian `--backtest-only` は `Option<T>` を **空リスト or 1要素リスト**で受け取る。  
+- `None` → `(candles_file)` / `(data_id)` / `(start_time)` のように **値なし**（空リスト）  
+- `Some(x)` → `(candles_file "path.csv")` / `(start_time 1700000000)` のように **値1つ**（1要素リスト）  
+
 **BACKTEST (Request, S-Expression)**:
 ```
 ((action . "BACKTEST")
@@ -202,15 +206,15 @@ Brainのバックテスト要求を専用サービスへオフロードする。
               (volume . 0.02)))
  (phase . "phase1")               ; optional
  (range_id . "P1")                ; optional
- (start_time . 1293840000)        ; optional (Unix seconds)
- (end_time . 1700000000)          ; optional (Unix seconds)
- (data_id . "USDJPY_M1")          ; CSVを使う場合
- (candles_file . "data/historical/USDJPY_M1.csv")
+ (start_time 1293840000)          ; optional (Unix seconds) - Option<i64>
+ (end_time 1700000000)            ; optional (Unix seconds) - Option<i64>
+ (data_id "USDJPY_M1")            ; CSVを使う場合 - Option<String>
+ (candles_file "data/historical/USDJPY_M1.csv") ; Option<String>
  (aux_candles . ((t . 1)))        ; optional
  (aux_candles_files . ("a.csv"))  ; optional
  (swap_history . ((t . 1) (sl . 0.1) (ss . 0.1))) ; optional
  (symbol . "USDJPY")
- (timeframe . 1))
+ (timeframe 1))                   ; Option<i64>
 ```
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
@@ -222,6 +226,14 @@ Brainのバックテスト要求を専用サービスへオフロードする。
             (profit_factor . 1.6)
             (win_rate . 0.52)
             (max_dd . 0.12))))
+```
+
+**BACKTEST_RESULT (Error, S-Expression only / JSON禁止)**:
+```
+((type . "BACKTEST_RESULT")
+ (result . ((strategy_name . "Volvo-Scalp-Gen0")
+            (sharpe . 0.0)
+            (error . "S-Exp parse error: ..."))))
 ```
 
 **備考**: 以前のJSON要求形式は廃止（後方互換なし）。Backtest Service は **S式のみ**受理/返却する。  

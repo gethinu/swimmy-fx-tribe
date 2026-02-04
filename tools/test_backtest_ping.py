@@ -22,10 +22,10 @@ def build_sexp(strategy_name: str, symbol: str, timeframe: int = 1) -> str:
         f'((action . "BACKTEST") '
         f'(strategy . ((name . "{strategy_name}") (timeframe . {timeframe}) (sma_short . 5) (sma_long . 20) '
         f'(sl . 0.001) (tp . 0.0015) (volume . 0.02))) '
-        f'(data_id . "{symbol}_M1") '
-        f'(candles_file . "data/historical/{symbol}_M1.csv") '
+        f'(data_id "{symbol}_M1") '
+        f'(candles_file "data/historical/{symbol}_M1.csv") '
         f'(symbol . "{symbol}") '
-        f'(timeframe . {timeframe}))'
+        f'(timeframe {timeframe}))'
     )
 
 
