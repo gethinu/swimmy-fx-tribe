@@ -50,12 +50,12 @@ def test_trade_disabled():
 def test_backtest_submit_returns_request_id():
     req = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": "REQ-42",
         "method": "backtest.submit",
         "params": {"api_key": "k", "symbol": "USDJPY", "timeframe": 1, "candles_file": "x.csv"},
     }
     res = handle_jsonrpc_request(req, api_key="k")
-    assert "request_id" in res["result"]
+    assert res["result"]["request_id"] == "REQ-42"
 
 
 def test_system_status_reads_files():

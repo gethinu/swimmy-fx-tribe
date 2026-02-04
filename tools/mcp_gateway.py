@@ -37,7 +37,7 @@ def handle_trade_submit(_payload):
 def handle_backtest_submit(payload, endpoint: str | None = None):
     cfg = GatewayConfig.from_env()
     endpoint = endpoint or cfg.zmq_endpoint
-    request_id = str(uuid.uuid4())
-    sexp = sexp_serialize({"action": "BACKTEST", "request_id": request_id, **payload})
+    request_id = payload.get("request_id") or str(uuid.uuid4())
+    sexp = sexp_serialize({"action": "BACKTEST", **payload, "request_id": request_id})
     _get_publisher(endpoint).send(sexp)
     return {"status": 202, "request_id": request_id}
