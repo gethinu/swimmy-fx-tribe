@@ -146,6 +146,7 @@
                           (win-rate (%normalize-rate (%alist-val result '(win_rate winrate win-rate) 0.0)))
                           (profit-factor (float (%alist-val result '(profit_factor profit-factor pf) 0.0)))
                           (max-dd (%normalize-rate (%alist-val result '(max_dd max-drawdown max_drawdown max-dd) 1.0)))
+                          (request-id (%alist-val result '(request_id request-id) nil))
                           (is-rr (and full-name (search "-RR" full-name)))
                           (is-qual (and full-name (search "-QUAL" full-name)))
                           (is-oos (and full-name (search "-OOS" full-name)))
@@ -157,7 +158,7 @@
                                         (is-oos (subseq full-name 0 is-oos))
                                         (t full-name))))
                           (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                         :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                                         :win-rate win-rate :profit-factor profit-factor :max-dd max-dd :request-id request-id)))
                      (backtest-debug-log "recv sexp name=~a full=~a sharpe=~,4f trades=~d"
                                          (or name "N/A") (or full-name "N/A") sharpe trades)
                      (when (%invalid-name-p name)
@@ -295,6 +296,7 @@
                         (win-rate (%normalize-rate (%json-val result '("win_rate" "winrate" "winRate") 0.0)))
                         (profit-factor (float (%json-val result '("profit_factor" "profitFactor" "pf") 0.0)))
                         (max-dd (%normalize-rate (%json-val result '("max_dd" "max_drawdown" "maxDrawdown") 1.0)))
+                        (request-id (%json-val result '("request_id" "request-id" "requestId") nil))
                         (is-rr (and full-name (search "-RR" full-name)))
                         (is-qual (and full-name (search "-QUAL" full-name)))
                         (is-oos (and full-name (search "-OOS" full-name)))
@@ -306,7 +308,8 @@
                                       (is-oos (subseq full-name 0 is-oos))
                                       (t full-name))))
                         (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                       :win-rate win-rate :profit-factor profit-factor :max-dd max-dd)))
+                                       :win-rate win-rate :profit-factor profit-factor :max-dd max-dd
+                                       :request-id request-id)))
                    (backtest-debug-log "recv json name=~a full=~a sharpe=~,4f trades=~d"
                                        (or name "N/A") (or full-name "N/A") sharpe trades)
                    (when (%invalid-name-p name)

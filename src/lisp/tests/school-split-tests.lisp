@@ -171,24 +171,36 @@
   "OOS validation should dispatch a backtest when no OOS Sharpe is set."
   (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
          (created-file nil)
-         (swimmy.school::*oos-pending* (make-hash-table :test 'equal)))
-    ;; Ensure data fixture exists (empty CSV is sufficient for probe-file)
+         (swimmy.core::*db-path-default* (format nil "data/memory/test-oos-~a.db" (get-universal-time))))
+    (swimmy.core:close-db-connection)
+    ;; Ensure data fixture exists with one valid row
     (unless (probe-file data-path)
       (ensure-directories-exist data-path)
       (with-open-file (s data-path :direction :output :if-does-not-exist :create :if-exists :supersede)
-        (write-line "timestamp,open,high,low,close,volume" s))
+        (write-line "timestamp,open,high,low,close,volume" s)
+        (write-line "1700000000,145.1,145.2,145.0,145.15,1000" s))
       (setf created-file t))
 
     (let ((dispatch-count 0)
-          (orig-request (symbol-function 'swimmy.school::request-backtest)))
+          (captured-req-ids nil)
+          (orig-request (symbol-function 'swimmy.school::request-backtest))
+          (orig-migrate (when (fboundp 'swimmy.school::migrate-existing-data)
+                          (symbol-function 'swimmy.school::migrate-existing-data))))
       (unwind-protect
            (progn
+             ;; Stub migration to avoid slow/full import during unit test
+             (when orig-migrate
+               (setf (symbol-function 'swimmy.school::migrate-existing-data)
+                     (lambda (&rest _args) (declare (ignore _args)) nil)))
              ;; Stub request-backtest to count invocations
              (setf (symbol-function 'swimmy.school::request-backtest)
-                   (lambda (strat &key suffix)
+                   (lambda (strat &key suffix request-id &allow-other-keys)
                      (declare (ignore strat suffix))
+                     (push request-id captured-req-ids)
                      (incf dispatch-count)
                      t))
+
+             (swimmy.school::init-db)
 
              (let ((strat (cl-user::make-strategy :name "UnitTest-OOS"
                                                   :symbol "USDJPY"
@@ -198,10 +210,81 @@
                  (assert-true (null passed) "OOS should be pending asynchronously")
                  (assert-equal 0.0 sharpe)
                  (assert-equal "OOS pending (async)" msg)
-                 (assert-equal 1 dispatch-count))))
+                 (assert-equal 1 dispatch-count)
+                 (assert-true (car captured-req-ids) "request-id should be generated"))))
         ;; Cleanup
         (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
-        (when created-file (delete-file data-path)))))) 
+        (when orig-migrate
+          (setf (symbol-function 'swimmy.school::migrate-existing-data) orig-migrate))
+        (when created-file (delete-file data-path))
+        (when (probe-file swimmy.core::*db-path-default*)
+          (delete-file swimmy.core::*db-path-default*))
+        (swimmy.core:close-db-connection)))))
+
+(deftest test-oos-data-quality-gate
+  "Invalid CSV should be rejected and not dispatch OOS."
+  (let* ((data-path (swimmy.core::swimmy-path "data/historical/BAD_M1.csv"))
+         (created-file nil))
+    (ensure-directories-exist data-path)
+    (with-open-file (s data-path :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (write-line "foo,bar,baz" s))
+    (setf created-file t)
+    (let ((dispatch-count 0)
+          (orig-request (symbol-function 'swimmy.school::request-backtest)))
+      (unwind-protect
+           (progn
+             (setf (symbol-function 'swimmy.school::request-backtest)
+                   (lambda (&rest _args) (declare (ignore _args)) (incf dispatch-count)))
+             (let ((strat (cl-user::make-strategy :name "BadData" :symbol "BAD" :oos-sharpe nil)))
+               (multiple-value-bind (passed sharpe msg)
+                   (swimmy.school::run-oos-validation strat)
+                 (assert-false passed)
+                 (assert-equal 0.0 sharpe)
+                 (assert-true (search "Invalid data file" msg))
+                 (assert-equal 0 dispatch-count))))
+        (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+        (when created-file (delete-file data-path))))))
+
+(deftest test-oos-queue-persists-and-clears
+  "Queue entry should persist and clear when result arrives."
+  (let* ((tmp-db (format nil "data/memory/test-oos-~a.db" (get-universal-time))))
+    (unwind-protect
+         (let ((swimmy.core::*db-path-default* tmp-db))
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (let ((dispatch-count 0)
+                 (last-req-id nil)
+                 (orig-request (symbol-function 'swimmy.school::request-backtest)))
+             (unwind-protect
+                  (progn
+                    (setf (symbol-function 'swimmy.school::request-backtest)
+                          (lambda (strat &key request-id &allow-other-keys)
+                            (declare (ignore strat))
+                            (setf last-req-id request-id)
+                            (incf dispatch-count)
+                            t))
+                    (let* ((strat (cl-user::make-strategy :name "QueueTest" :symbol "USDJPY" :oos-sharpe nil))
+                           (swimmy.globals:*strategy-knowledge-base* (list strat)))
+                      (swimmy.school::run-oos-validation strat)
+                      (assert-equal 1 dispatch-count)
+                      (multiple-value-bind (rid rat status) (swimmy.school::lookup-oos-request "QueueTest")
+                        (declare (ignore rat))
+                        (assert-equal last-req-id rid)
+                        (assert-true (stringp status)))
+                      ;; Simulate restart by closing connection
+                      (swimmy.core:close-db-connection)
+                      (multiple-value-bind (rid2 rat2 status2) (swimmy.school::lookup-oos-request "QueueTest")
+                        (declare (ignore rat2))
+                        (assert-equal last-req-id rid2)
+                        (assert-true (stringp status2)))
+                      ;; Receive result -> clears queue
+                      (swimmy.school::handle-oos-backtest-result "QueueTest" (list :sharpe 0.8 :request-id last-req-id))
+                      (assert-equal 0.8 (swimmy.school::strategy-oos-sharpe strat))
+                      (multiple-value-bind (rid3 _time3 _status3) (swimmy.school::lookup-oos-request "QueueTest")
+                        (assert-true (null rid3))))))
+               (setf (symbol-function 'swimmy.school::request-backtest) orig-request))))
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db))))
 
 ;;; ==========================================
 ;;; SCHOOL-RESEARCH TESTS

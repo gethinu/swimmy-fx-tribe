@@ -111,13 +111,12 @@
 
 ;; OOS queue helpers ----------------------------------------------------------
 
-(defun enqueue-oos-request (name request-id)
+(defun enqueue-oos-request (name request-id &key (status "sent") (requested-at (get-universal-time)) last-error)
   "Insert or replace an OOS request."
-  (let ((now (get-universal-time)))
-    (execute-non-query
-     "INSERT OR REPLACE INTO oos_queue (request_id, name, requested_at, status, last_error)
-      VALUES (?, ?, ?, 'sent', NULL)"
-     request-id name now)))
+  (execute-non-query
+   "INSERT OR REPLACE INTO oos_queue (request_id, name, requested_at, status, last_error)
+    VALUES (?, ?, ?, ?, ?)"
+   request-id name requested-at status last-error))
 
 (defun lookup-oos-request (name)
   "Return (values request-id requested-at status) for the latest request by name, or NILs."
