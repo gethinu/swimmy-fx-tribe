@@ -212,8 +212,8 @@
                                       sl tp 
                                       :magic magic 
                                       :comment (or comment "")))
-                         (uuid (jsown:val order-obj "id"))
-                         (msg-str (jsown:to-json order-obj)))
+                         (uuid (cdr (assoc 'swimmy.core::id order-obj)))
+                         (msg-str (swimmy.core::sexp->string order-obj)))
                     
                     ;; Retry Logic (Phase 7): Store pending order
                     (when (boundp '*pending-orders*)

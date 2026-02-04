@@ -152,6 +152,19 @@
     (assert-true has-count "REQ_HISTORY should use count key")
     (assert-false has-volume "REQ_HISTORY should not use volume key")))
 
+(deftest test-order-open-sexp-keys
+  "ORDER_OPEN should use action/symbol/lot and be S-expression"
+  (let* ((msg (swimmy.core:make-order-message "UT" "USDJPY" "BUY" 0.1 0.0 1.0 2.0
+                                              :magic 123 :comment "C"))
+         (payload (if (stringp msg)
+                      msg
+                      (swimmy.core::sexp->string msg))))
+    (assert-true (search "(action . \"BUY\")" payload) "Expected action key")
+    (assert-true (search "(symbol . \"USDJPY\")" payload) "Expected symbol key")
+    (assert-true (search "(lot . 0.1" payload) "Expected lot key")
+    (assert-false (search "side" payload) "Should not contain side key")
+    (assert-false (search "instrument" payload) "Should not contain instrument key")))
+
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
@@ -451,6 +464,7 @@
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
+                  test-order-open-sexp-keys
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip

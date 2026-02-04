@@ -28,6 +28,16 @@
           (logior #x8000 (random #x4000))
           (random 281474976710656)))
 
+(defun sexp->string (form &key (package :swimmy.core))
+  "Render S-expression FORM as a single-line string."
+  (with-standard-io-syntax
+    (let ((*print-case* :downcase)
+          (*print-pretty* nil)
+          (*print-right-margin* most-positive-fixnum)
+          (*print-escape* t)
+          (*package* (find-package package)))
+      (format nil "~s" form))))
+
 (defun make-protocol-message (type payload)
   "Construct a standard protocol message wrapper."
   (let ((msg (jsown:new-js
@@ -39,6 +49,15 @@
     (dolist (key (jsown:keywords payload))
       (setf (jsown:val msg key) (jsown:val payload key)))
     msg))
+
+(defun make-protocol-sexp (type payload-alist)
+  "Construct a standard protocol alist for S-expression transport."
+  (let ((base `((type . ,type)
+                (id . ,(generate-uuid))
+                (timestamp . ,(local-time:format-timestring nil (local-time:now)
+                                                           :format '(:year "-" (:month 2) "-" (:day 2) "T" (:hour 2) ":" (:min 2) ":" (:sec 2) "Z")))
+                (version . ,+protocol-version+))))
+    (append base payload-alist)))
 
 (defun make-order-message (strategy-id symbol side lot price sl tp &key (magic 0) (comment ""))
   "Construct an ORDER_OPEN message (Protocol V2).
@@ -53,18 +72,17 @@
      tp: Take Profit
      magic: Magic number
      comment: Order comment"
-  (let ((side-str (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
-    (make-protocol-message +MSG-ORDER-OPEN+
-      (jsown:new-js
-        ("strategy_id" strategy-id)
-        ("instrument" symbol)
-        ("side" side-str)
-        ("lot" (read-from-string (format nil "~,2f" lot))) ;; Ensure 2 decimal formatting
-        ("price" (float price))
-        ("sl" (float sl))
-        ("tp" (float tp))
-        ("magic" (if (numberp magic) magic (parse-integer (format nil "~a" magic) :junk-allowed t)))
-        ("comment" comment)))))
+  (let ((action (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
+    (make-protocol-sexp +MSG-ORDER-OPEN+
+      `((strategy_id . ,strategy-id)
+        (action . ,action)
+        (symbol . ,symbol)
+        (lot . ,(read-from-string (format nil "~,2f" lot))) ;; Ensure 2 decimal formatting
+        (price . ,(float price))
+        (sl . ,(float sl))
+        (tp . ,(float tp))
+        (magic . ,(if (numberp magic) magic (parse-integer (format nil "~a" magic) :junk-allowed t)))
+        (comment . ,comment)))))
 
 (defun make-heartbeat-message (&optional (status "OK"))
   "Construct a HEARTBEAT message."
