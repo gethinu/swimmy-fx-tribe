@@ -19,6 +19,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 from sexp_utils import load_sexp_alist
+from status_unifier import (
+    compute_updated_info,
+    format_status_message,
+    format_system_health,
+    format_updated_line,
+)
 
 # Bot configuration - token MUST be set via environment variable
 TOKEN = os.environ.get("SWIMMY_DISCORD_BOT_TOKEN")
@@ -85,18 +91,31 @@ def load_status():
 
 def format_status():
     """Format status for Discord"""
-    load_status()
-    return f"""🐟 **Swimmy Status**
-━━━━━━━━━━━━━━━━━
-📊 **Daily PnL**: ¥{status_cache.get('daily_pnl', 0):,.0f}
-💰 **Total PnL**: ¥{status_cache.get('accumulated_pnl', 0):,.0f}
-🎯 **Goal**: {status_cache.get('goal_progress', 0):.1f}%
-📈 **Regime**: {status_cache.get('regime', 'UNKNOWN')}
-⚡ **Volatility**: {status_cache.get('volatility', 'UNKNOWN')}
-👑 **Leader**: {status_cache.get('leader', 'UNKNOWN')}
-⚠️ **Danger**: {status_cache.get('danger_level', 0)}
-━━━━━━━━━━━━━━━━━
-🕐 Updated: {datetime.now().strftime('%H:%M:%S')}"""
+    live_status = {}
+    try:
+        if os.path.exists(SWIMMY_STATUS_FILE):
+            live_status = load_sexp_alist(SWIMMY_STATUS_FILE)
+            status_cache.update(live_status)
+    except Exception as e:
+        print(f"Could not load status: {e}")
+
+    metrics_path = os.path.join(BASE_DIR, "data", "system_metrics.sexp")
+    metrics = None
+    try:
+        if os.path.exists(metrics_path):
+            metrics = load_sexp_alist(metrics_path)
+    except Exception as e:
+        print(f"Could not load system metrics: {e}")
+
+    updated_info = compute_updated_info(live_status, Path(SWIMMY_STATUS_FILE))
+    snapshot = {
+        "daily_pnl": live_status.get("daily_pnl", 0),
+        "total_pnl": live_status.get("accumulated_pnl", 0),
+        "goal_progress": live_status.get("goal_progress", 0),
+        "system_health": format_system_health(metrics),
+        "updated_line": format_updated_line(updated_info),
+    }
+    return format_status_message(snapshot)
 
 
 def format_goal():
