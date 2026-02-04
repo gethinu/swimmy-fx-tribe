@@ -748,6 +748,28 @@
     (funcall fn msg)
     (assert-true (> swimmy.main::*backtest-recv-count* 0) "recv count increments")))
 
+(deftest test-deferred-flush-respects-batch
+  "flush-deferred-founders should only request up to batch size"
+  (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-batch (and (boundp 'swimmy.school::*deferred-flush-batch*)
+                          swimmy.school::*deferred-flush-batch*))
+         (count 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list (swimmy.school:make-strategy :name "S1")
+                      (swimmy.school:make-strategy :name "S2")
+                      (swimmy.school:make-strategy :name "S3")))
+          (setf swimmy.school::*deferred-flush-batch* 1)
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest _) (declare (ignore _)) (incf count)))
+          (swimmy.school::flush-deferred-founders)
+          (assert-equal 1 count "batch=1 should send exactly one"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*deferred-flush-batch* orig-batch)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -939,6 +961,7 @@
                   test-backtest-pending-counters-defaults
                   test-backtest-send-throttles-when-pending-high
                   test-backtest-pending-count-decrements-on-recv
+                  test-deferred-flush-respects-batch
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard

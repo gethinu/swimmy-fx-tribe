@@ -123,6 +123,11 @@
 (when (boundp 'swimmy.globals::*backtest-rate-limit-per-sec*)
   (setf swimmy.globals::*backtest-rate-limit-per-sec* *backtest-rate-limit-per-sec*))
 
+(defparameter *deferred-flush-batch* (env-int-or "SWIMMY_DEFERRED_FLUSH_BATCH" 0)
+  "Max deferred backtests per flush. 0 means unlimited.")
+(defparameter *deferred-flush-interval-sec* (env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 0)
+  "Min seconds between deferred flushes. 0 means no interval.")
+
 (defun zmq-connect-endpoint (port &optional (host *zmq-host*))
   "Build ZMQ connect endpoint."
   (format nil "tcp://~a:~d" host port))

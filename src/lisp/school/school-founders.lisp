@@ -424,16 +424,29 @@
 ;;; ----------------------------------------------------------------------------
 ;;; FLUSH DEFERRED (V50.5)
 ;;; ----------------------------------------------------------------------------
+(defparameter *last-deferred-flush* 0)
+(defparameter *deferred-flush-batch* swimmy.core::*deferred-flush-batch*)
+(defparameter *deferred-flush-interval-sec* swimmy.core::*deferred-flush-interval-sec*)
+
 (defun flush-deferred-founders ()
   "Flush (backtest) any founders that were deferred during startup.
    Called by Main after hot-reload or end of startup."
   (format t "[HEADHUNTER] 🚽 Flushing deferred backtests...~%")
-  (let ((count 0))
+  (let ((now (get-universal-time)))
+    (when (and (> *deferred-flush-interval-sec* 0)
+               (< (- now *last-deferred-flush*) *deferred-flush-interval-sec*))
+      (format t "[HEADHUNTER] ⏳ Deferred flush cooldown (~ds).~%" *deferred-flush-interval-sec*)
+      (return-from flush-deferred-founders 0))
+    (setf *last-deferred-flush* now))
+  (let ((count 0)
+        (limit *deferred-flush-batch*))
     (dolist (s *strategy-knowledge-base*)
       (let ((rank (strategy-rank s)))
-        (when (or (null rank) 
+        (when (or (null rank)
                   (and (stringp rank) (string= rank "NIL"))
                   (eq rank :nil))
+          (when (and (> limit 0) (>= count limit))
+            (return))
           (format t "[HEADHUNTER] 🚀 Requesting deferred BT for ~a...~%" (strategy-name s))
           (handler-case
               (request-backtest s)
