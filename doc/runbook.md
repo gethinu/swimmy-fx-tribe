@@ -31,6 +31,7 @@ make run  # Brain + Guardian を tmux で起動
 - [ ] `swimmy-watchdog` が active (running)
 - [ ] Discord heartbeat が受信されている
 - [ ] MT5 EA が接続されている (heartbeat)
+- [ ] MT5 EA の `InpWSL_IP` が設定済み（空だと初期化失敗）
 
 ---
 
@@ -45,7 +46,7 @@ sudo systemctl stop swimmy-guardian swimmy-brain swimmy-school swimmy-data-keepe
 ### 2.2 緊急停止 (EMERGENCY_CLOSE_ALL)
 ```bash
 # MT5 に直接コマンド送信
-echo '{"action":"CLOSE_ALL"}' | zmq-send tcp://localhost:5560
+echo '((type . "CLOSE") (close_all . t) (symbol . "ALL"))' | zmq-send tcp://localhost:5560
 
 # または Guardian 経由
 echo 'EMERGENCY_CLOSE_ALL' | zmq-send tcp://localhost:5559

@@ -3,6 +3,7 @@
 ## 通信方式
 - **Transport**: TCP
 - **Encoding**: S-expression（内部ZMQ）。外部API境界のみJSON。
+- **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
   - `5560`: Execution (Rust PUB -> MT5 SUB)
@@ -105,8 +106,8 @@ RustからMT5へ送信される。
 ```
 ((type . "ORDER_OPEN")
  (id . "uuid-v4")
- (action . "BUY")
- (symbol . "USDJPY")
+ (side . "BUY")
+ (instrument . "USDJPY")
  (lot . 0.1)
  (sl . 144.500)
  (tp . 146.500)
@@ -119,7 +120,7 @@ RustからMT5へ送信される。
 ((type . "CLOSE")
  (close_all . false)
  (magic . 123456)
- (instrument . "USDJPY"))
+ (symbol . "USDJPY"))
 ```
 
 **REQ_HISTORY**:

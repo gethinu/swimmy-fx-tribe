@@ -18,6 +18,10 @@ MT5 <--ZeroMQ--> Guardian (Rust) <--ZeroMQ--> Brain (Lisp)
                                                   +--> strategies.lisp (61戦略)
 ```
 
+**プロトコル境界**
+- MCP Host/Server: JSON-RPC（外部API）
+- Brain/Guardian/MT5: **S式（alist）** が正本（ORDER_OPEN は `instrument` + `side`）
+
 ---
 
 ## @ 4大氏族 (The Four Great Clans)
