@@ -2,7 +2,7 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: S-expression（内部ZMQ）。外部API境界のみJSON。
+- **Encoding**: S-expression（内部ZMQはS式のみ・JSON受理しない）。外部API境界のみJSON。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
   - `5560`: Execution (Rust PUB -> MT5 SUB)
@@ -113,6 +113,7 @@ RustからMT5へ送信される。
  (magic . 123456)
  (comment . "StrategyName"))
 ```
+**備考**: `action/symbol/lot` のみ正式。`side/instrument` は受理しない。
 
 **CLOSE**:
 ```
@@ -220,7 +221,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
             (max_dd . 0.12))))
 ```
 
-**備考**: 以前のJSON要求形式は廃止（後方互換なし）。Brain/School・Backtest ServiceともS式で送受信する。
+**備考**: 以前のJSON要求形式は廃止（後方互換なし）。**内部ZMQでJSONは受理しない**。Brain/School・Backtest ServiceともS式で送受信する。  
 
 ## エラーとタイムアウト
 - **タイムアウト**:

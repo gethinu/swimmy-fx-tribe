@@ -30,7 +30,7 @@ graph TD
     Rust <--> DB
 ```
 
-**通信エンコーディング方針**: 内部ZMQはS-expression（alist形式）に統一。外部API境界（Discord/HTTP等）はJSONを維持する。
+**通信エンコーディング方針**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP等）はJSONを維持する。
 
 ## コンポーネント詳細
 

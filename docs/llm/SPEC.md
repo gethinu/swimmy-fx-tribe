@@ -48,7 +48,7 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
   - Rust (PUSH 5555) -> Lisp
   - Lisp (PUB 5556) -> Rust
   - Data Keeper (PULL 5561) <- Rust/Lisp
-- **Encoding**: 内部ZMQはS-expression（alist形式）に統一。外部API境界はJSONを維持。
+- **Encoding**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Sharded Files**: 戦略本体 (S式)。
