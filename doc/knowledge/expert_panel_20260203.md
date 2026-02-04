@@ -464,3 +464,60 @@
 3. Breeder経由の新規は `require-bt` を明示し、BT未実施のまま生存/淘汰されないようにする。`src/lisp/school/school-breeder.lisp:169` `src/lisp/school/school-kb.lisp:166`
 4. `report-source-drift` の警告をEvolution Reportに追加して運用に露出させる。`src/lisp/school/school-db-stats.lisp:63` `src/lisp/school/school-narrative.lisp:236`
 5. 0.00のOOSを“未検証”として再リクエストする。`src/lisp/school/school-validation.lisp:266`
+
+---
+
+# 🦅 Expert Panel Report
+
+**Date:** 2026-02-03
+**Leader:** Elon Musk
+**Trigger:** /expert-panel「ORDER_OPENの正式キー（side/instrument/lot）の決定」
+
+## 🏛️ 常設顧問の意見
+### Taleb:
+- 仕様と実装がズレたまま運用するのは“静かな破滅”。不整合が最初に壊すのは注文経路だ（`docs/llm/INTERFACES.md:104-114`、`src/lisp/core/execution-protocol.lisp:43-67`、`src/mt5/SwimmyBridge.mq5:469-504`）。
+- 文字列部分一致で`BUY/SELL`を拾うのは事故の温床。厳密キーの固定が先（`src/mt5/SwimmyBridge.mq5:491-503`）。
+
+### Graham:
+- “正本があるなら従え”。`ORDER_OPEN`は **side/instrument/lot** に統一し、ドキュメントもそれに揃えるのが唯一の正道（`docs/llm/INTERFACES.md:104-114`）。
+- 仕様変更のコスト（全ドキュメント/テスト/外部ツールの同期）は避けられない。中途半端な互換は負債になる（`docs/llm/INTERFACES.md:104-114`、`doc/SYSTEM_ARCHITECTURE.md:1-16`）。
+
+### Naval:
+- レバレッジは“単一の契約”。キーが分裂している現状は自動化の敵（`docs/llm/INTERFACES.md:104-114`、`src/lisp/core/execution-protocol.lisp:43-67`）。
+- 仕様準拠に寄せる方が、変換層/検証のコストが最小になる。
+
+### Simons:
+- 注文メッセージは統計系の土台。`side`/`action`や`instrument`/`symbol`の揺れはログ集計の偏りを生む（`docs/llm/INTERFACES.md:104-114`、`src/mt5/SwimmyBridge.mq5:469-504`）。
+- “互換を残す”判断は短期の楽だが、長期の計測品質を毀損する。
+
+## 💻 技術パネルの意見
+### Fowler:
+- 仕様書と実装が乖離していること自体が設計欠陥。正本（INTERFACES）を **side/instrument** に固定し、それ以外を廃止する（`docs/llm/INTERFACES.md:104-114`）。
+- `instrument/symbol`の二重化は境界契約の崩壊。キーは一つに固定すべき（`src/lisp/core/execution-protocol.lisp:59-62`、`src/mt5/SwimmyBridge.mq5:471-503`）。
+
+### Hickey:
+- 仕様と実装が“別言語”のまま。シンプルさを取り戻すには仕様の一元化が最短（`docs/llm/INTERFACES.md:104-114`）。
+- `side`/`instrument`を正本にし、`action/symbol`は廃止する方がトータルで単純。
+
+### Uncle Bob:
+- `ORDER_OPEN`のキーが揺れるとテストが書けない。契約テストの前提を固定しろ（`docs/llm/INTERFACES.md:104-114`）。
+- 文字列部分一致は即廃止。`type`と必須キーの検証で事故を止めろ（`src/mt5/SwimmyBridge.mq5:491-503`）。
+
+## 🚀 ビジョナリーの意見
+### Ng:
+- 学習・監視は入力の一貫性が命。仕様のキーに合わせるのが唯一の“学習品質”維持策（`docs/llm/INTERFACES.md:104-114`）。
+
+### López de Prado:
+- キーの揺れは統計的に“ノイズ源”。`side/instrument/lot`を正本として固定し、全ログ/集計をそれに合わせろ（`docs/llm/INTERFACES.md:104-114`）。
+
+### Gene Kim:
+- 運用上の正本はドキュメント。現場の迷いを消すなら仕様準拠一択（`docs/llm/INTERFACES.md:104-114`）。
+
+## 🚀 Musk's Decision (Final)
+> 「**side / instrument / lot** に統一する。正本はINTERFACESだ。実装側を揃えろ。`action/symbol` は廃止。文字列部分一致も削除。」
+
+## Actionable Items
+1. `ORDER_OPEN` の正式キーを **side/instrument/lot** に固定し、仕様どおりに統一する（`docs/llm/INTERFACES.md:104-114`）。
+2. Lisp側の `execution-protocol` を仕様に合わせて修正し、`action/symbol` を廃止する（`src/lisp/core/execution-protocol.lisp:43-67`）。
+3. MT5側の受信処理を `side/instrument/lot` に合わせ、文字列部分一致による注文判定を削除する（`src/mt5/SwimmyBridge.mq5:471-503`）。
+4. 契約テストを追加し、`ORDER_OPEN` の必須キー不一致をCIで検知する（`docs/llm/INTERFACES.md:104-114`）。
