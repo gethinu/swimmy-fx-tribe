@@ -235,7 +235,10 @@
     (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: M~d)...~%" 
             (strategy-name strat) actual-symbol suffix len timeframe)
     
-    (let* ((data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol))))
+    (let* ((override swimmy.core::*backtest-csv-override*)
+           (data-file (if (and override (> (length override) 0))
+                          override
+                          (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
            (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
            (use-file (and (probe-file data-file)
                           (not wfv-suffix)))

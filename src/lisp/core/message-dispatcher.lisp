@@ -129,6 +129,10 @@
               *backtest-recv-last-trades*)
       (handler-case
           (progn
+            (let ((pending (max 0 (- (if (boundp 'swimmy.globals::*backtest-submit-count*)
+                                         swimmy.globals::*backtest-submit-count*
+                                         0)
+                                     *backtest-recv-count*))))
             (ensure-directories-exist "data/reports/")
             (with-open-file (s "data/reports/backtest_status.txt"
                                :direction :output
@@ -136,10 +140,11 @@
                                :if-does-not-exist :create)
               (format s "timestamp: ~a~%" now)
               (format s "count: ~d~%" *backtest-recv-count*)
+              (format s "pending: ~d~%" pending)
               (format s "last_name: ~a~%" (or *backtest-recv-last-name* "N/A"))
               (format s "last_sharpe: ~,4f~%" *backtest-recv-last-sharpe*)
               (format s "last_trades: ~d~%" *backtest-recv-last-trades*)
-              (format s "last_request_id: ~a~%" (or *backtest-recv-last-id* "N/A"))))
+              (format s "last_request_id: ~a~%" (or *backtest-recv-last-id* "N/A")))))
         (error (e)
           (format t "[BACKTEST] ⚠️ Failed to write status file: ~a~%" e))))))
 

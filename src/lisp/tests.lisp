@@ -122,7 +122,9 @@
            (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
            (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
            (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
-                         (symbol-function 'swimmy.school::handle-v2-result))))
+                         (symbol-function 'swimmy.school::handle-v2-result)))
+           (orig-submit-count swimmy.globals::*backtest-submit-count*)
+           (orig-recv-count swimmy.main::*backtest-recv-count*))
       (unwind-protect
           (progn
             (setf (symbol-function 'swimmy.school:cache-backtest-result)
@@ -136,12 +138,15 @@
                     (lambda (&rest args) (declare (ignore args)) nil)))
             (setf swimmy.globals:*backtest-submit-last-id* "SUB-999")
             (setf swimmy.main::*backtest-recv-last-log* 0)
+            (setf swimmy.globals::*backtest-submit-count* 5)
+            (setf swimmy.main::*backtest-recv-count* 1)
             (funcall fn msg)
             (let ((content (with-open-file (s status-path :direction :input)
                              (let ((text (make-string (file-length s))))
                                (read-sequence text s)
                                text))))
               (assert-true (search "last_request_id: RID-123" content))
+              (assert-true (search "pending: 3" content))
               (assert-true (null (search "last_submit_id" content))
                            "Expected last_submit_id to be absent from backtest_status.txt")
               (assert-true (null (search "last_recv_id" content))
@@ -149,6 +154,8 @@
         (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
         (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
         (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (setf swimmy.globals::*backtest-submit-count* orig-submit-count)
+        (setf swimmy.main::*backtest-recv-count* orig-recv-count)
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
@@ -715,6 +722,91 @@
       (unless orig
         (sb-posix:unsetenv "SWIMMY_BACKTEST_DEBUG_RECV")))))
 
+(deftest test-backtest-pending-counters-defaults
+  "backtest pending counters should initialize to sane defaults"
+  (assert-true (boundp 'swimmy.globals::*backtest-submit-count*) "submit counter exists")
+  (assert-true (boundp 'swimmy.globals::*backtest-max-pending*) "max pending exists")
+  (assert-true (numberp swimmy.globals::*backtest-max-pending*) "max pending numeric"))
+
+(deftest test-backtest-send-throttles-when-pending-high
+  "send-zmq-msg should refuse backtest send when pending exceeds max"
+  (let* ((orig-send (symbol-function 'pzmq:send))
+         (orig-req swimmy.globals:*backtest-requester*)
+         (sent nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*backtest-requester* :dummy)
+          (setf swimmy.globals::*backtest-submit-count* 10)
+          (setf swimmy.main::*backtest-recv-count* 0)
+          (setf swimmy.globals::*backtest-max-pending* 1)
+          (setf (symbol-function 'pzmq:send) (lambda (&rest _) (setf sent t)))
+          (swimmy.school::send-zmq-msg "(dummy)" :target :backtest)
+          (assert-true (null sent) "send should be blocked"))
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
+(deftest test-backtest-pending-count-decrements-on-recv
+  "pending count should drop when a BACKTEST_RESULT is processed"
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-PENDING\") (sharpe . 0.1) (trades . 1))))"))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (setf swimmy.globals::*backtest-submit-count* 5)
+    (setf swimmy.main::*backtest-recv-count* 0)
+    (funcall fn msg)
+    (assert-true (> swimmy.main::*backtest-recv-count* 0) "recv count increments")))
+
+(deftest test-deferred-flush-respects-batch
+  "flush-deferred-founders should only request up to batch size"
+  (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-batch (and (boundp 'swimmy.school::*deferred-flush-batch*)
+                          swimmy.school::*deferred-flush-batch*))
+         (count 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list (swimmy.school:make-strategy :name "S1")
+                      (swimmy.school:make-strategy :name "S2")
+                      (swimmy.school:make-strategy :name "S3")))
+          (setf swimmy.school::*deferred-flush-batch* 1)
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest _) (declare (ignore _)) (incf count)))
+          (swimmy.school::flush-deferred-founders)
+          (assert-equal 1 count "batch=1 should send exactly one"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*deferred-flush-batch* orig-batch)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request))))
+
+(deftest test-backtest-uses-csv-override
+  "request-backtest should honor SWIMMY_BACKTEST_CSV_OVERRIDE when set"
+  (require :sb-posix)
+  (let* ((orig-env (uiop:getenv "SWIMMY_BACKTEST_CSV_OVERRIDE"))
+         (orig-override (and (boundp 'swimmy.core::*backtest-csv-override*)
+                             swimmy.core::*backtest-csv-override*))
+         (path "/tmp/swimmy-test.csv")
+         (captured nil)
+         (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (sb-posix:setenv "SWIMMY_BACKTEST_CSV_OVERRIDE" path 1)
+          (setf swimmy.core::*backtest-csv-override* path)
+          (with-open-file (s path :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (write-line "" s))
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (swimmy.school::request-backtest (swimmy.school:make-strategy :name "T" :symbol "USDJPY"))
+          (assert-true (and captured (search path captured))
+                       "payload should include override path"))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (ignore-errors (delete-file path))
+      (when orig-env
+        (sb-posix:setenv "SWIMMY_BACKTEST_CSV_OVERRIDE" orig-env 1))
+      (unless orig-env
+        (sb-posix:unsetenv "SWIMMY_BACKTEST_CSV_OVERRIDE"))
+      (setf swimmy.core::*backtest-csv-override* orig-override))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -912,6 +1004,11 @@
                   test-processing-step-no-maintenance
                   test-backtest-debug-enabled-p
                   test-flush-deferred-founders-respects-limit
+                  test-backtest-pending-counters-defaults
+                  test-backtest-send-throttles-when-pending-high
+                  test-backtest-pending-count-decrements-on-recv
+                  test-deferred-flush-respects-batch
+                  test-backtest-uses-csv-override
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard

@@ -431,6 +431,9 @@
   "Strategy names already queued for deferred flush (prevents duplicates).")
 (defvar *deferred-flush-last-run* 0)
 
+(defparameter *deferred-flush-batch* swimmy.core::*deferred-flush-batch*)
+(defparameter *deferred-flush-interval-sec* swimmy.core::*deferred-flush-interval-sec*)
+
 (defun %deferred-rank-p (rank)
   (or (null rank)
       (and (stringp rank) (string= rank "NIL"))
@@ -446,11 +449,19 @@
 
 (defun deferred-flush-batch ()
   "Default max deferred BT requests per flush tick. 0 disables."
-  (%env-int-or "SWIMMY_DEFERRED_FLUSH_BATCH" 50))
+  (if (and (boundp '*deferred-flush-batch*)
+           (numberp *deferred-flush-batch*)
+           (>= *deferred-flush-batch* 0))
+      *deferred-flush-batch*
+      (%env-int-or "SWIMMY_DEFERRED_FLUSH_BATCH" 50)))
 
 (defun deferred-flush-interval-sec ()
   "Minimum seconds between deferred flush ticks."
-  (%env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 2))
+  (if (and (boundp '*deferred-flush-interval-sec*)
+           (numberp *deferred-flush-interval-sec*)
+           (>= *deferred-flush-interval-sec* 0))
+      *deferred-flush-interval-sec*
+      (%env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 2)))
 
 (defun schedule-deferred-founders (&key (max-add nil))
   "Populate the deferred flush queue from the knowledge base.

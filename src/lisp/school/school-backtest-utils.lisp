@@ -27,11 +27,34 @@
             (val (cdr pair)))
         (setf (jsown:val obj key-str) val)))))
 
+(defun backtest-pending-count ()
+  (let ((recv (if (boundp 'swimmy.main::*backtest-recv-count*)
+                  swimmy.main::*backtest-recv-count*
+                  0)))
+    (max 0 (- swimmy.globals::*backtest-submit-count* recv))))
+
+(defun backtest-send-allowed-p ()
+  (let* ((now (get-universal-time))
+         (pending (backtest-pending-count))
+         (max-pending swimmy.globals::*backtest-max-pending*)
+         (rate swimmy.globals::*backtest-rate-limit-per-sec*)
+         (interval (if (and rate (> rate 0)) (/ 1.0 rate) 0.0))
+         (elapsed (- now swimmy.globals::*backtest-last-send-ts*)))
+    (and (< pending max-pending)
+         (or (<= interval 0.0) (>= elapsed interval)))))
+
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
   ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
   (sleep 0.005)
+  (when (eq target :backtest)
+    (unless (backtest-send-allowed-p)
+      (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
+              (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
+      (return-from send-zmq-msg nil))
+    (incf swimmy.globals::*backtest-submit-count*)
+    (setf swimmy.globals::*backtest-last-send-ts* (get-universal-time)))
   (cond
     ((and (eq target :backtest)
           (boundp 'swimmy.globals:*backtest-requester*)

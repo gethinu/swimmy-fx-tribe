@@ -113,6 +113,24 @@
 (defparameter *backtest-service-enabled* (env-bool-or "SWIMMY_BACKTEST_SERVICE" nil)
   "Enable dedicated backtest service (5580/5581) when true.")
 
+(defparameter *backtest-max-pending* (env-int-or "SWIMMY_BACKTEST_MAX_PENDING" 500)
+  "Max pending backtest requests before throttling.")
+(defparameter *backtest-rate-limit-per-sec* (env-int-or "SWIMMY_BACKTEST_RATE_LIMIT" 5)
+  "Max backtest sends per second.")
+
+(when (boundp 'swimmy.globals::*backtest-max-pending*)
+  (setf swimmy.globals::*backtest-max-pending* *backtest-max-pending*))
+(when (boundp 'swimmy.globals::*backtest-rate-limit-per-sec*)
+  (setf swimmy.globals::*backtest-rate-limit-per-sec* *backtest-rate-limit-per-sec*))
+
+(defparameter *deferred-flush-batch* (env-int-or "SWIMMY_DEFERRED_FLUSH_BATCH" 0)
+  "Max deferred backtests per flush. 0 means unlimited.")
+(defparameter *deferred-flush-interval-sec* (env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 0)
+  "Min seconds between deferred flushes. 0 means no interval.")
+
+(defparameter *backtest-csv-override* (getenv-or-dotenv "SWIMMY_BACKTEST_CSV_OVERRIDE")
+  "Optional override path for backtest CSV.")
+
 (defun zmq-connect-endpoint (port &optional (host *zmq-host*))
   "Build ZMQ connect endpoint."
   (format nil "tcp://~a:~d" host port))
