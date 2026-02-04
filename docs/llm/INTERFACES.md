@@ -2,7 +2,7 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: S-expression（内部ZMQはS式のみ・JSON受理しない）。外部API境界のみJSON。
+- **Encoding**: 原則S-expression（alist）。ただし補助サービス境界（Data Keeper / Risk Gateway / Notifier）は現在JSONを使用（各ポート定義を正とする）。
 - **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
@@ -10,7 +10,9 @@
   - `5555`: Sensory Input (Rust PUSH -> Lisp PULL)
   - `5556`: Motor Output (Lisp PUB -> Rust SUB)
   - `5559`: External Command (Legacy) -> Rust SUB
+  - `5561`: Data Keeper (REQ/REP, JSON) -> Data Keeper Service
   - `5562`: Notifications (Rust PUSH -> Notifier Service)
+  - `5563`: Risk Gateway (REQ/REP, JSON) -> Risk Gateway Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -114,7 +116,7 @@ RustからMT5へ送信される。
  (magic . 123456)
  (comment . "StrategyName"))
 ```
-**備考**: `action/symbol/lot` のみ正式。`side/instrument` は受理しない。
+**備考**: `instrument` + `side` + `lot` が正式。`symbol/action` など旧キーは受理しない（Sender側もS式に統一する）。
 
 **CLOSE**:
 ```
@@ -222,7 +224,24 @@ Brainのバックテスト要求を専用サービスへオフロードする。
             (max_dd . 0.12))))
 ```
 
-**備考**: 以前のJSON要求形式は廃止（後方互換なし）。**内部ZMQでJSONは受理しない**。Brain/School・Backtest ServiceともS式で送受信する。  
+**備考**: 以前のJSON要求形式は廃止（後方互換なし）。Backtest Service は **S式のみ**受理/返却する。  
+
+### 6. Data Keeper Service (Port 5561)
+ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/data_keeper.py`）。
+
+- Request: `STATUS`
+- Request: `GET_HISTORY:SYMBOL:[TIMEFRAME:]COUNT`
+- Request: `GET_FILE_PATH:SYMBOL:TF`
+- Request: `ADD_CANDLE:SYMBOL:[TIMEFRAME:]JSON`
+- Request: `SAVE_ALL`
+
+### 7. Risk Gateway Service (Port 5563)
+取引許可の判定を行う補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/risk_gateway.py` / `src/lisp/core/risk-client.lisp`）。
+
+- Request: `CHECK_RISK:{...json...}`
+- Response: `{"status":"APPROVED"|"DENIED","reason":"..."}`
 
 ## エラーとタイムアウト
 - **タイムアウト**:
