@@ -72,7 +72,10 @@
            ;; Close all existing positions on startup (clean slate)
            (format t "[L] 🧹 Closing all existing positions...~%")
            (dolist (sym *supported-symbols*)
-             (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" sym) ("close_all" t)))))
+             (let ((payload `((type . "CLOSE")
+                              (symbol . ,sym)
+                              (close_all . t))))
+               (pzmq:send pub (swimmy.core::sexp->string payload :package *package*))))
            
            (sleep 1)
            
@@ -99,7 +102,11 @@
                (format t "[L] 📊 Requesting history for ~a...~%" sym)
                (dolist (tf tfs)
                  (format t "[L]    → Requesting ~a ~a history...~%" sym tf)
-                (pzmq:send pub (jsown:to-json (jsown:new-js ("action" "REQ_HISTORY") ("symbol" sym) ("count" 2000) ("tf" tf))))
+                 (let ((payload `((type . "REQ_HISTORY")
+                                  (symbol . ,sym)
+                                  (count . 2000)
+                                  (tf . ,tf))))
+                   (pzmq:send pub (swimmy.core::sexp->string payload :package *package*)))
                  (sleep 0.2))  ; Stagger requests
                (sleep 0.5)))   ; Stagger symbols
            

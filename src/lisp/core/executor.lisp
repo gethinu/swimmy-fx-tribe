@@ -51,9 +51,10 @@
     (when (> (- now *last-heartbeat-sent*) 30)
       (pulse-check) ; Added Pulse Check here
       (let* ((heartbeat-msg (make-heartbeat-message))
-             (hb-id (ignore-errors (jsown:val heartbeat-msg "id")))
-             (hb-status (ignore-errors (jsown:val heartbeat-msg "status")))
-             (hb-source (ignore-errors (jsown:val heartbeat-msg "source"))))
+             (hb-id (cdr (assoc 'swimmy.core::id heartbeat-msg)))
+             (hb-status (cdr (assoc 'swimmy.core::status heartbeat-msg)))
+             (hb-source (cdr (assoc 'swimmy.core::source heartbeat-msg)))
+             (heartbeat-str (swimmy.core::sexp->string heartbeat-msg)))
         (swimmy.core::emit-telemetry-event "heartbeat.sent"
           :service "executor"
           :severity "info"
@@ -63,7 +64,7 @@
                   ("status" hb-status)
                   ("source" hb-source)))
         (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
-          (pzmq:send *cmd-publisher* (jsown:to-json heartbeat-msg))))
+          (pzmq:send *cmd-publisher* heartbeat-str)))
       ;; V43.0: Position Status Report every 5 minutes (10 heartbeats)
       (when (and (= (mod (floor now 30) 10) 0)
                  (boundp 'swimmy.school::*warrior-allocation*)
@@ -99,7 +100,7 @@
                            (format t "[L] 🔄 Resending Order ~a (Retry ~d)~%" id (1+ retries))
                            (setf (gethash id swimmy.globals:*pending-orders*) 
                                  (list now (1+ retries) msg-obj))
-                           (pzmq:send *cmd-publisher* (jsown:to-json msg-obj)))
+                           (pzmq:send *cmd-publisher* (swimmy.core::sexp->string msg-obj)))
                          (progn
                            ;; Fail
                            (format t "[L] ❌ Order ~a TIMED OUT after 3 retries~%" id)
@@ -123,10 +124,11 @@
                          ((< pnl -0.3) 1)  ;; Clear loss -> DOWN correct
                          (t 2)))           ;; Small -> FLAT
                (candles-json (swimmy.school:candles-to-json (subseq *candle-history* 0 (min 30 (length *candle-history*)))))
-               (cmd (jsown:to-json (jsown:new-js
-                      ("action" "TRAIN")
-                      ("candles" candles-json)
-                      ("target" target)))))
+               (cmd (swimmy.core::sexp->string
+                     `((type . "TRAIN")
+                       (candles . ,candles-json)
+                       (target . ,target))
+                     :package *package*)))
           (pzmq:send *cmd-publisher* cmd)
           (format t "[L] 🧠 NN TRAIN: target=~a (~a)~%" target 
                   (cond ((= target 0) "UP") ((= target 1) "DOWN") (t "FLAT"))))

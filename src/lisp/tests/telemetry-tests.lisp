@@ -104,9 +104,10 @@
           (setf (symbol-function 'swimmy.core::make-heartbeat-message)
                 (lambda (&optional status)
                   (declare (ignore status))
-                  (jsown:new-js
-                    ("type" swimmy.core:+MSG-HEARTBEAT+)
-                    ("id" "HB-1"))))
+                  `((swimmy.core::type . ,swimmy.core:+MSG-HEARTBEAT+)
+                    (swimmy.core::id . "HB-1")
+                    (swimmy.core::source . "BRAIN")
+                    (swimmy.core::status . "OK"))))
           (let ((swimmy.executor::*last-heartbeat-sent* 0)
                 (swimmy.executor::*cmd-publisher* nil))
             (swimmy.executor::send-heartbeat))

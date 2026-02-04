@@ -53,7 +53,11 @@
            ((and (eq direction :short) current-ask)
             (setf pnl (- entry current-ask))))
          (when (< pnl 0)
-           (pzmq:send swimmy.globals:*cmd-publisher* (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol) ("magic" magic))))
+           (let ((payload `((type . "CLOSE")
+                            (symbol . ,symbol)
+                            (magic . ,magic))))
+             (pzmq:send swimmy.globals:*cmd-publisher*
+                        (swimmy.core::sexp->string payload :package *package*)))
            (remhash key swimmy.globals:*warrior-allocation*)
            (update-symbol-exposure symbol (or (getf warrior :lot) 0.01) :close)
            (incf closed-count))))

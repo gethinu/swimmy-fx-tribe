@@ -161,8 +161,10 @@
               (update-arm-stats idx (> pnl 0) pnl)
               (setf (arm-state-position state) nil)
               (when active
-                (pzmq:send *cmd-publisher*
-                           (jsown:to-json (jsown:new-js ("action" "CLOSE") ("symbol" symbol))))
+                (let ((payload `((type . "CLOSE")
+                                 (symbol . ,symbol))))
+                  (pzmq:send *cmd-publisher*
+                             (swimmy.core::sexp->string payload :package *package*)))
                 (notify-execution "CLOSE" symbol idx 0 pnl))))))
       
       ;; 4. Check Entries (using signals.lisp)
@@ -194,12 +196,11 @@
                            (arm-state-sl state) (- bid sl-p)
                            (arm-state-tp state) (+ bid tp-p))
                      (when active
-                       (pzmq:send *cmd-publisher*
-                                  (jsown:to-json (jsown:new-js ("action" "BUY") 
-                                                               ("symbol" symbol)
-                                                               ("volume" dynamic-vol)
-                                                               ("sl" (arm-state-sl state))
-                                                               ("tp" (arm-state-tp state)))))
+                       (let* ((order (swimmy.core:make-order-message
+                                      "Engine" symbol "BUY" dynamic-vol 0.0
+                                      (arm-state-sl state) (arm-state-tp state)))
+                              (msg (swimmy.core::sexp->string order :package :swimmy.core)))
+                         (pzmq:send *cmd-publisher* msg))
                        (notify-execution "OPEN" symbol idx dynamic-vol 0)))
                     
                     ((eql type :SELL)
@@ -210,12 +211,11 @@
                            (arm-state-sl state) (+ ask sl-p)
                            (arm-state-tp state) (- ask tp-p))
                      (when active
-                       (pzmq:send *cmd-publisher*
-                                  (jsown:to-json (jsown:new-js ("action" "SELL") 
-                                                               ("symbol" symbol)
-                                                               ("volume" dynamic-vol)
-                                                               ("sl" (arm-state-sl state))
-                                                               ("tp" (arm-state-tp state)))))
+                       (let* ((order (swimmy.core:make-order-message
+                                      "Engine" symbol "SELL" dynamic-vol 0.0
+                                      (arm-state-sl state) (arm-state-tp state)))
+                              (msg (swimmy.core::sexp->string order :package :swimmy.core)))
+                         (pzmq:send *cmd-publisher* msg))
                        (notify-execution "OPEN" symbol idx dynamic-vol 0)))))))))))))
 
 (format t "[ENGINE] positions.lisp loaded~%")

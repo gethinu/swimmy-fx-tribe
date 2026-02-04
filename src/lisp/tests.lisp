@@ -145,10 +145,12 @@
                       (loop for line = (read-line in nil nil)
                             while line do (write-line line out))
                       (get-output-stream-string out))))
-         (has-req (search "\"REQ_HISTORY\"" content))
-         (has-count (search "\"count\"" content))
-         (has-volume (search "\"volume\"" content)))
-    (assert-true has-req "REQ_HISTORY should exist in runner.lisp")
+         (has-type (search "(type . \"REQ_HISTORY\")" content))
+         (has-action (search "(action . \"REQ_HISTORY\")" content))
+         (has-count (search "(count . " content))
+         (has-volume (search "(volume . " content)))
+    (assert-true has-type "REQ_HISTORY should use type key")
+    (assert-false has-action "REQ_HISTORY should not use action key")
     (assert-true has-count "REQ_HISTORY should use count key")
     (assert-false has-volume "REQ_HISTORY should not use volume key")))
 
@@ -164,6 +166,30 @@
     (assert-true (search "(lot . 0.1" payload) "Expected lot key")
     (assert-false (search "side" payload) "Should not contain side key")
     (assert-false (search "instrument" payload) "Should not contain instrument key")))
+
+(deftest test-heartbeat-message-is-sexp
+  "Heartbeat should return S-expression alist"
+  (let ((msg (swimmy.core:make-heartbeat-message)))
+    (assert-true (listp msg) "Expected alist heartbeat message")
+    (assert-equal "HEARTBEAT" (cdr (assoc 'swimmy.core::type msg)) "Expected type key")
+    (assert-equal "BRAIN" (cdr (assoc 'swimmy.core::source msg)) "Expected source key")
+    (assert-true (cdr (assoc 'swimmy.core::status msg)) "Expected status key")))
+
+(deftest test-executor-heartbeat-sends-sexp
+  "Executor should send heartbeat as S-expression (not JSON)"
+  (let* ((content (uiop:read-file-string "src/lisp/core/executor.lisp"))
+         (uses-json (search "jsown:to-json heartbeat-msg" content))
+         (uses-sexp (search "sexp->string heartbeat-msg" content)))
+    (assert-false uses-json "Heartbeat should not use jsown:to-json")
+    (assert-true uses-sexp "Heartbeat should use sexp->string")))
+
+(deftest test-executor-pending-orders-sends-sexp
+  "Executor pending retry should resend S-expression (not JSON)"
+  (let* ((content (uiop:read-file-string "src/lisp/core/executor.lisp"))
+         (uses-json (search "jsown:to-json msg-obj" content))
+         (uses-sexp (search "sexp->string msg-obj" content)))
+    (assert-false uses-json "Pending retries should not use jsown:to-json")
+    (assert-true uses-sexp "Pending retries should use sexp->string")))
 
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
@@ -465,6 +491,9 @@
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
                   test-order-open-sexp-keys
+                  test-heartbeat-message-is-sexp
+                  test-executor-heartbeat-sends-sexp
+                  test-executor-pending-orders-sends-sexp
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip

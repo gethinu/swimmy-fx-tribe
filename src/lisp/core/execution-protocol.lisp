@@ -86,7 +86,6 @@
 
 (defun make-heartbeat-message (&optional (status "OK"))
   "Construct a HEARTBEAT message."
-  (make-protocol-message +MSG-HEARTBEAT+
-    (jsown:new-js
-      ("source" "BRAIN")
-      ("status" status))))
+  (make-protocol-sexp +MSG-HEARTBEAT+
+    `((source . "BRAIN")
+      (status . ,status))))
