@@ -16,12 +16,14 @@
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`.env` を自動読み込みして Discord 設定を拾う。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
+- **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
 - **B案方針**: 内部ZMQ通信＋ローカル保存をS式へ統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Startup Liveness**: Brain起動時は「受信ループ（Backtest結果/Guardian stream）」へ先に入る。重い一括処理（Deferred Backtest Flush）は **後回し＋レート制限**で段階的に実行する（起動で詰まらせない）。`SWIMMY_DEFERRED_FLUSH_BATCH`（1回の送信上限、0で無効）と `SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC`（実行間隔秒）で調整する。
+- **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過で送信停止。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
@@ -38,6 +40,7 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-04**: `run.sh` の Brain 起動は `brain.lisp` 優先、欠落時はASDF直起動フォールバックの方針を明記。
 - **2026-02-04**: Backtestのpending/レート制御とDeferred Flush制御パラメータをSTATEに明記。
 - **2026-02-04**: `SWIMMY_BACKTEST_CSV_OVERRIDE` でBacktestのCSV差し替えを許可する方針を明記。
 - **2026-02-04**: Backtest V2の`Option`表現（`timeframe`等）は空/1要素リストが正本と明記。
