@@ -161,7 +161,7 @@
 (defun request-mt5-positions ()
   "Send GET_POSITIONS command to MT5"
   (when (boundp 'swimmy.core::*cmd-publisher*)
-    (let ((msg (jsown:to-json (jsown:new-js ("action" "GET_POSITIONS")))))
+    (let ((msg (swimmy.core:encode-sexp '((type . "GET_POSITIONS")))))
       (pzmq:send swimmy.core::*cmd-publisher* msg))))
 
 (defun reconcile-with-mt5-positions (symbol mt5-positions)
@@ -325,11 +325,10 @@
                (magic (getf warrior :magic)))
            (when (and warrior-strat (string= warrior-strat strategy-name))
              (format t "[ALLOC] ✂️ Closing ~a Position (Key: ~a, Magic: ~a)~%" symbol key magic)
-             (pzmq:send *cmd-publisher* 
-                        (jsown:to-json (jsown:new-js 
-                                         ("action" "CLOSE") 
-                                         ("symbol" symbol) 
-                                         ("magic" magic))))
+             (let ((msg (swimmy.core:encode-sexp `((type . "CLOSE")
+                                                   (symbol . ,symbol)
+                                                   (magic . ,magic)))))
+               (pzmq:send *cmd-publisher* msg))
              (incf closed-count))))
        *warrior-allocation*)
       (error (e) (format t "[ALLOC] ⚠️ Error closing positions: ~a~%" e)))
