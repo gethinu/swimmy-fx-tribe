@@ -8,6 +8,9 @@
 
 **Tech Stack:** Common Lisp (SBCL, pzmq), Python (Backtest Service), SQLite, systemd.
 
+## Progress
+- 2026-02-04: Task 1-6 完了（バックプレッシャー/送信レート/受信計測/Deferred Flush/CSV Override/STATE更新）。
+
 ## 前提と正本
 - 仕様正本: `docs/llm/SPEC.md`, `docs/llm/ARCHITECTURE.md`, `docs/llm/INTERFACES.md`, `docs/llm/STATE.md`
 - 診断: `doc/knowledge/evolution_pipeline_diagnosis_2026-02-04.md`
