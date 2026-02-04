@@ -223,9 +223,8 @@
     (dolist (strat candidates)
       (handler-case
           (let* ((name (strategy-name strat))
-                 (benched (and (fboundp 'strategy-benched-p) (strategy-benched-p name)))
                  (mismatch (check-symbol-mismatch name symbol))) 
-            (unless (or benched mismatch) 
+            (unless mismatch 
               (let ((sig (evaluate-strategy-signal strat history)))
                 (when (member sig '(:buy :sell))
                   ;; Phase 5: Confidence & Scoring Engine

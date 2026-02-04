@@ -87,13 +87,7 @@
 
 (defun %numeric-string-p (s)
   "Return T if S cleanly parses to a number without trailing junk."
-  (when (and s (> (length s) 0))
-    (handler-case
-        (let ((*read-eval* nil))
-          (multiple-value-bind (val pos)
-              (read-from-string s nil nil :start 0 :end (length s))
-            (and val (= pos (length s)) (numberp val))))
-      (error () nil))))
+  (not (null (swimmy.core:safe-parse-number s))))
 
 (defun validate-oos-data-file (path)
   "Lightweight CSV gate: ensure basic schema/row is present."

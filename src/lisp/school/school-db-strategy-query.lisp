@@ -62,13 +62,15 @@
               (return-from done processed))
             (let ((sexp-str (first row)))
               (handler-case
-                  (let ((*package* (find-package :swimmy.school)))
-                    (let ((obj (read-from-string sexp-str)))
-                      (when (strategy-p obj)
-                        (funcall fn obj)
-                        (incf processed))))
+                  (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                    (if (strategy-p obj)
+                        (progn
+                          (funcall fn obj)
+                          (incf processed))
+                        (when (and sexp-str (> (length sexp-str) 0))
+                          (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                                  (subseq sexp-str 0 (min 30 (length sexp-str)))))))
                 (error (e)
-                  (format t "[DB] 💥 Corrupted Strategy SEXP (pkg: ~a): ~a... Error: ~a~%"
-                          *package*
+                  (format t "[DB] 💥 Corrupted Strategy SEXP: ~a... Error: ~a~%"
                           (subseq sexp-str 0 (min 30 (length sexp-str))) e))))))
           (incf offset batch-size)))))

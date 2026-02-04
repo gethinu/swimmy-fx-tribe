@@ -67,6 +67,7 @@
    #:batch-backtest-knowledge
    #:adopt-proven-strategies
    #:ensure-rank
+   #:send-to-graveyard
    #:strategy-rank
    #:record-trade-result
    #:update-leader-stats
@@ -121,7 +122,6 @@
    #:strategy-max-dd
    #:strategy-status
    #:strategy-status-reason
-   #:strategy-benched-p
    #:strategy-revalidation-pending
    #:strategy-symbol
    #:strategy-direction
@@ -280,15 +280,9 @@
    ;; Lifecycle Management (Phase 6)
    #:manage-strategy-lifecycle
    #:perform-daily-lifecycle-review 
-   #:check-unbench-condition
-   #:count-benched-strategies ;; Expert Panel Cleanup
 
-   ;; Benching & Killing (P0/P1 Expert Panel 2026-01-16)
-   #:weekly-unbench-all
-   #:should-weekly-unbench-p
+   ;; Killing & Pruning (P0/P1 Expert Panel 2026-01-16)
    #:kill-strategy
-   #:get-kill-count
-   #:reset-all-kill-counters
    #:prune-similar-strategies
    #:strategy-distance
    #:strategies-similar-p

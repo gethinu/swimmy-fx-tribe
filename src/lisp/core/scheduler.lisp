@@ -71,7 +71,7 @@
         (when (> (length *candle-history*) 100)
           (batch-backtest-knowledge))
         
-        ;; Phase 6: Lifecycle Review (Unbenching Check)
+        ;; Phase 6: Lifecycle Review
         (when (fboundp 'perform-daily-lifecycle-review)
           (perform-daily-lifecycle-review))
         

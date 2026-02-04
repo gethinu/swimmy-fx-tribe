@@ -237,10 +237,9 @@
                (search ":volume" code-string))
     (return-from safe-eval-strategy (values nil nil)))
   (handler-case
-      (let ((form (read-from-string code-string)))
+      (let ((form (safe-read-dsl-form code-string)))
         (if (and (listp form)
-                 (eq (car form) 'defstrategy)
-                 (validate form))
+                 (eq (car form) 'defstrategy))
             (values (eval form) t)
             (values nil nil)))
     (error (e)

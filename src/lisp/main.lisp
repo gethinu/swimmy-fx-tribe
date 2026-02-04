@@ -39,7 +39,6 @@
       nil)))
 
 ;;; EXTERNAL SERVICES
-;;; EXTERNAL SERVICES
 (defun call-gemini (prompt)
   "Legacy wrapper calling new Inference Worker"
   (swimmy.core:ask-ai prompt))
@@ -67,28 +66,22 @@
   (sb-ext:exit :code 0))
 
 ;;; INITIALIZATION LOGIC
-(defun initialize-system ()
-  (format t "[SYSTEM] Initializing subsystems...~%")
+(defun initialize-persistent-state ()
   (initialize-tribal-dialect)
-  
   (when (fboundp 'load-genome)
     (funcall 'load-genome))
-  
   (when (fboundp 'load-state)
     (funcall 'load-state))
-  
   (when (fboundp 'load-treasury)
     (funcall 'load-treasury))
-    
   (load-hall-of-fame)
-  (load-hall-of-fame)
-  (setup-symbol-webhooks)
-  
+  (setup-symbol-webhooks))
+
+(defun initialize-market-history ()
   ;; P1: Data Keeper Integration
   (init-data-keeper-client)
   (format t "[SYSTEM] Loading historical data from Data Keeper...~%")
   (dolist (sym *supported-symbols*)
-    ;; Load M1 Base (Legacy key: symbol -> list)
     ;; Load M1 Base (Legacy key: symbol -> list)
     ;; V11.0: Reduced to 10,000 for RAM safety. Deep backtests use Direct CSV.
     (let ((history (get-history-from-keeper sym 10000 "M1")))
@@ -99,19 +92,20 @@
             ;; Legacy compat: Update global history pointer
             (setf *candle-history* history))
           (format t "[SYSTEM] ⚠️ No M1 history available for ~a~%" sym)))
-    
+
     ;; Load Other Timeframes (Nested key: symbol -> tf -> list)
     (let ((timeframes '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN")))
-    	  (dolist (tf timeframes)
-	    ;; V11.0: Reduced to 5,000 for RAM safety
-	    (let ((tf-hist (get-history-from-keeper sym 5000 tf)))
+      (dolist (tf timeframes)
+        ;; V11.0: Reduced to 5,000 for RAM safety
+        (let ((tf-hist (get-history-from-keeper sym 5000 tf)))
           (when (and tf-hist (> (length tf-hist) 0))
-             ;; Ensure nested hash exists
-             (unless (gethash sym *candle-histories-tf*)
-                (setf (gethash sym *candle-histories-tf*) (make-hash-table :test 'equal)))
-             (setf (gethash tf (gethash sym *candle-histories-tf*)) tf-hist)
-             (format t "[SYSTEM] Loaded ~d candles for ~a (~a)~%" (length tf-hist) sym tf))))))
-             
+            ;; Ensure nested hash exists
+            (unless (gethash sym *candle-histories-tf*)
+              (setf (gethash sym *candle-histories-tf*) (make-hash-table :test 'equal)))
+            (setf (gethash tf (gethash sym *candle-histories-tf*)) tf-hist)
+            (format t "[SYSTEM] Loaded ~d candles for ~a (~a)~%" (length tf-hist) sym tf)))))))
+
+(defun initialize-school-system ()
   ;; V9.2: Init School Strategy System (AFTER History Load for Safety Gate)
   (swimmy.school::init-db)             ; V49.8 SQL Init
   (swimmy.school::init-knowledge-base) ; Restoration from SQL + Files
@@ -121,7 +115,7 @@
   (let ((f (find-symbol "RESTORE-LEGEND-61" "SWIMMY.SCHOOL")))
     (when (fboundp f)
       (funcall f)))
-  
+
   ;; P8: End startup mode to enable notifications
   (when (fboundp 'swimmy.school::end-startup-mode)
     (swimmy.school::end-startup-mode))
@@ -129,12 +123,17 @@
   ;; V51.0: Initialize Backtest Service if enabled (PUSH -> *port-backtest-req*)
   (when (fboundp 'swimmy.school::init-backtest-zmq)
     (swimmy.school::init-backtest-zmq))
-  
+
   ;; Queue legend revalidation (S-Expression BACKTEST requests) once backtest sockets are ready
   (let ((f (find-symbol "QUEUE-LEGEND-REVALIDATION" "SWIMMY.SCHOOL")))
     (when (fboundp f)
-      (funcall f)))
-    
+      (funcall f))))
+
+(defun initialize-system ()
+  (format t "[SYSTEM] Initializing subsystems...~%")
+  (initialize-persistent-state)
+  (initialize-market-history)
+  (initialize-school-system)
   (format t "[SYSTEM] Initialization complete.~%"))
 
 ;;; MAIN ENTRY POINT

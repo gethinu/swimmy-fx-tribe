@@ -52,11 +52,6 @@
                                              (eq status :active))))
                                      strategy-source)
                            0))
-         (benched-count (if strategy-source
-                            (count-if (lambda (s)
-                                        (eq (swimmy.school:strategy-status s) :benched))
-                                      strategy-source)
-                            0))
          ;; Equity
          (equity (if (boundp 'swimmy.globals::*current-equity*)
                      swimmy.globals::*current-equity* 0))
@@ -65,10 +60,10 @@
     (format nil "📊 **Status**
 MT5: ~a (~d秒前)
 💼 Equity: ¥~,0f | Today: ~a¥~,0f
-📈 Strategies: ~d active + ~d KB | 🪑 ~d benched"
+📈 Strategies: ~d active + ~d KB"
             tick-status tick-age
             equity (if (>= daily-pnl 0) "+" "") daily-pnl
-            active-count kb-count benched-count)))
+            active-count kb-count)))
 
 ;; V8.6: Using shared config from core/config.lisp (Environment Variables)
 ;; (defparameter *heartbeat-webhook-url* ... removed to avoid shadowing)

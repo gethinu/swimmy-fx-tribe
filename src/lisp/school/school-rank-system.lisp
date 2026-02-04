@@ -423,7 +423,6 @@
        (not (and (slot-exists-p strategy 'revalidation-pending)
                  (strategy-revalidation-pending strategy)))
        (not (eq (strategy-status strategy) :killed))
-       (not (eq (strategy-status strategy) :benched))
        (not (eq (strategy-rank strategy) :legend-archive))
        ;; Sanity checks to avoid pathological SL/TP values
        (numberp (strategy-sl strategy))

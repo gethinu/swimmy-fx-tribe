@@ -229,16 +229,10 @@
         (length *strategy-knowledge-base*))
 
 ;;; ==========================================
-;;; BENCH & KILL SYSTEM (V46.0 Expert Panel 2026-01-16)
-;;; P0: 3-strikes permanent elimination
+;;; KILL SYSTEM (V46.0 Expert Panel 2026-01-16)
 ;;; P1: Similarity-based pruning (min 3 per category)
 ;;; ==========================================
 
-;; *benched-strategies* REMOVED (Expert Panel Cleanup - Hickey)
-;; We now use strategy-status slot in the strategy struct.
-
-(defparameter *kill-counter* (make-hash-table :test 'equal) "P0: Track how many times each strategy was benched")
-(defparameter *max-bench-strikes* 1 "P0: Kill IMMEDIATELY after 1 bench (Expert Panel 2026-01-16)")
 (defparameter *min-strategies-per-category* 3 "P1: Minimum strategies to keep per category")
 (defparameter *similarity-threshold* 0.10 "P1: Parameter distance below this = similar")
 
@@ -254,22 +248,11 @@
   (or (find-strategy-object name)
       (find name swimmy.globals:*evolved-strategies* :key #'strategy-name :test #'string=)))
 
-(defun strategy-benched-p (name)
-  "Check if strategy is benched (check status slot)"
-  (let ((s (find-strategy-object name)))
-    (if (and s (eq (strategy-status s) :benched))
-        (strategy-status-reason s)
-        nil)))
-
-(defun get-kill-count (name)
-  "Get how many times a strategy has been benched"
-  (or (gethash name *kill-counter*) 0))
-
 (defun kill-strategy (name reason)
-  "P0: Soft Kill - Bench indefinitely instead of permanent deletion (Expert Panel 2026-01-16)"
+  "P0: Soft Kill - Shelve indefinitely instead of permanent deletion (Expert Panel 2026-01-16)"
   (let ((s (find-strategy-object name)))
     (when s
-      (format t "~%[L] 🛡️ SOFT KILL: ~a (~a) -> Benched indefinitely~%" name reason)
+      (format t "~%[L] 🛡️ SOFT KILL: ~a (~a) -> Shelved indefinitely~%" name reason)
       (setf (strategy-status s) :killed)
       (setf (strategy-status-reason s) (format nil "SOFT_KILL: ~a" reason))
       ;; Notify
@@ -277,50 +260,6 @@
         (notify-discord-alert 
           (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
           :color 15158332)))))
-
-(defun bench-strategy (name reason)
-  "Bench a strategy with reason. P0: 3rd bench = permanent kill"
-  (let ((strikes (1+ (get-kill-count name)))
-        (s (find-strategy-object name)))
-    (setf (gethash name *kill-counter*) strikes)
-    (if (>= strikes *max-bench-strikes*)
-        ;; 3 strikes - you're out!
-        (kill-strategy name (format nil "3-Strikes Rule: ~a" reason))
-        ;; Just bench for now
-        (when s
-          (setf (strategy-status s) :benched)
-          (setf (strategy-status-reason s) reason)
-          (format t "[L] 🚫 BENCHED (~d/~d): ~a (~a)~%" 
-                  strikes *max-bench-strikes* name reason)))))
-
-(defun unbench-all ()
-  "Unbench all strategies (but keep kill counters)"
-  ;; Iterate both lists
-  (dolist (s *strategy-knowledge-base*)
-    (when (or (eq (strategy-status s) :benched) (eq (strategy-status s) :killed))
-      (setf (strategy-status s) :active)
-      (setf (strategy-status-reason s) "")))
-  (dolist (s swimmy.globals:*evolved-strategies*)
-    (when (or (eq (strategy-status s) :benched) (eq (strategy-status s) :killed))
-      (setf (strategy-status s) :active)
-      (setf (strategy-status-reason s) "")))
-  (format t "[L] ♻️  All strategies status reset to ACTIVE (kill counters preserved)~%"))
-
-(defun reset-all-kill-counters ()
-  "Reset all kill counters (use sparingly - monthly?)"
-  (clrhash *kill-counter*)
-  (format t "[L] 🔄 All kill counters reset~%"))
-
-(defun should-weekly-unbench-p ()
-  "Check if it is Monday morning (before 9am) to reset bench"
-  (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
-    (declare (ignore s m d mo y))
-    (and (= dow 0) (< h 9))))
-
-(defun weekly-unbench-all ()
-  "Weekly unbench wrapper - DISABLED for Kodoku System (Strict Survival)"
-  ;; (unbench-all)
-  (format t "[L] 🔒 Weekly unbench skipped (Kodoku Rules in effect)~%"))
 
 ;;; ==========================================
 ;;; P1: SIMILARITY CHECK & PRUNING
@@ -472,18 +411,18 @@
       
       ;; TIER 1: DEATH (Sharpe < 0) - Soft Kill / Bench
       (when (< sharpe 0)
-        (bench-strategy name (format nil "Grading [D]: Negative Sharpe ~,2f. Needs optimization." sharpe))
+        (send-to-graveyard strat (format nil "Grading [D]: Negative Sharpe ~,2f. Needs optimization." sharpe))
         (return-from evaluate-strategy-performance))
 
       ;; TIER 2: REJECT (0 <= Sharpe < 0.6) - Noise
       (when (< sharpe 0.6)
-        (bench-strategy name (format nil "Grading [C]: Weak Sharpe ~,2f (< 0.6)" sharpe))
+        (send-to-graveyard strat (format nil "Grading [C]: Weak Sharpe ~,2f (< 0.6)" sharpe))
         (return-from evaluate-strategy-performance))
 
-      ;; TIER 3: CONDITIONAL (0.6 <= Sharpe < 1.0) - Bench for Review
-      ;; Note: We bench these so they don't consume resources unless explicitly promoted
+      ;; TIER 3: CONDITIONAL (0.6 <= Sharpe < 1.0) - Retire for Review
+      ;; Note: We retire these so they don't consume resources unless explicitly promoted
       (when (< sharpe 1.0)
-        (bench-strategy name (format nil "Grading [B]: Med Sharpe ~,2f (< 1.0)" sharpe))
+        (send-to-graveyard strat (format nil "Grading [B]: Med Sharpe ~,2f (< 1.0)" sharpe))
         (return-from evaluate-strategy-performance))
 
       ;; TIER 4: SURVIVE (Sharpe >= 1.0)
@@ -492,17 +431,17 @@
       (when (> trades 20) ; Only apply with sufficient sample
         ;; Rule 3: PF Floor
         (when (< profit-factor 1.2)
-          (bench-strategy name (format nil "Grading [D]: Low PF ~,2f (< 1.2)" profit-factor))
+          (send-to-graveyard strat (format nil "Grading [D]: Low PF ~,2f (< 1.2)" profit-factor))
           (return-from evaluate-strategy-performance))
           
         ;; Rule 3: Fake PF Detection (Martingale/Grid signature)
         (when (and (> profit-factor 2.0) (< sharpe 1.0))
-          (bench-strategy name (format nil "Grading [D]: Fake PF Trap (PF ~,2f but Sharpe ~,2f)" profit-factor sharpe))
+          (send-to-graveyard strat (format nil "Grading [D]: Fake PF Trap (PF ~,2f but Sharpe ~,2f)" profit-factor sharpe))
           (return-from evaluate-strategy-performance))
           
         ;; Rule 2: High Win-Rate Trap
         (when (and (> win-rate 70) (< profit-factor 1.3))
-          (bench-strategy name (format nil "Grading [D]: High WR Trap (WR ~,1f% but PF ~,2f)" win-rate profit-factor))
+          (send-to-graveyard strat (format nil "Grading [D]: High WR Trap (WR ~,1f% but PF ~,2f)" win-rate profit-factor))
           (return-from evaluate-strategy-performance)))
           
       ;; TIER 4: SURVIVE -> GRADED [S] or [A]
