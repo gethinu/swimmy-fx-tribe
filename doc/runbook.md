@@ -1,5 +1,7 @@
 # Swimmy Runbook (運用手順書)
 
+**正本**: systemd(system) を正本とし、user unit は診断用途のみ。
+
 ## 1. 起動手順
 
 ### 1.1 通常起動 (systemd)
