@@ -80,36 +80,61 @@ void LogError(string msg) {
 }
 
 //+------------------------------------------------------------------+
-//| JSON parsing functions                                            |
+//| S-expression parsing helpers                                      |
 //+------------------------------------------------------------------+
-double GetValueFromJson(string json, string key) {
-   string search = "\"" + key + "\":";
-   int start = StringFind(json, search);
-   if(start < 0) return 0.0;
-   start += StringLen(search);
-   int end_comma = StringFind(json, ",", start);
-   int end_bracket = StringFind(json, "}", start);
-   int end = (end_comma > 0 && end_bracket > 0) ? MathMin(end_comma, end_bracket) : MathMax(end_comma, end_bracket);
-   if(end < 0) return 0.0;
-   return StringToDouble(StringSubstr(json, start, end - start));
+string EscapeSexpString(string value) {
+   string out = value;
+   StringReplace(out, "\\", "\\\\");
+   StringReplace(out, "\"", "\\\"");
+   return out;
 }
 
-string GetStringFromJson(string json, string key) {
-   string search = "\"" + key + "\":\"";
-   int start = StringFind(json, search);
-   if(start < 0) return "";
-   start += StringLen(search);
-   int end = StringFind(json, "\"", start);
-   if(end < 0) return "";
-   return StringSubstr(json, start, end - start);
-}
-
-bool GetBoolFromJson(string json, string key) {
-   string search = "\"" + key + "\":";
-   int start = StringFind(json, search);
+bool FindSexpValue(string sexp, string key, string &value, bool &is_string) {
+   string search = "(" + key + " . ";
+   int start = StringFind(sexp, search);
    if(start < 0) return false;
    start += StringLen(search);
-   return (StringFind(json, "true", start) == start);
+   while(start < StringLen(sexp) && StringGetCharacter(sexp, start) == ' ') start++;
+   if(start >= StringLen(sexp)) return false;
+   if(StringGetCharacter(sexp, start) == '\"') {
+      is_string = true;
+      start++;
+      int end = StringFind(sexp, "\"", start);
+      if(end < 0) return false;
+      value = StringSubstr(sexp, start, end - start);
+      return true;
+   }
+   is_string = false;
+   int end_token = StringFind(sexp, ")", start);
+   if(end_token < 0) return false;
+   value = StringSubstr(sexp, start, end_token - start);
+   StringTrimLeft(value);
+   StringTrimRight(value);
+   return true;
+}
+
+double GetValueFromSexp(string sexp, string key) {
+   string raw;
+   bool is_string = false;
+   if(!FindSexpValue(sexp, key, raw, is_string)) return 0.0;
+   return StringToDouble(raw);
+}
+
+string GetStringFromSexp(string sexp, string key) {
+   string raw;
+   bool is_string = false;
+   if(!FindSexpValue(sexp, key, raw, is_string)) return "";
+   return raw;
+}
+
+bool GetBoolFromSexp(string sexp, string key) {
+   string raw;
+   bool is_string = false;
+   if(!FindSexpValue(sexp, key, raw, is_string)) return false;
+   string lowered = StringToLower(raw);
+   if(lowered == "true" || lowered == "t" || lowered == "1") return true;
+   if(lowered == "false" || lowered == "nil" || lowered == "0") return false;
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -232,10 +257,10 @@ int FindWarriorByMagic(ulong magic) {
 void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic) {
    if(!g_pub_connected) return;
    
-   string json = StringFormat("{\"type\":\"TRADE_CLOSED\",\"won\":%s,\"pnl\":%.2f,\"symbol\":\"%s\",\"ticket\":%I64u,\"magic\":%I64u}",
-                              won ? "true" : "false", pnl, symbol, ticket, magic);
+   string sexp = StringFormat("((type . \"TRADE_CLOSED\") (won . %s) (pnl . %.2f) (symbol . \"%s\") (ticket . %I64u) (magic . %I64u))",
+                              won ? "true" : "false", pnl, EscapeSexpString(symbol), ticket, magic);
    uchar data[];
-   StringToCharArray(json, data);
+   StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
    LogInfo("📊 Trade Result: " + (won ? "WIN" : "LOSS") + " PnL: " + DoubleToString(pnl, 2) + " Symbol: " + symbol);
 }
@@ -357,20 +382,19 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
       for(int batch = 0; batch < copied; batch += batch_size) {
          int end = MathMin(batch + batch_size, copied);
          
-         // V15.2: Include "tf" in JSON response so Brain knows what it received
-         string json = StringFormat("{\"type\":\"HISTORY\",\"symbol\":\"%s\",\"tf\":\"%s\",\"batch\":%d,\"total\":%d,\"data\":[", 
-                                    _Symbol, tf, batch / batch_size, (copied / batch_size) + 1);
+         string sexp = StringFormat("((type . \"HISTORY\") (symbol . \"%s\") (tf . \"%s\") (batch . %d) (total . %d) (data . (", 
+                                    EscapeSexpString(_Symbol), EscapeSexpString(tf), batch / batch_size, (copied / batch_size) + 1);
          
          for(int i = end - 1; i >= batch; i--) {
-            json += StringFormat("{\"t\":%I64d,\"o\":%.5f,\"h\":%.5f,\"l\":%.5f,\"c\":%.5f}",
-                                 rates[i].time, rates[i].open, rates[i].high, 
+            sexp += StringFormat("((t . %I64d) (o . %.5f) (h . %.5f) (l . %.5f) (c . %.5f))",
+                                 rates[i].time, rates[i].open, rates[i].high,
                                  rates[i].low, rates[i].close);
-            if(i > batch) json += ",";
+            if(i > batch) sexp += " ";
          }
-         json += "]}";
+         sexp += "))";
          
          uchar data[];
-         StringToCharArray(json, data);
+         StringToCharArray(sexp, data);
          zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
          
          Sleep(50); // Small delay between batches
@@ -467,9 +491,8 @@ void CloseShortTimeframePositions(string symbol) {
 //| Command execution                                                 |
 //+------------------------------------------------------------------+
 void ExecuteCommand(string cmd) {
-   string type = GetStringFromJson(cmd, "type");
-   string cmd_symbol = GetStringFromJson(cmd, "instrument");
-   if(cmd_symbol == "") cmd_symbol = GetStringFromJson(cmd, "symbol"); // Fallback check
+   string type = GetStringFromSexp(cmd, "type");
+   string cmd_symbol = GetStringFromSexp(cmd, "symbol");
 
    // Only execute commands for THIS symbol (or ALL)
    if(cmd_symbol != "" && cmd_symbol != "ALL" && cmd_symbol != _Symbol) {
@@ -477,7 +500,7 @@ void ExecuteCommand(string cmd) {
    }
    
    // HEARTBEAT (High Priority)
-   if(type == "HEARTBEAT" || StringFind(cmd, "\"HEARTBEAT\"") >= 0) {
+   if(type == "HEARTBEAT") {
       g_last_heartbeat = TimeCurrent();
       LogDebug("💓 Heartbeat received");
       return;
@@ -485,28 +508,21 @@ void ExecuteCommand(string cmd) {
 
    LogDebug("Processing command: " + StringSubstr(cmd, 0, 100) + "...");
    
-   ulong cmd_magic = (ulong)GetValueFromJson(cmd, "magic");
+   ulong cmd_magic = (ulong)GetValueFromSexp(cmd, "magic");
    if(cmd_magic <= 0) cmd_magic = MAGIC_BASE;
 
    // ORDER_OPEN (Protocol V2)
-   if(type == "ORDER_OPEN" || StringFind(cmd, "\"BUY\"") >= 0 || StringFind(cmd, "\"SELL\"") >= 0) {
-      string side = GetStringFromJson(cmd, "side");
-      // Legacy Fallback detection
-      if(side == "") {
-         if(StringFind(cmd, "\"BUY\"") >= 0) side = "BUY";
-         if(StringFind(cmd, "\"SELL\"") >= 0) side = "SELL";
-      }
-
-      double sl = GetValueFromJson(cmd, "sl");
-      double tp = GetValueFromJson(cmd, "tp");
-      double vol = GetValueFromJson(cmd, "lot");
-      if(vol <= 0) vol = GetValueFromJson(cmd, "volume");
+   if(type == "ORDER_OPEN") {
+      string side = GetStringFromSexp(cmd, "action");
+      double sl = GetValueFromSexp(cmd, "sl");
+      double tp = GetValueFromSexp(cmd, "tp");
+      double vol = GetValueFromSexp(cmd, "lot");
       if(vol <= 0) vol = 0.01;
       
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
       
       string comment = "SW-" + IntegerToString(cmd_magic); // V16.0 format
-      string msg_comment = GetStringFromJson(cmd, "comment");
+      string msg_comment = GetStringFromSexp(cmd, "comment");
       if(msg_comment != "") comment = msg_comment;
 
       if(side == "BUY") {
@@ -523,8 +539,8 @@ void ExecuteCommand(string cmd) {
          }
       }
    }
-   else if(type == "CLOSE" || StringFind(cmd, "\"CLOSE\"") >= 0) {
-      bool close_all = GetBoolFromJson(cmd, "close_all");
+   else if(type == "CLOSE") {
+      bool close_all = GetBoolFromSexp(cmd, "close_all");
       if(close_all) {
          LogInfo("🧹 CLOSE ALL: " + _Symbol);
          CloseAllPositions(_Symbol);
@@ -536,21 +552,21 @@ void ExecuteCommand(string cmd) {
          g_trade.PositionClose(_Symbol);
       }
    }
-   else if(StringFind(cmd, "CLOSE_SHORT_TF") >= 0) { // Keep legacy string match for special command
+   else if(type == "CLOSE_SHORT_TF") {
       LogInfo("🧹 CLOSE_SHORT_TF: Closing H4 and below (D1+ protected)");
       CloseShortTimeframePositions(_Symbol);
    }
-   else if(type == "REQ_HISTORY" || StringFind(cmd, "\"REQ_HISTORY\"") >= 0) {
-      string tf = GetStringFromJson(cmd, "tf");
+   else if(type == "REQ_HISTORY") {
+      string tf = GetStringFromSexp(cmd, "tf");
       if(tf == "") tf = "M1";
-      datetime start = (datetime)GetValueFromJson(cmd, "start");
-      int count = (int)GetValueFromJson(cmd, "count");
+      datetime start = (datetime)GetValueFromSexp(cmd, "start");
+      int count = (int)GetValueFromSexp(cmd, "count");
       SendHistoryData(cmd_symbol, tf, start, count);
    }
-   else if(type == "GET_POSITIONS" || StringFind(cmd, "\"GET_POSITIONS\"") >= 0) {
+   else if(type == "GET_POSITIONS") {
       SendOpenPositions();
    }
-   else if(type == "GET_SWAP" || StringFind(cmd, "\"GET_SWAP\"") >= 0) {
+   else if(type == "GET_SWAP") {
       SendSwapData();
    }
 }
@@ -572,11 +588,11 @@ void SendSwapData() {
    // Get Spread as well
    int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
    
-   string json = StringFormat("{\"type\":\"SWAP_DATA\",\"symbol\":\"%s\",\"swap_long\":%.5f,\"swap_short\":%.5f,\"swap_mode\":%d,\"spread\":%d}",
-                              _Symbol, swap_long, swap_short, swap_mode, spread);
+   string sexp = StringFormat("((type . \"SWAP_DATA\") (symbol . \"%s\") (swap_long . %.5f) (swap_short . %.5f) (swap_mode . %d) (spread . %d))",
+                              EscapeSexpString(_Symbol), swap_long, swap_short, swap_mode, spread);
    
    uchar data[];
-   StringToCharArray(json, data);
+   StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
    LogInfo("📊 SWAP DATA sent: L=" + DoubleToString(swap_long, 2) + " S=" + DoubleToString(swap_short, 2));
 }
@@ -584,11 +600,11 @@ void SendSwapData() {
 // Helper to send ACK
 void SendTradeAck(string orig_cmd, ulong ticket) {
    if(!g_pub_connected) return;
-   string id = GetStringFromJson(orig_cmd, "id");
-   string json = StringFormat("{\"type\":\"ORDER_ACK\",\"id\":\"%s\",\"ticket\":%I64u,\"symbol\":\"%s\"}", 
-                              id, ticket, _Symbol);
+   string id = GetStringFromSexp(orig_cmd, "id");
+   string sexp = StringFormat("((type . \"ORDER_ACK\") (id . \"%s\") (ticket . %I64u) (symbol . \"%s\"))", 
+                              EscapeSexpString(id), ticket, EscapeSexpString(_Symbol));
    uchar data[];
-   StringToCharArray(json, data);
+   StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
 }
 
@@ -602,10 +618,10 @@ void SendTick() {
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    
    if(bid > 0 && ask > 0) {
-      string json_str = StringFormat("{\"type\":\"TICK\",\"symbol\":\"%s\",\"bid\":%.5f,\"ask\":%.5f}",
-                                     _Symbol, bid, ask);
+      string sexp = StringFormat("((type . \"TICK\") (symbol . \"%s\") (bid . %.5f) (ask . %.5f))",
+                                 EscapeSexpString(_Symbol), bid, ask);
       uchar data_snd[];
-      StringToCharArray(json_str, data_snd);
+      StringToCharArray(sexp, data_snd);
       zmq_send(g_pub_socket, data_snd, ArraySize(data_snd)-1, ZMQ_DONTWAIT);
    }
 }
@@ -676,7 +692,7 @@ void OnTimer() {
 void SendOpenPositions() {
    if(!g_pub_connected) return;
    
-   string json = "{\"type\":\"POSITIONS\",\"symbol\":\"" + _Symbol + "\",\"data\":[";
+   string sexp = "((type . \"POSITIONS\") (symbol . \"" + EscapeSexpString(_Symbol) + "\") (data . (";
    bool first = true;
    int pos_count = 0;
    
@@ -686,11 +702,11 @@ void SendOpenPositions() {
          // Only include positions for THIS symbol with Swimmy magic
          if(PositionGetString(POSITION_SYMBOL) == _Symbol && 
             PositionGetInteger(POSITION_MAGIC) >= MAGIC_BASE) {
-            if(!first) json += ",";
+            if(!first) sexp += " ";
             first = false;
             pos_count++;
             
-            json += StringFormat("{\"ticket\":%I64u,\"magic\":%I64d,\"type\":\"%s\",\"volume\":%.2f}",
+            sexp += StringFormat("((ticket . %I64u) (magic . %I64d) (type . \"%s\") (volume . %.2f))",
                ticket,
                PositionGetInteger(POSITION_MAGIC),
                (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL",
@@ -698,10 +714,10 @@ void SendOpenPositions() {
          }
       }
    }
-   json += "]}";
+   sexp += "))";
    
    uchar data[];
-   StringToCharArray(json, data);
+   StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
    LogInfo("📊 POSITIONS sent: " + IntegerToString(pos_count) + " positions for " + _Symbol);
 }
@@ -719,9 +735,8 @@ void SendAccountInfo() {
    if((now - g_last_account_info) < ACCOUNT_INFO_INTERVAL) return;
    g_last_account_info = now;
    
-   // JSON形式でACCOUNT_INFOを構築
-   string json = StringFormat(
-       "{\"type\":\"ACCOUNT_INFO\",\"timestamp\":%d,\"equity\":%.2f,\"balance\":%.2f,\"margin\":%.2f,\"free_margin\":%.2f,\"margin_level\":%.2f,\"profit\":%.2f,\"leverage\":%d}",
+   string sexp = StringFormat(
+       "((type . \"ACCOUNT_INFO\") (timestamp . %d) (equity . %.2f) (balance . %.2f) (margin . %.2f) (free_margin . %.2f) (margin_level . %.2f) (profit . %.2f) (leverage . %d))",
        (int)now,
        AccountInfoDouble(ACCOUNT_EQUITY),
        AccountInfoDouble(ACCOUNT_BALANCE),
@@ -734,7 +749,7 @@ void SendAccountInfo() {
    
    // 既存のPUBソケットで送信
    uchar data[];
-   StringToCharArray(json, data);
+   StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
    
    LogDebug("[ACCOUNT] Equity=" + DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 0));
