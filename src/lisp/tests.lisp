@@ -721,6 +721,23 @@
   (assert-true (boundp 'swimmy.globals::*backtest-max-pending*) "max pending exists")
   (assert-true (numberp swimmy.globals::*backtest-max-pending*) "max pending numeric"))
 
+(deftest test-backtest-send-throttles-when-pending-high
+  "send-zmq-msg should refuse backtest send when pending exceeds max"
+  (let* ((orig-send (symbol-function 'pzmq:send))
+         (orig-req swimmy.globals:*backtest-requester*)
+         (sent nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*backtest-requester* :dummy)
+          (setf swimmy.globals::*backtest-submit-count* 10)
+          (setf swimmy.main::*backtest-recv-count* 0)
+          (setf swimmy.globals::*backtest-max-pending* 1)
+          (setf (symbol-function 'pzmq:send) (lambda (&rest _) (setf sent t)))
+          (swimmy.school::send-zmq-msg "(dummy)" :target :backtest)
+          (assert-true (null sent) "send should be blocked"))
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -910,6 +927,7 @@
                   test-processing-step-no-maintenance
                   test-backtest-debug-enabled-p
                   test-backtest-pending-counters-defaults
+                  test-backtest-send-throttles-when-pending-high
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
