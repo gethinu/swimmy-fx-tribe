@@ -191,6 +191,20 @@
     (assert-false uses-json "Pending retries should not use jsown:to-json")
     (assert-true uses-sexp "Pending retries should use sexp->string")))
 
+(deftest test-internal-cmd-json-disallowed
+  "Internal CMD senders should not use jsown:to-json"
+  (let* ((paths '("src/lisp/school/school-stress.lisp"
+                  "src/lisp/school/school-validation.lisp"
+                  "src/lisp/school/school-strategy.lisp"
+                  "src/lisp/school/school-founders.lisp"
+                  "src/lisp/evolution.lisp"))
+         (offenders (remove-if-not
+                     (lambda (path)
+                       (search "jsown:to-json" (uiop:read-file-string path)))
+                     paths)))
+    (assert-true (null offenders)
+                 (format nil "Found jsown:to-json in: ~a" offenders))))
+
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
@@ -494,6 +508,7 @@
                   test-heartbeat-message-is-sexp
                   test-executor-heartbeat-sends-sexp
                   test-executor-pending-orders-sends-sexp
+                  test-internal-cmd-json-disallowed
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip

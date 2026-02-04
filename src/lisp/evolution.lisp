@@ -15,11 +15,11 @@
   (when (and *candle-history* (> (length *candle-history*) 500))
     (format t "[L] 🧬 Requesting evolution (Gen ~d, ~d rounds)...~%" 
             *evolution-generation* rounds)
-    (let ((msg (jsown:to-json 
-                 (jsown:new-js 
-                   ("action" "EVOLVE")
-                   ("candles" (swimmy.school:candles-to-json (subseq *candle-history* 0 (min 500 (length *candle-history*)))))
-                   ("rounds" rounds)))))
+    (let* ((payload `((action . "EVOLVE")
+                      (candles . ,(candles-to-sexp
+                                   (subseq *candle-history* 0 (min 500 (length *candle-history*)))))
+                      (rounds . ,rounds)))
+           (msg (swimmy.core::sexp->string payload :package *package*)))
       (pzmq:send *cmd-publisher* msg))))
 
 (defun process-evolution-result (result)

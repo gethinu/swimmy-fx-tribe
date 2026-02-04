@@ -319,15 +319,14 @@
    Result is handled by message-dispatcher.lisp"
    (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
           (candles-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol))))
-          (strat-params (alist-to-json (strategy-to-alist strat)))
-          (request (jsown:new-js
-                     ("action" "CPCV_VALIDATE")
-                     ("strategy_name" (strategy-name strat))
-                     ("symbol" symbol)
-                     ("candles_file" candles-file)
-                     ("strategy_params" strat-params))))
+          (strat-params (strategy-to-alist strat))
+          (payload `((action . "CPCV_VALIDATE")
+                     (strategy_name . ,(strategy-name strat))
+                     (symbol . ,symbol)
+                     (candles_file . ,candles-file)
+                     (strategy_params . ,strat-params))))
      (format t "[CPCV] 📤 Sent CPCV request for ~a (Async)...~%" (strategy-name strat))
-     (send-zmq-msg (jsown:to-json request) :target :cmd)
+     (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
      ;; Return T to indicate request sent successfully
      (values t nil nil)))
 

@@ -287,9 +287,10 @@
                             (request-backtest founder)
                             ;; ZMQ notification for external systems
                             (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                              (pzmq:send swimmy.globals::*cmd-publisher* 
-                                         (jsown:to-json (jsown:new-js ("type" "FOUNDER_RECRUITED") 
-                                                                      ("name" (strategy-name founder))))))))
+                              (let ((payload `((type . "FOUNDER_RECRUITED")
+                                               (name . ,(strategy-name founder)))))
+                                (pzmq:send swimmy.globals::*cmd-publisher*
+                                           (swimmy.core::sexp->string payload :package *package*))))))
                       t)
                     (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%" 
                             (strategy-name founder))))))

@@ -299,18 +299,20 @@
         (cond
           ((eq counter-direction :buy)
            (let ((sl (- bid hedge-sl)) (tp (+ bid hedge-tp)))
-             (pzmq:send *cmd-publisher* 
-                        (jsown:to-json 
-                         (jsown:new-js ("action" "BUY") ("symbol" symbol) 
-                                       ("volume" hedge-lot) ("sl" sl) ("tp" tp))))
+             (let* ((order (swimmy.core:make-order-message
+                            "Shaman-Hedge" symbol "BUY" hedge-lot 0.0 sl tp
+                            :comment "HEDGE"))
+                    (msg (swimmy.core::sexp->string order :package :swimmy.core)))
+               (pzmq:send *cmd-publisher* msg))
              (setf (gethash :reversion *category-positions*) :long)
              (format t "[L] 🔮 Shamans HEDGE BUY ~,2f lot~%" hedge-lot)))
           ((eq counter-direction :sell)
            (let ((sl (+ ask hedge-sl)) (tp (- ask hedge-tp)))
-             (pzmq:send *cmd-publisher*
-                        (jsown:to-json 
-                         (jsown:new-js ("action" "SELL") ("symbol" symbol)
-                                       ("volume" hedge-lot) ("sl" sl) ("tp" tp))))
+             (let* ((order (swimmy.core:make-order-message
+                            "Shaman-Hedge" symbol "SELL" hedge-lot 0.0 sl tp
+                            :comment "HEDGE"))
+                    (msg (swimmy.core::sexp->string order :package :swimmy.core)))
+               (pzmq:send *cmd-publisher* msg))
              (setf (gethash :reversion *category-positions*) :short)
              (format t "[L] 🔮 Shamans HEDGE SELL ~,2f lot~%" hedge-lot))))
         ;; Log the inter-tribal cooperation

@@ -6,12 +6,10 @@
 
 (defun command-load-csv (path data-id)
   "Send LOAD_CSV command to Guardian"
-  (let ((msg (jsown:to-json 
-               (jsown:new-js 
-                 ("action" "LOAD_CSV")
-                 ("path" path)
-                 ("data_id" data-id)))))
-    (send-zmq-msg msg :target :cmd)
+  (let ((payload `((action . "LOAD_CSV")
+                   (path . ,path)
+                   (data_id . ,data-id))))
+    (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
     (format t "[STRESS] 📤 Sent LOAD_CSV: ~a -> ~a~%" path data-id)))
 
 (defun stress-test-strategy (strat symbol-name data-id)
@@ -19,13 +17,11 @@
   (declare (ignore symbol-name))
   (let* ((tf (strategy-timeframe strat))
          (tf-num (if (numberp tf) tf 1))
-         (msg (jsown:to-json 
-               (jsown:new-js 
-                 ("action" "BACKTEST")
-                 ("strategy" (strategy-to-json strat :name-suffix "-STRESS"))
-                 ("data_id" data-id)
-                 ("timeframe" tf-num)))))
-    (send-zmq-msg msg :target :cmd)
+         (payload `((action . "BACKTEST")
+                    (strategy . ,(strategy-to-alist strat :name-suffix "-STRESS"))
+                    (data_id . ,data-id)
+                    (timeframe . ,tf-num))))
+    (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
     (format t "[STRESS] 📤 Testing ~a on ~a (TF: M~d)~%" (strategy-name strat) data-id tf-num)))
 
 (defvar *stress-test-triggered* nil "Flag to prevent re-running stress test")
