@@ -205,6 +205,143 @@
     (assert-true (null offenders)
                  (format nil "Found jsown:to-json in: ~a" offenders))))
 
+(deftest test-internal-process-msg-tick-sexp
+  "internal-process-msg should process TICK S-expression"
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-update (symbol-function 'swimmy.main:update-candle))
+         (orig-process (and (fboundp 'swimmy.school:process-category-trades)
+                            (symbol-function 'swimmy.school:process-category-trades)))
+         (orig-save (and (fboundp 'swimmy.shell:save-live-status)
+                         (symbol-function 'swimmy.shell:save-live-status)))
+         (orig-status (and (fboundp 'swimmy.shell:send-periodic-status-report)
+                           (symbol-function 'swimmy.shell:send-periodic-status-report)))
+         (orig-learn (and (fboundp 'swimmy.school:continuous-learning-step)
+                          (symbol-function 'swimmy.school:continuous-learning-step)))
+         (called nil))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.main:update-candle)
+                (lambda (bid symbol) (setf called (list bid symbol))))
+          (when orig-process
+            (setf (symbol-function 'swimmy.school:process-category-trades)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-save
+            (setf (symbol-function 'swimmy.shell:save-live-status)
+                  (lambda () nil)))
+          (when orig-status
+            (setf (symbol-function 'swimmy.shell:send-periodic-status-report)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-learn
+            (setf (symbol-function 'swimmy.school:continuous-learning-step)
+                  (lambda () nil)))
+          (funcall fn "((type . \"TICK\") (symbol . \"USDJPY\") (bid . 1.23) (ask . 1.24))")
+          (assert-equal '(1.23 "USDJPY") called))
+      (setf (symbol-function 'swimmy.main:update-candle) orig-update)
+      (when orig-process
+        (setf (symbol-function 'swimmy.school:process-category-trades) orig-process))
+      (when orig-save
+        (setf (symbol-function 'swimmy.shell:save-live-status) orig-save))
+      (when orig-status
+        (setf (symbol-function 'swimmy.shell:send-periodic-status-report) orig-status))
+      (when orig-learn
+        (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn)))))
+
+(deftest test-internal-process-msg-history-sexp
+  "internal-process-msg should store HISTORY S-expression as newest-first"
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-hist swimmy.globals:*candle-histories*)
+         (orig-hist-tf swimmy.globals:*candle-histories-tf*)
+         (orig-main-hist (and (boundp 'swimmy.main::*candle-history*) swimmy.main::*candle-history*)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (setf swimmy.globals:*candle-histories-tf* (make-hash-table :test 'equal))
+          (when (boundp 'swimmy.main::*candle-history*)
+            (setf swimmy.main::*candle-history* nil))
+          (funcall fn
+                   "((type . \"HISTORY\") (symbol . \"USDJPY\") (tf . \"M1\") (batch . 0) (total . 1) (data . (((t . 1) (o . 1.0) (h . 1.1) (l . 0.9) (c . 1.0)) ((t . 2) (o . 2.0) (h . 2.1) (l . 1.9) (c . 2.0)))))")
+          (let ((hist (gethash "USDJPY" swimmy.globals:*candle-histories*)))
+            (assert-true hist "Expected history stored")
+            (assert-equal 2 (swimmy.globals:candle-timestamp (first hist)) "Newest should be first")))
+      (setf swimmy.globals:*candle-histories* orig-hist)
+      (setf swimmy.globals:*candle-histories-tf* orig-hist-tf)
+      (when (boundp 'swimmy.main::*candle-history*)
+        (setf swimmy.main::*candle-history* orig-main-hist)))))
+
+(deftest test-process-account-info-sexp
+  "process-account-info should accept S-expression alist"
+  (let* ((fn (find-symbol "PROCESS-ACCOUNT-INFO" :swimmy.executor))
+         (orig-equity swimmy.executor::*current-equity*)
+         (orig-peak swimmy.executor::*peak-equity*)
+         (orig-alert swimmy.executor::*account-info-alert-sent*))
+    (assert-true (and fn (fboundp fn)) "process-account-info exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.executor::*current-equity* 0.0)
+          (setf swimmy.executor::*peak-equity* 0.0)
+          (setf swimmy.executor::*account-info-alert-sent* nil)
+          (funcall fn '((equity . 1000000.0) (balance . 900000.0)))
+          (assert-true (> swimmy.executor::*current-equity* 0.0) "Equity should update"))
+      (setf swimmy.executor::*current-equity* orig-equity)
+      (setf swimmy.executor::*peak-equity* orig-peak)
+      (setf swimmy.executor::*account-info-alert-sent* orig-alert))))
+
+(deftest test-process-trade-closed-sexp
+  "process-trade-closed should accept S-expression alist"
+  (let* ((fn (find-symbol "PROCESS-TRADE-CLOSED" :swimmy.executor))
+         (orig-trade-result (and (fboundp 'swimmy.school:record-trade-result)
+                                 (symbol-function 'swimmy.school:record-trade-result)))
+         (orig-trade-outcome (and (fboundp 'swimmy.school:record-trade-outcome)
+                                  (symbol-function 'swimmy.school:record-trade-outcome)))
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-queue (and (fboundp 'swimmy.core:queue-discord-notification)
+                          (symbol-function 'swimmy.core:queue-discord-notification)))
+         (orig-processed swimmy.executor::*processed-tickets*)
+         (orig-daily swimmy.executor::*daily-pnl*)
+         (orig-weekly swimmy.executor::*weekly-pnl*)
+         (orig-monthly swimmy.executor::*monthly-pnl*)
+         (orig-accum swimmy.executor::*accumulated-pnl*)
+         (orig-total swimmy.executor::*total-trades*)
+         (orig-success swimmy.executor::*success-count*))
+    (assert-true (and fn (fboundp fn)) "process-trade-closed exists")
+    (unwind-protect
+        (progn
+          (when orig-trade-result
+            (setf (symbol-function 'swimmy.school:record-trade-result) (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-trade-outcome
+            (setf (symbol-function 'swimmy.school:record-trade-outcome) (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert) (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-queue
+            (setf (symbol-function 'swimmy.core:queue-discord-notification) (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (setf swimmy.executor::*processed-tickets* (make-hash-table :test 'equal))
+          (setf swimmy.executor::*daily-pnl* 0.0)
+          (setf swimmy.executor::*weekly-pnl* 0.0)
+          (setf swimmy.executor::*monthly-pnl* 0.0)
+          (setf swimmy.executor::*accumulated-pnl* 0.0)
+          (setf swimmy.executor::*total-trades* 0)
+          (setf swimmy.executor::*success-count* 0)
+          (funcall fn '((ticket . 12345) (symbol . "USDJPY") (pnl . 5.0) (won . t) (magic . 123)) "")
+          (assert-true (gethash 12345 swimmy.executor::*processed-tickets*) "Expected ticket tracked"))
+      (when orig-trade-result
+        (setf (symbol-function 'swimmy.school:record-trade-result) orig-trade-result))
+      (when orig-trade-outcome
+        (setf (symbol-function 'swimmy.school:record-trade-outcome) orig-trade-outcome))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))
+      (setf swimmy.executor::*processed-tickets* orig-processed)
+      (setf swimmy.executor::*daily-pnl* orig-daily)
+      (setf swimmy.executor::*weekly-pnl* orig-weekly)
+      (setf swimmy.executor::*monthly-pnl* orig-monthly)
+      (setf swimmy.executor::*accumulated-pnl* orig-accum)
+      (setf swimmy.executor::*total-trades* orig-total)
+      (setf swimmy.executor::*success-count* orig-success))))
+
 ;;; ─────────────────────────────────────────
 ;;; INDICATOR TESTS
 ;;; ─────────────────────────────────────────
@@ -509,6 +646,10 @@
                   test-executor-heartbeat-sends-sexp
                   test-executor-pending-orders-sends-sexp
                   test-internal-cmd-json-disallowed
+                  test-internal-process-msg-tick-sexp
+                  test-internal-process-msg-history-sexp
+                  test-process-account-info-sexp
+                  test-process-trade-closed-sexp
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip

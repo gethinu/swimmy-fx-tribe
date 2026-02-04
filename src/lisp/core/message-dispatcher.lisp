@@ -12,6 +12,23 @@
             when cell do (return (cdr cell)))
       default))
 
+(defun %sexp-candle->struct (entry)
+  "Convert HISTORY entry alist to candle struct."
+  (when (listp entry)
+    (let* ((ts (%alist-val entry '(t timestamp) nil))
+           (open (%alist-val entry '(o open) nil))
+           (high (%alist-val entry '(h high) nil))
+           (low (%alist-val entry '(l low) nil))
+           (close (%alist-val entry '(c close) nil))
+           (vol (%alist-val entry '(v volume) 0)))
+      (when ts
+        (swimmy.globals:make-candle :timestamp ts
+                                    :open (if open (float open) 0.0)
+                                    :high (if high (float high) 0.0)
+                                    :low (if low (float low) 0.0)
+                                    :close (if close (float close) 0.0)
+                                    :volume (if vol (float vol) 0.0))))))
+
 (defun %json-val (obj keys &optional default)
   "Return first matching value from JSON object by key list."
   (or (loop for k in keys
@@ -275,137 +292,78 @@
                                                             "CPCV Passed and Criteria Met")
                                  (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
                                          name))))))))
-               (t nil)))))
-            (let* ((json (jsown:parse msg))
-                   (type (jsown:val json "type")))
-              (cond
-                ((string= type swimmy.core:+MSG-SWAP-DATA+)
-                 ;; Phase 28: Data Lake (Swap History)
-                 (format t "[DISPATCH] 📥 Received SWAP_DATA for ~a~%" (jsown:val json "symbol"))
-                 (let ((sym (jsown:val json "symbol"))
-                       (s-long (%normalize-rate (jsown:val json "swap_long")))
-                       (s-short (%normalize-rate (jsown:val json "swap_short")))
-                       (spread (%normalize-rate (jsown:val json "spread"))))
-                   (swimmy.school.scribe:scribe-record :RECORD-SWAPS sym s-long s-short spread)))
-                ((string= type swimmy.core:+MSG-TICK+)
-                 (swimmy.main:update-candle (jsown:val json "bid")
-                                            (jsown:val json "symbol"))
-                 (when (fboundp 'swimmy.school:process-category-trades)
-                   (swimmy.school:process-category-trades (jsown:val json "symbol")
-                                                          (jsown:val json "bid")
-                                                          (jsown:val json "ask")))
-                 (when (fboundp 'swimmy.shell:save-live-status)
-                   (swimmy.shell:save-live-status))
-                 (when (fboundp 'swimmy.shell:send-periodic-status-report)
-                   (swimmy.shell:send-periodic-status-report (jsown:val json "symbol")
-                                                             (jsown:val json "bid")))
-                 (handler-case
-                     (when (fboundp 'swimmy.school:continuous-learning-step)
-                       (swimmy.school:continuous-learning-step))
-                   (error () nil))
-                 (maybe-alert-backtest-stale))
-                ((string= type swimmy.core:+MSG-HEARTBEAT+)
-                 (let ((hb-id (ignore-errors (jsown:val json "id")))
-                       (hb-status (ignore-errors (jsown:val json "status")))
-                       (hb-source (ignore-errors (jsown:val json "source"))))
-                   (swimmy.core::emit-telemetry-event "heartbeat.recv"
-                     :service "dispatcher"
-                     :severity "info"
-                     :correlation-id hb-id
-                     :data (jsown:new-js
-                             ("heartbeat_id" hb-id)
-                             ("status" hb-status)
-                             ("source" hb-source))))
-                 (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
-                 (maybe-alert-backtest-stale))
-                ((string= type swimmy.core:+MSG-ACCOUNT-INFO+)
-                 (swimmy.executor:process-account-info json))
-                ((string= type "SYSTEM_COMMAND")
-                 (let ((action (jsown:val json "action")))
-                   (cond
-                     ((string= action "REPORT_STATUS")
-                      (swimmy.school:report-active-positions))
-                     ((string= action "BACKTEST_SUMMARY")
-                      (swimmy.core:notify-backtest-summary :rr))
-                     ((string= action "BACKTEST_SUMMARY_QUAL")
-                      (swimmy.core:notify-backtest-summary :qual))
-                     ((string= action "HEARTBEAT_NOW")
-                      (if (fboundp 'swimmy.engine::heartbeat-now)
-                          (swimmy.engine:heartbeat-now)
-                          (format t "[DISPATCH] ⚠️ HEARTBEAT_NOW ignored (function missing)."))))))
-                ((string= type "BACKTEST_RESULT")
-                 (let ((err
-                        (nth-value 1
-                          (ignore-errors
-                            (let* ((result (jsown:val json "result"))
-                                   (full-name (%normalize-strategy-name
-                                               (or (%json-val result '("strategy_name" "strategy-name" "name") nil)
-                                                   (jsown:val result "strategy_name"))))
-                                   (sharpe (float (%json-val result '("sharpe" "sharpe_ratio" "sharpeRatio") 0.0)))
-                                   (trades (or (%json-val result '("trades" "total_trades" "totalTrades") 0) 0))
-                                   (pnl (float (%json-val result '("pnl" "total_profit" "totalProfit") 0.0)))
-                                   (win-rate (%normalize-rate (%json-val result '("win_rate" "winrate" "winRate") 0.0)))
-                                   (profit-factor (float (%json-val result '("profit_factor" "profitFactor" "pf") 0.0)))
-                                   (max-dd (%normalize-rate (%json-val result '("max_dd" "max_drawdown" "maxDrawdown") 1.0)))
-                                   (is-rr (and full-name (search "-RR" full-name)))
-                                   (is-qual (and full-name (search "-QUAL" full-name)))
-                                   (is-oos (and full-name (search "-OOS" full-name)))
-                                   (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
-                                                              (search "_OOS" full-name :from-end t))))
-                                   (name (when full-name
-                                           (cond (is-rr (subseq full-name 0 is-rr))
-                                                 (is-qual (subseq full-name 0 is-qual))
-                                                 (is-oos (subseq full-name 0 is-oos))
-                                                 (t full-name))))
-                                   (request-id (%json-val result '("request_id" "request-id" "requestId") nil))
-                                   (metrics (list :sharpe sharpe :trades trades :pnl pnl
-                                                  :win-rate win-rate :profit-factor profit-factor :max-dd max-dd
-                                                  :request-id request-id)))
-                              (backtest-debug-log "recv json name=~a full=~a sharpe=~,4f trades=~d"
-                                                  (or name "N/A") (or full-name "N/A") sharpe trades)
-                              (when (%invalid-name-p name)
-                                (when (< *missing-strategy-name-log-count* *missing-strategy-name-log-limit*)
-                                  (incf *missing-strategy-name-log-count*)
-                                  (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name. Result=~s~%" result))
-                                (%dlq-record "missing/invalid strategy_name" msg result)
-                                (format t "[L] ⚠️ BACKTEST_RESULT missing/invalid strategy_name (~a). Skipping.~%" full-name)
-                                (return-from internal-process-msg nil))
-                              ;; Attach latency if request-id matches queue timestamp
-                              (when request-id
-                                (multiple-value-bind (req-id req-at status) (swimmy.school:lookup-oos-request name)
-                                  (declare (ignore status))
-                                  (when (and req-id req-at (string= req-id request-id))
-                                    (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
-                              (cond
-                                (is-oos
-                                 (when (fboundp 'swimmy.school:handle-oos-backtest-result)
-                                   (swimmy.school:handle-oos-backtest-result name metrics)))
-                                (is-wfv
-                                 (when (fboundp 'swimmy.school:process-wfv-result)
-                                   (swimmy.school:process-wfv-result full-name metrics)))
-                                (t
-                                 (swimmy.school:cache-backtest-result name metrics)
-                                 (swimmy.school:apply-backtest-result name metrics)
-                                 (cond
-                                   (is-qual
-                                    (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)
-                                    (let ((count (length swimmy.globals:*qual-backtest-results-buffer*))
-                                          (expected swimmy.globals:*qual-expected-backtest-count*))
-                                      (when (and (> expected 0)
-                                                 (>= count (max 1 (floor (* expected 0.9)))))
-                                        (swimmy.core:notify-backtest-summary :qual))))
-                                   (t
-                                    (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
-                                    (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))
-                                          (expected swimmy.globals:*rr-expected-backtest-count*))
-                                      (when (and (> expected 0)
-                                                 (>= count (max 1 (floor (* expected 0.9)))))
-                                        (swimmy.core:notify-backtest-summary :rr)))))))
-                              (maybe-alert-backtest-stale))))))
-                   (when err
-                     (%dlq-record (format nil "BACKTEST_RESULT json exception: ~a" err) msg json))
-                   nil))
-                (t nil))))
+                  ((string= type-str swimmy.core:+MSG-TICK+)
+                   (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
+                          (bid (%alist-val sexp '(bid :bid) nil))
+                          (ask (%alist-val sexp '(ask :ask) nil))
+                          (symbol-str (if (symbolp symbol) (symbol-name symbol) symbol)))
+                     (when bid
+                       (swimmy.main:update-candle bid symbol-str)
+                       (when (fboundp 'swimmy.school:process-category-trades)
+                         (swimmy.school:process-category-trades symbol-str bid ask))
+                       (when (fboundp 'swimmy.shell:save-live-status)
+                         (swimmy.shell:save-live-status))
+                       (when (fboundp 'swimmy.shell:send-periodic-status-report)
+                         (swimmy.shell:send-periodic-status-report symbol-str bid))
+                       (handler-case
+                           (when (fboundp 'swimmy.school:continuous-learning-step)
+                             (swimmy.school:continuous-learning-step))
+                         (error () nil))
+                       (maybe-alert-backtest-stale))))
+                  ((string= type-str swimmy.core:+MSG-ACCOUNT-INFO+)
+                   (swimmy.executor:process-account-info sexp))
+                  ((string= type-str swimmy.core:+MSG-SWAP-DATA+)
+                   (let* ((sym (%alist-val sexp '(symbol :symbol) ""))
+                          (sym-str (if (symbolp sym) (symbol-name sym) sym))
+                          (s-long (%normalize-rate (%alist-val sexp '(swap_long swap-long) 0.0)))
+                          (s-short (%normalize-rate (%alist-val sexp '(swap_short swap-short) 0.0)))
+                          (spread (%normalize-rate (%alist-val sexp '(spread) 0.0))))
+                     (format t "[DISPATCH] 📥 Received SWAP_DATA for ~a~%" sym-str)
+                     (swimmy.school.scribe:scribe-record :RECORD-SWAPS sym-str s-long s-short spread)))
+                  ((string= type-str swimmy.core:+MSG-HEARTBEAT+)
+                   (let* ((hb-id (%alist-val sexp '(id :id) nil))
+                          (hb-status (%alist-val sexp '(status :status) nil))
+                          (hb-source (%alist-val sexp '(source :source) nil)))
+                     (swimmy.core::emit-telemetry-event "heartbeat.recv"
+                       :service "dispatcher"
+                       :severity "info"
+                       :correlation-id hb-id
+                       :data (jsown:new-js
+                               ("heartbeat_id" hb-id)
+                               ("status" hb-status)
+                               ("source" hb-source)))
+                     (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
+                     (maybe-alert-backtest-stale)))
+                  ((string= type-str swimmy.core:+MSG-ORDER-ACK+)
+                   (let ((order-id (%alist-val sexp '(id :id) nil))
+                         (ticket (%alist-val sexp '(ticket :ticket) nil)))
+                     (format t "[DISPATCH] 📥 ORDER_ACK id=~a ticket=~a~%" order-id ticket)))
+                  ((string= type-str swimmy.core:+MSG-TRADE-CLOSED+)
+                   (swimmy.executor:process-trade-closed sexp msg))
+                  ((string= type-str swimmy.core:+MSG-HISTORY+)
+                   (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
+                          (tf-raw (%alist-val sexp '(tf :tf) "M1"))
+                          (tf (if (symbolp tf-raw) (symbol-name tf-raw) tf-raw))
+                          (data (%alist-val sexp '(data :data) nil))
+                          (candles (remove nil (mapcar #'%sexp-candle->struct (or data '()))))
+                          (candles (sort candles #'> :key #'swimmy.globals:candle-timestamp)))
+                     (when (and symbol candles)
+                       (if (string= (string-upcase tf) "M1")
+                           (setf (gethash symbol swimmy.globals:*candle-histories*) candles)
+                           (let ((tf-map (or (gethash symbol swimmy.globals:*candle-histories-tf*)
+                                             (setf (gethash symbol swimmy.globals:*candle-histories-tf*)
+                                                   (make-hash-table :test 'equal)))))
+                             (setf (gethash tf tf-map) candles)))
+                       (when (string= (string-upcase tf) "M1")
+                         (setf swimmy.globals:*candle-history* candles)
+                         (when (boundp 'swimmy.main::*candle-history*)
+                           (setf swimmy.main::*candle-history* candles)))
+                       (format t "[DISPATCH] 📥 HISTORY stored: ~a ~a (~d bars)~%"
+                               symbol tf (length candles)))))
+                  (t nil))))
+            (progn
+              (format t "[DISPATCH] ⚠️ JSON payload ignored (internal ZMQ is S-expression only)~%")
+              nil)))
     (when err
       (format t "[L] Msg Error: ~a" err)
       nil)
