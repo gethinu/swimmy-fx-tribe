@@ -24,3 +24,18 @@ def test_compute_updated_info_fresh():
     info = compute_updated_info(live_status, live_path=None, now=now, stale_threshold=180)
     assert info.stale is False
     assert info.clock_skew is False
+
+
+def test_compute_updated_info_stale():
+    now = datetime(2026, 2, 4, 23, 0, 0, tzinfo=JST)
+    live_status = {"last_updated": "2026-02-04 22:50:00"}
+    info = compute_updated_info(live_status, live_path=None, now=now, stale_threshold=180)
+    assert info.stale is True
+
+
+def test_compute_updated_info_clock_skew():
+    now = datetime(2026, 2, 4, 23, 0, 0, tzinfo=JST)
+    live_status = {"last_updated": "2026-02-04 23:10:00"}
+    info = compute_updated_info(live_status, live_path=None, now=now, stale_threshold=180)
+    assert info.clock_skew is True
+    assert info.stale is False
