@@ -715,6 +715,12 @@
       (unless orig
         (sb-posix:unsetenv "SWIMMY_BACKTEST_DEBUG_RECV")))))
 
+(deftest test-backtest-pending-counters-defaults
+  "backtest pending counters should initialize to sane defaults"
+  (assert-true (boundp 'swimmy.globals::*backtest-submit-count*) "submit counter exists")
+  (assert-true (boundp 'swimmy.globals::*backtest-max-pending*) "max pending exists")
+  (assert-true (numberp swimmy.globals::*backtest-max-pending*) "max pending numeric"))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -903,6 +909,7 @@
                   test-dream-cycle-self-throttle
                   test-processing-step-no-maintenance
                   test-backtest-debug-enabled-p
+                  test-backtest-pending-counters-defaults
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
