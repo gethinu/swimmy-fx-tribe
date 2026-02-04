@@ -12,7 +12,6 @@ Note: Requires Guardian to be running.
 """
 
 import zmq
-import json
 import time
 
 SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
@@ -34,14 +33,8 @@ def main():
     print(f"📤 Requesting {COUNT} M1 bars for {SYMBOLS}...")
 
     for symbol in SYMBOLS:
-        msg = {
-            "action": "REQ_HISTORY",
-            "symbol": symbol,
-            "period": "M1",
-            "count": COUNT,
-        }
-        json_str = json.dumps(msg)
-        socket.send_string(json_str)
+        sexp = f'((type . "REQ_HISTORY") (symbol . "{symbol}") (tf . "M1") (count . {COUNT}))'
+        socket.send_string(sexp)
         print(f"   -> Sent {symbol}")
         time.sleep(0.5)  # small delay between requests
 

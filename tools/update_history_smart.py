@@ -16,7 +16,6 @@ Usage:
 import os
 import sys
 import zmq
-import json
 import time
 import datetime
 import traceback
@@ -117,14 +116,8 @@ def main():
         # Send Request
         # Note: SwimmyBridge.mq5 expects "start" as datetime (seconds)
         # and "count" as int. If count is big, it relies on start.
-        req = {
-            "type": "REQ_HISTORY",
-            "symbol": symbol,
-            "tf": "M1",
-            "start": start_request,
-            "count": 10000000,  # Max count, but start takes precedence in MQ5 logic check
-        }
-        pub_socket.send_string(json.dumps(req))
+        req = f'((type . "REQ_HISTORY") (symbol . "{symbol}") (tf . "M1") (start . {start_request}) (count . 10000000))'
+        pub_socket.send_string(req)
         print(f"   📤 Request Sent: Start > {start_request}")
 
         # Receive Loop
@@ -145,31 +138,26 @@ def main():
                 if not msg:
                     continue
 
-                # Check message type
                 if "HISTORY" not in msg:
                     continue
 
-                data = json.loads(msg)
+                msg_type = extract_sexp_value(msg, "type")
+                if msg_type != "HISTORY":
+                    continue
+                if extract_sexp_value(msg, "symbol") != symbol:
+                    continue
+                if extract_sexp_value(msg, "tf") != "M1":
+                    continue
 
-                if data.get("type") != "HISTORY":
-                    continue
-                if data.get("symbol") != symbol:
-                    continue
-                if data.get("tf") != "M1":
-                    continue
-
-                # Process Data
-                batch = data.get("batch", 0)
-                total = data.get("total", 1)
-                total_batches = total
+                batch = extract_sexp_number(msg, "batch", 0)
+                total_batches = extract_sexp_number(msg, "total", 1)
                 received_batches.add(batch)
 
-                print(
-                    f"   📥 Received Batch {batch+1}/{total_batches} ({len(data['data'])} bars)"
-                )
+                candles = extract_sexp_data(msg)
+                print(f"   📥 Received Batch {batch+1}/{total_batches} ({len(candles)} bars)")
                 timeout_start = time.time()  # Reset timeout on activity
 
-                new_candles.extend(data["data"])
+                new_candles.extend(candles)
 
             except zmq.Again:
                 time.sleep(0.1)
@@ -217,3 +205,88 @@ def main():
 
 if __name__ == "__main__":
     main()
+def parse_sexp_bool(value):
+    lowered = value.lower()
+    if lowered in ("true", "t", "1"):
+        return True
+    if lowered in ("false", "nil", "0"):
+        return False
+    return False
+
+
+def extract_sexp_value(sexp, key):
+    search = f"({key} . "
+    start = sexp.find(search)
+    if start < 0:
+        return None
+    start += len(search)
+    while start < len(sexp) and sexp[start] == " ":
+        start += 1
+    if start >= len(sexp):
+        return None
+    if sexp[start] == '"':
+        start += 1
+        end = sexp.find('"', start)
+        if end < 0:
+            return None
+        return sexp[start:end]
+    end = sexp.find(")", start)
+    if end < 0:
+        return None
+    return sexp[start:end].strip()
+
+
+def extract_sexp_number(sexp, key, default=0):
+    raw = extract_sexp_value(sexp, key)
+    if raw is None:
+        return default
+    try:
+        if "." in raw:
+            return float(raw)
+        return int(raw)
+    except Exception:
+        return default
+
+
+def extract_sexp_data(sexp):
+    data_key = "(data . ("
+    start = sexp.find(data_key)
+    if start < 0:
+        return []
+    start += len(data_key)
+    end = sexp.rfind("))")
+    if end < start:
+        end = len(sexp)
+    payload = sexp[start:end].strip()
+    if not payload:
+        return []
+
+    candles = []
+    idx = 0
+    while idx < len(payload):
+        open_idx = payload.find("((", idx)
+        if open_idx < 0:
+            break
+        close_idx = payload.find("))", open_idx)
+        if close_idx < 0:
+            break
+        chunk = payload[open_idx + 2 : close_idx]
+        candle = {}
+        for pair in chunk.split(") ("):
+            cleaned = pair.strip("() ")
+            if " . " not in cleaned:
+                continue
+            key, value = cleaned.split(" . ", 1)
+            key = key.strip()
+            value = value.strip().strip('"')
+            try:
+                if "." in value:
+                    candle[key] = float(value)
+                else:
+                    candle[key] = int(value)
+            except Exception:
+                candle[key] = value
+        if candle:
+            candles.append(candle)
+        idx = close_idx + 2
+    return candles
