@@ -555,3 +555,33 @@
   ;; Test Orchestrator
   (let ((full (swimmy.school::generate-advisor-reports)))
     (assert-true (> (length full) 50) "Full report should not be empty")))
+
+;;; ==========================================
+;;; DEFERRED BACKTEST FLUSH TESTS
+;;; ==========================================
+
+(deftest test-flush-deferred-founders-respects-limit
+  "flush-deferred-founders should support a :limit to avoid startup storms."
+  (let ((orig-kb *strategy-knowledge-base*)
+        (orig-request (symbol-function 'swimmy.school:request-backtest))
+        (calls 0)
+        (swimmy.school::*deferred-flush-queue* nil)
+        (swimmy.school::*deferred-flush-queue-count* 0)
+        (swimmy.school::*deferred-flush-queued-names* (make-hash-table :test 'equal))
+        (swimmy.school::*deferred-flush-last-run* 0))
+    (unwind-protect
+        (progn
+          (setf *strategy-knowledge-base*
+                (list (make-strategy :name "UT-DEFER-1" :rank nil)
+                      (make-strategy :name "UT-DEFER-2" :rank nil)
+                      (make-strategy :name "UT-DEFER-3" :rank nil)
+                      (make-strategy :name "UT-DEFER-4" :rank nil)))
+          (setf (symbol-function 'swimmy.school:request-backtest)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf calls)))
+          (let ((sent (swimmy.school::flush-deferred-founders :limit 2)))
+            (assert-equal 2 sent "Expected flush to return the number sent in this call")
+            (assert-equal 2 calls "Expected exactly :limit backtest requests")))
+      (setf *strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:request-backtest) orig-request))))

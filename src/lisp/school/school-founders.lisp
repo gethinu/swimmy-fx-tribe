@@ -424,22 +424,101 @@
 ;;; ----------------------------------------------------------------------------
 ;;; FLUSH DEFERRED (V50.5)
 ;;; ----------------------------------------------------------------------------
-(defun flush-deferred-founders ()
-  "Flush (backtest) any founders that were deferred during startup.
-   Called by Main after hot-reload or end of startup."
-  (format t "[HEADHUNTER] 🚽 Flushing deferred backtests...~%")
-  (let ((count 0))
+(defvar *deferred-flush-queue* nil
+  "Queue of strategies pending deferred backtest requests.")
+(defvar *deferred-flush-queue-count* 0)
+(defvar *deferred-flush-queued-names* (make-hash-table :test 'equal)
+  "Strategy names already queued for deferred flush (prevents duplicates).")
+(defvar *deferred-flush-last-run* 0)
+
+(defun %deferred-rank-p (rank)
+  (or (null rank)
+      (and (stringp rank) (string= rank "NIL"))
+      (eq rank :nil)))
+
+(defun %env-int-or (key default)
+  (let ((val (uiop:getenv key)))
+    (handler-case
+        (if (and (stringp val) (> (length val) 0))
+            (parse-integer val)
+            default)
+      (error () default))))
+
+(defun deferred-flush-batch ()
+  "Default max deferred BT requests per flush tick. 0 disables."
+  (%env-int-or "SWIMMY_DEFERRED_FLUSH_BATCH" 50))
+
+(defun deferred-flush-interval-sec ()
+  "Minimum seconds between deferred flush ticks."
+  (%env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 2))
+
+(defun schedule-deferred-founders (&key (max-add nil))
+  "Populate the deferred flush queue from the knowledge base.
+Returns number of newly queued strategies."
+  (let ((added 0)
+        (new nil))
     (dolist (s *strategy-knowledge-base*)
       (let ((rank (strategy-rank s)))
-        (when (or (null rank) 
-                  (and (stringp rank) (string= rank "NIL"))
-                  (eq rank :nil))
-          (format t "[HEADHUNTER] 🚀 Requesting deferred BT for ~a...~%" (strategy-name s))
-          (handler-case
-              (request-backtest s)
-            (error (e) (format t "[HEADHUNTER] ⚠️ BT Request failed: ~a~%" e)))
-          (incf count))))
-    (format t "[HEADHUNTER] ✅ Flushed ~d deferred strategies.~%" count)
-    count))
+        (when (%deferred-rank-p rank)
+          (let ((name (strategy-name s)))
+            (unless (gethash name *deferred-flush-queued-names*)
+              (setf (gethash name *deferred-flush-queued-names*) t)
+              (push s new)
+              (incf added)
+              (when (and max-add (>= added max-add))
+                (return)))))))
+    (when new
+      ;; Keep stable KB order: push builds reverse, so nreverse before append.
+      (setf *deferred-flush-queue* (nconc *deferred-flush-queue* (nreverse new)))
+      (incf *deferred-flush-queue-count* added)
+      (format t "[HEADHUNTER] 🧾 Deferred BT queued: +~d (pending ~d)~%"
+              added *deferred-flush-queue-count*))
+    added))
+
+(defun flush-deferred-founders (&key (limit nil))
+  "Flush (request backtests for) strategies with missing Rank.
+
+This is rate-limited by callers (see `maybe-flush-deferred-founders`). Use
+LIMIT to cap the number of requests in this call to avoid startup storms."
+  (let ((max (cond
+               ((and (numberp limit) (>= limit 0)) limit)
+               (t (deferred-flush-batch)))))
+    (when (<= max 0)
+      (return-from flush-deferred-founders 0))
+    ;; Lazily build queue if empty (avoid repeated full scans).
+    (when (or (null *deferred-flush-queue*) (<= *deferred-flush-queue-count* 0))
+      (schedule-deferred-founders))
+    (let ((sent 0))
+      (loop while (and (> *deferred-flush-queue-count* 0) (< sent max)) do
+        (let ((s (pop *deferred-flush-queue*)))
+          (decf *deferred-flush-queue-count*)
+          (when s
+            (let ((name (strategy-name s))
+                  (rank (strategy-rank s)))
+              ;; Skip if it got ranked meanwhile.
+              (when (%deferred-rank-p rank)
+                (handler-case
+                    (progn
+                      (request-backtest s)
+                      (incf sent))
+                  (error (e)
+                    ;; Allow re-queueing on next schedule attempt.
+                    (remhash name *deferred-flush-queued-names*)
+                    (format t "[HEADHUNTER] ⚠️ BT Request failed: ~a~%" e))))))))
+      (when (> sent 0)
+        (format t "[HEADHUNTER] ✅ Deferred BT sent: ~d (pending ~d)~%"
+                sent *deferred-flush-queue-count*))
+      sent)))
+
+(defun maybe-flush-deferred-founders ()
+  "Periodically flush deferred founder backtests without blocking the main loop."
+  (let* ((batch (deferred-flush-batch))
+         (interval (max 1 (deferred-flush-interval-sec)))
+         (now (get-universal-time)))
+    (when (<= batch 0)
+      (return-from maybe-flush-deferred-founders 0))
+    (when (>= (- now *deferred-flush-last-run*) interval)
+      (setf *deferred-flush-last-run* now)
+      (flush-deferred-founders :limit batch))))
 
 ;;; End of Founders Registry

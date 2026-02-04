@@ -109,6 +109,9 @@
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
       (when (fboundp 'swimmy.engine::check-discord-heartbeat)
         (swimmy.engine::check-discord-heartbeat))
+      ;; Deferred founder backtests (rate-limited; avoid blocking recv loop)
+      (when (fboundp 'swimmy.school::maybe-flush-deferred-founders)
+        (swimmy.school::maybe-flush-deferred-founders))
       ;; P7: Check for stress test trigger flag
       (when (fboundp 'swimmy.school::check-stress-test-trigger)
         (swimmy.school::check-stress-test-trigger)))))

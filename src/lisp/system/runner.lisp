@@ -116,12 +116,7 @@
                (request-prediction))
            
            (format t "[BRAIN] 🚀 System active and running...~%")
-           
-           ;; V50.7: Flush Deferred Backtests (ZMQ-Ready Phase)
-           (format t "[SYSTEM] 🚀 ZMQ Ready. Triggering Acceleration Flush...~%")
-           (let ((flush-sym (find-symbol "FLUSH-DEFERRED-FOUNDERS" "SWIMMY.SCHOOL")))
-             (when (and flush-sym (fboundp flush-sym))
-               (funcall flush-sym)))
+           (format t "[SYSTEM] 🚀 ZMQ Ready. Entering main loop (deferred backtests flush in background)...~%")
            
            ;; V44.5: Brain Restart Notification (Expert Panel P3)
            (handler-case

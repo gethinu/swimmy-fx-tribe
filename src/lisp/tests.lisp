@@ -739,11 +739,21 @@
         (let ((strategy (cdr (assoc 'strategy payload))))
           (assert-true (consp strategy) "Strategy should be an alist"))
         (assert-equal "USDJPY" (cdr (assoc 'symbol payload)) "Symbol should be USDJPY")
-        (assert-true (numberp (cdr (assoc 'timeframe payload))) "Timeframe should be numeric")
-        (assert-true (cdr (assoc 'data_id payload)) "Expected data_id present")
-        (assert-true (cdr (assoc 'candles_file payload)) "Expected candles_file present")
-        (assert-true (cdr (assoc 'start_time payload)) "Expected start_time present")
-        (assert-true (cdr (assoc 'end_time payload)) "Expected end_time present")))))
+        (let ((tf (cdr (assoc 'timeframe payload))))
+          (assert-true (and (listp tf) (= 1 (length tf)) (numberp (first tf)))
+                       "Timeframe Option<i64> should be numeric"))
+        (let ((data-id (cdr (assoc 'data_id payload))))
+          (assert-true (and (listp data-id) (= 1 (length data-id)) (stringp (first data-id)))
+                       "Expected data_id Option<String> present"))
+        (let ((candles-file (cdr (assoc 'candles_file payload))))
+          (assert-true (and (listp candles-file) (= 1 (length candles-file)) (stringp (first candles-file)))
+                       "Expected candles_file Option<String> present"))
+        (let ((start-time (cdr (assoc 'start_time payload))))
+          (assert-true (and (listp start-time) (= 1 (length start-time)) (numberp (first start-time)))
+                       "Expected start_time Option<i64> present"))
+        (let ((end-time (cdr (assoc 'end_time payload))))
+          (assert-true (and (listp end-time) (= 1 (length end-time)) (numberp (first end-time)))
+                       "Expected end_time Option<i64> present"))))))
 
 (deftest test-backtest-v2-phase2-promotes-to-a
   "Phase2 result should promote to A when sharpe meets threshold"
@@ -901,6 +911,7 @@
                   test-dream-cycle-self-throttle
                   test-processing-step-no-maintenance
                   test-backtest-debug-enabled-p
+                  test-flush-deferred-founders-respects-limit
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
