@@ -17,6 +17,7 @@
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`.env` を自動読み込みして Discord 設定を拾う。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
+- **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
 - **B案方針**: 内部ZMQ通信＋ローカル保存をS式へ統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。
