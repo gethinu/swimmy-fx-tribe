@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pipeline Diagnosis"
+  short_description: "Diagnose Swimmy evolution/backtest pipeline health"
+  default_prompt: "Run the pipeline diagnosis workflow and summarize evidence before proposing fixes."
