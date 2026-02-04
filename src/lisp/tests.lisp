@@ -738,6 +738,16 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-backtest-pending-count-decrements-on-recv
+  "pending count should drop when a BACKTEST_RESULT is processed"
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-PENDING\") (sharpe . 0.1) (trades . 1))))"))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (setf swimmy.globals::*backtest-submit-count* 5)
+    (setf swimmy.main::*backtest-recv-count* 0)
+    (funcall fn msg)
+    (assert-true (> swimmy.main::*backtest-recv-count* 0) "recv count increments")))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -928,6 +938,7 @@
                   test-backtest-debug-enabled-p
                   test-backtest-pending-counters-defaults
                   test-backtest-send-throttles-when-pending-high
+                  test-backtest-pending-count-decrements-on-recv
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
