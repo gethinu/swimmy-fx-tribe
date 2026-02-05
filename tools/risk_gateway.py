@@ -21,19 +21,31 @@ Hard Limits (defaults, env override available):
 Usage:
     python3 tools/risk_gateway.py
 
-Commands (JSON):
-    CHECK_RISK: {
-        "action": "BUY"|"SELL",
-        "symbol": "USDJPY",
-        "lot": 0.01,
-        "daily_pnl": -500.0,
-        "equity": 50000.0,
-        "consecutive_losses": 2
-    }
-    -> Returns: {"status": "APPROVED" | "DENIED", "reason": "..."}
+Commands (S-expression alist):
+    CHECK_RISK:
+      ((type . "RISK_GATEWAY")
+       (schema_version . 1)
+       (action . "CHECK_RISK")
+       (side . "BUY")
+       (symbol . "USDJPY")
+       (lot . 0.01)
+       (daily_pnl . -500.0)
+       (equity . 50000.0)
+       (consecutive_losses . 2))
+    -> Returns:
+      ((type . "RISK_GATEWAY_RESULT")
+       (schema_version . 1)
+       (status . "APPROVED")  ; or "DENIED"/"ERROR"
+       (reason . "..."))
 
-    RESET: {}
-    -> Returns: {"status": "RESET_COMPLETE"} (Use at start of day)
+    RESET:
+      ((type . "RISK_GATEWAY")
+       (schema_version . 1)
+       (action . "RESET"))
+    -> Returns:
+      ((type . "RISK_GATEWAY_RESULT")
+       (schema_version . 1)
+       (status . "RESET_COMPLETE"))
 """
 
 import os

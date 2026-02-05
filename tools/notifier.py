@@ -15,12 +15,12 @@ Architecture:
 Usage:
     python3 tools/notifier.py
 
-Message Format (JSON):
-    {
-        "webhook": "https://discord.com/api/webhooks/...",
-        "content_type": "embed" | "text",
-        "data": { ... }
-    }
+Message Format (S-expression alist):
+    ((type . "NOTIFIER")
+     (schema_version . 1)
+     (action . "SEND")
+     (webhook . "https://discord.com/api/webhooks/...")
+     (payload_json . "{\"embeds\":[{\"title\":\"...\"}]}"))
 """
 
 import json

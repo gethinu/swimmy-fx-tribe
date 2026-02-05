@@ -2,7 +2,6 @@ import threading
 import os
 import sys
 import time
-import json
 import zmq
 import fcntl
 import requests
@@ -304,75 +303,6 @@ def handle_save_all():
     return {"status": "ok", "message": "Saving started in background"}
 
 
-def handle_get_history(parts):
-    if len(parts) < 3:
-        return {"error": "Usage: GET_HISTORY:SYMBOL:[TIMEFRAME:]COUNT"}
-
-    symbol = parts[1].upper()
-    if len(parts) == 3:
-        timeframe = "M1"
-        try:
-            count = int(parts[2])
-        except ValueError:
-            return {"error": "Invalid count"}
-    else:
-        timeframe = parts[2].upper()
-        try:
-            count = int(parts[3])
-        except ValueError:
-            return {"error": "Invalid count"}
-
-    if symbol not in SUPPORTED_SYMBOLS:
-        return {"error": f"Unsupported symbol: {symbol}"}
-
-    if timeframe in candle_histories[symbol]:
-        history = list(candle_histories[symbol][timeframe])
-        result = history[-count:] if count < len(history) else history
-        result.reverse()
-        return {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "count": len(result),
-            "candles": result,
-        }
-    else:
-        return {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "count": 0,
-            "candles": [],
-            "error": "No data",
-        }
-
-
-def handle_add_candle(parts):
-    if len(parts) < 3:
-        return {"error": "Usage: ADD_CANDLE:SYMBOL:[TIMEFRAME:]JSON"}
-    symbol = parts[1].upper()
-    remainder = parts[2]
-    timeframe = "M1"
-    json_str = ""
-
-    if ":" in remainder:
-        subparts = remainder.split(":", 1)
-        potential_tf = subparts[0].upper()
-        if potential_tf in ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]:
-            timeframe = potential_tf
-            json_str = subparts[1]
-        else:
-            json_str = remainder
-    else:
-        json_str = remainder
-
-    try:
-        candle = json.loads(json_str)
-        with save_lock:  # Protect append vs save reading
-            candle_histories[symbol][timeframe].append(candle)
-        return {"status": "ok", "symbol": symbol, "timeframe": timeframe}
-    except Exception as e:
-        return {"error": f"Error adding candle: {e}"}
-
-
 def get_csv_path(symbol, tf):
     """Deep Validation: Helper to find CSV path."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
@@ -382,18 +312,6 @@ def get_csv_path(symbol, tf):
         if os.path.exists(p):
             return os.path.abspath(p)
     return None
-
-
-def handle_get_file_path(parts):
-    if len(parts) < 3:
-        return {"error": "Usage: GET_FILE_PATH:SYMBOL:TF"}
-    symbol = parts[1].upper()
-    tf = parts[2].upper()
-    path = get_csv_path(symbol, tf)
-    if path:
-        return {"status": "ok", "path": path}
-    else:
-        return {"error": "File not found"}
 
 
 def handle_request_sexp(message: str) -> str:
