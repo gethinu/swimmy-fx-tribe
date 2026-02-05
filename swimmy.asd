@@ -130,6 +130,8 @@
                (:file "src/lisp/transfer-learning") ; Added V7.0
                (:file "src/lisp/school/advisors")
                
+               (:file "src/lisp/system/opus")
+
                ;; SHELL
                (:file "src/lisp/shell/notifications")
                (:file "src/lisp/shell/briefing")
@@ -138,7 +140,6 @@
                (:file "src/lisp/shell/handoff")
 
                ;; SYSTEM & UTILS
-               (:file "src/lisp/system/opus")
                (:file "src/lisp/logger")
                (:file "src/lisp/core/telemetry")
                (:file "src/lisp/core/rituals")

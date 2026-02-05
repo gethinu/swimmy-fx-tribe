@@ -35,6 +35,7 @@
 
 (defun on-trade-opened (idx symbol direction warmup-p conf)
   "Called when a trade is opened. Sends Discord notification."
+  (declare (ignore symbol))
   (let* ((emoji (if warmup-p "🔥" "🧠"))
          (dir-str (if (eq direction :LONG) "BUY" "SELL"))
          (suffix (if warmup-p " [WARMUP]" (format nil " (~,0f%)" (* conf 100)))))
@@ -43,6 +44,7 @@
 
 (defun on-trade-closed (idx symbol won pnl)
   "Called when a trade is closed. Sends Discord notification."
+  (declare (ignore symbol))
   (let ((emoji (if won "✅" "❌"))
         (color (if won 3066993 15158332)))
     (notify-discord (format nil "~a ~,2f #~d | Day:~,0f" emoji pnl idx *daily-pnl*)

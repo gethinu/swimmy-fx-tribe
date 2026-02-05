@@ -205,7 +205,9 @@
             (setf *improvement-requests* (getf data :improvements))
             (format t "[L] 📚 Knowledge base loaded: ~d patterns, ~d analyses~%"
                     (length *learned-patterns*) (length *log-analysis-history*)))))
-    (error (e) nil)))
+    (error (e)
+      (declare (ignore e))
+      nil)))
 
 (defun opus-daily-session ()
   "Run daily Opus integration session - call this at end of trading day"

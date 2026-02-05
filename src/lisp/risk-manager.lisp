@@ -50,6 +50,7 @@
       ;; 1. Scan Arm States (Active Positions)
       (when (boundp 'swimmy.engine::*arm-states*)
         (maphash (lambda (idx state)
+                   (declare (ignore idx))
                    (let ((pos (swimmy.globals::arm-state-position state))
                          (symbol (swimmy.globals::arm-state-symbol state))
                          (size (swimmy.globals::arm-state-size state)))
@@ -96,6 +97,7 @@
 (defun risk-check-all (symbol direction lot category)
   "Unified risk check before trade execution (MECU Integrated). 
    Returns (values approved-p adjusted-lot reason)"
+  (declare (ignore category))
   (let ((checks nil)
         (final-lot lot)
         (approved t))

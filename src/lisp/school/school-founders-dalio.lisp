@@ -21,7 +21,7 @@
                          (> close (high 20)))              ; Donchian Breakout
           :exit  '((< close (low 10)))
           :indicators  '((atr 14) (sma 100)))))
-    (add-to-kb vix-hunter "Dalio-Recruiter" :verify-logic t))
+    (add-to-kb vix-hunter "Dalio-Recruiter"))
 
   ;; 2. Dalio-Counter-Punch (Mean Reversion Extreme)
   ;; Target: Range Expansion (Sold into strength)
@@ -36,7 +36,7 @@
                          (> close (bb-upper 20 2.5))) ; Outside 2.5 Sigma
           :exit  '((< rsi 50))
           :indicators  '((rsi 14) (bb 20 2.5)))))
-    (add-to-kb counter-punch "Dalio-Recruiter" :verify-logic t))
+    (add-to-kb counter-punch "Dalio-Recruiter"))
 
   ;; 3. Dalio-Time-Bandit (Calendar Anomaly)
   ;; Target: Specific Time execution (uncorrelated to price technicals)
@@ -52,6 +52,6 @@
                          (> rsi 60))         ; Still bullish, trap late bulls
           :exit  '((>= hour 20))       ; Close before market close
           :indicators  '((rsi 14)))))
-    (add-to-kb time-bandit "Dalio-Recruiter" :verify-logic t)))
+    (add-to-kb time-bandit "Dalio-Recruiter")))
 
 (export 'register-dalio-team)
