@@ -245,11 +245,33 @@
                           (swimmy.school:process-wfv-result full-name metrics)))
                        (t
                         (swimmy.school:cache-backtest-result name metrics)
-                        (swimmy.school:apply-backtest-result name metrics)
+                        (backtest-debug-log "apply-backtest-result start name=~a request_id=~a"
+                                            name request-id)
+                        (handler-case
+                            (progn
+                              (swimmy.school:apply-backtest-result name metrics)
+                              (backtest-debug-log "apply-backtest-result end name=~a request_id=~a"
+                                                  name request-id))
+                          (error (e)
+                            (backtest-debug-log "apply-backtest-result error name=~a request_id=~a err=~a"
+                                                name request-id e)
+                            (%dlq-record "apply-backtest-result error" msg result)
+                            (error e)))
 
                         ;; V50.2: Trigger V2 Handler (Screening/Validation)
                         (when (fboundp 'swimmy.school::handle-v2-result)
-                          (swimmy.school::handle-v2-result full-name metrics))
+                          (backtest-debug-log "handle-v2-result start name=~a request_id=~a"
+                                              full-name request-id)
+                          (handler-case
+                              (progn
+                                (swimmy.school::handle-v2-result full-name metrics)
+                                (backtest-debug-log "handle-v2-result end name=~a request_id=~a"
+                                                    full-name request-id))
+                            (error (e)
+                              (backtest-debug-log "handle-v2-result error name=~a request_id=~a err=~a"
+                                                  full-name request-id e)
+                              (%dlq-record "handle-v2-result error" msg result)
+                              (error e))))
                         (cond
                           (is-qual
                            (push (cons name metrics) swimmy.globals:*qual-backtest-results-buffer*)

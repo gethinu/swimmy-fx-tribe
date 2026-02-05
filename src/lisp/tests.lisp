@@ -112,6 +112,53 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-backtest-debug-log-records-apply
+  "BACKTEST_RESULT should write debug log around apply when debug enabled"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-DBG\") (sharpe . 0.2) (trades . 1) (pnl . 0.1) (request_id . \"RID-DBG\"))))")
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result)))
+           (orig-env (uiop:getenv "SWIMMY_BACKTEST_DEBUG_RECV"))
+           (tmp-path (merge-pathnames
+                      (format nil "backtest_debug_test_~a.log" (get-universal-time))
+                      (uiop:temporary-directory))))
+      (unwind-protect
+          (progn
+            (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" "1" 1)
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when (fboundp 'swimmy.school::handle-v2-result)
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (when (probe-file tmp-path)
+              (ignore-errors (delete-file tmp-path)))
+            (let ((swimmy.main::*backtest-debug-log* (namestring tmp-path)))
+              (funcall fn msg)
+              (assert-true (probe-file tmp-path) "Expected debug log file")
+              (let ((content (uiop:read-file-string tmp-path)))
+                (assert-true (search "apply-backtest-result start" content)
+                             "Expected apply start log")
+                (assert-true (search "apply-backtest-result end" content)
+                             "Expected apply end log"))))
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))
+        (if orig-env
+            (sb-posix:setenv "SWIMMY_BACKTEST_DEBUG_RECV" orig-env 1)
+            (sb-posix:unsetenv "SWIMMY_BACKTEST_DEBUG_RECV"))
+        (when (probe-file tmp-path)
+          (ignore-errors (delete-file tmp-path)))))))
+
 (deftest test-backtest-status-includes-last-request-id
   "backtest_status.txt should include last_request_id only"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -920,6 +967,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
                   test-strategy-to-alist-omits-filter-enabled-when-false
