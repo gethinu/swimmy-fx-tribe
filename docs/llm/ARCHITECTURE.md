@@ -23,14 +23,14 @@ graph TD
     Rust -- "PUSH :5555 (Sensor Data)" --> Lisp
     Lisp -- "PUB :5556 (Decision/Signal)" --> Rust
     
-    Rust -- "PUSH :5561 (History)" --> DataKeeper
-    Lisp -- "PUSH :5561 (Log)" --> DataKeeper
+    Lisp -- "REQ :5561 (History/Save, S-Exp)" --> DataKeeper
+    DataKeeper -- "REP :5561 (S-Exp)" --> Lisp
     
     Lisp <--> DB
     Rust <--> DB
 ```
 
-**通信エンコーディング方針**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP等）はJSONを維持する。
+**通信エンコーディング方針**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。補助サービス境界もS式に統一し、外部API境界（Discord/HTTP等）はJSONを維持する。
 
 ## コンポーネント詳細
 
@@ -53,7 +53,8 @@ graph TD
 - **Hot Reload**: プロセスを止めずにロジック更新可能。
 
 ### 4. Data Keeper (Memory)
-- **Python Service (Port 5561)**
+- **Python Service (Port 5561 / REQ/REP + S-expression)**
+- Lisp/Tools から履歴取得・保存を受け付ける（S式）。
 - 10M Candle Buffer。ヒストリカルデータの非同期保存を担当。
 - メインプロセスのI/O負荷を軽減。
 

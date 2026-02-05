@@ -47,8 +47,10 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
   - Rust (PUB 5560) -> MT5
   - Rust (PUSH 5555) -> Lisp
   - Lisp (PUB 5556) -> Rust
-  - Data Keeper (PULL 5561) <- Rust/Lisp
-- **Encoding**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSONを維持。
+  - Data Keeper (REQ/REP 5561, S-expression) <-> Lisp/Tools
+  - Notifier (PUSH/PULL 5562, S-expression) <-> Lisp/Tools
+  - Risk Gateway (REQ/REP 5563, S-expression) <-> Lisp/Tools
+- **Encoding**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。補助サービス境界もS式に統一し、外部API境界はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Sharded Files**: 戦略本体 (S式)。
