@@ -74,13 +74,15 @@ def count_pattern_in_file(filepath, pattern):
 
 
 def main():
+    dry_run = "--dry-run" in sys.argv
+
     # Load Environment
     env = load_env()
     webhook_url = os.getenv("SWIMMY_DISCORD_REPORTS") or env.get(
         "SWIMMY_DISCORD_REPORTS"
     )
 
-    if not webhook_url:
+    if not webhook_url and not dry_run:
         print("❌ Error: SWIMMY_DISCORD_REPORTS not set.")
         sys.exit(1)
 
@@ -177,6 +179,10 @@ def main():
             }
         ]
     }
+
+    if dry_run:
+        print("✅ Dry-run: payload built, send skipped.")
+        return
 
     # Send to Notifier Service
     context = zmq.Context()
