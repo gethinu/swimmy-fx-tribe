@@ -37,41 +37,47 @@
     (pzmq:connect *notifier-socket* *notifier-endpoint*)
     (format t "[DISCORD] Connected to Notifier service at ~a~%" *notifier-endpoint*)))
 
+(defun send-notifier-json (json-str)
+  "Send a JSON string to Notifier via non-blocking ZMQ. Drops on backpressure."
+  (ensure-notifier-connection)
+  (handler-case
+      (progn
+        (pzmq:send *notifier-socket* json-str :dontwait t)
+        (setf *last-zmq-success-time* (get-universal-time))
+        (setf *last-discord-notification-time* (get-universal-time))
+        t)
+    (error (e)
+      (let ((err-str (format nil "~a" e)))
+        (if (search "Resource temporarily unavailable" err-str)
+            (progn
+              (incf swimmy.globals::*notifier-zmq-drop-count*)
+              nil)
+            (progn
+              (incf swimmy.globals::*notifier-zmq-error-count*)
+              (format t "[DISCORD] Failed to send ZMQ msg: ~a~%" e)
+              ;; Force reconnect next time (notifier restart, socket error, etc)
+              (setf *notifier-socket* nil)
+              nil))))))
+
 (defun queue-discord-notification (webhook msg &key (color +color-backtest+) (title "Swimmy Notification"))
   "Send notification to Notifier service via ZMQ"
   (when (and webhook msg (not (equal msg "NIL")))
-    (ensure-notifier-connection)
-    (handler-case
-        (let ((payload (jsown:new-js 
-                        ("webhook" webhook)
-                        ("data" (jsown:new-js
-                                  ("embeds" (list (jsown:new-js
-                                                    ("title" title)
-                                                    ("description" (format nil "~a" msg))
-                                                    ("color" color)))))))))
-          (pzmq:send *notifier-socket* (jsown:to-json payload))
-          (setf *last-zmq-success-time* (get-universal-time))
-          (setf *last-discord-notification-time* (get-universal-time))
-          t)
-      (error (e)
-        (format t "[DISCORD] Failed to send ZMQ msg: ~a~%" e)
-        nil))))
+    (let ((payload (jsown:new-js 
+                    ("webhook" webhook)
+                    ("data" (jsown:new-js
+                              ("embeds" (list (jsown:new-js
+                                                ("title" title)
+                                                ("description" (format nil "~a" msg))
+                                                ("color" color)))))))))
+      (send-notifier-json (jsown:to-json payload)))))
 
 (defun queue-raw-discord-message (webhook payload)
   "Send raw JSON payload to Notifier"
   (when (and webhook payload)
-    (ensure-notifier-connection)
-    (handler-case
-        (let ((msg (jsown:new-js 
-                     ("webhook" webhook)
-                     ("data" payload))))
-          (pzmq:send *notifier-socket* (jsown:to-json msg))
-          (setf *last-zmq-success-time* (get-universal-time))
-          (setf *last-discord-notification-time* (get-universal-time))
-          t)
-      (error (e)
-        (format t "[DISCORD] Failed to send raw ZMQ msg: ~a~%" e)
-        nil))))
+    (let ((msg (jsown:new-js 
+                 ("webhook" webhook)
+                 ("data" payload))))
+      (send-notifier-json (jsown:to-json msg)))))
 
 ;;; ==========================================
 ;;; PUBLIC API (Backward Compatible)

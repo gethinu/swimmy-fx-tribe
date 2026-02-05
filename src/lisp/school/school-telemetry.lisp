@@ -5,6 +5,7 @@
 (in-package :swimmy.school)
 
 (defparameter *telemetry-file* "data/system_metrics.sexp")
+(defparameter *notifier-metrics-file* "data/notifier_metrics.sexp")
 (defparameter *memory-warning-threshold* (* 1024 1024 1024)) ; 1GB in bytes
 (defparameter *last-telemetry-time* 0)
 
@@ -19,14 +20,32 @@
         :active (length *active-team*)
         :pending 0)) ; Pending is managed by Python service, Lisp considers them external for now
 
+(defun read-notifier-metrics ()
+  "Best-effort read of Notifier health metrics (alist) from *notifier-metrics-file*."
+  (handler-case
+      (swimmy.core:read-sexp-file *notifier-metrics-file* :package :swimmy.school)
+    (error (_e)
+      nil)))
+
 (defun save-telemetry-sexp (metrics)
   "Writes metrics to S-expression file for external dashboards."
-  (let ((payload `((schema_version . 1)
-                   (timestamp . ,(get-universal-time))
-                   (heap_used_bytes . ,(getf metrics :heap))
-                   (heap_used_mb . ,(/ (getf metrics :heap) 1024.0 1024.0))
-                   (strategy_count . ,(getf metrics :strategy-count))
-                   (uptime_seconds . ,(- (get-universal-time) swimmy.globals::*system-start-time*)))))
+  (let* ((notifier (read-notifier-metrics))
+         (extra nil)
+         (payload `((schema_version . 1)
+                    (timestamp . ,(get-universal-time))
+                    (heap_used_bytes . ,(getf metrics :heap))
+                    (heap_used_mb . ,(/ (getf metrics :heap) 1024.0 1024.0))
+                    (strategy_count . ,(getf metrics :strategy-count))
+                    (uptime_seconds . ,(- (get-universal-time) swimmy.globals::*system-start-time*)))))
+    (when notifier
+      (let ((q (assoc 'queue_len notifier))
+            (d (assoc 'drops notifier))
+            (e (assoc 'errors notifier)))
+        (when q (push `(notifier_queue_len . ,(cdr q)) extra))
+        (when d (push `(notifier_drops . ,(cdr d)) extra))
+        (when e (push `(notifier_errors . ,(cdr e)) extra))))
+    (when extra
+      (setf payload (append payload (nreverse extra))))
     (swimmy.core:write-sexp-atomic *telemetry-file* payload)))
 
 
