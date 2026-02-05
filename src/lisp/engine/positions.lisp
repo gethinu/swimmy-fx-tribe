@@ -85,15 +85,6 @@
     (when (fboundp 'update-nn-threshold)
       (update-nn-threshold won))
     
-    ;; Neural training
-    (let ((pos (arm-state-position state)))
-      (when (fboundp 'train-neural)
-        (cond
-          ((and won (eql pos :LONG)) (train-neural 0))
-          ((and won (eql pos :SHORT)) (train-neural 1))
-          ((and (not won) (eql pos :LONG)) (train-neural 1))
-          ((and (not won) (eql pos :SHORT)) (train-neural 0)))))
-          
     ;; Rebalance (using engine/portfolio.lisp)
     (when (fboundp 'rebalance-portfolio)
       (rebalance-portfolio))))
@@ -110,8 +101,6 @@
     (let* ((params (car (nth idx *arms*)))
            (sma-s (nth 0 params))
            (sma-l (nth 1 params))
-           (sl-p (nth 2 params))
-           (tp-p (nth 3 params))
            ;; Genome vol ignored in favor of risk module
            (state (or (gethash idx *arm-states*)
                       (setf (gethash idx *arm-states*) (make-arm-state :streak 0))))
@@ -160,44 +149,40 @@
                   (conf (second signal))
                   (sl-p (nth 2 params)) ; Re-use params for reliable indexing
                   (tp-p (nth 3 params)))
+              (declare (ignore conf))
               
               ;; 5. Dynamic Sizing (Risk Authority)
               (let ((dynamic-vol (if (fboundp 'calculate-lot-size) 
                                      (calculate-lot-size) 
                                      0.01)))
                 
-                ;; 6. Hard Constraints (Taleb Rules)
-                (when (if (fboundp 'check-hard-constraints)
-                          (check-hard-constraints dynamic-vol symbol)
-                          t)
+                (cond
+                  ((eql type :BUY)
+                   (setf (arm-state-position state) :LONG
+                         (arm-state-entry-price state) bid
+                         (arm-state-size state) dynamic-vol
+                         (arm-state-symbol state) symbol
+                         (arm-state-sl state) (- bid sl-p)
+                         (arm-state-tp state) (+ bid tp-p))
+                   (when active
+                     (let ((order (swimmy.core:make-order-message
+                                   "Engine-Position" symbol :buy dynamic-vol 0.0
+                                   (arm-state-sl state) (arm-state-tp state))))
+                       (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
+                     (notify-execution "OPEN" symbol idx dynamic-vol 0)))
                   
-                  (cond
-                    ((eql type :BUY)
-                     (setf (arm-state-position state) :LONG
-                           (arm-state-entry-price state) bid
-                           (arm-state-size state) dynamic-vol
-                           (arm-state-symbol state) symbol
-                           (arm-state-sl state) (- bid sl-p)
-                           (arm-state-tp state) (+ bid tp-p))
-                     (when active
-                       (let ((order (swimmy.core:make-order-message
-                                     "Engine-Position" symbol :buy dynamic-vol 0.0
-                                     (arm-state-sl state) (arm-state-tp state))))
-                         (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
-                       (notify-execution "OPEN" symbol idx dynamic-vol 0)))
-                    
-                    ((eql type :SELL)
-                     (setf (arm-state-position state) :SHORT
-                           (arm-state-entry-price state) ask
-                           (arm-state-size state) dynamic-vol
-                           (arm-state-symbol state) symbol
-                           (arm-state-sl state) (+ ask sl-p)
-                           (arm-state-tp state) (- ask tp-p))
-                     (when active
-                       (let ((order (swimmy.core:make-order-message
-                                     "Engine-Position" symbol :sell dynamic-vol 0.0
-                                     (arm-state-sl state) (arm-state-tp state))))
-                         (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
-                       (notify-execution "OPEN" symbol idx dynamic-vol 0)))))))))))))
+                  ((eql type :SELL)
+                   (setf (arm-state-position state) :SHORT
+                         (arm-state-entry-price state) ask
+                         (arm-state-size state) dynamic-vol
+                         (arm-state-symbol state) symbol
+                         (arm-state-sl state) (+ ask sl-p)
+                         (arm-state-tp state) (- ask tp-p))
+                   (when active
+                     (let ((order (swimmy.core:make-order-message
+                                   "Engine-Position" symbol :sell dynamic-vol 0.0
+                                   (arm-state-sl state) (arm-state-tp state))))
+                       (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
+                     (notify-execution "OPEN" symbol idx dynamic-vol 0))))))))))))
 
 (format t "[ENGINE] positions.lisp loaded~%")
