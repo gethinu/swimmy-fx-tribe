@@ -1,10 +1,9 @@
-import zmq
-import json
-import time
 import os
 import sys
+import time
 from pathlib import Path
 
+import zmq
 
 def _env_int(key: str, default: int) -> int:
     val = os.getenv(key, "").strip()
@@ -36,6 +35,12 @@ TEST_CLOSE = 150.50
 BASE_DIR = str(resolve_base_dir())
 CSV_FILE = os.path.join(BASE_DIR, "data", "historical", f"{SYMBOL}_{TF}.csv")
 
+PYTHON_SRC = Path(BASE_DIR) / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
+
 
 def test_persistence():
     print(f"🧪 Testing persistence for {SYMBOL} {TF}...")
@@ -46,7 +51,7 @@ def test_persistence():
     socket.connect(f"tcp://localhost:{ZMQ_PORT}")
     socket.setsockopt(zmq.RCVTIMEO, 2000)
 
-    # 2. Prepare Candle JSON
+    # 2. Prepare Candle
     candle = {
         "timestamp": TEST_TIMESTAMP,
         "open": TEST_OPEN,
@@ -56,11 +61,17 @@ def test_persistence():
         "volume": 9999,
     }
 
-    # 3. Send ADD_CANDLE command
-    # Format matches data_keeper.py handle_add_candle logic
-    # ADD_CANDLE:SYMBOL:[TF:]JSON
-    cmd = f"ADD_CANDLE:{SYMBOL}:{TF}:{json.dumps(candle)}"
-    print(f"📤 Sending: {cmd[:50]}...")
+    # 3. Send ADD_CANDLE request (S-expression)
+    cmd = sexp_request(
+        {
+            "type": "DATA_KEEPER",
+            "action": "ADD_CANDLE",
+            "symbol": SYMBOL,
+            "timeframe": TF,
+            "candle": candle,
+        }
+    )
+    print("📤 Sending ADD_CANDLE...")
     socket.send_string(cmd)
 
     try:
@@ -72,7 +83,7 @@ def test_persistence():
 
     # 4. Trigger Save (Data Keeper saves every hour, but has SAVE_ALL command)
     print("💾 Triggering SAVE_ALL...")
-    socket.send_string("SAVE_ALL")
+    socket.send_string(sexp_request({"type": "DATA_KEEPER", "action": "SAVE_ALL"}))
     try:
         reply = socket.recv_string()
         print(f"📥 Received: {reply}")

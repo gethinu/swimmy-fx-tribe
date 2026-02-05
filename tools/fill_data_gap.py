@@ -12,13 +12,13 @@ Usage:
     Then triggers SAVE_ALL.
 """
 
-import sys
-import zmq
-import json
-import time
 import os
+import sys
+import time
 from datetime import datetime, timedelta
 import pytz
+import zmq
+from pathlib import Path
 
 # Try importing MetaTrader5 (only works on Windows)
 try:
@@ -58,6 +58,26 @@ TIMEFRAMES = {
 }
 
 
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
+from sexp_utils import parse_sexp_alist
+
+
 def connect_to_data_keeper():
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
@@ -67,11 +87,21 @@ def connect_to_data_keeper():
 
 
 def get_last_timestamp(socket, symbol, tf):
-    # Sends GET_HISTORY:SYMBOL:TF:1 to get the very last candle
-    socket.send_string(f"GET_HISTORY:{symbol}:{tf}:1")
+    # Sends GET_HISTORY to get the very last candle
+    socket.send_string(
+        sexp_request(
+            {
+                "type": "DATA_KEEPER",
+                "action": "GET_HISTORY",
+                "symbol": symbol,
+                "timeframe": tf,
+                "count": 1,
+            }
+        )
+    )
     try:
         msg = socket.recv_string()
-        data = json.loads(msg)
+        data = parse_sexp_alist(msg)
         if "candles" in data and len(data["candles"]) > 0:
             # Candles are Newest-First. Index 0 is newest.
             return data["candles"][0]["timestamp"]
@@ -129,11 +159,15 @@ def fetch_and_push(socket, symbol, tf_name, tf_val, last_ts):
             "volume": int(rate["tick_volume"]),
         }
 
-        # Send ADD_CANDLE:SYMBOL:TIMEFRAME:JSON
-        # Must be careful with JSON content not containing newlines or weird chars that break ZMQ recv string if simple.
-        # But JSON is safe usually.
-        json_str = json.dumps(candle)
-        cmd = f"ADD_CANDLE:{symbol}:{tf_name}:{json_str}"
+        cmd = sexp_request(
+            {
+                "type": "DATA_KEEPER",
+                "action": "ADD_CANDLE",
+                "symbol": symbol,
+                "timeframe": tf_name,
+                "candle": candle,
+            }
+        )
 
         socket.send_string(cmd)
         resp = socket.recv_string()  # Wait for ack
@@ -162,7 +196,7 @@ def main():
 
     # Trigger Save
     print("--- Triggering Persistence Save ---")
-    socket.send_string("SAVE_ALL")
+    socket.send_string(sexp_request({"type": "DATA_KEEPER", "action": "SAVE_ALL"}))
     print(socket.recv_string())
 
     mt5.shutdown()

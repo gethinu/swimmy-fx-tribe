@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import json
 import os
 import sys
 import zmq
 from pathlib import Path
+import json
 
 
 # Port 5562 is where tools/notifier.py listens
@@ -53,6 +53,24 @@ def _env_int(key: str, default: int) -> int:
 # Port 5562 is where tools/notifier.py listens
 NOTIFIER_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
+
+
+def build_notifier_message(webhook, payload):
+    return sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
+
 
 def get_webhook() -> str:
     load_env()
@@ -72,20 +90,17 @@ def main() -> None:
     sock.connect(f"tcp://localhost:{NOTIFIER_PORT}")
 
     payload = {
-        "webhook": webhook,
-        "data": {
-            "embeds": [
-                {
-                    "title": "🧪 Direct Notifier Test",
-                    "description": "If you see this, Notifier.py is working correctly.",
-                    "color": 3447003,
-                }
-            ]
-        },
+        "embeds": [
+            {
+                "title": "🧪 Direct Notifier Test",
+                "description": "If you see this, Notifier.py is working correctly.",
+                "color": 3447003,
+            }
+        ]
     }
 
     print(f"Sending to port {NOTIFIER_PORT}...")
-    sock.send_json(payload)
+    sock.send_string(build_notifier_message(webhook, payload))
     print("Sent. Check Discord.")
 
 

@@ -255,6 +255,13 @@
     (assert-equal "USDJPY" (swimmy.core:sexp-alist-get parsed "instrument"))
     (assert-equal "BUY" (swimmy.core:sexp-alist-get parsed "side"))))
 
+(deftest test-data-keeper-request-sexp
+  (let* ((req (swimmy.core::build-data-keeper-request "STATUS"))
+         (parsed (swimmy.core:safe-read-sexp req :package :swimmy.core)))
+    (assert-equal "DATA_KEEPER" (swimmy.core:sexp-alist-get parsed "type"))
+    (assert-equal 1 (swimmy.core:sexp-alist-get parsed "schema_version"))
+    (assert-equal "STATUS" (swimmy.core:sexp-alist-get parsed "action"))))
+
 (deftest test-message-dispatcher-compiles-without-warnings
   "message-dispatcher should compile without warnings"
   (let ((warnings '()))
@@ -973,6 +980,7 @@
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
+                  test-data-keeper-request-sexp
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count

@@ -26,28 +26,31 @@
   (ensure-risk-gateway-connection)
   
   (handler-case
-      (let* ((payload (jsown:new-js 
-                        ("action" (string action))
-                        ("symbol" symbol)
-                        ("lot" lot)
-                        ("daily_pnl" daily-pnl)
-                        ("equity" equity)
-                        ("consecutive_losses" consecutive-losses)))
-             (cmd (format nil "CHECK_RISK:~a" (jsown:to-json payload))))
-        
+      (let* ((side (string-upcase (format nil "~a" action)))
+             (payload `((type . "RISK_GATEWAY")
+                        (schema_version . 1)
+                        (action . "CHECK_RISK")
+                        (side . ,side)
+                        (symbol . ,symbol)
+                        (lot . ,(float lot))
+                        (daily_pnl . ,(float daily-pnl))
+                        (equity . ,(float equity))
+                        (consecutive_losses . ,consecutive-losses)))
+             (cmd (encode-sexp payload)))
+
         ;; Send request
         (pzmq:send *risk-gateway-socket* cmd)
-        
+
         ;; Receive response
         (let* ((msg (pzmq:recv-string *risk-gateway-socket*))
-               (json (jsown:parse msg))
-               (status (jsown:val json "status"))
-               (reason (jsown:val json "reason")))
-          
+               (sexp (safe-read-sexp msg :package :swimmy.core))
+               (status (and sexp (sexp-alist-get sexp 'status)))
+               (reason (and sexp (sexp-alist-get sexp 'reason))))
+
           (cond
-            ((string= status "APPROVED")
+            ((and status (string= status "APPROVED"))
              (values t reason))
-            ((string= status "DENIED")
+            ((and status (string= status "DENIED"))
              (values nil reason))
             (t
              (values nil (format nil "UNKNOWN_STATUS: ~a" status))))))

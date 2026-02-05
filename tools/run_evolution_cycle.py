@@ -1,10 +1,31 @@
 #!/usr/bin/env python3
-import os
 import json
+import os
 import shutil
-import sys
 import subprocess
+import sys
+from pathlib import Path
+
 import zmq  # Added for notification
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
 
 
 def _env_int(key: str, default: int) -> int:
@@ -231,7 +252,15 @@ def run_cycle():
                     }
                 ]
             }
-            socket.send_json({"webhook": webhook, "data": payload})
+            message = sexp_request(
+                {
+                    "type": "NOTIFIER",
+                    "action": "SEND",
+                    "webhook": webhook,
+                    "payload_json": json.dumps(payload, ensure_ascii=False),
+                }
+            )
+            socket.send_string(message)
             print("✅ 'Cycle Complete' notification sent.")
         else:
             print("⚠️ DISCORD_REPORTS webhook not found, skipping notification.")

@@ -7,13 +7,13 @@ Counts active strategies, recruits, and graveyard entries from rank directories.
 Sends an Embed notification to Discord via the Notifier service.
 """
 
-import zmq
 import os
 import sys
 import json
 import re
 from datetime import datetime
 from pathlib import Path
+import zmq
 
 
 def _env_int(key: str, default: int) -> int:
@@ -39,6 +39,11 @@ def resolve_base_dir() -> Path:
 # Configuration
 ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 BASE_DIR = str(resolve_base_dir())
+PYTHON_SRC = Path(BASE_DIR) / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 LISP_GRAVEYARD = os.path.join(BASE_DIR, "src/lisp/school/graveyard-persistence.lisp")
 LISP_DYNAMIC = os.path.join(BASE_DIR, "src/lisp/strategies/strategies-dynamic.lisp")
@@ -183,9 +188,16 @@ def main():
     socket = context.socket(zmq.PUSH)
     socket.connect(f"tcp://localhost:{ZMQ_PORT}")
 
-    message = {"webhook": webhook_url, "data": payload}
+    message = sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook_url,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
 
-    socket.send_json(message)
+    socket.send_string(message)
     print("✅ Notification sent to Notifier Service.")
 
 

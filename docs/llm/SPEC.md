@@ -47,7 +47,9 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
   - Rust (PUB 5560) -> MT5
   - Rust (PUSH 5555) -> Lisp
   - Lisp (PUB 5556) -> Rust
-  - Data Keeper (PULL 5561) <- Rust/Lisp
+  - Data Keeper (REQ/REP 5561) <-> Rust/Lisp
+  - Notifier (PUSH 5562) -> Notifier Service
+  - Risk Gateway (REQ/REP 5563) <-> Lisp
 - **Encoding**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
@@ -70,7 +72,6 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
 
 ## 10. 未確定事項
 - `libzmq.dll` のバージョン管理。
-- Data Keeperの具体的なデータスキーマ詳細。
 - ローカル保存S式の **schema_version 運用**（互換の範囲と破壊的変更の手順）。
 
 ## 11. Metrics & Reporting Logic (Reference)

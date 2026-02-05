@@ -41,6 +41,8 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-05**: SBCLロード時WARNING/STYLE-WARNINGの全解消（ロード順、export、未使用変数、廃止フックの整理）。
+- **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式スキーマをINTERFACESに定義（`schema_version=1`）。
 - **2026-02-04**: `run.sh` の Brain 起動は `brain.lisp` 優先、欠落時はASDF直起動フォールバックの方針を明記。
 - **2026-02-04**: Backtestのpending/レート制御とDeferred Flush制御パラメータをSTATEに明記。
 - **2026-02-04**: `SWIMMY_BACKTEST_CSV_OVERRIDE` でBacktestのCSV差し替えを許可する方針を明記。
@@ -105,7 +107,7 @@
 
 ## 次アクション
 1. ドキュメント体系化（完了）
-2. Data Keeperのスキーマ定義確認
+2. 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式実装
 3. 統合テスト手順の確立
 4. ローカル保存S式化の移行設計（atomic write / Python S式パーサ / 移行スクリプト）
 

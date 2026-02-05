@@ -9,12 +9,33 @@ This triggers a TEST trade (safe-order) and a Discord notification
 to verify the end-to-end pipeline (Brain -> Guardian -> MT5 & Brain -> Discord).
 """
 
-import zmq
-import json
+import os
 import sys
 import time
+from pathlib import Path
+
+import zmq
 
 BRAIN_PORT = 5555
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
 
 
 def main():
@@ -33,7 +54,7 @@ def main():
         print(
             f"🧪 Sending DEBUG_ENTRY ({target_symbol}) to Brain (Port {BRAIN_PORT})..."
         )
-        socket.send_json(payload)
+        socket.send_string(sexp_request(payload))
 
         # Give ZMQ a moment to flush
         time.sleep(0.5)

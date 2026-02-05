@@ -42,14 +42,18 @@
   (when (and webhook msg (not (equal msg "NIL")))
     (ensure-notifier-connection)
     (handler-case
-        (let ((payload (jsown:new-js 
-                        ("webhook" webhook)
-                        ("data" (jsown:new-js
-                                  ("embeds" (list (jsown:new-js
-                                                    ("title" title)
-                                                    ("description" (format nil "~a" msg))
-                                                    ("color" color)))))))))
-          (pzmq:send *notifier-socket* (jsown:to-json payload))
+        (let* ((payload (jsown:new-js
+                          ("embeds" (list (jsown:new-js
+                                            ("title" title)
+                                            ("description" (format nil "~a" msg))
+                                            ("color" color))))))
+               (payload-json (jsown:to-json payload))
+               (msg-sexp `((type . "NOTIFIER")
+                           (schema_version . 1)
+                           (action . "SEND")
+                           (webhook . ,webhook)
+                           (payload_json . ,payload-json))))
+          (pzmq:send *notifier-socket* (encode-sexp msg-sexp))
           (setf *last-zmq-success-time* (get-universal-time))
           (setf *last-discord-notification-time* (get-universal-time))
           t)
@@ -62,10 +66,13 @@
   (when (and webhook payload)
     (ensure-notifier-connection)
     (handler-case
-        (let ((msg (jsown:new-js 
-                     ("webhook" webhook)
-                     ("data" payload))))
-          (pzmq:send *notifier-socket* (jsown:to-json msg))
+        (let* ((payload-json (if (stringp payload) payload (jsown:to-json payload)))
+               (msg-sexp `((type . "NOTIFIER")
+                           (schema_version . 1)
+                           (action . "SEND")
+                           (webhook . ,webhook)
+                           (payload_json . ,payload-json))))
+          (pzmq:send *notifier-socket* (encode-sexp msg-sexp))
           (setf *last-zmq-success-time* (get-universal-time))
           (setf *last-discord-notification-time* (get-universal-time))
           t)

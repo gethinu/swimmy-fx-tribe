@@ -22,3 +22,15 @@ def sexp_response(payload: dict) -> str:
         bool_value_keys=set(),
         optional_list_keys=set(),
     )
+
+
+def sexp_request(payload: dict) -> str:
+    if "schema_version" not in payload:
+        payload = dict(payload)
+        payload["schema_version"] = 1
+    return sexp_serialize(
+        payload,
+        symbol_value_keys=set(),
+        bool_value_keys=set(),
+        optional_list_keys=set(),
+    )

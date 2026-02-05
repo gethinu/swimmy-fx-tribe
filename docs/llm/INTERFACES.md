@@ -2,7 +2,7 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: 原則S-expression（alist）。ただし補助サービス境界（Data Keeper / Risk Gateway / Notifier）は現在JSONを使用（各ポート定義を正とする）。
+- **Encoding**: 内部ZMQはS-expression（alist）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。
 - **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
@@ -10,9 +10,9 @@
   - `5555`: Sensory Input (Rust PUSH -> Lisp PULL)
   - `5556`: Motor Output (Lisp PUB -> Rust SUB)
   - `5559`: External Command (Legacy) -> Rust SUB
-  - `5561`: Data Keeper (REQ/REP, JSON) -> Data Keeper Service
-  - `5562`: Notifications (Rust PUSH -> Notifier Service)
-  - `5563`: Risk Gateway (REQ/REP, JSON) -> Risk Gateway Service
+  - `5561`: Data Keeper (REQ/REP, S-expression) -> Data Keeper Service
+  - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
+  - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -240,37 +240,176 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 
 ### 6. Data Keeper Service (Port 5561)
 ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
-**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/data_keeper.py`）。
+**プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。
 
-- Request: `STATUS`
-- Request: `GET_HISTORY:SYMBOL:[TIMEFRAME:]COUNT`
-- Request: `GET_FILE_PATH:SYMBOL:TF`
-- Request: `ADD_CANDLE:SYMBOL:[TIMEFRAME:]JSON`
-- Request: `SAVE_ALL`
+**STATUS (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "STATUS"))
+```
 
-### 7. Risk Gateway Service (Port 5563)
+**STATUS (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "running")
+ (symbols . (((symbol . "USDJPY")
+              (timeframes . (((tf . "M1") (count . 123456))
+                             ((tf . "H1") (count . 1234))))))))
+```
+
+**GET_HISTORY (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "GET_HISTORY")
+ (symbol . "USDJPY")
+ (timeframe . "M1")  ; optional (default "M1")
+ (count . 2000))
+```
+
+**GET_HISTORY (Response, newest first)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (symbol . "USDJPY")
+ (timeframe . "M1")
+ (count . 2)
+ (candles . (((timestamp . 1709234560)
+              (open . 145.18)
+              (high . 145.24)
+              (low . 145.12)
+              (close . 145.21)
+              (volume . 120))
+             ((timestamp . 1709234500)
+              (open . 145.10)
+              (high . 145.20)
+              (low . 145.05)
+              (close . 145.18)
+              (volume . 98)))))
+```
+
+**GET_FILE_PATH (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "GET_FILE_PATH")
+ (symbol . "USDJPY")
+ (timeframe . "M1"))
+```
+
+**GET_FILE_PATH (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (path . "/abs/path/to/USDJPY_M1.csv"))
+```
+
+**ADD_CANDLE (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "ADD_CANDLE")
+ (symbol . "USDJPY")
+ (timeframe . "M1")  ; optional (default "M1")
+ (candle . ((timestamp . 1709234560)
+            (open . 145.18)
+            (high . 145.24)
+            (low . 145.12)
+            (close . 145.21)
+            (volume . 120))))
+```
+
+**ADD_CANDLE (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (symbol . "USDJPY")
+ (timeframe . "M1"))
+```
+
+**SAVE_ALL (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "SAVE_ALL"))
+```
+
+**SAVE_ALL (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (message . "Saving started in background"))
+```
+
+**Error (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "error")
+ (error . "message"))
+```
+
+### 7. Notifier Service (Port 5562)
+Discord通知の非同期中継（Python）。  
+**プロトコル**: ZMQ **PUSH/PULL** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。
+
+**SEND (Request)**:
+```
+((type . "NOTIFIER")
+ (schema_version . 1)
+ (action . "SEND")
+ (webhook . "https://discord.com/api/webhooks/...")
+ (payload_json . "{\"embeds\":[{\"title\":\"Swimmy\",\"description\":\"...\"}]}"))
+```
+**備考**: `payload_json` はDiscordのJSONペイロード文字列。Notifier側でJSONとして送信する。
+
+### 8. Risk Gateway Service (Port 5563)
 取引許可の判定を行う補助サービス（Python）。  
-**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/risk_gateway.py` / `src/lisp/core/risk-client.lisp`）。
+**プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。
 
-- Request: `CHECK_RISK:{...json...}`
-- Response: `{"status":"APPROVED"|"DENIED","reason":"..."}`
+**CHECK_RISK (Request)**:
+```
+((type . "RISK_GATEWAY")
+ (schema_version . 1)
+ (action . "CHECK_RISK")
+ (side . "BUY")
+ (symbol . "USDJPY")
+ (lot . 0.01)
+ (daily_pnl . -500.0)
+ (equity . 50000.0)
+ (consecutive_losses . 2))
+```
 
-### 6. Data Keeper Service (Port 5561)
-ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
-**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/data_keeper.py`）。
+**CHECK_RISK (Response)**:
+```
+((type . "RISK_GATEWAY_RESULT")
+ (schema_version . 1)
+ (status . "APPROVED")  ; or "DENIED"
+ (reason . "Risk checks passed"))
+```
 
-- Request: `STATUS`
-- Request: `GET_HISTORY:SYMBOL:[TIMEFRAME:]COUNT`
-- Request: `GET_FILE_PATH:SYMBOL:TF`
-- Request: `ADD_CANDLE:SYMBOL:[TIMEFRAME:]JSON`
-- Request: `SAVE_ALL`
+**RESET (Request)**:
+```
+((type . "RISK_GATEWAY")
+ (schema_version . 1)
+ (action . "RESET"))
+```
 
-### 7. Risk Gateway Service (Port 5563)
-取引許可の判定を行う補助サービス（Python）。  
-**プロトコル**: ZMQ **REQ/REP** + **JSON**（現状の正本は `tools/risk_gateway.py` / `src/lisp/core/risk-client.lisp`）。
-
-- Request: `CHECK_RISK:{...json...}`
-- Response: `{"status":"APPROVED"|"DENIED","reason":"..."}`
+**RESET (Response)**:
+```
+((type . "RISK_GATEWAY_RESULT")
+ (schema_version . 1)
+ (status . "RESET_COMPLETE"))
+```
 
 ## エラーとタイムアウト
 - **タイムアウト**:
@@ -284,3 +423,4 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 - 新しいフィールドの追加はよしとする（受信側で無視）。
 - 既存フィールドの削除・型変更は破壊的変更とみなす。
 - `type` フィールドは必須。
+- 補助サービス（Data Keeper / Notifier / Risk Gateway）は `schema_version` を必須とする（現在 1）。
