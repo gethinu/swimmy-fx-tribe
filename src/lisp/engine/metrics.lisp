@@ -88,6 +88,7 @@
       
       ;; 2. Replay history
       (dolist (trade all-trades)
+        (let ((pnl (or (swimmy.school::trade-record-pnl trade) 0.0)))
           (incf total-pnl pnl)
           (push pnl pnls)
           (if (> pnl 0) (incf wins) (incf losses))
@@ -102,7 +103,7 @@
             (let ((dd (if (> peak-pnl 0) 
                           (* 100 (/ (- peak-pnl sim-equity) peak-pnl))
                           0.0)))
-              (when (> dd max-dd) (setf max-dd dd)))))
+              (when (> dd max-dd) (setf max-dd dd))))))
       
       ;; 3. Update Globals
       (when (> (length all-trades) 0)

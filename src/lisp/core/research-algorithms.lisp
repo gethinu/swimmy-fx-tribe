@@ -270,6 +270,7 @@
 (defun hmm-regime-probability (history current-regime)
   "Estimate regime probabilities using Kalman-HMM hybrid.
    Returns plist of regime probabilities."
+  (declare (ignore current-regime))
   (when (>= (length history) 20)
     (let* ((kalman-trend (ind-kalman-trend history))
            (vol (calculate-realized-volatility history))
@@ -405,22 +406,22 @@
    Paper #4: Quality > Complexity"
   (let ((issues nil))
     ;; Check SL/TP ratio
-    (when (and (strategy-sl strategy) (strategy-tp strategy))
-      (let ((ratio (/ (strategy-tp strategy) (strategy-sl strategy))))
+    (when (and (swimmy.school:strategy-sl strategy) (swimmy.school:strategy-tp strategy))
+      (let ((ratio (/ (swimmy.school:strategy-tp strategy) (swimmy.school:strategy-sl strategy))))
         (when (< ratio 1.0)
           (push "Risk/Reward ratio < 1.0" issues))))
     ;; Check lot size
-    (when (and (strategy-volume strategy) (> (strategy-volume strategy) 0.1))
+    (when (and (swimmy.school:strategy-volume strategy) (> (swimmy.school:strategy-volume strategy) 0.1))
       (push "Lot size too large (>0.1)" issues))
     ;; Check indicator count
-    (when (and (strategy-indicators strategy) 
-               (> (length (strategy-indicators strategy)) 5))
+    (when (and (swimmy.school:strategy-indicators strategy) 
+               (> (length (swimmy.school:strategy-indicators strategy)) 5))
       (push "Too many indicators (>5) - potential overfitting" issues))
     ;; Return result
     (if issues
         (progn
           (format t "[QUALITY] ⚠️ Strategy ~a issues: ~{~a~^, ~}~%" 
-                  (strategy-name strategy) issues)
+                  (swimmy.school:strategy-name strategy) issues)
           (values nil issues))
         (values t nil))))
 
@@ -438,6 +439,7 @@
 (defun apply-zero-shot-caution (prediction confidence source)
   "Apply caution to predictions from zero-shot or untrained models.
    Paper #9: Don't trust zero-shot blindly."
+  (declare (ignore prediction))
   (if (member source '(:external-llm :foundation-model :zero-shot))
       (let ((adjusted (* confidence (- 1 *zero-shot-confidence-penalty*))))
         (format t "[RESEARCH] ⚠️ Zero-shot caution: ~,0f% → ~,0f%~%" 
