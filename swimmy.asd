@@ -7,14 +7,15 @@
   :depends-on ("cl-ppcre" "pzmq" "sqlite" "jsown" "dexador" "local-time" "uiop" "bordeaux-threads" "ironclad" "postmodern")
   :serial t
   :components ((:file "src/lisp/packages")
+               (:file "src/lisp/core/globals")
+               (:file "src/lisp/core/config")
                (:file "src/lisp/packages-school")
+               (:file "src/lisp/dsl")
                (:file "src/lisp/school/school-state") ; Moved to top (Dependency Fix)
                (:file "src/lisp/school/school-agent") ; V7.9++: Agent Skills (Extracted)
                (:file "src/lisp/school/school-integrity") ; Phase 25: Integrity
                (:file "src/lisp/school/school-scribe") ; Phase 25: Isolation
                (:file "src/lisp/school/school-watchdog") ; Phase 25: Watchdog
-               (:file "src/lisp/core/globals")
-               (:file "src/lisp/core/config")
                (:file "src/lisp/core/safe-read")
                (:file "src/lisp/core/sexp-io")
                (:file "src/lisp/core/persistence") ; Phase 16: Sharded Library
@@ -40,26 +41,18 @@
                (:file "src/lisp/engine/failsafe")
                (:file "src/lisp/engine/heartbeat")
                (:file "src/lisp/core/discord")
-               (:file "src/lisp/core/governance")
+               (:file "src/lisp/core/message-dispatcher")
                (:file "src/lisp/core/evaluator")
                (:file "src/lisp/core/meta-learning")
-               (:file "src/lisp/system/opus")
                (:file "src/lisp/core/research-algorithms") ; CORE (Foundation Algorithm Library)
                
-               ;; SHELL
-               (:file "src/lisp/shell/notifications")
-               (:file "src/lisp/shell/briefing")
-               (:file "src/lisp/shell/narrative")
-               (:file "src/lisp/shell/interface")
-               (:file "src/lisp/shell/handoff")
-               
                ;; LEGACY / DSL
-               (:file "src/lisp/dsl")
                (:file "src/lisp/strategies/strategies-trend")
                (:file "src/lisp/strategies/strategies-reversion")
                (:file "src/lisp/strategies/strategies-breakout")
                (:file "src/lisp/strategies/strategies-scalp")
                 (:file "src/lisp/school/school-strategy")  ; V8.1: Strategy/Clan System
+                (:file "src/lisp/core/governance")
                 (:file "src/lisp/school/school-rank-system") ; Rank System Overhaul V47.0
                 (:file "src/lisp/strategies/strategies")
                 (:file "src/lisp/strategies/strategies-recruits") ; P7: Recruited Strategies
@@ -107,6 +100,7 @@
                (:file "src/lisp/school/school-p3-learning") ; P3: Advanced Learning
                 (:file "src/lisp/school/school-breeder")    ; Evolution Engine (Phase 2): Breeding
                (:file "src/lisp/school/school-connector")
+               (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school/school-learning")
                 (:file "src/lisp/school/school-portfolio")   ; V49.6: Portfolio & Global Draft
                (:file "src/lisp/school/school-calendar")  ; V15.2: Contains market-open-p, required by school-execution
@@ -117,7 +111,6 @@
                (:file "src/lisp/school/school-founders-dalio") ; Phase 27: Uncorrelated Return Streams
                (:file "src/lisp/school/school-telemetry") ; V9.5: Gene Kim Telemetry
                ;; (:file "src/lisp/school-hunter") ; V9.2: Loaded dynamically for safety (safely-load-hunter-strategies)
-               (:file "src/lisp/school/prediction") ; RENAMED: from school-research.lisp
                (:file "src/lisp/school/school-risk")      ; SRP Refactor
                (:file "src/lisp/school/school-danger")    ; Found during Audit
                (:file "src/lisp/school/school-macro")     ; Phase 23: Dynamic Correlation
@@ -137,7 +130,15 @@
                (:file "src/lisp/transfer-learning") ; Added V7.0
                (:file "src/lisp/school/advisors")
                
+               ;; SHELL
+               (:file "src/lisp/shell/notifications")
+               (:file "src/lisp/shell/briefing")
+               (:file "src/lisp/shell/narrative")
+               (:file "src/lisp/shell/interface")
+               (:file "src/lisp/shell/handoff")
+
                ;; SYSTEM & UTILS
+               (:file "src/lisp/system/opus")
                (:file "src/lisp/logger")
                (:file "src/lisp/core/telemetry")
                (:file "src/lisp/core/rituals")
@@ -153,7 +154,6 @@
                (:file "src/lisp/core/scheduler")    ; SRP Refactor: Extracted from tick-handler
                (:file "src/lisp/core/narrative")    ; SRP Refactor: Extracted from tick-handler
                (:file "src/lisp/core/executor")
-               (:file "src/lisp/core/message-dispatcher") ; SRP Refactor: New Module
                (:file "src/lisp/core/tick-handler")
                
                ;; TESTS
