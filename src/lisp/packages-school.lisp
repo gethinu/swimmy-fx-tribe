@@ -391,6 +391,7 @@
    #:update-candle
    #:send-heartbeat
    #:check-scheduled-tasks
+   #:save-knowledge-base
    ;; Utility functions
    ;; Utility functions
    ;; v1.0 Moved to swimmy.school

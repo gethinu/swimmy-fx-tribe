@@ -209,29 +209,29 @@
              (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
              (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
              (pred :hold)
-             (conf 0.0))
+             (conf 0.0)
+             (watchers
+              ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
+              ;; 3 Directions x 6 TFs = 18 possible categories per symbol
+              (let ((results nil)
+                    (tfs '(5 15 60 240 1440 10080))
+                    (dirs '(:BUY :SELL :BOTH)))
+                (dolist (tf tfs)
+                  (dolist (dir dirs)
+                    (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
+                      (when s-strats
+                        (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
+                          (push (format nil "  • M~d ~a: `~a` (S:~,2f)" 
+                                        tf dir 
+                                        (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
+                                        (or (swimmy.school:strategy-sharpe best) 0.0))
+                                results))))))
+                (if results (nreverse results) '("  (Sランク待機なし)")))))
         (multiple-value-setq (pred conf)
           (swimmy.school:summarize-status-prediction symbol))
-        (let* ((watchers
-                ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
-                ;; 3 Directions x 6 TFs = 18 possible categories per symbol
-                (let ((results nil)
-                      (tfs '(5 15 60 240 1440 10080))
-                      (dirs '(:BUY :SELL :BOTH)))
-                  (dolist (tf tfs)
-                    (dolist (dir dirs)
-                      (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
-                        (when s-strats
-                          (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
-                            (push (format nil "  • M~d ~a: `~a` (S:~,2f)" 
-                                          tf dir 
-                                          (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
-                                          (or (swimmy.school:strategy-sharpe best) 0.0))
-                                  results))))))
-                  (if results (nreverse results) '("  (Sランク待機なし)"))))))
 
-          (swimmy.core:notify-discord-status 
-            (format nil "🕒 **~a 状況レポート**
+        (swimmy.core:notify-discord-status 
+          (format nil "🕒 **~a 状況レポート**
 価格: **~,3f**
 
 相場環境: **~a**
@@ -245,8 +245,8 @@
 ~{~a~^~%~}"
                     symbol bid regime vol (string-upcase (symbol-name pred)) (* 100 conf) danger 
                     (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
-            :color swimmy.core:+color-status+)
-          (setf (gethash symbol *last-status-notification-time*) now)))))
+          :color swimmy.core:+color-status+)
+        (setf (gethash symbol *last-status-notification-time*) now)))))
 
 (defun fx-market-open-p (&optional (timestamp (get-universal-time)))
   "Return T when FX market is open (weekend close based on UTC)."

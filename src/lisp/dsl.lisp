@@ -58,6 +58,7 @@
       (values sma (+ sma (* dev stddev)) (- sma (* dev stddev))))))
 
 (defun ind-stoch (k-n d-n history)
+  (declare (ignore d-n))
   (when (>= (length history) k-n)
     (let* ((closes (subseq history 0 k-n))
            (low (reduce #'min (mapcar #'candle-low closes)))

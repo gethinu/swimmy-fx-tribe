@@ -14,6 +14,7 @@
    #:candle-timestamp #:candle-open #:candle-high #:candle-low #:candle-close #:candle-volume
    #:arm-state #:make-arm-state
    #:arm-state-position #:arm-state-entry-price #:arm-state-sl #:arm-state-tp #:arm-state-streak
+   #:arm-state-size #:arm-state-symbol
    #:elder #:make-elder
    #:elder-name #:elder-peak-pnl #:elder-era #:elder-speciality #:elder-wisdom #:elder-vote-weight
    
@@ -234,6 +235,11 @@
    #:*backtest-service-enabled*
    #:zmq-connect-endpoint
    #:zmq-bind-endpoint
+   #:*constitution-version*
+   #:*council-decision-threshold*
+   #:*notify-chieftain-threshold*
+   #:*philosophy-log-max*
+   #:*trading-days-in-month*
    
    ;; Re-export Globals
    #:*debug-mode*
@@ -353,7 +359,6 @@
    #:heartbeat-now
    
    ;; Learning
-   #:train-neural
    #:update-nn-threshold
    
    ;; Metrics

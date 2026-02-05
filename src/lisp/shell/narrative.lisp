@@ -100,6 +100,7 @@
 
 (defun detect-patterns (history)
   "Detect active patterns (No-op in simplified version)."
+  (declare (ignore history))
   nil)
 
 ;;; ==========================================
@@ -119,6 +120,7 @@
 
 (defun display-elder-vote-message (elder-name wisdom vote-type context-type)
   "Display an elder's vote message in tribal style."
+  (declare (ignore context-type))
   (format t "[L] 👴 Elder ~a: 「~a」~%"
           elder-name
           (case vote-type

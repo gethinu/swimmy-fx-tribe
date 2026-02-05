@@ -54,7 +54,8 @@
               (delete-file rotated))
             (rename-file target rotated)
             (with-open-file (out target :direction :output :if-exists :supersede :if-does-not-exist :create)
-              (declare (ignore out)))))))))
+              (write-string "" out)))))))
+  )
 
 (defun log-telemetry (event-type &key service severity correlation-id data)
   "Append telemetry entry to JSON log file. Returns T on success, NIL on failure."

@@ -36,6 +36,20 @@
   max-drawdown        ; worst point during trade
   hit-sl-or-tp)       ; :sl, :tp, :manual, :signal
 
+(defstruct strategy-rank
+  name
+  rank
+  trades
+  wins
+  total-pnl
+  promotion-date
+  last-trade)
+
+(defvar *predicted-regime* nil)
+(defvar *predicted-volatility* nil)
+(defvar *hall-of-fame* nil)
+(defvar *startup-mode* t)
+
 ;;; = : = = = = = = = = = = 
 ;;; FORWARD DECLARATIONS (Local to School or for early referencing)
 ;;; = = = = = = = = = = = = = 
@@ -273,6 +287,7 @@
 
 (defun check-correlation-risk (symbol direction)
   "Check correlation risk for a new trade (used by risk-manager.lisp)"
+  (declare (ignore direction))
   (maybe-update-correlations)
   (let ((max-corr 0.0))
     (maphash
@@ -355,6 +370,7 @@
   (ensure-directories-exist *rank-db-path*)
   (let ((data nil))
     (maphash (lambda (k v)
+               (declare (ignore k))
                (push (list :name (strategy-rank-name v)
                            :rank (strategy-rank-rank v)
                            :trades (strategy-rank-trades v)
@@ -475,4 +491,3 @@
 (format t "[L] 📦 school-state.lisp loaded - Shared state initialized~%")
 (format t "[L] 🕐 Strategy TTL system enabled (max TTL: ~a days, min WR: ~a%)~%" 
         (floor *strategy-max-ttl* 86400) (* 100 *strategy-min-win-rate*))
-

@@ -37,6 +37,7 @@
 
 (defun get-sharpe-boost (arm-idx)
   "Return bonus score based on matching evolved strategy Sharpe."
+  (declare (ignore arm-idx))
   (if (and (boundp '*evolved-strategies*) *evolved-strategies* (> (length *evolved-strategies*) 0))
       (let* ((top-strat (first *evolved-strategies*))
              (top-sharpe (strategy-sharpe top-strat)))

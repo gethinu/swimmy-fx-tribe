@@ -92,8 +92,7 @@
                       (:buy "📈 Exit: Take profit at +1.0%, Stop loss at -0.3%")
                       (:sell "📉 Exit: Take profit at +1.0%, Stop loss at -0.3%")
                       (t "Unknown")))
-         (dir-emoji (if (eq direction :buy) "🟢 BUY" "🔴 SELL"))
-         (dir-str (string-upcase (symbol-name direction))))
+         (dir-emoji (if (eq direction :buy) "🟢 BUY" "🔴 SELL")))
     (format nil "
 ═══════════════════════════════
 ~a 【~a】 ENTERS THE BATTLEFIELD!
@@ -124,15 +123,6 @@
 ;;; ══════════════════════════════════════════════════════════════════
 ;;; Warriors (戦士) vs Scouts (斥候) - 実弾 vs テスト
 ;;; *strategy-ranks* defined in school-state.lisp (V41.4: removed duplicate)
-
-(defstruct strategy-rank
-  name              ; Strategy name
-  rank              ; :scout, :warrior, :veteran, :legend
-  trades            ; Total trades executed
-  wins              ; Winning trades
-  total-pnl         ; Cumulative PnL
-  promotion-date    ; When promoted
-  last-trade)       ; Last trade timestamp
 
 (defun get-strategy-rank (name)
   "Get or create rank for strategy"
@@ -433,8 +423,7 @@
 (defun infer-strategy-category (strat)
   "Infer clan category from strategy name/indicators AND TP/SL values"
   (let ((name (string-downcase (strategy-name strat)))
-        (tp (strategy-tp strat))
-        (sl (strategy-sl strat)))
+        (tp (strategy-tp strat)))
     (cond
       ;; Breakout strategies
       ((or (search "breakout" name) (search "squeeze" name) (search "low-vol" name)) :breakout)

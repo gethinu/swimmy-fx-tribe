@@ -84,9 +84,10 @@
          (make-core-value
           :name :transparency
           :priority 6
-          :description "判断理由を常に記録。ブラックボックスにならない。"
-          :threshold 0.6
-          :check-fn (lambda (ctx)
+         :description "判断理由を常に記録。ブラックボックスにならない。"
+         :threshold 0.6
+         :check-fn (lambda (ctx)
+                      (declare (ignore ctx))
                       ;; Always high score - this is about logging, not blocking
                       1.0))))
   
@@ -311,7 +312,9 @@
                                                ("color" 15844367))))))  ; Gold
                     :headers '(("Content-Type" . "application/json"))
                     :read-timeout 3)
-        (error (e) nil)))
+        (error (e)
+          (declare (ignore e))
+          nil)))
     
     (format t "[L] 📱 Grand Chieftain notified via Discord~%")))
 

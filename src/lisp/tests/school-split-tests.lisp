@@ -305,6 +305,7 @@
                       ;; Receive result -> clears queue
                       (swimmy.school::handle-oos-backtest-result "QueueTest" (list :sharpe 0.8 :request-id last-req-id))
                       (multiple-value-bind (rid3 _time3 _status3) (swimmy.school::lookup-oos-request "QueueTest")
+                        (declare (ignore _time3 _status3))
                         (assert-true (null rid3)))) )
              (setf (symbol-function 'swimmy.school::request-backtest) orig-request))))
       (swimmy.core:close-db-connection)

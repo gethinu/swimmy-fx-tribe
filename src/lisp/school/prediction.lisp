@@ -216,6 +216,7 @@ Returns (values action confidence reason), where action is :buy/:sell/:hold."
   "Find the most recent prediction for symbol/direction within max-age"
   (let ((now (get-universal-time))
         (cutoff (- (get-universal-time) max-age-seconds)))
+    (declare (ignore now))
     (find-if (lambda (p)
                (and (equal (trade-prediction-symbol p) symbol)
                     (eq (trade-prediction-direction p) direction)
