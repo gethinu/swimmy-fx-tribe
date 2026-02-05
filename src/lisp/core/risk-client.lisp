@@ -52,6 +52,8 @@
              (values t reason))
             ((and status (string= status "DENIED"))
              (values nil reason))
+            ((and status (string= status "ERROR"))
+             (values nil (or reason "GATEWAY_ERROR")))
             (t
              (values nil (format nil "UNKNOWN_STATUS: ~a" status))))))
     
