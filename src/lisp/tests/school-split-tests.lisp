@@ -370,6 +370,66 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-oos-status-line-uses-db-metrics
+  "OOS status line should reflect DB queue and OOS results."
+  (let* ((tmp-db (format nil "/tmp/swimmy-oos-line-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             ;; Seed OOS queue
+             (swimmy.school::enqueue-oos-request "Sent-1" "req-sent" :status "sent" :requested-at 1)
+             (swimmy.school::enqueue-oos-request "Retry-1" "req-retry" :status "retry" :requested-at 2)
+             (swimmy.school::enqueue-oos-request "Err-1" "req-err" :status "sent" :requested-at 3)
+             (swimmy.school::record-oos-error "Err-1" "req-err" "boom")
+             ;; Seed OOS results
+             (swimmy.school::execute-non-query
+              "INSERT OR REPLACE INTO strategies (name, oos_sharpe) VALUES (?, ?)"
+              "OOS-SUCCESS" 0.5)
+             (swimmy.school::execute-non-query
+              "INSERT OR REPLACE INTO strategies (name, oos_sharpe) VALUES (?, ?)"
+              "OOS-FAIL" 0.1)
+             (let ((line (swimmy.school::oos-metrics-summary-line)))
+               (assert-true (search "sent: 1" line) "DB sent count should appear")
+               (assert-true (search "retry: 1" line) "DB retry count should appear")
+               (assert-true (search "success: 1" line) "DB success count should appear")
+               (assert-true (search "failure: 1" line) "DB failure count should appear")
+              (assert-true (search "pending: 2" line) "DB pending count should appear")
+              (assert-true (search "oldest:" line) "DB oldest age should appear")))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-oos-status-line-no-queue-duplication
+  "OOS status line should not duplicate queue stats suffix."
+  (let* ((tmp-db (format nil "/tmp/swimmy-oos-line-dup-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (swimmy.school::enqueue-oos-request "Sent-1" "req-sent" :status "sent" :requested-at 1)
+             (let ((line (swimmy.school::build-oos-status-line)))
+               (assert-true (search "pending:" line) "Pending should be present in base line")
+               (assert-false (search "queue pending:" line) "Queue pending suffix should not appear")))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-oos-status-line-ignores-queue-error
+  "OOS status line should not append queue error details."
+  (let ((orig-fetch (and (fboundp 'swimmy.school::fetch-oos-queue-stats)
+                         (symbol-function 'swimmy.school::fetch-oos-queue-stats))))
+    (unwind-protect
+         (progn
+           (setf (symbol-function 'swimmy.school::fetch-oos-queue-stats)
+                 (lambda () (list :error "boom")))
+           (let ((line (swimmy.school::build-oos-status-line)))
+             (assert-false (search "queue error:" line) "Queue error suffix should not appear")))
+      (when orig-fetch
+        (setf (symbol-function 'swimmy.school::fetch-oos-queue-stats) orig-fetch)))))
+
 (deftest test-evolution-report-includes-phase2-end-time
   "Evolution report should include Phase2 end_time line."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-phase2-~a.db" (get-universal-time))))

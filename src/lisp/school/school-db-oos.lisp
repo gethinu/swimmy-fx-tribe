@@ -2,6 +2,8 @@
 
 (in-package :swimmy.school)
 
+(declaim (special *oos-min-sharpe*))
+
 (defun enqueue-oos-request (name request-id &key (status "sent") (requested-at (get-universal-time)))
   "Insert or replace an OOS request. Keeps the latest row per strategy name."
   ;; Replace any older rows for the same strategy to avoid accumulation.
@@ -53,5 +55,25 @@
                (oldest (and oldest-raw (%coerce-int oldest-raw)))
                (age (and oldest (- (get-universal-time) oldest))))
           (list :pending pending :errors errors :oldest-requested-at oldest :oldest-age age)))
+    (error (e)
+      (list :error (format nil "~a" e)))))
+
+(defun report-oos-db-metrics ()
+  "Return plist: :sent :retry :success :failure sourced from DB."
+  (handler-case
+      (progn
+        (ignore-errors (init-db))
+        (let* ((min-sharpe (if (boundp '*oos-min-sharpe*) *oos-min-sharpe* 0.3))
+               (sent (or (execute-single "SELECT count(*) FROM oos_queue WHERE status='sent'") 0))
+               (retry (or (execute-single "SELECT count(*) FROM oos_queue WHERE status='retry'") 0))
+               (success (or (execute-single
+                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND oos_sharpe >= ?"
+                             min-sharpe)
+                            0))
+               (failure (or (execute-single
+                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND oos_sharpe < ?"
+                             min-sharpe)
+                            0)))
+          (list :sent sent :retry retry :success success :failure failure)))
     (error (e)
       (list :error (format nil "~a" e)))))

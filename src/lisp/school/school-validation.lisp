@@ -57,16 +57,7 @@
 
 (defun build-oos-status-line ()
   "Build a one-line OOS status summary."
-  (let* ((base (oos-metrics-summary-line))
-         (q (fetch-oos-queue-stats)))
-    (if (getf q :error)
-        (format nil "~a | queue error: ~a" base (getf q :error))
-        (let* ((pending (getf q :pending 0))
-               (errors (getf q :errors 0))
-               (age (getf q :oldest-age))
-               (age-text (if age (format nil "~ds" age) "-")))
-          (format nil "~a | queue pending: ~d error: ~d oldest: ~a"
-                  base pending errors age-text)))))
+  (oos-metrics-summary-line))
 
 (defun write-oos-status-file (&key (reason "event"))
   "Persist OOS status summary to file."
