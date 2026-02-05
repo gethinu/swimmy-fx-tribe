@@ -21,6 +21,12 @@
 ;;; CORE BACKTEST V2 (With Date Range)
 ;;; =========================================================
 
+(defun option-field (key value)
+  "Encode Option<T> as empty/one-element list for S-expression payloads."
+  (if (null value)
+      (list key)
+      (list key value)))
+
 (defun request-backtest-v2 (strat &key start-date end-date start-ts end-ts phase range-id (symbol nil))
   "Request backtest with specific date range.
    start-date/end-date: 'YYYY.MM.DD' strings."
@@ -54,14 +60,14 @@
       (let* ((payload (list
                        (cons 'action "BACKTEST")
                        (cons 'strategy strategy-alist)
-                       (list 'candles_file data-file)
-                       (list 'data_id (format nil "~a_M1" actual-symbol))
+                       (option-field 'start_time start-ts)
+                       (option-field 'end_time end-ts)
+                       (option-field 'data_id (format nil "~a_M1" actual-symbol))
+                       (option-field 'candles_file data-file)
                        (cons 'symbol actual-symbol)
                        (cons 'swap_history swaps)
-                       (list 'timeframe timeframe))))
+                       (option-field 'timeframe timeframe))))
         ;; Add Range if present
-        (when start-ts (push (list 'start_time start-ts) payload))
-        (when end-ts (push (list 'end_time end-ts) payload))
         (when phase (push `(phase . ,phase) payload))
         (when range-id (push `(range_id . ,range-id) payload))
 

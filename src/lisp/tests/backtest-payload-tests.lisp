@@ -26,6 +26,13 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
     (assert-equal 1 (length raw) (format nil "~a should be Some(x) (one-element list)" key))
     (first raw)))
 
+(defun option-none (key payload)
+  "Assert that an Option<T> field is present and encoded as an empty list."
+  (let ((entry (assoc key payload :test #'eq)))
+    (assert-true entry (format nil "~a should be present as Option None" key))
+    (assert-equal (list key) entry (format nil "~a should be None (empty list)" key))
+    t))
+
 (deftest test-request-backtest-emits-sexpr
   "request-backtest should emit an S-expression payload with action BACKTEST."
   (let ((captured nil)
@@ -224,6 +231,41 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
       (assert-true (stringp (option-some 'candles_file payload)) "Expected candles_file Option<String>")
       (assert-true (numberp (option-some 'start_time payload)) "Expected start_time Option<i64>")
       (assert-true (numberp (option-some 'end_time payload)) "Expected end_time Option<i64>"))))
+
+(deftest test-request-backtest-v2-emits-none-optionals
+  "request-backtest-v2 should emit Option fields as empty lists when nil"
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+        (orig-fetch (symbol-function 'swimmy.school::fetch-swap-history)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (setf (symbol-function 'swimmy.school::fetch-swap-history)
+                (lambda (symbol &key start-ts end-ts)
+                  (declare (ignore symbol start-ts end-ts))
+                  nil))
+          (let ((strat (swimmy.school:make-strategy
+                        :name "Test-BT-V2-NONE"
+                        :indicators '((sma 5) (sma 20))
+                        :sl 0.001
+                        :tp 0.002
+                        :volume 0.01
+                        :indicator-type "sma"
+                        :timeframe 60
+                        :symbol "USDJPY")))
+            (swimmy.school::request-backtest-v2 strat)))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
+    (assert-not-nil captured "Expected V2 backtest payload to be sent")
+    (let ((payload (parse-sexpr-payload captured)))
+      (option-none 'start_time payload)
+      (option-none 'end_time payload)
+      (assert-true (numberp (option-some 'timeframe payload)) "Expected timeframe Option<i64>")
+      (assert-true (stringp (option-some 'data_id payload)) "Expected data_id Option<String>")
+      (assert-true (stringp (option-some 'candles_file payload)) "Expected candles_file Option<String>"))))
 
 (deftest test-request-backtest-v2-emits-phase-range-id
   "request-backtest-v2 should emit phase and range_id when provided"
