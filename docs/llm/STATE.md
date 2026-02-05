@@ -41,6 +41,7 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-05**: Notifier の `payload`（S式）を受理し、`payload_json` 互換をINTERFACESに明記。
 - **2026-02-05**: SBCLロード時WARNING/STYLE-WARNINGの全解消（ロード順、export、未使用変数、廃止フックの整理）。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式スキーマをINTERFACESに定義（`schema_version=1`）。
 - **2026-02-04**: `run.sh` の Brain 起動は `brain.lisp` 優先、欠落時はASDF直起動フォールバックの方針を明記。

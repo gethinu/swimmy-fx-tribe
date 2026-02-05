@@ -367,9 +367,13 @@ Discord通知の非同期中継（Python）。
  (schema_version . 1)
  (action . "SEND")
  (webhook . "https://discord.com/api/webhooks/...")
- (payload_json . "{\"embeds\":[{\"title\":\"Swimmy\",\"description\":\"...\"}]}"))
+ (payload . ((embeds . (((title . "Swimmy")
+                         (description . "...")
+                         (color . 3447003)))))))
 ```
-**備考**: `payload_json` はDiscordのJSONペイロード文字列。Notifier側でJSONとして送信する。
+**備考**:
+`payload` はDiscordのJSONペイロードをS式（alist + list）で表現したもの。  
+互換用途として `payload_json`（Discord JSON文字列）も受理するが、**`payload` と `payload_json` の同時指定は不可**。Notifier側でJSONとして送信する。
 
 ### 8. Risk Gateway Service (Port 5563)
 取引許可の判定を行う補助サービス（Python）。  

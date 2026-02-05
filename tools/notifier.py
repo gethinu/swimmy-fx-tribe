@@ -20,7 +20,10 @@ Message Format (S-expression alist):
      (schema_version . 1)
      (action . "SEND")
      (webhook . "https://discord.com/api/webhooks/...")
-     (payload_json . "{\"embeds\":[{\"title\":\"...\"}]}"))
+     (payload . ((embeds . (((title . "Swimmy")
+                             (description . "...")
+                             (color . 3447003)))))))
+    ;; payload_json (JSON string) is accepted for backward compatibility.
 """
 
 import json
@@ -84,10 +87,26 @@ def parse_notifier_message(message: str):
     if action != "SEND":
         raise ValueError(f"Invalid action: {action}")
     webhook = data.get("webhook")
+    payload_json_present = "payload_json" in data
+    payload_present = "payload" in data
     payload_json = data.get("payload_json")
-    if not webhook or not payload_json:
-        raise ValueError("Missing webhook or payload_json")
-    payload = json.loads(payload_json)
+    payload_sexp = data.get("payload")
+    if not webhook:
+        raise ValueError("Missing webhook")
+    if payload_present and payload_json_present:
+        raise ValueError("Specify either payload or payload_json")
+    if payload_present:
+        if payload_sexp is None:
+            raise ValueError("payload is empty")
+        if not isinstance(payload_sexp, (dict, list)):
+            raise ValueError("payload must be an alist or list")
+        payload = payload_sexp
+    elif payload_json_present:
+        if not payload_json:
+            raise ValueError("payload_json is empty")
+        payload = json.loads(payload_json)
+    else:
+        raise ValueError("Missing payload or payload_json")
     return webhook, payload
 
 

@@ -27,6 +27,25 @@ def main():
     assert webhook.endswith("/dummy")
     assert payload["embeds"][0]["title"] == "Swimmy"
 
+    msg_payload = (
+        '((type . "NOTIFIER") (schema_version . 1) (action . "SEND") '
+        '(webhook . "https://discord.com/api/webhooks/dummy") '
+        '(payload . ((embeds . (((title . "Swimmy")))))))'
+    )
+    webhook, payload = notifier.parse_notifier_message(msg_payload)
+    assert payload["embeds"][0]["title"] == "Swimmy"
+
+    try:
+        notifier.parse_notifier_message(
+            '((type . "NOTIFIER") (schema_version . 1) (action . "SEND") '
+            '(webhook . "https://discord.com/api/webhooks/dummy") '
+            '(payload_json . "{}") (payload . ((embeds . ()))) )'
+        )
+    except Exception:
+        pass
+    else:
+        raise AssertionError("expected conflict error")
+
     try:
         notifier.parse_notifier_message('((schema_version . 1))')
     except Exception:

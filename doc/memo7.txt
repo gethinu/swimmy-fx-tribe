@@ -1,0 +1,58 @@
+はい、確かに以前議論した記憶があります。会話履歴を確認して、当時の議論内容を調べます。
+
+Searched
+uncorrelated
+48 results
+Searched
+非相関
+37 results
+Searched
+dalio
+283 results
+有用な情報が見つかりました。会話 5c9db06f-c50b-46e2-a29c-91fad00da162 で「System Diagnosis & Dalio Audit」として詳しく議論されています。最も関連性の高いドキュメントを確認します：
+
+Analyzed
+Expert Panel 20260125
+Analyzed
+Implementation Plan.md.resolved
+過去の議論を確認しました。2026年1月25日のセッションで議論されていたのは、「非相関2戦略を束ねて1つの合成戦略として扱う」ではなく、「ポートフォリオ構成時に非相関な戦略を優先する（Holy Grail 原則）」 という内容でした。
+
+現在のコードを確認して、当時の計画がどれだけ実装されたか確認します：
+
+Analyzed
+school-dalio.lisp#L1-102
+Analyzed
+school-portfolio.lisp#L1-85
+理解できました。過去の議論と現在のコードを確認した結果をまとめます：
+
+以前の議論内容（2026年1月25日）
+本来の意図は「非相関2戦略を束ねて1つの合成戦略」ではなく、以下の2点でした：
+
+ポートフォリオ構成時の非相関フィルタ（Holy Grail原則）
+相関 < 0.2 の戦略を15〜20個確保
+ポートフォリオドラフト時にis-diverse-addition-pで判定
+Holy Grail Score の計算
+ポートフォリオ全体の非相関ペア比率を測定
+目標: 80%以上が非相関ペア
+現在の実装状況
+機能	実装状況	課題
+school-dalio.lisp
+✅ 存在	get-returns-vector がランダム値のプレースホルダーで実運用ではない
+is-diverse-addition-p (
+school-portfolio.lisp
+)	✅ 存在	閾値が 0.7 のまま（Dalioの0.2に未対応）
+calculate-holy-grail-score	✅ 存在	内部で0.2閾値を使用しているが、実トレードデータに接続されていない
+質問への回答
+質問文の「非相関な2戦略を1つの戦略として扱う」というコンセプトについては、私が確認した限り、明確に仕様化された形跡はありません。
+
+過去の議論はあくまで：
+
+ポートフォリオレベルでの非相関確保（構成要件）
+Holy Grail Score によるポートフォリオ品質評価
+でした。
+
+もし「2戦略をペアリングして1つの合成戦略として扱う」という新機能を実装したいのであれば、それは新規仕様になります。 その場合は以下を確認させてください：
+
+ユースケース: どこでペアリングを行う？（Breeding / Live実行 / Portfolio Display）
+シグナル生成: 2戦略のシグナルをどう統合する？（AND / OR / Majority Vote）
+ロット配分: 合成戦略内でどう配分する？（等量 / リスクパリティ）
