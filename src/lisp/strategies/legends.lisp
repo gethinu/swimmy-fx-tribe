@@ -54,8 +54,8 @@
         (format t "[LEGENDS] 🆕 Summoned: ~a (Rank=~a)~%" 
                 (strategy-name l) (strategy-rank l))))
     ;; Force save
-    (when (fboundp 'save-knowledge-base)
-      (save-knowledge-base))
+    (when (fboundp 'swimmy.main:save-knowledge-base)
+      (swimmy.main:save-knowledge-base))
     (format t "[LEGENDS] ✅ Summoning Complete. ~d legends active.~%" (length legends))))
 
 ;; Auto-summon on load
