@@ -16,7 +16,7 @@ class _DummySocket:
     def connect(self, address):
         self.connected = address
 
-    def send_json(self, message):
+    def send_string(self, message):
         self.sent = message
 
 

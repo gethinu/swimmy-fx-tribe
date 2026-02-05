@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 import zmq
+import json
 from datetime import datetime, timezone, timedelta
 
 
@@ -39,6 +40,7 @@ if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
 from sexp_utils import load_sexp_list
+from aux_sexp import sexp_request
 
 # Configuration
 ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
@@ -225,9 +227,16 @@ def main():
     socket = context.socket(zmq.PUSH)
     socket.connect(f"tcp://localhost:{ZMQ_PORT}")
 
-    message = {"webhook": webhook_url, "data": payload}
+    message = sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook_url,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
 
-    socket.send_json(message)
+    socket.send_string(message)
     print(
         f"✅ Performance Report sent. (SR={len(sr_rank)}, S={len(s_rank)}, Total={len(strategies)})"
     )

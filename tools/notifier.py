@@ -23,12 +23,15 @@ Message Format (JSON):
     }
 """
 
-import zmq
 import json
-import time
-import requests
 import os
+import sys
 import threading
+import time
+from pathlib import Path
+
+import requests
+import zmq
 from collections import deque
 
 # Configuration
@@ -48,6 +51,44 @@ RATE_LIMIT_DELAY = 1.0  # Seconds between requests to same webhook
 # Queue for outgoing messages
 # (webhook_url, payload)
 message_queue = deque()
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import parse_aux_request
+
+
+def parse_notifier_message(message: str):
+    data = parse_aux_request(message)
+    msg_type = str(data.get("type", "")).upper()
+    if msg_type != "NOTIFIER":
+        raise ValueError(f"Invalid type: {msg_type}")
+    schema_version = data.get("schema_version")
+    if schema_version != 1:
+        raise ValueError("Unsupported schema_version")
+    action = str(data.get("action", "")).upper()
+    if action != "SEND":
+        raise ValueError(f"Invalid action: {action}")
+    webhook = data.get("webhook")
+    payload_json = data.get("payload_json")
+    if not webhook or not payload_json:
+        raise ValueError("Missing webhook or payload_json")
+    payload = json.loads(payload_json)
+    return webhook, payload
 
 
 def process_queue():
@@ -146,21 +187,17 @@ def main():
             msg_str = socket.recv_string()
 
             try:
-                msg = json.loads(msg_str)
-                webhook = msg.get("webhook")
-                payload = msg.get("data")
-
-                if webhook and payload:
-                    message_queue.append((webhook, payload))
-                    print(
-                        f"[NOTIFIER] Queued: {payload.get('embeds', [{}])[0].get('title', 'Message')}",
-                        flush=True,
-                    )
-                else:
-                    print(f"[NOTIFIER] Invalid message format")
+                webhook, payload = parse_notifier_message(msg_str)
+                message_queue.append((webhook, payload))
+                print(
+                    f"[NOTIFIER] Queued: {payload.get('embeds', [{}])[0].get('title', 'Message')}",
+                    flush=True,
+                )
 
             except json.JSONDecodeError:
-                print(f"[NOTIFIER] Invalid JSON received")
+                print(f"[NOTIFIER] Invalid payload_json")
+            except Exception as e:
+                print(f"[NOTIFIER] Invalid message format: {e}")
 
         except KeyboardInterrupt:
             print("\n[NOTIFIER] Shutting down...")

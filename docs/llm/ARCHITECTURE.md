@@ -23,8 +23,8 @@ graph TD
     Rust -- "PUSH :5555 (Sensor Data)" --> Lisp
     Lisp -- "PUB :5556 (Decision/Signal)" --> Rust
     
-    Rust -- "PUSH :5561 (History)" --> DataKeeper
-    Lisp -- "PUSH :5561 (Log)" --> DataKeeper
+    Rust <-->|REQ/REP :5561 (History)| DataKeeper
+    Lisp <-->|REQ/REP :5561 (History)| DataKeeper
     
     Lisp <--> DB
     Rust <--> DB

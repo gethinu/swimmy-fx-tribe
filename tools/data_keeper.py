@@ -7,7 +7,27 @@ import zmq
 import fcntl
 import requests
 from datetime import datetime
+from pathlib import Path
 from collections import defaultdict, deque
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import parse_aux_request, sexp_response
 
 
 # === REQUIRED CONSTANTS (Article 5) ===
@@ -41,6 +61,7 @@ ZMQ_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
 MAX_CANDLES_PER_SYMBOL = 500_000
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
+VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
 
 # In-memory storage: history[symbol][timeframe] = deque
 candle_histories = defaultdict(
@@ -49,6 +70,75 @@ candle_histories = defaultdict(
 
 # Lock for thread safety during save
 save_lock = threading.Lock()
+
+
+def _coerce_int(value, default=None):
+    if value is None:
+        return default
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
+
+def _coerce_float(value, default=None):
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _normalize_symbol(value):
+    if not value:
+        return None
+    return str(value).upper()
+
+
+def _normalize_timeframe(value):
+    if not value:
+        return "M1"
+    tf = str(value).upper()
+    if tf not in VALID_TIMEFRAMES:
+        return None
+    return tf
+
+
+def _normalize_candle(candle):
+    if not isinstance(candle, dict):
+        return None, "Invalid candle format"
+
+    def pick(*keys):
+        for key in keys:
+            if key in candle:
+                return candle[key]
+        return None
+
+    ts = _coerce_int(pick("timestamp", "t"))
+    open_ = _coerce_float(pick("open", "o"))
+    high = _coerce_float(pick("high", "h"))
+    low = _coerce_float(pick("low", "l"))
+    close = _coerce_float(pick("close", "c"))
+    volume = _coerce_int(pick("volume", "v"), default=0)
+
+    if None in (ts, open_, high, low, close):
+        return None, "Missing required candle fields"
+
+    return {
+        "timestamp": ts,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "volume": volume,
+    }, None
+
+
+def _error_response(message: str):
+    return sexp_response(
+        {"type": "DATA_KEEPER_RESULT", "status": "error", "error": message}
+    )
 
 
 def send_discord_alert(message: str, is_error: bool = True):
@@ -306,6 +396,113 @@ def handle_get_file_path(parts):
         return {"error": "File not found"}
 
 
+def handle_request_sexp(message: str) -> str:
+    try:
+        data = parse_aux_request(message)
+    except Exception as e:
+        return _error_response(str(e))
+
+    msg_type = str(data.get("type", "")).upper()
+    if msg_type != "DATA_KEEPER":
+        return _error_response(f"Invalid type: {msg_type}")
+
+    schema_version = _coerce_int(data.get("schema_version"))
+    if schema_version != 1:
+        return _error_response("Unsupported schema_version")
+
+    action = str(data.get("action", "")).upper()
+    if not action:
+        return _error_response("Missing action")
+
+    if action == "STATUS":
+        symbols = []
+        for sym in SUPPORTED_SYMBOLS:
+            tf_entries = []
+            for tf, candles in candle_histories[sym].items():
+                tf_entries.append({"tf": tf, "count": len(candles)})
+            if tf_entries:
+                symbols.append({"symbol": sym, "timeframes": tf_entries})
+        return sexp_response(
+            {
+                "type": "DATA_KEEPER_RESULT",
+                "status": "running",
+                "symbols": symbols,
+            }
+        )
+
+    if action == "GET_HISTORY":
+        symbol = _normalize_symbol(data.get("symbol"))
+        if not symbol:
+            return _error_response("Missing symbol")
+        if symbol not in SUPPORTED_SYMBOLS:
+            return _error_response(f"Unsupported symbol: {symbol}")
+        timeframe = _normalize_timeframe(data.get("timeframe"))
+        if not timeframe:
+            return _error_response("Invalid timeframe")
+        count = _coerce_int(data.get("count"))
+        if not count or count <= 0:
+            return _error_response("Invalid count")
+        history = list(candle_histories[symbol].get(timeframe, []))
+        if count < len(history):
+            history = history[-count:]
+        history.reverse()
+        return sexp_response(
+            {
+                "type": "DATA_KEEPER_RESULT",
+                "status": "ok",
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "count": len(history),
+                "candles": history,
+            }
+        )
+
+    if action == "GET_FILE_PATH":
+        symbol = _normalize_symbol(data.get("symbol"))
+        if not symbol:
+            return _error_response("Missing symbol")
+        timeframe = _normalize_timeframe(data.get("timeframe"))
+        if not timeframe:
+            return _error_response("Invalid timeframe")
+        path = get_csv_path(symbol, timeframe)
+        if not path:
+            return _error_response("File not found")
+        return sexp_response(
+            {"type": "DATA_KEEPER_RESULT", "status": "ok", "path": path}
+        )
+
+    if action == "ADD_CANDLE":
+        symbol = _normalize_symbol(data.get("symbol"))
+        if not symbol:
+            return _error_response("Missing symbol")
+        if symbol not in SUPPORTED_SYMBOLS:
+            return _error_response(f"Unsupported symbol: {symbol}")
+        timeframe = _normalize_timeframe(data.get("timeframe"))
+        if not timeframe:
+            return _error_response("Invalid timeframe")
+        candle, err = _normalize_candle(data.get("candle"))
+        if err:
+            return _error_response(err)
+        with save_lock:
+            candle_histories[symbol][timeframe].append(candle)
+        return sexp_response(
+            {
+                "type": "DATA_KEEPER_RESULT",
+                "status": "ok",
+                "symbol": symbol,
+                "timeframe": timeframe,
+            }
+        )
+
+    if action == "SAVE_ALL":
+        response = handle_save_all()
+        payload = {"type": "DATA_KEEPER_RESULT"}
+        payload.update(response)
+        return sexp_response(payload)
+
+    return _error_response(f"Unknown action: {action}")
+
+
 def run_server():
     """Main server loop with proper setup."""
     print("🐙 Swimmy Data Keeper Service (Multi-Timeframe + Persistence + Async)")
@@ -327,31 +524,11 @@ def run_server():
             # Check for message with timeout to allow periodic tasks
             if socket.poll(timeout=1000):
                 message = socket.recv_string()
-                parts = message.split(":", 2)
-                command = parts[0].upper()
-                response = {}
-
-                if command == "GET_HISTORY":
-                    response = handle_get_history(parts)
-                elif command == "GET_FILE_PATH":
-                    response = handle_get_file_path(parts)
-                elif command == "ADD_CANDLE":
-                    response = handle_add_candle(parts)
-                elif command == "SAVE_ALL":
-                    response = handle_save_all()
-                elif command == "STATUS":
-                    stats = {
-                        sym: {
-                            tf: len(candle_histories[sym][tf])
-                            for tf in candle_histories[sym]
-                        }
-                        for sym in SUPPORTED_SYMBOLS
-                    }
-                    response = {"status": "running", "symbols": stats}
-                else:
-                    response = {"error": f"Unknown command: {command}"}
-
-                socket.send_string(json.dumps(response))
+                try:
+                    response = handle_request_sexp(message)
+                except Exception as e:
+                    response = _error_response(f"Unhandled error: {e}")
+                socket.send_string(response)
             else:
                 # Auto-save every hour
                 if time.time() - last_save_time > 3600:

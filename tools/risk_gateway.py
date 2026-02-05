@@ -36,10 +36,31 @@ Commands (JSON):
     -> Returns: {"status": "RESET_COMPLETE"} (Use at start of day)
 """
 
-import zmq
-import json
-import time
 import os
+import sys
+import time
+from pathlib import Path
+
+import zmq
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import parse_aux_request, sexp_response
 
 def _env_float(key, default):
     raw = os.getenv(key)
@@ -76,6 +97,30 @@ MAX_LOT_SIZE = _env_float("SWIMMY_MAX_LOT_SIZE", 0.5)
 daily_loss_triggered = False
 hard_stop_triggered = False
 start_equity = 0.0  # Will be set on first check if 0
+
+
+def _coerce_float(value, default=None):
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _coerce_int(value, default=None):
+    if value is None:
+        return default
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
+
+def _error_response(message: str):
+    return sexp_response(
+        {"type": "RISK_GATEWAY_RESULT", "status": "ERROR", "reason": message}
+    )
 
 
 def handle_check_risk(data):
@@ -137,6 +182,60 @@ def handle_check_risk(data):
         return {"status": "APPROVED", "reason": "Risk checks passed"}
 
 
+def handle_request_sexp(message: str) -> str:
+    try:
+        data = parse_aux_request(message)
+    except Exception as e:
+        return _error_response(str(e))
+
+    msg_type = str(data.get("type", "")).upper()
+    if msg_type != "RISK_GATEWAY":
+        return _error_response(f"Invalid type: {msg_type}")
+
+    schema_version = _coerce_int(data.get("schema_version"))
+    if schema_version != 1:
+        return _error_response("Unsupported schema_version")
+
+    action = str(data.get("action", "")).upper()
+    if not action:
+        return _error_response("Missing action")
+
+    if action == "CHECK_RISK":
+        side = data.get("side") or data.get("direction")
+        if not side:
+            return _error_response("Missing side")
+        symbol = data.get("symbol")
+        if not symbol:
+            return _error_response("Missing symbol")
+        payload = {
+            "action": str(side).upper(),
+            "symbol": str(symbol),
+            "lot": _coerce_float(data.get("lot"), 0.0),
+            "daily_pnl": _coerce_float(data.get("daily_pnl"), 0.0),
+            "equity": _coerce_float(data.get("equity"), 0.0),
+            "consecutive_losses": _coerce_int(data.get("consecutive_losses"), 0),
+        }
+        response = handle_check_risk(payload)
+        return sexp_response(
+            {
+                "type": "RISK_GATEWAY_RESULT",
+                "status": response.get("status", "ERROR"),
+                "reason": response.get("reason", ""),
+            }
+        )
+
+    if action == "RESET":
+        global daily_loss_triggered, hard_stop_triggered, start_equity
+        daily_loss_triggered = False
+        hard_stop_triggered = False
+        start_equity = 0.0
+        return sexp_response(
+            {"type": "RISK_GATEWAY_RESULT", "status": "RESET_COMPLETE"}
+        )
+
+    return _error_response(f"Unknown action: {action}")
+
+
 def main():
     print("=" * 60)
     print("  🛡️ RISK GATEWAY - The Gatekeeper")
@@ -151,40 +250,12 @@ def main():
     while True:
         try:
             msg_str = socket.recv_string()
-
-            try:
-                # Expect "COMMAND:JSON" or just JSON logic?
-                # Let's support "CHECK_RISK:{json}" format like Data Keeper
-                if ":" in msg_str:
-                    cmd, json_str = msg_str.split(":", 1)
-                    data = json.loads(json_str)
-
-                    if cmd == "CHECK_RISK":
-                        response = handle_check_risk(data)
-                    else:
-                        response = {
-                            "status": "ERROR",
-                            "reason": f"Unknown command: {cmd}",
-                        }
-                else:
-                    response = {
-                        "status": "ERROR",
-                        "reason": "Invalid format. Use CMD:JSON",
-                    }
-
-            except json.JSONDecodeError:
-                response = {"status": "ERROR", "reason": "Invalid JSON"}
-            except Exception as e:
-                response = {"status": "ERROR", "reason": str(e)}
-
-            socket.send_string(json.dumps(response))
+            response = handle_request_sexp(msg_str)
+            socket.send_string(response)
 
             # Log denials to stdout
-            if response.get("status") == "DENIED":
-                print(f"[GATEWAY] 🛑 DENIED: {response.get('reason')}")
-            elif response.get("status") == "APPROVED":
-                pass
-                # print(f"[GATEWAY] ✅ APPROVED") # Verbose?
+            if "DENIED" in response:
+                print(f"[GATEWAY] 🛑 DENIED")
 
         except KeyboardInterrupt:
             print("\n[GATEWAY] Shutting down...")

@@ -33,6 +33,13 @@ SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 BASE_DIR = str(resolve_base_dir())
 CSV_BASE = os.path.join(BASE_DIR, "data", "historical")
 
+PYTHON_SRC = Path(BASE_DIR) / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from sexp_serialize import sexp_serialize
+from sexp_utils import parse_sexp_alist
+
 
 def load_strategies(path=None):
     if path is None:
@@ -117,7 +124,7 @@ def main():
                 "candles_file": csv_path,
                 "timeframe": tf_val,
             }
-            sender.send_json(request)
+            sender.send_string(sexp_serialize(request))
             requests_sent += 1
             if requests_sent % 10 == 0:
                 sys.stdout.write(f"\r📤 Sent {requests_sent}/{total_tests} requests...")
@@ -136,7 +143,7 @@ def main():
         if poller.poll(5000):  # 5s timeout per message
             msg = receiver.recv_string()
             try:
-                data = json.loads(msg)
+                data = parse_sexp_alist(msg)
                 mtype = data.get("type")
                 if mtype == "BACKTEST_RESULT":
                     res = data.get("result", {})

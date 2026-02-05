@@ -6,13 +6,13 @@ Generates the "Evolution Factory Report" using the filesystem as the source of t
 Counts .lisp strategy files in data/library/ Rank directories.
 """
 
-import zmq
 import json
 import os
 import sys
 import glob
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import zmq
 
 
 def _env_int(key: str, default: int) -> int:
@@ -39,6 +39,11 @@ def resolve_base_dir() -> Path:
 # Configuration
 ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)
 BASE_DIR = str(resolve_base_dir())
+PYTHON_SRC = Path(BASE_DIR) / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import sexp_request
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 LIBRARY_PATH = os.path.join(BASE_DIR, "data", "library")
 
@@ -126,7 +131,15 @@ def main():
     context = zmq.Context()
     socket = context.socket(zmq.PUSH)
     socket.connect(f"tcp://localhost:{ZMQ_PORT}")
-    socket.send_json({"webhook": webhook_url, "data": payload})
+    message = sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook_url,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
+    socket.send_string(message)
 
     print("✅ Evolution Factory Report Sent.")
     print(description)  # Print for verification

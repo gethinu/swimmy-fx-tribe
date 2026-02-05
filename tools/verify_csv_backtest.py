@@ -1,8 +1,10 @@
-import zmq
 import json
-import time
 import os
+import sys
+import time
 from pathlib import Path
+
+import zmq
 
 
 def _env_int(key: str, default: int) -> int:
@@ -30,6 +32,13 @@ BACKTEST_PORT = _env_int("SWIMMY_PORT_BACKTEST_REQ", 5580)
 BRAIN_PORT = _env_int("SWIMMY_PORT_SENSORY", 5555)
 BASE_DIR = str(resolve_base_dir())
 CSV_FILE = os.path.join(BASE_DIR, "data", "historical", "USDJPY_M1.csv")
+
+PYTHON_SRC = Path(BASE_DIR) / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from sexp_serialize import sexp_serialize
+from sexp_utils import parse_sexp_alist
 
 
 def main():
@@ -70,7 +79,7 @@ def main():
 
     print(f"🚀 Sending Backtest Request (File: {CSV_FILE})...")
     start_time = time.time()
-    sender.send_json(request)
+    sender.send_string(sexp_serialize(request))
 
     # 4. Wait for Response (Loop to skip TICKS)
     print("⏳ Waiting for BACKTEST_RESULT...")
@@ -84,21 +93,21 @@ def main():
         if poller.poll(100):  # 100ms poll
             msg = receiver.recv_string()
             try:
-                result = json.loads(msg)
+                result = parse_sexp_alist(msg)
                 msg_type = result.get("type", "UNKNOWN")
 
                 if msg_type == "BACKTEST_RESULT":
                     elapsed = time.time() - start_time
                     print(f"✅ BACKTEST RESULT Received in {elapsed:.2f}s!")
-                    print(json.dumps(result, indent=2))
+                    print(json.dumps(result, indent=2, ensure_ascii=False))
                     break
                 else:
                     # Ignore ticks etc
                     # print(f"Skipping {msg_type}")
                     pass
 
-            except json.JSONDecodeError:
-                print("❌ Invalid JSON Received:", msg)
+            except Exception:
+                print("❌ Invalid S-Expression Received:", msg)
         else:
             time.sleep(0.01)
 
