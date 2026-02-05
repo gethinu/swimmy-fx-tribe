@@ -792,6 +792,56 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-discord-notifier-zmq-send-uses-dontwait
+  "queue-discord-notification should use non-blocking ZMQ send (dontwait)"
+  (let* ((orig-send (symbol-function 'pzmq:send))
+         (orig-sock swimmy.core::*notifier-socket*)
+         (orig-ctx swimmy.core::*notifier-context*)
+         (captured nil))
+    (unwind-protect
+        (progn
+          ;; Avoid creating real ZMQ sockets in tests
+          (setf swimmy.core::*notifier-socket* :dummy)
+          (setf swimmy.core::*notifier-context* :dummy)
+          (setf (symbol-function 'pzmq:send)
+                (lambda (&rest args)
+                  (setf captured args)
+                  t))
+          (swimmy.core:queue-discord-notification "wh" "msg")
+          (let ((pos (and captured (position :dontwait captured))))
+            (assert-true pos "Expected :dontwait in pzmq:send args")
+            (assert-true (eq t (nth (1+ pos) captured)) "Expected :dontwait t")))
+      (setf swimmy.core::*notifier-socket* orig-sock)
+      (setf swimmy.core::*notifier-context* orig-ctx)
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
+(deftest test-discord-notifier-zmq-drop-counter-increments
+  "queue-discord-notification should drop and count when send would block"
+  (let* ((orig-send (symbol-function 'pzmq:send))
+         (orig-sock swimmy.core::*notifier-socket*)
+         (orig-ctx swimmy.core::*notifier-context*)
+         (drop-sym (intern "*NOTIFIER-ZMQ-DROP-COUNT*" :swimmy.globals))
+         (orig-drop (and (boundp drop-sym) (symbol-value drop-sym))))
+    (unwind-protect
+        (progn
+          ;; Avoid creating real ZMQ sockets in tests
+          (setf swimmy.core::*notifier-socket* :dummy)
+          (setf swimmy.core::*notifier-context* :dummy)
+          (setf (symbol-value drop-sym) 0)
+          (setf (symbol-function 'pzmq:send)
+                (lambda (&rest _)
+                  (declare (ignore _))
+                  (error "Resource temporarily unavailable")))
+          (assert-true (null (swimmy.core:queue-discord-notification "wh" "msg"))
+                       "Expected send to fail and be dropped")
+          (assert-equal 1 (symbol-value drop-sym) "Expected drop counter to increment"))
+      (setf swimmy.core::*notifier-socket* orig-sock)
+      (setf swimmy.core::*notifier-context* orig-ctx)
+      (setf (symbol-function 'pzmq:send) orig-send)
+      (if orig-drop
+          (setf (symbol-value drop-sym) orig-drop)
+          (ignore-errors (makunbound drop-sym))))))
+
 (deftest test-backtest-pending-count-decrements-on-recv
   "pending count should drop when a BACKTEST_RESULT is processed"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -985,11 +1035,14 @@
                   test-internal-process-msg-history-sexp
                   test-process-account-info-sexp
                   test-process-trade-closed-sexp
+                  test-discord-notifier-zmq-send-uses-dontwait
+                  test-discord-notifier-zmq-drop-counter-increments
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
                   test-telemetry-sexp
+                  test-telemetry-sexp-includes-notifier-metrics
                   test-live-status-sexp
                   test-telemetry-event-schema
                   test-clan-exists

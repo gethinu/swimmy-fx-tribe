@@ -45,6 +45,38 @@
       (assert-true schema "Expected schema_version in telemetry S-expression"))
     (when (probe-file tmp) (delete-file tmp))))
 
+(deftest test-telemetry-sexp-includes-notifier-metrics
+  (let* ((tmp (merge-pathnames "system_metrics.sexp" #P"/tmp/"))
+         (notifier (merge-pathnames "notifier_metrics.sexp" #P"/tmp/"))
+         (swimmy.school::*telemetry-file* (namestring tmp))
+         (notifier-file-sym (intern "*NOTIFIER-METRICS-FILE*" :swimmy.school))
+         (orig-notifier (and (boundp notifier-file-sym) (symbol-value notifier-file-sym))))
+    (unwind-protect
+        (progn
+          (setf (symbol-value notifier-file-sym) (namestring notifier))
+          (swimmy.core:write-sexp-atomic notifier
+                                        '((schema_version . 1)
+                                          (timestamp . 123)
+                                          (queue_len . 5)
+                                          (drops . 2)
+                                          (errors . 1)))
+          (swimmy.school::save-telemetry-sexp (list :heap 1 :strategy-count 2))
+          (let* ((sexp (swimmy.core:read-sexp-file tmp :package :swimmy.school))
+                 (q (assoc 'notifier_queue_len sexp))
+                 (d (assoc 'notifier_drops sexp))
+                 (e (assoc 'notifier_errors sexp)))
+            (assert-true q "Expected notifier_queue_len in system_metrics.sexp")
+            (assert-true d "Expected notifier_drops in system_metrics.sexp")
+            (assert-true e "Expected notifier_errors in system_metrics.sexp")
+            (assert-equal 5 (cdr q))
+            (assert-equal 2 (cdr d))
+            (assert-equal 1 (cdr e))))
+      (if orig-notifier
+          (setf (symbol-value notifier-file-sym) orig-notifier)
+          (ignore-errors (makunbound notifier-file-sym)))
+      (when (probe-file tmp) (delete-file tmp))
+      (when (probe-file notifier) (delete-file notifier)))))
+
 (deftest test-live-status-sexp
   (let* ((tmp (merge-pathnames "live_status.sexp" #P"/tmp/"))
          (swimmy.shell::*live-status-path* (namestring tmp)))
