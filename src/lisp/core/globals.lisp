@@ -87,6 +87,8 @@
 (defparameter *discord-webhook-url* nil)
 (defvar *last-discord-notification-time* 0 "V48.2 Expert Panel: Last time ANY message was sent to Discord")
 (defvar *last-zmq-success-time* 0 "V48.2: Last time a ZMQ message was successfully handed off to pub-socket")
+(defvar *notifier-zmq-drop-count* 0 "V51.0: ZMQ send drops due to backpressure (dontwait/EAGAIN).")
+(defvar *notifier-zmq-error-count* 0 "V51.0: ZMQ send errors to Notifier (excluding backpressure).")
 (defparameter *last-heartbeat-sent* 0)
 (defparameter *publisher* nil)
 (defparameter *subscriber* nil)
