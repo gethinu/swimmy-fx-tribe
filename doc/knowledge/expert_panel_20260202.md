@@ -42,7 +42,7 @@
 - JSONL監査/ログをS式に変えると過去比較が途切れる。統計の前提が崩れる。`src/lisp/core/db-adapter.lisp:46-54`
 
 ### Gene Kim: “運用は壊れやすくなる”
-- `live_status.json`やDiscord通知は運用の生命線。S式化は運用ツールの互換性を壊す。`src/lisp/shell/notifications.lisp:123-167`, `src/lisp/core/discord.lisp:40-68`
+- `live_status.sexp`やDiscord通知は運用の生命線。S式化は運用ツールの互換性を壊す。`src/lisp/shell/notifications.lisp:123-167`, `src/lisp/core/discord.lisp:40-68`
 
 ## 🚀 Musk's Decision (Final)
 > 「B案は“やるなら徹底的に設計してから”だ。  
@@ -70,7 +70,7 @@
 
 ### Graham: “報告の正義が割れている”
 - Owner’s Guideは「Evolution Factory Reportで確認」と言うが、そのReportは混血ソース。**確認方法が嘘**。`doc/owners_guide.md:175-177`, `src/lisp/school/school-narrative.lisp:203-212`
-- 仕様上はSQL移行完了。ならDBを真実にする以外ない。迷ってる時点で設計が死んでる。`doc/knowledge/implementation_plan_v49.8.md:8-14`
+- 仕様上はSQL移行完了。ならDBを真実にする以外ない。迷ってる時点で設計が死んでる。`doc/knowledge/implementation_plan_v50.6.md:8-14`
 
 ### Naval: “レバレッジがない三重化”
 - DBに同期しないLibraryは**運用コストだけ増える**。`refresh-strategy-metrics-from-db`がある時点でDBが主戦場。`src/lisp/school/school-narrative.lisp:203-205`, `src/lisp/school/school-db.lisp:247-292`
@@ -108,7 +108,7 @@
 >  混血レポートは今すぐやめる。ソースを一本化し、数字の信用を回復しろ。」
 
 ## Actionable Items
-1. **真実の宣言**：DBを公式ソース・Libraryを派生・KBをキャッシュと明記。`doc/owners_guide.md:175-177`, `doc/knowledge/implementation_plan_v49.8.md:8-14`
+1. **真実の宣言**：DBを公式ソース・Libraryを派生・KBをキャッシュと明記。`doc/owners_guide.md:175-177`, `doc/knowledge/implementation_plan_v50.6.md:8-14`
 2. **Reportの統一**：`notify-backtest-summary` と `generate-evolution-report` を**DB集計**に統一。墓場数もDB基準に。`src/lisp/core/discord.lisp:198-206`, `src/lisp/school/school-narrative.lisp:203-212`, `src/lisp/school/school-db.lisp:247-292`
 3. **DBパスの一本化**：旧 `data/swimmy.db` 系の参照を整理・廃止。`src/lisp/core/sqlite-manager.lisp:6-12`, `src/lisp/core/schema.lisp:16-20`
 4. **整合性テスト**：Report生成時にDB/KB/Libraryの差分を検出するスモークテストを追加。`src/lisp/tests/backtest-db-tests.lisp`, `src/lisp/tests/school-split-tests.lisp`
@@ -121,7 +121,7 @@
 
 ## 🏛️ 常設顧問の意見
 ### Taleb: “最大はRuin。観測の目が潰れるなら終わり”
-- ローカル保存は運用の生命線。`live_status.json`と`system_metrics.json`は**運用可観測性そのもの**。ここを一気に変えるなら移行失敗が即死。`src/lisp/shell/notifications.lisp:123-167`, `src/lisp/school/school-telemetry.lisp:7-34`
+- ローカル保存は運用の生命線。`live_status.sexp`と`system_metrics.sexp`は**運用可観測性そのもの**。ここを一気に変えるなら移行失敗が即死。`src/lisp/shell/notifications.lisp:123-167`, `src/lisp/school/school-telemetry.lisp:7-34`
 - `data/`や`db/data/`のJSON/JSONL全面変換は「破壊的な一括手術」。**復旧不能リスク**を積む。最大は却下。`tools/report_status.py:35-96`
 
 ### Graham: “問題は範囲。やり過ぎはスピードを殺す”
@@ -133,12 +133,12 @@
 - 影響範囲が広いのに利益が薄い（最大）。やるなら**運用の3ファイルだけ**に絞れ。`tools/report_status.py:35-96`
 
 ### Jim Simons: “比較可能性を壊すな”
-- `backtest_cache.json`はランキング/報告の基準。形式変更で**過去比較が壊れる**。移行スクリプトなしの最大は論外。`src/lisp/school/school-backtest-utils.lisp:9-80`, `tools/report_status.py:80-107`
+- `backtest_cache.sexp`はランキング/報告の基準。形式変更で**過去比較が壊れる**。移行スクリプトなしの最大は論外。`src/lisp/school/school-backtest-utils.lisp:9-80`, `tools/report_status.py:80-107`
 
 ## 💻 技術パネルの意見
 ### Fowler: “境界がここ。変えるなら変換層を作れ”
-- `live_status.json`はLisp→Pythonの境界。**この境界を一括破壊するなら変換層が必須**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
-- `system_metrics.json`と`backtest_cache.json`は報告系の入口。ここだけ変えるなら中間で十分。`src/lisp/school/school-telemetry.lisp:7-34`, `tools/report_status.py:35-96`
+- `live_status.sexp`はLisp→Pythonの境界。**この境界を一括破壊するなら変換層が必須**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
+- `system_metrics.sexp`と`backtest_cache.sexp`は報告系の入口。ここだけ変えるなら中間で十分。`src/lisp/school/school-telemetry.lisp:7-34`, `tools/report_status.py:35-96`
 
 ### Hickey: “Lisp最適化で他言語を殺すな”
 - S式はLisp内では簡潔だが、Python側では**自前パーサが必要**。最大は複雑性を爆増させる。`tools/report_backtest_summary.py:58-106`, `src/python/discord_bot.py:75-99`
@@ -156,7 +156,7 @@
 - JSONL全面変換は**統計的連続性の破壊**。最大は分析の前提を壊す。`tools/report_status.py:35-96`
 
 ### Gene Kim: “運用のフィードバックループは最優先”
-- `live_status.json`はDiscord運用の中心。ここはS式化の対象に含めるべきだが、**全域変換は不要**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
+- `live_status.sexp`はDiscord運用の中心。ここはS式化の対象に含めるべきだが、**全域変換は不要**。`src/lisp/shell/notifications.lisp:123-167`, `src/python/discord_bot.py:75-99`
 
 ## 🚀 Musk's Decision (Final)
 > 「**中間**で行く。  
@@ -165,7 +165,7 @@
 
 ## Actionable Items
 1. **決定の記録**：`docs/llm/SPEC.md` の「ローカル保存S式化の対象範囲」を **中間**に確定し、`docs/llm/STATE.md` の決定事項と次アクションを更新。`docs/llm/SPEC.md:51-75`, `docs/llm/STATE.md:12-82`
-2. **対象ファイルの明確化**：`data/backtest_cache.json`、`data/system_metrics.json`、`.opus/live_status.json` のS式化を対象に固定（最大は見送り）。`src/lisp/school/school-backtest-utils.lisp:9-80`, `src/lisp/school/school-telemetry.lisp:7-34`, `src/lisp/shell/notifications.lisp:123-167`
+2. **対象ファイルの明確化**：`data/backtest_cache.sexp`、`data/system_metrics.sexp`、`.opus/live_status.sexp` のS式化を対象に固定（最大は見送り）。`src/lisp/school/school-backtest-utils.lisp:9-80`, `src/lisp/school/school-telemetry.lisp:7-34`, `src/lisp/shell/notifications.lisp:123-167`
 3. **互換・移行**：S式への移行スクリプトを用意し、Python側はS式対応または変換アダプタで対応。`tools/report_status.py:35-96`, `tools/report_backtest_summary.py:41-106`, `src/python/discord_bot.py:75-99`
 4. **テスト**：ローカル保存の読み書き（S式/旧JSON）を最小テストで保証。最大範囲の変換は保留。  
 

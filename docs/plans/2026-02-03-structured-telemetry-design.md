@@ -6,7 +6,7 @@ Status: Draft
 
 ## 1. Goal / Scope
 - Goal: OOS / WFV / Heartbeat / System metrics を構造化イベントとして統一し、運用の可観測性を上げる。
-- Goal: 既存の JSON 出力 (system_metrics.json / live_status.json) を維持しつつ、イベントの単一ソースを定義する。
+- Goal: 既存の JSON 出力 (system_metrics.sexp / live_status.sexp) を維持しつつ、イベントの単一ソースを定義する。
 - Non-goal: 既存の JSON を全面 S-expression に移行すること。
 - Non-goal: 監視ダッシュボードの実装 (将来対応)。
 

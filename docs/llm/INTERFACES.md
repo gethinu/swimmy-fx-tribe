@@ -2,14 +2,14 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: 内部ZMQはS-expression（alist）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。
+- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSON維持。
 - **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
   - `5560`: Execution (Rust PUB -> MT5 SUB)
   - `5555`: Sensory Input (Rust PUSH -> Lisp PULL)
   - `5556`: Motor Output (Lisp PUB -> Rust SUB)
-  - `5559`: External Command (Legacy) -> Rust SUB
+  - `5559`: External Command (MCP/Tools) -> Rust SUB
   - `5561`: Data Keeper (REQ/REP, S-expression) -> Data Keeper Service
   - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
   - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service

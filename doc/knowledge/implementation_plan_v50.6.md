@@ -1,7 +1,18 @@
-# 🏛️ Strategy Lifecycle Implementation Plan V49.8
+# 🏛️ Strategy Lifecycle Implementation Plan V50.6
 
-**更新日:** 2026-01-24 23:58 JST
-**バージョン:** V49.8 (SQL Persistence & Scaling)
+**更新日:** 2026-02-06 JST
+**バージョン:** V50.6 (Structured Telemetry & Retired Rank)
+
+---
+
+## V50.6 完了フェーズ (Structured Telemetry / Retired Rank)
+
+| 機能 | 詳細 |
+|------|------|
+| **Structured Telemetry** | JSONL統合ログ（`logs/swimmy.json.log`、`log_type="telemetry"`）＋10MBローテ |
+| **Local Storage S-exp** | `system_metrics.sexp` / `live_status.sexp` を原子書き込みに統一 |
+| **Retired Rank** | Max Age退役アーカイブ（`data/library/RETIRED/`・`data/memory/retired.sexp`、低ウェイト学習） |
+| **Aux Services S-exp** | Data Keeper / Notifier / Risk Gateway を S式 + `schema_version=1` に統一 |
 
 ---
 
@@ -76,6 +87,7 @@
 | A | `:A` | OOS検証通過 |
 | S | `:S` | 実弾許可 (The Elite) |
 | Graveyard | `:graveyard` | 廃棄・学習用データ |
+| Retired | `:retired` | Max Age 退役アーカイブ（低ウェイト学習 / `data/memory/retired.sexp`） |
 | Legend | `:legend` | 保護対象 (61戦略) |
 
 ---
@@ -110,6 +122,8 @@ graph TD
     M -.->|Q-value| N[交配最適化]
 ```
 
+> [!NOTE]
+> **Max Age Retirement**: 年齢>30のアクティブ戦略はランクに関係なく Retired へ移動。
 
 ---
 
@@ -255,6 +269,7 @@ graph TD
 | P3 学習 | school-p3-learning.lisp |
 | **P4 監査** | **school-pip-audit.lisp** |
 | 学習データ | data/memory/*.sexp |
+| Retired Archive | data/memory/retired.sexp / data/library/RETIRED/ |
 
 ---
 
@@ -557,10 +572,12 @@ graph TD
 | **P12** | **True CPCV Lisp-Rust** | **2026-01-22** |
 | **P24** | **Logic Integrity (Symbolic Hash)** | **2026-01-28** |
 | **P25** | **Isolation & Watchdog** | **2026-01-28** |
+| **P26** | **Structured Telemetry (JSONL + S-exp snapshots)** | **2026-02-03** |
+| **P27** | **Retired Rank (Max Age archive + low-weight learning)** | **2026-02-06** |
 
 ---
 
-## 🚀 総合ステータス: 100% 完了 (V50.5 System Hardened)
+## 🚀 総合ステータス: 100% 完了 (V50.6 Structured Telemetry + Retired Rank)
 
 ### P24 Implementation Details (Logic Integrity)
 - **Symbolic Hashing**: `school-kb.lisp` checks logic similarity (Jaccard).
@@ -571,3 +588,13 @@ graph TD
 - **Service Isolation**: `school-scribe.lisp` (Async Block I/O).
 - **Broken Arrow**: `school-watchdog.lisp` (100ms Latency Monitor).
 - **DNA Verify**: `school-integrity.lisp` (SHA256 Pre-flight).
+
+### P26 Implementation Details (Structured Telemetry)
+- **JSONL統合ログ**: `src/lisp/logger.lisp` が `logs/swimmy.json.log` に `log_type="telemetry"` を出力。
+- **イベント発火**: `emit-telemetry-event` を OOS/WFV/Heartbeat/metrics に統一。
+- **ローカルスナップショット**: `data/system_metrics.sexp` / `.opus/live_status.sexp` を原子書き込み。
+
+### P27 Implementation Details (Retired Rank)
+- **Max Age退役**: `school-breeder.lisp` で age>30 の戦略を `:retired` に移動。
+- **低ウェイト学習**: `data/memory/retired.sexp` を回避学習に低重みで適用。
+- **アーカイブ**: `data/library/RETIRED/` に退役戦略を保存。

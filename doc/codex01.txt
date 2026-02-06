@@ -206,8 +206,8 @@ Bで進めます。次の1点だけ決めさせてください。
 
 **「ローカル保存のどこまでS式化するか」**を選んでください。
 
-最小: Backtest系キャッシュだけ（backtest_cache.json など）
-中間（推奨）: Backtest + Telemetry/Status（system_metrics.json, live_status.json 等）
+最小: Backtest系キャッシュだけ（backtest_cache.sexp など）
+中間（推奨）: Backtest + Telemetry/Status（system_metrics.sexp, live_status.sexp 等）
 最大: data/ と db/data/ のJSON/JSONLを全面S式化
 どれにしますか？
 
@@ -375,7 +375,7 @@ discord_bot.py は例外を捕捉し、直前のキャッシュ値または既�
 
 了解。設計案 3/3: 移行スクリプトと最小テスト です。
 
-移行は「一括スクリプトでJSON→S式に変換し、以後はS式のみ」を前提にします。migrate_local_storage_to_sexp.py を新設し、backtest_cache.json / system_metrics.json / live_status.json を読み取り、対応する .sexp を出力します。出力は 単一S式（backtest_cacheはリスト、他はalist）で、先頭に (schema_version . 1) を必須付与。変換後は元JSONを .json.bak.YYYYMMDDHHMM に退避し、移行完了ログを出します。書き込みは tmp→rename の原子化を必須化し、部分書き込みや中断に強くします。
+移行は「一括スクリプトでJSON→S式に変換し、以後はS式のみ」を前提にします。migrate_local_storage_to_sexp.py を新設し、backtest_cache.sexp / system_metrics.sexp / live_status.sexp を読み取り、対応する .sexp を出力します。出力は 単一S式（backtest_cacheはリスト、他はalist）で、先頭に (schema_version . 1) を必須付与。変換後は元JSONを .json.bak.YYYYMMDDHHMM に退避し、移行完了ログを出します。書き込みは tmp→rename の原子化を必須化し、部分書き込みや中断に強くします。
 最小テストは3ケースだけを確実に押さえます。
 
 正常S式を読み込める
@@ -468,7 +468,7 @@ Task 6を完了しました。
 migrate_local_storage_to_sexp.py を追加
 JSON/JSONLを読み込み → schema_version=1付きで .sexp を生成
 原本JSONは .json.bak.YYYYMMDDHHMM に退避（移動）
-デフォルト対象: backtest_cache.json, system_metrics.json, live_status.json
+デフォルト対象: backtest_cache.sexp, system_metrics.sexp, live_status.sexp
 test_migrate_local_storage_to_sexp.py を追加（TDD）
 実行したテスト:
 
@@ -539,7 +539,7 @@ master へマージ完了、local-storage-sexp ブランチ削除・worktree削�
 ci-test.sh（master）→ 59 tests PASS
 現在の作業ツリー（あなたの差分は保持されたまま）
 
-変更あり: backtest_cache.json、*.lisp、expert_panel_20260203.md、school-backtest*.lisp、backtest-payload-tests.lisp
+変更あり: backtest_cache.sexp、*.lisp、expert_panel_20260203.md、school-backtest*.lisp、backtest-payload-tests.lisp
 未追跡: 2026-02-03-repec-rss-poc-implementation-plan.md、test_arxiv_scout_config.py、test_arxiv_scout_external.py
 次どうしますか？
 

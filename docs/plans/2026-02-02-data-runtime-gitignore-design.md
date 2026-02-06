@@ -16,10 +16,10 @@ Add ignore rules for runtime-only directories:
 
 Keep long-lived reference data tracked, including:
 - `data/knowledge_base.sexp`
-- `data/system_metrics.json`
+- `data/system_metrics.sexp`
 - `data/wisdom_state.json`
 
-`data/backtest_cache.json` remains tracked for now; revisit if it becomes too volatile or large.
+`data/backtest_cache.sexp` remains tracked for now; revisit if it becomes too volatile or large.
 
 ## Migration steps
 1. Add the ignore entries to `.gitignore`.

@@ -14,6 +14,9 @@ graph TD
         Rust[Rust Guardian]
         Lisp[Lisp Brain / School]
         DataKeeper[Python Data Keeper]
+        Notifier[Notifier Service]
+        RiskGateway[Risk Gateway]
+        BacktestSvc[Backtest Service]
         DB[(SQLite / Files)]
     end
 
@@ -23,14 +26,22 @@ graph TD
     Rust -- "PUSH :5555 (Sensor Data)" --> Lisp
     Lisp -- "PUB :5556 (Decision/Signal)" --> Rust
     
-    Rust <-->|REQ/REP :5561 (History)| DataKeeper
-    Lisp <-->|REQ/REP :5561 (History)| DataKeeper
+    Rust <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
+    Lisp <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
+
+    Lisp -- "PUSH :5562 (Notify, S-exp)" --> Notifier
+    Rust -- "PUSH :5562 (Notify, S-exp)" --> Notifier
+
+    Lisp <-->|REQ/REP :5563 (Risk, S-exp)| RiskGateway
+
+    Lisp -- "PUSH :5580 (Backtest, S-exp)" --> BacktestSvc
+    BacktestSvc -- "PUSH :5581 (Result, S-exp)" --> Lisp
     
     Lisp <--> DB
     Rust <--> DB
 ```
 
-**通信エンコーディング方針**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP等）はJSONを維持する。
+**通信エンコーディング方針**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP等）はJSONを維持する。
 
 ## コンポーネント詳細
 
@@ -53,8 +64,8 @@ graph TD
 - **Hot Reload**: プロセスを止めずにロジック更新可能。
 
 ### 4. Data Keeper (Memory)
-- **Python Service (Port 5561)**
-- 10M Candle Buffer。ヒストリカルデータの非同期保存を担当。
+- **Python Service (Port 5561 / REQ/REP + S-expression, schema_version=1)**
+- 最大 500k candles / symbol / TF。ヒストリカルデータの非同期保存を担当。
 - メインプロセスのI/O負荷を軽減。
 
 ## 実行タイミング
@@ -72,6 +83,11 @@ graph TD
   - **Trigger**: Scheduler (`start-evolution-service`) or Manual.
   - **Sync**: 生成直前に `refresh-strategy-metrics-from-db :force t` を実行し、SQLiteとInMemory状態を強制同期する。
   - **Persistence**: 戦略のメトリクス（Sharpe, Rank等）は、バックテストやランク更新のたびに `upsert-strategy` でDBに即時保存される（べきである）。
+
+## Structured Telemetry (V50.6)
+- **JSONL Event Log**: `/home/swimmy/swimmy/logs/swimmy.json.log`（`log_type="telemetry"`、`schema_version=1`）。
+- **Rotation**: `swimmy.json.log.1`（既定10MB上限）。
+- **Local Snapshots**: `data/system_metrics.sexp` / `.opus/live_status.sexp`（S式、tmp→renameで原子書き込み）。
 
 ## フェイルセーフ & 監視
 - **Watchdog**: Lisp内に `school-watchdog` (Broken Arrow) 実装。100msフリーズを検知。

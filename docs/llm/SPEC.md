@@ -2,15 +2,15 @@
 
 ## 1. 概要
 MT5 (Execution), Rust (Middleware/Guardian), Lisp (Brain/Evolution) から構成される複合アルゴリズム取引システム。「進化する自律型ヘッジファンド」を目指す。
-V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、論理的整合性チェックを備える。
+V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、論理的整合性チェックに加え、補助サービスS式統一とStructured Telemetry(JSONL)／ローカル保存S式化を備える。
 
 ## 2. コンポーネント構成
 | コンポーネント | 言語 | 役割 | 責務 |
 | :--- | :--- | :--- | :--- |
 | **SwimmyBridge** | MQL5 (V15.2) | Execution Node | Tick送信、注文執行、口座情報フィード、DeadManSwitch監視 |
 | **Guardian** | Rust (V15.x) | Middleware | MT5-Lisp間の通信仲介、Risk Gate (拒否権)、高速バックテスト、ニューラルネット予測 |
-| **School/Brain** | Common Lisp (V50.5) | Cognitive Engine | 戦略の遺伝的進化(Breeding)、ポートフォリオ構築、物語生成、Discord通知 |
-| **Data Keeper** | Python | Persistence Layer | Port 5561。非同期でのヒストリカルデータ保存（10M Candle Buffer）。 |
+| **School/Brain** | Common Lisp (V50.6) | Cognitive Engine | 戦略の遺伝的進化(Breeding)、ポートフォリオ構築、物語生成、Discord通知 |
+| **Data Keeper** | Python | Persistence Layer | Port 5561（REQ/REP, S式 + schema_version=1）。ヒストリカルデータ保存（最大 500k candles / symbol / TF）。 |
 
 ## 3. 取引前提
 - **銘柄**: USDJPY, EURUSD, GBPUSD (Config可変)。マルチカレンシー対応。
@@ -25,6 +25,7 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
   - **S-RANK**: Sharpe ≥ 0.5 + CPCV検証合格（実弾許可）
   - **Legend**: 不老不死（外部導入戦略）
   - **Graveyard**: 廃棄戦略（失敗パターン分析用）
+  - **Retired**: Max Age 退役アーカイブ（低ウェイト学習、`data/library/RETIRED/`・`data/memory/retired.sexp`）
 - **進化**:
   - **Symbolic Hashing**: 論理的に同一な戦略を自動排除 (Jaccard Similarity)。
   - **Highlander Rule**: 類似戦略は強い方だけが生き残る。
@@ -47,14 +48,16 @@ V50.5 (System Hardening II) に到達し、SQL永続化、サービス分離、�
   - Rust (PUB 5560) -> MT5
   - Rust (PUSH 5555) -> Lisp
   - Lisp (PUB 5556) -> Rust
-  - Data Keeper (REQ/REP 5561) <-> Rust/Lisp
-  - Notifier (PUSH 5562) -> Notifier Service
-  - Risk Gateway (REQ/REP 5563) <-> Lisp
-- **Encoding**: 内部ZMQはS-expression（alist形式）に統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSONを維持。
+  - External Command (PUB 5559) -> Rust (MCP/Tools)
+  - Data Keeper (REQ/REP 5561, S式 + schema_version=1) <-> Lisp/Tools
+  - Notifier (PUSH 5562, S式 + schema_version=1) -> Notifier Service
+  - Risk Gateway (REQ/REP 5563, S式 + schema_version=1) <-> Lisp
+  - Backtest Service (PUSH 5580 / PULL 5581, S式) <-> Lisp
+- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Sharded Files**: 戦略本体 (S式)。
-- **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（JSONは移行後に読まない）。`data/` と `db/data/` のJSON/JSONLは当面維持。
+- **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（`schema_version=1`、tmp→renameで原子書き込み）。`data/` と `db/data/` のJSON/JSONLはレガシー維持だが、**Structured Telemetry** は `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL出力（`log_type="telemetry"`）。
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
@@ -80,12 +83,14 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 （Source: `src/lisp/school/school-narrative.lisp`）
 
 ### 11.1. Status Counts
-- **Knowledge Base (Active)**: `(length *strategy-knowledge-base*)`
-  - メモリ上にロードされている全戦略数。
+- **Knowledge Base (Active)**: `get-db-rank-counts` の `:active`（= `total - graveyard - retired`）
+  - DBを正としたアクティブ戦略数（KBはキャッシュ）。ドリフトは `school-db-stats` が検出。
 - **New Recruits (24h)**: `(count-if (lambda (s) (> (strategy-creation-time s) (- now 86400))) ...)`
   - 過去24時間以内に生成された戦略数。
-- **Graveyard**: `(length (directory "data/library/GRAVEYARD/*.lisp"))`
-  - 物理的に墓場フォルダに存在するファイル数。
+- **Graveyard**: `get-db-rank-counts` の `:graveyard`
+  - 公式レポートはDBを正本。Libraryファイル数はドリフト検知に使用。
+- **Retired**: `get-db-rank-counts` の `:retired`
+  - Max Age退役。Libraryファイル数はドリフト検知に使用。
 
 ### 11.2. Rank Definitions & Criteria
 ランク判定は `school-rank-system.lisp` および `school-validation.lisp` に準拠。
@@ -96,7 +101,9 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 | **A-Rank** | Pro | Sharpe ≥ 0.3<br>PF ≥ 1.2<br>WR ≥ 40%<br>MaxDD < 20% | **OOS** (Out-of-Sample)<br>- OOS Sharpe ≥ 0.3 |
 | **B-Rank** | Selection | Sharpe ≥ 0.1<br>PF ≥ 1.0<br>WR ≥ 30%<br>MaxDD < 30% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
 | **Incubator** | - | Sharpe < 0.1 | (None) |
+| **Retired** | Archive | Max Age 退役 / 明示退役 | (None) |
 
 ### 11.3. Persistence Logic
 - **Sync**: レポート生成時に `(refresh-strategy-metrics-from-db :force t)` を実行し、DB上の値を正とする。
 - **Upsert**: 戦略のメトリクス（Sharpe等）、ランク、ステータス変更時は即座に `upsert-strategy` でDB保存される。
+- **Retired Patterns**: `:retired` への移動時に `data/memory/retired.sexp` へ低ウェイト学習用パターンを保存する。

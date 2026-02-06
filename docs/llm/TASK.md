@@ -3,7 +3,7 @@
 ## 今やる1タスク: ドキュメント補完 (In Progress)
 
 ### 目的
-`implementation_plan_v49.8.md` と `owners_guide.md` に記載されている最新機能（V49.8以降）が、現在の `/docs/llm/` に十分に反映されていない可能性があるため、差分を埋める。
+`implementation_plan_v50.6.md` と `owners_guide.md` に記載されている最新機能（V49.8以降）が、現在の `/docs/llm/` に十分に反映されていない可能性があるため、差分を埋める。
 
 ### スコープ
 - [x] /docs/llm/SPEC.md 更新 (SQL Migration, Atomic Allocation, Regime Lock等)
@@ -27,6 +27,29 @@
 ---
 
 ## ユーザー確認事項 (質問リスト)
+
+---
+
+## 次タスク: OOSパイプライン整合性修復 (Planned)
+
+### 目的
+OOS結果の相関ID欠落・UUID衝突・`oos_queue` 不整合を修正し、A→S昇格停滞を解消する。
+
+### スコープ
+- `tools/backtest_service.py` で `request_id` を結果へ伝播
+- `src/lisp/core/execution-protocol.lisp` のUUID生成を高エントロピー化
+- `src/lisp/school/school-validation.lisp` のリトライID再利用の見直し
+- `oos_queue` の手動クリーンアップ手順追加
+- `docs/llm/INTERFACES.md` の `BACKTEST_RESULT` 契約追記
+
+### 完了条件
+- `oos_queue` が結果受信時に減少し、`oos_status.txt` の success が増える
+- `BACKTEST_RESULT` に `request_id` が必ず含まれる
+
+### 手順
+1. 失敗テスト追加（`request_id` 伝播）
+2. 最小修正を実装
+3. 検証手順実行（OOS 1件の往復確認）
 
 ---
 

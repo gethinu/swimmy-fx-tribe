@@ -1,14 +1,17 @@
 # Swimmy System State
 
 ## 現在の状態
-- **稼働フェーズ**: V50.5 (System Hardening II) - 2026-01-28
+- **稼働フェーズ**: V50.6 (Structured Telemetry) - 2026-02-03
 - **Rust (Guardian)**: `V15.x` Full Duplex, Risk Gate実装済み。Daily Loss Limit: -¥5000。
 - **MQL5 (Bridge)**: `V15.2` Multi-TF対応。
-- **Lisp (Brain/School)**: `V50.5` Pure Lisp Daemon。SQLite移行完了。
+- **Lisp (Brain/School)**: `V50.6` Pure Lisp Daemon。SQLite移行完了。
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
-- **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
-- **Graveyard 指標**: `data/library/GRAVEYARD/*.lisp` のファイル数が正義（学習用のsexp/DBは補助データ）。
+- **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
+- **Aux Services**: Data Keeper / Notifier / Risk Gateway は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
+- **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。
+- **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。
 
 ## 決定事項
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
@@ -19,8 +22,8 @@
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
-- **Graveyardの正**: 公式カウントはファイル数（`data/library/GRAVEYARD/*.lisp`）。
-- **B案方針**: 内部ZMQ通信＋ローカル保存をS式へ統一。**内部ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。
+- **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
+- **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Startup Liveness**: Brain起動時は「受信ループ（Backtest結果/Guardian stream）」へ先に入る。重い一括処理（Deferred Backtest Flush）は **後回し＋レート制限**で段階的に実行する（起動で詰まらせない）。`SWIMMY_DEFERRED_FLUSH_BATCH`（1回の送信上限、0で無効）と `SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC`（実行間隔秒）で調整する。
@@ -42,10 +45,13 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-06**: Retired Rank を追加（Max Age退役、`data/library/RETIRED/`・`data/memory/retired.sexp`）。Evolution Report/DB集計に Retired を追加。
 - **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。
+- **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）ZMQをS式のみに統一（legacy JSON廃止、`schema_version=1` 必須）。
 - **2026-02-05**: Notifier の `payload`（S式）を受理し、`payload_json` 互換をINTERFACESに明記。
 - **2026-02-05**: SBCLロード時WARNING/STYLE-WARNINGの全解消（ロード順、export、未使用変数、廃止フックの整理）。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式スキーマをINTERFACESに定義（`schema_version=1`）。
+- **2026-02-03**: Structured Telemetry を導入（JSONLイベントログ統合、`log_type="telemetry"`）。`system_metrics.sexp` / `live_status.sexp` を原子書き込みに統一。
 - **2026-02-04**: `run.sh` の Brain 起動は `brain.lisp` 優先、欠落時はASDF直起動フォールバックの方針を明記。
 - **2026-02-04**: Backtestのpending/レート制御とDeferred Flush制御パラメータをSTATEに明記。
 - **2026-02-04**: `SWIMMY_BACKTEST_CSV_OVERRIDE` でBacktestのCSV差し替えを許可する方針を明記。
@@ -109,10 +115,8 @@
 - 保護テストは `tools/test_legend_protection.lisp`（CIでも実行）。
 
 ## 次アクション
-1. ドキュメント体系化（完了）
-2. 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式実装
-3. 統合テスト手順の確立
-4. ローカル保存S式化の移行設計（atomic write / Python S式パーサ / 移行スクリプト）
+1. ドキュメント体系化（進行中）
+2. 統合テスト手順の確立
 
 ## リスク
 - **複雑性**: 3言語 + SQLite + Python(Data Keeper) の複合システム。
