@@ -29,7 +29,8 @@ Pair-Composite は、既存の単一戦略パイプラインを壊さずに、**
 ## 4. Data Flow
 1. Backtest/OOS/CPCVの結果に「トレード一覧」を含めて返却（S式）。
 2. Lisp側で `backtest_trade_logs` に保存（`request_id` + `oos_kind` で紐付け）。
-3. 候補生成時、PnL系列（OOS/CPCV/Backtest）で相関を計算。
+3. `oos_kind` は `-OOS`=OOS、`-QUAL/-RR`=BACKTEST(IS) として保存（CPCVは trade_list 対応後）。
+4. 候補生成時、PnL系列（OOS/CPCV/Backtest を結合）で相関を計算。
 4. 合成PnL（0埋めマージ + リスクパリティ重み）でスコアを計算し上位5ペアを選定。
 5. 実行時、単一戦略の出力に対しペア枠のみ適用。
 
@@ -41,7 +42,8 @@ Pair-Composite は、既存の単一戦略パイプラインを壊さずに、**
 - **評価ウィンドウ**: 直近100トレード
 - **相関計算**: 合成PnL系列（クローズ時刻でマージ、片側欠損は0埋め）
 - **重み**: リスクパリティ重みをそのまま使用
-- **PnL系列ソース**: OOS/CPCV/Backtest のトレード履歴（欠損は候補除外）
+- **PnL系列ソース**: OOS/CPCV/Backtest のトレード履歴を結合（欠損は候補除外）
+- **oos_kindの割当**: `-OOS`=OOS、`-QUAL/-RR`=BACKTEST(IS)。CPCVは trade_list 対応後に追加。
 - **失効条件**: 片脚がA未満なら当該ペアを即時無効化
 
 ## 6. Execution Overlay (Non-Destructive Contract)

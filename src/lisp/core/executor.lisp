@@ -255,9 +255,11 @@
                                  ((stringp category-raw)
                                   (intern (string-upcase category-raw) :keyword))
                                  (t :trend)))
-                 (strategy-name (%payload-string payload '(strategy "strategy") "unknown")))
+                 (strategy-name (%payload-string payload '(strategy "strategy") "unknown"))
+                 (magic (%payload-number payload '(magic "magic") nil))
+                 (pair-id (swimmy.school:lookup-pair-id-by-magic magic)))
             (handler-case
-                (swimmy.school:record-trade-outcome symbol dir-keyword category strategy-name pnl)
+                (swimmy.school:record-trade-outcome symbol dir-keyword category strategy-name pnl :pair-id pair-id)
               (error (e) (format t "[L] Learning record error: ~a~%" e))))
 
           ;; NEURAL NETWORK ONLINE LEARNING

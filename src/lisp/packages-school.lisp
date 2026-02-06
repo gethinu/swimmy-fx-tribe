@@ -73,6 +73,7 @@
    #:update-leader-stats
    #:update-global-stats ;; V44.3: Moved from Reporting
    #:lookup-strategy-by-magic  ;; V44.8: Resolving Unknown strategy names
+   #:lookup-pair-id-by-magic
    #:generate-trade-result-narrative
    #:process-clone-check-result ;; V10: Exported for message-dispatcher
    #:process-wfv-result ;; V10: Exported for message-dispatcher
@@ -82,6 +83,8 @@
    #:save-backtest-cache
    #:load-backtest-cache
    #:get-cached-backtest
+   #:record-backtest-trades
+   #:fetch-backtest-trades
    #:refresh-strategy-metrics-from-db
    #:fetch-candidate-strategies
    #:fetch-all-strategies-from-db

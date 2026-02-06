@@ -207,12 +207,12 @@
              (not (eq res :rejected)))
            t)))))
 
-(defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override)
+(defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."
   (declare (ignore magic-override))
   ;; Reservation
   (multiple-value-bind (slot-index magic) 
-      (try-reserve-warrior-slot category lead-name symbol direction)
+      (try-reserve-warrior-slot category lead-name symbol direction :pair-id pair-id :lot lot)
     (unless slot-index 
       (format t "[ALLOC] ⚠️ Clan ~a Full (4/4)!~%" category)
       (return-from execute-order-sequence nil))
@@ -253,12 +253,16 @@
              (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))
                     (rank (if rank-data (strategy-rank-rank rank-data) :scout))
                     (base-lot (get-category-lot category))
-                    (lot (calc-execution-lot category symbol history rank base-lot lead-name direction)))
+                    (lot (calc-execution-lot category symbol history rank base-lot lead-name direction))
+                    (overlay (apply-pair-overlay lead-name direction symbol lot))
+                    (final-lot (first overlay))
+                    (pair-id (second overlay)))
                
-               (when (verify-signal-authority symbol direction category lot rank lead-name)
+               (when (verify-signal-authority symbol direction category final-lot rank lead-name)
                   ;; Sleep Randomization (Anti-Gaming)
                   (sleep (/ (random 2000) 1000.0))
-                  (execute-order-sequence category direction symbol bid ask lot lead-name timeframe-key nil))))))
+                  (execute-order-sequence category direction symbol bid ask final-lot lead-name timeframe-key nil
+                                          :pair-id pair-id))))))
     (error (e) (format t "[EXEC] 🚨 Error: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)

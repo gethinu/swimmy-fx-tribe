@@ -234,6 +234,12 @@
                          (declare (ignore status))
                          (when (and req-id req-at (string= req-id request-id))
                            (setf (getf metrics :oos-latency) (- (get-universal-time) req-at)))))
+                     (let* ((trade-list (%alist-val result '(trade_list trade-list) nil))
+                            (oos-kind (cond (is-oos "OOS")
+                                            ((or is-qual is-rr) "BACKTEST")
+                                            (t "BACKTEST"))))
+                       (when (and trade-list request-id name)
+                         (swimmy.school:record-backtest-trades request-id name oos-kind trade-list)))
                      (cond
                        (is-oos
                         (swimmy.school:cache-backtest-result full-name metrics)

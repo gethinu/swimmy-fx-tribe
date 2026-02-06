@@ -112,6 +112,53 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-backtest-result-persists-trade-list
+  "internal-process-msg should persist trade_list with oos_kind mapping"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"AAA-OOS\") (sharpe . 0.1) (trades . 1) (request_id . \"RID-1\") (trade_list . (((timestamp . 1) (pnl . 1.0) (symbol . \"USDJPY\")))))))")
+           (called nil)
+           (orig-record (symbol-function 'swimmy.school:record-backtest-trades))
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result)))
+           (orig-oos (and (fboundp 'swimmy.school:handle-oos-backtest-result)
+                          (symbol-function 'swimmy.school:handle-oos-backtest-result))))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:record-backtest-trades)
+                  (lambda (rid name kind trades)
+                    (setf called (list rid name kind trades))
+                    nil))
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when orig-v2
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (when orig-oos
+              (setf (symbol-function 'swimmy.school:handle-oos-backtest-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (funcall fn msg)
+            (assert-true called "record-backtest-trades should be called")
+            (assert-equal "RID-1" (first called) "request_id should match")
+            (assert-equal "AAA" (second called) "strategy name should be normalized")
+            (assert-equal "OOS" (third called) "oos_kind should be OOS")
+            (assert-true (listp (fourth called)) "trade_list should be passed"))
+        (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))
+        (when orig-oos
+          (setf (symbol-function 'swimmy.school:handle-oos-backtest-result) orig-oos))))))
+
 (deftest test-backtest-debug-log-records-apply
   "BACKTEST_RESULT should write debug log around apply when debug enabled"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1025,6 +1072,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-backtest-result-persists-trade-list
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
@@ -1048,6 +1096,11 @@
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
+                  test-trade-logs-supports-pair-id
+                  test-backtest-trade-logs-insert
+                  test-fetch-backtest-trades
+                  test-pair-id-stable
+                  test-pair-overlay-caps-lot
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

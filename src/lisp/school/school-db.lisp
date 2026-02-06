@@ -66,7 +66,33 @@
       category TEXT,
       regime TEXT,
       pnl REAL,
-      hold_time INTEGER
+      hold_time INTEGER,
+      pair_id TEXT
+    )")
+  (handler-case
+      (execute-non-query "ALTER TABLE trade_logs ADD COLUMN pair_id TEXT")
+    (error () nil))
+
+  ;; Table: Backtest Trades (OOS/CPCV/Backtest)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS backtest_trade_logs (
+      request_id TEXT,
+      strategy_name TEXT,
+      timestamp INTEGER,
+      pnl REAL,
+      symbol TEXT,
+      direction TEXT,
+      entry_price REAL,
+      exit_price REAL,
+      sl REAL,
+      tp REAL,
+      volume REAL,
+      hold_time INTEGER,
+      rank TEXT,
+      timeframe INTEGER,
+      category TEXT,
+      regime TEXT,
+      oos_kind TEXT
     )")
 
   ;; Table: Swap History (QS Architecture Data Lake)
@@ -185,8 +211,8 @@
 (defun record-trade-to-db (record)
   "Log trade to SQL."
   (execute-non-query
-   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
    (trade-record-timestamp record)
    (trade-record-strategy-name record)
    (trade-record-symbol record)
@@ -194,7 +220,85 @@
    (format nil "~a" (trade-record-category record))
    (format nil "~a" (trade-record-regime record))
    (trade-record-pnl record)
-   (trade-record-hold-time record)))
+   (trade-record-hold-time record)
+   (trade-record-pair-id record)))
+
+(defun %backtest-entry-val (entry keys)
+  "Extract value from ENTRY (alist or plist) using KEYS."
+  (cond
+    ((and (listp entry) (keywordp (first entry)))
+     (loop for k in keys
+           for kw = (cond ((keywordp k) k)
+                          ((symbolp k) (intern (string-upcase (symbol-name k)) :keyword))
+                          (t nil))
+           for val = (and kw (getf entry kw :missing))
+           unless (eq val :missing) do (return val)))
+    (t
+     (loop for k in keys
+           for cell = (assoc k entry)
+           when cell do (return (cdr cell))))))
+
+(defun record-backtest-trades (request-id strategy-name oos-kind trade-list)
+  "Persist trade_list entries for backtest/OOS/CPCV."
+  (dolist (entry trade-list)
+    (let* ((timestamp (%backtest-entry-val entry '(timestamp t)))
+           (pnl (%backtest-entry-val entry '(pnl)))
+           (symbol (%backtest-entry-val entry '(symbol)))
+           (direction (%backtest-entry-val entry '(direction)))
+           (entry-price (%backtest-entry-val entry '(entry_price entry-price)))
+           (exit-price (%backtest-entry-val entry '(exit_price exit-price)))
+           (sl (%backtest-entry-val entry '(sl)))
+           (tp (%backtest-entry-val entry '(tp)))
+           (volume (%backtest-entry-val entry '(volume)))
+           (hold-time (%backtest-entry-val entry '(hold_time hold-time)))
+           (rank (%backtest-entry-val entry '(rank)))
+           (timeframe (%backtest-entry-val entry '(timeframe tf)))
+           (category (%backtest-entry-val entry '(category)))
+           (regime (%backtest-entry-val entry '(regime))))
+      (execute-non-query
+       "INSERT INTO backtest_trade_logs (
+          request_id, strategy_name, timestamp, pnl, symbol, direction,
+          entry_price, exit_price, sl, tp, volume, hold_time,
+          rank, timeframe, category, regime, oos_kind
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+       request-id
+       strategy-name
+       timestamp
+       pnl
+       symbol
+       (when direction (format nil "~a" direction))
+       entry-price
+       exit-price
+       sl
+       tp
+       volume
+       hold-time
+       (when rank (format nil "~a" rank))
+       timeframe
+       (when category (format nil "~a" category))
+       (when regime (format nil "~a" regime))
+       oos-kind))))
+
+(defun fetch-backtest-trades (strategy-name &key oos-kind)
+  "Fetch persisted backtest trades for STRATEGY-NAME, optionally filtered by OOS-KIND."
+  (if oos-kind
+      (execute-to-list
+       "SELECT request_id, strategy_name, timestamp, pnl, symbol, direction,
+               entry_price, exit_price, sl, tp, volume, hold_time,
+               rank, timeframe, category, regime, oos_kind
+        FROM backtest_trade_logs
+        WHERE strategy_name = ? AND oos_kind = ?
+        ORDER BY timestamp"
+       strategy-name
+       oos-kind)
+      (execute-to-list
+       "SELECT request_id, strategy_name, timestamp, pnl, symbol, direction,
+               entry_price, exit_price, sl, tp, volume, hold_time,
+               rank, timeframe, category, regime, oos_kind
+        FROM backtest_trade_logs
+        WHERE strategy_name = ?
+        ORDER BY timestamp"
+       strategy-name)))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60
