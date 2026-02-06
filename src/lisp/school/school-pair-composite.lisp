@@ -179,3 +179,54 @@
               0.0
               (/ num (sqrt (* den-x den-y))))))))
 
+(defparameter *pair-score-sharpe-weight* 0.7)
+(defparameter *pair-score-pf-weight* 0.3)
+
+(defun %stddev (xs)
+  (let* ((n (length xs)))
+    (if (zerop n)
+        0.0
+        (let* ((mean (/ (reduce #'+ xs) n))
+               (sq (reduce #'+ (mapcar (lambda (x) (expt (- x mean) 2)) xs)))
+               (var (/ sq n)))
+          (sqrt var)))))
+
+(defun inverse-vol-weights (xs ys)
+  (let* ((sx (%stddev xs))
+         (sy (%stddev ys))
+         (w1 (if (zerop sx) 0.0 (/ 1.0 sx)))
+         (w2 (if (zerop sy) 0.0 (/ 1.0 sy)))
+         (sum (+ w1 w2)))
+    (if (> sum 0.0)
+        (values (/ w1 sum) (/ w2 sum))
+        (values 0.5 0.5))))
+
+(defun composite-pnls (xs ys w1 w2)
+  (mapcar (lambda (x y) (+ (* w1 x) (* w2 y))) xs ys))
+
+(defun profit-factor (pnls)
+  (let ((gains 0.0)
+        (losses 0.0))
+    (dolist (p pnls)
+      (if (> p 0)
+          (incf gains p)
+          (incf losses (abs p))))
+    (if (zerop losses)
+        0.0
+        (/ gains losses))))
+
+(defun sharpe-from-pnls (pnls)
+  (let* ((n (length pnls)))
+    (if (zerop n)
+        0.0
+        (let* ((mean (/ (reduce #'+ pnls) n))
+               (sd (%stddev pnls)))
+          (if (zerop sd) 0.0 (/ mean sd))))))
+
+(defun pair-score-from-pnls (pnls)
+  (let* ((sharpe (sharpe-from-pnls pnls))
+         (pf (profit-factor pnls))
+         (score (+ (* *pair-score-sharpe-weight* sharpe)
+                   (* *pair-score-pf-weight* pf))))
+    (list :sharpe sharpe :pf pf :score score)))
+

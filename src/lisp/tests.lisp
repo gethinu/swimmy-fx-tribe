@@ -1104,6 +1104,8 @@
                   test-pair-candidate-pool-top-n
                   test-pair-align-pnl-series-zero-fill
                   test-pair-pearson-correlation
+                  test-pair-score-from-pnls
+                  test-pair-inverse-vol-weights
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

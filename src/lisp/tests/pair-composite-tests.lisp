@@ -57,3 +57,21 @@
     (assert-true (approx= 1.0 (swimmy.school::pearson-correlation xs ys)) "Expected corr=1")
     (assert-true (approx= -1.0 (swimmy.school::pearson-correlation xs zs)) "Expected corr=-1")))
 
+(deftest test-pair-score-from-pnls
+  "score should use sharpe/pf on composite pnls"
+  (let* ((pnls '(1.0 -0.5 1.0 -0.5))
+         (result (swimmy.school::pair-score-from-pnls pnls))
+         (sharpe (getf result :sharpe))
+         (pf (getf result :pf))
+         (score (getf result :score)))
+    (assert-true (approx= 0.333333 sharpe 1e-4) "Expected sharpe ~0.3333")
+    (assert-true (approx= 2.0 pf 1e-6) "Expected PF 2.0")
+    (assert-true (approx= 0.833333 score 1e-4) "Expected score ~0.8333")))
+
+(deftest test-pair-inverse-vol-weights
+  "inverse vol weights should favor lower volatility"
+  (multiple-value-bind (w1 w2)
+      (swimmy.school::inverse-vol-weights '(1.0 -1.0) '(2.0 -2.0))
+    (assert-true (approx= 0.666666 w1 1e-4) "Expected w1 ~0.6667")
+    (assert-true (approx= 0.333333 w2 1e-4) "Expected w2 ~0.3333")))
+
