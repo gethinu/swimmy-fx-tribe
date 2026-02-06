@@ -142,7 +142,7 @@
           :data data))
       nil)
       (t
-       (setf req-id (or last-id (swimmy.core:generate-uuid)))
+       (setf req-id (swimmy.core:generate-uuid))
        (let ((status (if last-id "retry" "sent")))
          (handler-case
              (progn

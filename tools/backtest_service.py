@@ -83,6 +83,7 @@ def _post_webhook(url: str, payload: dict) -> bool:
 
 _SEXP_NAME_RE = re.compile(r'\(name\s+\.\s+"([^"]+)"\)')
 _SEXP_NAME_JSONISH_RE = re.compile(r'"name"\s+"([^"]+)"')
+_SEXP_REQUEST_ID_RE = re.compile(r'\(request_id\s+\.\s+"([^"]+)"\)')
 
 _DUMP_INCOMING_ENV = "SWIMMY_BACKTEST_DUMP_INCOMING"
 _DUMP_GUARDIAN_ENV = "SWIMMY_BACKTEST_DUMP_GUARDIAN"
@@ -301,8 +302,25 @@ class BacktestService:
             m = _SEXP_NAME_JSONISH_RE.search(msg)
         return m.group(1) if m else "unknown"
 
+    @staticmethod
+    def _extract_request_id_from_sexpr(msg: str):
+        if not msg:
+            return None
+        m = _SEXP_REQUEST_ID_RE.search(msg)
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _inject_request_id_into_sexpr(sexp: str, request_id: str) -> str:
+        if not sexp or not request_id or "request_id" in sexp:
+            return sexp
+        patched = re.sub(r'\(result\s+\.\s+\(\(', f'(result . ((request_id . "{request_id}") ', sexp, count=1)
+        if patched != sexp:
+            return patched
+        return re.sub(r'\(result\s+\.\s+\(', f'(result . ((request_id . "{request_id}") ', sexp, count=1)
+
     def _handle_sexpr(self, msg: str):
         strategy_name = self._extract_name_from_sexpr(msg)
+        request_id = self._extract_request_id_from_sexpr(msg)
         proc = self._get_guardian_process()
         if proc is None:
             return {
@@ -311,6 +329,7 @@ class BacktestService:
                     "strategy_name": strategy_name,
                     "error": "Guardian binary missing",
                     "sharpe": 0.0,
+                    "request_id": request_id,
                 },
             }
 
@@ -327,6 +346,7 @@ class BacktestService:
                     "strategy_name": strategy_name,
                     "error": str(e),
                     "sharpe": 0.0,
+                    "request_id": request_id,
                 },
             }
 
@@ -341,9 +361,25 @@ class BacktestService:
                     "strategy_name": strategy_name,
                     "error": "Empty output",
                     "sharpe": 0.0,
+                    "request_id": request_id,
                 },
             }
 
+        if isinstance(output_line, str):
+            out = output_line.strip()
+            if out.startswith("{"):
+                try:
+                    obj = json.loads(out)
+                except Exception:
+                    obj = None
+                if isinstance(obj, dict):
+                    result = obj.get("result")
+                    if isinstance(result, dict) and request_id and "request_id" not in result:
+                        result["request_id"] = request_id
+                        obj["result"] = result
+                        return obj
+            if request_id:
+                return self._inject_request_id_into_sexpr(out, request_id)
         return output_line
 
     @staticmethod
@@ -367,6 +403,7 @@ class BacktestService:
         """Read stdout until a BACKTEST_RESULT line is found (skip banner/log lines)."""
         skipped = 0
         dump_guardian = _should_dump_guardian()
+        request_id = self._extract_request_id_from_sexpr(input_data)
         while True:
             output_line = proc.stdout.readline()
             if not output_line:
@@ -387,11 +424,14 @@ class BacktestService:
                             "strategy_name": strategy_name,
                             "error": output_line,
                             "sharpe": 0.0,
+                            "request_id": request_id,
                         },
                     }
                 if ("BACKTEST_RESULT" in output_line or
                         "backtest_result" in output_line or
                         "backtest-result" in output_line):
+                    if request_id:
+                        return self._inject_request_id_into_sexpr(output_line, request_id)
                     return output_line
             elif output_line.startswith("{"):
                 try:
@@ -409,9 +449,15 @@ class BacktestService:
                                 "strategy_name": strategy_name,
                                 "error": output_line,
                                 "sharpe": 0.0,
+                                "request_id": request_id,
                             },
                         }
                     if obj.get("type") == "BACKTEST_RESULT":
+                        result = obj.get("result")
+                        if isinstance(result, dict) and request_id and "request_id" not in result:
+                            result["request_id"] = request_id
+                            obj["result"] = result
+                            return obj
                         return output_line
             skipped += 1
             if skipped <= 3:

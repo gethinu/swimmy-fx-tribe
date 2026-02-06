@@ -27,8 +27,10 @@
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Startup Liveness**: Brain起動時は「受信ループ（Backtest結果/Guardian stream）」へ先に入る。重い一括処理（Deferred Backtest Flush）は **後回し＋レート制限**で段階的に実行する（起動で詰まらせない）。`SWIMMY_DEFERRED_FLUSH_BATCH`（1回の送信上限、0で無効）と `SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC`（実行間隔秒）で調整する。
+- **OOS Queue Startup Cleanup**: 起動時に `oos_queue` を全クリアし、OOS再キューは通常の検証ループで再投入する（古い request_id を残さない）。
 - **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
+- **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過で送信停止。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
@@ -47,6 +49,8 @@
 ## 直近の変更履歴
 - **2026-02-06**: Retired Rank を追加（Max Age退役、`data/library/RETIRED/`・`data/memory/retired.sexp`）。Evolution Report/DB集計に Retired を追加。
 - **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。
+- **2026-02-06**: 起動時に `oos_queue` を全クリアし、古い request_id が残らないようにする方針を明記。
+- **2026-02-06**: `BACKTEST_RESULT` の `request_id` を必須とする契約を明記。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）ZMQをS式のみに統一（legacy JSON廃止、`schema_version=1` 必須）。
 - **2026-02-05**: Notifier の `payload`（S式）を受理し、`payload_json` 互換をINTERFACESに明記。
 - **2026-02-05**: SBCLロード時WARNING/STYLE-WARNINGの全解消（ロード順、export、未使用変数、廃止フックの整理）。

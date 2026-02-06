@@ -112,6 +112,38 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-backtest-result-preserves-request-id
+  "BACKTEST_RESULT should carry request_id through the pipeline"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-REQ\") (sharpe . 0.2) (trades . 1) (request_id . \"RID-1\"))))")
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result))))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when (fboundp 'swimmy.school::handle-v2-result)
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (setf swimmy.main::*backtest-recv-count* 0)
+            (setf swimmy.main::*backtest-recv-last-id* nil)
+            (funcall fn msg)
+            (assert-equal "RID-1" swimmy.main::*backtest-recv-last-id*
+                          "request_id should be preserved"))
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
+
 (deftest test-backtest-result-persists-trade-list
   "internal-process-msg should persist trade_list with oos_kind mapping"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -265,6 +297,64 @@
             (swimmy.school::request-backtest s :candles nil))
           (assert-true swimmy.globals:*backtest-submit-last-id* "Expected submit request_id to be set"))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
+
+(deftest test-generate-uuid-changes-even-with-reset-rng
+  "generate-uuid should vary even if random state resets"
+  (let ((state (make-random-state nil))
+        (id1 nil)
+        (id2 nil))
+    (let ((*random-state* (make-random-state state)))
+      (setf id1 (swimmy.core:generate-uuid)))
+    (sleep 1)
+    (let ((*random-state* (make-random-state state)))
+      (setf id2 (swimmy.core:generate-uuid)))
+    (assert-false (string= id1 id2) "UUID should include time-based entropy")))
+
+(deftest test-oos-retry-uses-new-request-id
+  "OOS retry should generate a new request_id"
+  (let* ((tmp-db (format nil "data/memory/test-oos-retry-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-interval swimmy.school::*oos-request-interval*)
+         (orig-request (symbol-function 'swimmy.school::request-backtest)))
+    (unwind-protect
+         (progn
+           (setf swimmy.core::*db-path-default* tmp-db)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (setf swimmy.school::*oos-request-interval* 0)
+           (setf (symbol-function 'swimmy.school::request-backtest)
+                 (lambda (strat &key request-id &allow-other-keys)
+                   (declare (ignore strat))
+                   request-id))
+           (swimmy.school::enqueue-oos-request "UT-OOS" "RID-OLD" :status "sent"
+                                               :requested-at (- (get-universal-time) 999))
+           (let* ((strat (cl-user::make-strategy :name "UT-OOS" :symbol "USDJPY" :oos-sharpe nil))
+                  (id (swimmy.school::maybe-request-oos-backtest strat)))
+             (assert-true (and id (not (string= id "RID-OLD")))
+                          "retry should issue new request_id")))
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (setf swimmy.school::*oos-request-interval* orig-interval)
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
+(deftest test-oos-queue-clear-on-startup
+  "startup cleanup should clear oos_queue"
+  (let* ((tmp-db (format nil "data/memory/test-oos-startup-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+         (progn
+           (setf swimmy.core::*db-path-default* tmp-db)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (swimmy.school::enqueue-oos-request "UT-OOS" "RID-X" :status "sent")
+           (swimmy.school::cleanup-oos-queue-on-startup)
+           (multiple-value-bind (rid _ status) (swimmy.school::lookup-oos-request "UT-OOS")
+             (declare (ignore _ status))
+             (assert-true (null rid) "oos_queue should be cleared")))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
 
 (deftest test-strategy-to-alist-omits-filter-enabled-when-false
   "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
@@ -1141,10 +1231,14 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
+                  test-generate-uuid-changes-even-with-reset-rng
+                  test-oos-retry-uses-new-request-id
+                  test-oos-queue-clear-on-startup
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side

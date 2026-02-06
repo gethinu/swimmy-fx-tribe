@@ -108,6 +108,8 @@
 (defun initialize-school-system ()
   ;; V9.2: Init School Strategy System (AFTER History Load for Safety Gate)
   (swimmy.school::init-db)             ; V49.8 SQL Init
+  (when (fboundp 'swimmy.school::cleanup-oos-queue-on-startup)
+    (swimmy.school::cleanup-oos-queue-on-startup))
   (swimmy.school::init-knowledge-base) ; Restoration from SQL + Files
   (swimmy.school::init-school)         ; Clan & Pool Init
 

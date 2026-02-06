@@ -38,6 +38,18 @@
                    (first target))
            error-msg (get-universal-time) (rest target))))
 
+(defun cleanup-oos-queue-on-startup ()
+  "Clear all OOS queue rows on startup to avoid stale requests."
+  (handler-case
+      (progn
+        (ignore-errors (init-db))
+        (execute-non-query "DELETE FROM oos_queue")
+        (format t "[OOS] 🧹 Cleared oos_queue on startup.~%")
+        t)
+    (error (e)
+      (format t "[OOS] ⚠️ Failed to clear oos_queue: ~a~%" e)
+      nil)))
+
 (defun %coerce-int (v)
   (cond
     ((numberp v) (truncate v))
