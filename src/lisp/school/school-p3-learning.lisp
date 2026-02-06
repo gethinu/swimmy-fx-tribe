@@ -72,6 +72,8 @@
 
 (defparameter *graveyard-file* "data/memory/graveyard.sexp")
 (defparameter *p3-decay-rate* 0.9)
+(defparameter *retired-file* "data/memory/retired.sexp")
+(defparameter *retired-weight* 0.25)
 
 (defun load-graveyard-patterns ()
   "Load all failure patterns from graveyard.sexp."
@@ -85,6 +87,18 @@
       (format t "[GRAVEYARD] ⚠️ Failed: ~a~%" e)
       nil)))
 
+(defun load-retired-patterns ()
+  "Load retired patterns from retired.sexp."
+  (handler-case
+      (when (probe-file *retired-file*)
+        (with-open-file (stream *retired-file* :direction :input)
+          (loop for pattern = (read stream nil :eof)
+                until (eq pattern :eof)
+                collect pattern)))
+    (error (e)
+      (format t "[RETIRED] ⚠️ Failed: ~a~%" e)
+      nil)))
+
 (defun apply-p3-time-decay (patterns)
   "Apply time decay to patterns."
   (let ((now (get-universal-time))
@@ -96,25 +110,36 @@
                 (append p (list :weight weight))))
             patterns)))
 
+(defun apply-retired-weight (patterns)
+  (mapcar (lambda (p)
+            (let ((weight (getf p :weight 1.0)))
+              (append p (list :weight (* weight *retired-weight*) :retired t))))
+          patterns))
+
 (defun analyze-graveyard-for-avoidance ()
   "Analyze graveyard.sexp for SL/TP regions to avoid."
-  (let ((patterns (apply-p3-time-decay (load-graveyard-patterns)))
+  (let* ((gy (apply-p3-time-decay (load-graveyard-patterns)))
+         (ret (apply-retired-weight (apply-p3-time-decay (load-retired-patterns))))
+         (patterns (append gy ret))
         (clusters (make-hash-table :test 'equal)))
     (dolist (p patterns)
       (let ((key (list (getf p :timeframe) (getf p :direction) (getf p :symbol))))
         (push p (gethash key clusters nil))))
     (let ((avoid-regions nil))
       (maphash (lambda (key failures)
-                 (when (>= (length failures) 5)
-                   ;; V47.5: Filter nil values to prevent min/max errors
-                   (let ((sls (remove nil (mapcar (lambda (f) (getf f :sl)) failures)))
-                         (tps (remove nil (mapcar (lambda (f) (getf f :tp)) failures))))
-                     (when (and sls tps)  ;; Only if non-empty after filtering
-                       (push (list :tf (first key) :dir (second key) :sym (third key)
-                                   :sl-min (apply #'min sls) :sl-max (apply #'max sls)
-                                   :tp-min (apply #'min tps) :tp-max (apply #'max tps)
-                                   :failure-count (length failures))
-                             avoid-regions)))))
+                 (let ((effective-count
+                         (reduce #'+ (mapcar (lambda (f) (getf f :weight 1.0)) failures)
+                                 :initial-value 0.0)))
+                   (when (>= effective-count 5.0)
+                     ;; V47.5: Filter nil values to prevent min/max errors
+                     (let ((sls (remove nil (mapcar (lambda (f) (getf f :sl)) failures)))
+                           (tps (remove nil (mapcar (lambda (f) (getf f :tp)) failures))))
+                       (when (and sls tps)  ;; Only if non-empty after filtering
+                         (push (list :tf (first key) :dir (second key) :sym (third key)
+                                     :sl-min (apply #'min sls) :sl-max (apply #'max sls)
+                                     :tp-min (apply #'min tps) :tp-max (apply #'max tps)
+                                     :failure-count (length failures))
+                               avoid-regions))))))
                clusters)
       (format t "[GRAVEYARD] 📊 Found ~d avoid regions~%" (length avoid-regions))
       avoid-regions)))
@@ -260,4 +285,3 @@
 (load-q-table)
 
 (format t "[P3] 🧠 V47.5 Learning Advanced Loaded (Q-table persistent)~%")
-

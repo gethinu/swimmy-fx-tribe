@@ -982,6 +982,26 @@
       (setf (symbol-function 'swimmy.school:send-to-graveyard) orig
             swimmy.school::*max-consecutive-losses* orig-max))))
 
+(deftest test-retired-patterns-weighted-in-avoidance
+  "Retired patterns should contribute with lower weight to avoidance analysis."
+  (let* ((orig-load-gy (symbol-function 'swimmy.school::load-graveyard-patterns))
+         (orig-load-ret (symbol-function 'swimmy.school::load-retired-patterns)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::load-graveyard-patterns)
+                (lambda ()
+                  (list (list :timeframe 15 :direction :BUY :symbol "USDJPY"
+                              :sl 10 :tp 20 :timestamp (get-universal-time)))))
+          (setf (symbol-function 'swimmy.school::load-retired-patterns)
+                (lambda ()
+                  (loop repeat 10 collect
+                        (list :timeframe 15 :direction :BUY :symbol "USDJPY"
+                              :sl 11 :tp 21 :timestamp (get-universal-time)))))
+          (let ((regions (swimmy.school::analyze-graveyard-for-avoidance)))
+            (assert-true (listp regions) "Expected avoid regions list")))
+      (setf (symbol-function 'swimmy.school::load-graveyard-patterns) orig-load-gy
+            (symbol-function 'swimmy.school::load-retired-patterns) orig-load-ret))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -1067,6 +1087,7 @@
                   test-candle-creation
                   ;; V7.0: School Split Tests (Taleb)
                   test-time-decay-weight
+                  test-retired-patterns-weighted-in-avoidance
                   test-pattern-similarity
                   test-calculate-pattern-similarity-behavior ; [V8.2] Uncle Bob
                   test-atr-calculation-logic
