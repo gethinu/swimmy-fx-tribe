@@ -386,4 +386,4 @@
       ;; Logic: Breed a child, then retire parent
       ;; For now, just Kill (Retire) to make room, assuming Breeding happens via other triggers
       ;; Or trigger a breed event here?
-      (kill-strategy (strategy-name s) "Max Age Retirement"))))
+      (send-to-retired s "Max Age Retirement"))))
