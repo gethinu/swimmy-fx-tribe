@@ -75,3 +75,44 @@
     (assert-true (approx= 0.666666 w1 1e-4) "Expected w1 ~0.6667")
     (assert-true (approx= 0.333333 w2 1e-4) "Expected w2 ~0.3333")))
 
+(deftest test-pair-selection-rescue-mode
+  "rescue mode should allow |corr|<=0.3 when < max pairs"
+  (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))
+         (s2 (swimmy.school::make-strategy :name "B" :symbol "USDJPY" :timeframe 1 :sharpe 0.4 :rank :A))
+         (trade-map (list (cons "A" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0))))
+                           (cons "B" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0)))))))
+    (multiple-value-bind (pairs diag)
+        (swimmy.school::select-pair-candidates
+         (list s1 s2)
+         trade-map
+         :per-group 2
+         :min-trades 3
+         :max-pairs 5
+         :corr-threshold 0.2
+         :rescue-threshold 0.3
+         :corr-fn (lambda (xs ys) 0.25))
+      (declare (ignore diag))
+      (assert-true (= (length pairs) 1) "Expected rescue to include pair"))))
+
+(deftest test-pair-selection-excludes-short-trades
+  "strategies with < min trades should be excluded"
+  (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))
+         (s2 (swimmy.school::make-strategy :name "B" :symbol "USDJPY" :timeframe 1 :sharpe 0.4 :rank :A))
+         (trade-map (list (cons "A" '(((timestamp . 1) (pnl . 1.0))))
+                           (cons "B" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0)))))))
+    (multiple-value-bind (pairs diag)
+        (swimmy.school::select-pair-candidates
+         (list s1 s2)
+         trade-map
+         :per-group 2
+         :min-trades 3
+         :max-pairs 5)
+      (assert-true (null pairs) "Expected no pairs when A is short")
+      (assert-true (> (getf diag :excluded) 0) "Expected excluded count"))))
+

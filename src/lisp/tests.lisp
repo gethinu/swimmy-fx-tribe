@@ -1106,6 +1106,8 @@
                   test-pair-pearson-correlation
                   test-pair-score-from-pnls
                   test-pair-inverse-vol-weights
+                  test-pair-selection-rescue-mode
+                  test-pair-selection-excludes-short-trades
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
