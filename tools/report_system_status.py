@@ -3,7 +3,7 @@
 report_system_status.py
 =======================
 Generates a "factory report" on the state of the evolution system.
-Counts active strategies, recruits, and graveyard entries from rank directories.
+Counts active strategies, recruits, graveyard, and retired entries from rank directories.
 Sends an Embed notification to Discord via the Notifier service.
 """
 
@@ -102,6 +102,7 @@ def main():
         "S": 0,
         "LEGEND": 0,
         "GRAVEYARD": 0,
+        "RETIRED": 0,
     }
 
     if os.path.exists(library_path):
@@ -121,12 +122,13 @@ def main():
     )
     recruit_count = stats["INCUBATOR"]
     graveyard_count = stats["GRAVEYARD"]
+    retired_count = stats["RETIRED"]
     optimized_count = count_pattern_in_file(
         LISP_OPTIMIZED, r"\(:name \""
     )  # Keep this for genes
 
     print(
-        f"📊 Stats (Sharded): Active={active_count}, S-Rank={stats['S']}, A-Rank={stats['A']}, Graveyard={graveyard_count}"
+        f"📊 Stats (Sharded): Active={active_count}, S-Rank={stats['S']}, A-Rank={stats['A']}, Graveyard={graveyard_count}, Retired={retired_count}"
     )
 
     # Construct Payload
@@ -165,6 +167,11 @@ def main():
                     {
                         "name": "👻 Graveyard (Rejected)",
                         "value": f"{graveyard_count}",
+                        "inline": True,
+                    },
+                    {
+                        "name": "🧊 Retired (Max Age)",
+                        "value": f"{retired_count}",
                         "inline": True,
                     },
                     {

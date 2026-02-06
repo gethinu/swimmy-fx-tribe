@@ -21,7 +21,7 @@
       (t (normalize (format nil "~a" rank))))))
 
 (defun get-db-rank-counts ()
-  "Return plist of rank counts from DB: :total :active :s :a :b :legend :graveyard :incubator :unranked."
+  "Return plist of rank counts from DB: :total :active :s :a :b :legend :graveyard :retired :incubator :unranked."
   (let* ((rows (execute-to-list "SELECT rank, count(*) FROM strategies GROUP BY rank"))
          (counts (make-hash-table :test 'equal))
          (total 0))
@@ -36,9 +36,10 @@
              (b (count-rank "B"))
              (legend (count-rank "LEGEND"))
              (graveyard (count-rank "GRAVEYARD"))
+             (retired (count-rank "RETIRED"))
              (incubator (count-rank "INCUBATOR"))
              (unranked (count-rank "NIL"))
-             (active (- total graveyard)))
+             (active (- total graveyard retired)))
         (list :total total
               :active active
               :s s
@@ -46,6 +47,7 @@
               :b b
               :legend legend
               :graveyard graveyard
+              :retired retired
               :incubator incubator
               :unranked unranked)))))
 
@@ -58,7 +60,8 @@
           :b (count-dir "B")
           :incubator (count-dir "INCUBATOR")
           :legend (count-dir "LEGEND")
-          :graveyard (count-dir "GRAVEYARD"))))
+          :graveyard (count-dir "GRAVEYARD")
+          :retired (count-dir "RETIRED"))))
 
 (defun report-source-drift ()
   "Return list of warning strings when DB/KB/Library counts drift."
@@ -68,9 +71,13 @@
          (db-active (getf db :active 0))
          (db-grave (getf db :graveyard 0))
          (lib-grave (getf lib :graveyard 0))
+         (db-retired (getf db :retired 0))
+         (lib-retired (getf lib :retired 0))
          (warnings nil))
     (when (/= db-active kb-active)
       (push (format nil "KB active mismatch (DB=~d KB=~d)" db-active kb-active) warnings))
     (when (/= db-grave lib-grave)
       (push (format nil "Graveyard mismatch (DB=~d Library=~d)" db-grave lib-grave) warnings))
+    (when (/= db-retired lib-retired)
+      (push (format nil "Retired mismatch (DB=~d Library=~d)" db-retired lib-retired) warnings))
     (nreverse warnings)))

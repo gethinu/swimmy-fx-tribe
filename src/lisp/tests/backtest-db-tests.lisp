@@ -208,7 +208,7 @@
       (unwind-protect
           (progn
             (swimmy.school::init-db)
-            (dolist (spec '(("R-S" :S) ("R-A" :A) ("R-B" :B) ("R-G" :GRAVEYARD) ("R-N" nil)))
+            (dolist (spec '(("R-S" :S) ("R-A" :A) ("R-B" :B) ("R-G" :GRAVEYARD) ("R-R" :RETIRED) ("R-N" nil)))
               (destructuring-bind (name rank) spec
                 (swimmy.school::upsert-strategy
                  (make-strategy :name name :sharpe 0.2 :symbol "USDJPY" :rank rank))))
@@ -217,6 +217,7 @@
                    (a (getf counts :a))
                    (b (getf counts :b))
                    (g (getf counts :graveyard))
+                   (r (getf counts :retired))
                    (u (getf counts :unranked))
                    (total (getf counts :total))
                    (active (getf counts :active)))
@@ -224,9 +225,10 @@
               (assert-true (= 1 a) "A count")
               (assert-true (= 1 b) "B count")
               (assert-true (= 1 g) "Graveyard count")
+              (assert-true (= 1 r) "Retired count")
               (assert-true (= 1 u) "Unranked count")
-              (assert-true (= 5 total) "Total count")
-              (assert-true (= 4 active) "Active excludes graveyard")))
+              (assert-true (= 6 total) "Total count")
+              (assert-true (= 4 active) "Active excludes graveyard + retired")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 

@@ -15,11 +15,11 @@
   ;; 1. Active Knowledge Base
   (let ((kb-count (length *strategy-knowledge-base*))
         (db-count (handler-case 
-                      (second (first (execute-to-list "SELECT count(*) FROM strategies WHERE rank != ':GRAVEYARD'")))
+                      (second (first (execute-to-list "SELECT count(*) FROM strategies WHERE rank NOT IN (':GRAVEYARD', ':RETIRED')")))
                     (error (e) 
                       (format t "DB Error: ~a~%" e)
                       -1))))
-    (format t "[METRIC 1] Active KB: Memory=~d, DB(non-graveyard)=~d~%" kb-count db-count)
+    (format t "[METRIC 1] Active KB: Memory=~d, DB(non-graveyard/non-retired)=~d~%" kb-count db-count)
     (when (not (= kb-count db-count))
       (format t "⚠️ Discrepancy in Active KB count!~%")))
       
@@ -42,6 +42,12 @@
          (gy-db (handler-case (second (first (sqlite:execute-to-list (or *db-conn* (init-db)) "SELECT count(*) FROM strategies WHERE rank = ':GRAVEYARD'")))
                   (error () -1))))
     (format t "[METRIC 6] Graveyard: Files=~d, DB=~d~%" gy-files gy-db))
+
+  ;; 5. Retired
+  (let* ((ret-files (length (directory (merge-pathnames "RETIRED/*.lisp" swimmy.persistence:*library-path*))))
+         (ret-db (handler-case (second (first (sqlite:execute-to-list (or *db-conn* (init-db)) "SELECT count(*) FROM strategies WHERE rank = ':RETIRED'")))
+                  (error () -1))))
+    (format t "[METRIC 7] Retired: Files=~d, DB=~d~%" ret-files ret-db))
     
   (format t "✅ Verification Complete.~%"))
 

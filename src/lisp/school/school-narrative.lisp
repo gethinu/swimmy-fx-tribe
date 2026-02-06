@@ -240,6 +240,7 @@
          (a-rank (getf counts :a 0))
          (b-rank (getf counts :b 0)) ; Selection
          (graveyard (getf counts :graveyard 0))
+         (retired (getf counts :retired 0))
          ;; New Recruits (24h) - using new creation-time slot (P13)
          (one-day-ago (- (get-universal-time) 86400))
          (new-recruits (count-if (lambda (s)
@@ -277,6 +278,9 @@ Current status of the autonomous strategy generation pipeline.
 👻 Graveyard
 ~d
 
+🧊 Retired
+~d
+
 ~a
 
 ~a
@@ -295,6 +299,7 @@ Current status of the autonomous strategy generation pipeline.
             b-rank
             new-recruits
             graveyard
+            retired
             cpcv-snippet
             oos-snippet
             phase2-end-text

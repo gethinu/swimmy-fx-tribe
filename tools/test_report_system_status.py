@@ -38,8 +38,11 @@ def main() -> int:
         root = Path(tmp)
         _write(root / "swimmy.asd", "")
 
+        aux_path = root / "src" / "python" / "aux_sexp.py"
+        _write(aux_path, "def sexp_request(payload):\n    return str(payload)\n")
+
         lib_root = root / "data" / "library"
-        for rank in ["INCUBATOR", "B", "A", "S", "LEGEND", "GRAVEYARD"]:
+        for rank in ["INCUBATOR", "B", "A", "S", "LEGEND", "GRAVEYARD", "RETIRED"]:
             (lib_root / rank).mkdir(parents=True, exist_ok=True)
         _write(lib_root / "B" / "test.lisp", ";; test")
 

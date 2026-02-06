@@ -14,12 +14,14 @@ BRANK=$(find data/library -ipath "*/b/*.lisp" 2>/dev/null | wc -l)
 ARANK=$(find data/library -ipath "*/a/*.lisp" 2>/dev/null | wc -l)
 SRANK=$(find data/library -ipath "*/s/*.lisp" 2>/dev/null | wc -l)
 GRAVEYARD=$(find data/library -ipath "*/graveyard/*.lisp" 2>/dev/null | wc -l)
+RETIRED=$(find data/library -ipath "*/retired/*.lisp" 2>/dev/null | wc -l)
 
 echo -e "   🍼 Incubator:   $INCUBATOR"
 echo -e "   🪜 B-Rank:      $BRANK"
 echo -e "   🎖️ A-Rank:      $ARANK"
 echo -e "   🏆 S-Rank:      $SRANK"
 echo -e "   🪦 Graveyard:   $GRAVEYARD"
+echo -e "   🧊 Retired:     $RETIRED"
 
 echo "========================================================"
 echo "Live Logs (Press Ctrl+C to exit):"
