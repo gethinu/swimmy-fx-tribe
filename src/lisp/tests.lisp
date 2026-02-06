@@ -1271,6 +1271,12 @@
                   test-pair-overlay-caps-lot
                   test-pair-candidate-pool-top-n
                   test-align-pnl-series-padding
+                  test-pair-align-pnl-series-zero-fill
+                  test-pair-pearson-correlation
+                  test-pair-score-from-pnls
+                  test-pair-inverse-vol-weights
+                  test-pair-selection-rescue-mode
+                  test-pair-selection-excludes-short-trades
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

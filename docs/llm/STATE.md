@@ -35,7 +35,7 @@
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
-- **Pair-Composite (設計確定・部分実装)**: 既存単一戦略を壊さない overlay 層として導入。`*pair-strategy-enabled*` が true のときのみ適用（`SWIMMY_PAIR_STRATEGY=1` の環境フラグ接続は未実装）。対象は A/S/Legend、上限5ペア、相関 |corr|≤0.2（N≥100）、候補不足時のみ Phase2 で |corr|≤0.3 救済。スコアは `0.7*Sharpe+0.3*PF`。ペア枠は 0.05 lot（上限）。PnL 相関は OOS/CPCV/Backtest のトレード履歴を**結合**して正本とする。`oos_kind` は `-OOS`=OOS、`-QUAL/-RR`=BACKTEST(IS) を採用（CPCVは trade_list 対応後）。`trade_logs` に `pair_id` を追加済み。`backtest_trade_logs` を新設し、`BACKTEST_RESULT` の `trade_list` を永続化（`trades` は件数のまま）。ペア選定/相関計算/スコアリング/自動ペア登録は未実装。
+- **Pair-Composite (設計確定・部分実装)**: 既存単一戦略を壊さない overlay 層として導入。`*pair-strategy-enabled*` が true のときのみ適用（`SWIMMY_PAIR_STRATEGY=1` の環境フラグ接続は未実装）。対象は A/S/Legend（**シンボル×TFごとの上位N=50** を母集団）、上限5ペア、相関 |corr|≤0.2（N≥100）、候補不足時のみ Phase2 で |corr|≤0.3 救済。スコアは `0.7*Sharpe+0.3*PF`。ペア枠は 0.05 lot（上限）。PnL 相関は OOS/CPCV/Backtest のトレード履歴を**結合**して正本とする。`oos_kind` は `-OOS`=OOS、`-QUAL/-RR`=BACKTEST(IS) を採用（CPCVは trade_list 対応後）。`trade_logs` に `pair_id` を追加済み。`backtest_trade_logs` を新設し、`BACKTEST_RESULT` の `trade_list` を永続化（`trades` は件数のまま）。ペア選定/相関計算/スコアリング/自動ペア登録は未実装。
 
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
@@ -48,7 +48,7 @@
 
 ## 直近の変更履歴
 - **2026-02-06**: Retired Rank を追加（Max Age退役、`data/library/RETIRED/`・`data/memory/retired.sexp`）。Evolution Report/DB集計に Retired を追加。
-- **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。
+- **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。候補母集団は **シンボル×TFごとの上位N=50** とする方針を追加。
 - **2026-02-06**: 起動時に `oos_queue` を全クリアし、古い request_id が残らないようにする方針を明記。
 - **2026-02-06**: `BACKTEST_RESULT` の `request_id` を必須とする契約を明記。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）ZMQをS式のみに統一（legacy JSON廃止、`schema_version=1` 必須）。

@@ -2,6 +2,10 @@
 
 (in-package :swimmy.tests)
 
+(defun approx= (a b &optional (eps 1e-6))
+  (< (abs (- a b)) eps))
+
+
 (deftest test-pair-id-stable
   "pair-id should be order-independent"
   (let ((a (swimmy.school::pair-id "A" "B"))
@@ -42,6 +46,26 @@
          (aligned-b (second values)))
     (assert-equal aligned-a '(1.0 0.0 -0.5) "Series A should be padded")
     (assert-equal aligned-b '(0.0 2.0 0.5) "Series B should be padded")))
+(deftest test-pair-align-pnl-series-zero-fill
+  "align pnl series should zero-fill missing timestamps"
+  (let* ((a '(((timestamp . 1) (pnl . 1.0))
+              ((timestamp . 3) (pnl . -1.0))))
+         (b '(((timestamp . 2) (pnl . 2.0))
+              ((timestamp . 3) (pnl . 1.0))))
+         (series-a (swimmy.school::trade-list->series a :max-trades 10))
+         (series-b (swimmy.school::trade-list->series b :max-trades 10)))
+    (multiple-value-bind (xs ys)
+        (swimmy.school::align-pnl-series series-a series-b)
+      (assert-equal '(1.0 0.0 -1.0) xs "Expected zero-fill for A")
+      (assert-equal '(0.0 2.0 1.0) ys "Expected zero-fill for B"))))
+
+(deftest test-pair-pearson-correlation
+  "pearson correlation should be +/-1 for identical/inverse series"
+  (let* ((xs '(1.0 2.0 3.0))
+         (ys '(1.0 2.0 3.0))
+         (zs '(3.0 2.0 1.0)))
+    (assert-true (approx= 1.0 (swimmy.school::pearson-correlation xs ys)) "Expected corr=1")
+    (assert-true (approx= -1.0 (swimmy.school::pearson-correlation xs zs)) "Expected corr=-1")))
 
 (deftest test-pair-score-from-pnls
   "score should use sharpe/pf on composite pnls"
@@ -60,4 +84,43 @@
       (swimmy.school::inverse-vol-weights '(1.0 -1.0) '(2.0 -2.0))
     (assert-true (approx= 0.666666 w1 1e-4) "Expected w1 ~0.6667")
     (assert-true (approx= 0.333333 w2 1e-4) "Expected w2 ~0.3333")))
+(deftest test-pair-selection-rescue-mode
+  "rescue mode should allow |corr|<=0.3 when < max pairs"
+  (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))
+         (s2 (swimmy.school::make-strategy :name "B" :symbol "USDJPY" :timeframe 1 :sharpe 0.4 :rank :A))
+         (trade-map (list (cons "A" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0))))
+                           (cons "B" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0)))))))
+    (multiple-value-bind (pairs diag)
+        (swimmy.school::select-pair-candidates
+         (list s1 s2)
+         trade-map
+         :per-group 2
+         :min-trades 3
+         :max-pairs 5
+         :corr-threshold 0.2
+         :rescue-threshold 0.3
+         :corr-fn (lambda (xs ys) 0.25))
+      (declare (ignore diag))
+      (assert-true (= (length pairs) 1) "Expected rescue to include pair"))))
 
+(deftest test-pair-selection-excludes-short-trades
+  "strategies with < min trades should be excluded"
+  (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))
+         (s2 (swimmy.school::make-strategy :name "B" :symbol "USDJPY" :timeframe 1 :sharpe 0.4 :rank :A))
+         (trade-map (list (cons "A" '(((timestamp . 1) (pnl . 1.0))))
+                           (cons "B" '(((timestamp . 1) (pnl . 1.0))
+                                       ((timestamp . 2) (pnl . -1.0))
+                                       ((timestamp . 3) (pnl . 1.0)))))))
+    (multiple-value-bind (pairs diag)
+        (swimmy.school::select-pair-candidates
+         (list s1 s2)
+         trade-map
+         :per-group 2
+         :min-trades 3
+         :max-pairs 5)
+      (assert-true (null pairs) "Expected no pairs when A is short")
+      (assert-true (> (getf diag :excluded) 0) "Expected excluded count"))))
