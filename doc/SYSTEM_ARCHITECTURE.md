@@ -164,6 +164,10 @@ morning-ritual (brain.lisp:2650)
 | research.lisp | 400 | 論文実装 |
 | dsl.lisp | 200 | インジケータDSL |
 
+**補足（アーカイブ）**
+- `data/library/RETIRED/`：Max Age 退役アーカイブ
+- `data/memory/retired.sexp`：低ウェイト学習用パターン
+
 ---
 
 ## I 最近の変更 (V3.0)

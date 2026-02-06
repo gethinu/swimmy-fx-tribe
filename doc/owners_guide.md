@@ -275,6 +275,7 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 - **S**: Verified Elite
 - **Legend**: 外部から招喚された英雄
 - **Graveyard**: 敗者
+- **Retired**: Max Age 退役アーカイブ（低ウェイト学習 / `data/memory/retired.sexp`）
 
 ### 2. 7つの市場状態 (Softmax Regime Detection V45.0)
 
