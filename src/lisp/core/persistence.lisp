@@ -24,7 +24,7 @@
 
 (defparameter *library-path* (merge-pathnames "data/library/" (resolve-library-root)))
 
-(defparameter *library-rank-dirs* '("GRAVEYARD" "INCUBATOR" "B" "A" "S" "LEGEND" "LEGEND-ARCHIVE")
+(defparameter *library-rank-dirs* '("GRAVEYARD" "RETIRED" "INCUBATOR" "B" "A" "S" "LEGEND" "LEGEND-ARCHIVE")
   "Rank-based directories used for sharded file persistence.")
 
 (defparameter *legacy-tier-dirs* '("INCUBATOR" "SELECTION" "TRAINING" "BATTLEFIELD" "VETERAN" "LEGEND" "GRAVEYARD")
@@ -51,7 +51,7 @@
   (let ((rank (slot-value strategy-obj 'swimmy.school::rank)))
     (cond
       ((null rank) :INCUBATOR)
-      ((member rank '(:B :A :S :LEGEND :LEGEND-ARCHIVE :GRAVEYARD :INCUBATOR) :test #'eq) rank)
+      ((member rank '(:B :A :S :LEGEND :LEGEND-ARCHIVE :GRAVEYARD :RETIRED :INCUBATOR) :test #'eq) rank)
       (t :INCUBATOR))))
 
 (defun get-strategy-path (name rank)

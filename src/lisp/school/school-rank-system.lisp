@@ -9,7 +9,8 @@
 ;;; 2. :A - CPCV validated (Sharpe≥0.3, PF≥1.2, WR≥40%, MaxDD<20%)
 ;;; 3. :S - Live trading permitted (Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%)
 ;;; 4. :graveyard - Failed strategies (learning data)
-;;; 5. :legend - Protected strategies (61 total, never discarded)
+;;; 5. :retired - Max Age archive (low-weight learning)
+;;; 6. :legend - Protected strategies (61 total, never discarded)
 ;;; ============================================================================
 
 (in-package :swimmy.school)
@@ -32,6 +33,12 @@
 
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
+
+;;; ---------------------------------------------------------------------------
+;;; RETIRED STORAGE
+;;; ---------------------------------------------------------------------------
+
+(defparameter *retired-file* "data/memory/retired.sexp")
 
 
 ;;; ---------------------------------------------------------------------------
@@ -136,7 +143,22 @@
           (error (e)
             (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
         
-        (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%")))
+        (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%"))
+
+      (when (eq new-rank :retired)
+        (save-retired-pattern strategy reason)
+        (setf *strategy-knowledge-base*
+              (remove strategy *strategy-knowledge-base* :test #'eq))
+        ;; Also remove from category pools
+        (let ((cat (categorize-strategy strategy)))
+          (setf (gethash cat *category-pools*)
+                (remove strategy (gethash cat *category-pools*) :test #'eq)))
+        ;; Persist to archive
+        (handler-case
+            (swimmy.persistence:move-strategy strategy :retired)
+          (error (e)
+            (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
+        (format t "[RANK] 🧊 Retired and removed from Knowledge Base.~%")))
     new-rank))
 
 (defun promote-rank (strategy new-rank reason)
@@ -150,6 +172,10 @@
 (defun send-to-graveyard (strategy reason)
   "Move strategy to graveyard and save failure pattern."
   (ensure-rank strategy :graveyard reason))
+
+(defun send-to-retired (strategy reason)
+  "Move strategy to retired archive and save pattern."
+  (ensure-rank strategy :retired reason))
 
 (defun save-failure-pattern (strategy &optional reason)
   "Save failed strategy parameters for learning (avoid same mistakes).
@@ -188,6 +214,33 @@
           (error (e2)
             (format t "[GRAVEYARD] ❌ EMERGENCY SAVE FAILED: ~a. Pattern lost for ~a!~%" 
                     e2 (strategy-name strategy))))))))
+
+(defun save-retired-pattern (strategy &optional reason)
+  "Save retired strategy parameters for low-weight learning."
+  (let ((pattern (list :name (strategy-name strategy)
+                       :timeframe (strategy-timeframe strategy)
+                       :direction (strategy-direction strategy)
+                       :symbol (strategy-symbol strategy)
+                       :sl (strategy-sl strategy)
+                       :tp (strategy-tp strategy)
+                       :sharpe (strategy-sharpe strategy)
+                       :profit-factor (strategy-profit-factor strategy)
+                       :win-rate (strategy-win-rate strategy)
+                       :max-dd (strategy-max-dd strategy)
+                       :reason reason
+                       :timestamp (get-universal-time)
+                       :retired t)))
+    (handler-case
+        (progn
+          (ensure-directories-exist "data/memory/")
+          (with-open-file (stream *retired-file*
+                                  :direction :output
+                                  :if-exists :append
+                                  :if-does-not-exist :create)
+            (write pattern :stream stream)
+            (terpri stream)))
+      (error (e)
+        (format t "[RETIRED] ⚠️ Save failed: ~a~%" e)))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; PHASE 1 EVALUATION (New Strategy → B-RANK or Graveyard)
