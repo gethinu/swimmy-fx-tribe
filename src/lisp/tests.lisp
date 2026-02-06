@@ -112,6 +112,38 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-backtest-result-preserves-request-id
+  "BACKTEST_RESULT should carry request_id through the pipeline"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-REQ\") (sharpe . 0.2) (trades . 1) (request_id . \"RID-1\"))))")
+           (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+           (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+           (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+           (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                         (symbol-function 'swimmy.school::handle-v2-result))))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                  (lambda (&rest args) (declare (ignore args)) (values nil nil nil)))
+            (when (fboundp 'swimmy.school::handle-v2-result)
+              (setf (symbol-function 'swimmy.school::handle-v2-result)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
+            (setf swimmy.main::*backtest-recv-count* 0)
+            (setf swimmy.main::*backtest-recv-last-id* nil)
+            (funcall fn msg)
+            (assert-equal "RID-1" swimmy.main::*backtest-recv-last-id*
+                          "request_id should be preserved"))
+        (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+        (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+        (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+        (when orig-v2
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
+
 (deftest test-backtest-result-persists-trade-list
   "internal-process-msg should persist trade_list with oos_kind mapping"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1072,6 +1104,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
