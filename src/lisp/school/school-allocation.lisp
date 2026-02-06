@@ -103,7 +103,7 @@
         (values (get-id-category cat-id) slot))
       (values :unknown 0)))
 
-(defun try-reserve-warrior-slot (category strategy-name symbol direction)
+(defun try-reserve-warrior-slot (category strategy-name symbol direction &key pair-id lot)
   "V44.2: Atomic Slot Reservation (Expert Panel Approved)
    Attempts to find AND reserve a slot atomically.
    Returns (values slot magic) if successful, or (values nil nil) if full.
@@ -122,7 +122,7 @@
            (pending (gethash magic *pending-orders*)))
       (unless (or active pending)
         ;; ATOMIC RESERVATION: Immediately register pending order
-        (register-pending-order magic strategy-name symbol category direction)
+        (register-pending-order magic strategy-name symbol category direction :pair-id pair-id :lot lot)
         (format t "[ALLOC] 🔒 Slot ~d Reserved for ~a (Magic ~d)~%" i strategy-name magic)
         (return-from try-reserve-warrior-slot (values i magic)))))
   (values nil nil))
@@ -131,7 +131,7 @@
 ;;; PENDING ORDER MANAGEMENT
 ;;; ==========================================
 
-(defun register-pending-order (magic strategy-name symbol category direction)
+(defun register-pending-order (magic strategy-name symbol category direction &key pair-id lot)
   "Register a trade as PENDING. Do not allocate warrior slot yet."
   (setf (gethash magic *pending-orders*)
         (list :timestamp (get-universal-time)
@@ -139,7 +139,9 @@
               :symbol symbol
               :category category
               :direction direction
-              :magic magic))
+              :magic magic
+              :pair-id pair-id
+              :lot lot))
   (format t "[ALLOC] ⏳ Pending Order Registered: Magic ~d (~a ~a)~%" magic strategy-name direction))
 
 (defun check-pending-timeouts ()
@@ -310,6 +312,18 @@
                (declare (ignore key))
                (when (eql (getf warrior :magic) magic)
                  (return-from lookup-strategy-by-magic (getf warrior :strategy))))
+             *warrior-allocation*))
+  nil)
+
+(defun lookup-pair-id-by-magic (magic)
+  "Find pair-id from magic number (checking Pending and Active Warriors)"
+  (when magic
+    (let ((pending (gethash magic *pending-orders*)))
+      (when pending (return-from lookup-pair-id-by-magic (getf pending :pair-id))))
+    (maphash (lambda (key warrior)
+               (declare (ignore key))
+               (when (eql (getf warrior :magic) magic)
+                 (return-from lookup-pair-id-by-magic (getf warrior :pair-id))))
              *warrior-allocation*))
   nil)
 
