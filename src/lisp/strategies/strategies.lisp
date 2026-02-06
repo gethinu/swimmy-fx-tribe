@@ -255,6 +255,8 @@
       (format t "~%[L] 🛡️ SOFT KILL: ~a (~a) -> Shelved indefinitely~%" name reason)
       (setf (strategy-status s) :killed)
       (setf (strategy-status-reason s) (format nil "SOFT_KILL: ~a" reason))
+      ;; Persist status to DB so restarts don't re-trigger kill/alerts
+      (ignore-errors (upsert-strategy s))
       ;; Notify
       (when (fboundp 'notify-discord-alert)
         (notify-discord-alert 

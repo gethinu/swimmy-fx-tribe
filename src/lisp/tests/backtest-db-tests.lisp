@@ -45,6 +45,38 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-kill-strategy-persists-status
+  "Soft kill should persist status to DB to survive restarts."
+  (let* ((name "TEST-KILL-PERSIST")
+         (tmp-db (format nil "/tmp/swimmy-kill-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (let ((orig-notify (and (fboundp 'swimmy.school::notify-discord-alert)
+                              (symbol-function 'swimmy.school::notify-discord-alert))))
+        (unwind-protect
+            (progn
+              (when orig-notify
+                (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                      (lambda (&rest args) (declare (ignore args)) nil)))
+              (swimmy.school::init-db)
+              (let ((strat (make-strategy :name name :symbol "USDJPY")))
+                (setf *strategy-knowledge-base* (list strat))
+                (upsert-strategy strat)
+                (kill-strategy name "Unit Test Kill")
+                (let* ((sexp-str (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))
+                       (*package* (find-package :swimmy.school))
+                       (obj (read-from-string sexp-str)))
+                  (assert-equal :killed (strategy-status obj) "DB should persist :killed status")
+                  (assert-true (search "SOFT_KILL" (or (strategy-status-reason obj) ""))
+                               "DB should persist status reason"))))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))
+          (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
 (deftest test-sqlite-wal-mode-enabled
   "Ensure init-db sets SQLite to WAL mode for concurrency."
   (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))

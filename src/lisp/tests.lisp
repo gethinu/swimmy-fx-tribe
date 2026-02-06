@@ -1122,6 +1122,7 @@
                   test-risk-summary
                   ;; Backtest DB sync regression
                   test-apply-backtest-result-updates-data-sexp
+                  test-kill-strategy-persists-status
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
