@@ -1049,6 +1049,31 @@
       (setf (symbol-function 'swimmy.school::load-graveyard-patterns) orig-load-gy
             (symbol-function 'swimmy.school::load-retired-patterns) orig-load-ret))))
 
+(deftest test-daily-pnl-correlation
+  "Daily PnL correlation should be near 1 for identical series"
+  (let* ((tmp-db (format nil "/tmp/swimmy-corr-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 3 days of identical pnl for A and B
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (let ((corr (swimmy.school::calculate-daily-pnl-correlation "A" "B" :days 3)))
+              (assert-true (and corr (> corr 0.99)) "Correlation should be near 1")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -1098,6 +1123,7 @@
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
                   test-strategy-daily-pnl-aggregation
+                  test-daily-pnl-correlation
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable
