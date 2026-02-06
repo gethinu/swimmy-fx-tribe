@@ -256,6 +256,48 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-backtest-trade-logs-insert
+  "backtest_trade_logs should accept trade_list rows"
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school:record-backtest-trades
+             "RID-1" "STRAT-A" "BACKTEST"
+             (list (list :timestamp 1 :pnl 1.0 :symbol "USDJPY" :direction "BUY" :volume 0.01)))
+            (let ((count (swimmy.school::execute-single
+                          "SELECT count(*) FROM backtest_trade_logs")))
+              (assert-true (= count 1) "Expected 1 backtest trade row")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-fetch-backtest-trades
+  "fetch-backtest-trades should return rows with optional oos_kind filter"
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-fetch-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school:record-backtest-trades
+             "RID-1" "STRAT-A" "BACKTEST"
+             (list (list :timestamp 1 :pnl 1.0 :symbol "USDJPY" :direction "BUY")))
+            (swimmy.school:record-backtest-trades
+             "RID-2" "STRAT-A" "OOS"
+             (list (list :timestamp 2 :pnl 2.0 :symbol "USDJPY" :direction "SELL")))
+            (let ((rows-all (swimmy.school:fetch-backtest-trades "STRAT-A"))
+                  (rows-oos (swimmy.school:fetch-backtest-trades "STRAT-A" :oos-kind "OOS")))
+              (assert-true (= (length rows-all) 2) "Expected 2 rows")
+              (assert-true (= (length rows-oos) 1) "Expected 1 OOS row")
+              (let ((row (first rows-oos)))
+                (assert-equal "RID-2" (first row) "request_id should match")
+                (assert-equal "OOS" (nth 16 row) "oos_kind should match"))))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-report-source-drift-detects-mismatch
   "Drift check should flag mismatched DB/KB/Library counts."
   (let* ((tmp-db (format nil "/tmp/swimmy-drift-~a.db" (get-universal-time)))

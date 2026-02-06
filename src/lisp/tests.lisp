@@ -1001,6 +1001,8 @@
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
+                  test-backtest-trade-logs-insert
+                  test-fetch-backtest-trades
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

@@ -82,6 +82,8 @@
    #:save-backtest-cache
    #:load-backtest-cache
    #:get-cached-backtest
+   #:record-backtest-trades
+   #:fetch-backtest-trades
    #:refresh-strategy-metrics-from-db
    #:fetch-candidate-strategies
    #:fetch-all-strategies-from-db
