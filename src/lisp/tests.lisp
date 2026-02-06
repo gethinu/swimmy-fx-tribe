@@ -1102,6 +1102,7 @@
                   test-pair-id-stable
                   test-pair-overlay-caps-lot
                   test-pair-candidate-pool-top-n
+                  test-pair-align-pnl-series-zero-fill
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

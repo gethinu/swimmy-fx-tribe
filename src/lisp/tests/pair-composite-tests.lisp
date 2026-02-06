@@ -32,3 +32,16 @@
                    "Expected S3,S2,E1 in pool")
       (assert-false (member "B1" names :test #'string=) "Rank B should be excluded"))))
 
+(deftest test-pair-align-pnl-series-zero-fill
+  "align pnl series should zero-fill missing timestamps"
+  (let* ((a '(((timestamp . 1) (pnl . 1.0))
+              ((timestamp . 3) (pnl . -1.0))))
+         (b '(((timestamp . 2) (pnl . 2.0))
+              ((timestamp . 3) (pnl . 1.0))))
+         (series-a (swimmy.school::trade-list->series a :max-trades 10))
+         (series-b (swimmy.school::trade-list->series b :max-trades 10)))
+    (multiple-value-bind (xs ys)
+        (swimmy.school::align-pnl-series series-a series-b)
+      (assert-equal '(1.0 0.0 -1.0) xs "Expected zero-fill for A")
+      (assert-equal '(0.0 2.0 1.0) ys "Expected zero-fill for B"))))
+
