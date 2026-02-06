@@ -338,6 +338,24 @@
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
+(deftest test-oos-queue-clear-on-startup
+  "startup cleanup should clear oos_queue"
+  (let* ((tmp-db (format nil "data/memory/test-oos-startup-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+         (progn
+           (setf swimmy.core::*db-path-default* tmp-db)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (swimmy.school::enqueue-oos-request "UT-OOS" "RID-X" :status "sent")
+           (swimmy.school::cleanup-oos-queue-on-startup)
+           (multiple-value-bind (rid _ status) (swimmy.school::lookup-oos-request "UT-OOS")
+             (declare (ignore _ status))
+             (assert-true (null rid) "oos_queue should be cleared")))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
 (deftest test-strategy-to-alist-omits-filter-enabled-when-false
   "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
   (let* ((fn (find-symbol "STRATEGY-TO-ALIST" :swimmy.school))
@@ -1151,6 +1169,7 @@
                   test-request-backtest-sets-submit-id
                   test-generate-uuid-changes-even-with-reset-rng
                   test-oos-retry-uses-new-request-id
+                  test-oos-queue-clear-on-startup
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
