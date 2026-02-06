@@ -12,6 +12,38 @@
             (assert-equal payload read)))
       (when (probe-file tmp) (delete-file tmp)))))
 
+(deftest test-write-sexp-atomic-stable-defaults
+  "write-sexp-atomic should not depend on *default-pathname-defaults* mid-call"
+  (let* ((orig-rename (symbol-function 'cl:rename-file))
+         (orig-default *default-pathname-defaults*)
+         (root (uiop:ensure-directory-pathname (uiop:getcwd)))
+         (path "data/tmp/atomic_defaults_test.sexp")
+         (full (merge-pathnames path root))
+         (hit nil))
+    (unwind-protect
+        (progn
+          (sb-ext:without-package-locks
+            (setf (symbol-function 'cl:rename-file)
+                  (lambda (from to &rest args)
+                    (declare (ignore args))
+                    (setf hit t)
+                    ;; Simulate a cwd/default change right before rename.
+                    (setf *default-pathname-defaults* (merge-pathnames "data/" root))
+                    (funcall orig-rename from to))))
+          (setf *default-pathname-defaults* root)
+          (swimmy.core:write-sexp-atomic path '((schema_version . 1)))
+          (assert-true hit "rename-file should be called")
+          (assert-true (probe-file full) "Expected target file to exist"))
+      (sb-ext:without-package-locks
+        (setf (symbol-function 'cl:rename-file) orig-rename))
+      (setf *default-pathname-defaults* orig-default)
+      (ignore-errors (when (probe-file full) (delete-file full)))
+      (ignore-errors
+        (let ((tmp (make-pathname :name (format nil "~a.tmp" (pathname-name full))
+                                  :type (pathname-type full)
+                                  :defaults full)))
+          (when (probe-file tmp) (delete-file tmp)))))))
+
 (deftest test-backtest-cache-sexp
   (let* ((tmp (merge-pathnames "backtest_cache.sexp" #P"/tmp/"))
          (swimmy.school::*backtest-cache-file* (namestring tmp))

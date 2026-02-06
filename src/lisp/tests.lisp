@@ -1258,6 +1258,7 @@
                   test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
+                  test-write-sexp-atomic-stable-defaults
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
                   test-strategy-daily-pnl-aggregation

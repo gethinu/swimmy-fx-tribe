@@ -4,7 +4,8 @@
 
 (defun write-sexp-atomic (path form)
   "Write FORM to PATH atomically using temp file + rename."
-  (let* ((target (pathname path))
+  (let* ((base-defaults *default-pathname-defaults*)
+         (target (merge-pathnames path base-defaults))
          (tmp (make-pathname :name (format nil "~a.tmp" (or (pathname-name target) "sexp"))
                              :type (pathname-type target)
                              :defaults target)))
