@@ -1268,6 +1268,8 @@
                   test-fetch-backtest-trades
                   test-pair-id-stable
                   test-pair-overlay-caps-lot
+                  test-pair-candidate-pool-top-n
+                  test-align-pnl-series-padding
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
