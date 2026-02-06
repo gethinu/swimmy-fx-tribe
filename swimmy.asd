@@ -115,6 +115,7 @@
                (:file "src/lisp/school/school-danger")    ; Found during Audit
                (:file "src/lisp/school/school-macro")     ; Phase 23: Dynamic Correlation
                (:file "src/lisp/school/school-dalio")     ; Phase 27: Holy Grail (Dalio)
+               (:file "src/lisp/school/school-pair-composite") ; Pair-Composite utilities
                (:file "src/lisp/school/school-market")    ; SRP Refactor
                (:file "src/lisp/school/school-alchemy")   ; Phase 28: FX Pivoting (Carry/Vol)
                (:file "src/lisp/school/school-founders-alchemy") ; Phase 28: Hybrid Strategy
@@ -163,6 +164,7 @@
                (:file "src/lisp/tests/telemetry-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
+               (:file "src/lisp/tests/pair-composite-tests")
                (:file "src/lisp/tests/strategy-migration-tests")
                
                (:file "src/lisp/tests/school-split-tests")

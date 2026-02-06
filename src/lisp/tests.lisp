@@ -1051,6 +1051,7 @@
                   test-trade-logs-supports-pair-id
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
+                  test-pair-id-stable
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
