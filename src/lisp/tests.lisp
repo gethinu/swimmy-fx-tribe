@@ -298,6 +298,18 @@
           (assert-true swimmy.globals:*backtest-submit-last-id* "Expected submit request_id to be set"))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
 
+(deftest test-generate-uuid-changes-even-with-reset-rng
+  "generate-uuid should vary even if random state resets"
+  (let ((state (make-random-state nil))
+        (id1 nil)
+        (id2 nil))
+    (let ((*random-state* (make-random-state state)))
+      (setf id1 (swimmy.core:generate-uuid)))
+    (sleep 1)
+    (let ((*random-state* (make-random-state state)))
+      (setf id2 (swimmy.core:generate-uuid)))
+    (assert-false (string= id1 id2) "UUID should include time-based entropy")))
+
 (deftest test-strategy-to-alist-omits-filter-enabled-when-false
   "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
   (let* ((fn (find-symbol "STRATEGY-TO-ALIST" :swimmy.school))
@@ -1109,6 +1121,7 @@
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
+                  test-generate-uuid-changes-even-with-reset-rng
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side

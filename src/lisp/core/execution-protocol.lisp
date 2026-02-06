@@ -20,13 +20,16 @@
 
 (defun generate-uuid ()
   "Generate a pseudo-UUID v4 string."
-  ;; Lisp implementation of simple UUID generation
-  (format nil "~(~x-~x-4~3,'0x-~x-~x~)"
-          (random 4294967296)
-          (random 65536)
-          (random 4096)
-          (logior #x8000 (random #x4000))
-          (random 281474976710656)))
+  ;; Mix time-based entropy to avoid collisions across deterministic RNG seeds.
+  (let* ((now (get-universal-time))
+         (ticks (get-internal-real-time))
+         (r1 (logxor (random 4294967296) (ldb (byte 32 0) now)))
+         (r2 (logxor (random 65536) (ldb (byte 16 0) ticks)))
+         (r3 (logxor (random 4096) (ldb (byte 12 16) ticks)))
+         (r4 (logxor (random #x4000) (ldb (byte 14 0) now)))
+         (r5 (logxor (random 281474976710656) (ldb (byte 48 0) ticks))))
+    (format nil "~(~x-~x-4~3,'0x-~x-~x~)"
+            r1 r2 r3 (logior #x8000 r4) r5)))
 
 (defun sexp->string (form &key (package :swimmy.core))
   "Render S-expression FORM as a single-line string."
