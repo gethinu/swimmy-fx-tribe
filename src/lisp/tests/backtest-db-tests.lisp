@@ -258,6 +258,51 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-strategy-daily-pnl-aggregation
+  "Daily aggregation should sum pnl per strategy per day"
+  (let* ((tmp-db (format nil "/tmp/swimmy-daily-~a.db" (get-universal-time)))
+         (t1 (encode-universal-time 0 0 12 1 2 2026))
+         (t2 (encode-universal-time 0 30 12 1 2 2026))
+         (t3 (encode-universal-time 0 0 12 2 2 2026)))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (dolist (spec (list (list t1 1.0) (list t2 2.0) (list t3 -1.0)))
+              (destructuring-bind (ts pnl) spec
+                (swimmy.school::record-trade-to-db
+                 (swimmy.school::make-trade-record
+                  :timestamp ts
+                  :strategy-name "TEST"
+                  :symbol "USDJPY"
+                  :direction :buy
+                  :category :trend
+                  :regime :trend
+                  :pnl pnl
+                  :hold-time 10))))
+            (swimmy.school::refresh-strategy-daily-pnl)
+            (let* ((day1 (swimmy.school::execute-single
+                          "SELECT date(datetime(? - 2208988800, 'unixepoch', 'localtime'))" t1))
+                   (day2 (swimmy.school::execute-single
+                          "SELECT date(datetime(? - 2208988800, 'unixepoch', 'localtime'))" t3))
+                   (rows (swimmy.school::execute-to-list
+                          "SELECT trade_date, pnl_sum, trade_count FROM strategy_daily_pnl WHERE strategy_name = ?"
+                          "TEST"))
+                   (table (make-hash-table :test 'equal)))
+              (dolist (row rows)
+                (setf (gethash (first row) table) (list (second row) (third row))))
+              (assert-true (= (length rows) 2) "Expected two daily rows")
+              (let ((day1-row (gethash day1 table))
+                    (day2-row (gethash day2 table)))
+                (assert-true (and day1-row (= (first day1-row) 3.0) (= (second day1-row) 2))
+                             "Day1 sum/count")
+                (assert-true (and day2-row (= (first day2-row) -1.0) (= (second day2-row) 1))
+                             "Day2 sum/count"))))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-backtest-trade-logs-insert
   "backtest_trade_logs should accept trade_list rows"
   (let* ((tmp-db (format nil "/tmp/swimmy-bt-~a.db" (get-universal-time))))

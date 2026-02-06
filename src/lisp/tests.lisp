@@ -1097,6 +1097,7 @@
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
+                  test-strategy-daily-pnl-aggregation
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable
