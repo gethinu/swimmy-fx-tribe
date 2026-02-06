@@ -14,6 +14,7 @@
   direction           ; :buy or :sell
   category            ; :trend, :reversion, :breakout, :scalp
   strategy-name
+  pair-id
   ;; Market Context (15+ variables)
   regime              ; :trending, :ranging
   volatility          ; :high, :normal, :low

@@ -230,6 +230,32 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-trade-logs-supports-pair-id
+  "trade_logs should accept pair_id and persist it"
+  (let* ((tmp-db (format nil "/tmp/swimmy-pair-~a.db" (get-universal-time)))
+         (pair-id "PAIR-ABC"))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school::record-trade-to-db
+             (swimmy.school::make-trade-record
+              :timestamp 1
+              :strategy-name "TEST"
+              :symbol "USDJPY"
+              :direction :buy
+              :category :trend
+              :regime :trend
+              :pnl 1.0
+              :hold-time 10
+              :pair-id pair-id))
+            (let ((row (swimmy.school::execute-single
+                        "SELECT pair_id FROM trade_logs WHERE strategy_name = ?" "TEST")))
+              (assert-equal pair-id row "pair_id should persist")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-report-source-drift-detects-mismatch
   "Drift check should flag mismatched DB/KB/Library counts."
   (let* ((tmp-db (format nil "/tmp/swimmy-drift-~a.db" (get-universal-time)))

@@ -66,8 +66,12 @@
       category TEXT,
       regime TEXT,
       pnl REAL,
-      hold_time INTEGER
+      hold_time INTEGER,
+      pair_id TEXT
     )")
+  (handler-case
+      (execute-non-query "ALTER TABLE trade_logs ADD COLUMN pair_id TEXT")
+    (error () nil))
 
   ;; Table: Swap History (QS Architecture Data Lake)
   (execute-non-query
@@ -185,8 +189,8 @@
 (defun record-trade-to-db (record)
   "Log trade to SQL."
   (execute-non-query
-   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
    (trade-record-timestamp record)
    (trade-record-strategy-name record)
    (trade-record-symbol record)
@@ -194,7 +198,8 @@
    (format nil "~a" (trade-record-category record))
    (format nil "~a" (trade-record-regime record))
    (trade-record-pnl record)
-   (trade-record-hold-time record)))
+   (trade-record-hold-time record)
+   (trade-record-pair-id record)))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60

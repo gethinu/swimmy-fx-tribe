@@ -1000,6 +1000,7 @@
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
+                  test-trade-logs-supports-pair-id
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema

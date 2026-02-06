@@ -345,7 +345,7 @@
             ;; V50.5.1 Persistence Fix: Save metrics to DB immediately
             (swimmy.school:upsert-strategy strategy)))))))
 
-(defun record-trade-outcome (symbol direction category strategy-name pnl &key (hit :unknown) (hold-time 0))
+(defun record-trade-outcome (symbol direction category strategy-name pnl &key (hit :unknown) (hold-time 0) pair-id)
   "Record trade outcome for learning (both wins and losses)"
   (let* ((ctx (get-rich-market-context symbol))
          (record (make-trade-record
@@ -354,6 +354,7 @@
                   :direction direction
                   :category category
                   :strategy-name strategy-name
+                  :pair-id pair-id
                   :regime (getf ctx :regime)
                   :volatility (getf ctx :volatility)
                   :sma-position (getf ctx :sma-position)
