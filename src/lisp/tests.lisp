@@ -936,6 +936,34 @@
           (assert-true called "Expected send-to-graveyard to be invoked"))
       (setf (symbol-function 'swimmy.school:send-to-graveyard) orig))))
 
+(deftest test-ensure-rank-retired-saves-pattern
+  "ensure-rank :retired should save retired pattern, move strategy, and remove from KB."
+  (let* ((s (swimmy.school:make-strategy :name "RetireMe" :symbol "USDJPY"))
+         (swimmy.school::*strategy-knowledge-base* (list s))
+         (swimmy.school::*category-pools* (make-hash-table :test 'equal))
+         (calls nil)
+         (orig-save (symbol-function 'swimmy.school::save-retired-pattern))
+         (orig-move (symbol-function 'swimmy.persistence:move-strategy)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::save-retired-pattern)
+                (lambda (strat reason)
+                  (push (list :save strat reason) calls)
+                  t))
+          (setf (symbol-function 'swimmy.persistence:move-strategy)
+                (lambda (strat new-rank &key force)
+                  (declare (ignore force))
+                  (push (list :move strat new-rank) calls)
+                  t))
+          (swimmy.school::ensure-rank s :retired "Max Age")
+          (assert-equal :retired (swimmy.school:strategy-rank s) "Expected :retired rank")
+          (assert-true (null (member s swimmy.school::*strategy-knowledge-base* :test #'eq))
+                       "Expected removal from KB")
+          (assert-true (find :save calls :key #'first) "Expected save-retired-pattern call")
+          (assert-true (find :move calls :key #'first) "Expected move-strategy call"))
+      (setf (symbol-function 'swimmy.school::save-retired-pattern) orig-save
+            (symbol-function 'swimmy.persistence:move-strategy) orig-move))))
+
 (deftest test-lifecycle-retire-on-max-losses
   "Lifecycle should retire strategies after max consecutive losses."
   (let* ((s (swimmy.school:make-strategy :name "LifeFail" :symbol "USDJPY"))
@@ -1073,6 +1101,7 @@
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-evaluate-strategy-performance-sends-to-graveyard
+                  test-ensure-rank-retired-saves-pattern
                   test-lifecycle-retire-on-max-losses
                   ;; V8.5: Evolution Tests (Genetic Mutation)
                   test-rewrite-logic-symbols-sma
