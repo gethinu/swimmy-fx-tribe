@@ -221,6 +221,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 ```
 ((type . "BACKTEST_RESULT")
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
+            (request_id . "RID-123")  ; 必須: 相関ID
             (sharpe . 0.85)
             (trades . 120)          ; trades は件数（数値）
             (profit_factor . 1.6)
@@ -252,6 +253,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 ```
 ((type . "BACKTEST_RESULT")
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
+            (request_id . "RID-123")  ; 必須: 相関ID
             (sharpe . 0.0)
             (error . "S-Exp parse error: ..."))))
 ```
