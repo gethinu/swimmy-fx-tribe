@@ -44,3 +44,57 @@
                             (min base-lot *pair-max-lot*)
                             base-lot)))
         (list final-lot pair-id))))
+
+(defparameter *pair-candidate-per-group* 50)
+(defparameter *pair-eligible-ranks* '(:A :S :LEGEND :legend))
+
+(defun %strategy-prop (strat key)
+  (cond
+    ((typep strat 'strategy)
+     (ecase key
+       (:name (strategy-name strat))
+       (:symbol (strategy-symbol strat))
+       (:timeframe (strategy-timeframe strat))
+       (:sharpe (strategy-sharpe strat))
+       (:rank (strategy-rank strat))))
+    ((and (listp strat) (getf strat key)) (getf strat key))
+    ((and (listp strat) (getf strat (intern (string-upcase (symbol-name key)) :keyword)))
+     (getf strat (intern (string-upcase (symbol-name key)) :keyword)))
+    (t nil)))
+
+(defun %normalize-rank (rank)
+  (cond
+    ((keywordp rank) rank)
+    ((symbolp rank) (intern (string-upcase (symbol-name rank)) :keyword))
+    ((stringp rank) (intern (string-upcase rank) :keyword))
+    (t nil)))
+
+(defun %pair-eligible-rank-p (rank)
+  (member (%normalize-rank rank) *pair-eligible-ranks*))
+
+(defun %strategy-better-p (a b)
+  (let ((sa (or (%strategy-prop a :sharpe) 0.0))
+        (sb (or (%strategy-prop b :sharpe) 0.0))
+        (na (string (%strategy-prop a :name)))
+        (nb (string (%strategy-prop b :name))))
+    (if (/= sa sb)
+        (> sa sb)
+        (string< na nb))))
+
+(defun pair-candidate-pool (strategies &key (per-group *pair-candidate-per-group*))
+  (let ((groups (make-hash-table :test 'equal)))
+    (dolist (s strategies)
+      (when (%pair-eligible-rank-p (%strategy-prop s :rank))
+        (let* ((symbol (or (%strategy-prop s :symbol) ""))
+               (tf (or (%strategy-prop s :timeframe) 0))
+               (key (format nil "~a|~a" symbol tf)))
+          (push s (gethash key groups)))))
+    (let (out)
+      (maphash (lambda (key group)
+                 (declare (ignore key))
+                 (let* ((sorted (sort (copy-list group) #'%strategy-better-p))
+                        (top (subseq sorted 0 (min per-group (length sorted)))))
+                   (setf out (nconc out top))))
+               groups)
+      out)))
+
