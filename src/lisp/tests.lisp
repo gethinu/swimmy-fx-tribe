@@ -968,6 +968,30 @@
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
     (assert-equal :A (second called) "Expected A-RANK promotion")))
 
+(deftest test-promotion-triggers-noncorrelation-notification
+  "Ensure A/S promotions fire noncorrelation notification once"
+  (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
+         (strat (swimmy.school:make-strategy :name "PROMO" :symbol "USDJPY" :rank :B))
+         (called 0)
+         (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
+                    (symbol-function 'swimmy.school::notify-noncorrelated-promotion))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion)
+                  (lambda (&rest args) (declare (ignore args)) (incf called)))
+            (swimmy.school::ensure-rank strat :A "test")
+            (assert-equal 1 called "A promotion should notify once")
+            (swimmy.school::ensure-rank strat :S "test")
+            (assert-equal 2 called "S promotion should notify once"))
+        (when orig
+          (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-evaluate-strategy-performance-sends-to-graveyard
   "Evaluation failures should send strategies to graveyard (no benching)."
   (let* ((s (swimmy.school:make-strategy :name "EvalFail" :symbol "USDJPY"))
@@ -1145,6 +1169,7 @@
                   test-strategy-daily-pnl-aggregation
                   test-daily-pnl-correlation
                   test-daily-pnl-aggregation-scheduler
+                  test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable

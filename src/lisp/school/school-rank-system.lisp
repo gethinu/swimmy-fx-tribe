@@ -126,6 +126,13 @@
       
       ;; V49.9: Persist to SQL
       (upsert-strategy strategy)
+
+      (let ((promotion-p (%promotion-p old-rank new-rank)))
+        (when promotion-p
+          (handler-case
+              (notify-noncorrelated-promotion strategy new-rank)
+            (error (e)
+              (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))))
       
       ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
       (when (eq new-rank :graveyard)
