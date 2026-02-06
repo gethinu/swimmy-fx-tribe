@@ -222,10 +222,30 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 ((type . "BACKTEST_RESULT")
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
             (sharpe . 0.85)
-            (trades . 120)
+            (trades . 120)          ; trades は件数（数値）
             (profit_factor . 1.6)
             (win_rate . 0.52)
-            (max_dd . 0.12))))
+            (max_dd . 0.12)
+            ;; optional: トレード一覧（巨大メッセージ時は省略可）
+            ;; trade_list は配列（alist の配列）
+            (trade_list . (((timestamp . 1709234567)
+                            (pnl . 12.3)
+                            (symbol . "USDJPY")
+                            (direction . "BUY")
+                            (entry_price . 145.10)
+                            (exit_price . 145.20)
+                            (sl . 145.00)
+                            (tp . 145.30)
+                            (volume . 0.02)
+                            (hold_time . 120)
+                            (rank . "A")
+                            (timeframe . 1)
+                            (category . "trend")
+                            (regime . "trend")
+                            (oos_kind . "OOS"))))
+            ;; optional: サイズ制御（trade_list 省略時）
+            (trades_truncated . false)
+            (trades_ref . "RID-123"))))
 ```
 
 **BACKTEST_RESULT (Error, S-Expression only / JSON禁止)**:

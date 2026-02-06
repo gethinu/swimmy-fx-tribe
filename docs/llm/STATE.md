@@ -30,6 +30,7 @@
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
+- **Pair-Composite (設計確定・未実装)**: 既存単一戦略を壊さない overlay 層として導入。`SWIMMY_PAIR_STRATEGY=1` のときのみ有効。対象は A/S/Legend、上限5ペア、相関 |corr|≤0.2（N≥100）、候補不足時のみ Phase2 で |corr|≤0.3 救済。スコアは `0.7*Sharpe+0.3*PF`。ペア枠は 0.05 lot（上限）。PnL 相関は OOS/CPCV/Backtest のトレード履歴を正とする。`trade_logs` に `pair_id` 追加、`backtest_trade_logs` を新設予定。`BACKTEST_RESULT` に `trade_list` を追加（`trades` は件数のまま）。
 
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
@@ -41,6 +42,7 @@
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 
 ## 直近の変更履歴
+- **2026-02-06**: Pair-Composite の設計を確定。`BACKTEST_RESULT` に `trade_list`（一覧）を追加し、`trades` は件数のまま維持する方針を明記。
 - **2026-02-05**: Notifier の `payload`（S式）を受理し、`payload_json` 互換をINTERFACESに明記。
 - **2026-02-05**: SBCLロード時WARNING/STYLE-WARNINGの全解消（ロード順、export、未使用変数、廃止フックの整理）。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）のS式スキーマをINTERFACESに定義（`schema_version=1`）。
