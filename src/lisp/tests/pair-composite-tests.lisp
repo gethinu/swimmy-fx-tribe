@@ -2,6 +2,10 @@
 
 (in-package :swimmy.tests)
 
+(defun approx= (a b &optional (eps 1e-6))
+  (< (abs (- a b)) eps))
+
+
 (deftest test-pair-id-stable
   "pair-id should be order-independent"
   (let ((a (swimmy.school::pair-id "A" "B"))
@@ -44,4 +48,12 @@
         (swimmy.school::align-pnl-series series-a series-b)
       (assert-equal '(1.0 0.0 -1.0) xs "Expected zero-fill for A")
       (assert-equal '(0.0 2.0 1.0) ys "Expected zero-fill for B"))))
+
+(deftest test-pair-pearson-correlation
+  "pearson correlation should be +/-1 for identical/inverse series"
+  (let* ((xs '(1.0 2.0 3.0))
+         (ys '(1.0 2.0 3.0))
+         (zs '(3.0 2.0 1.0)))
+    (assert-true (approx= 1.0 (swimmy.school::pearson-correlation xs ys)) "Expected corr=1")
+    (assert-true (approx= -1.0 (swimmy.school::pearson-correlation xs zs)) "Expected corr=-1")))
 

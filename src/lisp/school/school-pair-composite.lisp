@@ -159,3 +159,23 @@
     (values (mapcar (lambda (ts-val) (gethash ts-val map-a 0.0)) ts)
             (mapcar (lambda (ts-val) (gethash ts-val map-b 0.0)) ts))))
 
+(defun pearson-correlation (xs ys)
+  (let* ((n (length xs)))
+    (if (or (zerop n) (/= n (length ys)))
+        0.0
+        (let* ((mean-x (/ (reduce #'+ xs) n))
+               (mean-y (/ (reduce #'+ ys) n))
+               (num 0.0)
+               (den-x 0.0)
+               (den-y 0.0))
+          (loop for x in xs
+                for y in ys
+                do (let ((dx (- x mean-x))
+                         (dy (- y mean-y)))
+                     (incf num (* dx dy))
+                     (incf den-x (* dx dx))
+                     (incf den-y (* dy dy))))
+          (if (or (zerop den-x) (zerop den-y))
+              0.0
+              (/ num (sqrt (* den-x den-y))))))))
+
