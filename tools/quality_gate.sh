@@ -5,7 +5,7 @@ echo "🛡️ Running Quality Gate (Tests + Integrity + SRP)..."
 
 # 1. Integration Tests (Lisp)
 echo "🧪 Running Lisp Tests..."
-sbcl --script test_runner.lisp
+sbcl --script tests/test_runner.lisp
 
 # 1.1 Regime Hard Lock (Musk v49.4)
 echo "🔒 Verifying Regime Hard Lock..."

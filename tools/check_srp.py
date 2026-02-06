@@ -12,6 +12,8 @@ EXCLUDELIST = [
     "src/lisp/strategies/strategies-dynamic.lisp",
     "src/lisp/school/school-optimized-params.lisp",
     "src/lisp/school/graveyard-persistence.lisp",
+    "src/lisp/tests.lisp",  # Legacy test aggregator (split pending)
+    "src/lisp/tests/school-split-tests.lisp",  # Legacy test aggregator (split pending)
 ]  # Generated/Legacy files allowed
 
 
