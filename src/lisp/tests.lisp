@@ -310,6 +310,34 @@
       (setf id2 (swimmy.core:generate-uuid)))
     (assert-false (string= id1 id2) "UUID should include time-based entropy")))
 
+(deftest test-oos-retry-uses-new-request-id
+  "OOS retry should generate a new request_id"
+  (let* ((tmp-db (format nil "data/memory/test-oos-retry-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-interval swimmy.school::*oos-request-interval*)
+         (orig-request (symbol-function 'swimmy.school::request-backtest)))
+    (unwind-protect
+         (progn
+           (setf swimmy.core::*db-path-default* tmp-db)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (setf swimmy.school::*oos-request-interval* 0)
+           (setf (symbol-function 'swimmy.school::request-backtest)
+                 (lambda (strat &key request-id &allow-other-keys)
+                   (declare (ignore strat))
+                   request-id))
+           (swimmy.school::enqueue-oos-request "UT-OOS" "RID-OLD" :status "sent"
+                                               :requested-at (- (get-universal-time) 999))
+           (let* ((strat (cl-user::make-strategy :name "UT-OOS" :symbol "USDJPY" :oos-sharpe nil))
+                  (id (swimmy.school::maybe-request-oos-backtest strat)))
+             (assert-true (and id (not (string= id "RID-OLD")))
+                          "retry should issue new request_id")))
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (setf swimmy.school::*oos-request-interval* orig-interval)
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
 (deftest test-strategy-to-alist-omits-filter-enabled-when-false
   "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
   (let* ((fn (find-symbol "STRATEGY-TO-ALIST" :swimmy.school))
@@ -1122,6 +1150,7 @@
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
                   test-generate-uuid-changes-even-with-reset-rng
+                  test-oos-retry-uses-new-request-id
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
