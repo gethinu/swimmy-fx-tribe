@@ -968,6 +968,30 @@
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
     (assert-equal :A (second called) "Expected A-RANK promotion")))
 
+(deftest test-promotion-triggers-noncorrelation-notification
+  "Ensure A/S promotions fire noncorrelation notification once"
+  (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
+         (strat (swimmy.school:make-strategy :name "PROMO" :symbol "USDJPY" :rank :B))
+         (called 0)
+         (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
+                    (symbol-function 'swimmy.school::notify-noncorrelated-promotion))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion)
+                  (lambda (&rest args) (declare (ignore args)) (incf called)))
+            (swimmy.school::ensure-rank strat :A "test")
+            (assert-equal 1 called "A promotion should notify once")
+            (swimmy.school::ensure-rank strat :S "test")
+            (assert-equal 2 called "S promotion should notify once"))
+        (when orig
+          (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-evaluate-strategy-performance-sends-to-graveyard
   "Evaluation failures should send strategies to graveyard (no benching)."
   (let* ((s (swimmy.school:make-strategy :name "EvalFail" :symbol "USDJPY"))
@@ -1049,6 +1073,51 @@
       (setf (symbol-function 'swimmy.school::load-graveyard-patterns) orig-load-gy
             (symbol-function 'swimmy.school::load-retired-patterns) orig-load-ret))))
 
+(deftest test-daily-pnl-correlation
+  "Daily PnL correlation should be near 1 for identical series"
+  (let* ((tmp-db (format nil "/tmp/swimmy-corr-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 3 days of identical pnl for A and B
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (let ((corr (swimmy.school::calculate-daily-pnl-correlation "A" "B" :days 3)))
+              (assert-true (and corr (> corr 0.99)) "Correlation should be near 1")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(defun mock-refresh-daily-pnl ()
+  (push :daily-pnl *test-results*))
+
+(deftest test-daily-pnl-aggregation-scheduler
+  "Daily PnL aggregation should trigger at 00:10"
+  (let ((swimmy.globals:*daily-pnl-aggregation-sent-today* nil)
+        (orig (and (fboundp 'swimmy.school::refresh-strategy-daily-pnl)
+                   (symbol-function 'swimmy.school::refresh-strategy-daily-pnl))))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) #'mock-refresh-daily-pnl)
+          (let ((time-0009 (encode-universal-time 0 9 0 1 2 2026)))
+            (swimmy.main:check-scheduled-tasks time-0009)
+            (assert-false swimmy.globals:*daily-pnl-aggregation-sent-today* "Should not trigger before 00:10"))
+          (let ((time-0010 (encode-universal-time 0 10 0 1 2 2026)))
+            (swimmy.main:check-scheduled-tasks time-0010)
+            (assert-true swimmy.globals:*daily-pnl-aggregation-sent-today* "Should trigger at 00:10")))
+      (when orig
+        (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) orig)))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -1097,6 +1166,10 @@
                   test-sexp-io-roundtrip
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
+                  test-strategy-daily-pnl-aggregation
+                  test-daily-pnl-correlation
+                  test-daily-pnl-aggregation-scheduler
+                  test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable

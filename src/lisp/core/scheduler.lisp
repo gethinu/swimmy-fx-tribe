@@ -14,6 +14,7 @@
 (defvar *last-new-day* nil "Tracks the last day number we processed for day rollover")
 (defvar *daily-report-sent-today* nil "Prevents duplicate daily reports")
 (defvar *advisor-report-sent-today* nil "Prevents duplicate advisor reports")
+(defvar *daily-pnl-aggregation-sent-today* nil "Prevents duplicate daily pnl aggregation")
 ;; (defvar *breeding-cycle-run-today* nil) ;; REMOVED: V50.3 Now run periodically
 
 (defparameter *last-evolution-time* 0 "Timestamp of last evolution run")
@@ -128,6 +129,7 @@
       (setf *last-new-day* date)
       (setf *daily-report-sent-today* nil)
       (setf *advisor-report-sent-today* nil)
+      (setf *daily-pnl-aggregation-sent-today* nil)
       ;; *breeding-cycle-run-today* removed
       (setf *daily-pnl* 0.0)
       (setf *daily-trade-count* 0)
@@ -147,4 +149,11 @@
              (task-fn (getf (cdr event) :fn)))
         (when (and (>= h trigger-h) (not (symbol-value sent-sym)))
           (setf (symbol-value sent-sym) t) ;; Claim executed first
-          (funcall task-fn))))))
+          (funcall task-fn))))
+
+    ;; 3. Daily PnL Aggregation (00:10)
+    (when (and (= h 0) (>= m 10) (not *daily-pnl-aggregation-sent-today*))
+      (setf *daily-pnl-aggregation-sent-today* t)
+      (format t "[SCHEDULER] ⏰ 00:10 Aggregating daily PnL...~%")
+      (when (fboundp 'swimmy.school::refresh-strategy-daily-pnl)
+        (funcall 'swimmy.school::refresh-strategy-daily-pnl)))))

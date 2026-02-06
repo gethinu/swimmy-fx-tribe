@@ -98,4 +98,111 @@
   ;; To be implemented
   portfolio)
 
+;;; ============================================================================
+;;; DAILY PNL CORRELATION (Promotion Notifications)
+;;; ============================================================================
+
+(in-package :swimmy.school)
+
+(defun %strategy-name (s)
+  (cond
+    ((stringp s) s)
+    ((and (fboundp 'strategy-name) (ignore-errors (strategy-name s))) (strategy-name s))
+    (t (format nil "~a" s))))
+
+(defun %daily-pnl-map (strategy &key (days 30))
+  (let* ((name (%strategy-name strategy))
+         (rows (fetch-strategy-daily-pnl name :limit days))
+         (table (make-hash-table :test 'equal)))
+    (dolist (row rows)
+      (setf (gethash (first row) table) (second row)))
+    (values table (length rows))))
+
+(defun aligned-daily-pnl-vectors (s1 s2 &key (days 30))
+  (multiple-value-bind (map1 count1) (%daily-pnl-map s1 :days days)
+    (multiple-value-bind (map2 count2) (%daily-pnl-map s2 :days days)
+      (when (and (>= count1 days) (>= count2 days))
+        (let ((v1 nil)
+              (v2 nil))
+          (maphash (lambda (k v)
+                     (let ((v2val (gethash k map2 :missing)))
+                       (unless (eq v2val :missing)
+                         (push v v1)
+                         (push v2val v2))))
+                   map1)
+          (when (>= (length v1) days)
+            (values (coerce (nreverse v1) 'vector)
+                    (coerce (nreverse v2) 'vector))))))))
+
+(defun calculate-daily-pnl-correlation (s1 s2 &key (days 30))
+  "Pearson correlation on aligned daily pnl vectors. Returns NIL if insufficient data."
+  (multiple-value-bind (v1 v2) (aligned-daily-pnl-vectors s1 s2 :days days)
+    (when (and v1 v2)
+      (swimmy.school.dalio::pearson-correlation v1 v2))))
+
+(defun calculate-noncorrelation-score (strategies &key (days 30)
+                                                  (threshold swimmy.school.dalio::*correlation-threshold*))
+  "Return (values score reason). Score = uncorrelated_pairs / total_pairs."
+  (let ((list (if (listp strategies) strategies (list strategies))))
+    (when (< (length list) 2)
+      (return-from calculate-noncorrelation-score (values nil :insufficient-strategies)))
+    (let ((count 0)
+          (uncorrelated 0))
+      (dotimes (i (length list))
+        (dotimes (j i)
+          (let* ((s1 (nth i list))
+                 (s2 (nth j list))
+                 (corr (calculate-daily-pnl-correlation s1 s2 :days days)))
+            (unless corr
+              (return-from calculate-noncorrelation-score (values nil :insufficient-data)))
+            (incf count)
+            (when (< (abs corr) threshold)
+              (incf uncorrelated)))))
+      (if (zerop count)
+          (values nil :insufficient-strategies)
+          (values (/ (float uncorrelated) count) nil)))))
+
+(defun %promotion-p (old-rank new-rank)
+  (or (and (eq new-rank :A)
+           (not (member old-rank '(:A :S :LEGEND) :test #'eq)))
+      (and (eq new-rank :S) (eq old-rank :A))))
+
+(defun %current-portfolio-strategies ()
+  (remove-if-not
+   (lambda (s)
+     (member (strategy-rank s) '(:A :S :LEGEND) :test #'eq))
+   *strategy-knowledge-base*))
+
+(defun notify-noncorrelated-promotion (strategy new-rank &key (days 30))
+  "Compute noncorrelation score and send Discord notification."
+  (let* ((portfolio (%current-portfolio-strategies))
+         (score nil)
+         (reason nil)
+         (threshold swimmy.school.dalio::*correlation-threshold*))
+    (multiple-value-setq (score reason)
+      (calculate-noncorrelation-score portfolio :days days :threshold threshold))
+    (let* ((title "⚖️ 非相関 昇格通知")
+           (portfolio-size (length portfolio))
+           (ts (swimmy.core:get-jst-timestamp))
+           (score-text (if score (format nil "~,2f" score) "N/A"))
+           (reason-text (case reason
+                          (:insufficient-data "(データ不足)")
+                          (:insufficient-strategies "(戦略数不足)")
+                          (t "")))
+           (msg (format nil "戦略: **~a**~%昇格: **~a**~%非相関スコア: **~a** ~a~%閾値: |corr| < ~,2f~%ポートフォリオ: ~d 戦略~%時刻: ~a"
+                        (strategy-name strategy)
+                        new-rank
+                        score-text
+                        reason-text
+                        threshold
+                        portfolio-size
+                        ts))
+           (webhook (or swimmy.core:*discord-daily-webhook*
+                        swimmy.globals:*discord-webhook-url*)))
+      (when webhook
+        (swimmy.core:queue-discord-notification
+         webhook msg :color swimmy.core:+color-info+ :title title)))))
+
+(in-package :swimmy.school.dalio)
+
 (format t "[DALIO] 🌐 school-dalio.lisp loaded - Seeking the Holy Grail (Uncorrelated Alpha)~%")

@@ -162,6 +162,7 @@
    #:*constitution*
    #:*philosophy-log*
    #:*daily-report-sent-today*
+   #:*daily-pnl-aggregation-sent-today*
    #:*discord-recruit-webhook*
    #:*last-narrative-day*
    #:*last-guardian-heartbeat*

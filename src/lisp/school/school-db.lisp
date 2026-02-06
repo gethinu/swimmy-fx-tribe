@@ -73,6 +73,17 @@
       (execute-non-query "ALTER TABLE trade_logs ADD COLUMN pair_id TEXT")
     (error () nil))
 
+  ;; Table: Daily PnL Aggregates (per strategy per day)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS strategy_daily_pnl (
+      strategy_name TEXT NOT NULL,
+      trade_date TEXT NOT NULL,
+      pnl_sum REAL NOT NULL,
+      trade_count INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (strategy_name, trade_date)
+    )")
+
   ;; Table: Backtest Trades (OOS/CPCV/Backtest)
   (execute-non-query
    "CREATE TABLE IF NOT EXISTS backtest_trade_logs (
@@ -222,6 +233,35 @@
    (trade-record-pnl record)
    (trade-record-hold-time record)
    (trade-record-pair-id record)))
+
+(defun refresh-strategy-daily-pnl ()
+  "Aggregate trade_logs into daily PnL (JST localtime)."
+  (init-db)
+  (let ((now (get-universal-time)))
+    (execute-non-query
+     "INSERT INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+      SELECT strategy_name,
+             date(datetime(timestamp - 2208988800, 'unixepoch', 'localtime')) AS trade_date,
+             SUM(pnl) AS pnl_sum,
+             COUNT(*) AS trade_count,
+             ? AS updated_at
+        FROM trade_logs
+       GROUP BY strategy_name, trade_date
+      ON CONFLICT(strategy_name, trade_date)
+      DO UPDATE SET pnl_sum=excluded.pnl_sum,
+                    trade_count=excluded.trade_count,
+                    updated_at=excluded.updated_at"
+     now)))
+
+(defun fetch-strategy-daily-pnl (strategy-name &key (limit 30))
+  "Fetch last N daily pnl rows (date, pnl_sum) for a strategy."
+  (init-db)
+  (execute-to-list
+   "SELECT trade_date, pnl_sum FROM strategy_daily_pnl
+     WHERE strategy_name = ?
+     ORDER BY trade_date DESC
+     LIMIT ?"
+   strategy-name limit))
 
 (defun %backtest-entry-val (entry keys)
   "Extract value from ENTRY (alist or plist) using KEYS."
