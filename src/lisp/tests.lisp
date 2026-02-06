@@ -1074,6 +1074,26 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(defun mock-refresh-daily-pnl ()
+  (push :daily-pnl *test-results*))
+
+(deftest test-daily-pnl-aggregation-scheduler
+  "Daily PnL aggregation should trigger at 00:10"
+  (let ((swimmy.globals:*daily-pnl-aggregation-sent-today* nil)
+        (orig (and (fboundp 'swimmy.school::refresh-strategy-daily-pnl)
+                   (symbol-function 'swimmy.school::refresh-strategy-daily-pnl))))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) #'mock-refresh-daily-pnl)
+          (let ((time-0009 (encode-universal-time 0 9 0 1 2 2026)))
+            (swimmy.main:check-scheduled-tasks time-0009)
+            (assert-false swimmy.globals:*daily-pnl-aggregation-sent-today* "Should not trigger before 00:10"))
+          (let ((time-0010 (encode-universal-time 0 10 0 1 2 2026)))
+            (swimmy.main:check-scheduled-tasks time-0010)
+            (assert-true swimmy.globals:*daily-pnl-aggregation-sent-today* "Should trigger at 00:10")))
+      (when orig
+        (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) orig)))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -1124,6 +1144,7 @@
                   test-trade-logs-supports-pair-id
                   test-strategy-daily-pnl-aggregation
                   test-daily-pnl-correlation
+                  test-daily-pnl-aggregation-scheduler
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable

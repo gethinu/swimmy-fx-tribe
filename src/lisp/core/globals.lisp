@@ -160,6 +160,7 @@
 (defparameter *monthly-goal* 100000.0)
 (defparameter *last-narrative-day* -1)
 (defparameter *daily-report-sent-today* nil)
+(defparameter *daily-pnl-aggregation-sent-today* nil)
 
 ;;; GOVERNANCE STATE
 (defparameter *council-log* nil)
