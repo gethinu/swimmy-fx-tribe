@@ -321,6 +321,16 @@ class BacktestService:
     def _handle_sexpr(self, msg: str):
         strategy_name = self._extract_name_from_sexpr(msg)
         request_id = self._extract_request_id_from_sexpr(msg)
+        if not request_id:
+            return {
+                "type": "BACKTEST_RESULT",
+                "result": {
+                    "strategy_name": strategy_name,
+                    "error": "missing request_id",
+                    "sharpe": 0.0,
+                    "request_id": "MISSING",
+                },
+            }
         proc = self._get_guardian_process()
         if proc is None:
             return {

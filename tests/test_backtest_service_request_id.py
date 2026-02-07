@@ -14,3 +14,11 @@ def test_backtest_service_propagates_request_id():
     msg = '((action . "BACKTEST") (request_id . "RID-TEST") (strategy . ((name . "UT"))))'
     out = svc._handle_sexpr(msg)
     assert "RID-TEST" in str(out)
+
+
+def test_backtest_service_missing_request_id_fails_fast():
+    svc = BacktestService(use_zmq=False)
+    msg = '((action . "BACKTEST") (strategy . ((name . "UT"))))'
+    out = svc._handle_sexpr(msg)
+    assert "missing request_id" in str(out)
+    assert "MISSING" in str(out)
