@@ -5,10 +5,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 # History file
-HISTORY_FILE=".opus/ci_history.json"
+HISTORY_FILE="$SCRIPT_DIR/.opus/ci_history.json"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 JST_TIME=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M:%S")
 
@@ -31,7 +32,7 @@ if ! command -v sbcl &> /dev/null; then
 fi
 
 # Ensure .opus directory exists
-mkdir -p .opus
+mkdir -p "$(dirname "$HISTORY_FILE")"
 
 echo "📋 Running test.lisp..."
 echo ""

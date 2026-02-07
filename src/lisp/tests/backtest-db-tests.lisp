@@ -77,6 +77,48 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-max-age-retire-batched-notification
+  "Max Age Retirement soft-kill should batch notifications and flush hourly."
+  (let* ((name "TEST-MAX-AGE-RETIRE")
+         (tmp-db (format nil "/tmp/swimmy-max-age-~a.db" (get-universal-time)))
+         (sent-messages nil))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (let ((orig-notify (and (fboundp 'swimmy.school::notify-discord-alert)
+                              (symbol-function 'swimmy.school::notify-discord-alert))))
+        (unwind-protect
+            (progn
+              (setf swimmy.core::*max-age-retire-buffer* nil)
+              (setf swimmy.core::*max-age-retire-first-seen* 0)
+              (when orig-notify
+                (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                      (lambda (msg &key color)
+                        (declare (ignore color))
+                        (push msg sent-messages)
+                        t)))
+              (swimmy.school::init-db)
+              (let ((strat (make-strategy :name name :symbol "USDJPY")))
+                (setf *strategy-knowledge-base* (list strat))
+                (upsert-strategy strat)
+                (kill-strategy name "Max Age Retirement")
+                (assert-equal 0 (length sent-messages) "Should suppress individual alert")
+                (assert-equal 1 (length swimmy.core::*max-age-retire-buffer*)
+                              "Should buffer max-age retire notification")
+                (let ((start swimmy.core::*max-age-retire-first-seen*))
+                  (swimmy.core::maybe-flush-max-age-retire (+ start 3601))
+                  (assert-equal 1 (length sent-messages) "Should flush summary after 1 hour")
+                  (assert-true (search "Max Age Retirement Summary" (car sent-messages))
+                               "Summary title should be included")
+                  (assert-true (search name (car sent-messages))
+                               "Summary should include strategy name"))))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))
+          (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
 (deftest test-sqlite-wal-mode-enabled
   "Ensure init-db sets SQLite to WAL mode for concurrency."
   (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))
