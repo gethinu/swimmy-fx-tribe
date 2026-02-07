@@ -144,6 +144,51 @@
       (when orig-v2
         (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2)))))
 
+(deftest test-backtest-queue-enqueues-when-requester-missing
+  "Backtest sends should enqueue before requester is ready"
+  (let* ((orig-enabled swimmy.core:*backtest-service-enabled*)
+         (orig-req (and (boundp 'swimmy.globals:*backtest-requester*)
+                        swimmy.globals:*backtest-requester*))
+         (orig-cmd (and (boundp 'swimmy.globals:*cmd-publisher*)
+                        swimmy.globals:*cmd-publisher*))
+         (orig-send (symbol-function 'pzmq:send))
+         (sent nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.core:*backtest-service-enabled* t)
+          (setf swimmy.globals:*backtest-requester* nil)
+          (setf swimmy.globals:*cmd-publisher* :dummy)
+          (setf swimmy.school::*backtest-send-queue* nil)
+          (setf (symbol-function 'pzmq:send)
+                (lambda (&rest args) (setf sent args)))
+          (swimmy.school::send-zmq-msg "(PING)" :target :backtest)
+          (assert-true (null sent) "Should not send before requester")
+          (assert-equal 1 (length swimmy.school::*backtest-send-queue*)
+                        "Expected queued message"))
+      (setf swimmy.core:*backtest-service-enabled* orig-enabled)
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf swimmy.globals:*cmd-publisher* orig-cmd)
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
+(deftest test-backtest-queue-flushes-after-requester
+  "Queued backtests should flush in order once requester is ready"
+  (let* ((orig-req (and (boundp 'swimmy.globals:*backtest-requester*)
+                        swimmy.globals:*backtest-requester*))
+         (orig-send (symbol-function 'pzmq:send))
+         (sent nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*backtest-send-queue* (list "m1" "m2"))
+          (setf swimmy.globals:*backtest-requester* :dummy)
+          (setf (symbol-function 'pzmq:send)
+                (lambda (_sock msg) (push msg sent)))
+          (swimmy.school::flush-backtest-queue)
+          (assert-equal '("m1" "m2") (nreverse sent) "Expected FIFO send")
+          (assert-true (null swimmy.school::*backtest-send-queue*)
+                       "Queue should be empty"))
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
 (deftest test-backtest-result-preserves-request-id
   "BACKTEST_RESULT should carry request_id through the pipeline"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1510,6 +1555,8 @@
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
                   test-internal-process-msg-backtest-json-applies
+                  test-backtest-queue-enqueues-when-requester-missing
+                  test-backtest-queue-flushes-after-requester
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-cpcv-result-persists-trade-list
