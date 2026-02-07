@@ -18,6 +18,12 @@
 (defvar *backtest-send-queue-max* 5000
   "Max queued backtest messages before dropping.")
 
+(defparameter *backtest-queue-last-flush* 0
+  "Last time the backtest send queue was flushed.")
+
+(defparameter *backtest-queue-flush-interval-sec* 1
+  "Minimum seconds between periodic flush checks for backtest send queue.")
+
 (defun normalize-json-key (key)
   "Normalize a symbol/string key into a JSON object key string."
   (cond
@@ -74,6 +80,14 @@
 (defun flush-backtest-send-queue ()
   "Backward-compatible alias for flushing queued backtest messages."
   (flush-backtest-queue))
+
+(defun maybe-flush-backtest-send-queue (&optional (now (get-universal-time)))
+  "Flush queued backtest messages when interval has elapsed."
+  (when (and *backtest-send-queue*
+             (> (- now *backtest-queue-last-flush*)
+                *backtest-queue-flush-interval-sec*))
+    (setf *backtest-queue-last-flush* now)
+    (flush-backtest-send-queue)))
 
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
