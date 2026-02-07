@@ -396,6 +396,8 @@ Discord通知の非同期中継（Python）。
 **備考**:
 `payload` はDiscordのJSONペイロードをS式（alist + list）で表現したもの。  
 互換用途として `payload_json`（Discord JSON文字列）も受理するが、**`payload` と `payload_json` の同時指定は不可**。Notifier側でJSONとして送信する。
+**運用例**:
+非相関昇格通知は `title="⚖️ 非相関 昇格通知"` を使用し、戦略名・昇格ランク・非相関スコア・閾値・ポートフォリオ数を本文に含める。
 
 ### 8. Risk Gateway Service (Port 5563)
 取引許可の判定を行う補助サービス（Python）。  

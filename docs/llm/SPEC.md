@@ -56,6 +56,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
+  - **Daily PnL Aggregation**: `strategy_daily_pnl`（日次損益の集計テーブル）を正本として使用。
   - **Sharded Files**: 戦略本体 (S式)。
 - **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（`schema_version=1`、tmp→renameで原子書き込み）。`data/` と `db/data/` のJSON/JSONLはレガシー維持だが、**Structured Telemetry** は `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL出力（`log_type="telemetry"`）。
 
@@ -107,3 +108,9 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 - **Sync**: レポート生成時に `(refresh-strategy-metrics-from-db :force t)` を実行し、DB上の値を正とする。
 - **Upsert**: 戦略のメトリクス（Sharpe等）、ランク、ステータス変更時は即座に `upsert-strategy` でDB保存される。
 - **Retired Patterns**: `:retired` への移動時に `data/memory/retired.sexp` へ低ウェイト学習用パターンを保存する。
+
+### 11.4. Noncorrelation Score (Promotion Notification)
+- **目的**: A/S昇格時にポートフォリオ全体の「非相関スコア」を算出しDiscord通知する。
+- **入力**: `strategy_daily_pnl` を用いた日次PnL相関（Pearson）。
+- **判定**: `|corr| < 0.2` を非相関とみなし、`uncorrelated_pairs / total_pairs` をスコア化。
+- **注意**: 非相関は**ランクではなく指標**。単一戦略の並び・ランク体系は変更しない。

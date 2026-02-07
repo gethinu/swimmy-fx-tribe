@@ -73,8 +73,9 @@ graph TD
 | :--- | :--- | :--- |
 | **High Freq (Tick)** | MT5 | 価格更新、Rustへ送信 |
 | **Realtime** | Rust | Risk Gate、Reflex |
-| **Event** | Lisp | シグナル生成、Atomic Allocation |
+| **Event** | Lisp | シグナル生成、Atomic Allocation、昇格時の非相関スコア通知 |
 | **Hourly** | Lisp | 学習、ファイルローテーション、**Evolution Report** |
+| **Daily (00:10 JST)** | Lisp | `strategy_daily_pnl` 日次集計 |
 | **Weekly (Sat)** | Guardian | Weekend Auto-Close (全決済) |
 | **Weekly (Sat)** | Lisp | Culling (Rank C/D 排除) |
 
