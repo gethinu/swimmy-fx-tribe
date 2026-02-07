@@ -344,19 +344,6 @@
       (values 0 0 0)))
 
 ;;; ─────────────────────────────────────────
-;;; MACRO: with-tribe-context
-;;; ─────────────────────────────────────────
-;;; Establish trading context with clan awareness
-(defmacro with-tribe-context ((symbol direction clan) &body body)
-  "Execute trading action with tribal context"
-  `(let ((*current-clan* (get-clan ,clan))
-         (*current-symbol* ,symbol)
-         (*current-direction* ,direction))
-     (format t "[L] ~a prepares for ~a on ~a~%"
-             (clan-name *current-clan*) ,direction ,symbol)
-     ,@body))
-
-;;; ─────────────────────────────────────────
 ;;; MACRO: with-philosophy-log
 ;;; ─────────────────────────────────────────
 ;;; Automatically log the "Why" around an action

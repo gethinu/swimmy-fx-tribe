@@ -26,13 +26,6 @@
   (if (fboundp 'initialize-tribal-dialect)
       (initialize-tribal-dialect))
   
-  ;; Each clan announces their philosophy
-  (format t "[L] 🏛️ THE FOUR GREAT CLANS STAND READY:~%~%")
-  (dolist (clan *clans*)
-    (format t "[L] ~a ~a (~a)「~a」~%"
-            (clan-emoji clan) (clan-name clan) (clan-title clan)
-            (clan-philosophy clan)))
-  
   (format t "~%[L] 🎯 TODAY'S MISSION: ~a~%"
           (if (> *monthly-goal* 0)
               (format nil "月間目標 ¥~:d への道" *monthly-goal*)
@@ -91,14 +84,6 @@
             (format t "[L] 🐟 SWARM ACCURACY: ~a~%" accuracy))))
     (error (e) (format t "[L] Swarm accuracy error: ~a~%" e)))
   
-  ;; V3.0: Clan treasury summary
-  (handler-case
-      (when (fboundp 'get-clan-treasury-summary)
-        (let ((treasury (get-clan-treasury-summary)))
-          (when treasury
-            (format t "[L] 💰 TREASURY: ~a~%" treasury))))
-    (error (e) (format t "[L] Treasury error: ~a~%" e)))
-  
   ;; V7.0: Metabolism - The Efficient Gardener Life Cycle
   (handler-case
       (when (fboundp 'run-metabolism)
@@ -121,7 +106,7 @@
   (format t "[L] ═══════════════════════════════════════~%")
   (format t "[L] 🌟 ~a has proven worthy!~%" strategy-name)
   (format t "[L] 📜 Status: ~a → ~a~%" old-status new-status)
-  (format t "[L] 🎺 The tribes celebrate!~%")
+  (format t "[L] 🎺 The system celebrates!~%")
   (format t "[L] ═══════════════════════════════════════~%~%"))
 
 (defun hold-funeral (strategy-name final-pnl lessons-learned)
@@ -133,7 +118,7 @@
   (format t "[L] 🕯️ We honor the fallen: ~a~%" strategy-name)
   (format t "[L] 📊 Final record: ¥~,2f~%" final-pnl)
   (format t "[L] 📖 Lessons learned: ~a~%" lessons-learned)
-  (format t "[L] 🙏 May the wisdom live on in the tribe.~%")
+  (format t "[L] 🙏 May the wisdom live on in the system.~%")
   (format t "[L] ═══════════════════════════════════════~%~%")
   
   ;; V44.11: Close all positions for the deceased (Fix Ghost Positions)

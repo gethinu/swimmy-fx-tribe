@@ -869,6 +869,17 @@
     (assert-true (assoc :breakout counts))
     (assert-true (assoc :scalp counts))))
 
+(deftest test-repl-help-omits-clans
+  "REPL help should not mention clan commands"
+  (let ((fn (find-symbol "PRINT-HELP" :swimmy-repl)))
+    (assert-true (and fn (fboundp fn)) "print-help should exist")
+    (let* ((out (make-string-output-stream))
+           (*standard-output* out))
+      (funcall fn)
+      (let ((txt (get-output-stream-string out)))
+        (assert-true (null (search ":clans" txt)))
+        (assert-true (null (search ":clan" txt)))))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────

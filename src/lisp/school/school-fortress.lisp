@@ -189,11 +189,10 @@
 ;;;  V5.7 (Feynman): WHY LOG - Explainable Decisions
 ;;; ══════════════════════════════════════════════════════════════════
 
-(defun log-why-trade (symbol direction category &key strategy tribe-cons swarm-cons parallel-score elder-ok (outcome :pending) (reason ""))
+(defun log-why-trade (symbol direction category &key strategy swarm-cons parallel-score elder-ok (outcome :pending) (reason ""))
   "Log the reasoning behind a trade decision (Feynman)"
   (format t "[L] 📜 WHY LOG: ~a ~a (~a) [~a]~%" direction symbol category outcome)
   (when strategy (format t "[L]   ├─ Strategy: ~a~%" strategy))
-  (when tribe-cons (format t "[L]   ├─ Tribe Consensus: ~,0f%~%" (* 100 tribe-cons)))
   (when swarm-cons (format t "[L]   ├─ Swarm Consensus: ~,0f%~%" (* 100 swarm-cons)))
   
   ;; User Request: Log to memo2.txt (Only if pending or success, or significant failure)
