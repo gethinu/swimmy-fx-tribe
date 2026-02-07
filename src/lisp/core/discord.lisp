@@ -33,6 +33,13 @@
 (defvar *max-age-retire-buffer* nil "Buffered strategy names for Max Age Retirement alerts")
 (defvar *max-age-retire-first-seen* 0 "Timestamp when current Max Age Retirement batch started")
 
+;;; ==========================================
+;;; BATCHED ALERTS (Stagnant C-Rank)
+;;; ==========================================
+(defparameter *stagnant-crank-batch-interval* 3600 "Seconds to batch Stagnant C-Rank alerts")
+(defvar *stagnant-crank-retire-buffer* nil "Buffered strategy names for Stagnant C-Rank alerts")
+(defvar *stagnant-crank-retire-first-seen* 0 "Timestamp when current Stagnant C-Rank batch started")
+
 (defun queue-max-age-retire (strategy-name &key (now (get-universal-time)))
   "Queue a Max Age Retirement alert for hourly batching."
   (unless (and (stringp strategy-name) (> (length strategy-name) 0))
@@ -53,6 +60,28 @@
                         total top)))
       (setf *max-age-retire-buffer* nil)
       (setf *max-age-retire-first-seen* 0)
+      (notify-discord-alert msg :color +color-alert+))))
+
+(defun queue-stagnant-crank-retire (strategy-name &key (now (get-universal-time)))
+  "Queue a Stagnant C-Rank alert for hourly batching."
+  (unless (and (stringp strategy-name) (> (length strategy-name) 0))
+    (return-from queue-stagnant-crank-retire nil))
+  (push strategy-name *stagnant-crank-retire-buffer*)
+  (when (<= *stagnant-crank-retire-first-seen* 0)
+    (setf *stagnant-crank-retire-first-seen* now))
+  t)
+
+(defun maybe-flush-stagnant-crank-retire (&optional (now (get-universal-time)))
+  "Flush Stagnant C-Rank summary if the batch interval has elapsed."
+  (when (and *stagnant-crank-retire-buffer*
+             (> (- now *stagnant-crank-retire-first-seen*) *stagnant-crank-batch-interval*))
+    (let* ((total (length *stagnant-crank-retire-buffer*))
+           (ordered (reverse *stagnant-crank-retire-buffer*))
+           (top (subseq ordered 0 (min 5 (length ordered))))
+           (msg (format nil "🧊 **Stagnant C-Rank Summary (Last 1h)**~%Total: ~d~%Top: ~{`~a`~^, ~}~%Action: Individual alerts suppressed."
+                        total top)))
+      (setf *stagnant-crank-retire-buffer* nil)
+      (setf *stagnant-crank-retire-first-seen* 0)
       (notify-discord-alert msg :color +color-alert+))))
 
 
@@ -394,7 +423,10 @@
       (notify-cpcv-summary))
 
     ;; 4. Max Age Retirement (Hourly batch)
-    (maybe-flush-max-age-retire now)))
+    (maybe-flush-max-age-retire now)
+
+    ;; 5. Stagnant C-Rank (Hourly batch)
+    (maybe-flush-stagnant-crank-retire now)))
 
 
 
