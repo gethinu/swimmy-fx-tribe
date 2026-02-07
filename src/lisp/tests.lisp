@@ -795,6 +795,24 @@
       (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
       (setf swimmy.globals::*current-volatility-state* orig-vol))))
 
+(deftest test-live-status-schema-v2-no-tribe
+  "live_status should be schema v2 and omit tribe fields"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.core:write-sexp-atomic)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:write-sexp-atomic)
+                (lambda (path payload)
+                  (declare (ignore path))
+                  (setf captured payload)))
+          (let ((swimmy.shell::*live-status-interval* 0)
+                (swimmy.shell::*last-status-write* 0))
+            (swimmy.shell::save-live-status))
+          (assert-equal 2 (cdr (assoc 'swimmy.shell::schema_version captured)))
+          (assert-false (assoc 'swimmy.shell::tribes captured))
+          (assert-false (assoc 'swimmy.shell::tribe_consensus captured)))
+      (setf (symbol-function 'swimmy.core:write-sexp-atomic) orig))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
