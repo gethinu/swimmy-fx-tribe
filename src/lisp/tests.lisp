@@ -1894,6 +1894,7 @@
                   test-backtest-send-throttles-when-pending-high
                   test-backtest-send-uses-subsecond-time
                   test-send-zmq-sleep-suppressed-for-backtest-requester
+                  test-backtest-queue-periodic-flush
                   test-rr-batch-respects-max-pending
                   test-rr-batch-skips-retired-strategies
                   test-rr-batch-no-active-strategies
