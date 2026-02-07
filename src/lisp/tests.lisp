@@ -112,6 +112,38 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-internal-process-msg-backtest-json-applies
+  "JSON BACKTEST_RESULT should call apply-backtest-result"
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (called nil)
+         (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+         (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+         (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+         (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                       (symbol-function 'swimmy.school::handle-v2-result))))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                (lambda (name metrics) (setf called (list name metrics))))
+          (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                (lambda (&rest _args) (declare (ignore _args)) (values nil nil nil)))
+          (when (fboundp 'swimmy.school::handle-v2-result)
+            (setf (symbol-function 'swimmy.school::handle-v2-result)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (funcall fn "{\"type\":\"BACKTEST_RESULT\",\"result\":{\"strategy_name\":\"UT-JSON-1\",\"sharpe\":1.2,\"trades\":3,\"pnl\":0.4,\"request_id\":\"RID-J1\"}}")
+          (assert-not-nil called "Expected apply-backtest-result to be called")
+          (assert-equal "UT-JSON-1" (first called) "Expected strategy name")
+          (assert-equal "RID-J1" (getf (second called) :request-id)
+                        "Expected request-id in metrics"))
+      (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+      (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+      (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+      (when orig-v2
+        (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2)))))
+
 (deftest test-backtest-result-preserves-request-id
   "BACKTEST_RESULT should carry request_id through the pipeline"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1477,6 +1509,7 @@
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
+                  test-internal-process-msg-backtest-json-applies
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-cpcv-result-persists-trade-list
