@@ -279,12 +279,17 @@
       (ignore-errors (upsert-strategy s))
       ;; Notify
       (when (fboundp 'notify-discord-alert)
-        (if (and (stringp reason)
-                 (search "Max Age Retirement" reason :test #'char-equal))
-            (swimmy.core::queue-max-age-retire name)
-            (notify-discord-alert 
-              (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
-              :color 15158332))))))
+        (cond
+          ((and (stringp reason)
+                (search "Max Age Retirement" reason :test #'char-equal))
+           (swimmy.core::queue-max-age-retire name))
+          ((and (stringp reason)
+                (search "Stagnant C-Rank" reason :test #'char-equal))
+           (swimmy.core::queue-stagnant-crank-retire name))
+          (t
+           (notify-discord-alert 
+            (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
+            :color 15158332)))))))
 
 ;;; ==========================================
 ;;; P1: SIMILARITY CHECK & PRUNING
