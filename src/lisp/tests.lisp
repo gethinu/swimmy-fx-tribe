@@ -828,6 +828,21 @@
           (assert-true (null (search "部族" captured))))
       (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
 
+(deftest test-ledger-omits-tribe-fields
+  "save-state should omit tribe fields"
+  (let* ((tmp-path (merge-pathnames (format nil "/tmp/swimmy-state-~a.sexp" (get-universal-time))))
+         (orig-path swimmy.engine::*state-file-path*))
+    (unwind-protect
+        (progn
+          (setf swimmy.engine::*state-file-path* tmp-path)
+          (swimmy.engine:save-state)
+          (with-open-file (in tmp-path :direction :input)
+            (let ((obj (read in nil nil)))
+              (assert-false (member :tribe-consensus obj))
+              (assert-false (member :tribe-direction obj)))))
+      (setf swimmy.engine::*state-file-path* orig-path)
+      (when (probe-file tmp-path) (delete-file tmp-path)))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
