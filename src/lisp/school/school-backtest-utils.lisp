@@ -12,6 +12,12 @@
 (defvar *backtest-cache-validity* (* 24 3600)
   "Validity period for backtest results (24 hours).")
 
+(defvar *backtest-send-queue* nil
+  "Queue of backtest messages awaiting requester readiness.")
+
+(defvar *backtest-send-queue-max* 5000
+  "Max queued backtest messages before dropping.")
+
 (defun normalize-json-key (key)
   "Normalize a symbol/string key into a JSON object key string."
   (cond
@@ -43,6 +49,24 @@
     (and (< pending max-pending)
          (or (<= interval 0.0) (>= elapsed interval)))))
 
+(defun enqueue-backtest-msg (msg)
+  "Enqueue a backtest message if queue capacity allows."
+  (when (< (length *backtest-send-queue*) *backtest-send-queue-max*)
+    (setf *backtest-send-queue* (nconc *backtest-send-queue* (list msg)))
+    t))
+
+(defun flush-backtest-queue ()
+  "Flush queued backtest messages once requester is ready."
+  (when (and (boundp 'swimmy.globals:*backtest-requester*)
+             swimmy.globals:*backtest-requester*)
+    (loop while *backtest-send-queue*
+          do (when (>= (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
+               (return))
+             (let ((msg (pop *backtest-send-queue*)))
+               (incf swimmy.globals::*backtest-submit-count*)
+               (setf swimmy.globals::*backtest-last-send-ts* (get-universal-time))
+               (pzmq:send swimmy.globals:*backtest-requester* msg)))))
+
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
@@ -53,6 +77,12 @@
       (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
               (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
       (return-from send-zmq-msg nil))
+    (when (and swimmy.core:*backtest-service-enabled*
+               (or (not (boundp 'swimmy.globals:*backtest-requester*))
+                   (null swimmy.globals:*backtest-requester*)))
+      (when (enqueue-backtest-msg msg)
+        (format t "[BACKTEST] 📥 Queued until requester is ready.~%"))
+      (return-from send-zmq-msg :queued))
     (incf swimmy.globals::*backtest-submit-count*)
     (setf swimmy.globals::*backtest-last-send-ts* (get-universal-time)))
   (cond
