@@ -20,10 +20,10 @@
          (swimmy.globals:*last-new-day* day-key)
          (swimmy.globals:*daily-report-sent-today* nil)
          (swimmy.main::*advisor-report-sent-today* t)
-         (original-report-fn (symbol-function 'swimmy.main::send-daily-tribal-narrative)))
+         (original-report-fn (symbol-function 'swimmy.main::send-daily-status-report)))
     
     ;; Mock the reporting function
-    (setf (symbol-function 'swimmy.main::send-daily-tribal-narrative) #'mock-send-report)
+    (setf (symbol-function 'swimmy.main::send-daily-status-report) #'mock-send-report)
     
     (unwind-protect
          (progn
@@ -49,7 +49,7 @@
            )
       
       ;; Restore
-      (setf (symbol-function 'swimmy.main::send-daily-tribal-narrative) original-report-fn)))
+      (setf (symbol-function 'swimmy.main::send-daily-status-report) original-report-fn)))
   )
 
 (deftest test-midnight-reset-logic
@@ -84,8 +84,8 @@
          (swimmy.globals:*last-new-day* day-key)
          (swimmy.globals:*daily-report-sent-today* nil)
          (swimmy.main::*advisor-report-sent-today* t)
-         (original-report-fn (symbol-function 'swimmy.main::send-daily-tribal-narrative)))
-    (setf (symbol-function 'swimmy.main::send-daily-tribal-narrative) #'mock-send-report)
+         (original-report-fn (symbol-function 'swimmy.main::send-daily-status-report)))
+    (setf (symbol-function 'swimmy.main::send-daily-status-report) #'mock-send-report)
     (unwind-protect
          (progn
            (setf *test-results* nil)
@@ -97,4 +97,4 @@
            ;; Same day, later time - should NOT send again
            (swimmy.main:check-scheduled-tasks time-2318)
            (assert-equal 1 (count :sent *test-results*) "Should not send twice on same day"))
-      (setf (symbol-function 'swimmy.main::send-daily-tribal-narrative) original-report-fn))))
+      (setf (symbol-function 'swimmy.main::send-daily-status-report) original-report-fn))))

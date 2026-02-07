@@ -813,6 +813,21 @@
           (assert-false (assoc 'swimmy.shell::tribe_consensus captured)))
       (setf (symbol-function 'swimmy.core:write-sexp-atomic) orig))))
 
+(deftest test-daily-report-omits-tribe
+  "daily report should omit tribe wording"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.shell::notify-discord-daily)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.shell::notify-discord-daily)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)))
+          (swimmy.main::send-daily-status-report)
+          (assert-true (null (search "Tribe" captured)))
+          (assert-true (null (search "部族" captured))))
+      (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
