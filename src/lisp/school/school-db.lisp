@@ -361,6 +361,14 @@
         ORDER BY timestamp"
        strategy-name)))
 
+(defun backtest-rows->trade-list (rows)
+  "Convert backtest_trade_logs rows into trade_list alists."
+  (mapcar (lambda (row)
+            (destructuring-bind (_rid _name ts pnl sym _dir _ep _xp _sl _tp _vol _hold _rank _tf _cat _reg _kind) row
+              (declare (ignore _rid _name _dir _ep _xp _sl _tp _vol _hold _rank _tf _cat _reg _kind))
+              (list (cons 'timestamp ts) (cons 'pnl pnl) (cons 'symbol sym))))
+          rows))
+
 (defun upsert-pair-strategy (pair)
   "Save or update pair strategy row in SQL."
   (let ((updated-at (get-universal-time)))
@@ -413,6 +421,32 @@
               :cpcv-median cpcv
               :cpcv-pass-rate pass
               :last-updated updated)))))
+
+(defun fetch-pair-strategies ()
+  "Fetch all pair strategy rows."
+  (mapcar (lambda (row)
+            (destructuring-bind (pid a b wa wb sym tf sharpe pf score corr rank oos cpcv pass updated) row
+              (list :pair-id pid
+                    :strategy-a a
+                    :strategy-b b
+                    :weight-a wa
+                    :weight-b wb
+                    :symbol sym
+                    :timeframe tf
+                    :sharpe sharpe
+                    :profit-factor pf
+                    :score score
+                    :corr corr
+                    :rank (and rank (swimmy.core:safe-read-sexp rank :package :swimmy.school))
+                    :oos-sharpe oos
+                    :cpcv-median cpcv
+                    :cpcv-pass-rate pass
+                    :last-updated updated)))
+          (execute-to-list
+           "SELECT pair_id, strategy_a, strategy_b, weight_a, weight_b,
+                   symbol, timeframe, sharpe, profit_factor, score, corr,
+                   rank, oos_sharpe, cpcv_median, cpcv_pass_rate, last_updated
+            FROM pair_strategies")))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60

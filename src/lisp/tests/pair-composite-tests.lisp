@@ -105,6 +105,12 @@
                                                           :competition-top-n 2)))
       (assert-equal 1 (length active) "only one pair should survive cap")
       (assert-equal "P1" (getf (first active) :pair-id) "top pair should be selected"))))
+
+(deftest test-pair-promotion-blocked-without-oos-cpcv
+  "pair promotion should be blocked if OOS/CPCV data missing"
+  (let* ((pair (list :pair-id "P1" :a "A" :b "B"))
+         (result (swimmy.school::pair-promotable-p pair :oos-trades-a nil :oos-trades-b nil)))
+    (assert-true (null result) "pair should not be promotable without OOS")))
 (deftest test-pair-selection-rescue-mode
   "rescue mode should allow |corr|<=0.3 when < max pairs"
   (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))

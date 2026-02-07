@@ -371,3 +371,61 @@
                    out)))))
      groups)
     (nreverse out)))
+
+(defun pair-promotable-p (pair &key oos-trades-a oos-trades-b)
+  "Return non-nil metrics when pair can be promoted with OOS trades."
+  (declare (ignore pair))
+  (multiple-value-bind (metrics reason)
+      (pair-metrics-from-trades oos-trades-a oos-trades-b :min-trades *pair-min-trades*)
+    (declare (ignore reason))
+    metrics))
+
+(defun refresh-pair-strategies ()
+  "Refresh pair strategy rows using backtest trade history."
+  (init-db)
+  (let* ((strategies *strategy-knowledge-base*)
+         (trade-map (make-hash-table :test 'equal)))
+    (dolist (s strategies)
+      (let* ((name (strategy-name s))
+             (rows (fetch-backtest-trades name)))
+        (when rows
+          (setf (gethash name trade-map) (backtest-rows->trade-list rows)))))
+    (multiple-value-bind (pairs _diag)
+        (select-pair-candidates strategies trade-map)
+      (declare (ignore _diag))
+      (dolist (pair pairs)
+        (let* ((a (getf pair :a))
+               (b (getf pair :b))
+               (oos-a (backtest-rows->trade-list (fetch-backtest-trades a :oos-kind "OOS")))
+               (oos-b (backtest-rows->trade-list (fetch-backtest-trades b :oos-kind "OOS")))
+               (cpcv-a (backtest-rows->trade-list (fetch-backtest-trades a :oos-kind "CPCV")))
+               (cpcv-b (backtest-rows->trade-list (fetch-backtest-trades b :oos-kind "CPCV")))
+               (strat-a (find-strategy a))
+               (symbol (and strat-a (strategy-symbol strat-a)))
+               (timeframe (and strat-a (strategy-timeframe strat-a))))
+          (multiple-value-bind (oos-metrics oos-reason)
+              (pair-metrics-from-trades oos-a oos-b :min-trades *pair-min-trades*)
+            (multiple-value-bind (cpcv-metrics cpcv-reason)
+                (pair-metrics-from-trades cpcv-a cpcv-b :min-trades *pair-min-trades*)
+              (declare (ignore oos-reason cpcv-reason))
+              (let ((rank (cond ((and cpcv-metrics (>= (getf cpcv-metrics :sharpe) 0.5)) :S)
+                                ((and oos-metrics (>= (getf oos-metrics :sharpe) 0.3)) :A)
+                                (t :B))))
+                (upsert-pair-strategy
+                 (append pair
+                         (list :strategy-a a
+                               :strategy-b b
+                               :profit-factor (or (getf pair :profit-factor) (getf pair :pf))
+                               :symbol symbol
+                               :timeframe timeframe
+                               :rank rank
+                               :oos-sharpe (and oos-metrics (getf oos-metrics :sharpe))
+                               :cpcv-median (and cpcv-metrics (getf cpcv-metrics :sharpe))
+                               :cpcv-pass-rate (and cpcv-metrics (getf cpcv-metrics :pass-rate)))))))))))))
+
+(defun refresh-pair-active-defs ()
+  "Refresh *pair-active-defs* using hybrid competition."
+  (init-db)
+  (let* ((pairs (fetch-pair-strategies))
+         (active (select-active-pair-defs pairs *strategy-knowledge-base*)))
+    (setf *pair-active-defs* active)))

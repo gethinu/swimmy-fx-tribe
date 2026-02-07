@@ -1323,6 +1323,7 @@
                   test-pair-inverse-vol-weights
                   test-pair-gate-blocks-on-insufficient-data
                   test-pair-slot-competition-cap
+                  test-pair-promotion-blocked-without-oos-cpcv
                   test-pair-selection-rescue-mode
                   test-pair-selection-excludes-short-trades
                   test-telemetry-sexp
