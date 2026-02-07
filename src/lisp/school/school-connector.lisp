@@ -199,6 +199,10 @@
     
     ;; V49.5: Flush stagnant notification buffers (Expert Panel)
     (swimmy.core:check-timeout-flushes)
+
+    ;; V50.10: Periodic flush for backtest queue (requester may connect mid-cycle)
+    (when (fboundp 'swimmy.school::maybe-flush-backtest-send-queue)
+      (swimmy.school::maybe-flush-backtest-send-queue))
     
     (format t "~%--- ✅ Cycle Complete ---~%")
     ;; Simple sleep to prevent CPU burn if loop is too fast (though backtests take time)
