@@ -36,6 +36,31 @@
             when val do (return val))
       default))
 
+(defun %json-object-p (obj)
+  "Return T when OBJ is a jsown object list (:OBJ ...)."
+  (and (listp obj) (eq (first obj) :OBJ)))
+
+(defun %json->alist (obj)
+  "Convert jsown object/list into an alist with SWIMMY.MAIN symbols."
+  (cond
+    ((%json-object-p obj)
+     (let ((out nil))
+       (dolist (pair (rest obj) (nreverse out))
+         (when (and (consp pair) (stringp (car pair)))
+           (let* ((key (car pair))
+                  (val (cdr pair))
+                  (sym (intern (string-upcase key) :swimmy.main)))
+             (push (cons sym (%json->alist val)) out))))))
+    ((listp obj)
+     (mapcar #'%json->alist obj))
+    (t obj)))
+
+(defun %json->sexp-backtest (json)
+  "Convert BACKTEST_RESULT JSON into the equivalent S-expression."
+  (let ((result (handler-case (jsown:val json "result") (error () nil))))
+    (when result
+      `((type . "BACKTEST_RESULT") (result . ,(%json->alist result))))))
+
 (defun %normalize-strategy-name (value)
   "Normalize strategy name to string or NIL."
   (cond
@@ -401,9 +426,27 @@
                        (format t "[DISPATCH] 📥 HISTORY stored: ~a ~a (~d bars)~%"
                                symbol tf (length candles)))))
                   (t nil))))
-            (progn
-              (format t "[DISPATCH] ⚠️ JSON payload ignored (internal ZMQ is S-expression only)~%")
-              nil)))
+            (let ((json (handler-case (jsown:parse msg) (error () nil))))
+              (if json
+                  (let* ((type (or (%json-val json '("type") "") ""))
+                         (type-str (cond ((stringp type) type)
+                                         ((symbolp type) (symbol-name type))
+                                         (t ""))))
+                    (cond
+                      ((string-equal type-str "BACKTEST_RESULT")
+                       (let ((sexp (%json->sexp-backtest json)))
+                         (if sexp
+                             (return-from internal-process-msg
+                               (internal-process-msg (swimmy.core:encode-sexp sexp)))
+                             (progn
+                               (format t "[DISPATCH] ⚠️ JSON BACKTEST_RESULT missing result~%")
+                               nil))))
+                      (t
+                       (format t "[DISPATCH] ⚠️ JSON payload ignored (type=~a)~%" type-str)
+                       nil)))
+                  (progn
+                    (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed)~%")
+                    nil)))))
     (when err
       (format t "[L] Msg Error: ~a" err)
       nil)
