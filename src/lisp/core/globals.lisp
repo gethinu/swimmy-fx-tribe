@@ -109,7 +109,8 @@
 (defparameter *backtest-submit-count* 0 "Total backtest requests submitted.")
 (defparameter *backtest-max-pending* 500 "Max pending backtest requests before throttling.")
 (defparameter *backtest-rate-limit-per-sec* 5 "Max backtest sends per second.")
-(defparameter *backtest-last-send-ts* 0 "Last send timestamp (unix seconds).")
+(defparameter *backtest-last-send-ts* 0
+  "Last send timestamp (seconds, internal real-time; sub-second precision).")
 
 (defparameter *sent-data-ids* (make-hash-table :test 'equal) "V50.9: Track Data IDs sent to Guardian")
 (defparameter *phase2-last-end-unix* 0 "Last Phase2 end_time (Unix seconds) used for backtests.")

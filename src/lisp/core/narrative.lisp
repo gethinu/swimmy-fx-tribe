@@ -29,14 +29,22 @@
   "Format VALUE if present, otherwise return FALLBACK."
   (cond
     ((null value) fallback)
-    ((numberp value) (format nil formatter value))
+    ((numberp value)
+     (let ((fmt (if (stringp formatter) formatter (format nil "~a" formatter))))
+       (if (or (search "~d" fmt)
+               (search "~:d" fmt)
+               (search "~@d" fmt)
+               (search "~@:d" fmt)
+               (search "~:@d" fmt))
+           (format nil fmt (round value))
+           (format nil fmt value))))
     ((symbolp value) (format nil formatter (string-upcase (string value))))
     (t (format nil formatter value))))
 
 (defun format-percent (value &optional (fallback "N/A"))
   "Format VALUE as a percentage (0-1 range)."
   (if (numberp value)
-      (format nil "~,0f%%" (* 100 value))
+      (format nil "~d%" (round (* 100 value)))
       fallback))
 
 (defun send-daily-tribal-narrative ()
