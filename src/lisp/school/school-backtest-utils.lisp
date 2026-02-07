@@ -12,6 +12,11 @@
 (defvar *backtest-cache-validity* (* 24 3600)
   "Validity period for backtest results (24 hours).")
 
+(defun backtest-now-seconds ()
+  "Return a subsecond monotonic timestamp in seconds for backtest throttling."
+  (/ (get-internal-real-time)
+     (coerce internal-time-units-per-second 'double-float)))
+
 (defun normalize-json-key (key)
   "Normalize a symbol/string key into a JSON object key string."
   (cond
@@ -34,11 +39,11 @@
     (max 0 (- swimmy.globals::*backtest-submit-count* recv))))
 
 (defun backtest-send-allowed-p ()
-  (let* ((now (get-universal-time))
+  (let* ((now (backtest-now-seconds))
          (pending (backtest-pending-count))
          (max-pending swimmy.globals::*backtest-max-pending*)
          (rate swimmy.globals::*backtest-rate-limit-per-sec*)
-         (interval (if (and rate (> rate 0)) (/ 1.0 rate) 0.0))
+         (interval (if (and rate (> rate 0)) (/ 1.0d0 rate) 0.0d0))
          (elapsed (- now swimmy.globals::*backtest-last-send-ts*)))
     (and (< pending max-pending)
          (or (<= interval 0.0) (>= elapsed interval)))))
@@ -46,15 +51,13 @@
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
-  ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
-  (sleep 0.005)
   (when (eq target :backtest)
     (unless (backtest-send-allowed-p)
       (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
               (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
       (return-from send-zmq-msg nil))
     (incf swimmy.globals::*backtest-submit-count*)
-    (setf swimmy.globals::*backtest-last-send-ts* (get-universal-time)))
+    (setf swimmy.globals::*backtest-last-send-ts* (backtest-now-seconds)))
   (cond
     ((and (eq target :backtest)
           (boundp 'swimmy.globals:*backtest-requester*)
@@ -62,6 +65,8 @@
      (pzmq:send swimmy.globals:*backtest-requester* msg))
     ((and (boundp 'swimmy.globals:*cmd-publisher*)
           swimmy.globals:*cmd-publisher*)
+     ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
+     (sleep 0.005)
      (when (eq target :backtest)
        (format t "[ZMQ] ⚠️ Backtest requester missing. Falling back to CMD publisher.~%"))
      (pzmq:send swimmy.globals:*cmd-publisher* msg))

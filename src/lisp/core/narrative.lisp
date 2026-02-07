@@ -29,14 +29,18 @@
   "Format VALUE if present, otherwise return FALLBACK."
   (cond
     ((null value) fallback)
-    ((numberp value) (format nil formatter value))
+    ((numberp value)
+     (let ((fmt (string-downcase formatter)))
+       (if (search "~d" fmt)
+           (format nil formatter (round value))
+           (format nil formatter value))))
     ((symbolp value) (format nil formatter (string-upcase (string value))))
     (t (format nil formatter value))))
 
 (defun format-percent (value &optional (fallback "N/A"))
   "Format VALUE as a percentage (0-1 range)."
   (if (numberp value)
-      (format nil "~,0f%%" (* 100 value))
+      (format nil "~d%" (round (* 100 value)))
       fallback))
 
 (defun send-daily-status-report ()
@@ -89,8 +93,8 @@
   (format-percent swarm-consensus)
   flood-status
   (format-value danger-level "~d")
-  (format-value max-dd "~,1f%%")
-  (format-value monitor-dd "~,1f%%")
+  (format-value max-dd "~,1f%")
+  (format-value monitor-dd "~,1f%")
   (format-value equity "~,0f")
   (format-value peak-equity "~,0f"))
      :color (cond ((>= (if (boundp '*danger-level*) *danger-level* 0) 3) 15158332) ; Red
