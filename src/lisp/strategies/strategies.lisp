@@ -78,10 +78,15 @@
 (defparameter *last-cycle-notify-time* 0 "V48.5: Throttling for Cycle Complete alerts")
 (defconstant +cycle-notify-interval+ (* 6 3600) "6 Hour Alert Interval")
 
+(defun active-strategy-p (strategy)
+  (let ((rank (strategy-rank strategy)))
+    (not (member rank '(:graveyard :retired) :test #'eq))))
+
 (defun format-phase1-bt-batch-message (requested total cursor &key cycle-completed)
   (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a"
           requested total cursor total
           (if cycle-completed "~%✅ **Phase1 BT Cycle Complete (RR)**" "")))
+
 
 (defun batch-backtest-knowledge ()
   "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
@@ -93,18 +98,25 @@
   (let* ((max-batch-size (max 1 (if (boundp 'swimmy.globals::*backtest-max-pending*)
                                     swimmy.globals::*backtest-max-pending*
                                     1000)))
-         (total (length *strategy-knowledge-base*))
-         (old-cursor *backtest-cursor*)
-         (start-idx (mod *backtest-cursor* total))
-         (end-idx (min total (+ start-idx max-batch-size))))
+         (active-strategies (remove-if-not #'active-strategy-p *strategy-knowledge-base*))
+         (total (length active-strategies)))
+    (when (zerop total)
+      (setf swimmy.globals:*rr-expected-backtest-count* 0)
+      (format t "[L] ⚠️ No active strategies for Phase1 BT. Skipping batch.~%")
+      (return-from batch-backtest-knowledge nil))
+    (let* ((old-cursor *backtest-cursor*)
+           (start-idx (mod *backtest-cursor* total))
+           (batch-size (min total max-batch-size))
+           (end-idx (min total (+ start-idx batch-size))))
     
     (when (or (zerop old-cursor) (>= old-cursor total))
       (setf *cycle-start-kb-size* total))
     
-    (let* ((batch-strategies (subseq *strategy-knowledge-base* start-idx end-idx))
-           ;; Handle wrap-around if needed
-           (wrap-strategies (if (< (- end-idx start-idx) max-batch-size)
-                                (subseq *strategy-knowledge-base* 0 (min total (- max-batch-size (- end-idx start-idx))))
+    (let* ((batch-strategies (subseq active-strategies start-idx end-idx))
+           ;; Handle wrap-around without duplication
+           (remaining (- batch-size (- end-idx start-idx)))
+           (wrap-strategies (if (> remaining 0)
+                                (subseq active-strategies 0 remaining)
                                 nil))
            (final-batch (append batch-strategies wrap-strategies))
            (cached-count 0)
@@ -112,7 +124,10 @@
            (skipped-count 0))
       
       ;; Update cursor for next time
-      (setf *backtest-cursor* (mod (+ start-idx (length final-batch)) total))
+      (setf *backtest-cursor*
+            (if (>= batch-size total)
+                0
+                (mod (+ start-idx batch-size) total)))
       
       ;; V48.0: Detect cycle completion (cursor wrapped around)
       ;; V50.9 Fix: Handle single-batch completion (old=0 -> new=0)
@@ -169,7 +184,7 @@
         (when cycle-completed
           (format t "[L] 🔄 KB Backtest Cycle Complete! Sending throttled summary...~%")
           (setf *last-cycle-notify-time* (get-universal-time))
-          (notify-backtest-summary :rr)))))
+          (notify-backtest-summary :rr))))))
 
 (defun adopt-proven-strategies ()
   "Adopt only strategies that passed Sharpe filter"

@@ -1006,8 +1006,7 @@
                 (list (swimmy.school:make-strategy :name "S1")
                       (swimmy.school:make-strategy :name "S2")
                       (swimmy.school:make-strategy :name "S3")
-                      (swimmy.school:make-strategy :name "S4")
-                      (swimmy.school:make-strategy :name "S5")))
+                      (swimmy.school:make-strategy :name "S4")))
           (setf swimmy.school::*backtest-cursor* 0)
           (when orig-cache
             (setf (symbol-function 'swimmy.school::get-cached-backtest)
@@ -1022,6 +1021,120 @@
                   (lambda (&rest _args) (declare (ignore _args)) nil)))
           (swimmy.school::batch-backtest-knowledge)
           (assert-equal 2 count "batch should follow max pending"))
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals:*candle-history* orig-candle)
+      (setf swimmy.globals:*candle-histories* orig-hist)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*backtest-cursor* orig-cursor)
+      (when orig-cache
+        (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache))
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify))
+      (when orig-summary
+        (setf (symbol-function 'swimmy.school::notify-backtest-summary) orig-summary)))))
+
+(deftest test-rr-batch-skips-retired-strategies
+  "RR batch should skip retired/graveyard strategies"
+  (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-summary (and (fboundp 'swimmy.school::notify-backtest-summary)
+                            (symbol-function 'swimmy.school::notify-backtest-summary)))
+         (orig-cache (and (fboundp 'swimmy.school::get-cached-backtest)
+                          (symbol-function 'swimmy.school::get-cached-backtest)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-candle swimmy.globals:*candle-history*)
+         (orig-hist swimmy.globals:*candle-histories*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-cursor swimmy.school::*backtest-cursor*)
+         (seen nil)
+         (count 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*backtest-max-pending* 10)
+          (setf swimmy.globals:*candle-history* (loop repeat 101 collect 1))
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (let ((s1 (swimmy.school:make-strategy :name "S1"))
+                (s2 (swimmy.school:make-strategy :name "S2"))
+                (s3 (swimmy.school:make-strategy :name "S3")))
+            (setf (strategy-rank s1) :B)
+            (setf (strategy-rank s2) :retired)
+            (setf (strategy-rank s3) :graveyard)
+            (setf swimmy.school::*strategy-knowledge-base* (list s1 s2 s3)))
+          (setf swimmy.school::*backtest-cursor* 0)
+          (when orig-cache
+            (setf (symbol-function 'swimmy.school::get-cached-backtest)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (strat &rest _args)
+                  (declare (ignore _args))
+                  (incf count)
+                  (push (strategy-name strat) seen)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-summary
+            (setf (symbol-function 'swimmy.school::notify-backtest-summary)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (swimmy.school::batch-backtest-knowledge)
+          (assert-equal 1 count "Should only backtest active strategies")
+          (assert-true (null (member "S2" seen :test #'string=))
+                       "Retired strategy should be skipped")
+          (assert-true (null (member "S3" seen :test #'string=))
+                       "Graveyard strategy should be skipped"))
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals:*candle-history* orig-candle)
+      (setf swimmy.globals:*candle-histories* orig-hist)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*backtest-cursor* orig-cursor)
+      (when orig-cache
+        (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache))
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify))
+      (when orig-summary
+        (setf (symbol-function 'swimmy.school::notify-backtest-summary) orig-summary)))))
+
+(deftest test-rr-batch-no-active-strategies
+  "RR batch should no-op when no active strategies exist"
+  (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-summary (and (fboundp 'swimmy.school::notify-backtest-summary)
+                            (symbol-function 'swimmy.school::notify-backtest-summary)))
+         (orig-cache (and (fboundp 'swimmy.school::get-cached-backtest)
+                          (symbol-function 'swimmy.school::get-cached-backtest)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-candle swimmy.globals:*candle-history*)
+         (orig-hist swimmy.globals:*candle-histories*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-cursor swimmy.school::*backtest-cursor*)
+         (count 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*backtest-max-pending* 10)
+          (setf swimmy.globals:*candle-history* (loop repeat 101 collect 1))
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (let ((s1 (swimmy.school:make-strategy :name "S1"))
+                (s2 (swimmy.school:make-strategy :name "S2")))
+            (setf (strategy-rank s1) :retired)
+            (setf (strategy-rank s2) :retired)
+            (setf swimmy.school::*strategy-knowledge-base* (list s1 s2)))
+          (setf swimmy.school::*backtest-cursor* 0)
+          (when orig-cache
+            (setf (symbol-function 'swimmy.school::get-cached-backtest)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest _args) (declare (ignore _args)) (incf count)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-summary
+            (setf (symbol-function 'swimmy.school::notify-backtest-summary)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (swimmy.school::batch-backtest-knowledge)
+          (assert-equal 0 count "No active strategies should be backtested"))
       (setf swimmy.globals::*backtest-max-pending* orig-max)
       (setf swimmy.globals:*candle-history* orig-candle)
       (setf swimmy.globals:*candle-histories* orig-hist)
@@ -1487,6 +1600,11 @@
                   test-flush-deferred-founders-respects-limit
                   test-backtest-pending-counters-defaults
                   test-backtest-send-throttles-when-pending-high
+                  test-rr-batch-respects-max-pending
+                  test-rr-batch-skips-retired-strategies
+                  test-rr-batch-no-active-strategies
+                  test-format-phase1-bt-batch-message
+                  test-system-pulse-5m-text
                   test-backtest-pending-count-decrements-on-recv
                   test-deferred-flush-respects-batch
                   test-backtest-uses-csv-override
