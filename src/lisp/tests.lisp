@@ -1328,6 +1328,7 @@
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit
+                  test-pair-strategy-upsert-fetch
                   test-db-rank-counts
                   test-report-source-drift-detects-mismatch
                   test-evolution-report-uses-db-counts

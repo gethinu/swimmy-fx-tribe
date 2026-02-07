@@ -419,6 +419,39 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-pair-strategy-upsert-fetch
+  "pair_strategies should upsert and fetch records"
+  (let* ((tmp-db (format nil "/tmp/swimmy-pair-strat-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((pair (list :pair-id "P1"
+                              :strategy-a "A"
+                              :strategy-b "B"
+                              :weight-a 0.6
+                              :weight-b 0.4
+                              :symbol "USDJPY"
+                              :timeframe 1
+                              :sharpe 0.8
+                              :profit-factor 1.5
+                              :score 1.0
+                              :corr 0.1
+                              :rank :A
+                              :oos-sharpe 0.7
+                              :cpcv-median 0.6
+                              :cpcv-pass-rate 0.8)))
+              (swimmy.school::upsert-pair-strategy pair)
+              (let ((fetched (swimmy.school::fetch-pair-strategy "P1")))
+                (assert-equal "P1" (getf fetched :pair-id) "pair_id should match")
+                (assert-equal "A" (getf fetched :strategy-a) "strategy_a should match")
+                (assert-equal :A (getf fetched :rank) "rank should match")
+                (assert-true (> (getf fetched :last-updated) 0) "last_updated should be set"))))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-report-source-drift-detects-mismatch
   "Drift check should flag mismatched DB/KB/Library counts."
   (let* ((tmp-db (format nil "/tmp/swimmy-drift-~a.db" (get-universal-time)))

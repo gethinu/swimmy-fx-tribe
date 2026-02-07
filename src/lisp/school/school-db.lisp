@@ -106,6 +106,27 @@
       oos_kind TEXT
     )")
 
+  ;; Table: Pair Strategies (Composite)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS pair_strategies (
+      pair_id TEXT PRIMARY KEY,
+      strategy_a TEXT,
+      strategy_b TEXT,
+      weight_a REAL,
+      weight_b REAL,
+      symbol TEXT,
+      timeframe INTEGER,
+      sharpe REAL,
+      profit_factor REAL,
+      score REAL,
+      corr REAL,
+      rank TEXT,
+      oos_sharpe REAL,
+      cpcv_median REAL,
+      cpcv_pass_rate REAL,
+      last_updated INTEGER
+    )")
+
   ;; Table: Swap History (QS Architecture Data Lake)
   (execute-non-query
    "CREATE TABLE IF NOT EXISTS swap_history (
@@ -339,6 +360,59 @@
         WHERE strategy_name = ?
         ORDER BY timestamp"
        strategy-name)))
+
+(defun upsert-pair-strategy (pair)
+  "Save or update pair strategy row in SQL."
+  (let ((updated-at (get-universal-time)))
+    (execute-non-query
+     "INSERT OR REPLACE INTO pair_strategies (
+        pair_id, strategy_a, strategy_b, weight_a, weight_b,
+        symbol, timeframe, sharpe, profit_factor, score, corr,
+        rank, oos_sharpe, cpcv_median, cpcv_pass_rate, last_updated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+     (getf pair :pair-id)
+     (getf pair :strategy-a)
+     (getf pair :strategy-b)
+     (getf pair :weight-a)
+     (getf pair :weight-b)
+     (getf pair :symbol)
+     (getf pair :timeframe)
+     (getf pair :sharpe)
+     (getf pair :profit-factor)
+     (getf pair :score)
+     (getf pair :corr)
+     (format nil "~s" (getf pair :rank))
+     (getf pair :oos-sharpe)
+     (getf pair :cpcv-median)
+     (getf pair :cpcv-pass-rate)
+     updated-at)))
+
+(defun fetch-pair-strategy (pair-id)
+  "Fetch a pair strategy row by PAIR-ID."
+  (let ((row (first (execute-to-list
+                     "SELECT pair_id, strategy_a, strategy_b, weight_a, weight_b,
+                             symbol, timeframe, sharpe, profit_factor, score, corr,
+                             rank, oos_sharpe, cpcv_median, cpcv_pass_rate, last_updated
+                      FROM pair_strategies WHERE pair_id = ?"
+                     pair-id))))
+    (when row
+      (destructuring-bind (pid a b wa wb sym tf sharpe pf score corr rank oos cpcv pass updated) row
+        (list :pair-id pid
+              :strategy-a a
+              :strategy-b b
+              :weight-a wa
+              :weight-b wb
+              :symbol sym
+              :timeframe tf
+              :sharpe sharpe
+              :profit-factor pf
+              :score score
+              :corr corr
+              :rank (and rank (swimmy.core:safe-read-sexp rank :package :swimmy.school))
+              :oos-sharpe oos
+              :cpcv-median cpcv
+              :cpcv-pass-rate pass
+              :last-updated updated)))))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60
