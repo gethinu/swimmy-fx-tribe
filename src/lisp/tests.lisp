@@ -776,6 +776,25 @@
       (setf swimmy.school::*last-category-trade-time* orig-table)
       (setf swimmy.school::*min-trade-interval* orig-interval))))
 
+(deftest test-high-council-danger-lv2-uses-swarm-consensus
+  "Danger Lv2 approval uses swarm consensus only"
+  (let ((orig-danger swimmy.globals::*danger-level*)
+        (orig-swarm swimmy.globals::*last-swarm-consensus*)
+        (orig-vol swimmy.globals::*current-volatility-state*))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*danger-level* 2)
+          (setf swimmy.globals::*current-volatility-state* :normal)
+          (setf swimmy.globals::*last-swarm-consensus* 0.8)
+          (assert-true (swimmy.school::convene-high-council
+                        '(:symbol "USDJPY" :direction :buy) :trend))
+          (setf swimmy.globals::*last-swarm-consensus* 0.6)
+          (assert-false (swimmy.school::convene-high-council
+                         '(:symbol "USDJPY" :direction :buy) :trend)))
+      (setf swimmy.globals::*danger-level* orig-danger)
+      (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
+      (setf swimmy.globals::*current-volatility-state* orig-vol))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────

@@ -315,7 +315,6 @@
   (let* ((symbol (getf proposal :symbol))
          (direction (getf proposal :direction))
          (danger-level (if (boundp '*danger-level*) *danger-level* 0))
-         (tribe-consensus (if (boundp '*tribe-consensus*) *tribe-consensus* 0.5))
          (swarm-consensus (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
          (volatility-state (if (boundp '*current-volatility-state*) *current-volatility-state* :normal))
          (approval nil)
@@ -329,9 +328,9 @@
        (setf approval nil reason "🚫 REJECTED: FLEE MODE active."))
       
       ((>= danger-level 2)
-       (if (and (> tribe-consensus 0.7) (> swarm-consensus 0.7))
-           (setf approval t reason "⚠️ APPROVED: High consensus in Danger Lv2")
-           (setf approval nil reason "🛡️ REJECTED: Danger Lv2 requires 70%+ consensus")))
+       (if (> swarm-consensus 0.7)
+           (setf approval t reason "⚠️ APPROVED: Swarm consensus in Danger Lv2")
+           (setf approval nil reason "🛡️ REJECTED: Danger Lv2 requires 70%+ swarm consensus")))
            
       ((eq volatility-state :extreme)
        (if (member category '(:breakers :shamans))
