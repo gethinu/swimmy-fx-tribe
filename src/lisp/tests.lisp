@@ -848,6 +848,19 @@
   (let ((votes (swimmy.school::gather-category-votes "proposal" :trend)))
     (assert-true (and (listp votes) (> (length votes) 0)))))
 
+(deftest test-dynamic-narrative-uses-category-display
+  "dynamic narrative should use category display, not clan names"
+  (let* ((signal (list :strategy-name "Test"
+                       :direction :buy
+                       :category :trend
+                       :indicator-values nil
+                       :sl 0.1
+                       :tp 0.2))
+         (text (swimmy.school::generate-dynamic-narrative signal "USDJPY" 150.0)))
+    (assert-true (search "TREND" text))
+    (assert-false (search "Hunters" text))
+    (assert-false (search "Unknown" text))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
