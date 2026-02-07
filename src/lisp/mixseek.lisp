@@ -6,12 +6,10 @@
 ;; "人の褌で相撲を取る" - Standing on the shoulders of giants
 ;;
 ;; Architecture:
-;; - 4 Clans (Teams) compete to generate the best strategies
+;; - 4 Categories (Teams) compete to generate the best strategies
 ;; - Elder Council (Evaluator) scores each strategy
 ;; - Rounds of improvement with feedback
 ;; - Comomentum indicator to detect market crowding
-
-(in-package :common-lisp-user)
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  COMOMENTUM INDICATOR (混雑度)
@@ -72,10 +70,10 @@
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  TEAM COMPETITION FRAMEWORK
 ;;; ══════════════════════════════════════════════════════════════════
-;;; Each clan generates strategies, Elder Council evaluates
+;;; Each category generates strategies, Elder Council evaluates
 
 (defstruct team-submission
-  clan-id           ; Which clan submitted
+  category-id       ; Which category submitted
   strategy          ; The strategy struct
   round             ; Which round of competition
   reasoning         ; Why this strategy fits current conditions
@@ -168,7 +166,7 @@
          (robust-score (evaluate-robustness strategy comomentum))
          (clarity-score (evaluate-clarity strategy))
          (total (+ exec-score risk-score robust-score clarity-score))
-         (feedback (elder-generate-feedback total (team-submission-clan-id submission))))
+         (feedback (elder-generate-feedback total (team-submission-category-id submission))))
     (make-evaluation-result
      :submission submission
      :scores (list :executability exec-score
@@ -179,30 +177,29 @@
      :feedback feedback
      :rank 0)))  ; Rank set later
 
-(defun elder-generate-feedback (score clan-id)
-  "Generate Elder feedback based on score and clan."
-  (let ((clan-name (let ((c (get-clan clan-id))) (if c (clan-name c) "Unknown"))))
+(defun elder-generate-feedback (score category-id)
+  "Generate Elder feedback based on score and category."
+  (let ((category-name (get-category-display category-id)))
     (cond
       ((>= score 90)
-       (format nil "👴 Elders praise ~a: 「見事な戦略だ。部族の誇りとなるであろう。」" clan-name))
+       (format nil "👴 Elders praise ~a: 「見事な戦略だ。誇りとなるであろう。」" category-name))
       ((>= score 70)
-       (format nil "👴 Elders approve ~a: 「良い戦略だ。さらに磨けばより強くなる。」" clan-name))
+       (format nil "👴 Elders approve ~a: 「良い戦略だ。さらに磨けばより強くなる。」" category-name))
       ((>= score 50)
-       (format nil "👴 Elders note ~a: 「まだ荒削りだ。経験を積め。」" clan-name))
+       (format nil "👴 Elders note ~a: 「まだ荒削りだ。経験を積め。」" category-name))
       (t
-       (format nil "👴 Elders warn ~a: 「この戦略は危険だ。再考せよ。」" clan-name)))))
+       (format nil "👴 Elders warn ~a: 「この戦略は危険だ。再考せよ。」" category-name)))))
 
 ;;; ─────────────────────────────────────────
 ;;; TEAM STRATEGY GENERATION
 ;;; ─────────────────────────────────────────
 
-(defun generate-team-strategy (clan-id context)
-  "Each clan generates a strategy based on their philosophy and current context."
-  (let* ((clan (get-clan clan-id))
-         (regime (getf context :regime))
+(defun generate-team-strategy (category-id context)
+  "Each category generates a strategy based on current context."
+  (let* ((regime (getf context :regime))
          (comomentum (getf context :comomentum))
          (volatility (getf context :volatility)))
-    (case clan-id
+    (case category-id
       ;; Hunters (Trend) - Patient, follow the wind
       (:trend
        (make-strategy
@@ -260,7 +257,7 @@
 ;;; ─────────────────────────────────────────
 
 (defun run-competition-round (history)
-  "Run one round of competition among all clans.
+  "Run one round of competition among all categories.
    Returns ranked list of evaluation results."
   (incf *current-round*)
   (format t "~%[MIXSEEK] ═══════════════════════════════════════~%")
@@ -279,18 +276,17 @@
             (or comomentum 0.0)
             (comomentum-risk-level comomentum))
     
-    ;; Each clan generates a submission
-    (dolist (clan-id '(:trend :reversion :breakout :scalp))
-      (let* ((clan (get-clan clan-id))
-             (strategy (generate-team-strategy clan-id context)))
+    ;; Each category generates a submission
+    (dolist (category-id '(:trend :reversion :breakout :scalp))
+      (let* ((strategy (generate-team-strategy category-id context)))
         (when strategy
           (let ((submission (make-team-submission
-                            :clan-id clan-id
+                            :category-id category-id
                             :strategy strategy
                             :round *current-round*
                             :confidence (+ 0.5 (random 0.5)))))
-            (format t "[MIXSEEK] ~a ~a submitted: ~a~%"
-                    (clan-emoji clan) (clan-name clan) (strategy-name strategy))
+            (format t "[MIXSEEK] 📌 ~a submitted: ~a~%"
+                    (get-category-display category-id) (strategy-name strategy))
             (push submission submissions)))))
     
     ;; Elder Council evaluates
@@ -309,12 +305,12 @@
     (format t "~%[MIXSEEK] 🏆 RESULTS:~%")
     (dolist (result results)
       (let* ((sub (evaluation-result-submission result))
-             (clan (get-clan (team-submission-clan-id sub)))
+             (category (team-submission-category-id sub))
              (medal (case (evaluation-result-rank result)
                      (1 "🥇") (2 "🥈") (3 "🥉") (otherwise "  "))))
         (format t "~a ~a ~a: ~d points~%"
                 medal
-                (clan-emoji clan)
+                (get-category-display category)
                 (strategy-name (team-submission-strategy sub))
                 (evaluation-result-total-score result))
         (format t "   ~a~%" (evaluation-result-feedback result))))

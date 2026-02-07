@@ -209,8 +209,8 @@
         ;; Return the one with highest sharpe (or 0 if nil)
         (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))))
 
-(defun select-tribal-pair (population)
-  "Select two parents from DIFFERENT clans/categories.
+(defun select-category-pair (population)
+  "Select two parents from DIFFERENT categories.
    Promotes 'Hybrid Vigor' and innovation."
   (let* ((categories (remove-duplicates (mapcar #'strategy-category population)))
          (cat-a (nth (random (length categories)) categories))
@@ -220,12 +220,12 @@
                           until (not (eq c cat-a))
                           return c)
                     cat-a))
-         ;; Get best of each tribe (or random elite)
-         ;; Actually, let's use Tournament within the Tribe to pick the representative
-         (tribe-a (remove-if-not (lambda (s) (eq (strategy-category s) cat-a)) population))
-         (tribe-b (remove-if-not (lambda (s) (eq (strategy-category s) cat-b)) population))
-         (parent-a (select-parent-tournament tribe-a :k 2))
-         (parent-b (select-parent-tournament tribe-b :k 2)))
+         ;; Get best of each category (or random elite)
+         ;; Use Tournament within the category to pick the representative
+         (category-a (remove-if-not (lambda (s) (eq (strategy-category s) cat-a)) population))
+         (category-b (remove-if-not (lambda (s) (eq (strategy-category s) cat-b)) population))
+         (parent-a (select-parent-tournament category-a :k 2))
+         (parent-b (select-parent-tournament category-b :k 2)))
     
     (cons parent-a parent-b)))
 

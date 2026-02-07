@@ -29,9 +29,9 @@
               (child nil))
 
           (cond
-            ;; 30% Tribal Crossover (Generative / AI-Driven)
+            ;; 30% Category Crossover (Generative / AI-Driven)
             ((< roll 0.30)
-             ;; Optimized Tribal Selection (Naval's O(1) Fix)
+             ;; Optimized Category Selection (Naval's O(1) Fix)
              (let* ((cats (loop for k being the hash-keys of *category-pools* collect k)))
                (when (> (length cats) 0)
                  (let* ((cat-a (nth (random (length cats)) cats))
@@ -40,15 +40,15 @@
                                          until (not (eq c cat-a))
                                          return c)
                                    cat-a)))
-                   ;; Pick best from each tribe
-                   (let ((tribe-a (gethash cat-a *category-pools*))
-                         (tribe-b (gethash cat-b *category-pools*)))
-                     (when (and tribe-a tribe-b)
-                       (let ((p1 (select-parent-tournament tribe-a :k 2))
-                             (p2 (select-parent-tournament tribe-b :k 2)))
+                   ;; Pick best from each category
+                   (let ((category-a (gethash cat-a *category-pools*))
+                         (category-b (gethash cat-b *category-pools*)))
+                     (when (and category-a category-b)
+                       (let ((p1 (select-parent-tournament category-a :k 2))
+                             (p2 (select-parent-tournament category-b :k 2)))
                          ;; GENETIC DISTANCE CHECK (Musk's Sweet Spot)
                          (when (and p1 p2 (genetic-compatibility-p (extract-genome p1) (extract-genome p2)))
-                           (format t "[L] 🧬 Tribal Crossover: ~a + ~a~%" (strategy-name p1) (strategy-name p2))
+                           (format t "[L] 🧬 Category Crossover: ~a + ~a~%" (strategy-name p1) (strategy-name p2))
 
                            ;; V17: Generative Crossover
                            (if (and (boundp 'swimmy.main::*gemini-api-key*)

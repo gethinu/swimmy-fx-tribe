@@ -20,9 +20,7 @@
          (canonical (prin1-to-string (list entry exit indicators))))
     (format nil "~x" (sxhash canonical))))
 
-;; announce-clan-trade removed in V3.0 - duplicate notification (narrative already sent)
-
-;; announce-clan-trade removed in V3.0 - duplicate notification (narrative already sent)
+;; announce-trade removed in V3.0 - duplicate notification (narrative already sent)
 
 
 ;;; ══════════════════════════════════════════════════════════════════

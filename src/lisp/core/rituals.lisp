@@ -7,7 +7,7 @@
 ;;; Extracted from brain-ritual.lisp (Strangler Fig Phase 4)
 
 (defun morning-ritual ()
-  "Morning Ritual - Recite the Constitution and gather the clans"
+  "Morning Ritual - Recite the Constitution and gather the system"
   (format t "~%")
   (format t "[L] ═══════════════════════════════════════~%")
   (format t "[L] 🌅 MORNING RITUAL - The Clans Gather~%")

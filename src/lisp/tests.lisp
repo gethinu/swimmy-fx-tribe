@@ -1789,9 +1789,15 @@
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
-                  test-clan-exists
-                  test-get-clan
-                  test-clan-display
+                  test-category-trade-interval
+                  test-high-council-danger-lv2-uses-swarm-consensus
+                  test-live-status-schema-v2-no-tribe
+                  test-daily-report-omits-tribe
+                  test-ledger-omits-tribe-fields
+                  test-category-vote-list
+                  test-dynamic-narrative-uses-category-display
+                  test-category-counts-returns-alist
+                  test-repl-help-omits-clans
                   ;; Macro tests
                   ;; (Temporarily removed missing tests)
                   ;; V6.18: Danger tests
