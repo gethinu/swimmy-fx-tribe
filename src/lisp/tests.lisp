@@ -1238,6 +1238,7 @@
                   test-request-backtest-sets-submit-id
                   test-generate-uuid-changes-even-with-reset-rng
                   test-oos-retry-uses-new-request-id
+                  test-oos-stale-result-ignored
                   test-oos-queue-clear-on-startup
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true

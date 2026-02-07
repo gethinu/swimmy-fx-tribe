@@ -179,6 +179,19 @@
 
 (defun handle-oos-backtest-result (name metrics)
   "Apply OOS backtest result to strategy and attempt promotion."
+  (let* ((req-id (getf metrics :request-id))
+         (queued-id nil))
+    (handler-case
+        (multiple-value-bind (qid _req-at _status) (lookup-oos-request name)
+          (declare (ignore _req-at _status))
+          (setf queued-id qid))
+      (error (e)
+        (%oos-failure-inc :db-error)
+        (format t "[OOS] ⚠️ lookup-oos-request failed while handling result for ~a (~a)~%" name e)))
+    (unless (and (stringp req-id) (stringp queued-id) (string= queued-id req-id))
+      (format t "[OOS] ⚠️ Stale OOS result ignored for ~a (req ~a, latest ~a)~%"
+              name req-id queued-id)
+      (return-from handle-oos-backtest-result nil)))
   (let ((strat (find-strategy name)))
     (unless strat
       (%oos-metric-inc :failure)
