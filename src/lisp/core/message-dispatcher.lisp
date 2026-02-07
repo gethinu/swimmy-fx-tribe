@@ -297,6 +297,8 @@
                        (string-equal type-str "CPCV_RESULT"))
                    (let* ((result (cdr (assoc 'result sexp)))
                           (name (cdr (assoc 'strategy_name result)))
+                          (request-id (%alist-val result '(request_id request-id) nil))
+                          (trade-list (%alist-val result '(trade_list trade-list) nil))
                           (median (cdr (assoc 'median_sharpe result)))
                           (paths (cdr (assoc 'path_count result)))
                           (passed (cdr (assoc 'passed_count result)))
@@ -307,6 +309,8 @@
                                                :path-count paths :passed-count passed
                                                :failed-count failed :pass-rate pass-rate
                                                :is-passed is-passed)))
+                       (when (and trade-list name)
+                         (swimmy.school:record-backtest-trades request-id name "CPCV" trade-list))
                        (swimmy.core:notify-cpcv-result result-plist)
                        (push result-plist swimmy.globals:*cpcv-results-buffer*)
                        (let ((count (length swimmy.globals:*cpcv-results-buffer*))

@@ -191,6 +191,26 @@
         (when orig-oos
           (setf (symbol-function 'swimmy.school:handle-oos-backtest-result) orig-oos))))))
 
+(deftest test-cpcv-result-persists-trade-list
+  "CPCV_RESULT should persist trade_list as oos_kind=CPCV"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-CPCV\") (trade_list . (((timestamp . 1) (pnl . 1.0) (symbol . \"USDJPY\")))))))")
+           (called nil)
+           (orig-record (symbol-function 'swimmy.school:record-backtest-trades)))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:record-backtest-trades)
+                  (lambda (rid name kind trades)
+                    (setf called (list rid name kind trades))
+                    nil))
+            (funcall fn msg)
+            (assert-true called "record-backtest-trades should be called")
+            (assert-equal "RID-CPCV" (first called) "request_id should match")
+            (assert-equal "AAA" (second called) "strategy name should match")
+            (assert-equal "CPCV" (third called) "oos_kind should be CPCV"))
+        (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)))))
+
 (deftest test-backtest-debug-log-records-apply
   "BACKTEST_RESULT should write debug log around apply when debug enabled"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1256,6 +1276,7 @@
                   test-internal-process-msg-backtest-request-id-bound
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
+                  test-cpcv-result-persists-trade-list
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
