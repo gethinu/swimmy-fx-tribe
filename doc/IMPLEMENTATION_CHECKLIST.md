@@ -14,19 +14,14 @@
 
 ---
 
-## 1. 🏛️ 部族システム
+## 1. 🏛️ カテゴリシステム
 
 | 項目 | ファイル | 行 | 状態 |
 |------|----------|-----|------|
-| `*clans*` 4部族定義 | school.lisp | 874 | ✅ |
 | `get-hunter-signal` MACD+ADX+Kalman | school.lisp | 2297 | ✅ |
 | `get-shaman-signal` RSI+BB | school.lisp | 2335 | ✅ |
 | `get-breaker-signal` ATR breakout | school.lisp | 2352 | ✅ |
 | `get-raider-signal` EMA cross | school.lisp | 2371 | ✅ |
-| `collect-all-tribe-signals` | school.lisp | 2391 | ✅ |
-| `aggregate-tribe-signals` | school.lisp | 2398 | ✅ |
-| 部族シグナル → トレード反映 | brain.lisp | 1893 | ✅ |
-| `apply-hedge-logic` (Breakersヘッジ) | school.lisp | 2134 | ✅ |
 
 ---
 

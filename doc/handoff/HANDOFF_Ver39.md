@@ -122,7 +122,6 @@ Swimmy Ver 39.0 Architecture
 
 | ファイル | 内容 |
 |---------|------|
-| `doc/tribe.txt` | **基本思想**（最重要） |
 | `doc/PHILOSOPHY_v36.md` | 哲学ドキュメント |
 | `.opus/daily_handoff.md` | 日次引き継ぎ（Opus用） |
 | `REFERENCE.md` | システムリファレンス |
@@ -254,7 +253,6 @@ cd ~/swimmy
 # 2. REPL で状態確認（別ターミナル）
 sbcl --script brain.lisp
 (swimmy :status)
-(swimmy :clans)
 
 # 3. ログ確認
 tail -f doc/log_*.txt

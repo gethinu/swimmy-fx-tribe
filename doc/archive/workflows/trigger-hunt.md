@@ -4,14 +4,14 @@ description: Manually trigger the experimental Agentic Hunt loop to generate and
 
 # Trigger Hunt Workflow
 
-This workflow activates the "Agentic Closure" mechanism to generate a new strategy for a specific clan and inject it into the system.
+This workflow activates the "Agentic Closure" mechanism to generate a new strategy for a specific category and inject it into the system.
 
 ## Usage
 
 // turbo
 ```bash
-# Syntax: python3 tools/trigger_hunt.py <clan>
-# Clans: scalp, trend, reversion, breakout
+# Syntax: python3 tools/trigger_hunt.py <category>
+# Categories: scalp, trend, reversion, breakout
 cd /home/swimmy/swimmy && python3 tools/trigger_hunt.py scalp
 ```
 

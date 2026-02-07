@@ -121,7 +121,7 @@
 | 最大露出制限 | `total-exposure-allowed-p` | ✅ |
 | ボラティリティフィルタ | `volatility-allows-trading-p` | ✅ |
 | 危険回避 | `is-safe-to-trade-p` | ✅ |
-| クールダウン | `can-clan-trade-p` | ✅ |
+| クールダウン | `can-category-trade-p` | ✅ |
 | ドローダウン監視 | `check-drawdown` | ✅ |
 
 | 総合評価 | スコア | 根拠 |

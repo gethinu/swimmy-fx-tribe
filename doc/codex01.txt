@@ -311,7 +311,7 @@ brainstormingスキルを使って、設計を小分けに提示します。
 
 設計案 1/3: 命名と保存形式
 S式 即時 単独 を 選んだ ので、ローカル保存 ファイル名 は .sexp に 統一し、.json は 廃止 します。対象 は backtest_cache.sexp、system_metrics.sexp、live_status.sexp の 3 つ です。移行時 に 既存 .json は .json.bak.YYYYMMDDHHMM に 退避し、実行時 に 読まない ことで 混入 を 防止 します。
-フォーマット は Lisp の alist を 正 と し、ファイル 1 つ に 1 つ の S式 を 置きます。backtest_cache は (((name . "X") (timestamp . 123) (result . ((sharpe . 0.1) (trades . 10) (profit_factor . 1.2))))) の ような エントリ リスト。system_metrics は ((timestamp . 123) (heap_used_bytes . 0) (heap_used_mb . 0.0) (strategy_count . 0) (uptime_seconds . 0))。live_status は ((daily_pnl . 0.0) (accumulated_pnl . 0.0) (goal_progress . 0.0) (regime . "UNKNOWN") (tribes . ((hunters . ((direction . "HOLD") (confidence . 0) (reason . "MACD+ADX+Kalman"))))) (warmup_complete . #f)) の 形式 を 想定 します。
+フォーマット は Lisp の alist を 正 と し、ファイル 1 つ に 1 つ の S式 を 置きます。backtest_cache は (((name . "X") (timestamp . 123) (result . ((sharpe . 0.1) (trades . 10) (profit_factor . 1.2))))) の ような エントリ リスト。system_metrics は ((timestamp . 123) (heap_used_bytes . 0) (heap_used_mb . 0.0) (strategy_count . 0) (uptime_seconds . 0))。live_status は ((schema_version . 2) (daily_pnl . 0.0) (accumulated_pnl . 0.0) (goal_progress . 0.0) (regime . "UNKNOWN") (warmup_complete . #f)) の 形式 を 想定 します。
 書き込み は prin1 か write で 1 行 化 し、package prefix を 出さず、数値 と 真偽 と 文字列 の 型 を 保持 します。読み込み は safe reader を 前提 に します。
 
 この命名とフォーマットで進めてよいですか？
