@@ -843,6 +843,11 @@
       (setf swimmy.engine::*state-file-path* orig-path)
       (when (probe-file tmp-path) (delete-file tmp-path)))))
 
+(deftest test-category-vote-list
+  "gather-category-votes should return a non-empty list"
+  (let ((votes (swimmy.school::gather-category-votes "proposal" :trend)))
+    (assert-true (and (listp votes) (> (length votes) 0)))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
