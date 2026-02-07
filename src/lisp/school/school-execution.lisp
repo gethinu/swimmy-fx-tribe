@@ -5,7 +5,7 @@
 (defparameter *category-positions* (make-hash-table :test 'equal))
 (defparameter *total-capital* 0.10)
 (defparameter *lstm-threshold* 0.60)
-(defparameter *last-clan-trade-time* (make-hash-table :test 'equal))
+(defparameter *last-category-trade-time* (make-hash-table :test 'equal))
 (defparameter *min-trade-interval* 300)
 (defvar *last-swarm-consensus* 0)
 (defparameter *category-entries* (make-hash-table :test 'equal))
@@ -16,11 +16,11 @@
 ;;; TRADING RULES & CHECKS
 ;;; ==========================================
 
-(defun record-clan-trade-time (category)
-  (setf (gethash category *last-clan-trade-time*) (get-universal-time)))
+(defun record-category-trade-time (category)
+  (setf (gethash category *last-category-trade-time*) (get-universal-time)))
 
-(defun can-clan-trade-p (category)
-  (let ((last-time (gethash category *last-clan-trade-time* 0)))
+(defun can-category-trade-p (category)
+  (let ((last-time (gethash category *last-category-trade-time* 0)))
     (> (- (get-universal-time) last-time) *min-trade-interval*)))
 
 (defun is-safe-trading-time-p (strategy-name)
@@ -59,7 +59,7 @@
         when (null (gethash key *warrior-allocation*))
         return i))
 
-(defun close-opposing-clan-positions (category new-direction symbol price reason)
+(defun close-opposing-category-positions (category new-direction symbol price reason)
   "Close positions in the opposite direction for Doten (Stop and Reverse) logic"
   (declare (ignore reason))
   (let ((opposing-direction (if (eq new-direction :buy) :short :long))
@@ -220,7 +220,7 @@
     (let ((committed nil))
       (unwind-protect
            (progn 
-             (close-opposing-clan-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+             (close-opposing-category-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
              (let ((sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)) ;; Constants (Phase 3.2)
                (cond
                  ((eq direction :buy)
@@ -371,11 +371,11 @@
                             top-name top-cat top-sharpe (length strat-signals))
                     (let* ((direction (getf top-sig :direction))
                            (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                      (when (can-clan-trade-p strat-key)
+                      (when (can-category-trade-p strat-key)
                         (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
                           (when trade-executed
                             (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                            (record-clan-trade-time strat-key)
+                            (record-category-trade-time strat-key)
                             (when (fboundp 'record-strategy-trade) 
                               (record-strategy-trade top-name :trade 0)))))))))))
         (error (e)

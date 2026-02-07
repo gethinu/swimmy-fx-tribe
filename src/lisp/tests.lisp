@@ -754,25 +754,27 @@
         (assert-true (<= 0 rsi 100) "RSI should be between 0-100")))))
 
 ;;; ─────────────────────────────────────────
-;;; CLAN TESTS
+;;; CATEGORY EXECUTION TESTS
 ;;; ─────────────────────────────────────────
 
-(deftest test-clan-exists
-  "Test that all clans are defined"
-  (assert-not-nil cl-user::*clans* "Clans should be defined")
-  (assert-equal 4 (length cl-user::*clans*) "Should have 4 clans"))
-
-(deftest test-get-clan
-  "Test get-clan function"
-  (let ((hunters (cl-user::get-clan :trend)))
-    (assert-not-nil hunters "Should find Hunters clan")
-    (assert-equal "Hunters" (cl-user::clan-name hunters))))
-
-(deftest test-clan-display
-  "Test clan display format"
-  (let ((display (cl-user::get-clan-display :trend)))
-    (assert-not-nil display "Display should not be nil")
-    (assert-true (search "Hunters" display) "Should contain Hunters")))
+(deftest test-category-trade-interval
+  "category trade interval should allow/deny by elapsed seconds"
+  (let* ((cat '("M5" :BUY "USDJPY"))
+         (orig-table swimmy.school::*last-category-trade-time*)
+         (orig-interval swimmy.school::*min-trade-interval*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*min-trade-interval* 10)
+          (setf swimmy.school::*last-category-trade-time*
+                (make-hash-table :test 'equal))
+          (setf (gethash cat swimmy.school::*last-category-trade-time*)
+                (- (get-universal-time) 20))
+          (assert-true (swimmy.school::can-category-trade-p cat))
+          (setf (gethash cat swimmy.school::*last-category-trade-time*)
+                (get-universal-time))
+          (assert-false (swimmy.school::can-category-trade-p cat)))
+      (setf swimmy.school::*last-category-trade-time* orig-table)
+      (setf swimmy.school::*min-trade-interval* orig-interval))))
 
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
