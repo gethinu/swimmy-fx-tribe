@@ -262,6 +262,38 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
 
 **備考**: 以前のJSON要求形式は廃止（後方互換なし）。Backtest Service は **S式のみ**受理/返却する。  
 
+**CPCV_RESULT (Response, Guardianフォーマット)**:
+```
+((type . "CPCV_RESULT")
+ (result . ((strategy_name . "Volvo-Scalp-Gen0")
+            (request_id . "RID-123")  ; optional: 相関ID
+            (median_sharpe . 0.55)
+            (path_count . 20)
+            (passed_count . 12)
+            (failed_count . 8)
+            (pass_rate . 0.60)
+            (is_passed . true)
+            ;; optional: トレード一覧（巨大メッセージ時は省略可）
+            ;; trade_list は BACKTEST_RESULT と同一形式
+            (trade_list . (((timestamp . 1709234567)
+                            (pnl . 12.3)
+                            (symbol . "USDJPY")
+                            (direction . "BUY")
+                            (entry_price . 145.10)
+                            (exit_price . 145.20)
+                            (sl . 145.00)
+                            (tp . 145.30)
+                            (volume . 0.02)
+                            (hold_time . 120)
+                            (rank . "A")
+                            (timeframe . 1)
+                            (category . "trend")
+                            (regime . "trend")
+                            (oos_kind . "CPCV"))))
+            (trades_truncated . false)
+            (trades_ref . "RID-123"))))
+```
+
 ### 6. Data Keeper Service (Port 5561)
 ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
 **プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
