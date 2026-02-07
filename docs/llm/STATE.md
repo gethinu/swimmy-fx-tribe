@@ -38,7 +38,7 @@
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
 - **非相関スコア通知**: A/S昇格時に日次PnL相関から「非相関スコア」を算出しDiscord通知。**非相関はランクではなくポートフォリオ指標**（単一戦略の並びは維持）。
-- **Pair Strategy (設計確定・実装中)**: ペアを**独立エンティティ**としてDB永続化し、選抜ペアのみ overlay に反映する。`pair_strategies` テーブルで `pair_id/構成A/B/weight/評価指標/rank/last_updated` を保持し、`trade_logs` の `pair_id` を引き続き利用する。選抜は **ハイブリッド枠**（シンボル×TFごとに `*pair-slots-per-tf*` 上限、同一ランキングで単一と競争）で実施。昇格ゲートは**OOS合成評価（A）**と**CPCV合成評価（S）**を必須とし、trade_list不足時は昇格不可。trade_listは OOS/CPCV/Backtest の履歴から合成し、CPCVは `CPCV_RESULT` の trade_list 永続化を前提にする。実行時は既存 overlay を維持し、DB選抜されたペアのみ `*pair-active-defs*` に反映する。
+- **Pair Strategy (実装済)**: ペアを**独立エンティティ**としてDB永続化し、選抜ペアのみ overlay に反映する。`pair_strategies` テーブルで `pair_id/構成A/B/weight/評価指標/rank/last_updated` を保持し、`trade_logs` の `pair_id` を引き続き利用する。選抜は **ハイブリッド枠**（シンボル×TFごとに `*pair-slots-per-tf*` 上限、同一ランキングで単一と競争）で実施。昇格ゲートは**OOS合成評価（A）**と**CPCV合成評価（S）**を必須とし、trade_list不足時は昇格不可。trade_listは OOS/CPCV/Backtest の履歴から合成し、CPCVは `CPCV_RESULT` の trade_list 永続化を前提にする。日次 00:10 の PnL 集計後に `refresh-pair-strategies` → `refresh-pair-active-defs` を実行し、DB選抜されたペアのみ `*pair-active-defs*` に反映する。
 
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
@@ -53,7 +53,7 @@
 - **2026-02-06**: `strategy_daily_pnl` の日次集計と 00:10 JST スケジュールを追加。日次PnL相関（Pearson）と非相関スコア通知（A/S昇格時）を実装。
 - **2026-02-06**: Retired Rank を追加（Max Age退役、`data/library/RETIRED/`・`data/memory/retired.sexp`）。Evolution Report/DB集計に Retired を追加。
 - **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。候補母集団は **シンボル×TFごとの上位N=50** とする方針を追加。
-- **2026-02-07**: ペア戦略を独立エンティティ化し、**ハイブリッド枠（シンボル×TFのペア上限 + 同一ランキング競争）**で選抜する方針を決定。OOS/CPCV合成ゲートを必須化し、`pair_strategies` テーブル永続化と `CPCV_RESULT` trade_list 永続化を実装対象に追加（実装進行中）。
+- **2026-02-07**: ペア戦略の永続化・OOS/CPCV合成ゲート・ハイブリッド枠選抜・日次 00:10 スケジュール連携を実装。`pair_strategies` 保存、`CPCV_RESULT` trade_list 永続化、`refresh-pair-strategies`/`refresh-pair-active-defs` による選抜更新が稼働。
 - **2026-02-06**: 起動時に `oos_queue` を全クリアし、古い request_id が残らないようにする方針を明記。
 - **2026-02-06**: `BACKTEST_RESULT` の `request_id` を必須とする契約を明記。
 - **2026-02-05**: 補助サービス（Data Keeper / Risk Gateway / Notifier）ZMQをS式のみに統一（legacy JSON廃止、`schema_version=1` 必須）。

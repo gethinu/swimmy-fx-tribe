@@ -195,6 +195,14 @@ OOS自動審査の稼働状況は Evolution Report と oos_status.txt で確認�
 > **真実のソースはSQLite（data/memory/swimmy.db）**。  
 > Libraryは派生スナップショット、In-memory KBはキャッシュとして扱う。
 
+## 🔗 ペア戦略 (Pair Strategy)
+
+- **独立エンティティ**: `pair_strategies` テーブルで `pair_id/strategy_a/strategy_b/weight/評価指標/rank/last_updated` を保持。
+- **選抜方式**: `*pair-slots-per-tf*` でシンボル×TFのペア上限、`*pair-competition-top-n*` で単一戦略と同列競争。
+- **昇格ゲート**: A=OOS合成評価、S=CPCV合成評価。trade_list不足は昇格不可。
+- **更新タイミング**: 毎日 00:10 の日次PnL集計後に `refresh-pair-strategies` → `refresh-pair-active-defs`。
+- **実行反映**: `*pair-active-defs*` のみ overlay 適用（`*pair-strategy-enabled*` が有効時）。
+
 
 
 

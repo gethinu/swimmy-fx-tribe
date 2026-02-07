@@ -1,6 +1,6 @@
 # 🏛️ Strategy Lifecycle Implementation Plan V50.6
 
-**更新日:** 2026-02-06 JST
+**更新日:** 2026-02-07 JST
 **バージョン:** V50.6 (Structured Telemetry & Retired Rank)
 
 ---
@@ -13,6 +13,18 @@
 | **Local Storage S-exp** | `system_metrics.sexp` / `live_status.sexp` を原子書き込みに統一 |
 | **Retired Rank** | Max Age退役アーカイブ（`data/library/RETIRED/`・`data/memory/retired.sexp`、低ウェイト学習） |
 | **Aux Services S-exp** | Data Keeper / Notifier / Risk Gateway を S式 + `schema_version=1` に統一 |
+
+---
+
+## V50.6 追加: ペア戦略 (Hybrid Slots)
+
+| 項目 | 詳細 |
+|------|------|
+| **永続化** | `pair_strategies` テーブルで `pair_id/strategy_a/strategy_b/weight/評価指標/rank/last_updated` を保持 |
+| **選抜** | `*pair-slots-per-tf*` (シンボル×TF上限) + `*pair-competition-top-n*` (単一戦略と同列競争) |
+| **検証ゲート** | A=OOS合成評価、S=CPCV合成評価。trade_list不足は昇格不可 |
+| **スケジュール** | 毎日 00:10 の日次PnL集計後に `refresh-pair-strategies` → `refresh-pair-active-defs` |
+| **実行反映** | `*pair-active-defs*` のみ overlay に適用 |
 
 ---
 
