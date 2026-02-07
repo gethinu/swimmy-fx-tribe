@@ -311,6 +311,34 @@
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
+(deftest test-oos-stale-result-ignored
+  "Stale OOS result (request_id mismatch) should be ignored."
+  (let* ((tmp-db (format nil "data/memory/test-oos-stale-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+         (let ((swimmy.core::*db-path-default* tmp-db)
+               (swimmy.core::*sqlite-conn* nil))
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (let* ((strat (cl-user::make-strategy :name "UT-OOS-STALE"
+                                                 :symbol "USDJPY"
+                                                 :oos-sharpe nil))
+                  (*strategy-knowledge-base* (list strat))
+                  (*evolved-strategies* nil))
+             (swimmy.school::enqueue-oos-request "UT-OOS-STALE" "RID-NEW" :status "sent")
+             (swimmy.school::handle-oos-backtest-result
+              "UT-OOS-STALE" (list :sharpe 0.9 :request-id "RID-OLD"))
+             (assert-true (null (cl-user::strategy-oos-sharpe strat))
+                          "stale should not update oos_sharpe")
+             (multiple-value-bind (rid _time _status)
+                 (swimmy.school::lookup-oos-request "UT-OOS-STALE")
+               (declare (ignore _time _status))
+               (assert-equal "RID-NEW" rid
+                             "stale result should not clear queue"))))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
 (deftest test-oos-status-updated-on-dispatch
   "OOS dispatch should update oos_status.txt via writer."
   (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
