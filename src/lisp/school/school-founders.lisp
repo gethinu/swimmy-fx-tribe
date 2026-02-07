@@ -302,8 +302,8 @@
 ;;; Implements Andrew Ng's "Active Learning" recommendation.
 ;;; Periodically checks the population balance and actively recruits missing talents.
 
-(defun get-clan-counts ()
-  "Returns an alist of (clan . count) for the current population."
+(defun get-category-counts ()
+  "Returns an alist of (category . count) for the current population."
   (let ((counts (list (cons :trend 0)
                       (cons :reversion 0)
                       (cons :breakout 0)
@@ -316,8 +316,8 @@
                     (strategy-category strat) (strategy-name strat)))))
     counts))
 
-(defun get-clan-performance ()
-  "Returns an alist of (clan . avg-sharpe) for the current population."
+(defun get-category-performance ()
+  "Returns an alist of (category . avg-sharpe) for the current population."
   (let ((stats (list (cons :trend (list 0 0))      ; (sum-sharpe count)
                      (cons :reversion (list 0 0))
                      (cons :breakout (list 0 0))
@@ -335,12 +335,12 @@
                 (cons (car entry) (if (> cnt 0) (/ sum cnt) 0.0))))
             stats)))
 
-(defun trigger-autohunt (clan mode)
+(defun trigger-autohunt (category mode)
   "Calls the automated hunter agent asynchronously (Naval's Non-blocking).
    Mode: :shortage or :performance"
-  (format t "[IMMIGRATION] 🏹 Triggering Async Auto-Hunt for ~a (~a)...~%" clan mode)
+  (format t "[IMMIGRATION] 🏹 Triggering Async Auto-Hunt for ~a (~a)...~%" category mode)
   (handler-case
-      (let ((process (uiop:launch-program (list "python3" "tools/trigger_hunt.py" (string-downcase (symbol-name clan)))
+      (let ((process (uiop:launch-program (list "python3" "tools/trigger_hunt.py" (string-downcase (symbol-name category)))
                                           :output :interactive
                                           :error-output :interactive)))
         (if (uiop:process-alive-p process)
@@ -360,8 +360,8 @@
         (swimmy.shell:notify-discord alert))))
   
   (format t "~%[IMMIGRATION] 📊 Conducting Active Learning Census...~%")
-  (let* ((counts (get-clan-counts))
-         (perf   (get-clan-performance))
+  (let* ((counts (get-category-counts))
+         (perf   (get-category-performance))
          (total (reduce #'+ counts :key #'cdr))
          (target-ratios '((:trend . 0.30)
                           (:reversion . 0.25)
@@ -369,14 +369,14 @@
                           (:scalp . 0.25))))
     
     (format t "[IMMIGRATION] Total Population: ~a~%" total)
-    (loop for (clan . count) in counts do
+    (loop for (category . count) in counts do
       (let* ((ratio (if (> total 0) (/ count total) 0))
-             (target (cdr (assoc clan target-ratios)))
+             (target (cdr (assoc category target-ratios)))
              (shortage (- target ratio))
-             (avg-sharpe (cdr (assoc clan perf))))
+             (avg-sharpe (cdr (assoc category perf))))
         
         (format t " - ~a: Count ~d (~,1f%) | Avg Sharpe: ~,2f~%" 
-                clan count (* 100 ratio) avg-sharpe)
+                category count (* 100 ratio) avg-sharpe)
         
         (cond
           ;; 1. Critical Shortage (Exploration needed)
@@ -384,42 +384,42 @@
           ((> shortage 0.01)
            (if (> avg-sharpe -0.8) ;; Relaxed from -0.5 to -0.8 to allow recovery hunting
                (progn
-                 (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" clan)
-                 (trigger-autohunt clan :shortage))
-               (format t "[IMMIGRATION] 🛡️ Shortage in ~a, but Sharpe ~,2f is too low. Skipping recruit to avoid Ruin.~%" clan avg-sharpe)))
+                 (format t "[IMMIGRATION] 🚨 Shortage in ~a! triggering Hunt...~%" category)
+                 (trigger-autohunt category :shortage))
+               (format t "[IMMIGRATION] 🛡️ Shortage in ~a, but Sharpe ~,2f is too low. Skipping recruit to avoid Ruin.~%" category avg-sharpe)))
           
           ;; 2. High Performance (Exploitation - Reinforce Success)
           ((> avg-sharpe 1.0)
            (when (> (random 1.0) 0.7) ; 30% chance to stack winners
-             (format t "[IMMIGRATION] ⭐ ~a is Winning! Recruiting more...~%" clan)
-             (trigger-autohunt clan :performance)))
+             (format t "[IMMIGRATION] ⭐ ~a is Winning! Recruiting more...~%" category)
+             (trigger-autohunt category :performance)))
              
           ;; 3. Poor Performance (Evolution needed - try new variants)
           ((< avg-sharpe -0.2) ; Tightened threshold
            (when (> (random 1.0) 0.8) ; 20% chance to try fixing
-             (format t "[IMMIGRATION] 📉 ~a is Struggling. Hunting fresh blood (Mutation)...~%" clan)
-             (trigger-autohunt clan :recovery))))))
+             (format t "[IMMIGRATION] 📉 ~a is Struggling. Hunting fresh blood (Mutation)...~%" category)
+             (trigger-autohunt category :recovery))))))
              
     ;; 4. Random Diversity Injection (Noise) - Reduced frequency per Taleb
     (when (> (random 1.0) 0.95)
       (format t "[IMMIGRATION] 🎲 Random Diversity Injection...~%")
-      (let ((clans '(:scalp :breakout :trend :reversion)))
-        (trigger-autohunt (nth (random (length clans)) clans) :diversity)))))
+      (let ((categories '(:scalp :breakout :trend :reversion)))
+        (trigger-autohunt (nth (random (length categories)) categories) :diversity)))))
 
-(defun recruit-founder-by-clan (target-clan)
-  "Finds a founder in the registry that matches the target clan and recruits it."
+(defun recruit-founder-by-category (target-category)
+  "Finds a founder in the registry that matches the target category and recruits it."
   (let ((candidates nil))
     (maphash (lambda (key maker-func)
                (let ((proto (funcall maker-func)))
-                 (when (eq (strategy-category proto) target-clan)
+                 (when (eq (strategy-category proto) target-category)
                    (push key candidates))))
              *founder-registry*)
     
     (if candidates
         (let* ((pick (nth (random (length candidates)) candidates)))
-          (format t "[IMMIGRATION] 🎯 Selected candidate for ~a: ~a~%" target-clan pick)
+          (format t "[IMMIGRATION] 🎯 Selected candidate for ~a: ~a~%" target-category pick)
           (recruit-founder pick))
-        (format t "[IMMIGRATION] ⚠️ No candidates found for clan ~a in Registry.~%" target-clan))))
+        (format t "[IMMIGRATION] ⚠️ No candidates found for category ~a in Registry.~%" target-category))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; FLUSH DEFERRED (V50.5)

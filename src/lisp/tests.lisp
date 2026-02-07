@@ -861,6 +861,14 @@
     (assert-false (search "Hunters" text))
     (assert-false (search "Unknown" text))))
 
+(deftest test-category-counts-returns-alist
+  "category counts should return alist with core categories"
+  (let ((counts (swimmy.school::get-category-counts)))
+    (assert-true (assoc :trend counts))
+    (assert-true (assoc :reversion counts))
+    (assert-true (assoc :breakout counts))
+    (assert-true (assoc :scalp counts))))
+
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
 ;;; ─────────────────────────────────────────
