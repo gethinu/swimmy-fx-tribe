@@ -1172,6 +1172,38 @@
         (setf swimmy.main::*backtest-recv-count* orig-recv))
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-backtest-queue-periodic-flush
+  "maybe-flush-backtest-send-queue should trigger flush when interval elapsed"
+  (let* ((orig-flush (when (fboundp 'swimmy.school::flush-backtest-send-queue)
+                       (symbol-function 'swimmy.school::flush-backtest-send-queue)))
+         (orig-queue swimmy.school::*backtest-send-queue*)
+         (orig-last (when (boundp 'swimmy.school::*backtest-queue-last-flush*)
+                      swimmy.school::*backtest-queue-last-flush*))
+         (orig-interval (when (boundp 'swimmy.school::*backtest-queue-flush-interval-sec*)
+                          swimmy.school::*backtest-queue-flush-interval-sec*))
+         (flushed nil)
+         (now (get-universal-time)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*backtest-send-queue* (list "(m1)"))
+          (setf swimmy.school::*backtest-queue-last-flush* (- now 10))
+          (setf swimmy.school::*backtest-queue-flush-interval-sec* 1)
+          (setf (symbol-function 'swimmy.school::flush-backtest-send-queue)
+                (lambda ()
+                  (setf flushed t)
+                  1))
+          (swimmy.school::maybe-flush-backtest-send-queue)
+          (assert-true flushed "expected flush to run")
+          (assert-true (>= swimmy.school::*backtest-queue-last-flush* now)
+                       "last flush timestamp should update"))
+      (setf swimmy.school::*backtest-send-queue* orig-queue)
+      (when (boundp 'swimmy.school::*backtest-queue-last-flush*)
+        (setf swimmy.school::*backtest-queue-last-flush* orig-last))
+      (when (boundp 'swimmy.school::*backtest-queue-flush-interval-sec*)
+        (setf swimmy.school::*backtest-queue-flush-interval-sec* orig-interval))
+      (when orig-flush
+        (setf (symbol-function 'swimmy.school::flush-backtest-send-queue) orig-flush)))))
+
 (deftest test-rr-batch-respects-max-pending
   "RR batch size should follow SWIMMY_BACKTEST_MAX_PENDING"
   (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
