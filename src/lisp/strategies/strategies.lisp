@@ -78,6 +78,10 @@
 (defparameter *last-cycle-notify-time* 0 "V48.5: Throttling for Cycle Complete alerts")
 (defconstant +cycle-notify-interval+ (* 6 3600) "6 Hour Alert Interval")
 
+(defun format-phase1-bt-batch-message (requested total cursor &key cycle-completed)
+  (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a"
+          requested total cursor total
+          (if cycle-completed "~%✅ **Phase1 BT Cycle Complete (RR)**" "")))
 
 (defun batch-backtest-knowledge ()
   "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
@@ -86,7 +90,9 @@
   (setf swimmy.globals:*rr-backtest-results-buffer* nil)
   (setf swimmy.globals:*rr-backtest-start-time* (get-universal-time))
   
-  (let* ((max-batch-size 1000) 
+  (let* ((max-batch-size (max 1 (if (boundp 'swimmy.globals::*backtest-max-pending*)
+                                    swimmy.globals::*backtest-max-pending*
+                                    1000)))
          (total (length *strategy-knowledge-base*))
          (old-cursor *backtest-cursor*)
          (start-idx (mod *backtest-cursor* total))
@@ -153,10 +159,9 @@
         
         ;; Notify Discord only if actual requests were made
         (when (> requested-count 0)
-          (notify-discord-alert 
-            (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a" 
-                    requested-count total *backtest-cursor* total
-                    (if cycle-completed "~%✅ **Cycle Complete!**" "")) 
+          (notify-discord-alert
+            (format-phase1-bt-batch-message requested-count total *backtest-cursor*
+                                            :cycle-completed cycle-completed)
             :color 3066993))
         
         ;; V48.5: Throttled summary on cycle completion (Every 6 hours)

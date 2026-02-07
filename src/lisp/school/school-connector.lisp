@@ -221,6 +221,6 @@
       (setf *last-cycle-notify-time* now)
       (swimmy.core:queue-discord-notification 
        swimmy.globals:*status-webhook-url*
-       "🔄 **Cycle Complete**\nSystem is healthy and processing strategies."
+       "🫀 **System Pulse (5m)**\nHeartbeat only. Backtests may still be running."
        :color 10070709
        :title "♻️ System Pulse"))))

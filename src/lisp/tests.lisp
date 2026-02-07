@@ -982,6 +982,96 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-rr-batch-respects-max-pending
+  "RR batch size should follow SWIMMY_BACKTEST_MAX_PENDING"
+  (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-summary (and (fboundp 'swimmy.school::notify-backtest-summary)
+                            (symbol-function 'swimmy.school::notify-backtest-summary)))
+         (orig-cache (and (fboundp 'swimmy.school::get-cached-backtest)
+                          (symbol-function 'swimmy.school::get-cached-backtest)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-candle swimmy.globals:*candle-history*)
+         (orig-hist swimmy.globals:*candle-histories*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-cursor swimmy.school::*backtest-cursor*)
+         (count 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*backtest-max-pending* 2)
+          (setf swimmy.globals:*candle-history* (loop repeat 101 collect 1))
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list (swimmy.school:make-strategy :name "S1")
+                      (swimmy.school:make-strategy :name "S2")
+                      (swimmy.school:make-strategy :name "S3")
+                      (swimmy.school:make-strategy :name "S4")
+                      (swimmy.school:make-strategy :name "S5")))
+          (setf swimmy.school::*backtest-cursor* 0)
+          (when orig-cache
+            (setf (symbol-function 'swimmy.school::get-cached-backtest)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest _args) (declare (ignore _args)) (incf count)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-summary
+            (setf (symbol-function 'swimmy.school::notify-backtest-summary)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (swimmy.school::batch-backtest-knowledge)
+          (assert-equal 2 count "batch should follow max pending"))
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals:*candle-history* orig-candle)
+      (setf swimmy.globals:*candle-histories* orig-hist)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*backtest-cursor* orig-cursor)
+      (when orig-cache
+        (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache))
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify))
+      (when orig-summary
+        (setf (symbol-function 'swimmy.school::notify-backtest-summary) orig-summary)))))
+
+(deftest test-format-phase1-bt-batch-message
+  "Phase1 BT batch message should include completion text when flagged"
+  (let ((fn (find-symbol "FORMAT-PHASE1-BT-BATCH-MESSAGE" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "format helper should exist")
+    (let ((msg (funcall fn 2 3 1 :cycle-completed t)))
+      (assert-true (search "Phase1 BT Cycle Complete" msg)
+                   (format nil "Expected completion text, got: ~a" msg)))
+    (let ((msg (funcall fn 2 3 1 :cycle-completed nil)))
+      (assert-true (null (search "Phase1 BT Cycle Complete" msg))
+                   "Completion text should be omitted when not complete"))))
+
+(deftest test-system-pulse-5m-text
+  "System Pulse heartbeat should not claim cycle completion"
+  (let* ((orig-queue (and (fboundp 'swimmy.core:queue-discord-notification)
+                          (symbol-function 'swimmy.core:queue-discord-notification)))
+         (orig-last (and (boundp 'swimmy.school::*last-cycle-notify-time*)
+                         swimmy.school::*last-cycle-notify-time*))
+         (captured nil))
+    (unwind-protect
+        (progn
+          (when (boundp 'swimmy.school::*last-cycle-notify-time*)
+            (setf swimmy.school::*last-cycle-notify-time* 0))
+          (when orig-queue
+            (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                  (lambda (_webhook msg &key title color)
+                    (declare (ignore _webhook title color))
+                    (setf captured msg))))
+          (swimmy.school::notify-cycle-complete)
+          (assert-true captured "Expected System Pulse message")
+          (assert-true (search "System Pulse (5m)" captured) "Expected 5m text")
+          (assert-true (null (search "Cycle Complete" captured))
+                       "Should not claim cycle completion"))
+      (when (boundp 'swimmy.school::*last-cycle-notify-time*)
+        (setf swimmy.school::*last-cycle-notify-time* orig-last))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue)))))
+
 (deftest test-backtest-pending-count-decrements-on-recv
   "pending count should drop when a BACKTEST_RESULT is processed"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))

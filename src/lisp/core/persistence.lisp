@@ -99,6 +99,34 @@
     
     (format t "[LIB] 💾 Saved ~a to ~a (Atomic)~%" name path)))
 
+(defun %rewrite-struct-sexp (content)
+  "Convert \"#S(STRATEGY ...)\" to \"(STRATEGY ...)\" so we can parse safely."
+  (let* ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) content)))
+    (when (and (>= (length trimmed) 3)
+               (char-equal (char trimmed 0) #\#)
+               (char-equal (char trimmed 1) #\S)
+               (char= (char trimmed 2) #\()))
+      (let ((after (subseq trimmed 3)))
+        (concatenate 'string "(" after))))
+
+(defun %read-strategy-from-string (content)
+  (when (and content (stringp content))
+    (let ((*read-eval* nil)
+          (*package* (find-package :swimmy.school)))
+      (handler-case
+          (multiple-value-bind (obj _) (read-from-string content nil nil)
+            (declare (ignore _))
+            (cond
+              ((and obj (fboundp 'swimmy.school::strategy-p)
+                    (swimmy.school::strategy-p obj))
+               obj)
+              ((and (listp obj)
+                    (symbolp (first obj))
+                    (string-equal (symbol-name (first obj)) "STRATEGY"))
+               (apply #'swimmy.school:make-strategy (rest obj)))
+              (t nil)))
+        (error () nil)))))
+
 (defun load-strategy (path)
   "Load a strategy with package protection (Expert Panel 2026-01-30)."
   (with-open-file (in path)
@@ -108,7 +136,13 @@
             (read in)
           (error (e)
             (format t "[PERSISTENCE] ⚠️ Failed to read strategy from ~a: ~a~%" path e)
-            nil))))))
+            (let* ((content (ignore-errors (uiop:read-file-string path)))
+                   (rewritten (and content (%rewrite-struct-sexp content)))
+                   (fallback (or (%read-strategy-from-string content)
+                                 (%read-strategy-from-string rewritten))))
+              (when fallback
+                (format t "[PERSISTENCE] ✅ Recovered strategy from ~a via fallback parser~%" path))
+              fallback)))))))
 
 (defun load-all-strategies ()
   "Load all strategies from the library"
@@ -120,8 +154,9 @@
           (handler-case
               (let ((strat (load-strategy file)))
                 ;; Rank is authoritative. Directory is storage only.
-                (push strat strategies)
-                (incf count))
+                (when strat
+                  (push strat strategies)
+                  (incf count)))
             (error (e)
               (format t "[LIB] ⚠️ Failed to load ~a: ~a~%" file e))))))
     (format t "[LIB] 📖 Loaded ~d strategies from Library~%" count)
