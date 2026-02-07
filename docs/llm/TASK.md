@@ -76,3 +76,4 @@ Evolution Factory Report に表示される主要指標（Active, Rank, Graveyar
 1. **Lispのポートバインド**: Rustコードを見る限り、Lisp側が `5555` と `5556` にバインドしているようですが、Lispコード (`execution-protocol.lisp`等) 内での具体的な記述箇所は合っていますでしょうか？
 2. **Rustビルド**: `guardian` ディレクトリ内で `cargo build --release` を実行するのが標準手順で間違いないでしょうか？
 3. **Data Keeper**: Python製の `swimmy-data-keeper` (Port 5561) がアーキテクチャ図から漏れていましたが、これは現在もアクティブでしょうか？（オーナーズガイドには記載あり）
+   - 回答: systemd で `swimmy-data-keeper.service` が active (running)。
