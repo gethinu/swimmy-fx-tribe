@@ -84,6 +84,15 @@
       (swimmy.school::inverse-vol-weights '(1.0 -1.0) '(2.0 -2.0))
     (assert-true (approx= 0.666666 w1 1e-4) "Expected w1 ~0.6667")
     (assert-true (approx= 0.333333 w2 1e-4) "Expected w2 ~0.3333")))
+
+(deftest test-pair-gate-blocks-on-insufficient-data
+  "pair gate should block promotion when trade_list is insufficient"
+  (let* ((trades-a '(((timestamp . 1) (pnl . 1.0))))
+         (trades-b '(((timestamp . 1) (pnl . -1.0)))))
+    (multiple-value-bind (metrics reason)
+        (swimmy.school::pair-metrics-from-trades trades-a trades-b :min-trades 3)
+      (assert-true (null metrics) "metrics should be nil")
+      (assert-equal :insufficient-data reason "should block with insufficient-data"))))
 (deftest test-pair-selection-rescue-mode
   "rescue mode should allow |corr|<=0.3 when < max pairs"
   (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))
