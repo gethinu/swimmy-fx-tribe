@@ -189,6 +189,34 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-init-backtest-zmq-fails-when-requester-missing
+  "init-backtest-zmq should fail fast when enabled but requester is missing"
+  (let* ((orig-enabled swimmy.core:*backtest-service-enabled*)
+         (orig-req (and (boundp 'swimmy.globals:*backtest-requester*)
+                        swimmy.globals:*backtest-requester*))
+         (orig-ctx (symbol-function 'pzmq:ctx-new))
+         (orig-socket (symbol-function 'pzmq:socket))
+         (orig-connect (symbol-function 'pzmq:connect))
+         (signaled nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.core:*backtest-service-enabled* t)
+          (setf swimmy.globals:*backtest-requester* nil)
+          (setf (symbol-function 'pzmq:ctx-new) (lambda () :ctx))
+          (setf (symbol-function 'pzmq:socket)
+                (lambda (&rest _args) (declare (ignore _args)) :sock))
+          (setf (symbol-function 'pzmq:connect)
+                (lambda (&rest _args) (declare (ignore _args)) (error "boom")))
+          (handler-case
+              (swimmy.school::init-backtest-zmq)
+            (error () (setf signaled t)))
+          (assert-true signaled "Expected init-backtest-zmq to signal error"))
+      (setf swimmy.core:*backtest-service-enabled* orig-enabled)
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf (symbol-function 'pzmq:ctx-new) orig-ctx)
+      (setf (symbol-function 'pzmq:socket) orig-socket)
+      (setf (symbol-function 'pzmq:connect) orig-connect))))
+
 (deftest test-backtest-result-preserves-request-id
   "BACKTEST_RESULT should carry request_id through the pipeline"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1557,6 +1585,7 @@
                   test-internal-process-msg-backtest-json-applies
                   test-backtest-queue-enqueues-when-requester-missing
                   test-backtest-queue-flushes-after-requester
+                  test-init-backtest-zmq-fails-when-requester-missing
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-cpcv-result-persists-trade-list
