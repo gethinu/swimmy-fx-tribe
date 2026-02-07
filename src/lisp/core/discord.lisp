@@ -26,6 +26,35 @@
 (defconstant +color-weekly+    10181046 "Purple/Weekly")
 (defconstant +color-status+    10070709 "Dark Gray")
 
+;;; ==========================================
+;;; BATCHED ALERTS (Max Age Retirement)
+;;; ==========================================
+(defparameter *max-age-retire-batch-interval* 3600 "Seconds to batch Max Age Retirement alerts")
+(defvar *max-age-retire-buffer* nil "Buffered strategy names for Max Age Retirement alerts")
+(defvar *max-age-retire-first-seen* 0 "Timestamp when current Max Age Retirement batch started")
+
+(defun queue-max-age-retire (strategy-name &key (now (get-universal-time)))
+  "Queue a Max Age Retirement alert for hourly batching."
+  (unless (and (stringp strategy-name) (> (length strategy-name) 0))
+    (return-from queue-max-age-retire nil))
+  (push strategy-name *max-age-retire-buffer*)
+  (when (<= *max-age-retire-first-seen* 0)
+    (setf *max-age-retire-first-seen* now))
+  t)
+
+(defun maybe-flush-max-age-retire (&optional (now (get-universal-time)))
+  "Flush Max Age Retirement summary if the batch interval has elapsed."
+  (when (and *max-age-retire-buffer*
+             (> (- now *max-age-retire-first-seen*) *max-age-retire-batch-interval*))
+    (let* ((total (length *max-age-retire-buffer*))
+           (ordered (reverse *max-age-retire-buffer*))
+           (top (subseq ordered 0 (min 5 (length ordered))))
+           (msg (format nil "🧊 **Max Age Retirement Summary (Last 1h)**~%Total: ~d~%Top: ~{`~a`~^, ~}~%Action: Individual alerts suppressed."
+                        total top)))
+      (setf *max-age-retire-buffer* nil)
+      (setf *max-age-retire-first-seen* 0)
+      (notify-discord-alert msg :color +color-alert+))))
+
 
 
 (defun ensure-notifier-connection ()
@@ -362,7 +391,10 @@
                (> (length *cpcv-results-buffer*) 0)
                (> (- now *cpcv-start-time*) timeout))
       (format t "[DISCORD] ⏳ Flushing CPCV-Batch due to timeout.~%")
-      (notify-cpcv-summary))))
+      (notify-cpcv-summary))
+
+    ;; 4. Max Age Retirement (Hourly batch)
+    (maybe-flush-max-age-retire now)))
 
 
 

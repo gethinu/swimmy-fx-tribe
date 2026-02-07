@@ -6,12 +6,28 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
 
 # History file
 HISTORY_FILE="$SCRIPT_DIR/.opus/ci_history.json"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 JST_TIME=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M:%S")
+
+extract_counts() {
+    local output="$1"
+    local results_line
+    results_line=$(echo "$output" | grep -E "RESULTS: [0-9]+ passed, [0-9]+ failed" | tail -n 1 || true)
+    if [ -n "$results_line" ]; then
+        PASS_COUNT=$(echo "$results_line" | awk '{print $3}')
+        FAIL_COUNT=$(echo "$results_line" | awk '{print $5}')
+    else
+        PASS_COUNT=$(echo "$output" | grep -c "✅ PASSED" || true)
+        FAIL_COUNT=$(echo "$output" | grep -c "❌ FAILED" || true)
+    fi
+    TOTAL_COUNT=$((PASS_COUNT + FAIL_COUNT))
+}
+
+main() {
+cd "$REPO_ROOT"
 
 echo "════════════════════════════════════════════════════"
 echo "🧪 SWIMMY CI/CD TEST SUITE (Graham V2.0)"
@@ -48,9 +64,7 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 # Count results
-PASS_COUNT=$(echo "$TEST_OUTPUT" | grep -c "✓\|PASS\|passed" || true)
-FAIL_COUNT=$(echo "$TEST_OUTPUT" | grep -c "❌ FAILED" || true)
-TOTAL_COUNT=$((PASS_COUNT + FAIL_COUNT))
+extract_counts "$TEST_OUTPUT"
 
 echo "$TEST_OUTPUT"
 echo ""
@@ -113,3 +127,8 @@ echo "📊 History saved to $HISTORY_FILE"
 echo "════════════════════════════════════════════════════"
 
 exit $EXIT_CODE
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi
