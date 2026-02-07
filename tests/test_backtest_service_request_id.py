@@ -22,3 +22,10 @@ def test_backtest_service_missing_request_id_fails_fast():
     out = svc._handle_sexpr(msg)
     assert "missing request_id" in str(out)
     assert "MISSING" in str(out)
+
+
+def test_run_backtest_error_includes_request_id():
+    svc = BacktestService(use_zmq=False)
+    payload = {"action": "BACKTEST", "request_id": "RID-ERR", "strategy": {"name": "UT"}}
+    out = svc.run_backtest(payload)
+    assert "RID-ERR" in str(out)

@@ -575,6 +575,7 @@ class BacktestService:
         strategy_name = strategy.get("name", "unknown")
         candles = request.get("candles", [])
         candles_file = request.get("candles_file")
+        request_id = request.get("request_id") or "MISSING"
 
         if not candles and not candles_file:
             return {
@@ -583,6 +584,7 @@ class BacktestService:
                     "strategy_name": strategy_name,
                     "error": "No data available",
                     "sharpe": 0.0,
+                    "request_id": request_id,
                 },
             }
 
@@ -623,6 +625,7 @@ class BacktestService:
                         "strategy_name": strategy_name,
                         "error": "Guardian binary missing",
                         "sharpe": 0.0,
+                        "request_id": request_id,
                     },
                 }
 
@@ -642,10 +645,15 @@ class BacktestService:
                         "strategy_name": strategy_name,
                         "error": "Guardian process failure",
                         "sharpe": 0.0,
+                        "request_id": request_id,
                     },
                 }
 
             if isinstance(output_line, dict):
+                result = output_line.get("result")
+                if isinstance(result, dict) and request_id and "request_id" not in result:
+                    result["request_id"] = request_id
+                    output_line["result"] = result
                 return output_line
 
             output_line = output_line.strip()
@@ -657,8 +665,23 @@ class BacktestService:
                         "strategy_name": strategy_name,
                         "error": "Guardian returned empty output",
                         "sharpe": 0.0,
+                        "request_id": request_id,
                     },
                 }
+
+            if output_line.startswith("{"):
+                try:
+                    obj = json.loads(output_line)
+                except Exception:
+                    obj = None
+                if isinstance(obj, dict):
+                    result = obj.get("result")
+                    if isinstance(result, dict) and request_id and "request_id" not in result:
+                        result["request_id"] = request_id
+                        obj["result"] = result
+                        return obj
+            if request_id:
+                return self._inject_request_id_into_sexpr(output_line, request_id)
 
             # Forward raw S-Expression (or JSON) to Brain
             return output_line
@@ -672,6 +695,7 @@ class BacktestService:
                     "strategy_name": strategy.get("name", "unknown"),
                     "error": str(e),
                     "sharpe": 0.0,
+                    "request_id": request_id,
                 },
             }
 
