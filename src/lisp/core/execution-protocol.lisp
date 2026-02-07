@@ -6,6 +6,7 @@
 (in-package :swimmy.core)
 
 (defparameter +protocol-version+ "2.0")
+(defparameter *uuid-entropy-path* "/dev/urandom")
 
 ;; Message Types (Strict Dispatch)
 (defparameter +MSG-HEARTBEAT+ "HEARTBEAT")
@@ -20,16 +21,40 @@
 
 (defun generate-uuid ()
   "Generate a pseudo-UUID v4 string."
-  ;; Mix time-based entropy to avoid collisions across deterministic RNG seeds.
-  (let* ((now (get-universal-time))
-         (ticks (get-internal-real-time))
-         (r1 (logxor (random 4294967296) (ldb (byte 32 0) now)))
-         (r2 (logxor (random 65536) (ldb (byte 16 0) ticks)))
-         (r3 (logxor (random 4096) (ldb (byte 12 16) ticks)))
-         (r4 (logxor (random #x4000) (ldb (byte 14 0) now)))
-         (r5 (logxor (random 281474976710656) (ldb (byte 48 0) ticks))))
-    (format nil "~(~x-~x-4~3,'0x-~x-~x~)"
-            r1 r2 r3 (logior #x8000 r4) r5)))
+  (labels ((read-entropy-bytes ()
+             (handler-case
+                 (when *uuid-entropy-path*
+                   (with-open-file (s *uuid-entropy-path*
+                                      :direction :input
+                                      :element-type '(unsigned-byte 8))
+                     (let ((bytes (make-array 16 :element-type '(unsigned-byte 8))))
+                       (when (= (read-sequence bytes s) 16)
+                         bytes))))
+               (error () nil)))
+           (bytes->uuid (bytes)
+             ;; Set version (4) and variant (10) bits.
+             (setf (aref bytes 6) (logior #x40 (logand (aref bytes 6) #x0f)))
+             (setf (aref bytes 8) (logior #x80 (logand (aref bytes 8) #x3f)))
+             (format nil "~(~2,'0x~2,'0x~2,'0x~2,'0x-~2,'0x~2,'0x-~2,'0x~2,'0x-~2,'0x~2,'0x-~2,'0x~2,'0x~2,'0x~2,'0x~2,'0x~2,'0x~)"
+                     (aref bytes 0) (aref bytes 1) (aref bytes 2) (aref bytes 3)
+                     (aref bytes 4) (aref bytes 5)
+                     (aref bytes 6) (aref bytes 7)
+                     (aref bytes 8) (aref bytes 9)
+                     (aref bytes 10) (aref bytes 11) (aref bytes 12)
+                     (aref bytes 13) (aref bytes 14) (aref bytes 15))))
+    (let ((bytes (read-entropy-bytes)))
+      (if bytes
+          (bytes->uuid bytes)
+          ;; Mix time-based entropy to avoid collisions across deterministic RNG seeds.
+          (let* ((now (get-universal-time))
+                 (ticks (get-internal-real-time))
+                 (r1 (logxor (random 4294967296) (ldb (byte 32 0) now)))
+                 (r2 (logxor (random 65536) (ldb (byte 16 0) ticks)))
+                 (r3 (logxor (random 4096) (ldb (byte 12 16) ticks)))
+                 (r4 (logxor (random #x4000) (ldb (byte 14 0) now)))
+                 (r5 (logxor (random 281474976710656) (ldb (byte 48 0) ticks))))
+            (format nil "~(~x-~x-4~3,'0x-~x-~x~)"
+                    r1 r2 r3 (logior #x8000 r4) r5))))))
 
 (defun sexp->string (form &key (package :swimmy.core))
   "Render S-expression FORM as a single-line string."

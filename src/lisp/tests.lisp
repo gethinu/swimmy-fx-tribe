@@ -310,6 +310,29 @@
       (setf id2 (swimmy.core:generate-uuid)))
     (assert-false (string= id1 id2) "UUID should include time-based entropy")))
 
+(deftest test-generate-uuid-uses-entropy-file
+  "generate-uuid should use entropy file bytes when available"
+  (let* ((tmp-path (format nil "data/memory/uuid-entropy-~a.bin" (get-universal-time)))
+         (bytes (make-array 16 :element-type '(unsigned-byte 8)
+                            :initial-contents '(#x00 #x11 #x22 #x33 #x44 #x55 #x66 #x77
+                                                #x88 #x99 #xaa #xbb #xcc #xdd #xee #xff)))
+         (expected "00112233-4455-4677-8899-aabbccddeeff")
+         (orig-path swimmy.core::*uuid-entropy-path*))
+    (unwind-protect
+        (progn
+          (ensure-directories-exist tmp-path)
+          (with-open-file (s tmp-path
+                             :direction :output
+                             :if-exists :supersede
+                             :if-does-not-exist :create
+                             :element-type '(unsigned-byte 8))
+            (write-sequence bytes s))
+          (setf swimmy.core::*uuid-entropy-path* tmp-path)
+          (assert-equal expected (swimmy.core:generate-uuid)
+                        "UUID should be derived from entropy bytes"))
+      (setf swimmy.core::*uuid-entropy-path* orig-path)
+      (when (probe-file tmp-path) (delete-file tmp-path)))))
+
 (deftest test-oos-retry-uses-new-request-id
   "OOS retry should generate a new request_id"
   (let* ((tmp-db (format nil "data/memory/test-oos-retry-~a.db" (get-universal-time)))
@@ -1236,6 +1259,7 @@
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
+                  test-generate-uuid-uses-entropy-file
                   test-generate-uuid-changes-even-with-reset-rng
                   test-oos-retry-uses-new-request-id
                   test-oos-stale-result-ignored
