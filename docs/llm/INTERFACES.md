@@ -218,6 +218,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 ```
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
+**必須**: `result` 内に `request_id`（相関ID）。
 ```
 ((type . "BACKTEST_RESULT")
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
