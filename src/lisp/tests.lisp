@@ -982,6 +982,91 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-backtest-send-uses-subsecond-time
+  "backtest-send-allowed-p should use subsecond time source for rate limiting"
+  (let* ((orig-now (when (fboundp 'swimmy.school::backtest-now-seconds)
+                     (symbol-function 'swimmy.school::backtest-now-seconds)))
+         (calls 0)
+         (orig-rate swimmy.globals::*backtest-rate-limit-per-sec*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-submit swimmy.globals::*backtest-submit-count*)
+         (orig-last swimmy.globals::*backtest-last-send-ts*)
+         (orig-recv (when (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*backtest-rate-limit-per-sec* 5)
+          (setf swimmy.globals::*backtest-max-pending* 999999)
+          (setf swimmy.globals::*backtest-submit-count* 0)
+          (setf swimmy.globals::*backtest-last-send-ts* 100.0d0)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (setf (symbol-function 'swimmy.school::backtest-now-seconds)
+                (lambda ()
+                  (incf calls)
+                  100.2d0))
+          (assert-true (swimmy.school::backtest-send-allowed-p)
+                       "should allow after 0.2s at 5/s")
+          (assert-true (> calls 0) "should use backtest-now-seconds"))
+      (setf swimmy.globals::*backtest-rate-limit-per-sec* orig-rate)
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals::*backtest-submit-count* orig-submit)
+      (setf swimmy.globals::*backtest-last-send-ts* orig-last)
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv))
+      (if orig-now
+          (setf (symbol-function 'swimmy.school::backtest-now-seconds) orig-now)
+          (fmakunbound 'swimmy.school::backtest-now-seconds)))))
+
+(deftest test-send-zmq-sleep-suppressed-for-backtest-requester
+  "send-zmq-msg should not sleep for backtest requester path"
+  (let* ((orig-send (symbol-function 'pzmq:send))
+         (orig-req swimmy.globals:*backtest-requester*)
+         (orig-cmd swimmy.globals:*cmd-publisher*)
+         (orig-rate swimmy.globals::*backtest-rate-limit-per-sec*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-submit swimmy.globals::*backtest-submit-count*)
+         (orig-last swimmy.globals::*backtest-last-send-ts*)
+         (orig-recv (when (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*))
+         (iterations 30))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*backtest-requester* :dummy)
+          (setf swimmy.globals:*cmd-publisher* :dummy)
+          (setf swimmy.globals::*backtest-rate-limit-per-sec* 0)
+          (setf swimmy.globals::*backtest-max-pending* 999999)
+          (setf swimmy.globals::*backtest-submit-count* 0)
+          (setf swimmy.globals::*backtest-last-send-ts* 0.0d0)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (setf (symbol-function 'pzmq:send)
+                (lambda (&rest _args) (declare (ignore _args)) t))
+          (let* ((cmd-start (get-internal-real-time)))
+            (dotimes (_ iterations)
+              (swimmy.school::send-zmq-msg "(dummy)" :target :cmd))
+            (let* ((cmd-end (get-internal-real-time))
+                   (cmd-elapsed (/ (- cmd-end cmd-start)
+                                   internal-time-units-per-second)))
+              (let* ((bt-start (get-internal-real-time)))
+                (dotimes (_ iterations)
+                  (swimmy.school::send-zmq-msg "(dummy)" :target :backtest))
+                (let* ((bt-end (get-internal-real-time))
+                       (bt-elapsed (/ (- bt-end bt-start)
+                                      internal-time-units-per-second)))
+                  ;; Expect backtest path to be significantly faster when sleep is suppressed.
+                  (assert-true (< bt-elapsed (* cmd-elapsed 0.7d0))
+                               "backtest path should be faster than cmd path"))))))
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf swimmy.globals:*cmd-publisher* orig-cmd)
+      (setf swimmy.globals::*backtest-rate-limit-per-sec* orig-rate)
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals::*backtest-submit-count* orig-submit)
+      (setf swimmy.globals::*backtest-last-send-ts* orig-last)
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv))
+      (setf (symbol-function 'pzmq:send) orig-send))))
+
 (deftest test-rr-batch-respects-max-pending
   "RR batch size should follow SWIMMY_BACKTEST_MAX_PENDING"
   (let* ((orig-request (symbol-function 'swimmy.school::request-backtest))
@@ -1158,6 +1243,69 @@
     (let ((msg (funcall fn 2 3 1 :cycle-completed nil)))
       (assert-true (null (search "Phase1 BT Cycle Complete" msg))
                    "Completion text should be omitted when not complete"))))
+
+(deftest test-format-percent-no-double
+  "format-percent should return a single percent sign"
+  (let ((fn (find-symbol "FORMAT-PERCENT" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "format-percent should exist")
+    (assert-equal "50%" (funcall fn 0.5) "Expected 50% (single percent)")
+    (assert-equal "0%" (funcall fn 0.0) "Expected 0% (single percent)")
+    (assert-equal "N/A" (funcall fn nil) "Expected fallback for NIL")))
+
+(deftest test-format-value-rounds-int
+  "format-value should round floats when using integer format"
+  (let ((fn (find-symbol "FORMAT-VALUE" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "format-value should exist")
+    (assert-equal "100000" (funcall fn 100000.4 "~d") "Expected rounded integer")
+    (assert-equal "-2" (funcall fn -1.6 "~d") "Expected rounded negative")
+    (assert-equal "N/A" (funcall fn nil "~d") "Expected fallback for NIL")))
+
+(deftest test-ledger-persists-equity
+  "save-state/load-state should persist equity and drawdown metrics"
+  (let* ((tmp-path (merge-pathnames (format nil "/tmp/swimmy-state-~a.sexp" (get-universal-time))))
+         (orig-path swimmy.engine::*state-file-path*)
+         (orig-equity swimmy.globals::*current-equity*)
+         (orig-peak swimmy.globals::*peak-equity*)
+         (orig-max-dd swimmy.globals::*max-drawdown*)
+         (orig-monitor-peak swimmy.globals::*monitoring-peak-equity*)
+         (orig-monitor-dd swimmy.globals::*monitoring-drawdown*)
+         (orig-current-dd swimmy.globals::*current-drawdown*)
+         (orig-last-account swimmy.globals::*last-account-info-time*))
+    (unwind-protect
+        (progn
+          (setf swimmy.engine::*state-file-path* tmp-path)
+          (setf swimmy.globals::*current-equity* 123456.0)
+          (setf swimmy.globals::*peak-equity* 234567.0)
+          (setf swimmy.globals::*max-drawdown* 12.3)
+          (setf swimmy.globals::*monitoring-peak-equity* 345678.0)
+          (setf swimmy.globals::*monitoring-drawdown* 4.5)
+          (setf swimmy.globals::*current-drawdown* 6.7)
+          (setf swimmy.globals::*last-account-info-time* 999)
+          (swimmy.engine:save-state)
+          (setf swimmy.globals::*current-equity* 0.0)
+          (setf swimmy.globals::*peak-equity* 0.0)
+          (setf swimmy.globals::*max-drawdown* 0.0)
+          (setf swimmy.globals::*monitoring-peak-equity* 0.0)
+          (setf swimmy.globals::*monitoring-drawdown* 0.0)
+          (setf swimmy.globals::*current-drawdown* 0.0)
+          (setf swimmy.globals::*last-account-info-time* 0)
+          (swimmy.engine:load-state)
+          (assert-equal 123456.0 swimmy.globals::*current-equity* "Current equity should restore")
+          (assert-equal 234567.0 swimmy.globals::*peak-equity* "Peak equity should restore")
+          (assert-equal 12.3 swimmy.globals::*max-drawdown* "Max drawdown should restore")
+          (assert-equal 345678.0 swimmy.globals::*monitoring-peak-equity* "Monitoring peak should restore")
+          (assert-equal 4.5 swimmy.globals::*monitoring-drawdown* "Monitoring drawdown should restore")
+          (assert-equal 6.7 swimmy.globals::*current-drawdown* "Current drawdown should restore")
+          (assert-equal 999 swimmy.globals::*last-account-info-time* "Account info timestamp should restore"))
+      (setf swimmy.engine::*state-file-path* orig-path)
+      (setf swimmy.globals::*current-equity* orig-equity)
+      (setf swimmy.globals::*peak-equity* orig-peak)
+      (setf swimmy.globals::*max-drawdown* orig-max-dd)
+      (setf swimmy.globals::*monitoring-peak-equity* orig-monitor-peak)
+      (setf swimmy.globals::*monitoring-drawdown* orig-monitor-dd)
+      (setf swimmy.globals::*current-drawdown* orig-current-dd)
+      (setf swimmy.globals::*last-account-info-time* orig-last-account)
+      (when (probe-file tmp-path) (delete-file tmp-path)))))
 
 (deftest test-system-pulse-5m-text
   "System Pulse heartbeat should not claim cycle completion"
@@ -1513,6 +1661,9 @@
                   test-strategy-daily-pnl-aggregation
                   test-daily-pnl-correlation
                   test-daily-pnl-aggregation-scheduler
+                  test-2300-trigger-logic
+                  test-midnight-reset-logic
+                  test-daily-report-no-duplicate-after-flag-reset
                   test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
@@ -1600,10 +1751,15 @@
                   test-flush-deferred-founders-respects-limit
                   test-backtest-pending-counters-defaults
                   test-backtest-send-throttles-when-pending-high
+                  test-backtest-send-uses-subsecond-time
+                  test-send-zmq-sleep-suppressed-for-backtest-requester
                   test-rr-batch-respects-max-pending
                   test-rr-batch-skips-retired-strategies
                   test-rr-batch-no-active-strategies
                   test-format-phase1-bt-batch-message
+                  test-format-percent-no-double
+                  test-format-value-rounds-int
+                  test-ledger-persists-equity
                   test-system-pulse-5m-text
                   test-backtest-pending-count-decrements-on-recv
                   test-deferred-flush-respects-batch

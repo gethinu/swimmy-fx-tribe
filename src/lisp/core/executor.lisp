@@ -15,6 +15,8 @@
 (defparameter *total-ticks-count* 0)
 (defvar *processed-tickets* (make-hash-table :test 'equal))
 (defvar *current-drawdown* 0.0)
+(defparameter *account-info-save-interval* 60)
+(defparameter *last-account-save-time* 0)
 
 ;;; --------------------------------------
 ;;; PAYLOAD HELPERS
@@ -392,7 +394,13 @@
             (when (> *peak-equity* 0)
               (setf *current-drawdown* (* 100 (/ (- *peak-equity* *current-equity*) *peak-equity*))))
             (format t "[L] 💰 MT5 Sync: Equity=¥~,0f DynPK=¥~,0f DynDD=~,1f% (LegacyDD=~,1f%)~%"
-                    *current-equity* *monitoring-peak-equity* *monitoring-drawdown* *current-drawdown*))))
+                    *current-equity* *monitoring-peak-equity* *monitoring-drawdown* *current-drawdown*)
+            ;; Persist account metrics periodically so daily report survives restarts
+            (let ((now (get-universal-time)))
+              (when (> (- now *last-account-save-time*) *account-info-save-interval*)
+                (setf *last-account-save-time* now)
+                (when (fboundp 'swimmy.engine:save-state)
+                  (swimmy.engine:save-state)))))))
     (error (e) (format t "[L] Account sync error: ~a~%" e))))
 
 ;;; --------------------------------------

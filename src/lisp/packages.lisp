@@ -164,6 +164,8 @@
    #:*daily-report-sent-today*
    #:*daily-pnl-aggregation-sent-today*
    #:*discord-recruit-webhook*
+   #:*last-new-day*
+   #:*daily-report-last-date*
    #:*last-narrative-day*
    #:*last-guardian-heartbeat*
    #:*last-tick-time*

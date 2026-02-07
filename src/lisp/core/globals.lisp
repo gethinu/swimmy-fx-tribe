@@ -159,6 +159,8 @@
 
 (defparameter *monthly-goal* 100000.0)
 (defparameter *last-narrative-day* -1)
+(defparameter *last-new-day* nil "Last processed YYYYMMDD for day rollover")
+(defparameter *daily-report-last-date* nil "YYYYMMDD of last daily report sent")
 (defparameter *daily-report-sent-today* nil)
 (defparameter *daily-pnl-aggregation-sent-today* nil)
 

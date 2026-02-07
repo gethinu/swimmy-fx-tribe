@@ -11,7 +11,6 @@
 ;;; - 23:00 Daily Report trigger
 
 (defparameter *last-maintenance-time* 0)
-(defvar *last-new-day* nil "Tracks the last day number we processed for day rollover")
 (defvar *daily-report-sent-today* nil "Prevents duplicate daily reports")
 (defvar *advisor-report-sent-today* nil "Prevents duplicate advisor reports")
 (defvar *daily-pnl-aggregation-sent-today* nil "Prevents duplicate daily pnl aggregation")
@@ -121,12 +120,13 @@
   "Check and execute scheduled tasks based on data-driven configuration."
   (multiple-value-bind (s m h date month year day-of-week dst-p tz)
       (decode-universal-time now)
-    (declare (ignore s m month year dst-p tz day-of-week))
+    (declare (ignore s dst-p tz day-of-week))
+    (let ((day-key (+ (* year 10000) (* month 100) date)))
     
     ;; 1. New Day Processing (Reset Logic)
-    (when (or (null *last-new-day*) (not (= date *last-new-day*)))
+      (when (or (null *last-new-day*) (not (= day-key *last-new-day*)))
       (format t "~%[SCHEDULER] 📅 NEW DAY DETECTED: ~a~%" date)
-      (setf *last-new-day* date)
+        (setf *last-new-day* day-key)
       (setf *daily-report-sent-today* nil)
       (setf *advisor-report-sent-today* nil)
       (setf *daily-pnl-aggregation-sent-today* nil)
@@ -141,14 +141,22 @@
         (funcall 'swimmy.school::decay-q-table))
       (when (fboundp 'swimmy.engine::save-state)
         (funcall 'swimmy.engine::save-state)))
+
+    ;; Sync daily report sent flag from persisted date
+    (setf *daily-report-sent-today*
+          (and (numberp *daily-report-last-date*)
+               (= *daily-report-last-date* day-key)))
         
     ;; 2. Generic Task Runner (Iterates *scheduled-events*)
     (dolist (event *scheduled-events*)
-      (let* ((trigger-h (getf (cdr event) :hour))
+      (let* ((event-name (car event))
+             (trigger-h (getf (cdr event) :hour))
              (sent-sym (getf (cdr event) :sent-flag))
              (task-fn (getf (cdr event) :fn)))
         (when (and (>= h trigger-h) (not (symbol-value sent-sym)))
           (setf (symbol-value sent-sym) t) ;; Claim executed first
+          (when (eq event-name :daily-report)
+            (setf *daily-report-last-date* day-key))
           (funcall task-fn))))
 
     ;; 3. Daily PnL Aggregation (00:10)
@@ -160,4 +168,4 @@
       (when (fboundp 'swimmy.school::refresh-pair-strategies)
         (funcall 'swimmy.school::refresh-pair-strategies))
       (when (fboundp 'swimmy.school::refresh-pair-active-defs)
-        (funcall 'swimmy.school::refresh-pair-active-defs)))))
+          (funcall 'swimmy.school::refresh-pair-active-defs))))))

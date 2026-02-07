@@ -166,6 +166,7 @@
                (:file "src/lisp/tests/backtest-payload-tests")
                (:file "src/lisp/tests/pair-composite-tests")
                (:file "src/lisp/tests/strategy-migration-tests")
+               (:file "src/lisp/tests/scheduler-tests")
                
                (:file "src/lisp/tests/school-split-tests")
                 (:file "src/lisp/tests/stress-test-kb")
