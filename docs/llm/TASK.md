@@ -1,6 +1,6 @@
 # Swimmy System Tasks
 
-## 今やる1タスク: ドキュメント補完 (Completed)
+## 今やる1タスク: ドキュメント補完 (In Progress)
 
 ### 目的
 `implementation_plan_v50.6.md` と `owners_guide.md` に記載されている最新機能（V49.8以降）が、現在の `/docs/llm/` に十分に反映されていない可能性があるため、差分を埋める。
@@ -51,12 +51,6 @@ OOS結果の相関ID欠落・UUID衝突・`oos_queue` 不整合を修正し、A�
 2. 最小修正を実装
 3. 検証手順実行（OOS 1件の往復確認）
 
-### OOSキュー手動クリーンアップ手順
-1. `sudo systemctl stop swimmy-school`
-2. `sqlite3 data/memory/swimmy.db "DELETE FROM oos_queue;"`
-3. `sqlite3 data/memory/swimmy.db "SELECT count(*) FROM oos_queue;"`
-4. `sudo systemctl start swimmy-school`
-
 ---
 
 ## 今やる1タスク: 網羅的システムチェック (Completed)
@@ -80,7 +74,5 @@ Evolution Factory Report に表示される主要指標（Active, Rank, Graveyar
 
 ## ユーザー確認事項 (質問リスト)
 1. **Lispのポートバインド**: Rustコードを見る限り、Lisp側が `5555` と `5556` にバインドしているようですが、Lispコード (`execution-protocol.lisp`等) 内での具体的な記述箇所は合っていますでしょうか？
-   - 回答: `src/lisp/system/runner.lisp` で PULL/PUB を bind（`*port-sensory*`=5555, `*port-motor*`=5556）。ポート定義は `src/lisp/core/config.lisp`。
 2. **Rustビルド**: `guardian` ディレクトリ内で `cargo build --release` を実行するのが標準手順で間違いないでしょうか？
-   - 回答: 明文化は未確認。現状の運用スクリプトでは `cargo build --release` が使われている（`tools/run_benchmarks.sh`）。`tools/quality_gate.sh` は `cargo test --release`。
 3. **Data Keeper**: Python製の `swimmy-data-keeper` (Port 5561) がアーキテクチャ図から漏れていましたが、これは現在もアクティブでしょうか？（オーナーズガイドには記載あり）
