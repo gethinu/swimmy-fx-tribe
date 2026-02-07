@@ -325,3 +325,49 @@
     (values pairs (list :total (length pool)
                         :eligible (length eligible)
                         :excluded excluded))))
+
+(defparameter *pair-slots-per-tf* 1
+  "Max pair slots per symbol/timeframe in hybrid competition.")
+
+(defparameter *pair-competition-top-n* 2
+  "Top-N combined list to consider when activating pairs.")
+
+(defun %single-score (strat)
+  (+ (* *pair-score-sharpe-weight* (or (strategy-sharpe strat) 0.0))
+     (* *pair-score-pf-weight* (or (strategy-profit-factor strat) 0.0))))
+
+(defun select-active-pair-defs (pair-rows single-strategies
+                                &key (pair-slots-per-tf *pair-slots-per-tf*)
+                                     (competition-top-n *pair-competition-top-n*))
+  "Select active pair defs using hybrid competition against single strategies."
+  (let ((groups (make-hash-table :test 'equal))
+        (out nil))
+    (dolist (p pair-rows)
+      (let* ((symbol (or (getf p :symbol) ""))
+             (tf (or (getf p :timeframe) 0))
+             (key (format nil "~a|~a" symbol tf)))
+        (push (list :type :pair :score (or (getf p :score) 0.0) :pair p) (gethash key groups))))
+    (dolist (s single-strategies)
+      (let* ((symbol (or (strategy-symbol s) ""))
+             (tf (or (strategy-timeframe s) 0))
+             (key (format nil "~a|~a" symbol tf)))
+        (push (list :type :single :score (%single-score s) :single s) (gethash key groups))))
+    (maphash
+     (lambda (_key entries)
+       (declare (ignore _key))
+       (let* ((sorted (sort (copy-list entries) #'> :key (lambda (e) (getf e :score))))
+              (top (subseq sorted 0 (min competition-top-n (length sorted))))
+              (pairs (remove-if-not (lambda (e) (eq (getf e :type) :pair)) top))
+              (pairs (subseq pairs 0 (min pair-slots-per-tf (length pairs)))))
+         (dolist (p pairs)
+           (let* ((pair (getf p :pair))
+                  (a (or (getf pair :a) (getf pair :strategy-a)))
+                  (b (or (getf pair :b) (getf pair :strategy-b))))
+             (push (list :pair-id (getf pair :pair-id)
+                         :a a
+                         :b b
+                         :weight-a (getf pair :weight-a)
+                         :weight-b (getf pair :weight-b))
+                   out)))))
+     groups)
+    (nreverse out)))

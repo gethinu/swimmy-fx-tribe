@@ -93,6 +93,18 @@
         (swimmy.school::pair-metrics-from-trades trades-a trades-b :min-trades 3)
       (assert-true (null metrics) "metrics should be nil")
       (assert-equal :insufficient-data reason "should block with insufficient-data"))))
+
+(deftest test-pair-slot-competition-cap
+  "pair selection should respect per-tf pair slots while competing with singles"
+  (let* ((single-a (swimmy.school::make-strategy :name "S1" :symbol "USDJPY" :timeframe 1 :sharpe 0.9 :profit-factor 1.5 :rank :A))
+         (single-b (swimmy.school::make-strategy :name "S2" :symbol "USDJPY" :timeframe 1 :sharpe 0.8 :profit-factor 1.4 :rank :A))
+         (pairs (list (list :pair-id "P1" :a "S1" :b "S2" :symbol "USDJPY" :timeframe 1 :score 1.2 :weight-a 0.5 :weight-b 0.5)
+                      (list :pair-id "P2" :a "S1" :b "S2" :symbol "USDJPY" :timeframe 1 :score 1.1 :weight-a 0.6 :weight-b 0.4))))
+    (let ((active (swimmy.school::select-active-pair-defs pairs (list single-a single-b)
+                                                          :pair-slots-per-tf 1
+                                                          :competition-top-n 2)))
+      (assert-equal 1 (length active) "only one pair should survive cap")
+      (assert-equal "P1" (getf (first active) :pair-id) "top pair should be selected"))))
 (deftest test-pair-selection-rescue-mode
   "rescue mode should allow |corr|<=0.3 when < max pairs"
   (let* ((s1 (swimmy.school::make-strategy :name "A" :symbol "USDJPY" :timeframe 1 :sharpe 0.5 :rank :A))

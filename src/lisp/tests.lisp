@@ -1322,6 +1322,7 @@
                   test-pair-score-from-pnls
                   test-pair-inverse-vol-weights
                   test-pair-gate-blocks-on-insufficient-data
+                  test-pair-slot-competition-cap
                   test-pair-selection-rescue-mode
                   test-pair-selection-excludes-short-trades
                   test-telemetry-sexp
