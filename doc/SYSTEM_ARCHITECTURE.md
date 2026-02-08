@@ -157,7 +157,7 @@ morning-ritual (brain.lisp:2650)
 | ファイル | 行数 | 主な責務 |
 |----------|------|----------|
 | brain.lisp | 2,744 | メイン処理、メッセージハンドラ |
-| school.lisp | 2,766 | 戦略実行、氏族システム |
+| school.lisp | 2,766 | 戦略実行、カテゴリ管理 |
 | dreamer2.lisp | 598 | 進化、バックテスト統合 |
 | strategies.lisp | 400 | 61基本戦略定義 |
 | research.lisp | 400 | 論文実装 |

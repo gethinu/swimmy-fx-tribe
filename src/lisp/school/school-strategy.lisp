@@ -125,7 +125,7 @@
 
 
 ;;; ==========================================
-;;; CATEGORY ALLOCATION (with Clan mapping)
+;;; CATEGORY ALLOCATION
 ;;; ===========================================
 
 (defparameter *category-allocation*

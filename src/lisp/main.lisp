@@ -111,7 +111,7 @@
   (when (fboundp 'swimmy.school::cleanup-oos-queue-on-startup)
     (swimmy.school::cleanup-oos-queue-on-startup))
   (swimmy.school::init-knowledge-base) ; Restoration from SQL + Files
-  (swimmy.school::init-school)         ; Clan & Pool Init
+  (swimmy.school::init-school)         ; Category & Pool Init
 
   ;; Restore V3.0 61-strategy legends (commit 3f58795)
   (let ((f (find-symbol "RESTORE-LEGEND-61" "SWIMMY.SCHOOL")))

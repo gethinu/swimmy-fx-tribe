@@ -6,7 +6,7 @@
 - **ローテーション**: `swimmy.json.log.1`（既定10MB上限）
 
 ### 2. 監視ファイルの原子書き込み
-- **system_metrics.sexp / live_status.sexp** を tmp→rename で破損防止（`schema_version=1`）
+- **system_metrics.sexp / live_status.sexp** を tmp→rename で破損防止（`schema_version=2`）
 
 ---
 
