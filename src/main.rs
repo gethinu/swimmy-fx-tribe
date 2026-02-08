@@ -27,6 +27,10 @@ const ENDPOINT_EXTERNAL_CMD: &str = "tcp://*:5559";
 const ENDPOINT_MT5_CMD: &str = "tcp://*:5560";
 const ENDPOINT_NOTIFIER: &str = "tcp://localhost:5562";
 
+fn guardian_heartbeat_message() -> String {
+    r#"((type . "HEARTBEAT") (source . "GUARDIAN") (status . "OK"))"#.to_string()
+}
+
 // Global neural network instance (loads from file if exists)
 lazy_static::lazy_static! {
     static ref NEURAL_NET: Mutex<neural::NeuralNet> = Mutex::new(neural::NeuralNet::load_or_new());
@@ -916,9 +920,9 @@ fn main() {
 
         // V5.0: Send heartbeat every 10 seconds
         if last_heartbeat.elapsed().as_secs() >= HEARTBEAT_INTERVAL_SECS {
-            let hb_msg = r#"{"type":"HEARTBEAT","guardian":"alive"}"#;
             // push_to_brain.send(hb_msg, 0).unwrap(); // Use push now
-            let _ = push_to_brain.send(hb_msg, 0); // Ignore error (e.g. if Brain down)
+            let hb_msg = guardian_heartbeat_message();
+            let _ = push_to_brain.send(&hb_msg, 0); // Ignore error (e.g. if Brain down)
             last_heartbeat = std::time::Instant::now();
         }
 
@@ -1698,6 +1702,15 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heartbeat_is_sexp() {
+        let msg = guardian_heartbeat_message();
+        assert!(msg.starts_with('('), "heartbeat must be S-expression");
+        assert!(msg.contains("(type . \"HEARTBEAT\")"), "missing type field");
+        assert!(msg.contains("(source . \"GUARDIAN\")"), "missing source field");
+        assert!(msg.contains("(status . \"OK\")"), "missing status field");
+    }
 
     #[test]
     fn test_riskgate_init() {
