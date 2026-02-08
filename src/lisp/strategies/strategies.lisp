@@ -19,10 +19,9 @@
          (db-strats (remove-if-not #'strategy-p raw-db-strats))
          (dropped (+ (- (length raw-file-strats) (length file-strats))
                      (- (length raw-db-strats) (length db-strats)))))
-
     (when (> dropped 0)
       (format t "[KB] ⚠️ Dropped ~d invalid strategies during init.~%" dropped))
-    
+
     ;; Merge lists, prioritizing DB records if duplicates exist (Name based)
     (let ((kb (copy-list db-strats)))
       (dolist (fs file-strats)
