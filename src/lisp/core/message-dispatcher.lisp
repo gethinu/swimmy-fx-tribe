@@ -464,7 +464,7 @@
                         (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed) head=~a~%"
                                 (%preview-msg msg))
                         (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed)~%"))
-                    nil))))
+                    nil)))))
     (when err
       (format t "[L] Msg Error: ~a" err)
       nil)
