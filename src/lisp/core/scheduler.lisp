@@ -51,6 +51,14 @@
       (when (fboundp 'swimmy.shell::generate-weekly-summary)
         (funcall 'swimmy.shell::generate-weekly-summary)))))
 
+(defun maybe-trigger-heartbeat-now ()
+  "If .opus/heartbeat.now exists, send a heartbeat and delete the trigger file."
+  (let ((trigger (swimmy.core::swimmy-path ".opus/heartbeat.now")))
+    (when (probe-file trigger)
+      (when (fboundp 'swimmy.engine::send-discord-heartbeat)
+        (ignore-errors (swimmy.engine::send-discord-heartbeat)))
+      (ignore-errors (delete-file trigger)))))
+
 (defun run-periodic-maintenance ()
   "Handle periodic maintenance tasks (backtests, ecosystem, evolution) - Throttled 60s
    STRUCTURE NOTE (V8.3):
@@ -107,6 +115,8 @@
     ;; PROFILE SECTION 3
     (with-profiling "maintenance-section-3"
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
+      (when (fboundp 'swimmy.main::maybe-trigger-heartbeat-now)
+        (swimmy.main::maybe-trigger-heartbeat-now))
       (when (fboundp 'swimmy.engine::check-discord-heartbeat)
         (swimmy.engine::check-discord-heartbeat))
       ;; Deferred founder backtests (rate-limited; avoid blocking recv loop)

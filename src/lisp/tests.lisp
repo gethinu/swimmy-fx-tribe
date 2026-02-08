@@ -727,6 +727,30 @@
       (when (boundp 'swimmy.core::*heartbeat-webhook-url*)
         (setf swimmy.core::*heartbeat-webhook-url* orig-url)))))
 
+(deftest test-heartbeat-now-trigger-file
+  "Trigger file should send heartbeat and delete trigger"
+  (let* ((trigger (swimmy.core::swimmy-path ".opus/heartbeat.now"))
+         (orig-send (and (fboundp 'swimmy.engine::send-discord-heartbeat)
+                         (symbol-function 'swimmy.engine::send-discord-heartbeat)))
+         (called nil))
+    (assert-true (fboundp 'swimmy.main::maybe-trigger-heartbeat-now)
+                 "Expected trigger checker to exist")
+    (unwind-protect
+        (progn
+          (ensure-directories-exist trigger)
+          (with-open-file (out trigger :direction :output :if-exists :supersede
+                                      :if-does-not-exist :create)
+            (write-line "1" out))
+          (when orig-send
+            (setf (symbol-function 'swimmy.engine::send-discord-heartbeat)
+                  (lambda () (setf called t))))
+          (swimmy.main::maybe-trigger-heartbeat-now)
+          (assert-true called "Expected heartbeat send to be invoked")
+          (assert-false (probe-file trigger) "Trigger file should be removed"))
+      (when orig-send
+        (setf (symbol-function 'swimmy.engine::send-discord-heartbeat) orig-send))
+      (ignore-errors (delete-file trigger)))))
+
 (deftest test-heartbeat-summary-no-data-omits-age
   "Heartbeat summary should not show age when no MT5 data has ever arrived"
   (let ((orig-last swimmy.globals::*last-guardian-heartbeat*))
@@ -2303,6 +2327,7 @@
                   test-order-open-sexp-keys
                   test-heartbeat-message-is-sexp
                   test-heartbeat-uses-heartbeat-webhook
+                  test-heartbeat-now-trigger-file
                   test-heartbeat-summary-no-data-omits-age
                   test-executor-heartbeat-sends-sexp
                   test-executor-pending-orders-sends-sexp
