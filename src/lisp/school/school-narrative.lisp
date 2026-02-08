@@ -219,6 +219,50 @@ REVERSION : ~a"
     (format nil "🔬 CPCV Status~%~d queued | ~d received | last start: ~a"
             expected received start-text)))
 
+(defparameter *evolution-report-path* "data/reports/evolution_factory_report.txt")
+(defparameter *evolution-heartbeat-path* "data/heartbeat/school.tick")
+(defparameter *evolution-report-interval* (* 60 60))
+(defparameter *evolution-report-stale-threshold* (* 2 60 60))
+(defparameter *evolution-report-alert-interval* (* 60 60))
+(defparameter *last-evolution-report-alert-time* 0)
+
+(defun safe-file-write-date (path)
+  (or (ignore-errors (file-write-date path)) 0))
+
+(defun maybe-send-evolution-report (&key (now (get-universal-time)) last-write (reason "scheduled"))
+  "Send evolution report if the last write exceeds the configured interval."
+  (let* ((last (or last-write (safe-file-write-date *evolution-report-path*)))
+         (age (- now last)))
+    (when (> age *evolution-report-interval*)
+      (format t "[REPORT] 📨 Sending Evolution Report (~a)...~%" reason)
+      (notify-evolution-report)
+      (when (fboundp 'write-oos-status-file)
+        (ignore-errors (write-oos-status-file :reason reason)))
+      t)))
+
+(defun maybe-alert-evolution-report-staleness
+    (&key (now (get-universal-time)) last-report last-heartbeat)
+  "Alert if the report or heartbeat file is stale. Throttled by alert interval."
+  (let* ((report-last (or last-report (safe-file-write-date *evolution-report-path*)))
+         (heartbeat-last (or last-heartbeat (safe-file-write-date *evolution-heartbeat-path*)))
+         (report-age (if (> report-last 0) (- now report-last) nil))
+         (heartbeat-age (if (> heartbeat-last 0) (- now heartbeat-last) nil))
+         (report-stale (or (null report-age) (> report-age *evolution-report-stale-threshold*)))
+         (heartbeat-stale (or (null heartbeat-age) (> heartbeat-age *evolution-report-stale-threshold*)))
+         (cooldown-ok (> (- now *last-evolution-report-alert-time*)
+                         *evolution-report-alert-interval*)))
+    (when (and cooldown-ok (or report-stale heartbeat-stale))
+      (setf *last-evolution-report-alert-time* now)
+      (let ((msg (format nil "⚠️ Evolution report/heartbeat stale. report_age=~a heartbeat_age=~a"
+                         (or report-age "MISSING") (or heartbeat-age "MISSING"))))
+        (swimmy.core:notify-discord-alert msg)
+        (when (fboundp 'swimmy.core::emit-telemetry-event)
+          (swimmy.core::emit-telemetry-event "evolution.report.stale"
+                                             :service "school"
+                                             :severity "warn"
+                                             :data (list :report_age report-age
+                                                         :heartbeat_age heartbeat-age)))))))
+
 (defun generate-evolution-report ()
   "Generate the Evolution Factory Report (formerly Python).
    Answers User Q1: S-Rank = Battlefield (Veteran), A-Rank = Training."

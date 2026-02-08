@@ -99,23 +99,10 @@
   (format t "~%[CONNECTOR] [Phase 7] Wisdom Update (Native)...~%")
   (analyze-veterans))
 
-;; V48: Throttled Reporting (Prevents Spam)
-(defparameter *last-report-time* 0)
-(defconstant +report-interval+ (* 60 60)) ; 1 Hour (V48.5: Increased to reduce noise)
-
 (defun phase-7-report ()
   "Send report if interval passed"
-  (let ((now (get-universal-time)))
-    (if (> (- now *last-report-time*) +report-interval+)
-        (progn
-          (setf *last-report-time* now) ;; Claim execution first
-          (format t "[CONNECTOR] 📨 Sending Scheduled Evolution Report...~%")
-          (swimmy.school::notify-evolution-report)
-          (when (fboundp 'swimmy.school::write-oos-status-file)
-            (ignore-errors (swimmy.school::write-oos-status-file :reason "scheduled"))))
-        (when (= (mod now 60) 0) ;; Log every minute only
-          (format t "[CONNECTOR] ⏳ Report cooldown: ~ds remaining~%" 
-                  (- +report-interval+ (- now *last-report-time*)))))))
+  (when (fboundp 'swimmy.school::maybe-send-evolution-report)
+    (swimmy.school::maybe-send-evolution-report :reason "phase-7")))
 
 ;; P11: KB Pruning every 6 hours (V48.0: Changed from weekly)
 (defparameter *last-prune-time* 0)
