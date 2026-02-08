@@ -23,6 +23,32 @@
       (destructuring-bind (req-id req-at status) row
         (values req-id req-at status)))))
 
+(defun oos-request-pending-p (name)
+  "Return T if oos_queue has a non-error row for NAME."
+  (handler-case
+      (progn
+        (ignore-errors (init-db))
+        (multiple-value-bind (req-id _req-at status) (lookup-oos-request name)
+          (declare (ignore _req-at))
+          (and (stringp req-id)
+               (not (and (stringp status) (string= status "error"))))))
+    (error (_e) nil)))
+
+(defun cancel-oos-request-for-strategy (name &optional reason)
+  "Remove any queued OOS request for NAME (used when pruning)."
+  (handler-case
+      (progn
+        (ignore-errors (init-db))
+        (multiple-value-bind (req-id _req-at status) (lookup-oos-request name)
+          (declare (ignore _req-at status))
+          (when req-id
+            (complete-oos-request name req-id)
+            (format t "[OOS] 🧹 Cancelled OOS request for ~a~@[ (~a)~]~%" name reason)
+            t)))
+    (error (e)
+      (format t "[OOS] ⚠️ Failed to cancel OOS request for ~a (~a)~%" name e)
+      nil)))
+
 (defun complete-oos-request (name request-id)
   "Mark OOS request done by request-id (preferred) or name fallback."
   (if request-id

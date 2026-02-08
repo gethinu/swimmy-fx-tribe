@@ -8,8 +8,7 @@ Type=simple
 User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
-# Phase 1: Kill any existing guardian processes
-ExecStartPre=-/usr/bin/pkill -9 -u swimmy -x guardian
+# Phase 1: (disabled) pkill was killing backtest-only guardian and causing restart loops
 # Phase 2: Wait for OS to release sockets
 ExecStartPre=/bin/sleep 2
 # Phase 3: Force-release ZMQ ports (5557=Guardian PUB)

@@ -288,7 +288,7 @@ def restart_service(tracker: RevivalTracker) -> bool:
 
     print(f"[WATCHDOG] Restarting {tracker.service}...")
     result = subprocess.run(
-        ["systemctl", "--user", "restart", tracker.service],
+        ["systemctl", "restart", tracker.service],
         capture_output=True,
         text=True,
     )

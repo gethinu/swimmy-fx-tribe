@@ -518,6 +518,10 @@
   "V48.1 Expert Panel P0: Delete strategy from KB immediately.
    Pattern is saved to graveyard.sexp for Q-Learning before deletion."
   (let ((name (strategy-name strat)))
+    (when (oos-request-pending-p name)
+      (format t "[PRUNER] ⏳ Skip prune (OOS pending): ~a~%" name)
+      (return-from prune-to-graveyard nil))
+    (ignore-errors (cancel-oos-request-for-strategy name "pruned"))
     
     ;; 1. Save pattern for Q-Learning (before deletion)
     (handler-case

@@ -117,6 +117,10 @@
     (when (and (eq old-rank :legend) (eq new-rank :graveyard))
       (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
       (return-from %ensure-rank-no-lock old-rank))
+    (when (and (eq new-rank :graveyard)
+               (oos-request-pending-p (strategy-name strategy)))
+      (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))
+      (return-from %ensure-rank-no-lock old-rank))
 
     (when (not (eq old-rank new-rank))
       ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
@@ -136,6 +140,7 @@
       
       ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
       (when (eq new-rank :graveyard)
+        (ignore-errors (cancel-oos-request-for-strategy (strategy-name strategy) "graveyard"))
         (save-failure-pattern strategy reason)
         (setf *strategy-knowledge-base* 
               (remove strategy *strategy-knowledge-base* :test #'eq))
