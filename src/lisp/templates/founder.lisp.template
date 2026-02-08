@@ -6,7 +6,7 @@
   "Auto-Generated Strategy by Hunter Agent."
   (make-strategy
    :name "{{STRATEGY_NAME}}"
-   :category :{{CLAN}}
+   :category :{{CATEGORY}}
    :timeframe "H1"
    :generation 0
    :sl 0.0050

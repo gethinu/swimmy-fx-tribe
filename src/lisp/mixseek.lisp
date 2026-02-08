@@ -200,10 +200,10 @@
          (comomentum (getf context :comomentum))
          (volatility (getf context :volatility)))
     (case category-id
-      ;; Hunters (Trend) - Patient, follow the wind
+      ;; Trend (Category) - Patient, follow the wind
       (:trend
        (make-strategy
-        :name (format nil "Hunter-Wind-~d" (random 1000))
+        :name (format nil "Trend-Wind-~d" (random 1000))
         :indicators '((kalman) (sma 50) (atr 14))
         :entry '(and (eq (ind-kalman-trend history) :UP)
                      (> (ind-sma 20 history) (ind-sma 50 history)))
@@ -212,10 +212,10 @@
         :tp (if (eq volatility :high) 1.6 1.0)
         :volume (* 0.01 (comomentum-exposure-multiplier comomentum))))
       
-      ;; Shamans (Reversion) - Counter the crowd
+      ;; Reversion (Category) - Counter the crowd
       (:reversion
        (make-strategy
-        :name (format nil "Shaman-Reversion-~d" (random 1000))
+        :name (format nil "Reversion-Counter-~d" (random 1000))
         :indicators '((rsi 14) (bb 20 2))
         :entry '(and (< (ind-rsi 14 history) 30)
                      (< close bb-lower))
@@ -225,10 +225,10 @@
         :tp 0.8
         :volume (* 0.01 (comomentum-exposure-multiplier comomentum))))
       
-      ;; Breakers (Breakout) - Explosive power
+      ;; Breakout (Category) - Explosive power
       (:breakout
        (make-strategy
-        :name (format nil "Breaker-Storm-~d" (random 1000))
+        :name (format nil "Breakout-Storm-~d" (random 1000))
         :indicators '((atr 14) (bb 20 2))
         :entry '(and (> (ind-atr 14 history) (* 1.5 (ind-atr 50 history)))
                      (> close bb-upper))
@@ -237,10 +237,10 @@
         :tp 1.5
         :volume (* 0.01 (comomentum-exposure-multiplier comomentum))))
       
-      ;; Raiders (Scalp) - Quick and nimble
+      ;; Scalp (Category) - Quick and nimble
       (:scalp
        (make-strategy
-        :name (format nil "Raider-Strike-~d" (random 1000))
+        :name (format nil "Scalp-Strike-~d" (random 1000))
         :indicators '((ema 5) (ema 13) (stoch 5 3))
         :entry '(and (cross-above ema-5 ema-13)
                      (< (ind-stoch 5 3 history) 20))
@@ -334,4 +334,4 @@
          (evaluation-result-submission (first results)))))))
 
 (format t "[MIXSEEK] Competition System loaded~%")
-(format t "[MIXSEEK] 4 Clans ready to compete: Hunters, Shamans, Breakers, Raiders~%")
+(format t "[MIXSEEK] 4 Categories ready to compete: Trend, Reversion, Breakout, Scalp~%")

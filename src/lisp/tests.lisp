@@ -1054,6 +1054,27 @@
           (assert-false (search "部族" captured)))
       (setf (symbol-function 'swimmy.core:notify-discord-recruit) orig))))
 
+(deftest test-category-vocabulary-omits-clan-terms-in-sources
+  "key source files should not contain clan/tribe vocabulary"
+  (dolist (path '("src/lisp/core/rituals.lisp"
+                  "src/lisp/mixseek.lisp"
+                  "src/lisp/quality.lisp"
+                  "src/lisp/school/school-execution.lisp"
+                  "src/lisp/school/school-founders.lisp"))
+    (let ((content (uiop:read-file-string path)))
+      (assert-false (search "Clan" content))
+      (assert-false (search "Clans" content))
+      (assert-false (search "Hunters" content))
+      (assert-false (search "Shamans" content))
+      (assert-false (search "Breakers" content))
+      (assert-false (search "Raiders" content)))))
+
+(deftest test-founder-template-uses-category-placeholder
+  "founder template should use CATEGORY placeholder and omit CLAN"
+  (let ((content (uiop:read-file-string "src/lisp/templates/founder.lisp.template")))
+    (assert-true (search ":{{CATEGORY}}" content))
+    (assert-false (search ":{{CLAN}}" content))))
+
 (deftest test-ledger-omits-tribe-fields
   "save-state should omit tribe fields"
   (let* ((tmp-path (merge-pathnames (format nil "/tmp/swimmy-state-~a.sexp" (get-universal-time))))
@@ -2381,6 +2402,8 @@
                   test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
                   test-recruit-notification-uses-category
+                  test-category-vocabulary-omits-clan-terms-in-sources
+                  test-founder-template-uses-category-placeholder
                   test-ledger-omits-tribe-fields
                   test-category-vote-list
                   test-dynamic-narrative-uses-category-display
