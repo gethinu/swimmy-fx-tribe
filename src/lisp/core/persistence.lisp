@@ -162,17 +162,18 @@
     (format t "[LIB] 📖 Loaded ~d strategies from Library~%" count)
     strategies))
 
-(defun delete-strategy (strategy-obj)
+(defun delete-strategy (strategy-obj &key rank)
   "Delete the file associated with the strategy."
   (let* ((name (slot-value strategy-obj 'swimmy.school::name))
-         (rank (strategy-storage-rank strategy-obj))
-         (path (get-strategy-path name rank)))
+         (resolved-rank (or rank (strategy-storage-rank strategy-obj)))
+         (path (get-strategy-path name resolved-rank)))
     (cond
       ((probe-file path)
        (delete-file path)
        (format t "[LIB] 🗑️ Deleted ~a from ~a~%" name path))
       ;; Legacy tier fallback (pre-migration files)
-      ((and (slot-exists-p strategy-obj 'swimmy.school::tier)
+      ((and (null rank)
+            (slot-exists-p strategy-obj 'swimmy.school::tier)
             (let* ((tier (slot-value strategy-obj 'swimmy.school::tier))
                    (legacy-path (get-strategy-path name tier)))
               (when (probe-file legacy-path)
@@ -182,7 +183,7 @@
       (t
        (format t "[LIB] ⚠️ File not found for deletion: ~a~%" path)))))
 
-(defun move-strategy (strategy-obj new-rank &key (force nil))
+(defun move-strategy (strategy-obj new-rank &key (force nil) (from-rank nil))
   "Move strategy to a new rank (delete old file, update slot, save new file).
    V49.3: Fortress Mode - Blocks moving A/S/Legend to Graveyard without :force t."
   
@@ -197,7 +198,9 @@
               rank name)))
 
   ;; 1. Delete old file using CURRENT rank (legacy tier fallback supported)
-  (delete-strategy strategy-obj)
+  (if from-rank
+      (delete-strategy strategy-obj :rank from-rank)
+      (delete-strategy strategy-obj))
   
   ;; 2. Update rank slot
   (setf (slot-value strategy-obj 'swimmy.school::rank) new-rank)

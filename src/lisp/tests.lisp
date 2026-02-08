@@ -1831,6 +1831,49 @@
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-send))))
 
+(deftest test-delete-strategy-rank-guard
+  "delete-strategy should honor :rank when provided."
+  (let* ((orig-path swimmy.persistence:*library-path*)
+         (tmp (format nil "/tmp/swimmy-test-lib-~a/" (get-universal-time)))
+         (tmp-dir (uiop:ensure-directory-pathname tmp))
+         (strat (swimmy.school:make-strategy :name "UT-DEL-RANK" :rank :B)))
+    (unwind-protect
+        (progn
+          (setf swimmy.persistence:*library-path* tmp-dir)
+          (swimmy.persistence:init-library)
+          (swimmy.persistence:save-strategy strat)
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                       "Strategy should exist at rank B")
+          (swimmy.persistence:delete-strategy strat :rank :A)
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                       "Wrong rank should not delete")
+          (swimmy.persistence:delete-strategy strat :rank :B)
+          (assert-false (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                        "Correct rank should delete"))
+      (setf swimmy.persistence:*library-path* orig-path)
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
+(deftest test-move-strategy-from-rank
+  "move-strategy should delete from :from-rank when provided."
+  (let* ((orig-path swimmy.persistence:*library-path*)
+         (tmp (format nil "/tmp/swimmy-test-lib-~a/" (get-universal-time)))
+         (tmp-dir (uiop:ensure-directory-pathname tmp))
+         (strat (swimmy.school:make-strategy :name "UT-MOVE-RANK" :rank :B)))
+    (unwind-protect
+        (progn
+          (setf swimmy.persistence:*library-path* tmp-dir)
+          (swimmy.persistence:init-library)
+          (swimmy.persistence:save-strategy strat)
+          ;; simulate rank drift so delete must use :from-rank
+          (setf (swimmy.school:strategy-rank strat) :A)
+          (swimmy.persistence:move-strategy strat :S :from-rank :B)
+          (assert-false (swimmy.persistence:strategy-exists-p "UT-MOVE-RANK" :B)
+                        "Source rank file should be removed")
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-MOVE-RANK" :S)
+                       "Target rank file should exist"))
+      (setf swimmy.persistence:*library-path* orig-path)
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
 (deftest test-promotion-triggers-noncorrelation-notification
   "Ensure A/S promotions fire noncorrelation notification once"
   (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
@@ -2163,6 +2206,8 @@
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades
                   test-hard-cap-skips-newborn
+                  test-delete-strategy-rank-guard
+                  test-move-strategy-from-rank
                   test-evaluate-strategy-performance-sends-to-graveyard
                   test-ensure-rank-retired-saves-pattern
                   test-lifecycle-retire-on-max-losses
