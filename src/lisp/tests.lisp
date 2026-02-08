@@ -2162,6 +2162,7 @@
                   test-apply-backtest-result-updates-data-sexp
                   test-kill-strategy-persists-status
                   test-max-age-retire-batched-notification
+                  test-stagnant-c-rank-batched-notification
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit

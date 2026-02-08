@@ -55,6 +55,35 @@
       (setf *max-age-retire-first-seen* 0)
       (notify-discord-alert msg :color +color-alert+))))
 
+;;; ==========================================
+;;; BATCHED ALERTS (Stagnant C-Rank)
+;;; ==========================================
+(defparameter *stagnant-c-rank-batch-interval* 3600 "Seconds to batch Stagnant C-Rank alerts")
+(defvar *stagnant-c-rank-buffer* nil "Buffered strategy names for Stagnant C-Rank alerts")
+(defvar *stagnant-c-rank-first-seen* 0 "Timestamp when current Stagnant C-Rank batch started")
+
+(defun queue-stagnant-c-rank (strategy-name &key (now (get-universal-time)))
+  "Queue a Stagnant C-Rank alert for hourly batching."
+  (unless (and (stringp strategy-name) (> (length strategy-name) 0))
+    (return-from queue-stagnant-c-rank nil))
+  (push strategy-name *stagnant-c-rank-buffer*)
+  (when (<= *stagnant-c-rank-first-seen* 0)
+    (setf *stagnant-c-rank-first-seen* now))
+  t)
+
+(defun maybe-flush-stagnant-c-rank (&optional (now (get-universal-time)))
+  "Flush Stagnant C-Rank summary if the batch interval has elapsed."
+  (when (and *stagnant-c-rank-buffer*
+             (> (- now *stagnant-c-rank-first-seen*) *stagnant-c-rank-batch-interval*))
+    (let* ((total (length *stagnant-c-rank-buffer*))
+           (ordered (reverse *stagnant-c-rank-buffer*))
+           (top (subseq ordered 0 (min 5 (length ordered))))
+           (msg (format nil "🧊 **Stagnant C-Rank Summary (Last 1h)**~%Total: ~d~%Top: ~{`~a`~^, ~}~%Action: Individual alerts suppressed."
+                        total top)))
+      (setf *stagnant-c-rank-buffer* nil)
+      (setf *stagnant-c-rank-first-seen* 0)
+      (notify-discord-alert msg :color +color-alert+))))
+
 
 
 (defun ensure-notifier-connection ()
@@ -394,7 +423,10 @@
       (notify-cpcv-summary))
 
     ;; 4. Max Age Retirement (Hourly batch)
-    (maybe-flush-max-age-retire now)))
+    (maybe-flush-max-age-retire now)
+    
+    ;; 5. Stagnant C-Rank (Hourly batch)
+    (maybe-flush-stagnant-c-rank now)))
 
 
 
