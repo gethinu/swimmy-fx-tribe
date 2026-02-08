@@ -258,9 +258,9 @@
     ;; 1. Optimistic World: Market Regime check
     (let ((regime (if (boundp '*market-regime*) *market-regime* :ranging)))
        (setf optimistic-pass 
-             (cond ((member category '(:hunters :raiders)) (eq regime :trending))
+             (cond ((member category '(:trend :scalp)) (eq regime :trending))
                    ((eq category :breakout) (eq regime :volatile))
-                   ((eq category :shamans) (eq regime :ranging))
+                   ((eq category :reversion) (eq regime :ranging))
                    (t t))))
     
     ;; 2. Pessimistic World: Counter-indicators
