@@ -53,6 +53,36 @@
      (error (or ,message (format nil "Expected non-nil: ~a" ',expr)))))
 
 ;;; ─────────────────────────────────────────
+;;; PACKAGE SHADOWING TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-main-shadows-last-new-day
+  "swimmy.main should shadow *last-new-day* to avoid hot reload conflicts"
+  (let* ((main (find-package :swimmy.main))
+         (globals (find-package :swimmy.globals))
+         (global (find-symbol "*LAST-NEW-DAY*" globals))
+         (shadowed (package-shadowing-symbols main)))
+    (assert-not-nil global "Expected swimmy.globals:*last-new-day* to exist")
+    (assert-true (member global shadowed :test #'eq)
+                 "Expected *last-new-day* to be shadowed in swimmy.main")))
+
+;;; ─────────────────────────────────────────
+;;; STRATEGY ACTIVE FILTER TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-active-strategy-p-bas-legend
+  "active-strategy-p should allow only B/A/S/LEGEND ranks"
+  (flet ((mk (rank)
+           (swimmy.school:make-strategy :name "UT-ACTIVE" :rank rank)))
+    (assert-true (swimmy.school::active-strategy-p (mk :B)) "B should be active")
+    (assert-true (swimmy.school::active-strategy-p (mk :A)) "A should be active")
+    (assert-true (swimmy.school::active-strategy-p (mk :S)) "S should be active")
+    (assert-true (swimmy.school::active-strategy-p (mk :legend)) "LEGEND should be active")
+    (assert-false (swimmy.school::active-strategy-p (mk nil)) "NIL rank should be inactive")
+    (assert-false (swimmy.school::active-strategy-p (mk :retired)) "RETIRED should be inactive")
+    (assert-false (swimmy.school::active-strategy-p (mk :graveyard)) "GRAVEYARD should be inactive")))
+
+;;; ─────────────────────────────────────────
 ;;; SAFE READ TESTS
 ;;; ─────────────────────────────────────────
 
@@ -668,6 +698,17 @@
     (assert-equal "BRAIN" (cdr (assoc 'swimmy.core::source msg)) "Expected source key")
     (assert-true (cdr (assoc 'swimmy.core::status msg)) "Expected status key")))
 
+(deftest test-heartbeat-summary-no-data-omits-age
+  "Heartbeat summary should not show age when no MT5 data has ever arrived"
+  (let ((orig-last swimmy.globals::*last-guardian-heartbeat*))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*last-guardian-heartbeat* 0)
+          (let ((summary (swimmy.engine::get-system-summary)))
+            (assert-true (search "No data" summary) "Expected No data in summary")
+            (assert-false (search "秒前" summary) "No data should not include age")))
+      (setf swimmy.globals::*last-guardian-heartbeat* orig-last))))
+
 (deftest test-executor-heartbeat-sends-sexp
   "Executor should send heartbeat as S-expression (not JSON)"
   (let* ((content (uiop:read-file-string "src/lisp/core/executor.lisp"))
@@ -710,10 +751,12 @@
                            (symbol-function 'swimmy.shell:send-periodic-status-report)))
          (orig-learn (and (fboundp 'swimmy.school:continuous-learning-step)
                           (symbol-function 'swimmy.school:continuous-learning-step)))
+         (orig-last swimmy.globals::*last-guardian-heartbeat*)
          (called nil))
     (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
     (unwind-protect
         (progn
+          (setf swimmy.globals::*last-guardian-heartbeat* 0)
           (setf (symbol-function 'swimmy.main:update-candle)
                 (lambda (bid symbol) (setf called (list bid symbol))))
           (when orig-process
@@ -729,7 +772,9 @@
             (setf (symbol-function 'swimmy.school:continuous-learning-step)
                   (lambda () nil)))
           (funcall fn "((type . \"TICK\") (symbol . \"USDJPY\") (bid . 1.23) (ask . 1.24))")
-          (assert-equal '(1.23 "USDJPY") called))
+          (assert-equal '(1.23 "USDJPY") called)
+          (assert-true (> swimmy.globals::*last-guardian-heartbeat* 0)
+                       "TICK should update last guardian heartbeat"))
       (setf (symbol-function 'swimmy.main:update-candle) orig-update)
       (when orig-process
         (setf (symbol-function 'swimmy.school:process-category-trades) orig-process))
@@ -738,7 +783,8 @@
       (when orig-status
         (setf (symbol-function 'swimmy.shell:send-periodic-status-report) orig-status))
       (when orig-learn
-        (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn)))))
+        (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn))
+      (setf swimmy.globals::*last-guardian-heartbeat* orig-last))))
 
 (deftest test-internal-process-msg-history-sexp
   "internal-process-msg should store HISTORY S-expression as newest-first"
@@ -1330,11 +1376,15 @@
           (setf swimmy.globals::*backtest-max-pending* 2)
           (setf swimmy.globals:*candle-history* (loop repeat 101 collect 1))
           (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
-          (setf swimmy.school::*strategy-knowledge-base*
-                (list (swimmy.school:make-strategy :name "S1")
-                      (swimmy.school:make-strategy :name "S2")
-                      (swimmy.school:make-strategy :name "S3")
-                      (swimmy.school:make-strategy :name "S4")))
+          (let ((s1 (swimmy.school:make-strategy :name "S1"))
+                (s2 (swimmy.school:make-strategy :name "S2"))
+                (s3 (swimmy.school:make-strategy :name "S3"))
+                (s4 (swimmy.school:make-strategy :name "S4")))
+            (setf (strategy-rank s1) :B)
+            (setf (strategy-rank s2) :B)
+            (setf (strategy-rank s3) :B)
+            (setf (strategy-rank s4) :B)
+            (setf swimmy.school::*strategy-knowledge-base* (list s1 s2 s3 s4)))
           (setf swimmy.school::*backtest-cursor* 0)
           (when orig-cache
             (setf (symbol-function 'swimmy.school::get-cached-backtest)
@@ -1864,6 +1914,8 @@
   
   ;; Run each test
   (dolist (test '(;; Clan tests
+                  test-main-shadows-last-new-day
+                  test-active-strategy-p-bas-legend
                   test-safe-read-rejects-read-eval
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
@@ -1892,6 +1944,7 @@
                   test-req-history-uses-count
                   test-order-open-sexp-keys
                   test-heartbeat-message-is-sexp
+                  test-heartbeat-summary-no-data-omits-age
                   test-executor-heartbeat-sends-sexp
                   test-executor-pending-orders-sends-sexp
                   test-internal-cmd-json-disallowed
@@ -1911,6 +1964,7 @@
                   test-2300-trigger-logic
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
+                  test-weekly-summary-dedup
                   test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades

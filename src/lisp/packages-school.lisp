@@ -371,6 +371,7 @@
 ;;; 7. MAIN (Entry Point) --------------------------------------------------------
 (defpackage :swimmy.main
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine :swimmy.school :swimmy.shell :swimmy.executor)
+  (:shadowing-import-from :swimmy.globals #:*last-new-day*)
   (:export 
    #:start-system
    #:start-brain

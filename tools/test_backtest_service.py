@@ -77,6 +77,12 @@ def main():
     assert "\n" not in out_preview and "\r" not in out_preview
     assert len(out_preview) <= 35
 
+    # Inject request_id into guardian result without dotted (result .) form
+    sexp = '((type . "BACKTEST_RESULT") (result ((strategy_name . "UT") (sharpe . 0.1))))'
+    injected = svc.BacktestService._inject_request_id_into_sexpr(sexp, "RID-LIST")
+    _assert_in("request_id", injected, "request_id injected")
+    _assert_in("RID-LIST", injected, "request_id value")
+
     # Guardian payload passthrough (range + aux fields)
     payload = svc._build_guardian_payload(
         {

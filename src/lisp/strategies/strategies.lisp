@@ -80,7 +80,7 @@
 
 (defun active-strategy-p (strategy)
   (let ((rank (strategy-rank strategy)))
-    (not (member rank '(:graveyard :retired) :test #'eq))))
+    (member rank '(:B :A :S :LEGEND) :test #'eq)))
 
 (defun format-phase1-bt-batch-message (requested total cursor &key cycle-completed)
   (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a"

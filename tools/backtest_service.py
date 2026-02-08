@@ -37,6 +37,7 @@ sys.path.insert(0, str(BASE_DIR / "src" / "python"))
 
 from sexp_serialize import sexp_serialize as _sexp_serialize
 from sexp_serialize import coerce_bool as _coerce_bool
+from sexp_utils import parse_sexp, SexpParseError
 
 # Port configuration (env override)
 def _env_int(key: str, default: int) -> int:
@@ -111,6 +112,28 @@ def _format_guardian_preview(msg: str, limit: int = 240) -> str:
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[:limit] + "..."
+
+
+def _normalize_sexp_key(key):
+    if isinstance(key, str):
+        if key.startswith(":"):
+            key = key[1:]
+        return key.replace("-", "_").lower()
+    return str(key)
+
+
+def _sexp_to_python(obj):
+    if isinstance(obj, tuple) and len(obj) == 2:
+        return (_normalize_sexp_key(obj[0]), _sexp_to_python(obj[1]))
+    if isinstance(obj, list):
+        # List of pairs (tuple or 2-item list) -> dict
+        if obj and all(isinstance(x, (tuple, list)) and len(x) == 2 for x in obj):
+            return {_normalize_sexp_key(k): _sexp_to_python(v) for k, v in obj}
+        # Alternating key/value list -> dict
+        if len(obj) % 2 == 0 and all(isinstance(obj[i], str) for i in range(0, len(obj), 2)):
+            return {_normalize_sexp_key(obj[i]): _sexp_to_python(obj[i + 1]) for i in range(0, len(obj), 2)}
+        return [_sexp_to_python(x) for x in obj]
+    return obj
 
 def _parse_incoming_message(msg: str):
     if not msg:
@@ -313,6 +336,16 @@ class BacktestService:
     def _inject_request_id_into_sexpr(sexp: str, request_id: str) -> str:
         if not sexp or not request_id or "request_id" in sexp:
             return sexp
+        try:
+            data = _sexp_to_python(parse_sexp(sexp))
+        except (SexpParseError, ValueError, TypeError):
+            data = None
+        if isinstance(data, dict):
+            result = data.get("result")
+            if isinstance(result, dict) and "request_id" not in result:
+                result["request_id"] = request_id
+                data["result"] = result
+                return _sexp_serialize(data)
         patched = re.sub(r'\(result\s+\.\s+\(\(', f'(result . ((request_id . "{request_id}") ', sexp, count=1)
         if patched != sexp:
             return patched

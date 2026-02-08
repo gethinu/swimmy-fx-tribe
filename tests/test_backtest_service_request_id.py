@@ -29,3 +29,10 @@ def test_run_backtest_error_includes_request_id():
     payload = {"action": "BACKTEST", "request_id": "RID-ERR", "strategy": {"name": "UT"}}
     out = svc.run_backtest(payload)
     assert "RID-ERR" in str(out)
+
+
+def test_inject_request_id_for_result_list_without_dot():
+    sexp = '((type . "BACKTEST_RESULT") (result ((strategy_name . "UT") (sharpe . 0.1))))'
+    out = BacktestService._inject_request_id_into_sexpr(sexp, "RID-LIST")
+    assert "request_id" in str(out)
+    assert "RID-LIST" in str(out)

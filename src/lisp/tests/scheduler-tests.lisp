@@ -98,3 +98,27 @@
            (swimmy.main:check-scheduled-tasks time-2318)
            (assert-equal 1 (count :sent *test-results*) "Should not send twice on same day"))
       (setf (symbol-function 'swimmy.main::send-daily-status-report) original-report-fn))))
+
+(deftest test-weekly-summary-dedup
+  "Weekly summary should not generate more than once within 7 days"
+  (let* ((orig-last swimmy.shell::*last-weekly-summary*)
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord)
+                           (symbol-function 'swimmy.core:notify-discord)))
+         (called 0)
+         (now (get-universal-time)))
+    (unwind-protect
+        (progn
+          (setf swimmy.shell::*last-weekly-summary* now)
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    (incf called))))
+          (let ((result (swimmy.shell::generate-weekly-summary)))
+            (assert-true (null result) "Should skip weekly summary if generated recently")
+            (assert-equal now swimmy.shell::*last-weekly-summary*
+                          "Should not update last weekly summary when skipping")
+            (assert-equal 0 called "Should not notify when skipping")))
+      (setf swimmy.shell::*last-weekly-summary* orig-last)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))

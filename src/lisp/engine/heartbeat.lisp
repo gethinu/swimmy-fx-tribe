@@ -56,12 +56,15 @@
          (equity (if (boundp 'swimmy.globals::*current-equity*)
                      swimmy.globals::*current-equity* 0))
          (daily-pnl (if (boundp 'swimmy.globals::*daily-pnl*)
-                        swimmy.globals::*daily-pnl* 0)))
+                        swimmy.globals::*daily-pnl* 0))
+         (mt5-line (if (= last-tick 0)
+                       (format nil "MT5: ~a" tick-status)
+                       (format nil "MT5: ~a (~d秒前)" tick-status tick-age))))
     (format nil "📊 **Status**
-MT5: ~a (~d秒前)
+~a
 💼 Equity: ¥~,0f | Today: ~a¥~,0f
 📈 Strategies: ~d active + ~d KB"
-            tick-status tick-age
+            mt5-line
             equity (if (>= daily-pnl 0) "+" "") daily-pnl
             active-count kb-count)))
 

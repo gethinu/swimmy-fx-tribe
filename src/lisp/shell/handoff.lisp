@@ -148,8 +148,15 @@
 
 (defun generate-weekly-summary ()
   "Generate weekly summary (call once per week)."
-  (let* ((progress (get-goal-progress))
-         (summary-path (swimmy.core::swimmy-path ".opus/weekly_summary.md")))
+  (let* ((now (get-universal-time))
+         (last *last-weekly-summary*))
+    (when (and (numberp last)
+               (> last 0)
+               (< (- now last) (* 7 24 3600)))
+      (format t "[SHELL] ⏭️ Weekly summary already generated recently. Skipping.~%")
+      (return-from generate-weekly-summary nil))
+    (let* ((progress (get-goal-progress))
+           (summary-path (swimmy.core::swimmy-path ".opus/weekly_summary.md")))
     
     (handler-case
         (progn
@@ -196,7 +203,7 @@
           summary-path)
       (error (e)
         (format t "[SHELL] ⚠️ Failed to generate weekly summary: ~a~%" e)
-        nil))))
+        nil)))))
 
 (defun send-periodic-status-report (symbol bid)
   "V49.0: Redesigned Japanese Status Report.

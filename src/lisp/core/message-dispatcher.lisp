@@ -363,6 +363,7 @@
                           (ask (%alist-val sexp '(ask :ask) nil))
                           (symbol-str (if (symbolp symbol) (symbol-name symbol) symbol)))
                      (when bid
+                       (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
                        (swimmy.main:update-candle bid symbol-str)
                        (when (fboundp 'swimmy.school:process-category-trades)
                          (swimmy.school:process-category-trades symbol-str bid ask))
