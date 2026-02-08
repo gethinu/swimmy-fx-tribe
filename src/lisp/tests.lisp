@@ -1767,6 +1767,135 @@
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
     (assert-equal :A (second called) "Expected A-RANK promotion")))
 
+(deftest test-prune-low-sharpe-skips-newborn-age
+  "Newborn (age<24h) low-sharpe strategies are protected from pruning."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-send (symbol-function 'swimmy.school:send-to-graveyard))
+         (now (get-universal-time))
+         (strat (swimmy.school:make-strategy :name "UT-NEWBORN-AGE"
+                                             :sharpe 0.0
+                                             :trades 5)))
+    (unwind-protect
+        (progn
+          (setf (swimmy.school::strategy-creation-time strat) now)
+          (setf swimmy.school::*strategy-knowledge-base* (list strat))
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (s reason)
+                  (declare (ignore s reason))
+                  nil))
+          (let ((removed (swimmy.school::prune-low-sharpe-strategies)))
+            (assert-equal 0 removed "Newborn should be protected by age")
+            (assert-equal 1 (length swimmy.school::*strategy-knowledge-base*)
+                          "KB should keep newborn strategy")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-send))))
+
+(deftest test-prune-similar-skips-newborn-trades
+  "Newborn (trades<=0) strategies are protected from similarity pruning."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-send (symbol-function 'swimmy.school:send-to-graveyard))
+         (now (get-universal-time))
+         (old-ts (- now (* 2 24 60 60)))
+         (strat1 (swimmy.school:make-strategy :name "UT-SIM-A"
+                                              :sl 30 :tp 60 :timeframe 60
+                                              :indicators '((sma 20)) :symbol "EURUSD"
+                                              :sharpe 1.0 :trades 10))
+         (strat2 (swimmy.school:make-strategy :name "UT-SIM-B"
+                                              :sl 30 :tp 60 :timeframe 60
+                                              :indicators '((sma 20)) :symbol "EURUSD"
+                                              :sharpe 0.5 :trades 0)))
+    (unwind-protect
+        (progn
+          (setf (swimmy.school::strategy-creation-time strat2) old-ts)
+          (setf swimmy.school::*strategy-knowledge-base* (list strat1 strat2))
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (s reason)
+                  (declare (ignore s reason))
+                  nil))
+          (let ((removed (swimmy.school::prune-similar-strategies)))
+            (assert-equal 0 removed "Newborn should be protected by trades")
+            (assert-equal 2 (length swimmy.school::*strategy-knowledge-base*)
+                          "KB should keep both strategies")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-send))))
+
+(deftest test-hard-cap-skips-newborn
+  "Hard-cap pruning should skip newborn strategies."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-send (symbol-function 'swimmy.school:send-to-graveyard))
+         (orig-cap swimmy.school::*kb-hard-cap*)
+         (now (get-universal-time))
+         (old-ts (- now (* 3 24 60 60)))
+         (newborn (swimmy.school:make-strategy :name "UT-CAP-NEW"
+                                               :sharpe -1.0 :trades 0))
+         (older (swimmy.school:make-strategy :name "UT-CAP-OLD"
+                                             :sharpe 0.0 :trades 10)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*kb-hard-cap* 1)
+          (setf (swimmy.school::strategy-creation-time newborn) now)
+          (setf (swimmy.school::strategy-creation-time older) old-ts)
+          (setf swimmy.school::*strategy-knowledge-base* (list newborn older))
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (s reason)
+                  (declare (ignore reason))
+                  (setf swimmy.school::*strategy-knowledge-base*
+                        (remove s swimmy.school::*strategy-knowledge-base* :test #'eq))))
+          (let ((removed (swimmy.school::enforce-kb-hard-cap)))
+            (assert-equal 1 (or removed 0) "Should purge one non-newborn")
+            (assert-true (find "UT-CAP-NEW" swimmy.school::*strategy-knowledge-base*
+                               :key #'swimmy.school:strategy-name :test #'string=)
+                         "Newborn should remain")
+            (assert-false (find "UT-CAP-OLD" swimmy.school::*strategy-knowledge-base*
+                                :key #'swimmy.school:strategy-name :test #'string=)
+                          "Older should be removed")))
+      (setf swimmy.school::*kb-hard-cap* orig-cap)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-send))))
+
+(deftest test-delete-strategy-rank-guard
+  "delete-strategy should honor :rank when provided."
+  (let* ((orig-path swimmy.persistence:*library-path*)
+         (tmp (format nil "/tmp/swimmy-test-lib-~a/" (get-universal-time)))
+         (tmp-dir (uiop:ensure-directory-pathname tmp))
+         (strat (swimmy.school:make-strategy :name "UT-DEL-RANK" :rank :B)))
+    (unwind-protect
+        (progn
+          (setf swimmy.persistence:*library-path* tmp-dir)
+          (swimmy.persistence:init-library)
+          (swimmy.persistence:save-strategy strat)
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                       "Strategy should exist at rank B")
+          (swimmy.persistence:delete-strategy strat :rank :A)
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                       "Wrong rank should not delete")
+          (swimmy.persistence:delete-strategy strat :rank :B)
+          (assert-false (swimmy.persistence:strategy-exists-p "UT-DEL-RANK" :B)
+                        "Correct rank should delete"))
+      (setf swimmy.persistence:*library-path* orig-path)
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
+(deftest test-move-strategy-from-rank
+  "move-strategy should delete from :from-rank when provided."
+  (let* ((orig-path swimmy.persistence:*library-path*)
+         (tmp (format nil "/tmp/swimmy-test-lib-~a/" (get-universal-time)))
+         (tmp-dir (uiop:ensure-directory-pathname tmp))
+         (strat (swimmy.school:make-strategy :name "UT-MOVE-RANK" :rank :B)))
+    (unwind-protect
+        (progn
+          (setf swimmy.persistence:*library-path* tmp-dir)
+          (swimmy.persistence:init-library)
+          (swimmy.persistence:save-strategy strat)
+          ;; simulate rank drift so delete must use :from-rank
+          (setf (swimmy.school:strategy-rank strat) :A)
+          (swimmy.persistence:move-strategy strat :S :from-rank :B)
+          (assert-false (swimmy.persistence:strategy-exists-p "UT-MOVE-RANK" :B)
+                        "Source rank file should be removed")
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-MOVE-RANK" :S)
+                       "Target rank file should exist"))
+      (setf swimmy.persistence:*library-path* orig-path)
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
 (deftest test-promotion-triggers-noncorrelation-notification
   "Ensure A/S promotions fire noncorrelation notification once"
   (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
@@ -2097,6 +2226,11 @@
                   test-backtest-uses-csv-override
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
+                  test-prune-low-sharpe-skips-newborn-age
+                  test-prune-similar-skips-newborn-trades
+                  test-hard-cap-skips-newborn
+                  test-delete-strategy-rank-guard
+                  test-move-strategy-from-rank
                   test-evaluate-strategy-performance-sends-to-graveyard
                   test-ensure-rank-retired-saves-pattern
                   test-lifecycle-retire-on-max-losses

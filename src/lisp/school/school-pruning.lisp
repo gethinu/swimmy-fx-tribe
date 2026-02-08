@@ -30,6 +30,17 @@
 (defparameter *kb-hard-cap* 2000
   "V49.6: Target Size for S-Rank density (5000 -> 2000)")
 
+(defparameter *newborn-protection-seconds* (* 24 60 60)
+  "Age window for newborn protection in pruning.")
+
+(defun newborn-protected-p (strat)
+  "Return T when strategy should be protected from pruning (newborn)."
+  (let* ((trades (or (strategy-trades strat) 0))
+         (born (or (strategy-creation-time strat) 0))
+         (age-sec (and (> born 0) (- (get-universal-time) born))))
+    (or (<= trades 0)
+        (and age-sec (< age-sec *newborn-protection-seconds*)))))
+
 ;;; ============================================================================
 ;;; LOW SHARPE PRUNING
 ;;; ============================================================================
@@ -45,8 +56,10 @@
            (lambda (strat)
              (let ((sharpe (or (strategy-sharpe strat) 0.0))
                    (rank (strategy-rank strat)))
-               ;; 1. Check if Sharpe is below threshold
-               (if (< sharpe *prune-sharpe-threshold*)
+               (if (newborn-protected-p strat)
+                   nil
+                   ;; 1. Check if Sharpe is below threshold
+                   (if (< sharpe *prune-sharpe-threshold*)
                    (cond
                      ;; 2. PROTECTION CHECK (Fortress)
                      ((member rank *prune-protected-ranks*)
@@ -63,7 +76,7 @@
                       (incf removed)
                       t))
                    ;; Sharpe OK
-                   nil))) 
+                   nil)))) 
            *strategy-knowledge-base*))
     (format t "[PRUNE] ✅ Purged ~d low-Sharpe strategies (KB: ~d → ~d)~%"
             removed before-count (length *strategy-knowledge-base*))
@@ -155,10 +168,11 @@
                (loop for j from (1+ i) below (min (+ i 50) (length strategies))
                      for strat2 = (nth j strategies)
                      do (unless (member strat2 to-remove :test #'eq)
-                          (when (and (< (strategy-distance strat1 strat2) 
+                          (when (and (< (strategy-distance strat1 strat2)
                                         *prune-similarity-threshold*)
                                      (not (member (strategy-rank strat2) 
-                                                  *prune-protected-ranks*)))
+                                                  *prune-protected-ranks*))
+                                     (not (newborn-protected-p strat2)))
                             (push strat2 to-remove)
                             (incf removed)
                             (format t "[PRUNE] 👯 Similar: ~a ≈ ~a → GRAVEYARD~%"
@@ -183,7 +197,9 @@
              ;; Sort by Sharpe ascending (worst first)
              (sorted (sort (copy-list *strategy-knowledge-base*) #'<
                            :key (lambda (s) (or (strategy-sharpe s) 0.0))))
-             (to-purge (subseq (remove-if (lambda (s) (member (strategy-rank s) *prune-protected-ranks*))
+             (to-purge (subseq (remove-if (lambda (s)
+                                            (or (member (strategy-rank s) *prune-protected-ranks*)
+                                                (newborn-protected-p s)))
                                           sorted)
                                0 (min excess current-size))))
         (format t "[PRUNE] 🚨 KB Over Limit (~d > ~d). Purging ~d laggards...~%"
