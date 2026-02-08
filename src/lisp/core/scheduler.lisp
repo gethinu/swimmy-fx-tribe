@@ -67,6 +67,11 @@
         ;; Scheduled tasks check
         (check-scheduled-tasks now)
         
+        (when (fboundp 'swimmy.school::maybe-send-evolution-report)
+          (funcall 'swimmy.school::maybe-send-evolution-report :now now :reason "scheduled"))
+        (when (fboundp 'swimmy.school::maybe-alert-evolution-report-staleness)
+          (funcall 'swimmy.school::maybe-alert-evolution-report-staleness :now now))
+        
         ;; V12.6: Existing Backtest Logic (batch-backtest-knowledge)
         (when (> (length *candle-history*) 100)
           (batch-backtest-knowledge))

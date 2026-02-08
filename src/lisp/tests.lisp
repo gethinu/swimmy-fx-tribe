@@ -2327,6 +2327,8 @@
                   test-daily-report-no-duplicate-after-flag-reset
                   test-weekly-summary-dedup
                   test-periodic-maintenance-flushes-stagnant-c-rank
+                  test-evolution-report-throttle-uses-last-write
+                  test-evolution-report-staleness-alert-throttles
                   test-promotion-triggers-noncorrelation-notification
                   test-noncorrelation-score-reports-coverage
                   test-noncorrelation-notify-includes-coverage

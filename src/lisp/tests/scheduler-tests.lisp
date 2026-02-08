@@ -121,7 +121,60 @@
             (assert-equal 0 called "Should not notify when skipping")))
       (setf swimmy.shell::*last-weekly-summary* orig-last)
       (when orig-notify
-      (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
+        (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
+
+(deftest test-evolution-report-throttle-uses-last-write
+  "Evolution report should only send when last write exceeds interval"
+  (let* ((orig (symbol-function 'swimmy.school::notify-evolution-report))
+         (called 0)
+         (now 100000)
+         (interval 3600))
+    (declare (special swimmy.school::*evolution-report-interval*))
+    (setf swimmy.school::*evolution-report-interval* interval)
+    (setf (symbol-function 'swimmy.school::notify-evolution-report)
+          (lambda () (incf called)))
+    (unwind-protect
+        (progn
+          (swimmy.school::maybe-send-evolution-report :now now :last-write now)
+          (assert-equal 0 called "Should not send when fresh")
+          (swimmy.school::maybe-send-evolution-report :now now :last-write (- now interval 1))
+          (assert-equal 1 called "Should send when stale"))
+      (setf (symbol-function 'swimmy.school::notify-evolution-report) orig))))
+
+(deftest test-evolution-report-staleness-alert-throttles
+  "Staleness alerts should fire once per cooldown window"
+  (let* ((orig-alert (symbol-function 'swimmy.core:notify-discord-alert))
+         (orig-emit (and (fboundp 'swimmy.core::emit-telemetry-event)
+                         (symbol-function 'swimmy.core::emit-telemetry-event)))
+         (called 0)
+         (now 200000)
+         (threshold 7200)
+         (cooldown 3600))
+    (declare (special swimmy.school::*evolution-report-stale-threshold*
+                      swimmy.school::*evolution-report-alert-interval*
+                      swimmy.school::*last-evolution-report-alert-time*))
+    (setf swimmy.school::*evolution-report-stale-threshold* threshold)
+    (setf swimmy.school::*evolution-report-alert-interval* cooldown)
+    (setf swimmy.school::*last-evolution-report-alert-time* 0)
+    (setf (symbol-function 'swimmy.core:notify-discord-alert)
+          (lambda (&rest _args) (declare (ignore _args)) (incf called)))
+    (when orig-emit
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+            (lambda (&rest _args) (declare (ignore _args)) t)))
+    (unwind-protect
+        (progn
+          (swimmy.school::maybe-alert-evolution-report-staleness
+           :now now :last-report now :last-heartbeat now)
+          (assert-equal 0 called "Should not alert when fresh")
+          (swimmy.school::maybe-alert-evolution-report-staleness
+           :now now :last-report (- now threshold 10) :last-heartbeat (- now threshold 10))
+          (assert-equal 1 called "Should alert when stale")
+          (swimmy.school::maybe-alert-evolution-report-staleness
+           :now (+ now 10) :last-report (- now threshold 10) :last-heartbeat (- now threshold 10))
+          (assert-equal 1 called "Should respect cooldown"))
+      (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-alert)
+      (when orig-emit
+        (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)))))
 
 (deftest test-periodic-maintenance-flushes-stagnant-c-rank
   "Periodic maintenance should flush Stagnant C-Rank batch in brain loop."
