@@ -2116,6 +2116,8 @@
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
                   test-weekly-summary-dedup
+                  test-evolution-report-throttle-uses-last-write
+                  test-evolution-report-staleness-alert-throttles
                   test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
