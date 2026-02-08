@@ -964,6 +964,28 @@
           (assert-false (assoc 'swimmy.shell::tribe_consensus captured)))
       (setf (symbol-function 'swimmy.core:write-sexp-atomic) orig))))
 
+(deftest test-live-status-includes-heartbeat-metrics
+  "live_status should include guardian heartbeat timestamp + tick age"
+  (let ((captured nil)
+        (orig-writer (symbol-function 'swimmy.core:write-sexp-atomic))
+        (orig-hb swimmy.globals::*last-guardian-heartbeat*))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:write-sexp-atomic)
+                (lambda (path payload)
+                  (declare (ignore path))
+                  (setf captured payload)))
+          (let ((swimmy.shell::*live-status-interval* 0)
+                (swimmy.shell::*last-status-write* 0))
+            (setf swimmy.globals::*last-guardian-heartbeat* 0)
+            (swimmy.shell::save-live-status))
+          (assert-true (assoc 'swimmy.shell::last_guardian_heartbeat captured))
+          (assert-true (assoc 'swimmy.shell::tick_age_secs captured))
+          (assert-equal 0 (cdr (assoc 'swimmy.shell::last_guardian_heartbeat captured)))
+          (assert-equal 0 (cdr (assoc 'swimmy.shell::tick_age_secs captured))))
+      (setf (symbol-function 'swimmy.core:write-sexp-atomic) orig-writer)
+      (setf swimmy.globals::*last-guardian-heartbeat* orig-hb))))
+
 (deftest test-daily-report-omits-tribe
   "daily report should omit tribe wording"
   (let ((captured nil)
@@ -1987,6 +2009,7 @@
                   test-category-trade-interval
                   test-high-council-danger-lv2-uses-swarm-consensus
                   test-live-status-schema-v2-no-tribe
+                  test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
                   test-ledger-omits-tribe-fields
                   test-category-vote-list

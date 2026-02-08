@@ -1,0 +1,15 @@
+[Unit]
+Description=Swimmy OOS Monitor
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/oos_monitor.py
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+
+StandardOutput=append:/home/swimmy/swimmy/logs/oos_monitor.log
+StandardError=append:/home/swimmy/swimmy/logs/oos_monitor.log
