@@ -4,71 +4,12 @@
 (in-package :swimmy.school)
 
 ;;; ══════════════════════════════════════════════════════════════════
-;;;  SWIMMY CIVILIZATION: THE FOUR GREAT CLANS (4大氏族)
+;;;  CATEGORY DISPLAY HELPERS
 ;;; ══════════════════════════════════════════════════════════════════
-;;; "勝とうとするな。ただ、生き残れ。そうすれば、最後に立っているのは我々だ。"
-;;; — Swimmy Constitution, Article 0
 
-;; Clan definitions with personas and battle cries
-(defstruct clan
-  id              ; :trend, :reversion, :breakout, :scalp (original)
-  name            ; Tribal name
-  title           ; Japanese title
-  emoji           ; Icon
-  persona         ; Character description
-  battle-cry      ; What they say when trading
-  philosophy)     ; Their core belief
-
-(defparameter *clans*
-  (list
-   (make-clan :id :trend
-              :name "Hunters"
-              :title "追跡者"
-              :emoji "🏹"
-              :persona "忍耐・豪快"
-              :battle-cry "北への風が強まっています。掟の範囲内で最大まで張ります。"
-              :philosophy "風が吹いている")
-   
-   (make-clan :id :reversion
-              :name "Shamans"
-              :title "呪術師"
-              :emoji "🔮"
-              :persona "論理・冷静"
-              :battle-cry "グラフは歪んでいます。反動に備えます。"
-              :philosophy "高すぎるものは落ちる")
-   
-   (make-clan :id :breakout
-              :name "Breakers"
-              :title "破壊者"
-              :emoji "⚔️"
-              :persona "好戦的・爆発力"
-              :battle-cry "城壁崩壊！チャンスは一瞬！Rustの許可範囲で突撃します。"
-              :philosophy "壁は壊された")
-   
-   (make-clan :id :scalp
-              :name "Raiders"
-              :title "盗賊"
-              :emoji "🗡️"
-              :persona "敏捷・狡猾"
-              :battle-cry "市場は荒れていますが、隙間で稼ぎました。今日の食い扶持です。"
-              :philosophy "隙あり")))
-
-(defun get-clan (category-id)
-  "Get clan by category ID"
-  (find category-id *clans* :key #'clan-id))
-
-(defun get-clan-display (category-id)
-  "Get display string for category: emoji Name (ORIGINAL)"
-  (let ((clan (get-clan category-id)))
-    (if clan
-        (format nil "~a ~a (~a)" 
-                (clan-emoji clan) (clan-name clan) (string-upcase (symbol-name category-id)))
-        (string-upcase (symbol-name category-id)))))
-
-(defun get-clan-battle-cry (category-id)
-  "Get the battle cry for a clan"
-  (let ((clan (get-clan category-id)))
-    (if clan (clan-battle-cry clan) "")))
+(defun get-category-display (category-id)
+  "Get display string for category"
+  (string-upcase (symbol-name category-id)))
 
 (defun calculate-strategy-hash (strat)
   "Generate a stable hash string for strategy logic (Indicators/Entry/Exit).
@@ -79,43 +20,7 @@
          (canonical (prin1-to-string (list entry exit indicators))))
     (format nil "~x" (sxhash canonical))))
 
-(defun generate-clan-narrative (category-id direction confidence symbol price)
-  "Generate natural language narrative for clan trade entry"
-  (let* ((clan (get-clan category-id))
-         (strategy-desc (case category-id
-                          (:trend "🎯 MACD + ADX momentum with Kalman trend filter. We ride the wave until exhaustion.")
-                          (:reversion "🔮 RSI oversold/overbought + Bollinger deviation. The price must return to equilibrium.")
-                          (:breakout "💥 Bollinger band breakout confirmed by volume. Once the walls fall, we charge.")
-                          (:scalp "⚡ EMA velocity + micro-swing detection. Quick profits in the chaos.")
-                          (t "Unknown strategy")))
-         (exit-plan (case direction
-                      (:buy "📈 Exit: Take profit at +1.0%, Stop loss at -0.3%")
-                      (:sell "📉 Exit: Take profit at +1.0%, Stop loss at -0.3%")
-                      (t "Unknown")))
-         (dir-emoji (if (eq direction :buy) "🟢 BUY" "🔴 SELL")))
-    (format nil "
-═══════════════════════════════
-~a 【~a】 ENTERS THE BATTLEFIELD!
-═══════════════════════════════
-「~a」
-
-📍 Symbol: ~a @ ~,3f
-~a
-
-~a
-~a
-
-💪 Confidence: ~,0f%
-═══════════════════════════════"
-            (clan-emoji clan) (clan-name clan)
-            (clan-philosophy clan)
-            symbol price
-            dir-emoji
-            strategy-desc
-            exit-plan
-            (* 100 confidence))))
-
-;; announce-clan-trade removed in V3.0 - duplicate notification (narrative already sent)
+;; announce-trade removed in V3.0 - duplicate notification (narrative already sent)
 
 
 ;;; ══════════════════════════════════════════════════════════════════
@@ -219,107 +124,6 @@
     (save-strategy-ranks))) ; V46.1: Auto-save ranks
 
 
-;;; ══════════════════════════════════════════════════════════════════
-;;;  INTER-TRIBAL ECONOMICS (氏族間経済)
-;;; ══════════════════════════════════════════════════════════════════
-;;; Mutual Aid: Raiders feed Hunters during waiting periods
-
-(defparameter *clan-treasury* (make-hash-table :test 'eq))
-(defparameter *mutual-aid-history* nil)
-
-(defun initialize-clan-treasury ()
-  "Initialize treasury for each clan"
-  (dolist (cat '(:trend :reversion :breakout :scalp))
-    (setf (gethash cat *clan-treasury*) 0)))
-
-(defstruct treasury-entry
-  clan
-  amount
-  source         ; :trade, :mutual-aid, :tribute
-  timestamp
-  description)
-
-(defun contribute-to-treasury (clan amount source desc)
-  "Add to clan treasury"
-  (incf (gethash clan *clan-treasury* 0) amount)
-  (push (make-treasury-entry
-         :clan clan :amount amount :source source
-         :timestamp (get-universal-time) :description desc)
-        *mutual-aid-history*))
-
-(defun calculate-mutual-aid ()
-  "Calculate mutual aid between clans
-   Raiders (scalp) share 10% of profits with waiting Hunters (trend)"
-  (let ((raider-treasury (gethash :scalp *clan-treasury* 0))
-        (hunter-treasury (gethash :trend *clan-treasury* 0)))
-    
-    ;; If Raiders profitable and Hunters struggling
-    (when (and (> raider-treasury 100)
-               (< hunter-treasury 0))
-      (let ((aid-amount (* 0.10 raider-treasury)))
-        ;; Transfer
-        (decf (gethash :scalp *clan-treasury*) aid-amount)
-        (incf (gethash :trend *clan-treasury*) aid-amount)
-        
-        (format t "[L] 🤝 MUTUAL AID: Raiders share ¥~,0f with Hunters~%" aid-amount)
-        (format t "[L]    「市場は荒れていますが、我々の日銭が仲間を支えます」~%")
-        
-        (push (list :from :scalp :to :trend :amount aid-amount 
-                    :time (get-universal-time))
-              *mutual-aid-history*)
-        
-        aid-amount))))
-
-(defun apply-hedge-logic (main-clan direction symbol bid ask)
-  "Shamans provide hedge for Breakers' aggressive trades.
-   When Breakers go aggressive, Shamans take a small counter-position.
-   This is the 'inter-tribal cooperation' aspect of the civilization."
-  (when (and (eq main-clan :breakout)
-             (member direction '(:buy :sell)))
-    ;; Shamans take 30% size counter-position
-    (let* ((counter-direction (if (eq direction :buy) :sell :buy))
-           (hedge-lot 0.01)  ; Small hedge position
-           (hedge-sl 0.10)
-           (hedge-tp 0.20))
-      (format t "[L] 🔮 Shamans: 「Breakersの~a突撃に備え、~a反動用意」~%" 
-              direction counter-direction)
-      ;; Only execute hedge if we don't already have a Shaman position
-      (unless (gethash :reversion *category-positions*)
-        ;; Execute small counter-trade
-        (cond
-          ((eq counter-direction :buy)
-           (let ((sl (- bid hedge-sl)) (tp (+ bid hedge-tp)))
-             (let ((order (swimmy.core:make-order-message
-                           "Shaman-Hedge" symbol :buy hedge-lot 0.0 sl tp)))
-               (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
-             (setf (gethash :reversion *category-positions*) :long)
-             (format t "[L] 🔮 Shamans HEDGE BUY ~,2f lot~%" hedge-lot)))
-          ((eq counter-direction :sell)
-           (let ((sl (+ ask hedge-sl)) (tp (- ask hedge-tp)))
-             (pzmq:send *cmd-publisher*
-                        (swimmy.core:encode-sexp
-                         (swimmy.core:make-order-message
-                          "Shaman-Hedge" symbol :sell hedge-lot 0.0 sl tp)))
-            (setf (gethash :reversion *category-positions*) :short)
-            (format t "[L] 🔮 Shamans HEDGE SELL ~,2f lot~%" hedge-lot))))
-        ;; Log the inter-tribal cooperation
-        (format t "[L] 🤝 氏族間協力: Breakers攻撃 ⇔ Shamansヘッジ~%")
-        t))))
-
-(defun get-clan-treasury-summary ()
-  "Get summary of all clan treasuries"
-  (format t "~%[L] ═══════════════════════════════════════~%")
-  (format t "[L] 💰 CLAN TREASURIES~%")
-  (format t "[L] ═══════════════════════════════════════~%")
-  (maphash (lambda (clan amount)
-             (let ((clan-obj (get-clan clan)))
-               (when clan-obj
-                 (format t "[L] ~a ~a: ¥~:d~%" 
-                         (clan-emoji clan-obj) (clan-name clan-obj) (round amount)))))
-           *clan-treasury*)
-  (format t "[L] ═══════════════════════════════════════~%~%"))
-
-
 ;;; ==========================================
 ;;; CATEGORY ALLOCATION (with Clan mapping)
 ;;; ===========================================
@@ -362,7 +166,7 @@
 
 (defun get-regime-weights ()
   "V49.1: Granular Regime Enforcement (Musk/López de Prado).
-   Maps 7 market states to the 4 great clans."
+   Maps 7 market states to the 4 core categories."
   (let* ((effective-regime (or *predicted-regime* *current-regime*))
          (effective-volatility (or *predicted-volatility* *volatility-regime*))
          (base-weights 
@@ -421,7 +225,7 @@
     (subseq sorted 0 (min n (length sorted)))))
 
 (defun infer-strategy-category (strat)
-  "Infer clan category from strategy name/indicators AND TP/SL values"
+  "Infer strategy category from name/indicators AND TP/SL values"
   (let ((name (string-downcase (strategy-name strat)))
         (tp (strategy-tp strat)))
     (cond

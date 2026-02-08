@@ -87,11 +87,8 @@ extreme時: 0.0 → 0.25 (完全停止より縮小)
 ```
 61戦略 (strategies.lisp)
   → evaluate-strategy-signal で条件評価
-  → infer-strategy-category で氏族に配属
-    :trend → Hunters
-    :reversion → Shamans
-    :breakout → Breakers
-    :scalp → Raiders
+  → infer-strategy-category でカテゴリに配属
+    :trend / :reversion / :breakout / :scalp
   → execute-category-trade でエントリー
 
 Kalman/HMM/論文実装 = 品質フィルター（独立使用）
@@ -102,8 +99,6 @@ Kalman/HMM/論文実装 = 品質フィルター（独立使用）
 - `get-shaman-signal`
 - `get-breaker-signal`
 - `get-raider-signal`
-- `collect-all-tribe-signals`
-- `aggregate-tribe-signals`
 
 **結果**: 約200行削除、重複解消、シンプルな構造に
 
@@ -456,4 +451,3 @@ IndicatorType::random()
 // → SMA, EMA, RSI, BB, MACD からランダム選択
 // → 61戦略のポピュレーション
 ```
-

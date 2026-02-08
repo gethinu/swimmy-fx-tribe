@@ -49,7 +49,6 @@
    #:gotobi-day-p
    
    ;; Strategy Management
-   #:initialize-clan-treasury
    #:assemble-team
    #:morning-ritual
    #:request-prediction
@@ -134,18 +133,6 @@
    #:strategy-oos-sharpe
    #:strategy-cpcv-median-sharpe
    #:strategy-cpcv-pass-rate
-   
-   ;; Clan Struct Accessors
-   #:make-clan
-   #:clan-id
-   #:clan-name
-   #:clan-title
-   #:clan-emoji
-   #:clan-philosophy
-   #:clan-persona
-   #:clan-battle-cry
-   #:get-clan
-   #:get-clan-display
    
    ;; Leader Info Struct Accessors
    #:make-leader-info
@@ -310,7 +297,7 @@
     #:implant-genome
     #:perform-structural-mutation
     #:select-parent-tournament
-    #:select-tribal-pair
+    #:select-category-pair
     
     ;; Phase 13: Wisdom Native
     #:analyze-veterans

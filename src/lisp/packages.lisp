@@ -101,18 +101,12 @@
    #:*category-positions*
    #:*pair-correlations*
    #:*symbol-exposure*
-   #:*clans*
-   
    ;; AI/ML State
    #:*last-prediction*
    #:*last-confidence*
    #:*last-swarm-consensus*
-   #:*tribe-direction*
-   #:*tribe-consensus*
-   #:*tribe-status*
    #:*learned-patterns*
    #:*improvement-requests*
-   #:*tribal-dialect*
    #:*reputation-scores*
    #:*nn-threshold*
    

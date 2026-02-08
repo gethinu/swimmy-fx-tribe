@@ -8,13 +8,8 @@
 
 (defun start-brain ()
   "Main entry point for Swimmy Brain"
-  (format t "~%[L] 🦈 Swimmy Ver 41.0 - V2.1 INDEPENDENT CLANS (Refactored)~%")
-  (format t "[L] 🏹 Hunters | 🔮 Shamans | ⚔️ Breakers | 🗡️ Raiders~%")
-  (format t "[L] 📜 Constitution | 👴 Elders | 🗣️ Tribal Dialect~%")
-  
-  ;; Initialize clan treasury (if function exists)
-  (if (fboundp 'initialize-clan-treasury)
-      (initialize-clan-treasury))
+  (format t "~%[L] 🦈 Swimmy Ver 41.0~%")
+  (format t "[L] 📜 Constitution | 👴 Elders~%")
   
   ;; V5.1: Setup multi-channel Discord webhooks (if function exists)
   (when (fboundp 'setup-symbol-webhooks)

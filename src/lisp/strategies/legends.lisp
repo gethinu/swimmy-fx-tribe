@@ -3,7 +3,7 @@
 ;;; ==========================================
 ;;; LEGENDARY WARRIORS (External Strategy Import)
 ;;; ==========================================
-;;; P7: Inject proven strategies to seed the tribe.
+;;; P7: Inject proven strategies to seed the system.
 
 (defun create-legend-golden-cross ()
   "Create the Classic Golden Cross Strategy (Trend)"

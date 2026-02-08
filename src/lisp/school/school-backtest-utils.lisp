@@ -92,12 +92,6 @@
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
-  ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
-  (let ((skip-sleep (and (eq target :backtest)
-                         (boundp 'swimmy.globals:*backtest-requester*)
-                         swimmy.globals:*backtest-requester*)))
-    (unless skip-sleep
-      (sleep 0.005)))
   (when (eq target :backtest)
     (unless (backtest-send-allowed-p)
       (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
@@ -118,6 +112,8 @@
      (pzmq:send swimmy.globals:*backtest-requester* msg))
     ((and (boundp 'swimmy.globals:*cmd-publisher*)
           swimmy.globals:*cmd-publisher*)
+     ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
+     (sleep 0.005)
      (when (eq target :backtest)
        (format t "[ZMQ] ⚠️ Backtest requester missing. Falling back to CMD publisher.~%"))
      (pzmq:send swimmy.globals:*cmd-publisher* msg))

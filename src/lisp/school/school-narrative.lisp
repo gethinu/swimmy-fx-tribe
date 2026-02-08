@@ -14,10 +14,10 @@
          ;; V5.1: Default SL/TP when strategy has nil
          (sl (or (getf strat-signal :sl) 0.15))  ; Default 15 pips
          (tp (or (getf strat-signal :tp) 0.40))  ; Default 40 pips
-         (clan (get-clan category)))
+         (category-label (get-category-display category)))
     (format nil "
 ═══════════════════════════════
-~a 【~a】が戦場に立つ！
+📌 【~a】が戦場に立つ！
 ═══════════════════════════════
 
 📊 発動戦略: ~a
@@ -31,22 +31,20 @@
 
 💪 この条件で行く。
 ═══════════════════════════════~a"
-            (if clan (clan-emoji clan) "🏛️") 
-            (if clan (clan-name clan) "Unknown")
+            category-label
             name
             (mapcar (lambda (iv) (format nil "• ~a = ~,2f" (first iv) (second iv))) ind-vals)
             symbol price 
              (swimmy.core:get-jst-timestamp)
              (if (eq direction :buy) "🟢 BUY - 上昇を狙う" "🔴 SELL - 下落を狙う")
              (round (* 100 tp)) (round (* 100 sl))
-             (get-clan-positions-summary))))
+             (get-category-positions-summary))))
 
 
 (defun generate-trade-result-narrative (symbol direction pnl pnl-currency entry-price exit-price lot strategy duration-seconds category)
   "Generate natural language explanation for trade RESULT (Win/Loss)"
   (declare (ignore symbol direction))
-  (let* ((clan (get-clan category))
-         ;; Actually user asked for "利益率" (Profit Rate).
+  (let* (;; Actually user asked for "利益率" (Profit Rate).
          ;; Pips based? Or Money/Margin?
          ;; For simplicty and robustness, let's show Pips and Raw Amount first.
          ;; "利益率" usually means PnL / Margin. Since Margin is dynamic, let's use PnL/Capital risk or just show Pips as primary "Rate".
@@ -55,18 +53,17 @@
          (leverage 25)
          (margin (if (> entry-price 0) (/ (* entry-price lot 100000) leverage) 0)) ;; Return 0 if invalid
          (roi-percent (if (> margin 0) (* 100 (/ pnl-currency margin)) 0.0))
-         (clan-emoji (if clan (clan-emoji clan) "🏛️"))
-         (clan-name (if clan (clan-name clan) "Unknown"))
+         (category-label (get-category-display category))
          (win-p (> pnl 0))
          (pips pnl))
 
     (format nil "
 ═══════════════════════════════
-~a 【~a】 ~a
+📌 【~a】 ~a
 ═══════════════════════════════
 ~a
 📈 戦略: **~a** (~a)
-🏳️ 部族: ~a ~a
+🏷️ カテゴリ: ~a
 
 💴 PnL: **~,0@f JPY** (~,1@f pips)
 📊 ROI: **~,2@f%**
@@ -78,12 +75,11 @@
 
 💪 ~a
 ═══════════════════════════════"
-            clan-emoji
-            clan-name
+            category-label
             (if win-p "凱旋！(WIN)" "戦死... (LOSS)")
             (if win-p "🎉 勝鬨を上げよ！" "💀 屍を越えてゆけ...")
             strategy category
-            clan-emoji clan-name
+            category-label
             pnl-currency
             pips
             roi-percent
@@ -111,10 +107,10 @@
       ((> hours 0) (format nil "~dh ~dm" hours mins))
       (t (format nil "~dm" mins)))))
 
-(defun get-clan-positions-summary ()
-  "Generate a compact summary of active positions for all clans"
+(defun get-category-positions-summary ()
+  "Generate a compact summary of active positions for all categories"
   (if (hash-table-p *warrior-allocation*)
-      (let ((hunters nil) (breakers nil) (raiders nil) (shamans nil))
+      (let ((trends nil) (breakouts nil) (scalps nil) (reversions nil))
         
         ;; Aggregate positions
         (maphash (lambda (k v)
@@ -122,28 +118,24 @@
                    (when v
                      (let ((sym (getf v :symbol))
                            (cat (getf v :category)))
-                       (case cat
-                         (:trend (pushnew sym hunters :test #'string=))
-                         (:breakout (pushnew sym breakers :test #'string=))
-                         (:scalp (pushnew sym raiders :test #'string=))
-                         (:reversion (pushnew sym shamans :test #'string=))
-                         (:hunters (pushnew sym hunters :test #'string=))     ; Alias
-                         (:breakers (pushnew sym breakers :test #'string=))   ; Alias
-                         (:raiders (pushnew sym raiders :test #'string=))     ; Alias
-                         (:shamans (pushnew sym shamans :test #'string=)))))) ; Alias
+                      (case cat
+                        (:trend (pushnew sym trends :test #'string=))
+                        (:breakout (pushnew sym breakouts :test #'string=))
+                        (:scalp (pushnew sym scalps :test #'string=))
+                        (:reversion (pushnew sym reversions :test #'string=)))))) 
                  *warrior-allocation*)
         
         ;; Format Text
         (format nil "
-🏰 **Active Battlefields**:
-🏹 Hunters : ~a
-⚔️ Breakers: ~a
-🗡️ Raiders : ~a
-🔮 Shamans : ~a"
-                (if hunters (format nil "~{~a~^, ~}" hunters) "-")
-                (if breakers (format nil "~{~a~^, ~}" breakers) "-")
-                (if raiders (format nil "~{~a~^, ~}" raiders) "-")
-                (if shamans (format nil "~{~a~^, ~}" shamans) "-")))
+📊 **Active Categories**:
+TREND     : ~a
+BREAKOUT  : ~a
+SCALP     : ~a
+REVERSION : ~a"
+                (if trends (format nil "~{~a~^, ~}" trends) "-")
+                (if breakouts (format nil "~{~a~^, ~}" breakouts) "-")
+                (if scalps (format nil "~{~a~^, ~}" scalps) "-")
+                (if reversions (format nil "~{~a~^, ~}" reversions) "-")))
       ""))
 
 

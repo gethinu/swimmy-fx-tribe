@@ -30,12 +30,13 @@
   (cond
     ((null value) fallback)
     ((numberp value)
-     (let ((fmt (if (stringp formatter) formatter (format nil "~a" formatter))))
-       (if (or (search "~d" fmt)
-               (search "~:d" fmt)
-               (search "~@d" fmt)
-               (search "~@:d" fmt)
-               (search "~:@d" fmt))
+     (let* ((fmt (if (stringp formatter) formatter (format nil "~a" formatter)))
+            (fmt-lower (string-downcase fmt)))
+       (if (or (search "~d" fmt-lower)
+               (search "~:d" fmt-lower)
+               (search "~@d" fmt-lower)
+               (search "~@:d" fmt-lower)
+               (search "~:@d" fmt-lower))
            (format nil fmt (round value))
            (format nil fmt value))))
     ((symbolp value) (format nil formatter (string-upcase (string value))))
@@ -47,7 +48,7 @@
       (format nil "~d%" (round (* 100 value)))
       fallback))
 
-(defun send-daily-tribal-narrative ()
+(defun send-daily-status-report ()
   "Send a daily summary of system status without narrative storytelling."
   (let* ((pnl (safe-symbol-value 'swimmy.globals::*daily-pnl*))
          (wins (safe-symbol-value 'swimmy.globals::*consecutive-wins*))
@@ -62,16 +63,14 @@
          (trading-enabled (safe-symbol-value 'swimmy.globals::*trading-enabled*))
          (current-regime (safe-symbol-value 'swimmy.globals::*current-regime*))
          (volatility-regime (safe-symbol-value 'swimmy.globals::*volatility-regime*))
-         (tribe-dir (safe-symbol-value 'swimmy.globals::*tribe-direction*))
          (last-prediction (safe-symbol-value 'swimmy.globals::*last-prediction*))
          (last-confidence (safe-symbol-value 'swimmy.globals::*last-confidence*))
-         (tribe-consensus (safe-symbol-value 'swimmy.globals::*tribe-consensus*))
          (swarm-consensus (safe-symbol-value 'swimmy.globals::*last-swarm-consensus*))
-         (direction (or tribe-dir last-prediction :hold))
+         (direction (or last-prediction :hold))
          (flood-status (get-flood-status)))
 
     (notify-discord-daily (format nil "
-📜 **日刊・部族クロニクル (ATTACK MODE)**
+📜 **日刊・システムレポート**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 💰 日次PnL: ¥~a
 📈 連勝/連敗: ~a / ~a
@@ -79,7 +78,7 @@
 ⚙️ システム状態: ~a (Trading: ~a)
 🧠 最終シグナル: ~a (信頼度 ~a)
 🧭 レジーム: ~a / ~a
-📊 合意率: Tribe ~a / Swarm ~a
+📊 合意率: Swarm ~a
 
 🌊 **洪水警報 (Risk Level)**:
 ~a
@@ -96,12 +95,11 @@
   (format-percent last-confidence)
   (format-value current-regime "~a")
   (format-value volatility-regime "~a")
-  (format-percent tribe-consensus)
   (format-percent swarm-consensus)
   flood-status
   (format-value danger-level "~d")
-  (format-value max-dd "~,1f%%")
-  (format-value monitor-dd "~,1f%%")
+  (format-value max-dd "~,1f%")
+  (format-value monitor-dd "~,1f%")
   (format-value equity "~,0f")
   (format-value peak-equity "~,0f"))
      :color (cond ((>= (if (boundp '*danger-level*) *danger-level* 0) 3) 15158332) ; Red

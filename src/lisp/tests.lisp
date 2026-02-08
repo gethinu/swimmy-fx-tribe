@@ -859,25 +859,131 @@
         (assert-true (<= 0 rsi 100) "RSI should be between 0-100")))))
 
 ;;; ─────────────────────────────────────────
-;;; CLAN TESTS
+;;; CATEGORY EXECUTION TESTS
 ;;; ─────────────────────────────────────────
 
-(deftest test-clan-exists
-  "Test that all clans are defined"
-  (assert-not-nil cl-user::*clans* "Clans should be defined")
-  (assert-equal 4 (length cl-user::*clans*) "Should have 4 clans"))
+(deftest test-category-trade-interval
+  "category trade interval should allow/deny by elapsed seconds"
+  (let* ((cat '("M5" :BUY "USDJPY"))
+         (orig-table swimmy.school::*last-category-trade-time*)
+         (orig-interval swimmy.school::*min-trade-interval*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*min-trade-interval* 10)
+          (setf swimmy.school::*last-category-trade-time*
+                (make-hash-table :test 'equal))
+          (setf (gethash cat swimmy.school::*last-category-trade-time*)
+                (- (get-universal-time) 20))
+          (assert-true (swimmy.school::can-category-trade-p cat))
+          (setf (gethash cat swimmy.school::*last-category-trade-time*)
+                (get-universal-time))
+          (assert-false (swimmy.school::can-category-trade-p cat)))
+      (setf swimmy.school::*last-category-trade-time* orig-table)
+      (setf swimmy.school::*min-trade-interval* orig-interval))))
 
-(deftest test-get-clan
-  "Test get-clan function"
-  (let ((hunters (cl-user::get-clan :trend)))
-    (assert-not-nil hunters "Should find Hunters clan")
-    (assert-equal "Hunters" (cl-user::clan-name hunters))))
+(deftest test-high-council-danger-lv2-uses-swarm-consensus
+  "Danger Lv2 approval uses swarm consensus only"
+  (let ((orig-danger swimmy.globals::*danger-level*)
+        (orig-swarm swimmy.globals::*last-swarm-consensus*)
+        (orig-vol swimmy.globals::*current-volatility-state*))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*danger-level* 2)
+          (setf swimmy.globals::*current-volatility-state* :normal)
+          (setf swimmy.globals::*last-swarm-consensus* 0.8)
+          (assert-true (swimmy.school::convene-high-council
+                        '(:symbol "USDJPY" :direction :buy) :trend))
+          (setf swimmy.globals::*last-swarm-consensus* 0.6)
+          (assert-false (swimmy.school::convene-high-council
+                         '(:symbol "USDJPY" :direction :buy) :trend)))
+      (setf swimmy.globals::*danger-level* orig-danger)
+      (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
+      (setf swimmy.globals::*current-volatility-state* orig-vol))))
 
-(deftest test-clan-display
-  "Test clan display format"
-  (let ((display (cl-user::get-clan-display :trend)))
-    (assert-not-nil display "Display should not be nil")
-    (assert-true (search "Hunters" display) "Should contain Hunters")))
+(deftest test-live-status-schema-v2-no-tribe
+  "live_status should be schema v2 and omit tribe fields"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.core:write-sexp-atomic)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:write-sexp-atomic)
+                (lambda (path payload)
+                  (declare (ignore path))
+                  (setf captured payload)))
+          (let ((swimmy.shell::*live-status-interval* 0)
+                (swimmy.shell::*last-status-write* 0))
+            (swimmy.shell::save-live-status))
+          (assert-equal 2 (cdr (assoc 'swimmy.shell::schema_version captured)))
+          (assert-false (assoc 'swimmy.shell::tribes captured))
+          (assert-false (assoc 'swimmy.shell::tribe_consensus captured)))
+      (setf (symbol-function 'swimmy.core:write-sexp-atomic) orig))))
+
+(deftest test-daily-report-omits-tribe
+  "daily report should omit tribe wording"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.shell::notify-discord-daily)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.shell::notify-discord-daily)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)))
+          (swimmy.main::send-daily-status-report)
+          (assert-true (null (search "Tribe" captured)))
+          (assert-true (null (search "部族" captured))))
+      (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
+
+(deftest test-ledger-omits-tribe-fields
+  "save-state should omit tribe fields"
+  (let* ((tmp-path (merge-pathnames (format nil "/tmp/swimmy-state-~a.sexp" (get-universal-time))))
+         (orig-path swimmy.engine::*state-file-path*))
+    (unwind-protect
+        (progn
+          (setf swimmy.engine::*state-file-path* tmp-path)
+          (swimmy.engine:save-state)
+          (with-open-file (in tmp-path :direction :input)
+            (let ((obj (read in nil nil)))
+              (assert-false (member :tribe-consensus obj))
+              (assert-false (member :tribe-direction obj)))))
+      (setf swimmy.engine::*state-file-path* orig-path)
+      (when (probe-file tmp-path) (delete-file tmp-path)))))
+
+(deftest test-category-vote-list
+  "gather-category-votes should return a non-empty list"
+  (let ((votes (swimmy.school::gather-category-votes "proposal" :trend)))
+    (assert-true (and (listp votes) (> (length votes) 0)))))
+
+(deftest test-dynamic-narrative-uses-category-display
+  "dynamic narrative should use category display, not clan names"
+  (let* ((signal (list :strategy-name "Test"
+                       :direction :buy
+                       :category :trend
+                       :indicator-values nil
+                       :sl 0.1
+                       :tp 0.2))
+         (text (swimmy.school::generate-dynamic-narrative signal "USDJPY" 150.0)))
+    (assert-true (search "TREND" text))
+    (assert-false (search "Hunters" text))
+    (assert-false (search "Unknown" text))))
+
+(deftest test-category-counts-returns-alist
+  "category counts should return alist with core categories"
+  (let ((counts (swimmy.school::get-category-counts)))
+    (assert-true (assoc :trend counts))
+    (assert-true (assoc :reversion counts))
+    (assert-true (assoc :breakout counts))
+    (assert-true (assoc :scalp counts))))
+
+(deftest test-repl-help-omits-clans
+  "REPL help should not mention clan commands"
+  (let ((fn (find-symbol "PRINT-HELP" :swimmy-repl)))
+    (assert-true (and fn (fboundp fn)) "print-help should exist")
+    (let* ((out (make-string-output-stream))
+           (*standard-output* out))
+      (funcall fn)
+      (let ((txt (get-output-stream-string out)))
+        (assert-true (null (search ":clans" txt)))
+        (assert-true (null (search ":clan" txt)))))))
 
 ;;; ─────────────────────────────────────────
 ;;; CONSTITUTION TESTS
@@ -1824,9 +1930,15 @@
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
-                  test-clan-exists
-                  test-get-clan
-                  test-clan-display
+                  test-category-trade-interval
+                  test-high-council-danger-lv2-uses-swarm-consensus
+                  test-live-status-schema-v2-no-tribe
+                  test-daily-report-omits-tribe
+                  test-ledger-omits-tribe-fields
+                  test-category-vote-list
+                  test-dynamic-narrative-uses-category-display
+                  test-category-counts-returns-alist
+                  test-repl-help-omits-clans
                   ;; Macro tests
                   ;; (Temporarily removed missing tests)
                   ;; V6.18: Danger tests

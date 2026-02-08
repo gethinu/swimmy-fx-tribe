@@ -1,4 +1,4 @@
-# 🦈 Swimmy FX-Tribe V3.0 システムアーキテクチャ
+# 🦈 Swimmy FX システムアーキテクチャ
 
 **更新日**: 2025-12-29 20:50  
 **バージョン**: V3.0  
@@ -7,7 +7,7 @@
 
 ## 概要
 
-Lispベースの自律進化型FX取引システム。4つの氏族（Clan）が協力し、61の戦略を基盤に学習・進化を続ける。
+Lispベースの自律進化型FX取引システム。カテゴリ（trend/reversion/breakout/scalp）を基盤に学習・進化を続ける。
 
 ```
 MCP Host (stdio JSON-RPC) -> MCP Server (Python) -> ZMQ 5559 -> Guardian (Rust)
@@ -24,14 +24,14 @@ MT5 <--ZeroMQ--> Guardian (Rust) <--ZeroMQ--> Brain (Lisp)
 
 ---
 
-## @ 4大氏族 (The Four Great Clans)
+## @ コアカテゴリ (Core Categories)
 
-| 氏族 | カテゴリ | シグナル関数 | 哲学 |
-|------|----------|--------------|------|
-| 🏹 Hunters | :trend | `get-hunter-signal` | MACD+ADX+Kalman |
-| 🔮 Shamans | :reversion | `get-shaman-signal` | RSI+BB逆張り |
-| ⚡ Breakers | :breakout | `get-breaker-signal` | ATRブレイクアウト |
-| 🗡️ Raiders | :scalp | `get-raider-signal` | EMAクロス+スキャル |
+| カテゴリ | シグナル関数 | 哲学 |
+|---------|-------------|------|
+| :trend | `get-hunter-signal` | MACD+ADX+Kalman |
+| :reversion | `get-shaman-signal` | RSI+BB逆張り |
+| :breakout | `get-breaker-signal` | ATRブレイクアウト |
+| :scalp | `get-raider-signal` | EMAクロス+スキャル |
 
 ---
 
@@ -132,11 +132,10 @@ evolve-population (dreamer2.lisp:417)
 morning-ritual (brain.lisp:2650)
     │
     ├─→ 憲法朗読
-    ├─→ 4氏族の哲学表示
+    ├─→ カテゴリ方針表示
     ├─→ get-failure-summary()        失敗分析
     ├─→ get-hour-patterns()          時間帯パターン
     ├─→ analyze-swarm-accuracy()     群知能精度
-    └─→ get-clan-treasury-summary()  財務状況
 ```
 
 ---
@@ -174,10 +173,10 @@ morning-ritual (brain.lisp:2650)
 
 | 変更 | 効果 |
 |------|------|
-| 16ポジション対応 | 4氏族×4戦士 |
+| 16ポジション対応 | 4カテゴリ×4戦士 |
 | *elder-lessons*減衰 | 古い教訓の忘却 |
 | 11未使用関数接続 | 全機能アクティブ化 |
-| announce-clan-trade削除 | 重複通知除去 |
+| announce-trade削除 | 重複通知除去 |
 | Ramen KPI | 月間目標¥10,000 |
 
 ---

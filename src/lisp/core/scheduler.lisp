@@ -44,7 +44,7 @@
   (multiple-value-bind (s m h date month year day-of-week) (decode-universal-time (get-universal-time))
     (declare (ignore s m h date month year))
     (format t "[SCHEDULER] ⏰ 23:00 Sending Nightly Reports...~%")
-    (send-daily-tribal-narrative)
+    (send-daily-status-report)
     ;; Weekly Summary (Sunday - DOW 6)
     (when (= day-of-week 6)
       (format t "[SCHEDULER] 📊 Sunday detected - Generating Weekly Summary...~%")

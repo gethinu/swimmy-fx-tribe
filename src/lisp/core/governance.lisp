@@ -218,41 +218,46 @@
 (defstruct council-decision
   id
   proposal
-  proposer         ; Which clan proposed
-  votes            ; Plist of :clan → :approve/:reject/:abstain
+  proposer         ; Which category proposed
+  votes            ; Plist of :category → :approve/:reject/:abstain
   elder-advice     ; What elders said
   constitution-ok  ; Did it pass constitution check?
   final-decision   ; :approved, :rejected, :escalated
   chieftain-notified
   timestamp)
 
-(defun gather-clan-votes (proposal proposer)
-  "Gather votes from each clan"
+(defun list-category-ids ()
+  (if (and (boundp 'swimmy.school::*category-allocation*)
+           (listp swimmy.school::*category-allocation*))
+      (mapcar #'car swimmy.school::*category-allocation*)
+      '(:trend :reversion :breakout :scalp)))
+
+(defun gather-category-votes (proposal proposer)
+  "Gather votes from each category"
   (let ((votes nil))
-    (dolist (clan-data *clans*)
-      (let* ((clan-id (clan-id clan-data))
-             (vote (simulate-clan-vote clan-id proposal proposer)))
-        (push (cons clan-id vote) votes)
+    (dolist (category-id (list-category-ids))
+      (let* ((vote (simulate-category-vote category-id proposal proposer)))
+        (push (cons category-id vote) votes)
         (format t "[L]    ~a ~a: ~a~%"
-                (clan-emoji clan-data) (clan-name clan-data) vote)))
+                "📌" (string-upcase (symbol-name category-id)) vote)))
     votes))
 
-(defun simulate-clan-vote (clan-id proposal proposer)
-  "Simulate a clan's vote based on their personality"
+(defun simulate-category-vote (category-id proposal proposer)
+  "Simulate a category's vote based on its profile"
   (cond
     ;; Own proposal - always approve
-    ((eq clan-id proposer) :approve)
+    ((eq category-id proposer) :approve)
     
-    ;; Shamans are cautious
-    ((and (eq clan-id :reversion) 
+    ;; Reversion is cautious
+    ((and (eq category-id :reversion) 
           (eq *current-volatility-state* :extreme))
      :reject)
     
-    ;; Breakers are aggressive
-    ((eq clan-id :breakout) :approve)
+    ;; Breakout is aggressive
+    ((eq category-id :breakout) :approve)
     
-    ;; Raiders abstain from big decisions
-    ((and (eq clan-id :scalp)
+    ;; Scalp abstains from big decisions
+    ((and (eq category-id :scalp)
           (search "aggressive" (string-downcase (format nil "~a" proposal))))
      :abstain)
     
@@ -295,7 +300,7 @@
                           👴 **Elder Advice:** ~a~%~
                           📜 **Constitution:** ~a"
                      (council-decision-proposal decision)
-                     (get-clan-display (council-decision-proposer decision))
+                     (string-upcase (symbol-name (council-decision-proposer decision)))
                      (council-decision-final-decision decision)
                      (council-decision-elder-advice decision)
                      (if (council-decision-constitution-ok decision) "Permits" "Forbids"))))
@@ -318,19 +323,19 @@
     
     (format t "[L] 📱 Grand Chieftain notified via Discord~%")))
 
-(defun convene-policy-council (proposal proposer-clan &key (urgency :normal))
+(defun convene-policy-council (proposal proposer-category &key (urgency :normal))
   "Convene the Policy Council for important strategic decisions (not for trade execution)"
   (format t "~%[L] ═══════════════════════════════════════~%")
   (format t "[L] 🏛️ HIGH COUNCIL CONVENED~%")
   (format t "[L] ═══════════════════════════════════════~%")
   (format t "[L] 📜 Proposal: ~a~%" proposal)
-  (format t "[L] 🎺 Proposed by: ~a~%" (get-clan-display proposer-clan))
+  (format t "[L] 🎺 Proposed by: ~a~%" (string-upcase (symbol-name proposer-category)))
   (format t "[L] ⚡ Urgency: ~a~%~%" urgency)
   
   (let ((decision (make-council-decision
                    :id (gensym "COUNCIL-")
                    :proposal proposal
-                   :proposer proposer-clan
+                   :proposer proposer-category
                    :votes nil
                    :elder-advice nil
                    :constitution-ok nil
@@ -338,9 +343,9 @@
                    :chieftain-notified nil
                    :timestamp (get-universal-time))))
     
-    ;; Step 1: Gather clan votes
-    (format t "[L] 📢 CLAN CHIEFS SPEAK:~%")
-    (let ((votes (gather-clan-votes proposal proposer-clan)))
+    ;; Step 1: Gather category votes
+    (format t "[L] 📢 CATEGORY LEADS SPEAK:~%")
+    (let ((votes (gather-category-votes proposal proposer-category)))
       (setf (council-decision-votes decision) votes))
     
     ;; Step 2: Consult elders

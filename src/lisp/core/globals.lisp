@@ -68,8 +68,6 @@
 (defparameter *last-prediction* nil)
 (defparameter *last-confidence* 0.5)
 (defparameter *last-swarm-consensus* 0.5)
-(defparameter *tribe-direction* nil)
-(defparameter *tribe-consensus* 0.0)
 (defparameter *learned-patterns* nil)
 (defparameter *improvement-requests* nil)
 ;; Persistence additions
@@ -78,7 +76,6 @@
 (defparameter *success-log* nil)
 
 ;;; KNOWLEDGE STATE
-(defparameter *tribal-dialect* (make-hash-table :test 'equal))
 (defparameter *reputation-scores* (make-hash-table :test 'equal))
 (defparameter *genome* nil)
 (defparameter *memory* nil)
@@ -133,7 +130,6 @@
 (defparameter *last-status-notification-time* (make-hash-table :test 'equal))
 (defparameter *status-notification-interval* 3600)
 (defparameter *warrior-allocation* (make-hash-table :test 'equal))
-(defparameter *tribe-status* (make-hash-table :test 'eq))
 (defparameter *resignation-threshold* -10000) ; Default logic usually sets this
 
 ;;; MISSING GLOBALS (Discord)
@@ -202,7 +198,6 @@
 (defparameter *monthly-pnl* 0.0)      ; Resets 1st of Month 00:00
 (defvar *processed-tickets* (make-hash-table :test 'equal) "V44.0: Deduplication for TRADE_CLOSED events")
 (defparameter *portfolio-indices* nil)
-(defparameter *clans* nil)
 (defparameter *market-data* nil)
 (defparameter *last-tick-time* 0)
 

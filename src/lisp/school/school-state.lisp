@@ -359,11 +359,9 @@
 (defparameter *max-explanations* 50)
 
 ;;; ==========================================
-;;; CLAN SYSTEM
+;;; STRATEGY RANKS
 ;;; ==========================================
 (defparameter *strategy-ranks* (make-hash-table :test 'equal))
-(defparameter *clan-treasury* (make-hash-table :test 'eq))
-(defparameter *mutual-aid-history* nil)
 (defparameter *rank-db-path* (merge-pathnames ".swimmy/strategy_ranks.lisp" (resolve-swimmy-home)))
 
 (defun save-strategy-ranks ()

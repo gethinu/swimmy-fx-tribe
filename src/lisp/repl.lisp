@@ -18,8 +18,6 @@
 (defun swimmy (&rest args)
   "Interactive Swimmy control. Usage:
    (swimmy :status)           - Get current status
-   (swimmy :clans)            - List all clans
-   (swimmy :clan :hunters)    - Get specific clan detail
    (swimmy :elders)           - List Hall of Fame
    (swimmy :reputation name)  - Get strategy reputation
    (swimmy :patterns)         - Show detected patterns
@@ -30,8 +28,6 @@
     (case cmd
       (:help (print-help))
       (:status (print-status))
-      (:clans (print-clans))
-      (:clan (print-clan-detail (second args)))
       (:elders (print-elders))
       (:reputation (print-reputation (second args)))
       (:patterns (print-patterns))
@@ -58,43 +54,6 @@
   (format t "⚠️  Danger: ~d~%" (or (and (boundp 'cl-user::*danger-level*) cl-user::*danger-level*) 0))
   (format t "═══════════════════════════════════════~%~%"))
 
-;;; ─────────────────────────────────────────
-;;; CLANS
-;;; ─────────────────────────────────────────
-
-(defun print-clans ()
-  "Print all clans"
-  (format t "~%═══════════════════════════════════════~%")
-  (format t "🏛️ THE FOUR GREAT CLANS~%")
-  (format t "═══════════════════════════════════════~%")
-  (when (and (boundp 'cl-user::*clans*) cl-user::*clans*)
-    (dolist (clan cl-user::*clans*)
-      (format t "~a ~a (~a)~%"
-              (cl-user::clan-emoji clan)
-              (cl-user::clan-name clan)
-              (cl-user::clan-title clan))
-      (format t "   哲学: 「~a」~%"
-              (cl-user::clan-philosophy clan))))
-  (format t "═══════════════════════════════════════~%~%"))
-
-(defun print-clan-detail (clan-id)
-  "Print detail for specific clan"
-  (let ((clan (when (boundp 'cl-user::*clans*)
-                (find clan-id cl-user::*clans* :key #'cl-user::clan-id))))
-    (if clan
-        (progn
-          (format t "~%═══════════════════════════════════════~%")
-          (format t "~a ~a (~a)~%"
-                  (cl-user::clan-emoji clan)
-                  (cl-user::clan-name clan)
-                  (cl-user::clan-title clan))
-          (format t "═══════════════════════════════════════~%")
-          (format t "ペルソナ: ~a~%" (cl-user::clan-persona clan))
-          (format t "哲学: 「~a」~%" (cl-user::clan-philosophy clan))
-          (format t "Battle Cry: ~%" )
-          (format t "   「~a」~%" (cl-user::clan-battle-cry clan))
-          (format t "═══════════════════════════════════════~%~%"))
-        (format t "Unknown clan: ~a~%" clan-id))))
 
 ;;; ─────────────────────────────────────────
 ;;; ELDERS
@@ -205,8 +164,6 @@
   (format t "🦈 SWIMMY REPL COMMANDS~%")
   (format t "═══════════════════════════════════════~%")
   (format t "(swimmy :status)          - Current status~%")
-  (format t "(swimmy :clans)           - List clans~%")
-  (format t "(swimmy :clan :hunters)   - Clan detail~%")
   (format t "(swimmy :elders)          - Hall of Fame~%")
   (format t "(swimmy :constitution)    - Show values~%")
   (format t "(swimmy :patterns)        - Tribal patterns~%")
