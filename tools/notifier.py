@@ -110,6 +110,33 @@ def parse_notifier_message(message: str):
     return webhook, payload
 
 
+def format_payload_preview(payload: dict, max_len: int = 120) -> str:
+    """Create a short, single-line preview of the payload for logs."""
+    try:
+        text = ""
+        embeds = payload.get("embeds") or []
+        if embeds and isinstance(embeds, list) and isinstance(embeds[0], dict):
+            desc = embeds[0].get("description")
+            if isinstance(desc, str) and desc.strip():
+                text = desc
+            else:
+                title = embeds[0].get("title")
+                if isinstance(title, str) and title.strip():
+                    text = title
+        if not text:
+            content = payload.get("content")
+            if isinstance(content, str) and content.strip():
+                text = content
+        if not text:
+            return ""
+        text = " ".join(text.split())
+        if max_len > 3 and len(text) > max_len:
+            text = text[: max_len - 1] + "…"
+        return text
+    except Exception:
+        return ""
+
+
 def process_queue():
     """Worker thread to process the message queue with rate limiting and retry."""
     failed_count = {}  # Track retry count per message
@@ -208,10 +235,12 @@ def main():
             try:
                 webhook, payload = parse_notifier_message(msg_str)
                 message_queue.append((webhook, payload))
-                print(
-                    f"[NOTIFIER] Queued: {payload.get('embeds', [{}])[0].get('title', 'Message')}",
-                    flush=True,
-                )
+                title = payload.get("embeds", [{}])[0].get("title", "Message")
+                preview = format_payload_preview(payload)
+                if preview:
+                    print(f"[NOTIFIER] Queued: {title} | {preview}", flush=True)
+                else:
+                    print(f"[NOTIFIER] Queued: {title}", flush=True)
 
             except json.JSONDecodeError:
                 print(f"[NOTIFIER] Invalid payload_json")

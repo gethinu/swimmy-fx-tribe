@@ -99,7 +99,16 @@ def _format_incoming_preview(msg: str, limit: int = 240) -> str:
     cleaned = msg.replace("\r", " ").replace("\n", " ").strip()
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[:limit] + "..."
+    # Preserve request_id/name in logs even when preview is truncated.
+    parts = []
+    name_match = _SEXP_NAME_RE.search(cleaned) or _SEXP_NAME_JSONISH_RE.search(cleaned)
+    if name_match:
+        parts.append(f"name={name_match.group(1)}")
+    req_match = _SEXP_REQUEST_ID_RE.search(cleaned)
+    if req_match:
+        parts.append(f"request_id={req_match.group(1)}")
+    suffix = f" [{' '.join(parts)}]" if parts else ""
+    return cleaned[:limit] + "..." + suffix
 
 def _should_dump_guardian() -> bool:
     val = os.getenv(_DUMP_GUARDIAN_ENV, "").strip().lower()
@@ -111,7 +120,16 @@ def _format_guardian_preview(msg: str, limit: int = 240) -> str:
     cleaned = msg.replace("\r", " ").replace("\n", " ").strip()
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[:limit] + "..."
+    # Preserve request_id/name in logs even when preview is truncated.
+    parts = []
+    name_match = _SEXP_NAME_RE.search(cleaned) or _SEXP_NAME_JSONISH_RE.search(cleaned)
+    if name_match:
+        parts.append(f"name={name_match.group(1)}")
+    req_match = _SEXP_REQUEST_ID_RE.search(cleaned)
+    if req_match:
+        parts.append(f"request_id={req_match.group(1)}")
+    suffix = f" [{' '.join(parts)}]" if parts else ""
+    return cleaned[:limit] + "..." + suffix
 
 
 def _normalize_sexp_key(key):
@@ -452,7 +470,11 @@ class BacktestService:
             if not output_line:
                 return None
             if dump_guardian:
-                print(f"[BACKTEST-SVC] OUT: {_format_guardian_preview(output_line)}")
+                preview = _format_guardian_preview(output_line)
+                # Ensure request_id is visible even if guardian output omits it.
+                if request_id and "request_id=" not in preview:
+                    preview += f" [request_id={request_id}]"
+                print(f"[BACKTEST-SVC] OUT: {preview}")
             output_line = output_line.strip()
             if not output_line:
                 continue

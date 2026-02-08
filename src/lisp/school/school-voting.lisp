@@ -319,6 +319,8 @@
          (volatility-state (if (boundp '*current-volatility-state*) *current-volatility-state* :normal))
          (approval nil)
          (reason ""))
+    (format t "[HC] INPUT sym=~a dir=~a cat=~a danger=~a swarm=~a vol=~a urgency=~a~%"
+            symbol direction category danger-level swarm-consensus volatility-state urgency)
     
     (cond
       ((>= urgency 10)
@@ -339,6 +341,7 @@
            
       (t (setf approval t reason "✅ APPROVED: Standard deployment")))
        
+    (format t "[HC] RESULT approval=~a reason=~a~%" approval reason)
     (when (or (not approval) (>= danger-level 2) (eq volatility-state :extreme))
       (let ((msg (format nil "🏛️ **HIGH COUNCIL**~%~a ~a (~a)~%~a" 
                          category symbol direction reason)))

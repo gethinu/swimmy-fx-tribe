@@ -123,7 +123,9 @@
               ((and (listp obj)
                     (symbolp (first obj))
                     (string-equal (symbol-name (first obj)) "STRATEGY"))
-               (apply #'swimmy.school:make-strategy (rest obj)))
+               (let ((args (rest obj)))
+                 (apply #'swimmy.school:make-strategy
+                        (append (list :allow-other-keys t) args))))
               (t nil)))
         (error () nil)))))
 

@@ -88,7 +88,7 @@
            (webhook (or (and (boundp 'swimmy.core::*heartbeat-webhook-url*)
                              swimmy.core::*heartbeat-webhook-url*)
                         (and (fboundp 'swimmy.core::get-discord-webhook)
-                             (swimmy.core::get-discord-webhook "alerts"))
+                             (swimmy.core::get-discord-webhook "heartbeat"))
                         (uiop:getenv "SWIMMY_DISCORD_ALERTS"))))
       (if webhook
           (handler-case

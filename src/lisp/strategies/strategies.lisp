@@ -13,8 +13,15 @@
 
 (defun init-knowledge-base ()
   "Initialize with strategies from The Great Library + SQL database."
-  (let ((file-strats (swimmy.persistence:load-all-strategies))
-        (db-strats (fetch-all-strategies-from-db)))
+  (let* ((raw-file-strats (or (swimmy.persistence:load-all-strategies) '()))
+         (raw-db-strats (or (fetch-all-strategies-from-db) '()))
+         (file-strats (remove-if-not #'strategy-p raw-file-strats))
+         (db-strats (remove-if-not #'strategy-p raw-db-strats))
+         (dropped (+ (- (length raw-file-strats) (length file-strats))
+                     (- (length raw-db-strats) (length db-strats)))))
+
+    (when (> dropped 0)
+      (format t "[KB] ⚠️ Dropped ~d invalid strategies during init.~%" dropped))
     
     ;; Merge lists, prioritizing DB records if duplicates exist (Name based)
     (let ((kb (copy-list db-strats)))

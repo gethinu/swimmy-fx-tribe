@@ -121,46 +121,54 @@
 (defun aligned-daily-pnl-vectors (s1 s2 &key (days 30))
   (multiple-value-bind (map1 count1) (%daily-pnl-map s1 :days days)
     (multiple-value-bind (map2 count2) (%daily-pnl-map s2 :days days)
-      (when (and (>= count1 days) (>= count2 days))
-        (let ((v1 nil)
-              (v2 nil))
-          (maphash (lambda (k v)
-                     (let ((v2val (gethash k map2 :missing)))
-                       (unless (eq v2val :missing)
-                         (push v v1)
-                         (push v2val v2))))
-                   map1)
-          (when (>= (length v1) days)
-            (values (coerce (nreverse v1) 'vector)
-                    (coerce (nreverse v2) 'vector))))))))
+      (let ((v1 nil)
+            (v2 nil))
+        (maphash (lambda (k v)
+                   (let ((v2val (gethash k map2 :missing)))
+                     (unless (eq v2val :missing)
+                       (push v v1)
+                       (push v2val v2))))
+                 map1)
+        (let ((overlap (length v1)))
+          (if (and (>= count1 days) (>= count2 days) (>= overlap days))
+              (values (coerce (nreverse v1) 'vector)
+                      (coerce (nreverse v2) 'vector)
+                      overlap)
+              (values nil nil overlap)))))))
 
 (defun calculate-daily-pnl-correlation (s1 s2 &key (days 30))
   "Pearson correlation on aligned daily pnl vectors. Returns NIL if insufficient data."
-  (multiple-value-bind (v1 v2) (aligned-daily-pnl-vectors s1 s2 :days days)
-    (when (and v1 v2)
-      (swimmy.school.dalio::pearson-correlation v1 v2))))
+  (multiple-value-bind (v1 v2 overlap) (aligned-daily-pnl-vectors s1 s2 :days days)
+    (if (and v1 v2)
+        (values (swimmy.school.dalio::pearson-correlation v1 v2) overlap)
+        (values nil overlap))))
 
 (defun calculate-noncorrelation-score (strategies &key (days 30)
                                                   (threshold swimmy.school.dalio::*correlation-threshold*))
-  "Return (values score reason). Score = uncorrelated_pairs / total_pairs."
-  (let ((list (if (listp strategies) strategies (list strategies))))
+  "Return (values score reason coverage-days). Score = uncorrelated_pairs / total_pairs."
+  (let ((list (if (listp strategies) strategies (list strategies)))
+        (min-overlap nil))
     (when (< (length list) 2)
-      (return-from calculate-noncorrelation-score (values nil :insufficient-strategies)))
+      (return-from calculate-noncorrelation-score (values nil :insufficient-strategies 0)))
     (let ((count 0)
           (uncorrelated 0))
       (dotimes (i (length list))
         (dotimes (j i)
           (let* ((s1 (nth i list))
-                 (s2 (nth j list))
-                 (corr (calculate-daily-pnl-correlation s1 s2 :days days)))
-            (unless corr
-              (return-from calculate-noncorrelation-score (values nil :insufficient-data)))
-            (incf count)
-            (when (< (abs corr) threshold)
-              (incf uncorrelated)))))
+                 (s2 (nth j list)))
+            (multiple-value-bind (corr overlap)
+                (calculate-daily-pnl-correlation s1 s2 :days days)
+              (when (or (null min-overlap) (< overlap min-overlap))
+                (setf min-overlap overlap))
+              (unless corr
+                (return-from calculate-noncorrelation-score
+                  (values nil :insufficient-data min-overlap)))
+              (incf count)
+              (when (< (abs corr) threshold)
+                (incf uncorrelated))))))
       (if (zerop count)
-          (values nil :insufficient-strategies)
-          (values (/ (float uncorrelated) count) nil)))))
+          (values nil :insufficient-strategies (or min-overlap 0))
+          (values (/ (float uncorrelated) count) nil min-overlap)))))
 
 (defun %promotion-p (old-rank new-rank)
   (or (and (eq new-rank :A)
@@ -178,16 +186,20 @@
   (let* ((portfolio (%current-portfolio-strategies))
          (score nil)
          (reason nil)
+         (coverage-days nil)
          (threshold swimmy.school.dalio::*correlation-threshold*))
-    (multiple-value-setq (score reason)
+    (multiple-value-setq (score reason coverage-days)
       (calculate-noncorrelation-score portfolio :days days :threshold threshold))
     (let* ((title "⚖️ 非相関 昇格通知")
            (portfolio-size (length portfolio))
            (ts (swimmy.core:get-jst-timestamp))
            (score-text (if score (format nil "~,2f" score) "N/A"))
-           (reason-text (case reason
-                          (:insufficient-data "(データ不足)")
-                          (:insufficient-strategies "(戦略数不足)")
+           (reason-text (cond
+                          ((eq reason :insufficient-data)
+                           (if (numberp coverage-days)
+                               (format nil "(データ不足: ~d/~d日)" coverage-days days)
+                               "(データ不足)"))
+                          ((eq reason :insufficient-strategies) "(戦略数不足)")
                           (t "")))
            (msg (format nil "戦略: **~a**~%昇格: **~a**~%非相関スコア: **~a** ~a~%閾値: |corr| < ~,2f~%ポートフォリオ: ~d 戦略~%時刻: ~a"
                         (strategy-name strategy)
@@ -198,7 +210,19 @@
                         portfolio-size
                         ts))
            (webhook (or swimmy.core:*discord-daily-webhook*
-                        swimmy.globals:*discord-webhook-url*)))
+                        swimmy.globals:*discord-webhook-url*))
+           (telemetry-data (list :strategy (strategy-name strategy)
+                                 :new-rank new-rank
+                                 :score (if score score "N/A")
+                                 :reason reason
+                                 :coverage-days coverage-days
+                                 :required-days days
+                                 :portfolio-size portfolio-size)))
+      (swimmy.core::emit-telemetry-event "noncorrelation.score"
+        :service "school"
+        :severity "info"
+        :correlation-id (strategy-name strategy)
+        :data telemetry-data)
       (when webhook
         (swimmy.core:queue-discord-notification
          webhook msg :color swimmy.core:+color-info+ :title title)))))

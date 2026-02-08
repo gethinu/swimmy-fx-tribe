@@ -104,12 +104,13 @@
         (let* ((min-sharpe (if (boundp '*oos-min-sharpe*) *oos-min-sharpe* 0.3))
                (sent (or (execute-single "SELECT count(*) FROM oos_queue WHERE status='sent'") 0))
                (retry (or (execute-single "SELECT count(*) FROM oos_queue WHERE status='retry'") 0))
+               ;; Treat default/legacy 0.0 as "unset" (see normalize-oos-defaults).
                (success (or (execute-single
-                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND oos_sharpe >= ?"
+                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND ABS(oos_sharpe) > 1e-6 AND oos_sharpe >= ?"
                              min-sharpe)
                             0))
                (failure (or (execute-single
-                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND oos_sharpe < ?"
+                             "SELECT count(*) FROM strategies WHERE oos_sharpe IS NOT NULL AND ABS(oos_sharpe) > 1e-6 AND oos_sharpe < ?"
                              min-sharpe)
                             0)))
           (list :sent sent :retry retry :success success :failure failure)))

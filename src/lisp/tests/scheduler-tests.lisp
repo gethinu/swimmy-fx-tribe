@@ -121,4 +121,69 @@
             (assert-equal 0 called "Should not notify when skipping")))
       (setf swimmy.shell::*last-weekly-summary* orig-last)
       (when orig-notify
-        (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
+      (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
+
+(deftest test-periodic-maintenance-flushes-stagnant-c-rank
+  "Periodic maintenance should flush Stagnant C-Rank batch in brain loop."
+  (let* ((sent-messages nil)
+         (now (get-universal-time))
+         (orig-notify (and (fboundp 'swimmy.school::notify-discord-alert)
+                           (symbol-function 'swimmy.school::notify-discord-alert)))
+         (orig-heartbeat (and (fboundp 'swimmy.engine::check-discord-heartbeat)
+                              (symbol-function 'swimmy.engine::check-discord-heartbeat)))
+         (orig-founders (and (fboundp 'swimmy.school::maybe-flush-deferred-founders)
+                             (symbol-function 'swimmy.school::maybe-flush-deferred-founders)))
+         (orig-stress (and (fboundp 'swimmy.school::check-stress-test-trigger)
+                           (symbol-function 'swimmy.school::check-stress-test-trigger)))
+         (orig-candle-history (and (boundp 'swimmy.globals:*candle-history*)
+                                   swimmy.globals:*candle-history*))
+         (orig-last-maint (and (boundp 'swimmy.main::*last-maintenance-time*)
+                               swimmy.main::*last-maintenance-time*))
+         (orig-last-evo (and (boundp 'swimmy.main::*last-evolution-time*)
+                             swimmy.main::*last-evolution-time*))
+         (orig-last-macro (and (boundp 'swimmy.school::*last-macro-load-time*)
+                               swimmy.school::*last-macro-load-time*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*stagnant-c-rank-buffer* (list "UT-STAGNANT"))
+          (setf swimmy.core::*stagnant-c-rank-first-seen* (- now 3601))
+          (setf swimmy.main::*last-maintenance-time* now)
+          (setf swimmy.main::*last-evolution-time* now)
+          (setf swimmy.school::*last-macro-load-time* now)
+          (setf swimmy.globals:*candle-history* nil)
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                  (lambda (msg &key color)
+                    (declare (ignore color))
+                    (push msg sent-messages)
+                    t)))
+          (when orig-heartbeat
+            (setf (symbol-function 'swimmy.engine::check-discord-heartbeat) (lambda () nil)))
+          (when orig-founders
+            (setf (symbol-function 'swimmy.school::maybe-flush-deferred-founders) (lambda () nil)))
+          (when orig-stress
+            (setf (symbol-function 'swimmy.school::check-stress-test-trigger) (lambda () nil)))
+          (swimmy.main::run-periodic-maintenance)
+          (assert-equal 1 (length sent-messages) "Should flush stagnant C-rank summary")
+          (assert-true (search "Stagnant C-Rank Summary" (car sent-messages))
+                       "Summary title should be included")
+          (assert-true (search "UT-STAGNANT" (car sent-messages))
+                       "Summary should include buffered strategy"))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))
+      (when orig-heartbeat
+        (setf (symbol-function 'swimmy.engine::check-discord-heartbeat) orig-heartbeat))
+      (when orig-founders
+        (setf (symbol-function 'swimmy.school::maybe-flush-deferred-founders) orig-founders))
+      (when orig-stress
+        (setf (symbol-function 'swimmy.school::check-stress-test-trigger) orig-stress))
+      (when (boundp 'swimmy.globals:*candle-history*)
+        (setf swimmy.globals:*candle-history* orig-candle-history))
+      (when (boundp 'swimmy.main::*last-maintenance-time*)
+        (setf swimmy.main::*last-maintenance-time* orig-last-maint))
+      (when (boundp 'swimmy.main::*last-evolution-time*)
+        (setf swimmy.main::*last-evolution-time* orig-last-evo))
+      (when (boundp 'swimmy.school::*last-macro-load-time*)
+        (setf swimmy.school::*last-macro-load-time* orig-last-macro))
+      (setf swimmy.core::*stagnant-c-rank-buffer* nil)
+      (setf swimmy.core::*stagnant-c-rank-first-seen* 0))))

@@ -163,8 +163,13 @@
         (getenv-or-dotenv "SWIMMY_DISCORD_REPORTS"))
        
        ;; [URGENT] Alerts
-       ((member k '("emergency" "alerts" "heartbeat") :test #'equal)
+       ((member k '("emergency" "alerts") :test #'equal)
         (getenv-or-dotenv "SWIMMY_DISCORD_ALERTS"))
+
+       ;; [HEARTBEAT] Dedicated channel (fallback to alerts)
+       ((equal k "heartbeat")
+        (or (getenv-or-dotenv "SWIMMY_DISCORD_HEARTBEAT")
+            (getenv-or-dotenv "SWIMMY_DISCORD_ALERTS")))
         
        ;; Default to Alerts if unknown
        (t (getenv-or-dotenv "SWIMMY_DISCORD_ALERTS"))))))

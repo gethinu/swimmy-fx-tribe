@@ -114,7 +114,10 @@
         (swimmy.school::maybe-flush-deferred-founders))
       ;; P7: Check for stress test trigger flag
       (when (fboundp 'swimmy.school::check-stress-test-trigger)
-        (swimmy.school::check-stress-test-trigger)))))
+        (swimmy.school::check-stress-test-trigger))
+      ;; Flush batched alert buffers in brain loop (Stagnant C-Rank / Max Age)
+      (when (fboundp 'swimmy.core:check-timeout-flushes)
+        (swimmy.core:check-timeout-flushes)))))
 
 (defun check-scheduled-tasks (&optional (now (get-universal-time)))
   "Check and execute scheduled tasks based on data-driven configuration."

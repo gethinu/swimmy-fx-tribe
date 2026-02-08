@@ -198,9 +198,15 @@
     ((not (verify-parallel-scenarios symbol direction category)) nil)
     (t 
      ;; High Council Check
-     (let ((danger-p (and (boundp '*danger-level*) (> *danger-level* 2)))
-           (large-lot-p (> lot 0.05))
-           (high-rank-p (member rank '(:veteran :legend))))
+     (let* ((danger-level (if (boundp '*danger-level*) *danger-level* 0))
+            (swarm-cons (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
+            (danger-p (> danger-level 2))
+            (large-lot-p (> lot 0.05))
+            (high-rank-p (member rank '(:veteran :legend))))
+       (when (or large-lot-p high-rank-p danger-p)
+         (format t "[HC] CALL rt=~d sym=~a dir=~a cat=~a lot=~,3f rank=~a danger=~a swarm=~a urgency=~a~%"
+                 (get-internal-real-time) symbol direction category lot rank danger-level swarm-cons
+                 (if danger-p :critical :normal)))
        (if (and (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
            (let ((res (convene-high-council (format nil "~a ~a ~,2f" symbol direction lot) category 
                                             :urgency (if danger-p :critical :normal))))

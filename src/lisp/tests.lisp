@@ -698,6 +698,35 @@
     (assert-equal "BRAIN" (cdr (assoc 'swimmy.core::source msg)) "Expected source key")
     (assert-true (cdr (assoc 'swimmy.core::status msg)) "Expected status key")))
 
+(deftest test-heartbeat-uses-heartbeat-webhook
+  "send-discord-heartbeat should resolve heartbeat webhook key"
+  (let* ((orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
+         (orig-get (and (fboundp 'swimmy.core::get-discord-webhook)
+                        (symbol-function 'swimmy.core::get-discord-webhook)))
+         (orig-url (and (boundp 'swimmy.core::*heartbeat-webhook-url*)
+                        swimmy.core::*heartbeat-webhook-url*))
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*heartbeat-webhook-url* nil)
+          (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                (lambda (webhook message &key title color)
+                  (declare (ignore message title color))
+                  (setf captured webhook)))
+          (when orig-get
+            (setf (symbol-function 'swimmy.core::get-discord-webhook)
+                  (lambda (key)
+                    (if (string= key "heartbeat")
+                        "HB_URL"
+                        "ALERT_URL"))))
+          (swimmy.engine::send-discord-heartbeat)
+          (assert-equal "HB_URL" captured "heartbeat should use heartbeat webhook"))
+      (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue)
+      (when orig-get
+        (setf (symbol-function 'swimmy.core::get-discord-webhook) orig-get))
+      (when (boundp 'swimmy.core::*heartbeat-webhook-url*)
+        (setf swimmy.core::*heartbeat-webhook-url* orig-url)))))
+
 (deftest test-heartbeat-summary-no-data-omits-age
   "Heartbeat summary should not show age when no MT5 data has ever arrived"
   (let ((orig-last swimmy.globals::*last-guardian-heartbeat*))
@@ -1710,6 +1739,27 @@
         (sb-posix:unsetenv "SWIMMY_BACKTEST_CSV_OVERRIDE"))
       (setf swimmy.core::*backtest-csv-override* orig-override))))
 
+(deftest test-heartbeat-webhook-prefers-env
+  "get-discord-webhook should prefer SWIMMY_DISCORD_HEARTBEAT when set"
+  (require :sb-posix)
+  (let* ((orig-hb (uiop:getenv "SWIMMY_DISCORD_HEARTBEAT"))
+         (orig-alerts (uiop:getenv "SWIMMY_DISCORD_ALERTS"))
+         (hb "https://example.com/heartbeat")
+         (alerts "https://example.com/alerts")
+         (result nil))
+    (unwind-protect
+        (progn
+          (sb-posix:setenv "SWIMMY_DISCORD_HEARTBEAT" hb 1)
+          (sb-posix:setenv "SWIMMY_DISCORD_ALERTS" alerts 1)
+          (setf result (swimmy.core::get-discord-webhook "heartbeat"))
+          (assert-equal hb result "heartbeat should prefer SWIMMY_DISCORD_HEARTBEAT"))
+      (if orig-hb
+          (sb-posix:setenv "SWIMMY_DISCORD_HEARTBEAT" orig-hb 1)
+          (sb-posix:unsetenv "SWIMMY_DISCORD_HEARTBEAT"))
+      (if orig-alerts
+          (sb-posix:setenv "SWIMMY_DISCORD_ALERTS" orig-alerts 1)
+          (sb-posix:unsetenv "SWIMMY_DISCORD_ALERTS")))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
@@ -1896,6 +1946,40 @@
       (setf swimmy.persistence:*library-path* orig-path)
       (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
 
+(deftest test-load-strategy-recovers-struct-sexp
+  "load-strategy should recover #S(STRATEGY ...) content via fallback."
+  (let* ((tmp (format nil "/tmp/swimmy-strat-~a.lisp" (get-universal-time)))
+         (content "#S(STRATEGY :NAME \"UT-STRUCT\" :INDICATORS ((SWIMMY.SCHOOL::SMA 5)) :ENTRY (SWIMMY.SCHOOL::CROSS-ABOVE CLOSE OPEN) :EXIT (> CLOSE OPEN) :RANK :LEGEND :UNKNOWN-KEY 1)")
+         (strat nil))
+    (unwind-protect
+        (progn
+          (with-open-file (s tmp :direction :output :if-exists :supersede)
+            (format s "~a" content))
+          (setf strat (swimmy.persistence:load-strategy tmp))
+          (assert-true (and strat (swimmy.school::strategy-p strat)) "Should recover strategy")
+          (assert-equal "UT-STRUCT" (swimmy.school:strategy-name strat)))
+      (ignore-errors (delete-file tmp)))))
+
+(deftest test-init-knowledge-base-skips-nil-strategies
+  "init-knowledge-base should skip NIL entries and not crash."
+  (let ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+        (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+        (failed nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda () (list nil (swimmy.school:make-strategy :name "UT-DB"))))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda () (list nil (swimmy.school:make-strategy :name "UT-FILE"))))
+          (handler-case
+              (swimmy.school::init-knowledge-base)
+            (error () (setf failed t)))
+          (assert-false failed "init-knowledge-base should not crash on NIL")
+          (assert-true (every #'swimmy.school::strategy-p swimmy.school::*strategy-knowledge-base*)
+                       "KB should contain only strategies"))
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file))))
+
 (deftest test-promotion-triggers-noncorrelation-notification
   "Ensure A/S promotions fire noncorrelation notification once"
   (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
@@ -1917,6 +2001,129 @@
             (assert-equal 2 called "S promotion should notify once"))
         (when orig
           (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-noncorrelation-score-reports-coverage
+  "Noncorrelation score should report coverage days when insufficient."
+  (let* ((tmp-db (format nil "/tmp/swimmy-noncorr-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 5 days of pnl for A and B (insufficient for days=30)
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)
+                            ("2026-02-04" 4.0) ("2026-02-05" 5.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (multiple-value-bind (score reason min-days)
+                (swimmy.school::calculate-noncorrelation-score '("A" "B") :days 30)
+              (assert-equal nil score "Expected nil score for insufficient data")
+              (assert-equal :insufficient-data reason "Expected insufficient data reason")
+              (assert-equal 5 min-days "Expected 5 days of coverage")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-noncorrelation-notify-includes-coverage
+  "Noncorrelation notification should include coverage when data is insufficient."
+  (let* ((tmp-db (format nil "/tmp/swimmy-noncorr-msg-~a.db" (get-universal-time)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (orig-webhook swimmy.core:*discord-daily-webhook*))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 5 days of pnl for A and B
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)
+                            ("2026-02-04" 4.0) ("2026-02-05" 5.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "A" :rank :A)
+                        (swimmy.school:make-strategy :name "B" :rank :A)))
+            (setf swimmy.core:*discord-daily-webhook* "dummy")
+            (let ((captured nil))
+              (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                    (lambda (webhook msg &key color title)
+                      (declare (ignore webhook color title))
+                      (setf captured msg)))
+              (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                    (lambda (&rest args) (declare (ignore args)) nil))
+              (swimmy.school::notify-noncorrelated-promotion
+               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30)
+              (assert-true (and captured (search "データ不足: 5/30日" captured))
+                           "Expected coverage in N/A message")))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb
+              (symbol-function 'swimmy.core:queue-discord-notification) orig-queue
+              (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit
+              swimmy.core:*discord-daily-webhook* orig-webhook)
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-noncorrelation-telemetry-emitted
+  "Noncorrelation notification should emit telemetry with coverage details."
+  (let* ((tmp-db (format nil "/tmp/swimmy-noncorr-tel-~a.db" (get-universal-time)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event)))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 5 days of pnl for A and B
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)
+                            ("2026-02-04" 4.0) ("2026-02-05" 5.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "A" :rank :A)
+                        (swimmy.school:make-strategy :name "B" :rank :A)))
+            (let ((events nil))
+              (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                    (lambda (&rest args) (declare (ignore args)) nil))
+              (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                    (lambda (event-type &key data &allow-other-keys)
+                      (push (list event-type data) events)))
+              (swimmy.school::notify-noncorrelated-promotion
+               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30)
+              (let* ((ev (find "noncorrelation.score" events :key #'first :test #'string=))
+                     (data (and ev (second ev))))
+                (assert-true ev "Expected noncorrelation.score telemetry event")
+                (assert-equal "PROMO" (getf data :strategy) "Expected strategy name in telemetry")
+                (assert-equal :insufficient-data (getf data :reason) "Expected insufficient-data reason")
+                (assert-equal 5 (getf data :coverage-days) "Expected coverage-days in telemetry"))))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb
+              (symbol-function 'swimmy.core:queue-discord-notification) orig-queue
+              (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
@@ -2095,6 +2302,7 @@
                   test-req-history-uses-count
                   test-order-open-sexp-keys
                   test-heartbeat-message-is-sexp
+                  test-heartbeat-uses-heartbeat-webhook
                   test-heartbeat-summary-no-data-omits-age
                   test-executor-heartbeat-sends-sexp
                   test-executor-pending-orders-sends-sexp
@@ -2107,6 +2315,8 @@
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-write-sexp-atomic-stable-defaults
+                  test-load-strategy-recovers-struct-sexp
+                  test-init-knowledge-base-skips-nil-strategies
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
                   test-strategy-daily-pnl-aggregation
@@ -2116,7 +2326,11 @@
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
                   test-weekly-summary-dedup
+                  test-periodic-maintenance-flushes-stagnant-c-rank
                   test-promotion-triggers-noncorrelation-notification
+                  test-noncorrelation-score-reports-coverage
+                  test-noncorrelation-notify-includes-coverage
+                  test-noncorrelation-telemetry-emitted
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
                   test-pair-id-stable
@@ -2225,6 +2439,7 @@
                   test-backtest-pending-count-decrements-on-recv
                   test-deferred-flush-respects-batch
                   test-backtest-uses-csv-override
+                  test-heartbeat-webhook-prefers-env
                   test-backtest-v2-uses-alist
                   test-backtest-v2-phase2-promotes-to-a
                   test-prune-low-sharpe-skips-newborn-age
