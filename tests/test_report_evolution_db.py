@@ -32,4 +32,4 @@ def test_get_db_rank_counts():
     assert counts["b"] == 1
     assert counts["graveyard"] == 1
     assert counts["unranked"] == 1
-    assert counts["active"] == 4
+    assert counts["active"] == 5
