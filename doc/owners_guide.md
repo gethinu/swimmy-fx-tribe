@@ -195,6 +195,13 @@ OOS自動審査の稼働状況は Evolution Report と oos_status.txt で確認�
 > **真実のソースはSQLite（data/memory/swimmy.db）**。  
 > Libraryは派生スナップショット、In-memory KBはキャッシュとして扱う。
 
+## 🧭 OOS Monitor (Ops)
+- 監視ログ: `logs/oos_monitor.log`（JSONL）
+- 直近サマリ: `data/reports/oos_monitor_status.txt`
+- 定期実行: `swimmy-oos-monitor.timer`（10分毎）
+- systemd user で動かす場合は `~/.config/systemd/user/` にユニットを配置して `systemctl --user enable --now swimmy-oos-monitor.timer`
+- systemd system に移す場合は `systemd/swimmy-oos-monitor.service` と `systemd/swimmy-oos-monitor.timer` を `/etc/systemd/system/` に配置して `sudo systemctl daemon-reload && sudo systemctl enable --now swimmy-oos-monitor.timer`
+
 ## 🔗 ペア戦略 (Pair Strategy)
 
 - **独立エンティティ**: `pair_strategies` テーブルで `pair_id/strategy_a/strategy_b/weight/評価指標/rank/last_updated` を保持。

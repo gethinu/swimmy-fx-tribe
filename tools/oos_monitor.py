@@ -19,6 +19,7 @@ BASE_DIR = Path("/home/swimmy/swimmy")
 LOG_PATH = BASE_DIR / "logs" / "swimmy.log"
 OUT_LOG_PATH = BASE_DIR / "logs" / "oos_monitor.log"
 STATE_PATH = BASE_DIR / "data" / "reports" / "oos_monitor_state.json"
+STATUS_PATH = BASE_DIR / "data" / "reports" / "oos_monitor_status.txt"
 DB_PATH = BASE_DIR / "data" / "memory" / "swimmy.db"
 
 PATTERNS = {
@@ -26,6 +27,14 @@ PATTERNS = {
     "stale": "Stale OOS result ignored",
     "ignored": "OOS result ignored",
 }
+
+ALERT_THRESHOLD = {
+    "not_found": 1,
+    "stale": 3,
+    "ignored": 5,
+}
+
+ALERT_QUEUE_ERROR_THRESHOLD = 1
 
 
 def _load_state() -> Dict[str, int]:
@@ -98,6 +107,13 @@ def main() -> int:
     counts, offset, size, truncated = _scan_log()
     queue_counts = _fetch_oos_queue_counts()
 
+    alert_reasons = []
+    for key, threshold in ALERT_THRESHOLD.items():
+        if counts.get(key, 0) >= threshold:
+            alert_reasons.append(f"log:{key}>={threshold}")
+    if queue_counts.get("error", 0) >= ALERT_QUEUE_ERROR_THRESHOLD:
+        alert_reasons.append(f"queue:error>={ALERT_QUEUE_ERROR_THRESHOLD}")
+
     line = {
         "ts": ts,
         "log_new": counts,
@@ -105,11 +121,26 @@ def main() -> int:
         "log_offset": offset,
         "log_size": size,
         "oos_queue": queue_counts,
+        "alert": bool(alert_reasons),
+        "alert_reasons": alert_reasons,
     }
 
     OUT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with OUT_LOG_PATH.open("a") as out:
         out.write(json.dumps(line, ensure_ascii=True) + "\n")
+
+    STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    queue_text = " ".join(f"{k}={v}" for k, v in sorted(queue_counts.items())) or "empty"
+    status_lines = [
+        f"timestamp: {ts}",
+        f"log_new_not_found: {counts.get('not_found', 0)}",
+        f"log_new_stale: {counts.get('stale', 0)}",
+        f"log_new_ignored: {counts.get('ignored', 0)}",
+        f"oos_queue: {queue_text}",
+        f"alert: {bool(alert_reasons)}",
+        f"alert_reasons: {', '.join(alert_reasons) if alert_reasons else 'none'}",
+    ]
+    STATUS_PATH.write_text("\n".join(status_lines) + "\n")
 
     return 0
 
