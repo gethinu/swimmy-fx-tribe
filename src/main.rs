@@ -202,30 +202,35 @@ struct CpcvResponse {
     result: CpcvResultPayload,
 }
 
+fn cpcv_payload_from_aggregate(
+    strategy_name: &str,
+    agg: &cpcv::CpcvAggregateResult,
+) -> CpcvResultPayload {
+    let path_count = agg.path_count;
+    let passed_count = agg.passed_count;
+    let failed_count = path_count.saturating_sub(passed_count);
+    let pass_rate = if path_count > 0 {
+        passed_count as f64 / path_count as f64
+    } else {
+        0.0
+    };
+    let is_passed = agg.median_sharpe >= 0.5 && pass_rate >= 0.5;
+
+    CpcvResultPayload {
+        strategy_name: strategy_name.to_string(),
+        median_sharpe: agg.median_sharpe,
+        path_count,
+        passed_count,
+        failed_count,
+        pass_rate,
+        is_passed,
+        error: None,
+    }
+}
+
 fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
     match cpcv::run_cpcv_validation(&_req.strategy_name, &_req.candles_file, &_req.strategy_params) {
-        Ok(agg) => {
-            let path_count = agg.path_count;
-            let passed_count = agg.passed_count;
-            let failed_count = path_count.saturating_sub(passed_count);
-            let pass_rate = if path_count > 0 {
-                passed_count as f64 / path_count as f64
-            } else {
-                0.0
-            };
-            let is_passed = agg.median_sharpe >= 0.5 && pass_rate >= 0.5;
-
-            CpcvResultPayload {
-                strategy_name: _req.strategy_name.clone(),
-                median_sharpe: agg.median_sharpe,
-                path_count,
-                passed_count,
-                failed_count,
-                pass_rate,
-                is_passed,
-                error: None,
-            }
-        }
+        Ok(agg) => cpcv_payload_from_aggregate(&_req.strategy_name, &agg),
         Err(e) => CpcvResultPayload {
             strategy_name: _req.strategy_name.clone(),
             median_sharpe: 0.0,
@@ -1810,6 +1815,29 @@ mod tests {
         assert_eq!(result.passed_count, 0);
         assert!(!result.is_passed);
         assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_cpcv_payload_success() {
+        let agg = cpcv::CpcvAggregateResult {
+            median_sharpe: 0.75,
+            median_pf: 1.3,
+            median_wr: 55.0,
+            median_maxdd: 0.12,
+            std_sharpe: 0.2,
+            path_count: 10,
+            passed_count: 6,
+        };
+
+        let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", &agg);
+
+        assert_eq!(payload.strategy_name, "UT-CPCV-SUCCESS");
+        assert_eq!(payload.path_count, 10);
+        assert_eq!(payload.passed_count, 6);
+        assert_eq!(payload.failed_count, 4);
+        assert!((payload.pass_rate - 0.6).abs() < 1e-9);
+        assert!(payload.is_passed);
+        assert!(payload.error.is_none());
     }
 
     #[test]
