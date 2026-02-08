@@ -182,6 +182,63 @@ struct CpcvRequest {
     strategy_params: serde_json::Value,
 }
 
+#[derive(Debug, Serialize)]
+struct CpcvResultPayload {
+    strategy_name: String,
+    median_sharpe: f64,
+    path_count: usize,
+    passed_count: usize,
+    failed_count: usize,
+    pass_rate: f64,
+    is_passed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CpcvResponse {
+    #[serde(rename = "type")]
+    msg_type: String,
+    result: CpcvResultPayload,
+}
+
+fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
+    match cpcv::run_cpcv_validation(&_req.strategy_name, &_req.candles_file, &_req.strategy_params) {
+        Ok(agg) => {
+            let path_count = agg.path_count;
+            let passed_count = agg.passed_count;
+            let failed_count = path_count.saturating_sub(passed_count);
+            let pass_rate = if path_count > 0 {
+                passed_count as f64 / path_count as f64
+            } else {
+                0.0
+            };
+            let is_passed = agg.median_sharpe >= 0.5 && pass_rate >= 0.5;
+
+            CpcvResultPayload {
+                strategy_name: _req.strategy_name.clone(),
+                median_sharpe: agg.median_sharpe,
+                path_count,
+                passed_count,
+                failed_count,
+                pass_rate,
+                is_passed,
+                error: None,
+            }
+        }
+        Err(e) => CpcvResultPayload {
+            strategy_name: _req.strategy_name.clone(),
+            median_sharpe: 0.0,
+            path_count: 0,
+            passed_count: 0,
+            failed_count: 0,
+            pass_rate: 0.0,
+            is_passed: false,
+            error: Some(e),
+        },
+    }
+}
+
 // ═══════════════════════════════════════════════════
 // V8.0: RISK GATE - Guardian's Veto Power (Graham)
 // Brain's orders must pass through this gate before MT5
@@ -1455,11 +1512,44 @@ fn main() {
                          cache.insert(req.data_id.clone(), (req.candles, req.aux_candles));
                          println!("✅ Data Cached: {} (S-Exp: {})", req.data_id, is_sexp);
                      }
+                } else if msg.contains("\"action\":\"CPCV_VALIDATE\"") || (is_sexp && msg.contains("CPCV_VALIDATE")) {
+                     let req_res: Result<CpcvRequest, String> = if is_sexp {
+                         serde_lexpr::from_str(&msg).map_err(|e| e.to_string())
+                     } else {
+                         serde_json::from_str(&msg).map_err(|e| e.to_string())
+                     };
+                     match req_res {
+                         Ok(req) => {
+                             let result = build_cpcv_result(&req);
+                             let response = CpcvResponse {
+                                 msg_type: "CPCV_RESULT".to_string(),
+                                 result,
+                             };
+                             let response_str = if is_sexp {
+                                 match serde_lexpr::to_string(&response) {
+                                     Ok(s) => s,
+                                     Err(e) => {
+                                         eprintln!("❌ CPCV_RESULT serialize error: {}", e);
+                                         String::new()
+                                     }
+                                 }
+                             } else {
+                                 serde_json::to_string(&response).unwrap_or_else(|e| {
+                                     eprintln!("❌ CPCV_RESULT serialize error: {}", e);
+                                     String::new()
+                                 })
+                             };
+                             if !response_str.is_empty() {
+                                 let _ = push_to_brain.send(&response_str, 0);
+                             }
+                         }
+                         Err(e) => println!("❌ CPCV_VALIDATE parse error: {}", e),
+                     }
                 } else if msg.contains("\"action\":\"BACKTEST\"") || (is_sexp && msg.contains("BACKTEST")) {
                      let req_res: Result<BacktestRequest, String> = if is_sexp {
                          serde_lexpr::from_str(&msg).map_err(|e| e.to_string())
                      } else {
-                         serde_json::from_str(&msg).map_err(|e| e.to_string())
+                        serde_json::from_str(&msg).map_err(|e| e.to_string())
                      };
                      
                      if let Ok(req) = req_res {
@@ -1702,6 +1792,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cpcv_validate_handler_error_for_missing_file() {
+        let req = CpcvRequest {
+            action: "CPCV_VALIDATE".to_string(),
+            strategy_name: "UT-CPCV".to_string(),
+            symbol: "USDJPY".to_string(),
+            candles_file: "/tmp/does-not-exist.csv".to_string(),
+            strategy_params: serde_json::json!({}),
+        };
+
+        let result = build_cpcv_result(&req);
+
+        assert_eq!(result.strategy_name, "UT-CPCV");
+        assert_eq!(result.path_count, 0);
+        assert_eq!(result.passed_count, 0);
+        assert!(!result.is_passed);
+        assert!(result.error.is_some());
+    }
 
     #[test]
     fn heartbeat_is_sexp() {
