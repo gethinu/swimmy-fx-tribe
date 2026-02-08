@@ -82,8 +82,16 @@
     (t
      (%alist-val result '(strategy_name :strategy_name strategy-name :strategy-name name :name) nil))))
 
+(defun %preview-msg (msg &optional (limit 220))
+  "Return a sanitized preview string for logs."
+  (let* ((raw (if (and msg (> (length msg) limit)) (subseq msg 0 limit) msg))
+         (clean (if raw (substitute #\Space #\Newline (substitute #\Space #\Return raw)) "")))
+    clean))
+
 (defparameter *missing-strategy-name-log-limit* 3)
 (defparameter *missing-strategy-name-log-count* 0)
+(defparameter *json-ignored-log-limit* 20)
+(defparameter *json-ignored-log-count* 0)
 (defparameter *backtest-recv-count* 0)
 (defparameter *backtest-recv-last-log* 0)
 (defparameter *backtest-recv-last-name* nil)
@@ -443,11 +451,20 @@
                                (format t "[DISPATCH] ⚠️ JSON BACKTEST_RESULT missing result~%")
                                nil))))
                       (t
-                       (format t "[DISPATCH] ⚠️ JSON payload ignored (type=~a)~%" type-str)
+                       (let ((detail-p (< *json-ignored-log-count* *json-ignored-log-limit*)))
+                         (when detail-p (incf *json-ignored-log-count*))
+                         (if detail-p
+                             (format t "[DISPATCH] ⚠️ JSON payload ignored (type=~a) head=~a~%"
+                                     type-str (%preview-msg msg))
+                             (format t "[DISPATCH] ⚠️ JSON payload ignored (type=~a)~%" type-str)))
                        nil)))
-                  (progn
-                    (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed)~%")
-                    nil)))))
+                  (let ((detail-p (< *json-ignored-log-count* *json-ignored-log-limit*)))
+                    (when detail-p (incf *json-ignored-log-count*))
+                    (if detail-p
+                        (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed) head=~a~%"
+                                (%preview-msg msg))
+                        (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed)~%"))
+                    nil))))
     (when err
       (format t "[L] Msg Error: ~a" err)
       nil)
