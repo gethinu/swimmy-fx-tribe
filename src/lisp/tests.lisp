@@ -1030,6 +1030,30 @@
           (assert-true (null (search "部族" captured))))
       (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
 
+(deftest test-recruit-notification-uses-category
+  "recruit notification should say Category and omit Clan/tribe"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.core:notify-discord-recruit)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:notify-discord-recruit)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)))
+          (let ((strat (swimmy.school:make-strategy
+                        :name "UT-RECRUIT"
+                        :symbol "USDJPY"
+                        :timeframe 5
+                        :direction :BUY
+                        :category :trend)))
+            (swimmy.school::notify-recruit-unified strat :founder))
+          (assert-true (and captured (> (length captured) 0)))
+          (assert-true (search "Category" captured))
+          (assert-false (search "Clan" captured))
+          (assert-false (search "Tribe" captured))
+          (assert-false (search "部族" captured)))
+      (setf (symbol-function 'swimmy.core:notify-discord-recruit) orig))))
+
 (deftest test-ledger-omits-tribe-fields
   "save-state should omit tribe fields"
   (let* ((tmp-path (merge-pathnames (format nil "/tmp/swimmy-state-~a.sexp" (get-universal-time))))
@@ -2356,6 +2380,7 @@
                   test-live-status-schema-v2-no-tribe
                   test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
+                  test-recruit-notification-uses-category
                   test-ledger-omits-tribe-fields
                   test-category-vote-list
                   test-dynamic-narrative-uses-category-display

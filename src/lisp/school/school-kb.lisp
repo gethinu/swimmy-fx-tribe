@@ -272,7 +272,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━
 🏷️ Source: ~a
 📊 Name: `~a`
-🏛️ Clan: ~a
+🏷️ Category: ~a
 📈 Sharpe: ~,2f"
              source name cat sharpe)
      :color (if (eq source :founder) 3447003 #x9B59B6))))
