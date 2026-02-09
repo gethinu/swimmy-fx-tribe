@@ -262,12 +262,30 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
 
 **備考**: 以前のJSON要求形式は廃止（後方互換なし）。Backtest Service は **S式のみ**受理/返却する。  
 
+**CPCV_VALIDATE (Request, S-Expression)**:
+```
+((action . "CPCV_VALIDATE")
+ (strategy_name . "Volvo-Scalp-Gen0")
+ (symbol . "USDJPY")
+ (candles_file . "/path/to/USDJPY_M1.csv")
+ (request_id . "RID-123")
+ (strategy_params . ((name . "Volvo-Scalp-Gen0")
+                     (sma_short . 10)
+                     (sma_long . 50)
+                     (sl . 50.0)
+                     (tp . 100.0)
+                     (volume . 0.01)))))
+```
+
 **CPCV_RESULT (Response, Guardianフォーマット)**:
 ```
 ((type . "CPCV_RESULT")
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
             (request_id . "RID-123")  ; optional: 相関ID
             (median_sharpe . 0.55)
+            (median_pf . 1.52)
+            (median_wr . 0.47)
+            (median_maxdd . 0.12)
             (path_count . 20)
             (passed_count . 12)
             (failed_count . 8)
