@@ -275,7 +275,7 @@
   (or (find-strategy-object name)
       (find name swimmy.globals:*evolved-strategies* :key #'strategy-name :test #'string=)))
 
-(defun kill-strategy (name reason)
+(defun kill-strategy (name reason &key reason-code)
   "P0: Soft Kill - Shelve indefinitely instead of permanent deletion (Expert Panel 2026-01-16)"
   (let ((s (find-strategy-object name)))
     (when s
@@ -287,6 +287,8 @@
       ;; Notify
       (when (fboundp 'notify-discord-alert)
         (cond
+          ((eq reason-code :stagnant-c-rank)
+           (swimmy.core::queue-stagnant-c-rank name))
           ((and (stringp reason)
                 (search "Max Age Retirement" reason :test #'char-equal))
            (swimmy.core::queue-max-age-retire name))

@@ -193,6 +193,39 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-kill-strategy-reason-code-queues-stagnant
+  "kill-strategy should queue stagnant batch via reason-code even without string match."
+  (let* ((name "TEST-REASON-CODE")
+         (tmp-db (format nil "/tmp/swimmy-reason-code-~a.db" (get-universal-time)))
+         (queued nil)
+         (orig-queue (and (fboundp 'swimmy.core::queue-stagnant-c-rank)
+                          (symbol-function 'swimmy.core::queue-stagnant-c-rank))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (setf swimmy.core::*stagnant-c-rank-buffer* nil)
+            (setf swimmy.core::*stagnant-c-rank-first-seen* 0)
+            (when orig-queue
+              (setf (symbol-function 'swimmy.core::queue-stagnant-c-rank)
+                    (lambda (s &key now)
+                      (declare (ignore now))
+                      (push s queued)
+                      t)))
+            (swimmy.school::init-db)
+            (let ((strat (make-strategy :name name :symbol "USDJPY")))
+              (setf *strategy-knowledge-base* (list strat))
+              (upsert-strategy strat)
+              (kill-strategy name "Manual Reason" :reason-code :stagnant-c-rank)
+              (assert-equal 1 (length queued) "Should queue via reason-code")))
+        (when orig-queue
+          (setf (symbol-function 'swimmy.core::queue-stagnant-c-rank) orig-queue))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-sqlite-wal-mode-enabled
   "Ensure init-db sets SQLite to WAL mode for concurrency."
   (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))

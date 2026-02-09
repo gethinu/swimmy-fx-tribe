@@ -388,10 +388,13 @@
       ;; Check Performance (using existing Grade logic or simple Sharpe)
       (let ((sharpe (or (strategy-sharpe s) -1.0)))
         (cond
-          ((< sharpe 0.0) 
-           (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe)))
+          ((< sharpe 0.0)
+           (kill-strategy (strategy-name s)
+                          (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe)))
           ((and (< sharpe 0.6) (> (strategy-age s) 10))
-           (kill-strategy (strategy-name s) (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe))))))))
+           (kill-strategy (strategy-name s)
+                          (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe)
+                          :reason-code :stagnant-c-rank)))))))
 
 (defun process-breeding-cycle ()
   "Main Entry Point: Aging, Culling, and Breeding.
