@@ -267,9 +267,14 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
 ((action . "CPCV_VALIDATE")
  (strategy_name . "Volvo-Scalp-Gen0")  ; 必須
  (symbol . "USDJPY")                   ; 必須
- (candles_file . "/home/swimmy/swimmy/data/historical/USDJPY_M1.csv") ; 必須
+ (candles_file . "/path/to/USDJPY_M1.csv") ; 必須
  (request_id . "RID-123")              ; optional: 相関ID
- (strategy_params . ((sma_short . 10) (sma_long . 50) (sl . 50.0) (tp . 100.0)))) ; 必須(空でも可)
+ (strategy_params . ((name . "Volvo-Scalp-Gen0")
+                     (sma_short . 10)
+                     (sma_long . 50)
+                     (sl . 50.0)
+                     (tp . 100.0)
+                     (volume . 0.01))))) ; 必須(空でも可)
 ```
 
 **CPCV_RESULT (Response, Guardianフォーマット)**:

@@ -285,8 +285,16 @@ REVERSION : ~a"
                                    (and (strategy-creation-time s)
                                         (> (strategy-creation-time s) one-day-ago)))
                                  all)))
-    (let ((top-snippet (build-top-candidates-snippet-from-db))
-          (cpcv-snippet (build-cpcv-status-snippet))
+    (let* ((top-snippet (build-top-candidates-snippet-from-db))
+           (a-rank-db (or (ignore-errors (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))
+                          '()))
+           (cpcv-counts (cpcv-median-failure-counts a-rank-db))
+           (cpcv-failure-line (format nil "CPCV Median Failures: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d total=~d"
+                                      (getf cpcv-counts :pf 0)
+                                      (getf cpcv-counts :wr 0)
+                                      (getf cpcv-counts :maxdd 0)
+                                      (getf cpcv-counts :total 0)))
+           (cpcv-snippet (format nil "~a~%~a" (build-cpcv-status-snippet) cpcv-failure-line))
           (oos-snippet (oos-metrics-summary-line))
           (phase2-end-text
             (let ((phase2-unix swimmy.globals:*phase2-last-end-unix*))
@@ -302,7 +310,7 @@ Current status of the autonomous strategy generation pipeline.
 ~d Strategies
 
 🏆 **S-Rank (Verified Elite)**
-~d (Sharpe≥0.5 PF≥1.5 WR≥45% MaxDD<15% + CPCV)
+~d (IS Sharpe≥0.5 + CPCV median PF/WR/MaxDD + pass_rate)
 
 🎖️ **A-Rank (Pro)**
 ~d (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)

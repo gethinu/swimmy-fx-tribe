@@ -396,6 +396,9 @@
                                        (%result-val-normalized result '(request_id request-id) nil)))
                           (trade-list (%result-val-normalized result '(trade_list trade-list) nil))
                           (median (%result-val-normalized result '(median_sharpe median-sharpe median) 0.0))
+                          (median-pf (%result-val-normalized result '(median_pf median-pf) 0.0))
+                          (median-wr (%result-val-normalized result '(median_wr median-wr) 0.0))
+                          (median-maxdd (%result-val-normalized result '(median_maxdd median-maxdd) 0.0))
                           (paths (%result-val-normalized result '(path_count path-count paths) 0))
                           (passed (%result-val-normalized result '(passed_count passed-count passed) 0))
                           (failed (%result-val-normalized result '(failed_count failed-count failed) 0))
@@ -405,6 +408,8 @@
                                       nil))
                           (error-msg (%result-val-normalized result '(error err error_msg) nil)))
                      (let ((result-plist (list :strategy-name name :median-sharpe median
+                                               :median-pf median-pf :median-wr median-wr
+                                               :median-maxdd median-maxdd
                                                :path-count paths :passed-count passed
                                                :failed-count failed :pass-rate pass-rate
                                                :is-passed is-passed :request-id request-id
@@ -424,15 +429,18 @@
                          (when (and (> expected 0)
                                     (>= count (max 1 (floor (* expected 0.9)))))
                            (swimmy.core:notify-cpcv-summary)))
-                       (when is-passed
-                         (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
-                                                :key #'swimmy.school:strategy-name :test #'string=)
-                                          (find name swimmy.globals:*evolved-strategies*
-                                                :key #'swimmy.school:strategy-name :test #'string=))))
-                           (when strat
-                             (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
-                             (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
-                             (swimmy.school:upsert-strategy strat)
+                       (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
+                                              :key #'swimmy.school:strategy-name :test #'string=)
+                                        (find name swimmy.globals:*evolved-strategies*
+                                              :key #'swimmy.school:strategy-name :test #'string=))))
+                         (when (and strat (not error-msg))
+                           (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
+                           (setf (swimmy.school:strategy-cpcv-median-pf strat) median-pf)
+                           (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
+                           (setf (swimmy.school:strategy-cpcv-median-maxdd strat) median-maxdd)
+                           (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
+                           (swimmy.school:upsert-strategy strat)
+                           (when is-passed
                              (if (swimmy.school:check-rank-criteria strat :S)
                                  (swimmy.school:ensure-rank strat :S
                                                             "CPCV Passed and Criteria Met")

@@ -15,6 +15,9 @@
                         :max-dd 0.2
                         :oos-sharpe 1.1
                         :cpcv-median 0.9
+                        :cpcv-median-pf 1.4
+                        :cpcv-median-wr 0.52
+                        :cpcv-median-maxdd 0.12
                         :cpcv-pass-rate 0.8)))
     (let ((swimmy.core::*db-path-default* tmp-db)
           (swimmy.core::*sqlite-conn* nil)
@@ -40,10 +43,16 @@
                      (obj (read-from-string sexp-str)))
                 (assert-true (swimmy.school::strategy-p obj) "Stored object should be a strategy")
                 (assert-true (< (abs (- (strategy-sharpe obj) updated-sharpe)) 0.0001)
-                             "data_sexp should reflect updated sharpe"))))
+                             "data_sexp should reflect updated sharpe")
+                (assert-true (< (abs (- (strategy-cpcv-median-pf obj) 1.4)) 0.0001)
+                             "data_sexp should reflect updated cpcv median PF")
+                (assert-true (< (abs (- (strategy-cpcv-median-wr obj) 0.52)) 0.0001)
+                             "data_sexp should reflect updated cpcv median WR")
+                (assert-true (< (abs (- (strategy-cpcv-median-maxdd obj) 0.12)) 0.0001)
+                             "data_sexp should reflect updated cpcv median MaxDD")))
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
-        (ignore-errors (delete-file tmp-db))))))
+        (ignore-errors (delete-file tmp-db)))))))
 
 (deftest test-kill-strategy-persists-status
   "Soft kill should persist status to DB to survive restarts."

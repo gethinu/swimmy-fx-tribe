@@ -132,6 +132,9 @@
    #:strategy-regime-intent ;; V49.2: Metadata
    #:strategy-oos-sharpe
    #:strategy-cpcv-median-sharpe
+   #:strategy-cpcv-median-pf
+   #:strategy-cpcv-median-wr
+   #:strategy-cpcv-median-maxdd
    #:strategy-cpcv-pass-rate
    
    ;; Leader Info Struct Accessors

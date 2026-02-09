@@ -22,7 +22,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **ランク体系**: 
   - **Incubator/B-RANK**: Sharpe ≥ 0.1
   - **A-RANK**: Sharpe ≥ 0.3 + OOS検証合格
-  - **S-RANK**: **IS (In-sample) Sharpe ≥ 0.5** + CPCV検証合格（実弾許可、PF/WR/MaxDDはCPCV中央値で判定）
+  - **S-RANK**: **IS Sharpe ≥ 0.5** + CPCV検証合格（実弾許可、PF/WR/MaxDDはCPCV中央値で判定）
   - **Legend**: 不老不死（外部導入戦略）
   - **Graveyard**: 廃棄戦略（失敗パターン分析用）
   - **Retired**: Max Age 退役アーカイブ（低ウェイト学習、`data/library/RETIRED/`・`data/memory/retired.sexp`）
@@ -98,7 +98,7 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 
 | Rank | Label | Criteria (AND条件) | Validation Gate |
 | :--- | :--- | :--- | :--- |
-| **S-Rank** | Verified Elite | **IS (In-sample) Sharpe ≥ 0.5** | **CPCV** (Combinatorial Purged Cross-Validation)<br>- Median Sharpe ≥ 0.5<br>- Median PF ≥ 1.5<br>- Median WR ≥ 45%<br>- Median MaxDD < 15%<br>- Pass Rate ≥ 50% |
+| **S-Rank** | Verified Elite | **IS Sharpe ≥ 0.5** | **CPCV** (Combinatorial Purged Cross-Validation)<br>- Median Sharpe ≥ 0.5<br>- Median PF ≥ 1.5<br>- Median WR ≥ 45%<br>- Median MaxDD < 15%<br>- Pass Rate ≥ 50% |
 | **A-Rank** | Pro | Sharpe ≥ 0.3<br>PF ≥ 1.2<br>WR ≥ 40%<br>MaxDD < 20% | **OOS** (Out-of-Sample)<br>- OOS Sharpe ≥ 0.3 |
 | **B-Rank** | Selection | Sharpe ≥ 0.1<br>PF ≥ 1.0<br>WR ≥ 30%<br>MaxDD < 30% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
 | **Incubator** | - | Sharpe < 0.1 | (None) |

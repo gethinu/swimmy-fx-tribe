@@ -144,7 +144,7 @@
              (sorted (sort (copy-list all-warriors) #'> 
                            :key (lambda (s) 
                                   (+ (case (strategy-rank s) (:legend 3.0) (:S 2.0) (:A 1.0) (t 0.0))
-                                     (or (strategy-sharpe s) 0)
+                                     (strategy-selection-score s)
                                      (* (or (strategy-generation s) 0) 0.01))))))
         
         ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
@@ -187,7 +187,7 @@
          (victims nil))
     (when (> (length pool) limit)
       ;; Sort by Sharpe (High to Low)
-      (let ((sorted (sort (copy-list pool) #'> :key (lambda (s) (or (strategy-sharpe s) -999)))))
+      (let ((sorted (sort (copy-list pool) #'> :key #'strategy-selection-score)))
         (setf survivors (subseq sorted 0 limit))
         (setf victims (subseq sorted limit))
         
