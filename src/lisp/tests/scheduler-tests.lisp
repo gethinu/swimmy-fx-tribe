@@ -98,3 +98,20 @@
            (swimmy.main:check-scheduled-tasks time-2318)
            (assert-equal 1 (count :sent *test-results*) "Should not send twice on same day"))
       (setf (symbol-function 'swimmy.main::send-daily-tribal-narrative) original-report-fn))))
+
+(deftest test-scheduler-calls-timeout-flushes
+  "run-periodic-maintenance should call check-timeout-flushes"
+  (let ((called nil)
+        (orig-flush (symbol-function 'swimmy.core::check-timeout-flushes))
+        (orig-check (symbol-function 'swimmy.main::check-scheduled-tasks)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::check-timeout-flushes)
+                (lambda (&rest args) (declare (ignore args)) (setf called t)))
+          (setf (symbol-function 'swimmy.main::check-scheduled-tasks)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (let ((*candle-history* nil))
+            (swimmy.main::run-periodic-maintenance))
+          (assert-true called "Expected timeout flushes to be invoked"))
+      (setf (symbol-function 'swimmy.core::check-timeout-flushes) orig-flush)
+      (setf (symbol-function 'swimmy.main::check-scheduled-tasks) orig-check))))

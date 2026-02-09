@@ -109,6 +109,9 @@
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
       (when (fboundp 'swimmy.engine::check-discord-heartbeat)
         (swimmy.engine::check-discord-heartbeat))
+      ;; Flush notification buffers even if evolution loop stalls
+      (when (fboundp 'swimmy.core::check-timeout-flushes)
+        (swimmy.core:check-timeout-flushes))
       ;; Deferred founder backtests (rate-limited; avoid blocking recv loop)
       (when (fboundp 'swimmy.school::maybe-flush-deferred-founders)
         (swimmy.school::maybe-flush-deferred-founders))

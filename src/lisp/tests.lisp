@@ -1773,6 +1773,7 @@
                   test-2300-trigger-logic
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
+                  test-scheduler-calls-timeout-flushes
                   test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
