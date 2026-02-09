@@ -344,7 +344,7 @@
       (let ((msg (format nil "🏛️ **HIGH COUNCIL**~%~a ~a (~a)~%~a" 
                          category symbol direction reason)))
         (format t "[L] ~a~%" msg)
-        (when (fboundp 'notify-discord-symbol)
-           (notify-discord-symbol symbol msg :color (if approval 3066993 15158332)))))
+        (when (fboundp 'notify-discord-status)
+          (notify-discord-status msg :color (if approval 3066993 15158332)))))
            
     approval))

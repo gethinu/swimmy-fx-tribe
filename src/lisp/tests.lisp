@@ -1211,6 +1211,38 @@
       (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
       (setf swimmy.globals::*current-volatility-state* orig-vol))))
 
+(deftest test-high-council-notify-uses-status
+  "High Council notifications should use status channel, not symbol live-feed"
+  (let ((orig-danger swimmy.globals::*danger-level*)
+        (orig-swarm swimmy.globals::*last-swarm-consensus*)
+        (orig-vol swimmy.globals::*current-volatility-state*)
+        (orig-notify-symbol (symbol-function 'swimmy.core:notify-discord-symbol))
+        (orig-notify-status (symbol-function 'swimmy.core:notify-discord-status)))
+    (let ((symbol-called nil)
+          (status-called nil))
+      (unwind-protect
+          (progn
+            (setf swimmy.globals::*danger-level* 2)
+            (setf swimmy.globals::*last-swarm-consensus* 0.8)
+            (setf swimmy.globals::*current-volatility-state* :normal)
+            (setf (symbol-function 'swimmy.core:notify-discord-symbol)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    (setf symbol-called t)))
+            (setf (symbol-function 'swimmy.core:notify-discord-status)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    (setf status-called t)))
+            (swimmy.school::convene-high-council
+             '(:symbol "USDJPY" :direction :buy) :trend)
+            (assert-false symbol-called)
+            (assert-true status-called))
+        (setf swimmy.globals::*danger-level* orig-danger)
+        (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
+        (setf swimmy.globals::*current-volatility-state* orig-vol)
+        (setf (symbol-function 'swimmy.core:notify-discord-symbol) orig-notify-symbol)
+        (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify-status)))))
+
 (deftest test-verify-parallel-scenarios-uses-category-keys
   "parallel verification should map canonical categories"
   (let ((orig-regime swimmy.school::*market-regime*)
@@ -1233,13 +1265,13 @@
   (let ((orig-danger swimmy.globals::*danger-level*)
         (orig-swarm swimmy.globals::*last-swarm-consensus*)
         (orig-vol swimmy.globals::*current-volatility-state*)
-        (orig-notify (symbol-function 'swimmy.core:notify-discord-symbol)))
+        (orig-notify (symbol-function 'swimmy.core:notify-discord-status)))
     (unwind-protect
         (progn
           (setf swimmy.globals::*danger-level* 0)
           (setf swimmy.globals::*last-swarm-consensus* 0.0)
           (setf swimmy.globals::*current-volatility-state* :extreme)
-          (setf (symbol-function 'swimmy.core:notify-discord-symbol)
+          (setf (symbol-function 'swimmy.core:notify-discord-status)
                 (lambda (&rest args) (declare (ignore args)) nil))
           (assert-true (swimmy.school::convene-high-council
                         '(:symbol "USDJPY" :direction :buy) :breakout))
@@ -1248,7 +1280,7 @@
       (setf swimmy.globals::*danger-level* orig-danger)
       (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
       (setf swimmy.globals::*current-volatility-state* orig-vol)
-      (setf (symbol-function 'swimmy.core:notify-discord-symbol) orig-notify))))
+      (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify))))
 
 (deftest test-live-status-schema-v2-no-tribe
   "live_status should be schema v2 and omit tribe fields"
@@ -3200,6 +3232,7 @@
                   test-telemetry-event-schema
                   test-category-trade-interval
                   test-high-council-danger-lv2-uses-swarm-consensus
+                  test-high-council-notify-uses-status
                   test-verify-parallel-scenarios-uses-category-keys
                   test-high-council-extreme-volatility-uses-category-keys
                   test-live-status-schema-v2-no-tribe
