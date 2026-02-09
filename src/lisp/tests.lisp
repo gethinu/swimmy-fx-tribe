@@ -366,6 +366,35 @@
             (assert-equal "CPCV" (third called) "oos_kind should be CPCV"))
         (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)))))
 
+(deftest test-cpcv-result-preserves-trade-meta
+  "CPCV_RESULT should preserve trade_list metadata fields"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-CPCV\") (trade_list . (((timestamp . 1) (pnl . 1.0) (symbol . \"USDJPY\")))) (trades_truncated . t) (trades_ref . \"RID-CPCV\"))))")
+           (called nil)
+           (captured nil)
+           (orig-record (symbol-function 'swimmy.school:record-backtest-trades))
+           (orig-notify (symbol-function 'swimmy.core:notify-cpcv-result)))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:record-backtest-trades)
+                  (lambda (rid name kind trades)
+                    (setf called (list rid name kind trades))
+                    nil))
+            (setf (symbol-function 'swimmy.core:notify-cpcv-result)
+                  (lambda (data)
+                    (setf captured data)
+                    nil))
+            (funcall fn msg)
+            (assert-true called "record-backtest-trades should be called")
+            (assert-true captured "notify-cpcv-result should be called")
+            (assert-equal t (getf captured :trades-truncated)
+                          "trades_truncated should be preserved")
+            (assert-equal "RID-CPCV" (getf captured :trades-ref)
+                          "trades_ref should be preserved"))
+        (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)
+        (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)))))
+
 (deftest test-cpcv-result-normalizes-is-passed
   "CPCV_RESULT should treat false-ish is_passed as not passed"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -422,7 +451,19 @@
           (assert-true (and captured (search "request_id" captured))
                        "request_id should be present in payload")
           (assert-true (search "RID-CPCV-1" captured)
-                       "request_id should match generated value"))
+                       "request_id should match generated value")
+          (assert-true (search "(action" captured)
+                       "action should be present in payload")
+          (assert-true (search "CPCV_VALIDATE" captured)
+                       "action should be CPCV_VALIDATE")
+          (assert-true (search "strategy_name" captured)
+                       "strategy_name should be present")
+          (assert-true (search "symbol" captured)
+                       "symbol should be present")
+          (assert-true (search "candles_file" captured)
+                       "candles_file should be present")
+          (assert-true (search "strategy_params" captured)
+                       "strategy_params should be present"))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
       (setf (symbol-function 'swimmy.core:generate-uuid) orig-uuid))))
 
@@ -2891,6 +2932,7 @@
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
                   test-cpcv-result-persists-trade-list
+                  test-cpcv-result-preserves-trade-meta
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
