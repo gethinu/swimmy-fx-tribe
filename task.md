@@ -93,3 +93,21 @@
 - [ ] dual-trend を OOS/WFV（コスト込み）で短期検証し、IS負けなら撤去: `src/lisp/core/research-algorithms.lisp`
 - [ ] MODEL GATE 抑制件数をテレメトリ/レポートに出す: `src/lisp/school/school-execution.lisp`
 - [ ] dual-trend の挙動テストを追加して仕様を固定する: `src/lisp/tests.lisp`
+
+## Expert Panel 2026-02-09 (Pattern Similarity Service)
+- [ ] Pattern Similarity Service の追加を正本ドキュメントに反映（ポート/プロトコル/S式）: `docs/llm/SPEC.md`, `docs/llm/INTERFACES.md`, `docs/llm/STATE.md`
+- [ ] Data Keeper の保存上限/分離ストレージ方針を決定し明文化: `docs/llm/SPEC.md`
+- [ ] Lookahead/過学習対策（Purged CV/Embargo）を設計に明記し、検証経路を定義: `docs/llm/SPEC.md`, `docs/llm/STATE.md`
+- [ ] レジーム統合方針（*predicted-regime* への統合など）を設計に反映: `src/lisp/school/school-strategy.lisp`
+- [ ] ソフトゲートによるロット減衰の合成順序を仕様化し、テストを追加: `src/lisp/risk-manager.lisp`, `src/lisp/tests.lisp`
+- [ ] ゲート判断の Structured Telemetry 出力を追加: `src/lisp/core/logger.lisp` or `src/lisp/school/*`, `docs/llm/STATE.md`
+
+## Expert Panel 2026-02-09 (Pattern Similarity Query)
+- [ ] Pattern Similarity QUERYの入力形式をS式OHLCVで正本化し、画像生成はサービス側に集約: `docs/llm/INTERFACES.md`
+- [ ] ZMQメッセージサイズ上限と分割方針を仕様化: `docs/llm/INTERFACES.md`
+- [ ] S式正本ルールに「バイナリ送信禁止」を明記: `docs/llm/SPEC.md`, `docs/llm/INTERFACES.md`
+
+## Expert Panel 2026-02-09 (Model Gate Practicality)
+- [ ] `tools/legend_gate_compare.py` のSharpe/PF/MaxDD算出をGuardianの**日次リターン基準**に揃える or Guardian backtestに接続する: `tools/legend_gate_compare.py`, `guardian/src/backtester.rs`
+- [ ] 比較ツールに**スプレッド/手数料/ショート**前提を追加し、実運用に近い条件で検証する: `tools/legend_gate_compare.py`
+- [ ] モデル切替の固定閾値/窓/ブレンド係数を**設定化 or 廃止**し、説明できない常数を削減する: `src/lisp/core/research-algorithms.lisp`
