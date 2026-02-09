@@ -36,13 +36,13 @@
 
 (defun calculate-strategy-weight (strat)
   "Calculate voting weight based on strategy performance"
-  (let* ((sharpe (or (strategy-sharpe strat) 0))
+  (let* ((score (strategy-selection-score strat))
          (base-weight 1.0))
-    ;; Weight based on Sharpe ratio
+    ;; Weight based on composite score (Sharpe+PF+MaxDD)
     (cond
-      ((> sharpe 0.5) (* base-weight 1.5))
-      ((> sharpe 0.1) (* base-weight 1.2)) ; Reduced from 0.5
-      ((< sharpe -0.5) (* base-weight 0.5))
+      ((> score 1.0) (* base-weight 1.5))
+      ((> score 0.3) (* base-weight 1.2))
+      ((< score -0.3) (* base-weight 0.5))
       (t base-weight))))
 
 (defun strategy-allowed-by-volatility-p (strat)
