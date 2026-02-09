@@ -30,6 +30,84 @@
 (defparameter *oos-status-path* (swimmy.core::swimmy-path "data/reports/oos_status.txt")
   "Path for OOS status summary report.")
 
+;; CPCV Metrics
+(defparameter *cpcv-metrics* (make-hash-table :test 'equal)
+  "Counters for CPCV pipeline. Keys: :queued :sent :received :failed.")
+(defparameter *cpcv-status-path* (swimmy.core::swimmy-path "data/reports/cpcv_status.txt")
+  "Path for CPCV status summary report.")
+
+(defun %cpcv-metric-inc (key &optional (delta 1))
+  (incf (gethash key *cpcv-metrics* 0) delta))
+
+(defun %cpcv-metric-set (key value)
+  (setf (gethash key *cpcv-metrics* 0) value))
+
+(defun reset-cpcv-metrics (&key (queued 0))
+  "Reset CPCV counters for a new batch."
+  (clrhash *cpcv-metrics*)
+  (setf (gethash :queued *cpcv-metrics*) queued
+        (gethash :sent *cpcv-metrics*) 0
+        (gethash :received *cpcv-metrics*) 0
+        (gethash :failed *cpcv-metrics*) 0))
+
+(defun cpcv-metrics-summary-line ()
+  "Build a one-line CPCV status summary."
+  (format nil "~d queued | ~d sent | ~d received | ~d failed"
+          (gethash :queued *cpcv-metrics* 0)
+          (gethash :sent *cpcv-metrics* 0)
+          (gethash :received *cpcv-metrics* 0)
+          (gethash :failed *cpcv-metrics* 0)))
+
+(defun write-cpcv-status-file (&key (reason "event"))
+  "Persist CPCV status summary to file."
+  (handler-case
+      (let* ((line (cpcv-metrics-summary-line))
+             (ts (get-universal-time))
+             (stamp (if (fboundp 'format-timestamp)
+                        (format-timestamp ts)
+                        (format nil "~a" ts)))
+             (content (format nil "~a~%updated: ~a reason: ~a" line stamp reason)))
+        (ensure-directories-exist *cpcv-status-path*)
+        (with-open-file (out *cpcv-status-path* :direction :output :if-exists :supersede :if-does-not-exist :create)
+          (write-string content out))
+        t)
+    (error (e)
+      (format t "[CPCV] ⚠️ Failed to write cpcv_status.txt: ~a~%" e)
+      nil)))
+
+(defun cpcv-elite-p (strategy)
+  "Return T if strategy is elite enough for CPCV dispatch (Sharpe>=S threshold)."
+  (let* ((criteria (get-rank-criteria :S))
+         (min-sharpe (getf criteria :sharpe-min 0.5))
+         (s-sharpe (or (strategy-sharpe strategy) 0.0)))
+    (>= s-sharpe min-sharpe)))
+
+(defun cpcv-gate-failure-counts (strategies)
+  "Count CPCV elite-gate failures and S-base criteria distribution for A-rank strategies."
+  (let ((total 0) (pass 0) (sharpe 0) (pf 0) (wr 0) (maxdd 0))
+    (dolist (s (or strategies '()))
+      (incf total)
+      (let* ((s-pf (or (strategy-profit-factor s) 0.0))
+             (s-wr (or (strategy-win-rate s) 0.0))
+             (s-maxdd (or (strategy-max-dd s) 1.0))
+             (elite (cpcv-elite-p s)))
+        (when (not elite) (incf sharpe))
+        (when (< s-pf 1.5) (incf pf))
+        (when (< s-wr 0.45) (incf wr))
+        (when (>= s-maxdd 0.15) (incf maxdd))
+        (when elite (incf pass))))
+    (list :total total :pass pass :sharpe sharpe :pf pf :wr wr :maxdd maxdd)))
+
+(defun cpcv-gate-failure-summary (counts)
+  "Format gate failure counts for logs."
+  (format nil "[CPCV] ℹ️ No A-RANK elites ready for CPCV (Sharpe gate: sharpe<0.5=~d | S-base: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d elite=~d total=~d)"
+          (getf counts :sharpe 0)
+          (getf counts :pf 0)
+          (getf counts :wr 0)
+          (getf counts :maxdd 0)
+          (getf counts :pass 0)
+          (getf counts :total 0)))
+
 (defun %oos-metric-inc (key &optional (delta 1))
   (incf (gethash key *oos-metrics* 0) delta))
 
@@ -318,12 +396,14 @@
    (let* ((symbol (or (strategy-symbol strat) "USDJPY"))
           (candles-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol))))
           (strat-params (strategy-to-alist strat))
+          (req-id (swimmy.core:generate-uuid))
           (payload `((action . "CPCV_VALIDATE")
                      (strategy_name . ,(strategy-name strat))
                      (symbol . ,symbol)
                      (candles_file . ,candles-file)
+                     (request_id . ,req-id)
                      (strategy_params . ,strat-params))))
-     (format t "[CPCV] 📤 Sent CPCV request for ~a (Async)...~%" (strategy-name strat))
+     (format t "[CPCV] 📤 Sent CPCV request for ~a (Async, req ~a)...~%" (strategy-name strat) req-id)
      (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
      ;; Return T to indicate request sent successfully
      (values t nil nil)))
@@ -383,6 +463,16 @@
 (defparameter *cpcv-cycle-interval* 60
   "V49.6: High-Velocity Validation (300s -> 60s) for rapid S-Rank creation")
 
+(defun fetch-cpcv-candidates (&optional strategies)
+  "Fetch CPCV candidates from DB (A-rank, elite by Sharpe threshold)."
+  (let* ((source (or strategies
+                     (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))))
+    (remove-if-not
+     (lambda (s)
+       (and (eq (strategy-rank s) :A)
+            (cpcv-elite-p s)))
+     source)))
+
 (defun run-a-rank-cpcv-batch ()
   "V48.0: Batch process A-RANK strategies for S-RANK promotion via CPCV.
    Called from evolution loop. Processes up to *cpcv-batch-size* at a time."
@@ -391,21 +481,20 @@
     (when (< (- now *last-cpcv-cycle*) *cpcv-cycle-interval*)
       (return-from run-a-rank-cpcv-batch nil))
     (setf *last-cpcv-cycle* now)
-    ;; Get A-RANK strategies that meet basic S-RANK criteria
-    (let* ((a-rank-strategies (remove-if-not
-                                (lambda (s)
-                                  (and (eq (strategy-rank s) :A)
-                                       ;; Only try to promote if it meets basic S-RANK stats (Sharpe > 0.5 etc)
-                                       (check-rank-criteria s :S :include-cpcv nil)))
-                                *strategy-knowledge-base*))
+    ;; Get A-RANK strategies from DB (truth source) and filter by S-base criteria
+    (let* ((a-rank-db (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))
+           (a-rank-strategies (fetch-cpcv-candidates a-rank-db))
            ;; Shuffle to avoid getting stuck on the same failing strategies if pool is large
-           (shuffled (sort (copy-list a-rank-strategies) 
+           (shuffled (sort (copy-list a-rank-strategies)
                            (lambda (a b) (declare (ignore a b)) (< (random 100) 50))))
            (batch (if (> (length shuffled) *cpcv-batch-size*)
                       (subseq shuffled 0 *cpcv-batch-size*)
                       shuffled)))
       (when (null batch)
-        (format t "[CPCV] ℹ️ No A-RANK strategies ready for S-RANK validation (Sharpe < 0.5)~%")
+        (reset-cpcv-metrics :queued 0)
+        (let ((counts (cpcv-gate-failure-counts a-rank-db)))
+          (format t "~a~%" (cpcv-gate-failure-summary counts)))
+        (ignore-errors (write-cpcv-status-file :reason "no-candidates"))
         (return-from run-a-rank-cpcv-batch nil))
       (format t "[CPCV] 🔬 Dispatching ~d S-RANK candidates (Async)...~%" (length batch))
       
@@ -413,12 +502,20 @@
       (setf swimmy.globals:*expected-cpcv-count* (length batch))
       (setf swimmy.globals:*cpcv-results-buffer* nil)
       (setf swimmy.globals:*cpcv-start-time* (get-universal-time))
+      (reset-cpcv-metrics :queued (length batch))
+      (ignore-errors (write-cpcv-status-file :reason "dispatch"))
       
       ;; Process each strategy
       (dolist (strat batch)
         (handler-case
-            (request-cpcv-validation strat) ; Just send request
+            (multiple-value-bind (sent _res _err) (request-cpcv-validation strat)
+              (declare (ignore _res _err))
+              (if sent
+                  (%cpcv-metric-inc :sent)
+                  (%cpcv-metric-inc :failed)))
           (error (e)
-            (format t "[CPCV] ⚠️ Error dispatching ~a: ~a~%" (strategy-name strat) e)))))))
+            (%cpcv-metric-inc :failed)
+            (format t "[CPCV] ⚠️ Error dispatching ~a: ~a~%" (strategy-name strat) e))))
+      (ignore-errors (write-cpcv-status-file :reason "dispatch")))))
 
 ;; V50.3: Rank criteria logic moved to school-rank-system.lisp for consolidation.

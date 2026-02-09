@@ -72,6 +72,62 @@
   "Return T if LST looks like a keyword plist."
   (and (listp lst) (keywordp (first lst))))
 
+(defun %plist->alist (plist)
+  "Convert keyword plist into an alist."
+  (let ((out nil))
+    (loop for (k v) on plist by #'cddr
+          do (push (cons k v) out))
+    (nreverse out)))
+
+(defun %normalize-key-name (key)
+  "Normalize alist/plist key into a lowercase string with '-' separators."
+  (let* ((raw (cond
+                ((stringp key) key)
+                ((symbolp key) (symbol-name key))
+                (t nil))))
+    (when raw
+      (let* ((trimmed (string-left-trim ":" raw))
+             (lower (string-downcase trimmed)))
+        (substitute #\- #\_ lower)))))
+
+(defun %alist-val-normalized (alist keys &optional default)
+  "Return first matching value from ALIST by normalized key list."
+  (let ((needles (remove nil (mapcar #'%normalize-key-name keys))))
+    (or (loop for (k . v) in alist
+              for nk = (%normalize-key-name k)
+              when (and nk (member nk needles :test #'string=))
+                do (return v))
+        default)))
+
+(defun %result-val-normalized (result keys &optional default)
+  "Return value from RESULT (alist or plist) by normalized key list."
+  (cond
+    ((%plist-p result)
+     (%alist-val-normalized (%plist->alist result) keys default))
+    (t
+     (%alist-val-normalized result keys default))))
+
+(defun %normalize-bool (value &optional default)
+  "Normalize truthy/falsey representations into T or NIL."
+  (cond
+    ((null value) default)
+    ((eq value t) t)
+    ((eq value 'nil) nil)
+    ((numberp value) (not (zerop value)))
+    ((symbolp value)
+     (let ((s (string-downcase (symbol-name value))))
+       (cond
+         ((member s '("t" "true" "yes" "y" "1") :test #'string=) t)
+         ((member s '("nil" "false" "no" "n" "0") :test #'string=) nil)
+         (t default))))
+    ((stringp value)
+     (let ((s (string-downcase value)))
+       (cond
+         ((member s '("t" "true" "yes" "y" "1") :test #'string=) t)
+         ((member s '("nil" "false" "no" "n" "0" "") :test #'string=) nil)
+         (t default))))
+    (t default)))
+
 (defun %result-strategy-name (result)
   "Extract strategy name from result (alist or plist)."
   (cond
@@ -329,21 +385,38 @@
                   ((or (member type '(cpcv-result :cpcv-result) :test #'eq)
                        (string-equal type-str "CPCV_RESULT"))
                    (let* ((result (cdr (assoc 'result sexp)))
-                          (name (cdr (assoc 'strategy_name result)))
-                          (request-id (%alist-val result '(request_id request-id) nil))
-                          (trade-list (%alist-val result '(trade_list trade-list) nil))
-                          (median (cdr (assoc 'median_sharpe result)))
-                          (paths (cdr (assoc 'path_count result)))
-                          (passed (cdr (assoc 'passed_count result)))
-                          (failed (cdr (assoc 'failed_count result)))
-                          (pass-rate (cdr (assoc 'pass_rate result)))
-                          (is-passed (cdr (assoc 'is_passed result))))
+                          (result (if (and (listp result)
+                                           (not (%result-val-normalized result '(strategy_name strategy-name name) nil))
+                                           (listp (car result)))
+                                      (car result)
+                                      result))
+                          (name (%normalize-strategy-name
+                                 (%result-val-normalized result '(strategy_name strategy-name name) nil)))
+                          (request-id (%normalize-strategy-name
+                                       (%result-val-normalized result '(request_id request-id) nil)))
+                          (trade-list (%result-val-normalized result '(trade_list trade-list) nil))
+                          (median (%result-val-normalized result '(median_sharpe median-sharpe median) 0.0))
+                          (paths (%result-val-normalized result '(path_count path-count paths) 0))
+                          (passed (%result-val-normalized result '(passed_count passed-count passed) 0))
+                          (failed (%result-val-normalized result '(failed_count failed-count failed) 0))
+                          (pass-rate (%result-val-normalized result '(pass_rate pass-rate) 0.0))
+                          (is-passed (%normalize-bool
+                                      (%result-val-normalized result '(is_passed is-passed passed_ok) nil)
+                                      nil))
+                          (error-msg (%result-val-normalized result '(error err error_msg) nil)))
                      (let ((result-plist (list :strategy-name name :median-sharpe median
                                                :path-count paths :passed-count passed
                                                :failed-count failed :pass-rate pass-rate
-                                               :is-passed is-passed)))
+                                               :is-passed is-passed :request-id request-id
+                                               :error error-msg)))
                        (when (and trade-list name)
                          (swimmy.school:record-backtest-trades request-id name "CPCV" trade-list))
+                       (when (fboundp 'swimmy.school::%cpcv-metric-inc)
+                         (swimmy.school::%cpcv-metric-inc :received)
+                         (when (or error-msg (not is-passed))
+                           (swimmy.school::%cpcv-metric-inc :failed))
+                         (when (fboundp 'swimmy.school::write-cpcv-status-file)
+                           (ignore-errors (swimmy.school::write-cpcv-status-file :reason "result"))))
                        (swimmy.core:notify-cpcv-result result-plist)
                        (push result-plist swimmy.globals:*cpcv-results-buffer*)
                        (let ((count (length swimmy.globals:*cpcv-results-buffer*))
@@ -351,7 +424,7 @@
                          (when (and (> expected 0)
                                     (>= count (max 1 (floor (* expected 0.9)))))
                            (swimmy.core:notify-cpcv-summary)))
-                       (when (and is-passed (not (eq is-passed 'nil)))
+                       (when is-passed
                          (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
                                                 :key #'swimmy.school:strategy-name :test #'string=)
                                           (find name swimmy.globals:*evolved-strategies*

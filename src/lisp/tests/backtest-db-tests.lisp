@@ -119,6 +119,38 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-refresh-strategy-metrics-uses-local-index
+  "refresh-strategy-metrics-from-db should not depend on find-strategy per row."
+  (let* ((name "TEST-REFRESH-INDEX")
+         (updated-sharpe 1.23)
+         (tmp-db (format nil "/tmp/swimmy-refresh-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (let ((orig-find (symbol-function 'swimmy.school::find-strategy)))
+        (unwind-protect
+            (progn
+              (swimmy.school::init-db)
+              (let ((strat (make-strategy :name name :symbol "USDJPY" :sharpe 0.1)))
+                (setf *strategy-knowledge-base* (list strat))
+                (upsert-strategy strat)
+                (execute-non-query
+                 "UPDATE strategies SET sharpe = ?, updated_at = ? WHERE name = ?"
+                 updated-sharpe (get-universal-time) name)
+                (setf (symbol-function 'swimmy.school::find-strategy)
+                      (lambda (&rest args)
+                        (declare (ignore args))
+                        (error "find-strategy should not be called during refresh")))
+                (swimmy.school::refresh-strategy-metrics-from-db :force t)
+                (assert-true (< (abs (- (strategy-sharpe strat) updated-sharpe)) 0.0001)
+                             "strategy sharpe should refresh from DB")))
+          (setf (symbol-function 'swimmy.school::find-strategy) orig-find)
+          (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
 (deftest test-stagnant-c-rank-batched-notification
   "Stagnant C-Rank soft-kill should batch notifications and flush hourly."
   (let* ((name "TEST-STAGNANT-C-RANK")

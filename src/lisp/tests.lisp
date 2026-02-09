@@ -346,6 +346,175 @@
             (assert-equal "CPCV" (third called) "oos_kind should be CPCV"))
         (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)))))
 
+(deftest test-cpcv-result-normalizes-string-keys
+  "CPCV_RESULT should accept keyword/string keys for request_id/trade_list"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((msg "((type . \"CPCV_RESULT\") (result . ((:strategy_name . \"AAA\") (\"request_id\" . \"RID-CPCV\") (\"trade_list\" . (((timestamp . 1) (pnl . 1.0) (symbol . \"USDJPY\")))))))")
+           (called nil)
+           (orig-record (symbol-function 'swimmy.school:record-backtest-trades)))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:record-backtest-trades)
+                  (lambda (rid name kind trades)
+                    (setf called (list rid name kind trades))
+                    nil))
+            (funcall fn msg)
+            (assert-true called "record-backtest-trades should be called")
+            (assert-equal "RID-CPCV" (first called) "request_id should match")
+            (assert-equal "AAA" (second called) "strategy name should match")
+            (assert-equal "CPCV" (third called) "oos_kind should be CPCV"))
+        (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)))))
+
+(deftest test-cpcv-result-normalizes-is-passed
+  "CPCV_RESULT should treat false-ish is_passed as not passed"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+           (orig-ensure (symbol-function 'swimmy.school:ensure-rank))
+           (orig-check (symbol-function 'swimmy.school:check-rank-criteria))
+           (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+           (called nil))
+      (unwind-protect
+          (progn
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "AAA" :rank :A)))
+            (setf (symbol-function 'swimmy.school:ensure-rank)
+                  (lambda (&rest args)
+                    (setf called args)
+                    nil))
+            (setf (symbol-function 'swimmy.school:check-rank-criteria)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    t))
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    nil))
+            (funcall fn "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (is_passed . \"false\"))))")
+            (assert-false called "should not promote when is_passed=false")
+            (setf called nil)
+            (funcall fn "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (is_passed . \"true\"))))")
+            (assert-true called "should promote when is_passed=true"))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+        (setf (symbol-function 'swimmy.school:ensure-rank) orig-ensure)
+        (setf (symbol-function 'swimmy.school:check-rank-criteria) orig-check)
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)))))
+
+(deftest test-request-cpcv-includes-request-id
+  "request-cpcv-validation should include request_id in payload"
+  (let* ((fn (find-symbol "REQUEST-CPCV-VALIDATION" :swimmy.school))
+         (orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+         (orig-uuid (symbol-function 'swimmy.core:generate-uuid))
+         (captured nil)
+         (strat (swimmy.school:make-strategy :name "UT-CPCV" :rank :A)))
+    (assert-true (and fn (fboundp fn)) "request-cpcv-validation exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:generate-uuid)
+                (lambda () "RID-CPCV-1"))
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)
+                  nil))
+          (funcall fn strat)
+          (assert-true (and captured (search "request_id" captured))
+                       "request_id should be present in payload")
+          (assert-true (search "RID-CPCV-1" captured)
+                       "request_id should match generated value"))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (setf (symbol-function 'swimmy.core:generate-uuid) orig-uuid))))
+
+(deftest test-cpcv-gate-failure-counts
+  "cpcv-gate-failure-counts should tally elite and S-base failures by criterion"
+  (let* ((mk (lambda (name sharpe pf wr dd)
+               (swimmy.school:make-strategy :name name :rank :A
+                                            :sharpe sharpe :profit-factor pf
+                                            :win-rate wr :max-dd dd)))
+         (s-pass (funcall mk "S-PASS" 0.6 1.6 0.5 0.1))
+         (s-fs (funcall mk "S-FS" 0.4 2.0 0.5 0.1))
+         (s-fpf (funcall mk "S-FPF" 0.6 1.2 0.5 0.1))
+         (s-fwr (funcall mk "S-FWR" 0.6 1.6 0.4 0.1))
+         (s-fdd (funcall mk "S-FDD" 0.6 1.6 0.5 0.2))
+         (counts (swimmy.school::cpcv-gate-failure-counts
+                  (list s-pass s-fs s-fpf s-fwr s-fdd))))
+    (assert-equal 5 (getf counts :total) "total count")
+    (assert-equal 4 (getf counts :pass) "elite pass count (sharpe>=0.5)")
+    (assert-equal 1 (getf counts :sharpe) "sharpe fail count")
+    (assert-equal 1 (getf counts :pf) "pf fail count")
+    (assert-equal 1 (getf counts :wr) "wr fail count")
+    (assert-equal 1 (getf counts :maxdd) "maxdd fail count")))
+
+(deftest test-fetch-cpcv-candidates-filters-by-elite-sharpe
+  "fetch-cpcv-candidates should return A-rank elites (sharpe>=0.5)"
+  (let* ((mk (lambda (name sharpe pf wr dd)
+               (swimmy.school:make-strategy :name name :rank :A
+                                            :sharpe sharpe :profit-factor pf
+                                            :win-rate wr :max-dd dd)))
+         (s-pass (funcall mk "S-PASS" 0.6 1.6 0.5 0.1))
+         (s-fpf (funcall mk "S-FPF" 0.6 1.2 0.5 0.1))
+         (b-elite (swimmy.school:make-strategy :name "B-ELITE" :rank :B
+                                               :sharpe 0.6 :profit-factor 2.0
+                                               :win-rate 0.6 :max-dd 0.1))
+         (orig-fetch (symbol-function 'swimmy.school:fetch-candidate-strategies)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:fetch-candidate-strategies)
+                (lambda (&rest args) (declare (ignore args)) (list s-pass s-fpf b-elite)))
+          (let ((cands (swimmy.school::fetch-cpcv-candidates)))
+            (assert-equal 2 (length cands) "should return only A-rank elites")
+            (assert-true (find "S-PASS" cands :key #'swimmy.school:strategy-name :test #'string=)
+                         "S-PASS should be included")
+            (assert-true (find "S-FPF" cands :key #'swimmy.school:strategy-name :test #'string=)
+                         "S-FPF should be included")))
+      (setf (symbol-function 'swimmy.school:fetch-candidate-strategies) orig-fetch))))
+
+(deftest test-build-cpcv-status-snippet-includes-metrics
+  "build-cpcv-status-snippet should include queued/sent/received/failed"
+  (let* ((orig-metrics swimmy.school::*cpcv-metrics*)
+         (orig-start swimmy.globals:*cpcv-start-time*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*cpcv-metrics* (make-hash-table :test 'equal))
+          (setf (gethash :queued swimmy.school::*cpcv-metrics*) 5)
+          (setf (gethash :sent swimmy.school::*cpcv-metrics*) 4)
+          (setf (gethash :received swimmy.school::*cpcv-metrics*) 3)
+          (setf (gethash :failed swimmy.school::*cpcv-metrics*) 2)
+          (setf swimmy.globals:*cpcv-start-time* 1)
+          (let ((snippet (swimmy.school::build-cpcv-status-snippet)))
+            (assert-true (search "queued" snippet) "snippet should include queued")
+            (assert-true (search "sent" snippet) "snippet should include sent")
+            (assert-true (search "received" snippet) "snippet should include received")
+            (assert-true (search "failed" snippet) "snippet should include failed")))
+      (setf swimmy.school::*cpcv-metrics* orig-metrics)
+      (setf swimmy.globals:*cpcv-start-time* orig-start))))
+
+(deftest test-write-cpcv-status-file
+  "write-cpcv-status-file should persist metrics"
+  (let* ((orig-path swimmy.school::*cpcv-status-path*)
+         (orig-metrics swimmy.school::*cpcv-metrics*)
+         (tmp (merge-pathnames (format nil "/tmp/cpcv-status-~a.txt" (get-universal-time)))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*cpcv-status-path* tmp)
+          (setf swimmy.school::*cpcv-metrics* (make-hash-table :test 'equal))
+          (setf (gethash :queued swimmy.school::*cpcv-metrics*) 7)
+          (setf (gethash :sent swimmy.school::*cpcv-metrics*) 6)
+          (setf (gethash :received swimmy.school::*cpcv-metrics*) 5)
+          (setf (gethash :failed swimmy.school::*cpcv-metrics*) 1)
+          (swimmy.school::write-cpcv-status-file :reason "test")
+          (assert-true (probe-file tmp) "status file should exist")
+          (with-open-file (s tmp :direction :input)
+            (let ((content (read-line s nil "")))
+              (assert-true (search "queued" content) "content should include queued")
+              (assert-true (search "sent" content) "content should include sent")
+              (assert-true (search "received" content) "content should include received")
+              (assert-true (search "failed" content) "content should include failed"))))
+      (setf swimmy.school::*cpcv-status-path* orig-path)
+      (setf swimmy.school::*cpcv-metrics* orig-metrics)
+      (when (probe-file tmp) (delete-file tmp)))))
+
 (deftest test-backtest-debug-log-records-apply
   "BACKTEST_RESULT should write debug log around apply when debug enabled"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -2533,23 +2702,99 @@
 
 (deftest test-retired-patterns-weighted-in-avoidance
   "Retired patterns should contribute with lower weight to avoidance analysis."
-  (let* ((orig-load-gy (symbol-function 'swimmy.school::load-graveyard-patterns))
+  (let* ((tmp-gy (format nil "/tmp/swimmy-gy-~a.sexp" (get-universal-time)))
+         (tmp-ret (format nil "/tmp/swimmy-ret-~a.sexp" (get-universal-time)))
+         (now (get-universal-time))
+         (orig-gy-file swimmy.school::*graveyard-file*)
+         (orig-ret-file swimmy.school::*retired-file*)
+         (orig-load-gy (symbol-function 'swimmy.school::load-graveyard-patterns))
          (orig-load-ret (symbol-function 'swimmy.school::load-retired-patterns)))
+    (flet ((write-patterns (path patterns)
+             (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
+               (dolist (p patterns)
+                 (write p :stream stream)
+                 (terpri stream)))))
+      (unwind-protect
+          (progn
+            (setf swimmy.school::*graveyard-file* tmp-gy
+                  swimmy.school::*retired-file* tmp-ret)
+            ;; 4 graveyard patterns (weight 1.0) + 4 retired patterns (weight 0.25) => effective 5.0
+            (write-patterns tmp-gy
+                            (loop repeat 4 collect
+                                  (list :timeframe 15 :direction :BUY :symbol "USDJPY"
+                                        :sl 10 :tp 20 :timestamp now)))
+            (write-patterns tmp-ret
+                            (loop repeat 4 collect
+                                  (list :timeframe 15 :direction :BUY :symbol "USDJPY"
+                                        :sl 11 :tp 21 :timestamp now)))
+            (setf (symbol-function 'swimmy.school::load-graveyard-patterns)
+                  (lambda () (error "load-graveyard-patterns should not be called")))
+            (setf (symbol-function 'swimmy.school::load-retired-patterns)
+                  (lambda () (error "load-retired-patterns should not be called")))
+            (let ((regions (swimmy.school::analyze-graveyard-for-avoidance)))
+              (assert-true (listp regions) "Expected avoid regions list")
+              (assert-equal 1 (length regions) "Expected a single avoid region")
+              (let ((region (first regions)))
+                (assert-equal 15 (getf region :tf) "Timeframe should match")
+                (assert-equal :BUY (getf region :dir) "Direction should match")
+                (assert-equal "USDJPY" (getf region :sym) "Symbol should match")
+                (assert-equal 10 (getf region :sl-min) "SL min should match")
+                (assert-equal 11 (getf region :sl-max) "SL max should match")
+                (assert-equal 20 (getf region :tp-min) "TP min should match")
+                (assert-equal 21 (getf region :tp-max) "TP max should match")
+                (assert-equal 8 (getf region :failure-count) "Failure count should include retired patterns"))))
+        (setf swimmy.school::*graveyard-file* orig-gy-file
+              swimmy.school::*retired-file* orig-ret-file
+              (symbol-function 'swimmy.school::load-graveyard-patterns) orig-load-gy
+              (symbol-function 'swimmy.school::load-retired-patterns) orig-load-ret)
+        (ignore-errors (delete-file tmp-gy))
+        (ignore-errors (delete-file tmp-ret))))))
+
+(deftest test-analyze-veterans-emits-progress-logs
+  "analyze-veterans should emit progress logs for long-running steps."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-save (symbol-function 'swimmy.school::save-optimized-params-to-file)))
     (unwind-protect
         (progn
-          (setf (symbol-function 'swimmy.school::load-graveyard-patterns)
-                (lambda ()
-                  (list (list :timeframe 15 :direction :BUY :symbol "USDJPY"
-                              :sl 10 :tp 20 :timestamp (get-universal-time)))))
-          (setf (symbol-function 'swimmy.school::load-retired-patterns)
-                (lambda ()
-                  (loop repeat 10 collect
-                        (list :timeframe 15 :direction :BUY :symbol "USDJPY"
-                              :sl 11 :tp 21 :timestamp (get-universal-time)))))
-          (let ((regions (swimmy.school::analyze-graveyard-for-avoidance)))
-            (assert-true (listp regions) "Expected avoid regions list")))
-      (setf (symbol-function 'swimmy.school::load-graveyard-patterns) orig-load-gy
-            (symbol-function 'swimmy.school::load-retired-patterns) orig-load-ret))))
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list (swimmy.school:make-strategy :name "UT-VET-1" :sharpe 0.25)
+                      (swimmy.school:make-strategy :name "UT-VET-2" :sharpe 0.30)
+                      (swimmy.school:make-strategy :name "UT-VET-LOW" :sharpe 0.05)))
+          (setf (symbol-function 'swimmy.school::save-optimized-params-to-file)
+                (lambda (_params) (declare (ignore _params)) t))
+          (let ((out (with-output-to-string (*standard-output*)
+                       (swimmy.school::analyze-veterans))))
+            (assert-true (search "De-dup complete" out)
+                         "Expected de-dup progress log")
+            (assert-true (search "Filter complete" out)
+                         "Expected filter progress log")
+            (assert-true (search "Sort complete" out)
+                         "Expected sort progress log")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb
+            (symbol-function 'swimmy.school::save-optimized-params-to-file) orig-save))))
+
+(deftest test-mutate-indicators-with-library-empty-safe
+  "mutate-indicators-with-library should not error on empty indicators."
+  (let ((orig-state *random-state*))
+    (unwind-protect
+        (progn
+          ;; Force the mutation path to run by selecting a random-state
+          ;; whose first (random 1.0) is > 0.7.
+          (let ((state (make-random-state t))
+                (found nil))
+            (loop repeat 1000
+                  do (let* ((probe (make-random-state state))
+                            (val (random 1.0 probe)))
+                       (if (> val 0.7)
+                           (progn
+                             (setf *random-state* (make-random-state state))
+                             (setf found t)
+                             (return))
+                           (setf state probe))))
+            (assert-true found "Expected to find random-state with val > 0.7"))
+          (let ((result (swimmy.school::mutate-indicators-with-library nil :trend)))
+            (assert-true (null result) "Expected nil indicators to remain nil")))
+      (setf *random-state* orig-state))))
 
 (deftest test-daily-pnl-correlation
   "Daily PnL correlation should be near 1 for identical series"

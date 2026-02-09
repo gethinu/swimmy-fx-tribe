@@ -33,4 +33,10 @@
     (format t "~%[DAEMON] 🛑 Service Interrupted by Signal.~%"))
   (error (e)
     (format t "~%[DAEMON] 💥 CRITICAL FAILURE: ~a~%" e)
+    #+sbcl
+    (ignore-errors
+      (sb-debug:print-backtrace :stream *error-output*
+                                :from :interrupted-frame
+                                :count 200
+                                :emergency-best-effort t))
     (sb-ext:exit :code 1)))

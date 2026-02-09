@@ -212,12 +212,14 @@ REVERSION : ~a"
 
 (defun build-cpcv-status-snippet ()
   "Build CPCV status snippet for reports."
-  (let* ((expected swimmy.globals:*expected-cpcv-count*)
-         (received (length (or swimmy.globals:*cpcv-results-buffer* nil)))
-         (start-time swimmy.globals:*cpcv-start-time*)
-         (start-text (if (> start-time 0) (format-timestamp start-time) "N/A")))
-    (format nil "🔬 CPCV Status~%~d queued | ~d received | last start: ~a"
-            expected received start-text)))
+  (let* ((start-time swimmy.globals:*cpcv-start-time*)
+         (start-text (if (> start-time 0) (format-timestamp start-time) "N/A"))
+         (queued (gethash :queued swimmy.school::*cpcv-metrics* 0))
+         (sent (gethash :sent swimmy.school::*cpcv-metrics* 0))
+         (received (gethash :received swimmy.school::*cpcv-metrics* 0))
+         (failed (gethash :failed swimmy.school::*cpcv-metrics* 0)))
+    (format nil "🔬 CPCV Status~%~d queued | ~d sent | ~d received | ~d failed | last start: ~a"
+            queued sent received failed start-text)))
 
 (defparameter *evolution-report-path* "data/reports/evolution_factory_report.txt")
 (defparameter *evolution-heartbeat-path* "data/heartbeat/school.tick")
