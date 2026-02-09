@@ -180,11 +180,15 @@ struct CpcvRequest {
     symbol: String,
     candles_file: String,
     strategy_params: serde_json::Value,
+    #[serde(default)]
+    request_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct CpcvResultPayload {
     strategy_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
     median_sharpe: f64,
     path_count: usize,
     passed_count: usize,
@@ -225,6 +229,12 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
         "(strategy_name . {})",
         sexp_escape_string(&result.strategy_name)
     ));
+    if let Some(request_id) = &result.request_id {
+        parts.push(format!(
+            "(request_id . {})",
+            sexp_escape_string(request_id)
+        ));
+    }
     parts.push(format!("(median_sharpe . {})", result.median_sharpe));
     parts.push(format!("(path_count . {})", result.path_count));
     parts.push(format!("(passed_count . {})", result.passed_count));
@@ -240,11 +250,15 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
     format!("({})", parts.join(" "))
 }
 
+fn normalize_sexp_key(raw: &str) -> String {
+    raw.trim_start_matches(':').to_ascii_lowercase()
+}
+
 fn lexpr_key_to_string(val: &lexpr::Value) -> Option<String> {
     match val {
-        lexpr::Value::Symbol(s) => Some(s.to_string()),
-        lexpr::Value::Keyword(s) => Some(s.to_string()),
-        lexpr::Value::String(s) => Some(s.to_string()),
+        lexpr::Value::Symbol(s) => Some(normalize_sexp_key(&s.to_string())),
+        lexpr::Value::Keyword(s) => Some(normalize_sexp_key(&s.to_string())),
+        lexpr::Value::String(s) => Some(normalize_sexp_key(s)),
         _ => None,
     }
 }
@@ -351,6 +365,7 @@ fn parse_cpcv_request_sexp(msg: &str) -> Result<CpcvRequest, String> {
         .get("strategy_params")
         .map(lexpr_to_json)
         .unwrap_or(serde_json::Value::Null);
+    let request_id = map.get("request_id").and_then(lexpr_to_string);
 
     Ok(CpcvRequest {
         action,
@@ -358,6 +373,7 @@ fn parse_cpcv_request_sexp(msg: &str) -> Result<CpcvRequest, String> {
         symbol,
         candles_file,
         strategy_params,
+        request_id,
     })
 }
 
@@ -382,6 +398,7 @@ fn build_cpcv_response_str(msg: &str, is_sexp: bool) -> Result<String, String> {
 
 fn cpcv_payload_from_aggregate(
     strategy_name: &str,
+    request_id: Option<String>,
     agg: &cpcv::CpcvAggregateResult,
 ) -> CpcvResultPayload {
     let path_count = agg.path_count;
@@ -396,6 +413,7 @@ fn cpcv_payload_from_aggregate(
 
     CpcvResultPayload {
         strategy_name: strategy_name.to_string(),
+        request_id,
         median_sharpe: agg.median_sharpe,
         path_count,
         passed_count,
@@ -407,10 +425,12 @@ fn cpcv_payload_from_aggregate(
 }
 
 fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
+    let request_id = _req.request_id.clone();
     match cpcv::run_cpcv_validation(&_req.strategy_name, &_req.candles_file, &_req.strategy_params) {
-        Ok(agg) => cpcv_payload_from_aggregate(&_req.strategy_name, &agg),
+        Ok(agg) => cpcv_payload_from_aggregate(&_req.strategy_name, request_id, &agg),
         Err(e) => CpcvResultPayload {
             strategy_name: _req.strategy_name.clone(),
+            request_id,
             median_sharpe: 0.0,
             path_count: 0,
             passed_count: 0,
@@ -1976,6 +1996,7 @@ mod tests {
             symbol: "USDJPY".to_string(),
             candles_file: "/tmp/does-not-exist.csv".to_string(),
             strategy_params: serde_json::json!({}),
+            request_id: None,
         };
 
         let result = build_cpcv_result(&req);
@@ -1999,7 +2020,7 @@ mod tests {
             passed_count: 6,
         };
 
-        let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", &agg);
+        let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", None, &agg);
 
         assert_eq!(payload.strategy_name, "UT-CPCV-SUCCESS");
         assert_eq!(payload.path_count, 10);
@@ -2022,6 +2043,21 @@ mod tests {
 
         assert!(response.contains("CPCV_RESULT"), "response should be CPCV_RESULT");
         assert!(response.contains("UT-CPCV-EXT"), "response should include strategy name");
+    }
+
+    #[test]
+    fn test_build_cpcv_response_str_sexp_includes_request_id() {
+        let msg = r#"((action . "CPCV_VALIDATE")
+                      (strategy_name . "UT-CPCV-REQ")
+                      (symbol . "USDJPY")
+                      (candles_file . "/tmp/does-not-exist.csv")
+                      (request_id . "RID-123")
+                      (strategy_params . NIL))"#;
+
+        let response = build_cpcv_response_str(msg, true).expect("response should serialize");
+
+        assert!(response.contains("CPCV_RESULT"), "response should be CPCV_RESULT");
+        assert!(response.contains("RID-123"), "response should include request_id");
     }
 
     #[test]
