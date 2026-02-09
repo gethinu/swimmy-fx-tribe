@@ -458,8 +458,8 @@
       (when orig-fetch
         (setf (symbol-function 'swimmy.school::fetch-oos-queue-stats) orig-fetch)))))
 
-(deftest test-evolution-report-omits-phase2-end-time
-  "Evolution report should omit Phase2 end_time line."
+(deftest test-evolution-report-includes-phase2-end-time
+  "Evolution report should include Phase2 end_time line."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-phase2-~a.db" (get-universal-time))))
     (let ((swimmy.core::*db-path-default* tmp-db)
           (swimmy.core::*sqlite-conn* nil)
@@ -473,8 +473,7 @@
                       (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
                             (lambda (&rest _args) (declare (ignore _args)) nil))
                       (let ((report (swimmy.school::generate-evolution-report)))
-                        (assert-false (search "Phase2 EndTime:" report)
-                                      "Report should NOT contain Phase2 EndTime line")))
+                        (assert-true (search "Phase2 EndTime:" report) "Report should contain Phase2 EndTime line")))
                  (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))

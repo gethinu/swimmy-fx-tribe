@@ -168,7 +168,7 @@
         
         ;; P13: Synchronize with File System
         (handler-case
-            (swimmy.persistence:move-strategy strategy :graveyard)
+            (swimmy.persistence:move-strategy strategy :graveyard :from-rank old-rank)
           (error (e)
             (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
         
@@ -184,7 +184,7 @@
                 (remove strategy (gethash cat *category-pools*) :test #'eq)))
         ;; Persist to archive
         (handler-case
-            (swimmy.persistence:move-strategy strategy :retired)
+            (swimmy.persistence:move-strategy strategy :retired :from-rank old-rank)
           (error (e)
             (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
         (format t "[RANK] 🧊 Retired and removed from Knowledge Base.~%")))

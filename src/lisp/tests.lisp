@@ -1910,8 +1910,8 @@
           (assert-true (and (listp end-time) (= 1 (length end-time)) (numberp (first end-time)))
                        "Expected end_time Option<i64> present"))))))
 
-(deftest test-backtest-v2-ignores-phase2-results
-  "Phase2 results should be ignored after Phase2 removal"
+(deftest test-backtest-v2-phase2-promotes-to-a
+  "Phase2 result should promote to A when sharpe meets threshold"
   (let* ((s (swimmy.school:make-strategy :name "Phase2" :symbol "USDJPY"))
          (swimmy.school::*strategy-knowledge-base* (list s))
          (called nil))
@@ -1925,7 +1925,7 @@
                     rank))
             (swimmy.school::handle-v2-result "Phase2_P2" (list :sharpe 1.0)))
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
-    (assert-true (null called) "Phase2 results should not trigger rank changes")))
+    (assert-equal :A (second called) "Expected A-RANK promotion")))
 
 (deftest test-prune-low-sharpe-skips-newborn-age
   "Newborn (age<24h) low-sharpe strategies are protected from pruning."
@@ -2054,6 +2054,53 @@
           (assert-true (swimmy.persistence:strategy-exists-p "UT-MOVE-RANK" :S)
                        "Target rank file should exist"))
       (setf swimmy.persistence:*library-path* orig-path)
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
+(deftest test-ensure-rank-graveyard-deletes-old-rank-file
+  "ensure-rank should delete the old-rank file when moving to graveyard."
+  (let* ((orig-path swimmy.persistence:*library-path*)
+         (tmp (format nil "/tmp/swimmy-ensure-graveyard-~a/" (get-universal-time)))
+         (tmp-dir (uiop:ensure-directory-pathname tmp))
+         (strat (swimmy.school:make-strategy :name "UT-ENSURE-GRAVE" :rank :B))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-cat (symbol-function 'swimmy.school::categorize-strategy))
+         (orig-save (symbol-function 'swimmy.school::save-failure-pattern))
+         (orig-cancel (symbol-function 'swimmy.school::cancel-oos-request-for-strategy))
+         (orig-oos-p (symbol-function 'swimmy.school::oos-request-pending-p)))
+    (unwind-protect
+        (progn
+          (setf swimmy.persistence:*library-path* tmp-dir)
+          (swimmy.persistence:init-library)
+          (setf swimmy.school::*strategy-knowledge-base* (list strat))
+          (setf swimmy.school::*category-pools* (make-hash-table))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::categorize-strategy)
+                (lambda (&rest args) (declare (ignore args)) :dummy))
+          (setf (symbol-function 'swimmy.school::save-failure-pattern)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::cancel-oos-request-for-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::oos-request-pending-p)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (swimmy.persistence:save-strategy strat)
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-ENSURE-GRAVE" :B)
+                       "Expected B-rank file to exist")
+          (swimmy.school:ensure-rank strat :graveyard "test")
+          (assert-false (swimmy.persistence:strategy-exists-p "UT-ENSURE-GRAVE" :B)
+                        "Old rank file should be removed")
+          (assert-true (swimmy.persistence:strategy-exists-p "UT-ENSURE-GRAVE" :GRAVEYARD)
+                       "Graveyard file should exist"))
+      (setf swimmy.persistence:*library-path* orig-path)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::categorize-strategy) orig-cat)
+      (setf (symbol-function 'swimmy.school::save-failure-pattern) orig-save)
+      (setf (symbol-function 'swimmy.school::cancel-oos-request-for-strategy) orig-cancel)
+      (setf (symbol-function 'swimmy.school::oos-request-pending-p) orig-oos-p)
       (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
 
 (deftest test-load-strategy-recovers-struct-sexp
@@ -2722,7 +2769,7 @@
                   test-evolution-report-includes-oos-status
                   test-oos-status-line-no-queue-duplication
                   test-oos-status-line-ignores-queue-error
-                  test-evolution-report-omits-phase2-end-time
+                  test-evolution-report-includes-phase2-end-time
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)
@@ -2751,12 +2798,13 @@
                   test-backtest-uses-csv-override
                   test-heartbeat-webhook-prefers-env
                   test-backtest-v2-uses-alist
-                  test-backtest-v2-ignores-phase2-results
+                  test-backtest-v2-phase2-promotes-to-a
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades
                   test-hard-cap-skips-newborn
                   test-delete-strategy-rank-guard
                   test-move-strategy-from-rank
+                  test-ensure-rank-graveyard-deletes-old-rank-file
                   test-evaluate-strategy-performance-sends-to-graveyard
                   test-ensure-rank-retired-saves-pattern
                   test-lifecycle-retire-on-max-losses

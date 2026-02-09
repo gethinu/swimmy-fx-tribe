@@ -294,11 +294,11 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
             (swimmy.school::request-backtest-v2 strat
                                                 :start-date "2021.01.01"
                                                 :end-date "2021.12.31"
-                                                :phase "phase1"
-                                                :range-id "P1")))
+                                                :phase "phase2"
+                                                :range-id "P2")))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
       (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
     (assert-not-nil captured "Expected V2 backtest payload to be sent")
     (let ((payload (parse-sexpr-payload captured)))
-      (assert-equal "phase1" (field 'phase payload) "Expected phase=phase1")
-      (assert-equal "P1" (field 'range_id payload) "Expected range_id=P1"))))
+      (assert-equal "phase2" (field 'phase payload) "Expected phase=phase2")
+      (assert-equal "P2" (field 'range_id payload) "Expected range_id=P2"))))

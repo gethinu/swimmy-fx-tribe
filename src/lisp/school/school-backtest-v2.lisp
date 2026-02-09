@@ -1,6 +1,6 @@
 ;;; school-backtest-v2.lisp
 ;;; Phase 20: Architecture Upgrade (Data & Backtest)
-;;; Implements Phase 1 Screening Backtesting Logic
+;;; Implements 2-Stage Backtesting Logic (Screening vs Validation)
 
 (in-package :swimmy.school)
 
@@ -38,6 +38,9 @@
          (end-ts (or end-ts
                      (and end-date (- (parse-date-to-timestamp end-date) 2208988800)))))      ; 2208988800 = 1970 offset
 
+    (when (and end-ts phase (string= phase "phase2"))
+      (setf swimmy.globals:*phase2-last-end-unix* end-ts))
+    
     (format t "[BT-V2] 🚀 Requesting ~a Range: ~a - ~a (~a)~%" 
             (strategy-name strat) (or start-date "ALL") (or end-date "ALL") actual-symbol)
 
@@ -79,7 +82,7 @@
 
 
 ;;; =========================================================
-;;; PHASE 1 SCREENING PIPELINE
+;;; 2-STAGE VALIDATION PIPELINE
 ;;; =========================================================
 
 (defun get-screening-range ()
@@ -93,6 +96,13 @@
   (let ((start (getf *backtest-range-1* :start))
         (end (getf *backtest-range-1* :end)))
     (request-backtest-v2 strat :start-date start :end-date end :phase "phase1" :range-id "P1")))
+
+(defun run-phase-2-validation (strat)
+  "Phase 2: Validation (2021-Present).
+   Gate: Sharpe > 0.3."
+  (let ((start (getf *backtest-range-2* :start))
+        (end-ts (- (get-universal-time) 2208988800)))
+    (request-backtest-v2 strat :start-date start :end-ts end-ts :phase "phase2" :range-id "P2")))
 
 ;;; =========================================================
 ;;; LOGIC HANDLER (Async Results)
@@ -131,4 +141,25 @@
                    (ensure-rank strat :B "Phase1 Screening Passed (V2)"))
                  (progn
                    (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
-                   (send-to-graveyard strat "Phase1 Screening Failed (V2)")))))))))
+                   (send-to-graveyard strat "Phase1 Screening Failed (V2)")))))))
+
+    ;; Phase 2 Result
+    ((search "_P2" strat-name)
+     (let* ((base-name (subseq strat-name 0 (search "_P2" strat-name)))
+            (strat (find-strategy base-name))
+            (sharpe (float (or (getf result :sharpe) 0.0))))
+       (format t "[BT-V2] 📊 Phase 2 Result for ~a: Sharpe=~,2f~%" strat-name sharpe)
+       (if (null strat)
+           (format t "[BT-V2] ⚠️ Strategy not found for Phase 2 result: ~a~%" base-name)
+           (progn
+             (setf (strategy-oos-sharpe strat) sharpe)
+             (when (slot-exists-p strat 'status-reason)
+               (setf (strategy-status-reason strat) "Phase2 Validation Result"))
+             (upsert-strategy strat)
+             (if (>= sharpe *phase2-min-sharpe*)
+                 (progn
+                   (format t "[BT-V2] 🌟 PASSED Phase 2! Promoting to Rank A.~%")
+                   (ensure-rank strat :A "Phase2 Validation Passed (V2)"))
+                 (progn
+                   (format t "[BT-V2] ❌ FAILED Phase 2. To Graveyard.~%")
+                   (send-to-graveyard strat "Phase2 Validation Failed (V2)")))))))))
