@@ -2382,6 +2382,33 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-promotion-uses-composite-score
+  "Promotion should not rely on Sharpe alone"
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-ranks swimmy.school::*strategy-ranks*)
+         (orig-coming (symbol-function 'swimmy.school::coming-of-age))
+         (strat (swimmy.school:make-strategy :name "UT-PROMO"
+                                             :sharpe 0.4
+                                             :profit-factor 1.8
+                                             :win-rate 0.60
+                                             :max-dd 0.08)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list strat))
+          (setf swimmy.school::*strategy-ranks* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school::coming-of-age)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (let ((rank-data (swimmy.school:get-strategy-rank "UT-PROMO")))
+            (setf (swimmy.school::strategy-rank-trades rank-data) 10)
+            (setf (swimmy.school::strategy-rank-wins rank-data) 6)
+            (setf (swimmy.school::strategy-rank-total-pnl rank-data) 1000)
+            (setf (swimmy.school::strategy-rank-rank rank-data) :scout))
+          (assert-equal :warrior (swimmy.school:check-promotion "UT-PROMO")
+                        "should promote based on composite score"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*strategy-ranks* orig-ranks)
+      (setf (symbol-function 'swimmy.school::coming-of-age) orig-coming))))
+
 (deftest test-check-rank-criteria-requires-cpcv-pass-rate
   "S-RANK criteria should require CPCV pass-rate >= 0.5"
   (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
@@ -2980,6 +3007,7 @@
                   test-evolution-report-throttle-uses-last-write
                   test-evolution-report-staleness-alert-throttles
                   test-promotion-triggers-noncorrelation-notification
+                  test-promotion-uses-composite-score
                   test-check-rank-criteria-requires-cpcv-pass-rate
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv
