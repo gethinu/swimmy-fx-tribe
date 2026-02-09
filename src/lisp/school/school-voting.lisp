@@ -38,12 +38,9 @@
   "Calculate voting weight based on strategy performance"
   (let* ((score (strategy-selection-score strat))
          (base-weight 1.0))
-    ;; Weight based on composite score (Sharpe+PF+MaxDD)
-    (cond
-      ((> score 1.0) (* base-weight 1.5))
-      ((> score 0.3) (* base-weight 1.2))
-      ((< score -0.3) (* base-weight 0.5))
-      (t base-weight))))
+    ;; Weight based on composite score (Sharpe+PF+WR+MaxDD)
+    (let* ((weight (+ base-weight (* 0.6 score))))
+      (min 2.0 (max 0.3 weight)))))
 
 (defun strategy-allowed-by-volatility-p (strat)
   "Check if strategy is allowed in current volatility regime"

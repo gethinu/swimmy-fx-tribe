@@ -99,6 +99,7 @@
       ((eq target-rank :S)
        (and (>= sharpe (getf criteria :sharpe-min 0))
             (or (not include-cpcv)
+                ;; S判定のPF/WR/MaxDDはCPCV中央値で評価する
                 (and (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))
                      (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
                      (>= (or (strategy-cpcv-median-pf strategy) 0.0) (getf criteria :cpcv-pf-min 0))
