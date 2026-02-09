@@ -189,3 +189,241 @@ def model_gate_predict(closes: List[float]) -> List[Optional[str]]:
             else:
                 preds[i] = "HOLD"
     return preds
+
+
+def compute_metrics(trade_returns: List[float]) -> dict:
+    if not trade_returns:
+        return {"sharpe": 0.0, "pf": 0.0, "win": 0.0, "trades": 0, "maxdd": 0.0}
+    wins = [r for r in trade_returns if r > 0]
+    losses = [r for r in trade_returns if r < 0]
+    mean = sum(trade_returns) / len(trade_returns)
+    var = sum((r - mean) ** 2 for r in trade_returns) / len(trade_returns)
+    std = math.sqrt(var)
+    sharpe = (mean / std * math.sqrt(len(trade_returns))) if std > 0 else 0.0
+    if losses:
+        pf = sum(wins) / abs(sum(losses))
+    else:
+        pf = float("inf") if wins else 0.0
+    win = len(wins) / len(trade_returns)
+
+    equity = 1.0
+    peak = 1.0
+    maxdd = 0.0
+    for r in trade_returns:
+        equity *= (1.0 + r)
+        if equity > peak:
+            peak = equity
+        dd = (peak - equity) / peak
+        if dd > maxdd:
+            maxdd = dd
+
+    return {"sharpe": sharpe, "pf": pf, "win": win, "trades": len(trade_returns), "maxdd": maxdd}
+
+
+def simulate_trades(
+    opens: List[float],
+    highs: List[float],
+    lows: List[float],
+    closes: List[float],
+    *,
+    entries: List[int],
+    exits: List[int],
+    sl: float,
+    tp: float,
+    slippage: float,
+) -> List[tuple]:
+    trades: List[tuple] = []
+    entry_set = set(entries)
+    exit_set = set(exits)
+    in_pos = False
+    entry_price = 0.0
+    entry_idx = 0
+    n = len(closes)
+    for i in range(n):
+        if in_pos:
+            sl_hit = lows[i] <= entry_price - sl if sl > 0 else False
+            tp_hit = highs[i] >= entry_price + tp if tp > 0 else False
+            if sl_hit or tp_hit:
+                exit_price = (entry_price - sl) if sl_hit else (entry_price + tp)
+                ret = (exit_price - entry_price) / entry_price
+                trades.append((entry_idx, ret))
+                in_pos = False
+                continue
+            if i in exit_set and i + 1 < n:
+                exit_price = opens[i + 1]
+                ret = (exit_price - entry_price) / entry_price
+                trades.append((entry_idx, ret))
+                in_pos = False
+                continue
+        else:
+            if i in entry_set and i + 1 < n:
+                entry_price = opens[i + 1] + slippage
+                entry_idx = i + 1
+                in_pos = True
+    return trades
+
+
+def _load_ohlc(path: str) -> tuple:
+    import csv
+
+    opens: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    closes: List[float] = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            opens.append(float(row["open"]))
+            highs.append(float(row["high"]))
+            lows.append(float(row["low"]))
+            closes.append(float(row["close"]))
+    return opens, highs, lows, closes
+
+
+def _golden_cross_signals(closes: List[float], short: int = 50, long: int = 200) -> tuple:
+    sma_s = sma_series(closes, short)
+    sma_l = sma_series(closes, long)
+    entries: List[int] = []
+    exits: List[int] = []
+    for i in range(1, len(closes)):
+        if sma_s[i] is None or sma_l[i] is None or sma_s[i - 1] is None or sma_l[i - 1] is None:
+            continue
+        if sma_s[i] > sma_l[i] and sma_s[i - 1] <= sma_l[i - 1]:
+            entries.append(i)
+        if sma_s[i] < sma_l[i] and sma_s[i - 1] >= sma_l[i - 1]:
+            exits.append(i)
+    return entries, exits
+
+
+def _rsi_reversion_signals(closes: List[float], period: int = 2, entry_th: float = 10.0, exit_th: float = 90.0) -> tuple:
+    rsi = rsi_series(closes, period)
+    entries: List[int] = []
+    exits: List[int] = []
+    for i in range(len(closes)):
+        if rsi[i] is None:
+            continue
+        if rsi[i] < entry_th:
+            entries.append(i)
+        if rsi[i] > exit_th:
+            exits.append(i)
+    return entries, exits
+
+
+def _split_metrics(trades: List[tuple], split_idx: int) -> tuple:
+    is_trades = [ret for idx, ret in trades if idx < split_idx]
+    oos_trades = [ret for idx, ret in trades if idx >= split_idx]
+    return compute_metrics(is_trades), compute_metrics(oos_trades)
+
+
+def _pip_size(pair: str) -> float:
+    return 0.01 if pair.endswith("JPY") else 0.0001
+
+
+def run_comparison(pairs: List[str], data_dir: str = "data/historical") -> List[dict]:
+    strategies = [
+        {
+            "name": "Legend-Golden-Cross-Classic",
+            "tf": "H1",
+            "type": "golden_cross",
+            "sl": 1.0,
+            "tp": 2.0,
+        },
+        {
+            "name": "Legend-RSI-Reversion-V1",
+            "tf": "M5",
+            "type": "rsi_reversion",
+            "sl": 0.10,
+            "tp": 0.10,
+        },
+    ]
+    results: List[dict] = []
+    for pair in pairs:
+        for strat in strategies:
+            path = f"{data_dir}/{pair}_{strat['tf']}.csv"
+            opens, highs, lows, closes = _load_ohlc(path)
+            if not closes:
+                raise ValueError(f"Empty data: {path}")
+            split_idx = int(len(closes) * 0.8)
+            preds = model_gate_predict(closes)
+            if strat["type"] == "golden_cross":
+                entries, exits = _golden_cross_signals(closes)
+            else:
+                entries, exits = _rsi_reversion_signals(closes)
+
+            slippage = 0.5 * _pip_size(pair)
+            base_trades = simulate_trades(
+                opens,
+                highs,
+                lows,
+                closes,
+                entries=entries,
+                exits=exits,
+                sl=strat["sl"],
+                tp=strat["tp"],
+                slippage=slippage,
+            )
+            gate_entries = [i for i in entries if preds[i] == "BUY"]
+            gate_trades = simulate_trades(
+                opens,
+                highs,
+                lows,
+                closes,
+                entries=gate_entries,
+                exits=exits,
+                sl=strat["sl"],
+                tp=strat["tp"],
+                slippage=slippage,
+            )
+            base_is, base_oos = _split_metrics(base_trades, split_idx)
+            gate_is, gate_oos = _split_metrics(gate_trades, split_idx)
+            results.append(
+                {
+                    "pair": pair,
+                    "strategy": strat["name"],
+                    "base_is": base_is,
+                    "base_oos": base_oos,
+                    "gate_is": gate_is,
+                    "gate_oos": gate_oos,
+                }
+            )
+    return results
+
+
+def _fmt(val: float) -> str:
+    if isinstance(val, float) and math.isinf(val):
+        return "inf"
+    return f"{val:.2f}"
+
+
+def _print_table(results: List[dict], key: str, title: str) -> None:
+    print(title)
+    print(
+        "Pair/Strategy | Base Sharpe | Base PF | Base Win% | Base Trades | Base MaxDD | "
+        "Gate Sharpe | Gate PF | Gate Win% | Gate Trades | Gate MaxDD"
+    )
+    for r in results:
+        base = r[f"base_{key}"]
+        gate = r[f"gate_{key}"]
+        print(
+            f"{r['pair']}/{r['strategy']} | "
+            f"{_fmt(base['sharpe'])} | {_fmt(base['pf'])} | {_fmt(base['win']*100)} | {base['trades']} | {_fmt(base['maxdd']*100)} | "
+            f"{_fmt(gate['sharpe'])} | {_fmt(gate['pf'])} | {_fmt(gate['win']*100)} | {gate['trades']} | {_fmt(gate['maxdd']*100)}"
+        )
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Legend gate comparison (local)")
+    parser.add_argument("--pairs", nargs="*", default=["USDJPY", "EURUSD", "GBPUSD"])
+    args = parser.parse_args(argv)
+
+    results = run_comparison(args.pairs)
+    _print_table(results, "is", "IS Metrics (80% oldest)")
+    print()
+    _print_table(results, "oos", "OOS Metrics (newest 20%)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
