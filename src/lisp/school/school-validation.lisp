@@ -108,6 +108,22 @@
           (getf counts :pass 0)
           (getf counts :total 0)))
 
+(defun cpcv-median-failure-counts (strategies)
+  "Count CPCV median failures for S criteria (PF/WR/MaxDD)."
+  (let* ((criteria (get-rank-criteria :S))
+         (total 0) (pf 0) (wr 0) (maxdd 0))
+    (dolist (s (or strategies '()))
+      (when (and (strategy-cpcv-median-sharpe s)
+                 (> (strategy-cpcv-median-sharpe s) 0.0))
+        (incf total)
+        (when (< (or (strategy-cpcv-median-pf s) 0.0) (getf criteria :cpcv-pf-min 1.5))
+          (incf pf))
+        (when (< (or (strategy-cpcv-median-wr s) 0.0) (getf criteria :cpcv-wr-min 0.45))
+          (incf wr))
+        (when (>= (or (strategy-cpcv-median-maxdd s) 1.0) (getf criteria :cpcv-maxdd-max 0.15))
+          (incf maxdd))))
+    (list :total total :pf pf :wr wr :maxdd maxdd)))
+
 (defun %oos-metric-inc (key &optional (delta 1))
   (incf (gethash key *oos-metrics* 0) delta))
 
