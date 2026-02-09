@@ -2317,6 +2317,9 @@
                                              :win-rate 0.55
                                              :max-dd 0.10
                                              :cpcv-median-sharpe 0.7
+                                             :cpcv-median-pf 1.6
+                                             :cpcv-median-wr 0.5
+                                             :cpcv-median-maxdd 0.12
                                              :cpcv-pass-rate 0.6))
          (called 0)
          (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)

@@ -49,10 +49,10 @@
                 (assert-true (< (abs (- (strategy-cpcv-median-wr obj) 0.52)) 0.0001)
                              "data_sexp should reflect updated cpcv median WR")
                 (assert-true (< (abs (- (strategy-cpcv-median-maxdd obj) 0.12)) 0.0001)
-                             "data_sexp should reflect updated cpcv median MaxDD")))))
+                             "data_sexp should reflect updated cpcv median MaxDD")))
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
-        (ignore-errors (delete-file tmp-db))))))
+        (ignore-errors (delete-file tmp-db)))))))
 
 (deftest test-kill-strategy-persists-status
   "Soft kill should persist status to DB to survive restarts."
