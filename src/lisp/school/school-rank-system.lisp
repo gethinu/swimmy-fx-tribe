@@ -22,7 +22,9 @@
 (defparameter *rank-criteria*
   '((:B       :sharpe-min 0.1  :pf-min 1.0  :wr-min 0.30  :maxdd-max 0.30)
     (:A       :sharpe-min 0.3  :pf-min 1.2  :wr-min 0.40  :maxdd-max 0.20 :oos-min 0.3)
-    (:S       :sharpe-min 0.5  :pf-min 1.5  :wr-min 0.45  :maxdd-max 0.15 :cpcv-min 0.5 :cpcv-pass-min 0.5))
+    (:S       :sharpe-min 0.5
+              :cpcv-min 0.5 :cpcv-pass-min 0.5
+              :cpcv-pf-min 1.5 :cpcv-wr-min 0.45 :cpcv-maxdd-max 0.15))
   "Rank criteria thresholds. All conditions must be met (AND logic).")
 
 (defparameter *culling-threshold* 10
@@ -58,20 +60,26 @@
          (pf (or (strategy-profit-factor strategy) 0.0))
          (wr (or (strategy-win-rate strategy) 0.0))
          (maxdd (or (strategy-max-dd strategy) 1.0)))
-    (and (>= sharpe (getf criteria :sharpe-min 0))
-         (>= pf (getf criteria :pf-min 0))
-         (>= wr (getf criteria :wr-min 0))
-         (< maxdd (getf criteria :maxdd-max 1.0))
-         ;; V50.3: Gate Lockdown
-         (cond
-           ((eq target-rank :A)
-            (or (not include-oos)
-                (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
-           ((eq target-rank :S)
+    (cond
+      ((eq target-rank :S)
+       (and (>= sharpe (getf criteria :sharpe-min 0))
             (or (not include-cpcv)
                 (and (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))
-                     (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0)))))
-           (t t)))))
+                     (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
+                     (>= (or (strategy-cpcv-median-pf strategy) 0.0) (getf criteria :cpcv-pf-min 0))
+                     (>= (or (strategy-cpcv-median-wr strategy) 0.0) (getf criteria :cpcv-wr-min 0))
+                     (< (or (strategy-cpcv-median-maxdd strategy) 1.0) (getf criteria :cpcv-maxdd-max 1.0))))))
+      (t
+       (and (>= sharpe (getf criteria :sharpe-min 0))
+            (>= pf (getf criteria :pf-min 0))
+            (>= wr (getf criteria :wr-min 0))
+            (< maxdd (getf criteria :maxdd-max 1.0))
+            ;; V50.3: Gate Lockdown
+            (cond
+              ((eq target-rank :A)
+               (or (not include-oos)
+                   (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
+              (t t)))))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
   "Get all strategies with a specific rank, optionally filtered by TF/Direction/Symbol.

@@ -410,20 +410,18 @@
 
 (defun validate-for-s-rank-promotion (strat)
   "Validate strategy is ready for S-RANK promotion using true CPCV.
-   S-RANK criteria: Sharpe >= 0.5, PF >= 1.5, WR >= 45%, MaxDD < 15%
-   Plus: CPCV validation must pass (median Sharpe >= 0.5, 50%+ paths passing).
+   S-RANK criteria: IS Sharpe >= 0.5
+   Plus: CPCV validation must pass (median Sharpe >= 0.5, 50%+ paths passing),
+         and CPCV median PF/WR/MaxDD must satisfy S thresholds.
    Returns T if strategy passes all S-RANK criteria including CPCV."
   (format t "[S-RANK] 🏆 Validating ~a for S-RANK promotion...~%"
           (strategy-name strat))
   
-  ;; Check basic S-RANK criteria first
-  (let ((sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-profit-factor strat) 0.0))
-        (wr (or (strategy-win-rate strat) 0.0))
-        (maxdd (or (strategy-max-dd strat) 1.0)))
-    (unless (and (>= sharpe 0.5) (>= pf 1.5) (>= wr 0.45) (< maxdd 0.15))
-      (format t "[S-RANK] ❌ ~a: Does not meet basic S-RANK criteria (S=~,2f PF=~,2f WR=~,2f DD=~,2f)~%"
-              (strategy-name strat) sharpe pf wr maxdd)
+  ;; Check IS Sharpe gate first
+  (let ((sharpe (or (strategy-sharpe strat) 0.0)))
+    (unless (>= sharpe 0.5)
+      (format t "[S-RANK] ❌ ~a: Does not meet IS Sharpe gate (S=~,2f)~%"
+              (strategy-name strat) sharpe)
       (return-from validate-for-s-rank-promotion nil)))
   
   ;; Run CPCV validation via Guardian
@@ -434,8 +432,14 @@
        nil)
       (passed
        (let ((median (getf result :median-sharpe))
+             (median-pf (getf result :median-pf))
+             (median-wr (getf result :median-wr))
+             (median-maxdd (getf result :median-maxdd))
              (pass-rate (getf result :pass-rate)))
          (setf (strategy-cpcv-median-sharpe strat) median)
+         (setf (strategy-cpcv-median-pf strat) median-pf)
+         (setf (strategy-cpcv-median-wr strat) median-wr)
+         (setf (strategy-cpcv-median-maxdd strat) median-maxdd)
          (setf (strategy-cpcv-pass-rate strat) pass-rate)
          (upsert-strategy strat)
          (format t "[S-RANK] ✅ ~a: CPCV PASSED (median Sharpe=~,3f, ~d/~d paths)~%"
@@ -443,7 +447,15 @@
                  median
                  (getf result :passed-count)
                  (getf result :path-count))
-         t))
+         (if (check-rank-criteria strat :S)
+             t
+             (progn
+               (format t "[S-RANK] ❌ ~a: CPCV medians failed S criteria (PF=~,2f WR=~,2f DD=~,2f)~%"
+                       (strategy-name strat)
+                       (or median-pf 0.0)
+                       (or median-wr 0.0)
+                       (or median-maxdd 1.0))
+               nil))))
       (t
        (format t "[S-RANK] ❌ ~a: CPCV FAILED (median Sharpe=~,3f)~%"
                (strategy-name strat) (getf result :median-sharpe))
