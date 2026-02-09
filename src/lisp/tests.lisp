@@ -2347,9 +2347,24 @@
                                             :win-rate 0.55
                                             :max-dd 0.10
                                             :cpcv-median-sharpe 0.7
+                                            :cpcv-median-pf 1.6
+                                            :cpcv-median-wr 0.5
+                                            :cpcv-median-maxdd 0.12
                                             :cpcv-pass-rate 0.4)))
     (assert-false (swimmy.school::check-rank-criteria strat :S)
                   "Expected S criteria to fail when CPCV pass-rate < 0.5")))
+
+(deftest test-check-rank-criteria-cpcv-medians-pass
+  "S-RANK criteria should accept CPCV medians when all thresholds are met."
+  (let ((strat (swimmy.school:make-strategy :name "UT-S-OK"
+                                            :rank :A
+                                            :sharpe 0.6
+                                            :cpcv-median-sharpe 0.6
+                                            :cpcv-pass-rate 0.6
+                                            :cpcv-median-pf 1.6
+                                            :cpcv-median-wr 0.5
+                                            :cpcv-median-maxdd 0.12)))
+    (assert-true (swimmy.school::check-rank-criteria strat :S))))
 
 (deftest test-ensure-rank-blocks-s-without-cpcv
   "ensure-rank should block S promotion when CPCV criteria are missing"
