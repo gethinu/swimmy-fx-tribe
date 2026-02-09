@@ -69,6 +69,15 @@
   (push strategy-name *stagnant-c-rank-buffer*)
   (when (<= *stagnant-c-rank-first-seen* 0)
     (setf *stagnant-c-rank-first-seen* now))
+  (let* ((first *stagnant-c-rank-first-seen*)
+         (oldest (- now first))
+         (data (list :buffer-len (length *stagnant-c-rank-buffer*)
+                     :oldest-secs oldest)))
+    (when (fboundp 'swimmy.core::emit-telemetry-event)
+      (swimmy.core::emit-telemetry-event "stagnant_c_rank.buffer"
+        :service "school"
+        :severity "info"
+        :data data)))
   t)
 
 (defun maybe-flush-stagnant-c-rank (&optional (now (get-universal-time)))

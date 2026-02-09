@@ -136,9 +136,34 @@
 
 
 
+;; Independent flush loop for stagnant notification buffers
+(defparameter *stagnant-flush-interval* 60)
+(defvar *stagnant-flush-thread* nil)
+(defvar *stagnant-flush-stop* nil)
+
+(defun run-stagnant-flush-tick ()
+  (when (fboundp 'swimmy.core:check-timeout-flushes)
+    (swimmy.core:check-timeout-flushes)))
+
+(defun start-stagnant-flush-loop (&key (interval *stagnant-flush-interval*))
+  (unless (and *stagnant-flush-thread*
+               (sb-thread:thread-alive-p *stagnant-flush-thread*))
+    (setf *stagnant-flush-stop* nil)
+    (setf *stagnant-flush-thread*
+          (sb-thread:make-thread
+           (lambda ()
+             (handler-case
+                 (loop until *stagnant-flush-stop* do
+                   (run-stagnant-flush-tick)
+                   (sleep interval))
+               (error (e)
+                 (format *error-output* "[CONNECTOR] ⚠️ Stagnant flush loop failed: ~a~%" e))))
+           :name "stagnant-flush-loop"))))
+
 (defun start-evolution-service ()
   "Main Loop: The Connector"
   (format t "♾️  STARTING EVOLUTION SERVICE (Lisp-Native Orchestration) ♾️~%")
+  (start-stagnant-flush-loop)
   (loop
     (format t "~%--- 🕰️ Cycle Start [Time: ~a] ---~%" (swimmy.core:get-time-string))
 

@@ -148,6 +148,21 @@
       (when (boundp 'swimmy.school::*last-cull-day-key*)
         (setf swimmy.school::*last-cull-day-key* orig-key)))))
 
+(deftest test-stagnant-flush-tick-invokes-timeout-flush
+  "Flush tick should invoke check-timeout-flushes without evolution loop."
+  (let ((called 0)
+        (orig (and (fboundp 'swimmy.core:check-timeout-flushes)
+                   (symbol-function 'swimmy.core:check-timeout-flushes))))
+    (unwind-protect
+        (progn
+          (when orig
+            (setf (symbol-function 'swimmy.core:check-timeout-flushes)
+                  (lambda () (incf called))))
+          (swimmy.school::run-stagnant-flush-tick)
+          (assert-equal 1 called "Should call check-timeout-flushes"))
+      (when orig
+        (setf (symbol-function 'swimmy.core:check-timeout-flushes) orig)))))
+
 (deftest test-evolution-report-throttle-uses-last-write
   "Evolution report should only send when last write exceeds interval"
   (let* ((orig (symbol-function 'swimmy.school::notify-evolution-report))
