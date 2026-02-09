@@ -346,6 +346,32 @@
       (when (strategy-immortal s)
         (format t "[AGE] 🛡️ Legendary ~a is Ageless (Age: ~d)~%" (strategy-name s) (strategy-age s))))))
 
+(defvar *last-stagnant-crank-cull-day* nil "YYYYMMDD of last daily Stagnant C-Rank cull")
+
+(defun %day-key (&optional (now (get-universal-time)))
+  (multiple-value-bind (s m h date month year) (decode-universal-time now)
+    (declare (ignore s m h))
+    (+ (* year 10000) (* month 100) date)))
+
+(defun should-run-stagnant-crank-cull-p (day-key)
+  (when (or (null *last-stagnant-crank-cull-day*)
+            (/= day-key *last-stagnant-crank-cull-day*))
+    (setf *last-stagnant-crank-cull-day* day-key)
+    t))
+
+(defun cull-stagnant-crank-daily ()
+  "Cull Stagnant C-Rank strategies once per day."
+  (format t "[CULL] 🧊 Daily Stagnant C-Rank Culling Initiated...~%")
+  (dolist (s *strategy-knowledge-base*)
+    (when (and (eq (strategy-status s) :active)
+               (not (strategy-immortal s))
+               (> (strategy-age s) 10))
+      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+        (when (< sharpe 0.6)
+          (kill-strategy (strategy-name s)
+                         (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe)
+                         :reason-code :stagnant-crank))))))
+
 (defun cull-weak-strategies ()
   "Cull weak strategies (Rank C/D) that are older than 5 days.
    (Weekly Friday Close)"
@@ -358,11 +384,7 @@
       (let ((sharpe (or (strategy-sharpe s) -1.0)))
         (cond
           ((< sharpe 0.0) 
-           (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe)))
-          ((and (< sharpe 0.6) (> (strategy-age s) 10))
-           (kill-strategy (strategy-name s)
-                          (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe)
-                          :reason-code :stagnant-crank)))))))
+           (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe))))))))
 
 (defun process-breeding-cycle ()
   "Main Entry Point: Aging, Culling, and Breeding.
@@ -371,6 +393,11 @@
   
   ;; 1. Global Aging
   (increment-strategy-ages)
+  
+  ;; 1.5 Daily Stagnant C-Rank Culling (day-key guard)
+  (let ((day-key (%day-key)))
+    (when (should-run-stagnant-crank-cull-p day-key)
+      (cull-stagnant-crank-daily)))
   
   ;; 2. Culling (Weekly)
   ;; Morning Ritual is daily. Culling usually Fri Close or Sat Morning.

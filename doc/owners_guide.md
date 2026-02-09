@@ -33,6 +33,7 @@
 - **DNA Upgrade**: 戦略構造体に `age` (寿命) と `immortal` (不死属性) を追加。
 - **Deathmatch (死闘)**: 「親と子」が競い合い、子が親のSharpe Ratioを超えた場合、親を殺害して入れ替わる (`compete-parent-child`)。
 - **Culling (間引き)**: 毎週土曜日に、成果の出ない古い戦略 (Rank C/D かつ 5日以上経過) を自動処刑。
+- **Stagnant C-Rank**: 日次cull（day-keyガードで1日1回）＋通知は1時間バッチでサマリ送信（個別通知抑制）。
 - **Immortality (不死)**: `Legend` ランクの戦略は、老衰や間引きの影響を受けない不老不死となる。
 
 > [!WARNING]

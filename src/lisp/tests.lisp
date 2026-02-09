@@ -1707,6 +1707,13 @@
       (when orig
         (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) orig)))))
 
+(deftest test-stagnant-crank-daily-guard
+  "Stagnant C-Rank cull should run once per day"
+  (let ((swimmy.school::*last-stagnant-crank-cull-day* nil))
+    (assert-true (swimmy.school::should-run-stagnant-crank-cull-p 20260209))
+    (assert-false (swimmy.school::should-run-stagnant-crank-cull-p 20260209))
+    (assert-true (swimmy.school::should-run-stagnant-crank-cull-p 20260210))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -1774,6 +1781,7 @@
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
                   test-scheduler-calls-timeout-flushes
+                  test-stagnant-crank-daily-guard
                   test-promotion-triggers-noncorrelation-notification
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades
