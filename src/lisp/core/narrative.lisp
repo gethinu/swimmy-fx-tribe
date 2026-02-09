@@ -65,7 +65,6 @@
          (volatility-regime (safe-symbol-value 'swimmy.globals::*volatility-regime*))
          (last-prediction (safe-symbol-value 'swimmy.globals::*last-prediction*))
          (last-confidence (safe-symbol-value 'swimmy.globals::*last-confidence*))
-         (swarm-consensus (safe-symbol-value 'swimmy.globals::*last-swarm-consensus*))
          (direction (or last-prediction :hold))
          (flood-status (get-flood-status)))
 
@@ -78,7 +77,6 @@
 ⚙️ システム状態: ~a (Trading: ~a)
 🧠 最終シグナル: ~a (信頼度 ~a)
 🧭 レジーム: ~a / ~a
-📊 合意率: Swarm ~a
 
 🌊 **洪水警報 (Risk Level)**:
 ~a
@@ -95,7 +93,6 @@
   (format-percent last-confidence)
   (format-value current-regime "~a")
   (format-value volatility-regime "~a")
-  (format-percent swarm-consensus)
   flood-status
   (format-value danger-level "~d")
   (format-value max-dd "~,1f%")

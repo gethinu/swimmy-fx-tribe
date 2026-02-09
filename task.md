@@ -77,3 +77,9 @@
 - [x] 理由の構造化（文字列search廃止、reasonコード導入）: `src/lisp/strategies/strategies.lisp`, `src/lisp/core/discord.lisp`
 - [x] バッファ長/最古滞留時間のテレメトリ追加: `src/lisp/core/discord.lisp`
 - [x] school側フラッシュ経路のテスト追加（長時間フェーズ耐性）: `src/lisp/tests/scheduler-tests.lisp` or new integration test
+
+## Expert Panel 2026-02-09 (Swarm Consensus Practicality)
+- [ ] `*last-swarm-consensus*` を正本1箇所に統一し、Swarm集計の更新経路を接続する: `src/lisp/core/globals.lisp`, `src/lisp/school/school-execution.lisp`, `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-state.lisp`
+- [ ] High Council の `proposal` 型を plist に統一し、型不整合の回帰テストを追加する: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-execution.lisp`, `src/lisp/tests.lisp`
+- [ ] Swarm 記述と実装の整合（残すなら配線、外すなら記述削除）を行う: `doc/owners_guide.md`, `src/lisp/school/school-evaluation.lisp`
+- [ ] Status 通知の webhook ルーティングを明示して運用事故を防ぐ: `src/lisp/core/config.lisp`, `src/lisp/core/discord.lisp`

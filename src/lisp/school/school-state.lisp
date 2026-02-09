@@ -56,7 +56,6 @@
 ;;; = = = = = = = = = = = = = 
 (defvar *trade-history* (make-hash-table :test 'eq))
 (defvar *category-entries* (make-hash-table :test 'eq))
-(defvar *last-swarm-consensus* 0)
 (defvar *category-positions* nil)
 (defvar *yesterday-pnl* 0 "PnL from the previous trading day (for reporting)")
 (defvar *category-trades* 0)

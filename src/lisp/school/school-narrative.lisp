@@ -306,12 +306,7 @@ REVERSION : ~a"
                                  (build-cpcv-status-snippet)
                                  cpcv-gate-line
                                  cpcv-median-line))
-          (oos-snippet (oos-metrics-summary-line))
-          (phase2-end-text
-            (let ((phase2-unix swimmy.globals:*phase2-last-end-unix*))
-              (if (> phase2-unix 0)
-                  (format-timestamp (+ phase2-unix 2208988800))
-                  "N/A"))))
+           (oos-snippet (oos-metrics-summary-line)))
     
     (format nil "
 🏭 **Evolution Factory Report**
@@ -342,8 +337,6 @@ Current status of the autonomous strategy generation pipeline.
 
 ~a
 
-🕒 Phase2 EndTime: ~a
-
 ~a
 
 ⚙️ System Status
@@ -359,7 +352,6 @@ Current status of the autonomous strategy generation pipeline.
             retired
             cpcv-snippet
             oos-snippet
-            phase2-end-text
             top-snippet
             (format-timestamp (get-universal-time)))))) 
 

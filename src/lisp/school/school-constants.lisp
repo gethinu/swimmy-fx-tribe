@@ -8,11 +8,9 @@
 (defparameter *timeframes* '("M5" "M15" "H1" "H4" "D1" "W1" "MN") "Multi-Timeframe Scope")
 (defparameter *symbols* '("USDJPY" "EURUSD" "GBPUSD") "Primary Currency Pairs")
 
-;;; 2. BACKTEST RANGES (2-Stage Validation)
+;;; 2. BACKTEST RANGE (Screening)
 ;;; Phase 1 (Screening): Learn from history (2011-2020)
-;;; Phase 2 (Validation): Survive the new world (2021-Present, rolling)
 (defparameter *backtest-range-1* '(:start "2011.01.01" :end "2020.12.31") "Screening Range (10y)")
-(defparameter *backtest-range-2* '(:start "2021.01.01" :end nil) "Validation Range (OOS)")
 
 ;;; 3. EVOLUTION PARAMETERS (Musk Optimization)
 (defparameter *b-rank-pool-size* 20 "Max strategies per pool. Speed is survival.")
@@ -42,4 +40,3 @@
 
 ;;; 5. SCREENING THRESHOLDS
 (defparameter *phase1-min-sharpe* 0.1 "Minimum Sharpe for Phase 1 (Screening)")
-(defparameter *phase2-min-sharpe* 0.3 "Minimum Sharpe for Phase 2 (Validation)")

@@ -59,8 +59,7 @@
      (when (eq (getf (getf analysis :dual-trend) :agreement) :divergent)
        (push "Short/Long trend divergence" risks))
      risks)
-   :entry-conditions (list "Swarm consensus > 60%"
-                           "Constitution approval"
+   :entry-conditions (list "Constitution approval"
                            "Within daily loss limit")
    :exit-conditions (list "TP hit" "SL hit" "Trend reversal" "Time-based exit")
    :time-horizon :intraday))
