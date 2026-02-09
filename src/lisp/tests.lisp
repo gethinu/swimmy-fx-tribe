@@ -2402,6 +2402,76 @@
            (score-risky (funcall fn risky)))
       (assert-true (> score-safe score-risky) "High DD should reduce score"))))
 
+(deftest test-b-rank-cull-uses-composite-score
+  "Rank B culling should use composite score, not Sharpe only"
+  (let* ((mk (lambda (name sharpe pf wr dd)
+               (swimmy.school:make-strategy :name name :rank :B
+                                            :sharpe sharpe :profit-factor pf
+                                            :win-rate wr :max-dd dd)))
+         (s1 (funcall mk "S1" 1.2 1.0 0.40 0.20))
+         (s2 (funcall mk "S2" 0.5 1.8 0.60 0.08))
+         (s3 (funcall mk "S3" 0.6 1.4 0.50 0.10))
+         (s4 (funcall mk "S4" 0.4 1.9 0.62 0.07))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-cap swimmy.school::*rank-b-capacity*)
+         (orig-demote (symbol-function 'swimmy.school::demote-to-graveyard))
+         (called nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list s1 s2 s3 s4))
+          (setf swimmy.school::*rank-b-capacity* 2)
+          (setf (symbol-function 'swimmy.school::demote-to-graveyard)
+                (lambda (strategy reason)
+                  (declare (ignore reason))
+                  (push (swimmy.school:strategy-name strategy) called)))
+          (swimmy.school::cull-rank-b-pool)
+          (assert-equal 1 (length called) "should cull exactly one")
+          (assert-true (find "S1" called :test #'string=)
+                       "low composite should be culled"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*rank-b-capacity* orig-cap)
+      (setf (symbol-function 'swimmy.school::demote-to-graveyard) orig-demote))))
+
+(deftest test-breeder-cull-uses-composite-score
+  "Breeder pool culling should use composite score"
+  (let* ((mk (lambda (name sharpe pf wr dd)
+               (swimmy.school:make-strategy :name name :rank :B
+                                            :sharpe sharpe :profit-factor pf
+                                            :win-rate wr :max-dd dd)))
+         (s1 (funcall mk "S1" 1.2 1.0 0.40 0.20))
+         (s2 (funcall mk "S2" 0.5 1.8 0.60 0.08))
+         (s3 (funcall mk "S3" 0.6 1.4 0.50 0.10))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-limit swimmy.school::*b-rank-pool-size*)
+         (orig-notify (symbol-function 'swimmy.school::notify-death))
+         (orig-init (symbol-function 'swimmy.school::init-db))
+         (orig-exec (symbol-function 'swimmy.school::execute-non-query))
+         (called nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list s1 s2 s3))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf (gethash :trend swimmy.school::*category-pools*) (list s1 s2 s3))
+          (setf swimmy.school::*b-rank-pool-size* 2)
+          (setf (symbol-function 'swimmy.school::notify-death)
+                (lambda (strategy reason)
+                  (declare (ignore reason))
+                  (push (swimmy.school:strategy-name strategy) called)))
+          (setf (symbol-function 'swimmy.school::init-db) (lambda () nil))
+          (setf (symbol-function 'swimmy.school::execute-non-query)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (swimmy.school::cull-pool-overflow :trend)
+          (assert-equal 1 (length called) "should cull exactly one")
+          (assert-true (find "S1" called :test #'string=)
+                       "low composite should be culled"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*b-rank-pool-size* orig-limit)
+      (setf (symbol-function 'swimmy.school::notify-death) orig-notify)
+      (setf (symbol-function 'swimmy.school::init-db) orig-init)
+      (setf (symbol-function 'swimmy.school::execute-non-query) orig-exec))))
+
 (deftest test-check-rank-criteria-requires-cpcv-pass-rate
   "S-RANK criteria should require CPCV pass-rate >= 0.5"
   (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
@@ -3002,6 +3072,8 @@
                   test-promotion-triggers-noncorrelation-notification
                   test-composite-score-prefers-stable-pf-wr
                   test-composite-score-penalizes-high-dd
+                  test-b-rank-cull-uses-composite-score
+                  test-breeder-cull-uses-composite-score
                   test-check-rank-criteria-requires-cpcv-pass-rate
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv

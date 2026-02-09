@@ -140,11 +140,15 @@
                               (and (eq (strategy-category s) cat)
                                    (not (eq (strategy-rank s) :graveyard))))
                             *strategy-knowledge-base*))
-             ;; V48.7: Rank-aware and raw Sharpe priority. 
-             (sorted (sort (copy-list all-warriors) #'> 
-                           :key (lambda (s) 
+             ;; V48.7: Rank-aware and composite score priority. 
+             (sorted (sort (copy-list all-warriors) #'>
+                           :key (lambda (s)
                                   (+ (case (strategy-rank s) (:legend 3.0) (:S 2.0) (:A 1.0) (t 0.0))
-                                     (strategy-selection-score s)
+                                     (score-from-metrics
+                                      (list :sharpe (strategy-sharpe s)
+                                            :profit-factor (strategy-profit-factor s)
+                                            :win-rate (strategy-win-rate s)
+                                            :max-dd (strategy-max-dd s)))
                                      (* (or (strategy-generation s) 0) 0.01))))))
         
         ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
@@ -186,8 +190,14 @@
          (survivors nil)
          (victims nil))
     (when (> (length pool) limit)
-      ;; Sort by Sharpe (High to Low)
-      (let ((sorted (sort (copy-list pool) #'> :key #'strategy-selection-score)))
+      ;; Sort by composite score (High to Low)
+      (let ((sorted (sort (copy-list pool) #'>
+                          :key (lambda (s)
+                                 (score-from-metrics
+                                  (list :sharpe (strategy-sharpe s)
+                                        :profit-factor (strategy-profit-factor s)
+                                        :win-rate (strategy-win-rate s)
+                                        :max-dd (strategy-max-dd s)))))))
         (setf survivors (subseq sorted 0 limit))
         (setf victims (subseq sorted limit))
         
