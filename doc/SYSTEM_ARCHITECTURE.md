@@ -1,9 +1,13 @@
 # 🦈 Swimmy FX システムアーキテクチャ
 
+**状態**: **DEPRECATED / ARCHIVED**  
+**正本**: `docs/llm/ARCHITECTURE.md`  
 **更新日**: 2025-12-29 20:50  
 **バージョン**: V3.0  
 
 ---
+
+以下は当時のスナップショットです。更新・参照の正本は `docs/llm/ARCHITECTURE.md` を使用してください。
 
 ## 概要
 

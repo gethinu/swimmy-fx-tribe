@@ -1,5 +1,7 @@
 # System Architecture
 
+**Canonical**: このドキュメントが設計の正本です。`doc/SYSTEM_ARCHITECTURE.md` はアーカイブ済み。  
+
 ## 全体データフロー
 ```mermaid
 graph TD
