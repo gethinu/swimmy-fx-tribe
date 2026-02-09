@@ -3030,6 +3030,7 @@
                   test-oos-validation-dispatches-when-unset
                   test-oos-status-updated-on-dispatch
                   test-evolution-report-includes-oos-status
+                  test-evolution-report-includes-cpcv-gate-failures
                   test-oos-status-line-no-queue-duplication
                   test-oos-status-line-ignores-queue-error
                   test-evolution-report-includes-phase2-end-time

@@ -398,6 +398,51 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-evolution-report-includes-cpcv-gate-failures
+  "Evolution report should include CPCV gate failure summary."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-cpcv-gate-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db))
+                   (orig-fetch (symbol-function 'swimmy.school::fetch-candidate-strategies)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (setf (symbol-function 'swimmy.school::fetch-candidate-strategies)
+                            (lambda (&rest _args)
+                              (declare (ignore _args))
+                              (list
+                               (cl-user::make-strategy :name "Gate-1" :symbol "USDJPY"
+                                                       :sharpe 0.4 :profit-factor 1.6
+                                                       :win-rate 0.5 :max-dd 0.1 :rank :A)
+                               (cl-user::make-strategy :name "Gate-2" :symbol "USDJPY"
+                                                       :sharpe 0.6 :profit-factor 1.0
+                                                       :win-rate 0.4 :max-dd 0.2 :rank :A))))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "CPCV Gate Failures:" report)
+                                     "Report should include CPCV gate failure line")
+                        (assert-true (search "sharpe<0.5=1" report)
+                                     "Gate sharpe count should appear")
+                        (assert-true (search "pf<1.5=1" report)
+                                     "Gate PF count should appear")
+                        (assert-true (search "wr<0.45=1" report)
+                                     "Gate WR count should appear")
+                        (assert-true (search "maxdd>=0.15=1" report)
+                                     "Gate MaxDD count should appear")
+                        (assert-true (search "elite=1" report)
+                                     "Gate elite count should appear")
+                        (assert-true (search "total=2" report)
+                                     "Gate total count should appear")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh)
+                 (setf (symbol-function 'swimmy.school::fetch-candidate-strategies) orig-fetch))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-oos-status-line-uses-db-metrics
   "OOS status line should reflect DB queue and OOS results."
   (let* ((tmp-db (format nil "/tmp/swimmy-oos-line-~a.db" (get-universal-time))))

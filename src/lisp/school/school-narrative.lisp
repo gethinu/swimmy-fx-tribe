@@ -288,13 +288,24 @@ REVERSION : ~a"
     (let* ((top-snippet (build-top-candidates-snippet-from-db))
            (a-rank-db (or (ignore-errors (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))
                           '()))
-           (cpcv-counts (cpcv-median-failure-counts a-rank-db))
-           (cpcv-failure-line (format nil "CPCV Median Failures: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d total=~d"
-                                      (getf cpcv-counts :pf 0)
-                                      (getf cpcv-counts :wr 0)
-                                      (getf cpcv-counts :maxdd 0)
-                                      (getf cpcv-counts :total 0)))
-           (cpcv-snippet (format nil "~a~%~a" (build-cpcv-status-snippet) cpcv-failure-line))
+           (cpcv-gate-counts (cpcv-gate-failure-counts a-rank-db))
+           (cpcv-gate-line (format nil "CPCV Gate Failures: sharpe<0.5=~d pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d elite=~d total=~d"
+                                   (getf cpcv-gate-counts :sharpe 0)
+                                   (getf cpcv-gate-counts :pf 0)
+                                   (getf cpcv-gate-counts :wr 0)
+                                   (getf cpcv-gate-counts :maxdd 0)
+                                   (getf cpcv-gate-counts :pass 0)
+                                   (getf cpcv-gate-counts :total 0)))
+           (cpcv-median-counts (cpcv-median-failure-counts a-rank-db))
+           (cpcv-median-line (format nil "CPCV Median Failures: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d total=~d"
+                                     (getf cpcv-median-counts :pf 0)
+                                     (getf cpcv-median-counts :wr 0)
+                                     (getf cpcv-median-counts :maxdd 0)
+                                     (getf cpcv-median-counts :total 0)))
+           (cpcv-snippet (format nil "~a~%~a~%~a"
+                                 (build-cpcv-status-snippet)
+                                 cpcv-gate-line
+                                 cpcv-median-line))
           (oos-snippet (oos-metrics-summary-line))
           (phase2-end-text
             (let ((phase2-unix swimmy.globals:*phase2-last-end-unix*))
