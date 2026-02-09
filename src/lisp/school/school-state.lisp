@@ -403,13 +403,6 @@
         (format t "[S] 📂 Loaded ~d strategy ranks from ~a~%" count *rank-db-path*)))))
 
 ;;; ==========================================
-;;; SWARM CONSENSUS
-;;; ==========================================
-(defparameter *swarm-consensus-threshold* 0.6)
-(defparameter *swarm-vote-log* nil)
-(defparameter *max-vote-log* 100)
-
-;;; ==========================================
 ;;; LEADER SYSTEM
 ;;; ==========================================
 (defparameter *leader-tenure* 0)

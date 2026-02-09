@@ -76,14 +76,6 @@
             (format t "[L] 🕐 HOUR PATTERNS: ~a~%" patterns))))
     (error (e) (format t "[L] Hour patterns error: ~a~%" e)))
   
-  ;; V3.0: Swarm accuracy report
-  (handler-case
-      (when (fboundp 'analyze-swarm-accuracy)
-        (let ((accuracy (analyze-swarm-accuracy)))
-          (when accuracy
-            (format t "[L] 🐟 SWARM ACCURACY: ~a~%" accuracy))))
-    (error (e) (format t "[L] Swarm accuracy error: ~a~%" e)))
-  
   ;; V7.0: Metabolism - The Efficient Gardener Life Cycle
   (handler-case
       (when (fboundp 'run-metabolism)

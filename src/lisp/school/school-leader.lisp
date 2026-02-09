@@ -59,26 +59,6 @@
       (when leader-strat
         (evaluate-strategy-signal leader-strat history)))))
 
-(defun leader-agrees-p (decision)
-  "Check if leader agrees with swarm decision"
-  (when (and *current-leader* *candle-history*)
-    (let ((leader-signal (get-leader-direction *candle-history*)))
-      (eq leader-signal (swarm-decision-direction decision)))))
-
-(defun get-leader-boosted-decision (decision)
-  "Boost swarm decision if leader agrees, or flag caution if not"
-  (if (leader-agrees-p decision)
-      (progn
-        (format t "[L] 👑 LEADER CONFIRMS: ~a~%" (swarm-decision-direction decision))
-        (setf (swarm-decision-confidence decision)
-              (min 1.0 (* (swarm-decision-confidence decision) 1.3)))
-        decision)
-      (progn
-        (format t "[L] ⚠️ LEADER CAUTION: Different view from swarm~%")
-        (setf (swarm-decision-confidence decision)
-              (* (swarm-decision-confidence decision) 0.8))
-        decision)))
-
 (defun update-leader-performance (result pnl)
   "Update leader's performance stats after a trade"
   (when *current-leader*

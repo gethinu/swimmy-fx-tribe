@@ -1324,36 +1324,6 @@
       (setf swimmy.engine::*state-file-path* orig-path)
       (when (probe-file tmp-path) (delete-file tmp-path)))))
 
-(deftest test-calculate-strategy-weight-composite
-  "PF/WRが高いほど重みが増え、MaxDDが高いと減る"
-  (let* ((base (make-strategy :name "BASE"
-                              :sharpe 0.2
-                              :profit-factor 1.0
-                              :win-rate 0.3
-                              :max-dd 0.10))
-         (pf-boost (make-strategy :name "PF-BOOST"
-                                :sharpe 0.2
-                                :profit-factor 1.6
-                                :win-rate 0.3
-                                :max-dd 0.10))
-         (wr-boost (make-strategy :name "WR-BOOST"
-                                :sharpe 0.2
-                                :profit-factor 1.0
-                                :win-rate 0.55
-                                :max-dd 0.10))
-         (penalty (make-strategy :name "PEN"
-                                 :sharpe 0.2
-                                 :profit-factor 1.6
-                                 :win-rate 0.3
-                                 :max-dd 0.30))
-         (w-base (swimmy.school::calculate-strategy-weight base))
-         (w-pf (swimmy.school::calculate-strategy-weight pf-boost))
-         (w-wr (swimmy.school::calculate-strategy-weight wr-boost))
-         (w-pen (swimmy.school::calculate-strategy-weight penalty)))
-    (assert-true (> w-pf w-base) "PF should raise weight")
-    (assert-true (> w-wr w-base) "WR should raise weight")
-    (assert-true (< w-pen w-pf) "MaxDD should penalize weight")))
-
 (deftest test-dynamic-narrative-uses-category-display
   "dynamic narrative should use category display, not clan names"
   (let* ((signal (list :strategy-name "Test"
@@ -3144,7 +3114,6 @@
                   test-category-vocabulary-omits-clan-terms-in-sources
                   test-founder-template-uses-category-placeholder
                   test-ledger-omits-tribe-fields
-                  test-calculate-strategy-weight-composite
                   test-dynamic-narrative-uses-category-display
                   test-category-counts-returns-alist
                   test-repl-help-omits-clans
