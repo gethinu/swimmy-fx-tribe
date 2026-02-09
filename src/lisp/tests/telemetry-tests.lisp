@@ -58,6 +58,25 @@
       (when orig-write
         (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)))))
 
+(deftest test-stagnant-crank-telemetry-buffer
+  "Queueing stagnant C-Rank should emit buffer length + oldest age telemetry"
+  (let ((events nil)
+        (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event)))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*stagnant-crank-retire-buffer* nil)
+          (setf swimmy.core::*stagnant-crank-retire-first-seen* 0)
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (push (list event-type data) events)))
+          (swimmy.core::queue-stagnant-crank-retire "STRAT-A" :now 100)
+          (let* ((ev (find "stagnant_crank.buffer" events :key #'first :test #'string=))
+                 (data (second ev)))
+            (assert-true ev "Expected telemetry event")
+            (assert-true (jsown:val data "buffer_len"))
+            (assert-true (jsown:val data "oldest_age_seconds"))))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit))))
+
 (deftest test-wfv-telemetry-result-emitted-on-complete
   (let ((events nil)
         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))

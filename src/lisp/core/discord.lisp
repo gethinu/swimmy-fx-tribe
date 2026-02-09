@@ -39,6 +39,8 @@
 (defparameter *stagnant-crank-batch-interval* 3600 "Seconds to batch Stagnant C-Rank alerts")
 (defvar *stagnant-crank-retire-buffer* nil "Buffered strategy names for Stagnant C-Rank alerts")
 (defvar *stagnant-crank-retire-first-seen* 0 "Timestamp when current Stagnant C-Rank batch started")
+(defparameter *stagnant-crank-telemetry-interval* 60 "Seconds between stagnant C-Rank buffer telemetry emits")
+(defvar *stagnant-crank-telemetry-last* 0 "Last timestamp for stagnant C-Rank buffer telemetry")
 
 (defun queue-max-age-retire (strategy-name &key (now (get-universal-time)))
   "Queue a Max Age Retirement alert for hourly batching."
@@ -69,6 +71,20 @@
   (push strategy-name *stagnant-crank-retire-buffer*)
   (when (<= *stagnant-crank-retire-first-seen* 0)
     (setf *stagnant-crank-retire-first-seen* now))
+  (let* ((buffer-len (length *stagnant-crank-retire-buffer*))
+         (oldest-age (if (> *stagnant-crank-retire-first-seen* 0)
+                         (- now *stagnant-crank-retire-first-seen*)
+                         0)))
+    (when (and (fboundp 'emit-telemetry-event)
+               (> (- now *stagnant-crank-telemetry-last*) *stagnant-crank-telemetry-interval*))
+      (setf *stagnant-crank-telemetry-last* now)
+      (emit-telemetry-event
+       "stagnant_crank.buffer"
+       :service "school"
+       :severity "info"
+       :data (jsown:new-js
+               ("buffer_len" buffer-len)
+               ("oldest_age_seconds" oldest-age)))))
   t)
 
 (defun maybe-flush-stagnant-crank-retire (&optional (now (get-universal-time)))

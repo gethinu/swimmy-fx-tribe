@@ -1792,6 +1792,7 @@
                   test-telemetry-sexp
                   test-live-status-sexp
                   test-telemetry-event-schema
+                  test-stagnant-crank-telemetry-buffer
                   test-clan-exists
                   test-get-clan
                   test-clan-display
