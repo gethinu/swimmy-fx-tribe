@@ -26,11 +26,11 @@ Simplify the codebase by removing dormant Swarm code.
     - Statistical Primitives: Mean, Variance, Z-Score, Correlation (Pearson).
     - Pattern Primitives: Simple "Regime Detection" via Volatility Clustering.
 
-### Phase 18: The Simons Class (Quant Hunters)
+### Phase 18: The Simons Class (Quant Specialists)
 > *Advisor: Jim Simons*
-- [ ] **CREATE** `school-hunter-quant.lisp`.
-- [ ] Implement `hunted-z-score-reversion` (Stat Arb).
-- [ ] Implement `hunted-volatility-clustering` (Breakout).
+- [ ] **CREATE** `school-quant-specialist.lisp`.
+- [ ] Implement `quant-z-score-reversion` (Stat Arb).
+- [ ] Implement `quant-volatility-clustering-breakout` (Breakout).
 
 ### Phase 19: The Sniper (Manual Tool)
 > *Advisor: Paul Graham*

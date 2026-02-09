@@ -29,9 +29,9 @@ description: Multi-agent architecture patterns
 ### 4. Specialist Agents
 - Each agent handles specific domain
 - Router dispatches to appropriate specialist
-- Swimmy: Tribes = Specialists
+- Swimmy: Categories = Specialists
 
 ## Swimmy Application
 - Dual Monarchy is primary pattern
 - Ensemble is used in PREDICT command
-- Tribes act as specialist advisors
+- Categories act as specialist advisors

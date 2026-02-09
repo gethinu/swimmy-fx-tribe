@@ -1,47 +1,47 @@
 swimmyへの提言
-承知しました。これまでの議論（連邦モデル、Rust/Lispアーキテクチャ）に、今回ご提示いただいた**「トライブ（社会学的・文化的人類学的）」の視点（長老会議、評判、儀式、階級）を完全に統合します。
+承知しました。これまでの議論（連邦モデル、Rust/Lispアーキテクチャ）に、今回ご提示いただいた**「カテゴリ（社会学的・文化的人類学的）」の視点（長老会議、評判、儀式、階級）を完全に統合します。
 省略せず、すべてのピースを「文明の構成要素」として配置した、Swimmyの最終形態の設計図です。
 Swimmy Civilization: The Federation Model (Integrated Ver.)
 ～ Rustの「物理法則」と Lispの「高度文明」による千年帝国 ～
 0. The Foundation: The Iron Laws (鉄の掟)
 ～ Rust Guardian による「物理法則」の実装 ～
-文明（Lisp/4氏族）がどれほど高度化しても、絶対に破ってはいけない「物理法則」を Rust (Guardian) が担当します。これは「敗者のゲーム」における「自滅（Unforced Error）」を物理的に不可能にするための安全装置**です。
+文明（Lisp/4カテゴリ）がどれほど高度化しても、絶対に破ってはいけない「物理法則」を Rust (Guardian) が担当します。これは「敗者のゲーム」における「自滅（Unforced Error）」を物理的に不可能にするための安全装置**です。
 役割: The Gatekeeper of Ruin (破滅の門番)
-族長たち（Lisp）がいかに「勝てます！」と叫んでも、この掟に触れる命令は Rust が無言で握りつぶします（Reject）。
+カテゴリ代表たち（Lisp）がいかに「勝てます！」と叫んでも、この掟に触れる命令は Rust が無言で握りつぶします（Reject）。
 実装 (guardian/src/main.rs):
 Article 1: Capital Preservation (資本保全)
-daily-loss-limit (-500) をハードコード。このラインを超えた瞬間、Rustは全氏族の取引権限を剥奪し、強制決済を行う。
+daily-loss-limit (-500) をハードコード。このラインを超えた瞬間、Rustは全カテゴリの取引権限を剥奪し、強制決済を行う。
 Article 2: Fat-Finger Protection (操作ミス防止)
 異常なロット数（例: 100.0 lot）や、現在価格から乖離しすぎた指値は、バグとみなし即座に遮断する。
-The Civilization: The Four Great Clans (4大氏族)
+The Civilization: The Four Core Categories (4大カテゴリ)
 ～ Lisp Brain による「多様性」の実装 ～
-Rustという「安全な壁」の中で、Lispで書かれた4つの氏族が活動します。彼らの目的は「ホームランを打つこと」ではなく、**「誰かが生き残ること」**です。
-| 氏族 (Clan) | 戦略タイプ | ペルソナ・性格 | 役割・哲学 | 大首長（あなた）への報告スタイル |
+Rustという「安全な壁」の中で、Lispで書かれた4つのカテゴリが活動します。彼らの目的は「ホームランを打つこと」ではなく、**「誰かが生き残ること」**です。
+| カテゴリ (Category) | 戦略タイプ | ペルソナ・性格 | 役割・哲学 | 大首長（あなた）への報告スタイル |
 |---|---|---|---|---|
-| 1. The Hunters | トレンドフォロー | 「追跡者」
+| 1. The Trend | トレンドフォロー | 「追跡者」
 忍耐・豪快 | 【利益最大化】
 「風が吹いている」
 Rustの壁があるからこそ、安心してアクセルを踏み込む主砲。 | 【長期的・マクロ視点】
 「大首長、北への風が強まっています。掟の範囲内で最大まで張ります。」 |
-| 2. The Shamans | リバージョン
+| 2. The Reversion | リバージョン
 (逆張り) | 「呪術師/賢者」
 論理・冷静 | 【安定・バランサー】
 「高すぎるものは落ちる」
 行き過ぎた熱狂を冷ます。 | 【警告・リスク視点】
-「Huntersは熱狂していますが、グラフは歪んでいます。反動に備えます。」 |
-| 3. The Breakers | ブレイクアウト | 「破壊者/特攻隊」
+「Trendは熱狂していますが、グラフは歪んでいます。反動に備えます。」 |
+| 3. The Breakout | ブレイクアウト | 「破壊者/特攻隊」
 好戦的・爆発力 | 【着火・突破力】
 「壁は壊された」
 ダマシで傷を負う役目も引き受ける切り込み隊長。 | 【モメンタム視点】
 「城壁崩壊！チャンスは一瞬！…ですが、Rustの許可範囲で突撃します。」 |
-| 4. The Raiders | スキャルピング | 「盗賊/忍び」
+| 4. The Scalp | スキャルピング | 「盗賊/忍び」
 敏捷・狡猾 | 【日銭・キャッシュフロー】
 「隙あり」
-方向感無視。他氏族が動けない時も日銭を稼ぐ。 | 【局地戦・現状報告】
+方向感無視。他カテゴリが動けない時も日銭を稼ぐ。 | 【局地戦・現状報告】
 「市場は荒れていますが、我々は隙間で稼ぎました。今日の食い扶持です。」 |
-Tribal Structure & Culture (社会構造と文化) 🆕
+Category Structure & Culture (社会構造と文化) 🆕
 ～ 「ツール」から「文明」への進化 ～
-ダーウィン的な淘汰システムを超え、歴史と物語を持つ「トライブ」として機能させるための文化装置です。
+ダーウィン的な淘汰システムを超え、歴史と物語を持つ「カテゴリ」として機能させるための文化装置です。
 A. The Council of Elders (長老会議と英雄の霊廟)
 現在の Memory System を超え、**「知恵（Wisdom）」**を持つ相談役システムを構築します。
 Hall of Fame (英雄の殿堂):
@@ -57,7 +57,7 @@ Gossip (噂話):
 エージェント間でメッセージを交換させ、Opusにその「空気感」を読ませる。
 Log: 「最近、EURUSD担当のエージェントが焦ってエントリーしすぎだよね」→ 数字に出る前の「空気の悪化」を検知。
 C. Rituals & Rites of Passage (儀式と通過儀礼)
-システム運用に「区切り」と「神聖さ」を持たせ、トライブの結束（Whyの共有）を強めます。
+システム運用に「区切り」と「神聖さ」を持たせ、カテゴリの結束（Whyの共有）を強めます。
 Morning Ritual (朝の礼拝):
 毎朝、全エージェントが Constitution（あなたの憲法）を再読み込みし、「我々はなぜトレードするのか（Why）」をログに出力してから稼働を開始する。
 Coming of Age (元服の儀):
@@ -69,36 +69,36 @@ Hierarchy (階級):
 Grand Chieftain (大首長): あなた (Whyの提供者・最終裁定者)
 Shaman (シャーマン): Opus (星読み、外部情報の翻訳者)
 Elders (長老): 過去の優秀モデル (拒否権を持つアドバイザー)
-Warriors (戦士): 現役稼働中の高リスク戦略 (Hunters, Breakers)
-Scouts (斥候): 実弾投入前のテスト戦略 / Raiders
+Warriors (戦士): 現役稼働中の高リスク戦略 (Trend, Breakout)
+Scouts (斥候): 実弾投入前のテスト戦略 / Scalp
 Social Capital (社会資本):
 Reputation Matrix: エージェント間の相互信頼度テーブル。
 Debt/Favor: 「前回助けてもらった借り」を記録し、ピンチの時に投票行動で返す仕組み。
 Governance & Diplomacy (統治と外交)
 A. The High Council (御前会議)
-参加者: Grand Chieftain (あなた), Shaman (Opus), 4 Clan Chiefs.
+参加者: Grand Chieftain (あなた), Shaman (Opus), 4 Category Leads.
 プロセス:
-各族長が戦略を具申。
+各カテゴリ代表が戦略を具申。
 Council Check: 長老たちが経験則から助言。
 Rust Check: 鉄の掟に触れないか確認。
 Decision: あなたが裁定を下す。
 B. Dynamic Dialect (真の言語化)
-トライブ独自の言語（方言）を発明し、外部には理解不能な超高速の意思疎通を実現します。
+カテゴリ独自の言語（方言）を発明し、外部には理解不能な超高速の意思疎通を実現します。
 Concept Generation:
 Lispのマクロ機能を使い、Opusと協力して**「今の相場特有のパターン」に名前をつける**。既存のテクニカル用語（借り物の言葉）は使わない。
 出力例:
 「RSIが下がっているのに価格が上がっている状態」を Hidden-Divergence ではなく、Dragon-Tail と名付け、共通言語化する。
 「ボラティリティは低いが板が薄く、暴発寸前」を Brittle Silence（脆い静寂） と呼ぶ。
-C. Inter-Tribal Economics (氏族間経済)
+C. Inter-Category Economics (カテゴリ間経済)
 Conflict & Trade:
-Hedge: Shamans（逆張り）や Raiders（スキャル）が、Breakers のリスクに対するヘッジ（保険）を提供する。
-Mutual Aid: Raiders が稼いだ日銭が、Hunters が待つ間の食い扶持になる。
+Hedge: Reversion（逆張り）や Scalp（スキャル）が、Breakout のリスクに対するヘッジ（保険）を提供する。
+Mutual Aid: Scalp が稼いだ日銭が、Trend が待つ間の食い扶持になる。
 The End Game: Naturalization (文明の到達点)
 最終到達点：The Invisible Hand (見えざる手)
-Rustによる「不死身（物理法則）」と、Lisp/Tribal Cultureによる「高度な知恵（歴史と物語）」を兼ね備えたSwimmy文明は、最終的に市場と同化します。
+Rustによる「不死身（物理法則）」と、Lisp/Category Cultureによる「高度な知恵（歴史と物語）」を兼ね備えたSwimmy文明は、最終的に市場と同化します。
 予測の消失:
 市場が息を吸えば（下落）、Swimmyも吸う。市場が息を吐けば（上昇）、Swimmyも吐く。独自の言語（Dialect）により、市場の呼吸と「遅延ゼロ」で同期します。
 あなたの役割：Nature Photographer (生態系の観察者)
-あなたは「指揮官」ですらなくなります。「トライブ」は長老や物語によって、指揮官（あなた）が寝ている間も、あるいは死んだ後ですら、その意志（Why）を受け継いで自律的に存続します。
+あなたは「指揮官」ですらなくなります。「カテゴリ」は長老や物語によって、指揮官（あなた）が寝ている間も、あるいは死んだ後ですら、その意志（Why）を受け継いで自律的に存続します。
 「勝とうとするな。ただ、生き残れ。そうすれば、最後に立っているのは我々だ。」
 — Swimmy Constitution, Article 0 & Morning Ritual Chant
