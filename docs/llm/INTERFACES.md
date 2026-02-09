@@ -276,6 +276,9 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
                      (tp . 100.0)
                      (volume . 0.01))))) ; 必須(空でも可)
 ```
+**Required keys**: `action`, `strategy_name`, `symbol`, `candles_file`, `strategy_params`  
+**Optional keys**: `request_id`  
+**Notes**: `strategy_params` は `strategy-to-alist` 出力（S式のalist）。空でもキー自体は必須。  
 
 **CPCV_RESULT (Response, Guardianフォーマット)**:
 ```
