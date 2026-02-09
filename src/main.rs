@@ -190,6 +190,9 @@ struct CpcvResultPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
     median_sharpe: f64,
+    median_pf: f64,
+    median_wr: f64,
+    median_maxdd: f64,
     path_count: usize,
     passed_count: usize,
     failed_count: usize,
@@ -236,6 +239,9 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
         ));
     }
     parts.push(format!("(median_sharpe . {})", result.median_sharpe));
+    parts.push(format!("(median_pf . {})", result.median_pf));
+    parts.push(format!("(median_wr . {})", result.median_wr));
+    parts.push(format!("(median_maxdd . {})", result.median_maxdd));
     parts.push(format!("(path_count . {})", result.path_count));
     parts.push(format!("(passed_count . {})", result.passed_count));
     parts.push(format!("(failed_count . {})", result.failed_count));
@@ -415,6 +421,9 @@ fn cpcv_payload_from_aggregate(
         strategy_name: strategy_name.to_string(),
         request_id,
         median_sharpe: agg.median_sharpe,
+        median_pf: agg.median_pf,
+        median_wr: agg.median_wr,
+        median_maxdd: agg.median_maxdd,
         path_count,
         passed_count,
         failed_count,
@@ -432,6 +441,9 @@ fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
             strategy_name: _req.strategy_name.clone(),
             request_id,
             median_sharpe: 0.0,
+            median_pf: 0.0,
+            median_wr: 0.0,
+            median_maxdd: 0.0,
             path_count: 0,
             passed_count: 0,
             failed_count: 0,
@@ -2023,12 +2035,39 @@ mod tests {
         let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", None, &agg);
 
         assert_eq!(payload.strategy_name, "UT-CPCV-SUCCESS");
+        assert!((payload.median_pf - agg.median_pf).abs() < 1e-9);
+        assert!((payload.median_wr - agg.median_wr).abs() < 1e-9);
+        assert!((payload.median_maxdd - agg.median_maxdd).abs() < 1e-9);
         assert_eq!(payload.path_count, 10);
         assert_eq!(payload.passed_count, 6);
         assert_eq!(payload.failed_count, 4);
         assert!((payload.pass_rate - 0.6).abs() < 1e-9);
         assert!(payload.is_passed);
         assert!(payload.error.is_none());
+    }
+
+    #[test]
+    fn test_cpcv_result_sexp_includes_medians() {
+        let payload = CpcvResultPayload {
+            strategy_name: "UT-CPCV-MEDIAN".to_string(),
+            request_id: Some("RID-UT".to_string()),
+            median_sharpe: 0.55,
+            median_pf: 1.6,
+            median_wr: 0.52,
+            median_maxdd: 0.11,
+            path_count: 5,
+            passed_count: 3,
+            failed_count: 2,
+            pass_rate: 0.6,
+            is_passed: true,
+            error: None,
+        };
+
+        let sexp = cpcv_result_to_sexp(&payload);
+
+        assert!(sexp.contains("median_pf"), "sexp should include median_pf");
+        assert!(sexp.contains("median_wr"), "sexp should include median_wr");
+        assert!(sexp.contains("median_maxdd"), "sexp should include median_maxdd");
     }
 
     #[test]
