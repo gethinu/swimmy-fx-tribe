@@ -268,6 +268,9 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
  (result . ((strategy_name . "Volvo-Scalp-Gen0")
             (request_id . "RID-123")  ; optional: 相関ID
             (median_sharpe . 0.55)
+            (median_pf . 1.52)
+            (median_wr . 0.47)
+            (median_maxdd . 0.12)
             (path_count . 20)
             (passed_count . 12)
             (failed_count . 8)
