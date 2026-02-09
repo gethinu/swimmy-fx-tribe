@@ -404,10 +404,31 @@
 (defparameter *a-rank-probation-tracker* (make-hash-table :test 'equal)
   "Tracks consecutive failure days for A-Rank strategies (Grace Period).")
 
+(defparameter *a-rank-elite-score* 0.30
+  "Composite score threshold for considering A-rank as elite (CPCV-ready signal).")
+(defparameter *a-rank-probation-score* 0.20
+  "Composite score threshold for A-rank probation.")
+
 (defun evaluate-a-rank-strategy (strategy)
   "Evaluate A-RANK strategy with CPCV (2021-2026 OOS).
    If passes S criteria → S-RANK. If fails → B-RANK or Graveyard."
-  (let ((name (strategy-name strategy)))
+  (let* ((name (strategy-name strategy))
+         (cpcv-ready (and (numberp (strategy-cpcv-pass-rate strategy))
+                          (> (or (strategy-cpcv-pass-rate strategy) 0.0) 0.0)
+                          (> (or (strategy-cpcv-median-pf strategy) 0.0) 0.0)
+                          (> (or (strategy-cpcv-median-wr strategy) 0.0) 0.0)))
+         (score (if (fboundp 'score-from-metrics)
+                    (score-from-metrics
+                     (if cpcv-ready
+                         (list :sharpe (strategy-cpcv-median-sharpe strategy)
+                               :profit-factor (strategy-cpcv-median-pf strategy)
+                               :win-rate (strategy-cpcv-median-wr strategy)
+                               :max-dd (strategy-cpcv-median-maxdd strategy))
+                         (list :sharpe (strategy-sharpe strategy)
+                               :profit-factor (strategy-profit-factor strategy)
+                               :win-rate (strategy-win-rate strategy)
+                               :max-dd (strategy-max-dd strategy))))
+                    (or (strategy-sharpe strategy) 0.0))))
     (if (check-rank-criteria strategy :S)
         (progn
           (remhash name *a-rank-probation-tracker*)
@@ -416,22 +437,22 @@
         ;; V50.3: No more automatic A->S shortcuts. 
         ;; We just check if it's ready for CPCV dispatch.
         (progn
-          (when (and (>= (or (strategy-sharpe strategy) 0.0) 0.5)
+          (when (and (>= score *a-rank-elite-score*)
                      (fboundp 'run-a-rank-cpcv-batch))
-            (format t "[RANK] 🧪 ~a is Elite. Awaiting CPCV validation.~%" name))
+            (format t "[RANK] 🧪 ~a is Elite. Awaiting CPCV validation (Score=~,2f).~%" name score))
           (if (check-rank-criteria strategy :B)
-              (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
-                (if (< sharpe 0.3)
+              (if (< score *a-rank-probation-score*)
                     (let ((fails (incf (gethash name *a-rank-probation-tracker* 0))))
                       (if (< fails 7)
                           (progn
-                            (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Sharpe=~,2f < 0.3)~%" fails name sharpe)
+                            (format t "[RANK] 🛡️ A-RANK PROBATION (~d/7): ~a (Score=~,2f < ~,2f)~%"
+                                    fails name score *a-rank-probation-score*)
                             :A)
                           (progn
                             (remhash name *a-rank-probation-tracker*)
                             (demote-rank strategy :B (format nil "Grace Period Expired (~d failures)" fails))
                             :B)))
-                    (progn (remhash name *a-rank-probation-tracker*) :A)))
+                    (progn (remhash name *a-rank-probation-tracker*) :A))
               (progn
                 (remhash name *a-rank-probation-tracker*)
                 (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")

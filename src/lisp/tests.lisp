@@ -2499,6 +2499,36 @@
       (setf swimmy.school::*strategy-ranks* orig-ranks)
       (setf (symbol-function 'swimmy.school::coming-of-age) orig-coming))))
 
+(deftest test-a-rank-evaluation-uses-composite-score
+  "A-rank evaluation should use composite score for probation decisions"
+  (let* ((orig-probation swimmy.school::*a-rank-probation-tracker*)
+         (orig-promote (symbol-function 'swimmy.school::promote-rank))
+         (orig-demote (symbol-function 'swimmy.school::demote-rank))
+         (orig-send (symbol-function 'swimmy.school::send-to-graveyard))
+         (strat (swimmy.school:make-strategy :name "UT-A-SCORE"
+                                             :rank :A
+                                             :sharpe 0.2
+                                             :profit-factor 1.8
+                                             :win-rate 0.60
+                                             :max-dd 0.08)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*a-rank-probation-tracker* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school::promote-rank)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::demote-rank)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::send-to-graveyard)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (assert-equal :A (swimmy.school::evaluate-a-rank-strategy strat)
+                        "should remain A based on composite score")
+          (assert-true (null (gethash "UT-A-SCORE" swimmy.school::*a-rank-probation-tracker*))
+                       "Composite score should avoid probation despite low Sharpe"))
+      (setf swimmy.school::*a-rank-probation-tracker* orig-probation)
+      (setf (symbol-function 'swimmy.school::promote-rank) orig-promote)
+      (setf (symbol-function 'swimmy.school::demote-rank) orig-demote)
+      (setf (symbol-function 'swimmy.school::send-to-graveyard) orig-send))))
+
 (deftest test-check-rank-criteria-requires-cpcv-pass-rate
   "S-RANK criteria should require CPCV pass-rate >= 0.5"
   (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
@@ -3102,6 +3132,7 @@
                   test-b-rank-cull-uses-composite-score
                   test-breeder-cull-uses-composite-score
                   test-promotion-uses-composite-score
+                  test-a-rank-evaluation-uses-composite-score
                   test-check-rank-criteria-requires-cpcv-pass-rate
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv
