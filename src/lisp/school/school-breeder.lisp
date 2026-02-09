@@ -364,9 +364,22 @@
       (when (strategy-immortal s)
         (format t "[AGE] 🛡️ Legendary ~a is Ageless (Age: ~d)~%" (strategy-name s) (strategy-age s))))))
 
+(defparameter *last-cull-day-key* 0 "Day key of last cull execution")
+
+(defun day-key-from-time (now)
+  (multiple-value-bind (_s _m _h date month year) (decode-universal-time now)
+    (declare (ignore _s _m _h))
+    (+ (* year 10000) (* month 100) date)))
+
+(defun maybe-cull-weak-strategies (&key (now (get-universal-time)))
+  (let ((day-key (day-key-from-time now)))
+    (unless (= day-key *last-cull-day-key*)
+      (setf *last-cull-day-key* day-key)
+      (cull-weak-strategies))))
+
 (defun cull-weak-strategies ()
   "Cull weak strategies (Rank C/D) that are older than 5 days.
-   (Weekly Friday Close)"
+   (Daily, guarded)"
   (format t "[CULL] 🔪 Weekly Culling Initiated...~%")
   (dolist (s *strategy-knowledge-base*)
     (when (and (eq (strategy-status s) :active)
@@ -388,12 +401,8 @@
   ;; 1. Global Aging
   (increment-strategy-ages)
   
-  ;; 2. Culling (Weekly)
-  ;; Morning Ritual is daily. Culling usually Fri Close or Sat Morning.
-  (multiple-value-bind (s m h d mo y dow) (decode-universal-time (get-universal-time))
-    (declare (ignore s m h d mo y))
-    (when (= dow 6) ;; Saturday
-      (cull-weak-strategies)))
+  ;; 2. Culling (Daily, guarded)
+  (maybe-cull-weak-strategies)
   
   ;; 3. Forced Breeding (Old Age)
   (dolist (s *strategy-knowledge-base*)

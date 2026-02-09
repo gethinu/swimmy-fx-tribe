@@ -123,6 +123,31 @@
       (when orig-notify
         (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
 
+(deftest test-daily-cull-guard
+  "Daily cull should run only once per day."
+  (let* ((calls 0)
+         (orig-cull (and (fboundp 'swimmy.school::cull-weak-strategies)
+                         (symbol-function 'swimmy.school::cull-weak-strategies)))
+         (orig-key (and (boundp 'swimmy.school::*last-cull-day-key*)
+                        swimmy.school::*last-cull-day-key*)))
+    (unwind-protect
+        (progn
+          (when orig-cull
+            (setf (symbol-function 'swimmy.school::cull-weak-strategies)
+                  (lambda () (incf calls))))
+          (setf swimmy.school::*last-cull-day-key* 0)
+          (swimmy.school::maybe-cull-weak-strategies
+           :now (encode-universal-time 0 0 0 9 2 2026))
+          (swimmy.school::maybe-cull-weak-strategies
+           :now (encode-universal-time 0 0 1 9 2 2026))
+          (swimmy.school::maybe-cull-weak-strategies
+           :now (encode-universal-time 0 0 0 10 2 2026))
+          (assert-equal 2 calls "Should cull once per day"))
+      (when orig-cull
+        (setf (symbol-function 'swimmy.school::cull-weak-strategies) orig-cull))
+      (when (boundp 'swimmy.school::*last-cull-day-key*)
+        (setf swimmy.school::*last-cull-day-key* orig-key)))))
+
 (deftest test-evolution-report-throttle-uses-last-write
   "Evolution report should only send when last write exceeds interval"
   (let* ((orig (symbol-function 'swimmy.school::notify-evolution-report))
