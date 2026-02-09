@@ -37,6 +37,41 @@
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
 
 ;;; ---------------------------------------------------------------------------
+;;; COMPOSITE SCORE (Multi-Metric)
+;;; ---------------------------------------------------------------------------
+
+(defparameter *score-weight-sharpe* 0.45)
+(defparameter *score-weight-pf* 0.25)
+(defparameter *score-weight-wr* 0.20)
+(defparameter *score-weight-maxdd* 0.10)
+
+(defun %clamp (v lo hi)
+  (min hi (max lo v)))
+
+(defun %norm (v lo hi)
+  (if (<= hi lo)
+      0.0
+      (let* ((v (float v 1.0))
+             (lo (float lo 1.0))
+             (hi (float hi 1.0)))
+        (/ (- (%clamp v lo hi) lo) (- hi lo)))))
+
+(defun score-from-metrics (metrics)
+  "Compute composite score from metrics plist."
+  (let* ((sharpe (or (getf metrics :sharpe) 0.0))
+         (pf (or (getf metrics :profit-factor) 0.0))
+         (wr (or (getf metrics :win-rate) 0.0))
+         (dd (or (getf metrics :max-dd) 1.0))
+         (n-sharpe (%norm sharpe 0.0 2.0))
+         (n-pf (%norm pf 1.0 2.0))
+         (n-wr (%norm wr 0.40 0.70))
+         (n-dd (%norm dd 0.0 0.20)))
+    (+ (* *score-weight-sharpe* n-sharpe)
+       (* *score-weight-pf* n-pf)
+       (* *score-weight-wr* n-wr)
+       (* -1 *score-weight-maxdd* n-dd))))
+
+;;; ---------------------------------------------------------------------------
 ;;; RETIRED STORAGE
 ;;; ---------------------------------------------------------------------------
 

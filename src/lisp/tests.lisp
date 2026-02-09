@@ -2382,6 +2382,26 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-composite-score-prefers-stable-pf-wr
+  "Composite score should favor PF/WR with acceptable DD even if Sharpe is lower"
+  (let* ((fn (find-symbol "SCORE-FROM-METRICS" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "score-from-metrics exists")
+    (let* ((a (list :sharpe 0.4 :profit-factor 1.8 :win-rate 0.60 :max-dd 0.08))
+           (b (list :sharpe 0.8 :profit-factor 1.1 :win-rate 0.42 :max-dd 0.18))
+           (score-a (funcall fn a))
+           (score-b (funcall fn b)))
+      (assert-true (> score-a score-b) "PF/WR/low-DD should beat Sharpe-only"))))
+
+(deftest test-composite-score-penalizes-high-dd
+  "Composite score should penalize high MaxDD even with strong Sharpe"
+  (let* ((fn (find-symbol "SCORE-FROM-METRICS" :swimmy.school)))
+    (assert-true (and fn (fboundp fn)) "score-from-metrics exists")
+    (let* ((safe (list :sharpe 1.0 :profit-factor 1.5 :win-rate 0.55 :max-dd 0.08))
+           (risky (list :sharpe 1.2 :profit-factor 1.5 :win-rate 0.55 :max-dd 0.22))
+           (score-safe (funcall fn safe))
+           (score-risky (funcall fn risky)))
+      (assert-true (> score-safe score-risky) "High DD should reduce score"))))
+
 (deftest test-check-rank-criteria-requires-cpcv-pass-rate
   "S-RANK criteria should require CPCV pass-rate >= 0.5"
   (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
@@ -2980,6 +3000,8 @@
                   test-evolution-report-throttle-uses-last-write
                   test-evolution-report-staleness-alert-throttles
                   test-promotion-triggers-noncorrelation-notification
+                  test-composite-score-prefers-stable-pf-wr
+                  test-composite-score-penalizes-high-dd
                   test-check-rank-criteria-requires-cpcv-pass-rate
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv
