@@ -275,9 +275,18 @@
   (or (find-strategy-object name)
       (find name swimmy.globals:*evolved-strategies* :key #'strategy-name :test #'string=)))
 
+(defun %normalize-kill-reason-code (reason reason-code)
+  (or reason-code
+      (when (stringp reason)
+        (cond
+          ((search "Max Age Retirement" reason :test #'char-equal) :max-age-retirement)
+          ((search "Stagnant C-Rank" reason :test #'char-equal) :stagnant-crank)
+          (t nil)))))
+
 (defun kill-strategy (name reason &key reason-code)
   "P0: Soft Kill - Shelve indefinitely instead of permanent deletion (Expert Panel 2026-01-16)"
-  (let ((s (find-strategy-object name)))
+  (let ((s (find-strategy-object name))
+        (code (%normalize-kill-reason-code reason reason-code)))
     (when s
       (format t "~%[L] 🛡️ SOFT KILL: ~a (~a) -> Shelved indefinitely~%" name reason)
       (setf (strategy-status s) :killed)
@@ -287,18 +296,14 @@
       ;; Notify
       (when (fboundp 'notify-discord-alert)
         (cond
-          ((eq reason-code :stagnant-c-rank)
-           (swimmy.core::queue-stagnant-c-rank name))
-          ((and (stringp reason)
-                (search "Max Age Retirement" reason :test #'char-equal))
+          ((eq code :max-age-retirement)
            (swimmy.core::queue-max-age-retire name))
-          ((and (stringp reason)
-                (search "Stagnant C-Rank" reason :test #'char-equal))
-           (swimmy.core::queue-stagnant-c-rank name))
+          ((eq code :stagnant-crank)
+           (swimmy.core::queue-stagnant-crank-retire name))
           (t
-           (notify-discord-alert
-             (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
-             :color 15158332)))))))
+           (notify-discord-alert 
+            (format nil "🛡️ **Strategy Soft-Killed (Cooldown)**~%Name: ~a~%Reason: ~a~%Action: Shelved for future review" name reason)
+            :color 15158332)))))))
 
 ;;; ==========================================
 ;;; P1: SIMILARITY CHECK & PRUNING

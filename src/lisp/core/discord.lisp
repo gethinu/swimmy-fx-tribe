@@ -33,6 +33,15 @@
 (defvar *max-age-retire-buffer* nil "Buffered strategy names for Max Age Retirement alerts")
 (defvar *max-age-retire-first-seen* 0 "Timestamp when current Max Age Retirement batch started")
 
+;;; ==========================================
+;;; BATCHED ALERTS (Stagnant C-Rank)
+;;; ==========================================
+(defparameter *stagnant-crank-batch-interval* 3600 "Seconds to batch Stagnant C-Rank alerts")
+(defvar *stagnant-crank-retire-buffer* nil "Buffered strategy names for Stagnant C-Rank alerts")
+(defvar *stagnant-crank-retire-first-seen* 0 "Timestamp when current Stagnant C-Rank batch started")
+(defparameter *stagnant-crank-telemetry-interval* 60 "Seconds between stagnant C-Rank buffer telemetry emits")
+(defvar *stagnant-crank-telemetry-last* 0 "Last timestamp for stagnant C-Rank buffer telemetry")
+
 (defun queue-max-age-retire (strategy-name &key (now (get-universal-time)))
   "Queue a Max Age Retirement alert for hourly batching."
   (unless (and (stringp strategy-name) (> (length strategy-name) 0))
@@ -58,39 +67,40 @@
 ;;; ==========================================
 ;;; BATCHED ALERTS (Stagnant C-Rank)
 ;;; ==========================================
-(defparameter *stagnant-c-rank-batch-interval* 3600 "Seconds to batch Stagnant C-Rank alerts")
-(defvar *stagnant-c-rank-buffer* nil "Buffered strategy names for Stagnant C-Rank alerts")
-(defvar *stagnant-c-rank-first-seen* 0 "Timestamp when current Stagnant C-Rank batch started")
-
-(defun queue-stagnant-c-rank (strategy-name &key (now (get-universal-time)))
+(defun queue-stagnant-crank-retire (strategy-name &key (now (get-universal-time)))
   "Queue a Stagnant C-Rank alert for hourly batching."
   (unless (and (stringp strategy-name) (> (length strategy-name) 0))
-    (return-from queue-stagnant-c-rank nil))
-  (push strategy-name *stagnant-c-rank-buffer*)
-  (when (<= *stagnant-c-rank-first-seen* 0)
-    (setf *stagnant-c-rank-first-seen* now))
-  (let* ((first *stagnant-c-rank-first-seen*)
-         (oldest (- now first))
-         (data (list :buffer-len (length *stagnant-c-rank-buffer*)
-                     :oldest-secs oldest)))
-    (when (fboundp 'swimmy.core::emit-telemetry-event)
-      (swimmy.core::emit-telemetry-event "stagnant_c_rank.buffer"
-        :service "school"
-        :severity "info"
-        :data data)))
+    (return-from queue-stagnant-crank-retire nil))
+  (push strategy-name *stagnant-crank-retire-buffer*)
+  (when (<= *stagnant-crank-retire-first-seen* 0)
+    (setf *stagnant-crank-retire-first-seen* now))
+  (let* ((buffer-len (length *stagnant-crank-retire-buffer*))
+         (oldest-age (if (> *stagnant-crank-retire-first-seen* 0)
+                         (- now *stagnant-crank-retire-first-seen*)
+                         0)))
+    (when (and (fboundp 'emit-telemetry-event)
+               (> (- now *stagnant-crank-telemetry-last*) *stagnant-crank-telemetry-interval*))
+      (setf *stagnant-crank-telemetry-last* now)
+      (emit-telemetry-event
+       "stagnant_crank.buffer"
+       :service "school"
+       :severity "info"
+       :data (jsown:new-js
+               ("buffer_len" buffer-len)
+               ("oldest_age_seconds" oldest-age)))))
   t)
 
-(defun maybe-flush-stagnant-c-rank (&optional (now (get-universal-time)))
+(defun maybe-flush-stagnant-crank-retire (&optional (now (get-universal-time)))
   "Flush Stagnant C-Rank summary if the batch interval has elapsed."
-  (when (and *stagnant-c-rank-buffer*
-             (> (- now *stagnant-c-rank-first-seen*) *stagnant-c-rank-batch-interval*))
-    (let* ((total (length *stagnant-c-rank-buffer*))
-           (ordered (reverse *stagnant-c-rank-buffer*))
+  (when (and *stagnant-crank-retire-buffer*
+             (> (- now *stagnant-crank-retire-first-seen*) *stagnant-crank-batch-interval*))
+    (let* ((total (length *stagnant-crank-retire-buffer*))
+           (ordered (reverse *stagnant-crank-retire-buffer*))
            (top (subseq ordered 0 (min 5 (length ordered))))
            (msg (format nil "🧊 **Stagnant C-Rank Summary (Last 1h)**~%Total: ~d~%Top: ~{`~a`~^, ~}~%Action: Individual alerts suppressed."
                         total top)))
-      (setf *stagnant-c-rank-buffer* nil)
-      (setf *stagnant-c-rank-first-seen* 0)
+      (setf *stagnant-crank-retire-buffer* nil)
+      (setf *stagnant-crank-retire-first-seen* 0)
       (notify-discord-alert msg :color +color-alert+))))
 
 
@@ -437,9 +447,9 @@
 
     ;; 4. Max Age Retirement (Hourly batch)
     (maybe-flush-max-age-retire now)
-    
+
     ;; 5. Stagnant C-Rank (Hourly batch)
-    (maybe-flush-stagnant-c-rank now)))
+    (maybe-flush-stagnant-crank-retire now)))
 
 
 

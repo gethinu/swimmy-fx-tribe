@@ -3047,6 +3047,13 @@
       (when orig
         (setf (symbol-function 'swimmy.school::refresh-strategy-daily-pnl) orig)))))
 
+(deftest test-stagnant-crank-daily-guard
+  "Stagnant C-Rank cull should run once per day"
+  (let ((swimmy.school::*last-stagnant-crank-cull-day* nil))
+    (assert-true (swimmy.school::should-run-stagnant-crank-cull-p 20260209))
+    (assert-false (swimmy.school::should-run-stagnant-crank-cull-p 20260209))
+    (assert-true (swimmy.school::should-run-stagnant-crank-cull-p 20260210))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -3126,6 +3133,8 @@
                   test-periodic-maintenance-flushes-stagnant-c-rank
                   test-evolution-report-throttle-uses-last-write
                   test-evolution-report-staleness-alert-throttles
+                  test-scheduler-calls-timeout-flushes
+                  test-stagnant-crank-daily-guard
                   test-promotion-triggers-noncorrelation-notification
                   test-composite-score-prefers-stable-pf-wr
                   test-composite-score-penalizes-high-dd
@@ -3174,6 +3183,10 @@
                   test-dynamic-narrative-uses-category-display
                   test-category-counts-returns-alist
                   test-repl-help-omits-clans
+                  test-stagnant-crank-telemetry-buffer
+                  test-clan-exists
+                  test-get-clan
+                  test-clan-display
                   ;; Macro tests
                   ;; (Temporarily removed missing tests)
                   ;; V6.18: Danger tests
@@ -3191,7 +3204,8 @@
                   test-apply-backtest-result-updates-data-sexp
                   test-kill-strategy-persists-status
                   test-max-age-retire-batched-notification
-                  test-stagnant-c-rank-batched-notification
+                  test-stagnant-crank-batched-notification
+                  test-kill-strategy-reason-code-stagnant-crank
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit

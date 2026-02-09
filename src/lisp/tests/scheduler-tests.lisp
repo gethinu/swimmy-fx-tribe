@@ -124,29 +124,19 @@
         (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
 
 (deftest test-daily-cull-guard
-  "Daily cull should run only once per day."
-  (let* ((calls 0)
-         (orig-cull (and (fboundp 'swimmy.school::cull-weak-strategies)
-                         (symbol-function 'swimmy.school::cull-weak-strategies)))
-         (orig-key (and (boundp 'swimmy.school::*last-cull-day-key*)
-                        swimmy.school::*last-cull-day-key*)))
+  "Daily Stagnant C-Rank guard should run only once per day."
+  (let* ((orig-day (and (boundp 'swimmy.school::*last-stagnant-crank-cull-day*)
+                        swimmy.school::*last-stagnant-crank-cull-day*)))
     (unwind-protect
         (progn
-          (when orig-cull
-            (setf (symbol-function 'swimmy.school::cull-weak-strategies)
-                  (lambda () (incf calls))))
-          (setf swimmy.school::*last-cull-day-key* 0)
-          (swimmy.school::maybe-cull-weak-strategies
-           :now (encode-universal-time 0 0 0 9 2 2026))
-          (swimmy.school::maybe-cull-weak-strategies
-           :now (encode-universal-time 0 0 1 9 2 2026))
-          (swimmy.school::maybe-cull-weak-strategies
-           :now (encode-universal-time 0 0 0 10 2 2026))
-          (assert-equal 2 calls "Should cull once per day"))
-      (when orig-cull
-        (setf (symbol-function 'swimmy.school::cull-weak-strategies) orig-cull))
-      (when (boundp 'swimmy.school::*last-cull-day-key*)
-        (setf swimmy.school::*last-cull-day-key* orig-key)))))
+          (setf swimmy.school::*last-stagnant-crank-cull-day* nil)
+          (let* ((day1 (swimmy.school::%day-key (encode-universal-time 0 0 0 9 2 2026)))
+                 (day2 (swimmy.school::%day-key (encode-universal-time 0 0 0 10 2 2026))))
+            (assert-true (swimmy.school::should-run-stagnant-crank-cull-p day1))
+            (assert-false (swimmy.school::should-run-stagnant-crank-cull-p day1))
+            (assert-true (swimmy.school::should-run-stagnant-crank-cull-p day2))))
+      (when (boundp 'swimmy.school::*last-stagnant-crank-cull-day*)
+        (setf swimmy.school::*last-stagnant-crank-cull-day* orig-day)))))
 
 (deftest test-stagnant-flush-tick-invokes-timeout-flush
   "Flush tick should invoke check-timeout-flushes without evolution loop."
@@ -238,8 +228,8 @@
                                swimmy.school::*last-macro-load-time*)))
     (unwind-protect
         (progn
-          (setf swimmy.core::*stagnant-c-rank-buffer* (list "UT-STAGNANT"))
-          (setf swimmy.core::*stagnant-c-rank-first-seen* (- now 3601))
+          (setf swimmy.core::*stagnant-crank-retire-buffer* (list "UT-STAGNANT"))
+          (setf swimmy.core::*stagnant-crank-retire-first-seen* (- now 3601))
           (setf swimmy.main::*last-maintenance-time* now)
           (setf swimmy.main::*last-evolution-time* now)
           (setf swimmy.school::*last-macro-load-time* now)
@@ -278,5 +268,22 @@
         (setf swimmy.main::*last-evolution-time* orig-last-evo))
       (when (boundp 'swimmy.school::*last-macro-load-time*)
         (setf swimmy.school::*last-macro-load-time* orig-last-macro))
-      (setf swimmy.core::*stagnant-c-rank-buffer* nil)
-      (setf swimmy.core::*stagnant-c-rank-first-seen* 0))))
+      (setf swimmy.core::*stagnant-crank-retire-buffer* nil)
+      (setf swimmy.core::*stagnant-crank-retire-first-seen* 0))))
+
+(deftest test-scheduler-calls-timeout-flushes
+  "run-periodic-maintenance should call check-timeout-flushes"
+  (let ((called nil)
+        (orig-flush (symbol-function 'swimmy.core::check-timeout-flushes))
+        (orig-check (symbol-function 'swimmy.main::check-scheduled-tasks)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::check-timeout-flushes)
+                (lambda (&rest args) (declare (ignore args)) (setf called t)))
+          (setf (symbol-function 'swimmy.main::check-scheduled-tasks)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (let ((*candle-history* nil))
+            (swimmy.main::run-periodic-maintenance))
+          (assert-true called "Expected timeout flushes to be invoked"))
+      (setf (symbol-function 'swimmy.core::check-timeout-flushes) orig-flush)
+      (setf (symbol-function 'swimmy.main::check-scheduled-tasks) orig-check))))
