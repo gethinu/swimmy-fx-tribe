@@ -10,7 +10,6 @@
   (:use :cl :swimmy.globals :swimmy.core :swimmy.engine)
   (:export
    ;; Council
-   #:convene-high-council
    #:run-school-iteration
    
    ;; Monte-Carlo Validation (Phase 11)

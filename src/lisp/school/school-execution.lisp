@@ -7,7 +7,6 @@
 (defparameter *lstm-threshold* 0.60)
 (defparameter *last-category-trade-time* (make-hash-table :test 'equal))
 (defparameter *min-trade-interval* 300)
-(defvar *last-swarm-consensus* 0)
 (defparameter *category-entries* (make-hash-table :test 'equal))
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
@@ -196,22 +195,7 @@
     ((should-block-trade-p symbol direction category) nil)
     ((should-unlearn-p symbol) nil)
     ((not (verify-parallel-scenarios symbol direction category)) nil)
-    (t 
-     ;; High Council Check
-     (let* ((danger-level (if (boundp '*danger-level*) *danger-level* 0))
-            (swarm-cons (if (boundp '*last-swarm-consensus*) *last-swarm-consensus* 0.0))
-            (danger-p (> danger-level 2))
-            (large-lot-p (> lot 0.05))
-            (high-rank-p (member rank '(:veteran :legend))))
-       (when (or large-lot-p high-rank-p danger-p)
-         (format t "[HC] CALL rt=~d sym=~a dir=~a cat=~a lot=~,3f rank=~a danger=~a swarm=~a urgency=~a~%"
-                 (get-internal-real-time) symbol direction category lot rank danger-level swarm-cons
-                 (if danger-p :critical :normal)))
-       (if (and (or large-lot-p high-rank-p danger-p) (fboundp 'convene-high-council))
-           (let ((res (convene-high-council (format nil "~a ~a ~,2f" symbol direction lot) category 
-                                            :urgency (if danger-p :critical :normal))))
-             (not (eq res :rejected)))
-           t)))))
+    (t t)))
 
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."

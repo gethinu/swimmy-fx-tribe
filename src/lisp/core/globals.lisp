@@ -67,7 +67,6 @@
 (defparameter *history-process-cache* (make-hash-table :test 'equal) "V15.8: Throttle HISTORY msg processing")
 (defparameter *last-prediction* nil)
 (defparameter *last-confidence* 0.5)
-(defparameter *last-swarm-consensus* 0.5)
 (defparameter *learned-patterns* nil)
 (defparameter *improvement-requests* nil)
 ;; Persistence additions
@@ -110,7 +109,6 @@
   "Last send timestamp (seconds, internal real-time; sub-second precision).")
 
 (defparameter *sent-data-ids* (make-hash-table :test 'equal) "V50.9: Track Data IDs sent to Guardian")
-(defparameter *phase2-last-end-unix* 0 "Last Phase2 end_time (Unix seconds) used for backtests.")
 
 (defparameter *backtest-results-buffer* nil "DEPRECATED (Legacy fallback)")
 (defparameter *expected-backtest-count* 0 "DEPRECATED (Legacy fallback)")
@@ -162,7 +160,6 @@
 (defparameter *daily-pnl-aggregation-sent-today* nil)
 
 ;;; GOVERNANCE STATE
-(defparameter *council-log* nil)
 (defparameter *constitution* nil)
 (defparameter *philosophy-log* nil)
 

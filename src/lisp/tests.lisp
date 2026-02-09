@@ -1192,57 +1192,6 @@
       (setf swimmy.school::*last-category-trade-time* orig-table)
       (setf swimmy.school::*min-trade-interval* orig-interval))))
 
-(deftest test-high-council-danger-lv2-uses-swarm-consensus
-  "Danger Lv2 approval uses swarm consensus only"
-  (let ((orig-danger swimmy.globals::*danger-level*)
-        (orig-swarm swimmy.globals::*last-swarm-consensus*)
-        (orig-vol swimmy.globals::*current-volatility-state*))
-    (unwind-protect
-        (progn
-          (setf swimmy.globals::*danger-level* 2)
-          (setf swimmy.globals::*current-volatility-state* :normal)
-          (setf swimmy.globals::*last-swarm-consensus* 0.8)
-          (assert-true (swimmy.school::convene-high-council
-                        '(:symbol "USDJPY" :direction :buy) :trend))
-          (setf swimmy.globals::*last-swarm-consensus* 0.6)
-          (assert-false (swimmy.school::convene-high-council
-                         '(:symbol "USDJPY" :direction :buy) :trend)))
-      (setf swimmy.globals::*danger-level* orig-danger)
-      (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
-      (setf swimmy.globals::*current-volatility-state* orig-vol))))
-
-(deftest test-high-council-notify-uses-status
-  "High Council notifications should use status channel, not symbol live-feed"
-  (let ((orig-danger swimmy.globals::*danger-level*)
-        (orig-swarm swimmy.globals::*last-swarm-consensus*)
-        (orig-vol swimmy.globals::*current-volatility-state*)
-        (orig-notify-symbol (symbol-function 'swimmy.core:notify-discord-symbol))
-        (orig-notify-status (symbol-function 'swimmy.core:notify-discord-status)))
-    (let ((symbol-called nil)
-          (status-called nil))
-      (unwind-protect
-          (progn
-            (setf swimmy.globals::*danger-level* 2)
-            (setf swimmy.globals::*last-swarm-consensus* 0.8)
-            (setf swimmy.globals::*current-volatility-state* :normal)
-            (setf (symbol-function 'swimmy.core:notify-discord-symbol)
-                  (lambda (&rest args)
-                    (declare (ignore args))
-                    (setf symbol-called t)))
-            (setf (symbol-function 'swimmy.core:notify-discord-status)
-                  (lambda (&rest args)
-                    (declare (ignore args))
-                    (setf status-called t)))
-            (swimmy.school::convene-high-council
-             '(:symbol "USDJPY" :direction :buy) :trend)
-            (assert-false symbol-called)
-            (assert-true status-called))
-        (setf swimmy.globals::*danger-level* orig-danger)
-        (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
-        (setf swimmy.globals::*current-volatility-state* orig-vol)
-        (setf (symbol-function 'swimmy.core:notify-discord-symbol) orig-notify-symbol)
-        (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify-status)))))
-
 (deftest test-verify-parallel-scenarios-uses-category-keys
   "parallel verification should map canonical categories"
   (let ((orig-regime swimmy.school::*market-regime*)
@@ -1259,28 +1208,6 @@
           (assert-true (swimmy.school::verify-parallel-scenarios "USDJPY" :buy :breakout)))
       (setf swimmy.school::*market-regime* orig-regime)
       (setf swimmy.school::*current-volatility-state* orig-vol))))
-
-(deftest test-high-council-extreme-volatility-uses-category-keys
-  "extreme volatility approvals should use canonical categories"
-  (let ((orig-danger swimmy.globals::*danger-level*)
-        (orig-swarm swimmy.globals::*last-swarm-consensus*)
-        (orig-vol swimmy.globals::*current-volatility-state*)
-        (orig-notify (symbol-function 'swimmy.core:notify-discord-status)))
-    (unwind-protect
-        (progn
-          (setf swimmy.globals::*danger-level* 0)
-          (setf swimmy.globals::*last-swarm-consensus* 0.0)
-          (setf swimmy.globals::*current-volatility-state* :extreme)
-          (setf (symbol-function 'swimmy.core:notify-discord-status)
-                (lambda (&rest args) (declare (ignore args)) nil))
-          (assert-true (swimmy.school::convene-high-council
-                        '(:symbol "USDJPY" :direction :buy) :breakout))
-          (assert-false (swimmy.school::convene-high-council
-                         '(:symbol "USDJPY" :direction :buy) :trend)))
-      (setf swimmy.globals::*danger-level* orig-danger)
-      (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
-      (setf swimmy.globals::*current-volatility-state* orig-vol)
-      (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify))))
 
 (deftest test-live-status-schema-v2-no-tribe
   "live_status should be schema v2 and omit tribe fields"
@@ -1396,11 +1323,6 @@
               (assert-false (member :tribe-direction obj)))))
       (setf swimmy.engine::*state-file-path* orig-path)
       (when (probe-file tmp-path) (delete-file tmp-path)))))
-
-(deftest test-category-vote-list
-  "gather-category-votes should return a non-empty list"
-  (let ((votes (swimmy.school::gather-category-votes "proposal" :trend)))
-    (assert-true (and (listp votes) (> (length votes) 0)))))
 
 (deftest test-calculate-strategy-weight-composite
   "PF/WRが高いほど重みが増え、MaxDDが高いと減る"
@@ -2181,23 +2103,6 @@
         (let ((end-time (cdr (assoc 'end_time payload))))
           (assert-true (and (listp end-time) (= 1 (length end-time)) (numberp (first end-time)))
                        "Expected end_time Option<i64> present"))))))
-
-(deftest test-backtest-v2-phase2-promotes-to-a
-  "Phase2 result should promote to A when sharpe meets threshold"
-  (let* ((s (swimmy.school:make-strategy :name "Phase2" :symbol "USDJPY"))
-         (swimmy.school::*strategy-knowledge-base* (list s))
-         (called nil))
-    (let ((orig (symbol-function 'swimmy.school:ensure-rank)))
-      (unwind-protect
-          (progn
-            (setf (symbol-function 'swimmy.school:ensure-rank)
-                  (lambda (strat rank &optional reason)
-                    (declare (ignore reason))
-                    (setf called (list strat rank))
-                    rank))
-            (swimmy.school::handle-v2-result "Phase2_P2" (list :sharpe 1.0)))
-        (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
-    (assert-equal :A (second called) "Expected A-RANK promotion")))
 
 (deftest test-prune-low-sharpe-skips-newborn-age
   "Newborn (age<24h) low-sharpe strategies are protected from pruning."
@@ -3231,10 +3136,7 @@
                   test-live-status-sexp
                   test-telemetry-event-schema
                   test-category-trade-interval
-                  test-high-council-danger-lv2-uses-swarm-consensus
-                  test-high-council-notify-uses-status
                   test-verify-parallel-scenarios-uses-category-keys
-                  test-high-council-extreme-volatility-uses-category-keys
                   test-live-status-schema-v2-no-tribe
                   test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
@@ -3242,7 +3144,6 @@
                   test-category-vocabulary-omits-clan-terms-in-sources
                   test-founder-template-uses-category-placeholder
                   test-ledger-omits-tribe-fields
-                  test-category-vote-list
                   test-calculate-strategy-weight-composite
                   test-dynamic-narrative-uses-category-display
                   test-category-counts-returns-alist
@@ -3303,7 +3204,7 @@
                   test-evolution-report-includes-cpcv-gate-failures
                   test-oos-status-line-no-queue-duplication
                   test-oos-status-line-ignores-queue-error
-                  test-evolution-report-includes-phase2-end-time
+                  test-evolution-report-excludes-phase2-end-time
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)
@@ -3332,7 +3233,6 @@
                   test-backtest-uses-csv-override
                   test-heartbeat-webhook-prefers-env
                   test-backtest-v2-uses-alist
-                  test-backtest-v2-phase2-promotes-to-a
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades
                   test-hard-cap-skips-newborn

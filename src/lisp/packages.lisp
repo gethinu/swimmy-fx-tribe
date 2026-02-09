@@ -104,7 +104,6 @@
    ;; AI/ML State
    #:*last-prediction*
    #:*last-confidence*
-   #:*last-swarm-consensus*
    #:*learned-patterns*
    #:*improvement-requests*
    #:*reputation-scores*
@@ -144,7 +143,6 @@
    #:*initial-backtest-done*
    #:*backtest-webhook-url*
    #:*sent-data-ids*  ;; V50.9: Track sent data IDs to prevent spam
-   #:*phase2-last-end-unix*
    
    ;; Dream/Evolution State
    #:*dream-cycle*
@@ -152,7 +150,6 @@
    #:*last-dream-time*
    
    ;; Misc State
-   #:*council-log*
    #:*constitution*
    #:*philosophy-log*
    #:*daily-report-sent-today*
@@ -233,8 +230,6 @@
    #:zmq-connect-endpoint
    #:zmq-bind-endpoint
    #:*constitution-version*
-   #:*council-decision-threshold*
-   #:*notify-chieftain-threshold*
    #:*philosophy-log-max*
    #:*trading-days-in-month*
    

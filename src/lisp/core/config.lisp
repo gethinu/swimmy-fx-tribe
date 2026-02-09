@@ -260,8 +260,6 @@
 ;;; ==========================================
 ;;; GOVERNANCE (Config)
 ;;; ==========================================
-(defparameter *council-decision-threshold* 0.70)
-(defparameter *notify-chieftain-threshold* :critical)
 (defparameter *constitution-version* "1.0")
 (defparameter *philosophy-log-max* 500)
 (defparameter *philosophy-log-path* (swimmy-path ".opus/philosophy_log.md"))
