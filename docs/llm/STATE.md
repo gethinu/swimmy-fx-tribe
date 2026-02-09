@@ -49,6 +49,7 @@
 - **データ不整合**: MT5とLisp間のヒストリカルデータ差異。
 - **再起動耐性**: Guardianのリスク状態 (`risk_state.json`) の永続化は実装済みだが、クラッシュ時の整合性は要監視。
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
+- **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
 - **2026-02-06**: `strategy_daily_pnl` の日次集計と 00:10 JST スケジュールを追加。日次PnL相関（Pearson）と非相関スコア通知（A/S昇格時）を実装。
