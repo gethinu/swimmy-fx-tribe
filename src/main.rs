@@ -202,6 +202,184 @@ struct CpcvResponse {
     result: CpcvResultPayload,
 }
 
+fn sexp_escape_string(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 2);
+    out.push('"');
+    for ch in input.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
+    let mut parts = Vec::new();
+    parts.push(format!(
+        "(strategy_name . {})",
+        sexp_escape_string(&result.strategy_name)
+    ));
+    parts.push(format!("(median_sharpe . {})", result.median_sharpe));
+    parts.push(format!("(path_count . {})", result.path_count));
+    parts.push(format!("(passed_count . {})", result.passed_count));
+    parts.push(format!("(failed_count . {})", result.failed_count));
+    parts.push(format!("(pass_rate . {})", result.pass_rate));
+    parts.push(format!(
+        "(is_passed . {})",
+        if result.is_passed { "t" } else { "nil" }
+    ));
+    if let Some(err) = &result.error {
+        parts.push(format!("(error . {})", sexp_escape_string(err)));
+    }
+    format!("({})", parts.join(" "))
+}
+
+fn lexpr_key_to_string(val: &lexpr::Value) -> Option<String> {
+    match val {
+        lexpr::Value::Symbol(s) => Some(s.to_string()),
+        lexpr::Value::Keyword(s) => Some(s.to_string()),
+        lexpr::Value::String(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+fn lexpr_to_string(val: &lexpr::Value) -> Option<String> {
+    match val {
+        lexpr::Value::String(s) => Some(s.to_string()),
+        lexpr::Value::Symbol(s) => Some(s.to_string()),
+        lexpr::Value::Keyword(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+fn lexpr_to_json(val: &lexpr::Value) -> serde_json::Value {
+    use lexpr::Value as L;
+    match val {
+        L::Null | L::Nil => serde_json::Value::Null,
+        L::Bool(b) => serde_json::Value::Bool(*b),
+        L::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                serde_json::Value::Number(serde_json::Number::from(i))
+            } else if let Some(u) = n.as_u64() {
+                serde_json::Value::Number(serde_json::Number::from(u))
+            } else if let Some(f) = n.as_f64() {
+                serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null)
+            } else {
+                serde_json::Value::Null
+            }
+        }
+        L::Char(c) => serde_json::Value::String(c.to_string()),
+        L::String(s) => serde_json::Value::String(s.to_string()),
+        L::Symbol(s) => serde_json::Value::String(s.to_string()),
+        L::Keyword(s) => serde_json::Value::String(s.to_string()),
+        L::Bytes(bytes) => serde_json::Value::Array(
+            bytes.iter().map(|b| serde_json::Value::Number((*b as u64).into())).collect(),
+        ),
+        L::Vector(items) => serde_json::Value::Array(items.iter().map(lexpr_to_json).collect()),
+        L::Cons(_) => {
+            if let Some(items) = val.to_vec() {
+                let all_cons = items.iter().all(|v| v.is_cons());
+                if all_cons {
+                    let mut map = serde_json::Map::new();
+                    for item in items {
+                        if let Some((car, cdr)) = item.as_pair() {
+                            if let Some(key) = lexpr_key_to_string(car) {
+                                map.insert(key, lexpr_to_json(cdr));
+                            }
+                        }
+                    }
+                    serde_json::Value::Object(map)
+                } else {
+                    serde_json::Value::Array(items.iter().map(lexpr_to_json).collect())
+                }
+            } else if let Some((car, cdr)) = val.as_pair() {
+                serde_json::Value::Array(vec![lexpr_to_json(car), lexpr_to_json(cdr)])
+            } else {
+                serde_json::Value::Null
+            }
+        }
+    }
+}
+
+fn lexpr_alist_to_map(val: &lexpr::Value) -> Result<std::collections::HashMap<String, lexpr::Value>, String> {
+    let mut out = std::collections::HashMap::new();
+    if matches!(val, lexpr::Value::Nil) {
+        return Ok(out);
+    }
+    let list = val.to_vec().ok_or_else(|| "expected list for alist".to_string())?;
+    for item in list {
+        if let Some((car, cdr)) = item.as_pair() {
+            if let Some(key) = lexpr_key_to_string(car) {
+                out.insert(key, cdr.clone());
+            }
+        } else {
+            return Err("expected cons cell in alist".to_string());
+        }
+    }
+    Ok(out)
+}
+
+fn parse_cpcv_request_sexp(msg: &str) -> Result<CpcvRequest, String> {
+    let val: lexpr::Value = lexpr::from_str(msg).map_err(|e| e.to_string())?;
+    let map = lexpr_alist_to_map(&val)?;
+
+    let action = map
+        .get("action")
+        .and_then(lexpr_to_string)
+        .ok_or_else(|| "missing action".to_string())?;
+    let strategy_name = map
+        .get("strategy_name")
+        .and_then(lexpr_to_string)
+        .ok_or_else(|| "missing strategy_name".to_string())?;
+    let symbol = map
+        .get("symbol")
+        .and_then(lexpr_to_string)
+        .ok_or_else(|| "missing symbol".to_string())?;
+    let candles_file = map
+        .get("candles_file")
+        .and_then(lexpr_to_string)
+        .ok_or_else(|| "missing candles_file".to_string())?;
+    let strategy_params = map
+        .get("strategy_params")
+        .map(lexpr_to_json)
+        .unwrap_or(serde_json::Value::Null);
+
+    Ok(CpcvRequest {
+        action,
+        strategy_name,
+        symbol,
+        candles_file,
+        strategy_params,
+    })
+}
+
+fn build_cpcv_response_str(msg: &str, is_sexp: bool) -> Result<String, String> {
+    let req: CpcvRequest = if is_sexp {
+        parse_cpcv_request_sexp(msg)?
+    } else {
+        serde_json::from_str(msg).map_err(|e| e.to_string())?
+    };
+    let result = build_cpcv_result(&req);
+    if is_sexp {
+        let result_sexp = cpcv_result_to_sexp(&result);
+        Ok(format!("((type . \"CPCV_RESULT\") (result . {}))", result_sexp))
+    } else {
+        let response = CpcvResponse {
+            msg_type: "CPCV_RESULT".to_string(),
+            result,
+        };
+        serde_json::to_string(&response).map_err(|e| e.to_string())
+    }
+}
+
 fn cpcv_payload_from_aggregate(
     strategy_name: &str,
     agg: &cpcv::CpcvAggregateResult,
@@ -1281,7 +1459,23 @@ fn main() {
             }
 
             // SXP Dispatcher
-            if msg.contains("\"BACKTEST\"") {
+            if msg.contains("CPCV_VALIDATE") {
+                println!("🧪 CPCV_VALIDATE received (SXP)");
+                match build_cpcv_response_str(&msg, true) {
+                    Ok(response_str) => {
+                        if !response_str.is_empty() {
+                            match push_to_brain.send(&response_str, 0) {
+                                Ok(_) => println!(
+                                    "🧪 CPCV_RESULT sent to brain (SXP): {:.140}...",
+                                    response_str
+                                ),
+                                Err(e) => println!("❌ CPCV_RESULT send error (SXP): {}", e),
+                            }
+                        }
+                    }
+                    Err(e) => println!("❌ CPCV_VALIDATE parse/serialize error: {}", e),
+                }
+            } else if msg.contains("\"BACKTEST\"") {
                 match serde_lexpr::from_str::<BacktestRequest>(&msg) {
                     Ok(req) => {
                         println!("📊 BACKTEST Request (SXP/Zero-Copy)");
@@ -1518,37 +1712,13 @@ fn main() {
                          println!("✅ Data Cached: {} (S-Exp: {})", req.data_id, is_sexp);
                      }
                 } else if msg.contains("\"action\":\"CPCV_VALIDATE\"") || (is_sexp && msg.contains("CPCV_VALIDATE")) {
-                     let req_res: Result<CpcvRequest, String> = if is_sexp {
-                         serde_lexpr::from_str(&msg).map_err(|e| e.to_string())
-                     } else {
-                         serde_json::from_str(&msg).map_err(|e| e.to_string())
-                     };
-                     match req_res {
-                         Ok(req) => {
-                             let result = build_cpcv_result(&req);
-                             let response = CpcvResponse {
-                                 msg_type: "CPCV_RESULT".to_string(),
-                                 result,
-                             };
-                             let response_str = if is_sexp {
-                                 match serde_lexpr::to_string(&response) {
-                                     Ok(s) => s,
-                                     Err(e) => {
-                                         eprintln!("❌ CPCV_RESULT serialize error: {}", e);
-                                         String::new()
-                                     }
-                                 }
-                             } else {
-                                 serde_json::to_string(&response).unwrap_or_else(|e| {
-                                     eprintln!("❌ CPCV_RESULT serialize error: {}", e);
-                                     String::new()
-                                 })
-                             };
+                     match build_cpcv_response_str(&msg, is_sexp) {
+                         Ok(response_str) => {
                              if !response_str.is_empty() {
                                  let _ = push_to_brain.send(&response_str, 0);
                              }
                          }
-                         Err(e) => println!("❌ CPCV_VALIDATE parse error: {}", e),
+                         Err(e) => println!("❌ CPCV_VALIDATE parse/serialize error: {}", e),
                      }
                 } else if msg.contains("\"action\":\"BACKTEST\"") || (is_sexp && msg.contains("BACKTEST")) {
                      let req_res: Result<BacktestRequest, String> = if is_sexp {
@@ -1838,6 +2008,20 @@ mod tests {
         assert!((payload.pass_rate - 0.6).abs() < 1e-9);
         assert!(payload.is_passed);
         assert!(payload.error.is_none());
+    }
+
+    #[test]
+    fn test_build_cpcv_response_str_sexp_missing_file() {
+        let msg = r#"((action . "CPCV_VALIDATE")
+                      (strategy_name . "UT-CPCV-EXT")
+                      (symbol . "USDJPY")
+                      (candles_file . "/tmp/does-not-exist.csv")
+                      (strategy_params . NIL))"#;
+
+        let response = build_cpcv_response_str(msg, true).expect("response should serialize");
+
+        assert!(response.contains("CPCV_RESULT"), "response should be CPCV_RESULT");
+        assert!(response.contains("UT-CPCV-EXT"), "response should include strategy name");
     }
 
     #[test]

@@ -227,6 +227,7 @@ dependencies = [
  "chrono",
  "csv",
  "lazy_static",
+ "lexpr",
  "nalgebra",
  "rand",
  "rayon",

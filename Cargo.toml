@@ -13,4 +13,5 @@ rand = "0.8"
 csv = "1.3"
 chrono = "0.4.42"
 serde-lexpr = "0.1"
+lexpr = "0.2"
 nalgebra = "0.33"  # V47.0: Kalman filter matrix operations
