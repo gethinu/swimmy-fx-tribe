@@ -1813,6 +1813,7 @@
                   test-kill-strategy-persists-status
                   test-max-age-retire-batched-notification
                   test-stagnant-crank-batched-notification
+                  test-kill-strategy-reason-code-stagnant-crank
                   test-collect-all-strategies-unpruned
                   test-map-strategies-from-db-batched
                   test-map-strategies-from-db-limit

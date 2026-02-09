@@ -161,6 +161,47 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-kill-strategy-reason-code-stagnant-crank
+  "Reason code should route Stagnant C-Rank without string search"
+  (let* ((name "TEST-STAGNANT-C-RANK-CODE")
+         (tmp-db (format nil "/tmp/swimmy-stagnant-crank-code-~a.db" (get-universal-time)))
+         (sent-messages nil)
+         (ok nil))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (let ((orig-notify (and (fboundp 'swimmy.school::notify-discord-alert)
+                              (symbol-function 'swimmy.school::notify-discord-alert))))
+        (unwind-protect
+            (progn
+              (setf swimmy.core::*stagnant-crank-retire-buffer* nil)
+              (setf swimmy.core::*stagnant-crank-retire-first-seen* 0)
+              (when orig-notify
+                (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                      (lambda (msg &key color)
+                        (declare (ignore color))
+                        (push msg sent-messages)
+                        t)))
+              (swimmy.school::init-db)
+              (let ((strat (make-strategy :name name :symbol "USDJPY")))
+                (setf *strategy-knowledge-base* (list strat))
+                (upsert-strategy strat)
+                (handler-case
+                    (progn
+                      (kill-strategy name "Unrelated reason" :reason-code :stagnant-crank)
+                      (setf ok t))
+                  (error () (setf ok nil)))
+                (assert-true ok "kill-strategy should accept reason-code")
+                (assert-equal 0 (length sent-messages) "Should suppress individual alert")
+                (assert-equal 1 (length swimmy.core::*stagnant-crank-retire-buffer*)
+                              "Should buffer stagnant C-rank notification")))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))
+          (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
 (deftest test-sqlite-wal-mode-enabled
   "Ensure init-db sets SQLite to WAL mode for concurrency."
   (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))
