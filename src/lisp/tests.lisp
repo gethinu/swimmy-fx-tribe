@@ -2439,7 +2439,7 @@
                   test-evolution-report-includes-oos-status
                   test-oos-status-line-no-queue-duplication
                   test-oos-status-line-ignores-queue-error
-                  test-evolution-report-includes-phase2-end-time
+                  test-evolution-report-omits-phase2-end-time
                   ;; V7.1: Persistence Tests (Andrew Ng)
                   test-learning-persistence
                   ;; V8.0: Advisor Reports (Expert Panel)
