@@ -68,12 +68,12 @@
 - [ ] CPCVのqueued/sent/received/failedメトリクス永続化とreport整合: `src/lisp/school/school-validation.lisp`, `data/reports/evolution_factory_report.txt`
 - [ ] CPCV_VALIDATE要求スキーマをINTERFACESに明記（必須キー/例）: `docs/llm/INTERFACES.md`
 - [ ] CPCV_RESULTにmedian_pf/median_wr/median_maxddを追加し、Lispで取り込む: `guardian/src/cpcv.rs`, `guardian/src/main.rs`, `src/lisp/core/message-dispatcher.lisp`, `docs/llm/INTERFACES.md`
-- [ ] PF/MaxDDへの最適化圧力を評価系へ組み込む（Sharpe偏重是正）: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-rank-system.lisp`
+- [x] PF/MaxDDへの最適化圧力を評価系へ組み込む（Sharpe偏重是正）: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-rank-system.lisp`
 - [ ] `doc/SYSTEM_ARCHITECTURE.md` を `docs/llm/ARCHITECTURE.md` と統合/廃止して正本化する: `doc/SYSTEM_ARCHITECTURE.md`, `docs/llm/ARCHITECTURE.md`
 
 ## Expert Panel 2026-02-09 (Stagnant C-Rank Batch)
-- [ ] フラッシュをループ終端依存から分離（独立タイマー or 短周期フック）: `src/lisp/school/school-connector.lisp`, `src/lisp/core/scheduler.lisp`
-- [ ] Stagnant C-Rank の実行頻度を仕様化（週次なら通知/Docs明記、日次ならロジック変更）: `src/lisp/school/school-breeder.lisp`, `doc/owners_guide.md`
-- [ ] 理由の構造化（文字列search廃止、reasonコード導入）: `src/lisp/strategies/strategies.lisp`, `src/lisp/core/discord.lisp`
-- [ ] バッファ長/最古滞留時間のテレメトリ追加: `src/lisp/core/discord.lisp`
-- [ ] school側フラッシュ経路のテスト追加（長時間フェーズ耐性）: `src/lisp/tests/scheduler-tests.lisp` or new integration test
+- [x] フラッシュをループ終端依存から分離（独立タイマー or 短周期フック）: `src/lisp/school/school-connector.lisp`, `src/lisp/core/scheduler.lisp`
+- [x] Stagnant C-Rank の実行頻度を仕様化（週次なら通知/Docs明記、日次ならロジック変更）: `src/lisp/school/school-breeder.lisp`, `doc/owners_guide.md`
+- [x] 理由の構造化（文字列search廃止、reasonコード導入）: `src/lisp/strategies/strategies.lisp`, `src/lisp/core/discord.lisp`
+- [x] バッファ長/最古滞留時間のテレメトリ追加: `src/lisp/core/discord.lisp`
+- [x] school側フラッシュ経路のテスト追加（長時間フェーズ耐性）: `src/lisp/tests/scheduler-tests.lisp` or new integration test
