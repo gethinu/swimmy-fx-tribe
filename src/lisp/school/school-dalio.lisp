@@ -181,27 +181,29 @@
      (member (strategy-rank s) '(:A :S :LEGEND) :test #'eq))
    *strategy-knowledge-base*))
 
-(defun notify-noncorrelated-promotion (strategy new-rank &key (days 30))
+(defun notify-noncorrelated-promotion (strategy new-rank &key (days 30) promotion-reason)
   "Compute noncorrelation score and send Discord notification."
   (let* ((portfolio (%current-portfolio-strategies))
          (score nil)
-         (reason nil)
+         (nc-reason nil)
          (coverage-days nil)
          (threshold swimmy.school.dalio::*correlation-threshold*))
-    (multiple-value-setq (score reason coverage-days)
+    (multiple-value-setq (score nc-reason coverage-days)
       (calculate-noncorrelation-score portfolio :days days :threshold threshold))
     (let* ((title "⚖️ 非相関 昇格通知")
            (portfolio-size (length portfolio))
            (ts (swimmy.core:get-jst-timestamp))
            (score-text (if score (format nil "~,2f" score) "N/A"))
            (reason-text (cond
-                          ((eq reason :insufficient-data)
+                          ((eq nc-reason :insufficient-data)
                            (if (numberp coverage-days)
                                (format nil "(データ不足: ~d/~d日)" coverage-days days)
                                "(データ不足)"))
-                          ((eq reason :insufficient-strategies) "(戦略数不足)")
+                          ((eq nc-reason :insufficient-strategies) "(戦略数不足)")
                           (t "")))
-           (msg (format nil "戦略: **~a**~%昇格: **~a**~%非相関スコア: **~a** ~a~%閾値: |corr| < ~,2f~%ポートフォリオ: ~d 戦略~%時刻: ~a"
+           (promotion-reason-text (if promotion-reason (format nil "【理由】**~a**~%" promotion-reason) ""))
+           (msg (format nil "~a戦略: **~a**~%昇格: **~a**~%非相関スコア: **~a** ~a~%閾値: |corr| < ~,2f~%ポートフォリオ: ~d 戦略~%時刻: ~a"
+                        promotion-reason-text
                         (strategy-name strategy)
                         new-rank
                         score-text
@@ -214,7 +216,8 @@
            (telemetry-data (list :strategy (strategy-name strategy)
                                  :new-rank new-rank
                                  :score (if score score "N/A")
-                                 :reason reason
+                                 :reason nc-reason
+                                 :promotion-reason promotion-reason
                                  :coverage-days coverage-days
                                  :required-days days
                                  :portfolio-size portfolio-size)))
@@ -223,6 +226,7 @@
         :severity "info"
         :correlation-id (strategy-name strategy)
         :data telemetry-data)
+      (swimmy.core:log-info msg)
       (when webhook
         (swimmy.core:queue-discord-notification
          webhook msg :color swimmy.core:+color-info+ :title title)))))

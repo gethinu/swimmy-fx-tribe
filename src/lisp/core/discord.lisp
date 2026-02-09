@@ -158,9 +158,9 @@
                           (format nil "⚠️ ~a [UNKNOWN]" symbol) 
                           (format nil "🐟 ~a" symbol))))
     (when is-fallback
-      (format t "[DISCORD] FALLBACK symbol=~a looked-up=~a table-count=~d webhook=~a~%"
-              symbol (if looked-up "SET" "MISSING") (hash-table-count *symbol-webhooks*)
-              (if webhook "SET" "MISSING")))
+      (format t "[DISCORD] FALLBACK symbol=~a sym-type=~a looked-up=~a table-count=~d webhook=~a~%"
+              symbol (type-of symbol) (if looked-up "SET" "MISSING")
+              (hash-table-count *symbol-webhooks*) (if webhook "SET" "MISSING")))
     (when webhook
       (queue-discord-notification webhook final-msg :color color :title final-title))))
 

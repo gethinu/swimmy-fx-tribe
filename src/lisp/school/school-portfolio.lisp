@@ -17,8 +17,8 @@
                                               (fetch-candidate-strategies :ranks '(":A"))))
                            #'> :key (lambda (s) (or (strategy-sharpe s) 0.0))))
          (selected-team nil)
-         (demoted-count 0)
-         (promoted-count 0))
+        (demoted-count 0)
+        (promoted-count 0))
     
     (dolist (candidate candidates)
       (if (and (< (length selected-team) *global-s-rank-cap*)
@@ -27,12 +27,14 @@
           (progn
             (push candidate selected-team)
             (when (eq (strategy-rank candidate) :A)
-              (incf promoted-count)
-              (ensure-rank candidate :S "Drafted to Global Team")))
+              (let ((result (ensure-rank candidate :S "Drafted to Global Team")))
+                (when (eq result :S)
+                  (incf promoted-count)))))
           (progn
             (when (eq (strategy-rank candidate) :S)
-              (incf demoted-count)
-              (ensure-rank candidate :A "Cut from Global Team")))))
+              (let ((result (ensure-rank candidate :A "Cut from Global Team")))
+                (when (eq result :A)
+                  (incf demoted-count)))))))
     
     (format t "[PORTFOLIO] 📊 Draft Complete: Team Size=~d | Promoted=~d Demoted=~d~%"
             (length selected-team) promoted-count demoted-count)))

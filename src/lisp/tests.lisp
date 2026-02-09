@@ -698,6 +698,32 @@
     (assert-equal "BRAIN" (cdr (assoc 'swimmy.core::source msg)) "Expected source key")
     (assert-true (cdr (assoc 'swimmy.core::status msg)) "Expected status key")))
 
+(deftest test-heartbeat-now-trigger-file
+  "heartbeat.now file should trigger immediate heartbeat and then be removed"
+  (let ((fn (find-symbol "MAYBE-TRIGGER-HEARTBEAT-NOW" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "Trigger function should exist")
+    (let* ((path (swimmy.core::swimmy-path ".opus/heartbeat.now"))
+           (orig-send (and (fboundp 'swimmy.engine::send-discord-heartbeat)
+                           (symbol-function 'swimmy.engine::send-discord-heartbeat)))
+           (called nil))
+      (unwind-protect
+          (progn
+            (when (probe-file path)
+              (ignore-errors (delete-file path)))
+            (ensure-directories-exist path)
+            (with-open-file (out path :direction :output :if-exists :supersede :if-does-not-exist :create)
+              (write-line "now" out))
+            (setf (symbol-function 'swimmy.engine::send-discord-heartbeat)
+                  (lambda ()
+                    (setf called t)))
+            (funcall fn)
+            (assert-true called "Expected heartbeat to be triggered")
+            (assert-false (probe-file path) "Trigger file should be removed"))
+        (when orig-send
+          (setf (symbol-function 'swimmy.engine::send-discord-heartbeat) orig-send))
+        (when (probe-file path)
+          (ignore-errors (delete-file path)))))))
+
 (deftest test-heartbeat-uses-heartbeat-webhook
   "send-discord-heartbeat should resolve heartbeat webhook key"
   (let* ((orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
@@ -726,30 +752,6 @@
         (setf (symbol-function 'swimmy.core::get-discord-webhook) orig-get))
       (when (boundp 'swimmy.core::*heartbeat-webhook-url*)
         (setf swimmy.core::*heartbeat-webhook-url* orig-url)))))
-
-(deftest test-heartbeat-now-trigger-file
-  "Trigger file should send heartbeat and delete trigger"
-  (let* ((trigger (swimmy.core::swimmy-path ".opus/heartbeat.now"))
-         (orig-send (and (fboundp 'swimmy.engine::send-discord-heartbeat)
-                         (symbol-function 'swimmy.engine::send-discord-heartbeat)))
-         (called nil))
-    (assert-true (fboundp 'swimmy.main::maybe-trigger-heartbeat-now)
-                 "Expected trigger checker to exist")
-    (unwind-protect
-        (progn
-          (ensure-directories-exist trigger)
-          (with-open-file (out trigger :direction :output :if-exists :supersede
-                                      :if-does-not-exist :create)
-            (write-line "1" out))
-          (when orig-send
-            (setf (symbol-function 'swimmy.engine::send-discord-heartbeat)
-                  (lambda () (setf called t))))
-          (swimmy.main::maybe-trigger-heartbeat-now)
-          (assert-true called "Expected heartbeat send to be invoked")
-          (assert-false (probe-file trigger) "Trigger file should be removed"))
-      (when orig-send
-        (setf (symbol-function 'swimmy.engine::send-discord-heartbeat) orig-send))
-      (ignore-errors (delete-file trigger)))))
 
 (deftest test-heartbeat-summary-no-data-omits-age
   "Heartbeat summary should not show age when no MT5 data has ever arrived"
@@ -2007,7 +2009,15 @@
 (deftest test-promotion-triggers-noncorrelation-notification
   "Ensure A/S promotions fire noncorrelation notification once"
   (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
-         (strat (swimmy.school:make-strategy :name "PROMO" :symbol "USDJPY" :rank :B))
+         (strat (swimmy.school:make-strategy :name "PROMO"
+                                             :symbol "USDJPY"
+                                             :rank :B
+                                             :sharpe 0.7
+                                             :profit-factor 1.8
+                                             :win-rate 0.55
+                                             :max-dd 0.10
+                                             :cpcv-median-sharpe 0.7
+                                             :cpcv-pass-rate 0.6))
          (called 0)
          (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
                     (symbol-function 'swimmy.school::notify-noncorrelated-promotion))))
@@ -2027,6 +2037,124 @@
           (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig))
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-check-rank-criteria-requires-cpcv-pass-rate
+  "S-RANK criteria should require CPCV pass-rate >= 0.5"
+  (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
+                                            :rank :A
+                                            :sharpe 0.7
+                                            :profit-factor 1.8
+                                            :win-rate 0.55
+                                            :max-dd 0.10
+                                            :cpcv-median-sharpe 0.7
+                                            :cpcv-pass-rate 0.4)))
+    (assert-false (swimmy.school::check-rank-criteria strat :S)
+                  "Expected S criteria to fail when CPCV pass-rate < 0.5")))
+
+(deftest test-ensure-rank-blocks-s-without-cpcv
+  "ensure-rank should block S promotion when CPCV criteria are missing"
+  (let* ((strat (swimmy.school:make-strategy :name "UT-S-BLOCK"
+                                             :rank :A
+                                             :sharpe 0.7
+                                             :profit-factor 1.8
+                                             :win-rate 0.55
+                                             :max-dd 0.10))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
+                           (symbol-function 'swimmy.school::notify-noncorrelated-promotion)))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (events nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    (error "notify-noncorrelated-promotion should not run"))))
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (push (list event-type data) events)))
+          (swimmy.school::ensure-rank strat :S "Drafted to Global Team")
+          (assert-equal :A (swimmy.school:strategy-rank strat)
+                        "S promotion should be blocked without CPCV")
+          (let ((ev (find "rank.promotion.blocked" events :key #'first :test #'string=)))
+            (assert-true ev "Expected rank.promotion.blocked telemetry")))
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig-notify))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit))))
+
+(deftest test-draft-does-not-promote-without-cpcv
+  "Global draft should not promote A->S without CPCV criteria"
+  (let* ((a (swimmy.school:make-strategy :name "UT-DRAFT-A"
+                                         :rank :A
+                                         :sharpe 0.7
+                                         :profit-factor 1.8
+                                         :win-rate 0.55
+                                         :max-dd 0.10))
+         (orig-fetch (symbol-function 'swimmy.school::fetch-candidate-strategies))
+         (orig-diverse (symbol-function 'swimmy.school::is-diverse-addition-p))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::fetch-candidate-strategies)
+                (lambda (&key ranks)
+                  (declare (ignore ranks))
+                  (list a)))
+          (setf (symbol-function 'swimmy.school::is-diverse-addition-p)
+                (lambda (&rest args) (declare (ignore args)) t))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (swimmy.school::construct-global-portfolio)
+          (assert-equal :A (swimmy.school:strategy-rank a)
+                        "Draft should not promote to S without CPCV"))
+      (setf (symbol-function 'swimmy.school::fetch-candidate-strategies) orig-fetch
+            (symbol-function 'swimmy.school::is-diverse-addition-p) orig-diverse
+            (symbol-function 'swimmy.school:upsert-strategy) orig-upsert))))
+
+(deftest test-draft-counts-only-successful-promotions
+  "Draft promoted/demoted counts should reflect actual rank changes"
+  (let* ((a (swimmy.school:make-strategy :name "UT-DRAFT-COUNT-A"
+                                         :rank :A
+                                         :sharpe 0.7
+                                         :profit-factor 1.8
+                                         :win-rate 0.55
+                                         :max-dd 0.10))
+         (s (swimmy.school:make-strategy :name "UT-DRAFT-COUNT-S"
+                                         :rank :S
+                                         :sharpe 0.8
+                                         :profit-factor 1.9
+                                         :win-rate 0.56
+                                         :max-dd 0.10))
+         (orig-fetch (symbol-function 'swimmy.school::fetch-candidate-strategies))
+         (orig-diverse (symbol-function 'swimmy.school::is-diverse-addition-p))
+         (orig-ensure (symbol-function 'swimmy.school:ensure-rank)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::fetch-candidate-strategies)
+                (lambda (&key ranks)
+                  (declare (ignore ranks))
+                  (list a s)))
+          (setf (symbol-function 'swimmy.school::is-diverse-addition-p)
+                (lambda (candidate team)
+                  (declare (ignore team))
+                  (eq candidate a)))
+          ;; Simulate blocked promotions/demotions by returning old rank.
+          (setf (symbol-function 'swimmy.school:ensure-rank)
+                (lambda (strat rank &optional reason)
+                  (declare (ignore rank reason))
+                  (swimmy.school:strategy-rank strat)))
+          (let ((out (with-output-to-string (*standard-output*)
+                       (swimmy.school::construct-global-portfolio))))
+            (assert-true (search "Promoted=0" out)
+                         "Expected promoted count to be 0 when promotions are blocked")
+            (assert-true (search "Demoted=0" out)
+                         "Expected demoted count to be 0 when demotions are blocked")))
+      (setf (symbol-function 'swimmy.school::fetch-candidate-strategies) orig-fetch
+            (symbol-function 'swimmy.school::is-diverse-addition-p) orig-diverse
+            (symbol-function 'swimmy.school:ensure-rank) orig-ensure))))
 
 (deftest test-noncorrelation-score-reports-coverage
   "Noncorrelation score should report coverage days when insufficient."
@@ -2094,7 +2222,8 @@
               (setf (symbol-function 'swimmy.core::emit-telemetry-event)
                     (lambda (&rest args) (declare (ignore args)) nil))
               (swimmy.school::notify-noncorrelated-promotion
-               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30)
+               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30
+               :promotion-reason "CPCV Passed and Criteria Met")
               (assert-true (and captured (search "データ不足: 5/30日" captured))
                            "Expected coverage in N/A message")))
         (setf swimmy.school::*strategy-knowledge-base* orig-kb
@@ -2103,6 +2232,62 @@
               swimmy.core:*discord-daily-webhook* orig-webhook)
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-noncorrelation-notify-logs-message
+  "Noncorrelation notification should log the message body."
+  (let* ((tmp-db (format nil "/tmp/swimmy-noncorr-log-~a.db" (get-universal-time)))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (orig-log (symbol-function 'swimmy.core:log-info))
+         (orig-webhook swimmy.core:*discord-daily-webhook*))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed 5 days of pnl for A and B
+            (dolist (spec '(("2026-02-01" 1.0) ("2026-02-02" 2.0) ("2026-02-03" 3.0)
+                            ("2026-02-04" 4.0) ("2026-02-05" 5.0)))
+              (destructuring-bind (d v) spec
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "A" d v 1 (get-universal-time))
+                (swimmy.school::execute-non-query
+                 "INSERT OR REPLACE INTO strategy_daily_pnl (strategy_name, trade_date, pnl_sum, trade_count, updated_at)
+                  VALUES (?, ?, ?, ?, ?)"
+                 "B" d v 1 (get-universal-time))))
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "A" :rank :A)
+                        (swimmy.school:make-strategy :name "B" :rank :A)))
+            (setf swimmy.core:*discord-daily-webhook* "dummy")
+            (let ((captured nil))
+              (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                    (lambda (&rest args) (declare (ignore args)) nil))
+              (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                    (lambda (&rest args) (declare (ignore args)) nil))
+              (setf (symbol-function 'swimmy.core:log-info)
+                    (lambda (message &rest args)
+                      (declare (ignore args))
+                      (setf captured message)))
+              (swimmy.school::notify-noncorrelated-promotion
+               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30
+               :promotion-reason "CPCV Passed and Criteria Met")
+              (assert-true (and captured (search "非相関スコア" captured))
+                           "Expected noncorrelation message in logs")
+              (assert-true (search "データ不足: 5/30日" captured)
+                           "Expected coverage text in logs")
+              (assert-true (search "【理由】" captured)
+                           "Expected emphasized promotion reason in logs"))))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb
+              (symbol-function 'swimmy.core:queue-discord-notification) orig-queue
+              (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit
+              (symbol-function 'swimmy.core:log-info) orig-log
+              swimmy.core:*discord-daily-webhook* orig-webhook)
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db)))))
 
 (deftest test-noncorrelation-telemetry-emitted
   "Noncorrelation notification should emit telemetry with coverage details."
@@ -2138,13 +2323,16 @@
                     (lambda (event-type &key data &allow-other-keys)
                       (push (list event-type data) events)))
               (swimmy.school::notify-noncorrelated-promotion
-               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30)
+               (swimmy.school:make-strategy :name "PROMO" :rank :A) :A :days 30
+               :promotion-reason "CPCV Passed and Criteria Met")
               (let* ((ev (find "noncorrelation.score" events :key #'first :test #'string=))
                      (data (and ev (second ev))))
                 (assert-true ev "Expected noncorrelation.score telemetry event")
                 (assert-equal "PROMO" (getf data :strategy) "Expected strategy name in telemetry")
                 (assert-equal :insufficient-data (getf data :reason) "Expected insufficient-data reason")
-                (assert-equal 5 (getf data :coverage-days) "Expected coverage-days in telemetry"))))
+                (assert-equal 5 (getf data :coverage-days) "Expected coverage-days in telemetry")
+                (assert-equal "CPCV Passed and Criteria Met" (getf data :promotion-reason)
+                              "Expected promotion reason in telemetry"))))
         (setf swimmy.school::*strategy-knowledge-base* orig-kb
               (symbol-function 'swimmy.core:queue-discord-notification) orig-queue
               (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
@@ -2326,6 +2514,7 @@
                   test-req-history-uses-count
                   test-order-open-sexp-keys
                   test-heartbeat-message-is-sexp
+                  test-heartbeat-now-trigger-file
                   test-heartbeat-uses-heartbeat-webhook
                   test-heartbeat-now-trigger-file
                   test-heartbeat-summary-no-data-omits-age
@@ -2355,8 +2544,13 @@
                   test-evolution-report-throttle-uses-last-write
                   test-evolution-report-staleness-alert-throttles
                   test-promotion-triggers-noncorrelation-notification
+                  test-check-rank-criteria-requires-cpcv-pass-rate
+                  test-ensure-rank-blocks-s-without-cpcv
+                  test-draft-does-not-promote-without-cpcv
+                  test-draft-counts-only-successful-promotions
                   test-noncorrelation-score-reports-coverage
                   test-noncorrelation-notify-includes-coverage
+                  test-noncorrelation-notify-logs-message
                   test-noncorrelation-telemetry-emitted
                   test-backtest-trade-logs-insert
                   test-fetch-backtest-trades

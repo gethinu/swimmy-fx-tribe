@@ -19,15 +19,18 @@
 ;;; MULTI-CURRENCY DISCORD SETUP
 ;;; ==========================================
 
-(defparameter *symbol-webhooks* (make-hash-table :test 'equal))
-
 (defun setup-symbol-webhooks ()
   "Setup Discord webhooks for each currency pair. (Consolidated 2026-01-10)"
   ;; All symbols now route to LIVE_FEED
   (let ((live-feed (uiop:getenv "SWIMMY_DISCORD_LIVE_FEED")))
-    (setf (gethash "USDJPY" *symbol-webhooks*) live-feed)
-    (setf (gethash "EURUSD" *symbol-webhooks*) live-feed)
-    (setf (gethash "GBPUSD" *symbol-webhooks*) live-feed)))
+    ;; Use shared global table to avoid shell/core divergence.
+    (setf (gethash "USDJPY" swimmy.globals::*symbol-webhooks*) live-feed)
+    (setf (gethash "EURUSD" swimmy.globals::*symbol-webhooks*) live-feed)
+    (setf (gethash "GBPUSD" swimmy.globals::*symbol-webhooks*) live-feed)
+    (format t "[DISCORD] setup-symbol-webhooks live-feed=~a count=~d usdjpy=~a~%"
+            (if live-feed "SET" "MISSING")
+            (hash-table-count swimmy.globals::*symbol-webhooks*)
+            (if (gethash "USDJPY" swimmy.globals::*symbol-webhooks*) "SET" "MISSING"))))
 
 ;;; ==========================================
 ;;; TRADE NOTIFICATIONS (Hooks from Engine)

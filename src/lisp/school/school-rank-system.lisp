@@ -22,7 +22,7 @@
 (defparameter *rank-criteria*
   '((:B       :sharpe-min 0.1  :pf-min 1.0  :wr-min 0.30  :maxdd-max 0.30)
     (:A       :sharpe-min 0.3  :pf-min 1.2  :wr-min 0.40  :maxdd-max 0.20 :oos-min 0.3)
-    (:S       :sharpe-min 0.5  :pf-min 1.5  :wr-min 0.45  :maxdd-max 0.15 :cpcv-min 0.5))
+    (:S       :sharpe-min 0.5  :pf-min 1.5  :wr-min 0.45  :maxdd-max 0.15 :cpcv-min 0.5 :cpcv-pass-min 0.5))
   "Rank criteria thresholds. All conditions must be met (AND logic).")
 
 (defparameter *culling-threshold* 10
@@ -69,7 +69,8 @@
                 (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
            ((eq target-rank :S)
             (or (not include-cpcv)
-                (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))))
+                (and (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))
+                     (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0)))))
            (t t)))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
@@ -121,6 +122,22 @@
                (oos-request-pending-p (strategy-name strategy)))
       (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))
       (return-from %ensure-rank-no-lock old-rank))
+    (when (and (eq new-rank :S)
+               (not (eq old-rank :S))
+               (not (check-rank-criteria strategy :S)))
+      (format t "[RANK] 🚫 Blocked S promotion for ~a (CPCV criteria missing).~%"
+              (strategy-name strategy))
+      (when (fboundp 'swimmy.core::emit-telemetry-event)
+        (swimmy.core::emit-telemetry-event "rank.promotion.blocked"
+          :service "school"
+          :severity "warning"
+          :correlation-id (strategy-name strategy)
+          :data (list :strategy (strategy-name strategy)
+                      :old-rank old-rank
+                      :new-rank new-rank
+                      :promotion-reason reason
+                      :block "cpcv-missing")))
+      (return-from %ensure-rank-no-lock old-rank))
 
     (when (not (eq old-rank new-rank))
       ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
@@ -134,7 +151,7 @@
       (let ((promotion-p (%promotion-p old-rank new-rank)))
         (when promotion-p
           (handler-case
-              (notify-noncorrelated-promotion strategy new-rank)
+              (notify-noncorrelated-promotion strategy new-rank :promotion-reason reason)
             (error (e)
               (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))))
       

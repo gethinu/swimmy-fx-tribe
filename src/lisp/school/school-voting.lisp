@@ -319,8 +319,9 @@
          (volatility-state (if (boundp '*current-volatility-state*) *current-volatility-state* :normal))
          (approval nil)
          (reason ""))
-    (format t "[HC] INPUT sym=~a dir=~a cat=~a danger=~a swarm=~a vol=~a urgency=~a~%"
-            symbol direction category danger-level swarm-consensus volatility-state urgency)
+    (format t "[HC] INPUT sym=~a sym-type=~a dir=~a dir-type=~a cat=~a danger=~a swarm=~a vol=~a urgency=~a~%"
+            symbol (type-of symbol) direction (type-of direction)
+            category danger-level swarm-consensus volatility-state urgency)
     
     (cond
       ((>= urgency 10)
