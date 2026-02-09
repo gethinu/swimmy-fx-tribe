@@ -33,8 +33,14 @@
     (when (> (length b-rankers) *rank-b-capacity*)
       (format t "[RANK] ✂️ Culling Rank B Pool (~d > ~d)...~%" (length b-rankers) *rank-b-capacity*)
       
-      ;; Sort by Sharpe (Ascending - Weakest first)
-      (let ((sorted (sort (copy-list b-rankers) #'< :key (lambda (s) (or (strategy-sharpe s) 0.0))))
+      ;; Sort by composite score (Ascending - Weakest first)
+      (let ((sorted (sort (copy-list b-rankers) #'<
+                          :key (lambda (s)
+                                 (score-from-metrics
+                                  (list :sharpe (strategy-sharpe s)
+                                        :profit-factor (strategy-profit-factor s)
+                                        :win-rate (strategy-win-rate s)
+                                        :max-dd (strategy-max-dd s))))))
             (culled-count 0))
         
         ;; Remove bottom 30% (buffer)
