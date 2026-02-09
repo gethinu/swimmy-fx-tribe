@@ -395,6 +395,8 @@
                           (request-id (%normalize-strategy-name
                                        (%result-val-normalized result '(request_id request-id) nil)))
                           (trade-list (%result-val-normalized result '(trade_list trade-list) nil))
+                          (trades-truncated (%result-val-normalized result '(trades_truncated trades-truncated) nil))
+                          (trades-ref (%result-val-normalized result '(trades_ref trades-ref) nil))
                           (median (%result-val-normalized result '(median_sharpe median-sharpe median) 0.0))
                           (median-pf (%result-val-normalized result '(median_pf median-pf) 0.0))
                           (median-wr (%result-val-normalized result '(median_wr median-wr) 0.0))
@@ -413,7 +415,9 @@
                                                :path-count paths :passed-count passed
                                                :failed-count failed :pass-rate pass-rate
                                                :is-passed is-passed :request-id request-id
-                                               :error error-msg)))
+                                               :error error-msg
+                                               :trades-truncated trades-truncated
+                                               :trades-ref trades-ref)))
                        (when (and trade-list name)
                          (swimmy.school:record-backtest-trades request-id name "CPCV" trade-list))
                        (when (fboundp 'swimmy.school::%cpcv-metric-inc)
