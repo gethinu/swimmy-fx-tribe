@@ -9,9 +9,12 @@ FAKE_BIN="$TMP_DIR/bin"
 mkdir -p "$FAKE_BIN"
 KILL_LOG="$TMP_DIR/kill.log"
 export KILL_LOG
+SYSTEMCTL_LOG="$TMP_DIR/systemctl.log"
+export SYSTEMCTL_LOG
 
 cat > "$FAKE_BIN/systemctl" <<'EOF'
 #!/bin/bash
+echo "$*" >> "$SYSTEMCTL_LOG"
 if [[ "$*" == *"is-active"* ]]; then exit 0; fi
 if [[ "$*" == *"show"* ]]; then echo "MainPID=1234"; exit 0; fi
 exit 1
@@ -48,5 +51,6 @@ PATH="$FAKE_BIN:$PATH" \
 grep -q "STRAY run.sh" "$TMP_DIR/out.log" || { echo "FAIL: expected stray run.sh log"; exit 1; }
 grep -q "\-TERM 5678" "$KILL_LOG" || { echo "FAIL: expected TERM for 5678"; exit 1; }
 grep -q "1234" "$KILL_LOG" && { echo "FAIL: should not kill MainPID"; exit 1; }
+grep -q "\-\-user" "$SYSTEMCTL_LOG" && { echo "FAIL: should not pass --user by default"; exit 1; }
 
 echo "PASS: stray run.sh cleanup"

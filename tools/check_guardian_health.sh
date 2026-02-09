@@ -7,16 +7,21 @@ SERVICE="swimmy-guardian.service"
 WEBHOOK_URL="${SWIMMY_DISCORD_ALERTS:-}"
 ALERT_FILE="/tmp/guardian_alert_sent"
 SYSTEMCTL_CMD="${SYSTEMCTL_CMD:-systemctl}"
+SYSTEMCTL_SCOPE="${SYSTEMCTL_SCOPE:-}"
 PGREP_CMD="${PGREP_CMD:-pgrep}"
 KILL_CMD="${KILL_CMD:-kill}"
 SLEEP_CMD="${SLEEP_CMD:-sleep}"
+SYSTEMCTL_ARGS=()
+if [ -n "$SYSTEMCTL_SCOPE" ]; then
+    SYSTEMCTL_ARGS+=("$SYSTEMCTL_SCOPE")
+fi
 
 # Check if Guardian is running
-if "$SYSTEMCTL_CMD" --user is-active --quiet "$SERVICE"; then
+if "$SYSTEMCTL_CMD" "${SYSTEMCTL_ARGS[@]}" is-active --quiet "$SERVICE"; then
     # Guardian is alive, remove alert flag if exists
     rm -f "$ALERT_FILE"
 
-    MAINPID="$("$SYSTEMCTL_CMD" --user show -p MainPID swimmy-brain.service 2>/dev/null | cut -d= -f2)"
+    MAINPID="$("$SYSTEMCTL_CMD" "${SYSTEMCTL_ARGS[@]}" show -p MainPID swimmy-brain.service 2>/dev/null | cut -d= -f2)"
     while read -r pid _; do
         [ -z "$pid" ] && continue
         if [ -n "$MAINPID" ] && [ "$MAINPID" != "0" ] && [ "$pid" = "$MAINPID" ]; then
@@ -42,10 +47,10 @@ else
     
     # Try to restart
     echo "Attempting restart..."
-    "$SYSTEMCTL_CMD" --user restart "$SERVICE"
+    "$SYSTEMCTL_CMD" "${SYSTEMCTL_ARGS[@]}" restart "$SERVICE"
     "$SLEEP_CMD" 5
     
-    if "$SYSTEMCTL_CMD" --user is-active --quiet "$SERVICE"; then
+    if "$SYSTEMCTL_CMD" "${SYSTEMCTL_ARGS[@]}" is-active --quiet "$SERVICE"; then
         echo "Guardian restarted successfully."
         rm -f "$ALERT_FILE"
         exit 0
