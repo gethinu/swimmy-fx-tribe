@@ -1824,8 +1824,8 @@
           (assert-true (and (listp end-time) (= 1 (length end-time)) (numberp (first end-time)))
                        "Expected end_time Option<i64> present"))))))
 
-(deftest test-backtest-v2-phase2-promotes-to-a
-  "Phase2 result should promote to A when sharpe meets threshold"
+(deftest test-backtest-v2-ignores-phase2-results
+  "Phase2 results should be ignored after Phase2 removal"
   (let* ((s (swimmy.school:make-strategy :name "Phase2" :symbol "USDJPY"))
          (swimmy.school::*strategy-knowledge-base* (list s))
          (called nil))
@@ -1839,7 +1839,7 @@
                     rank))
             (swimmy.school::handle-v2-result "Phase2_P2" (list :sharpe 1.0)))
         (setf (symbol-function 'swimmy.school:ensure-rank) orig)))
-    (assert-equal :A (second called) "Expected A-RANK promotion")))
+    (assert-true (null called) "Phase2 results should not trigger rank changes")))
 
 (deftest test-prune-low-sharpe-skips-newborn-age
   "Newborn (age<24h) low-sharpe strategies are protected from pruning."
@@ -2468,7 +2468,7 @@
                   test-backtest-uses-csv-override
                   test-heartbeat-webhook-prefers-env
                   test-backtest-v2-uses-alist
-                  test-backtest-v2-phase2-promotes-to-a
+                  test-backtest-v2-ignores-phase2-results
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades
                   test-hard-cap-skips-newborn
