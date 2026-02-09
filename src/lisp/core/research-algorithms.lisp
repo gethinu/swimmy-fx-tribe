@@ -147,10 +147,10 @@
   "Below this: use simple models (Kalman)")
 
 (defparameter *volatility-threshold-high* 1.5
-  "Above this: use complex models (Swarm/Ensemble)")
+  "Above this: use complex models (Ensemble)")
 
 (defparameter *current-model-mode* :auto
-  "Current model selection: :kalman, :swarm, :ensemble, or :auto")
+  "Current model selection: :kalman, :ensemble, or :auto")
 
 (defun calculate-realized-volatility (history &key (period 20))
   "Calculate realized volatility as percentage.
@@ -183,13 +183,13 @@
          (format t "[RESEARCH] 📊 High volatility (~,2f%): Ensemble mode~%" vol)
          :ensemble)
         (t
-         (setf *current-model-mode* :swarm)
-         (format t "[RESEARCH] 📊 Normal volatility (~,2f%): Swarm mode~%" vol)
-         :swarm)))))
+         (setf *current-model-mode* :ensemble)
+         (format t "[RESEARCH] 📊 Normal volatility (~,2f%): Ensemble mode~%" vol)
+         :ensemble)))))
 
 (defun get-model-prediction (history)
   "Get prediction using currently optimal model."
-  (let ((mode (or (select-optimal-model history) :swarm)))
+  (let ((mode (or (select-optimal-model history) :ensemble)))
     (case mode
       (:kalman
        ;; Use Kalman filter for prediction
@@ -210,7 +210,7 @@
                (t :HOLD))
              :HOLD)))  ; Conflicting signals = HOLD
       (otherwise
-       ;; Default swarm mode (existing behavior)
+       ;; Default ensemble mode
        nil))))
 
 (format t "[RESEARCH] #17 Volatility-Based Model Switch loaded~%")

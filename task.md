@@ -83,3 +83,13 @@
 - [ ] High Council の `proposal` 型を plist に統一し、型不整合の回帰テストを追加する: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-execution.lisp`, `src/lisp/tests.lisp`
 - [ ] Swarm 記述と実装の整合（残すなら配線、外すなら記述削除）を行う: `doc/owners_guide.md`, `src/lisp/school/school-evaluation.lisp`
 - [ ] Status 通知の webhook ルーティングを明示して運用事故を防ぐ: `src/lisp/core/config.lisp`, `src/lisp/core/discord.lisp`
+
+## Expert Panel 2026-02-09 (Model Switch / Dual Trend)
+- [ ] 通常ボラ時のモデル挙動を1つに固定し、TDDで仕様化する: `src/lisp/core/research-algorithms.lisp`
+- [ ] `get-model-prediction` を使わないなら削除、使うなら1箇所に接続する: `src/lisp/core/research-algorithms.lisp`, `src/lisp/school/school-execution.lisp`
+- [ ] dual-trend の固定窓/閾値のOOS/WFV検証を行い、失敗なら削除: `src/lisp/core/research-algorithms.lisp`
+
+## Expert Panel 2026-02-09 (Dual Trend Strength)
+- [ ] dual-trend を OOS/WFV（コスト込み）で短期検証し、IS負けなら撤去: `src/lisp/core/research-algorithms.lisp`
+- [ ] MODEL GATE 抑制件数をテレメトリ/レポートに出す: `src/lisp/school/school-execution.lisp`
+- [ ] dual-trend の挙動テストを追加して仕様を固定する: `src/lisp/tests.lisp`

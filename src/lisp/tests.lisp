@@ -1170,6 +1170,31 @@
         (assert-true (<= 0 rsi 100) "RSI should be between 0-100")))))
 
 ;;; ─────────────────────────────────────────
+;;; MODEL SWITCH TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-select-optimal-model-normal-vol-uses-ensemble
+  "Normal volatility should choose :ensemble"
+  (let ((orig (symbol-function 'swimmy.core::calculate-realized-volatility)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::calculate-realized-volatility)
+                (lambda (history &key (period 20))
+                  (declare (ignore history period))
+                  1.0))
+          (assert-equal :ensemble
+                        (swimmy.core::select-optimal-model '(dummy))
+                        "Normal vol should choose :ensemble"))
+      (setf (symbol-function 'swimmy.core::calculate-realized-volatility) orig))))
+
+(deftest test-model-allows-direction-p
+  "Model gate should allow only matching directions; :HOLD blocks."
+  (assert-true (swimmy.school::model-allows-direction-p nil :BUY) "nil model should allow")
+  (assert-false (swimmy.school::model-allows-direction-p :HOLD :BUY) ":HOLD should block")
+  (assert-true (swimmy.school::model-allows-direction-p :BUY :BUY) "matching direction should pass")
+  (assert-false (swimmy.school::model-allows-direction-p :SELL :BUY) "mismatch should block"))
+
+;;; ─────────────────────────────────────────
 ;;; CATEGORY EXECUTION TESTS
 ;;; ─────────────────────────────────────────
 
@@ -3162,6 +3187,8 @@
                   test-atr-calculation-logic
                   test-volatility-shifts
                   test-prediction-structure
+                  test-select-optimal-model-normal-vol-uses-ensemble
+                  test-model-allows-direction-p
                   ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
