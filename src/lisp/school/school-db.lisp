@@ -33,6 +33,9 @@
       hash TEXT,
       oos_sharpe REAL,
       cpcv_median REAL,
+      cpcv_median_pf REAL,
+      cpcv_median_wr REAL,
+      cpcv_median_maxdd REAL,
       cpcv_pass_rate REAL,
       data_sexp TEXT,
       updated_at INTEGER
@@ -47,6 +50,15 @@
     (error () nil))
   (handler-case
       (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_median REAL")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_median_pf REAL")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_median_wr REAL")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_median_maxdd REAL")
     (error () nil))
   (handler-case
       (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_pass_rate REAL")
@@ -211,8 +223,8 @@
           name, indicators, entry, exit, sl, tp, volume,
           sharpe, profit_factor, win_rate, trades, max_dd,
           category, timeframe, generation, rank, symbol, direction, hash,
-          oos_sharpe, cpcv_median, cpcv_pass_rate, data_sexp, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, data_sexp, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
          name
          (format nil "~a" (strategy-indicators strat))
          (format nil "~a" (strategy-entry strat))
@@ -234,6 +246,9 @@
          (strategy-hash strat)
          (or (strategy-oos-sharpe strat) 0.0)
          (or (strategy-cpcv-median-sharpe strat) 0.0)
+         (or (strategy-cpcv-median-pf strat) 0.0)
+         (or (strategy-cpcv-median-wr strat) 0.0)
+         (or (strategy-cpcv-median-maxdd strat) 0.0)
          (or (strategy-cpcv-pass-rate strat) 0.0)
          (format nil "~s" strat)
          updated-at) ; Store full serialized object as backup
@@ -473,7 +488,7 @@
             (when (and strat (strategy-name strat))
               (setf (gethash (strategy-name strat) strategy-index) strat))))
         (labels ((apply-row (row)
-                   (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-pass &optional updated-at) row
+                 (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-median-pf cpcv-median-wr cpcv-median-maxdd cpcv-pass &optional updated-at) row
                      (setf max-updated (max max-updated (or updated-at 0)))
                      (let ((strat (gethash name strategy-index)))
                        (when strat
@@ -484,6 +499,9 @@
                          (when maxdd (setf (strategy-max-dd strat) (float maxdd 0.0)))
                          (when oos (setf (strategy-oos-sharpe strat) (float oos 0.0)))
                          (when cpcv-median (setf (strategy-cpcv-median-sharpe strat) (float cpcv-median 0.0)))
+                         (when cpcv-median-pf (setf (strategy-cpcv-median-pf strat) (float cpcv-median-pf 0.0)))
+                         (when cpcv-median-wr (setf (strategy-cpcv-median-wr strat) (float cpcv-median-wr 0.0)))
+                         (when cpcv-median-maxdd (setf (strategy-cpcv-median-maxdd strat) (float cpcv-median-maxdd 0.0)))
                          (when cpcv-pass (setf (strategy-cpcv-pass-rate strat) (float cpcv-pass 0.0)))
                          (when (and rank (stringp rank))
                            (multiple-value-bind (rank-sym ok) (%parse-rank-safe rank)
@@ -492,8 +510,8 @@
                          (incf updated))))))
           (handler-case
               (let* ((query (if since-timestamp
-                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_pass_rate, updated_at FROM strategies WHERE updated_at >= ?"
-                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_pass_rate, updated_at FROM strategies")))
+                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, updated_at FROM strategies WHERE updated_at >= ?"
+                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, updated_at FROM strategies")))
                 (format t "[DB] 🔍 Sync query start (~a)~%"
                         (if since-timestamp "incremental" "full"))
                 (finish-output)
@@ -524,7 +542,7 @@
               (finish-output)
               (let* ((t0 (get-internal-real-time))
                      (rows (execute-to-list
-                            "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_pass_rate FROM strategies"))
+                            "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate FROM strategies"))
                      (elapsed (/ (- (get-internal-real-time) t0)
                                  internal-time-units-per-second)))
                 (format t "[DB] 🔍 Sync query end (~,2fs)~%" elapsed)
