@@ -48,8 +48,17 @@
     (:legend   1.50)   ; 150% - Hall of Fame material
     (otherwise 0.50)))
 
+(defparameter *score-min-warrior* 0.20
+  "Minimum composite score for Scout -> Warrior promotion.")
+(defparameter *score-min-veteran* 0.25
+  "Minimum composite score for Warrior -> Veteran promotion.")
+(defparameter *score-min-legend* 0.30
+  "Minimum composite score for Veteran -> Legend promotion.")
+(defparameter *score-demote-threshold* 0.05
+  "Composite score threshold for demotion back to Scout.")
+
 (defun check-promotion (strategy-name)
-  "Check if strategy deserves promotion (Enhanced with Sharpe Ratio)"
+  "Check if strategy deserves promotion (Composite Score)"
   (let ((rank-data (get-strategy-rank strategy-name)))
     (let* ((trades (strategy-rank-trades rank-data))
            (wins (strategy-rank-wins rank-data))
@@ -59,55 +68,60 @@
            ;; V7.1: Resolve strategy to check Sharpe Ratio
            (strat (or (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
                       (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)))
-           (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0)))
+           (sharpe (if strat (or (strategy-sharpe strat) 0.0) 0.0))
+           (score (if (and strat (fboundp 'score-from-metrics))
+                      (score-from-metrics
+                       (list :sharpe (strategy-sharpe strat)
+                             :profit-factor (strategy-profit-factor strat)
+                             :win-rate (strategy-win-rate strat)
+                             :max-dd (strategy-max-dd strat)))
+                      sharpe)))
       
-      ;; Promotion criteria (Expert Panel Recommendation: Use Sharpe to filter luck)
+      ;; Promotion criteria (Composite score to reduce Sharpe bias)
       (cond
-        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, Sharpe > 0.5
-        ;; [V8.2] Expert Panel (Graham): "Sharpe > 0 is pathetic"
+        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, composite score
         ((and (eq current-rank :scout)
               (>= trades 10)
               (>= win-rate 0.40)
               (> pnl 0)
-              (> sharpe 0.5)) ; Raised from 0.0 per Expert Panel
+              (>= score *score-min-warrior*))
          (setf (strategy-rank-rank rank-data) :warrior)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          ;; Coming of Age ceremony
          (coming-of-age strategy-name "Scout" "Warrior")
          :warrior)
         
-        ;; Warrior → Veteran: 50+ trades, 50%+ win rate, 500+ PnL, Sharpe > 0.5
+        ;; Warrior → Veteran: 50+ trades, 50%+ win rate, 500+ PnL, composite score
         ((and (eq current-rank :warrior)
               (>= trades 50)
               (>= win-rate 0.50)
               (> pnl 500)
-              (> sharpe 0.2)) ; Reduced from 0.5
+              (>= score *score-min-veteran*))
          (setf (strategy-rank-rank rank-data) :veteran)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Warrior" "Veteran")
          :veteran)
         
-        ;; Veteran → Legend: 30+ trades, 55%+ win rate, 500+ PnL, Sharpe > 0.3
-        ;; [V45.0] Expert Panel (Musk): "Sharpe 1.0 is impossible for short-term backtest"
+        ;; Veteran → Legend: 30+ trades, 55%+ win rate, 500+ PnL, composite score
         ((and (eq current-rank :veteran)
               (>= trades 30)
               (>= win-rate 0.55)
               (> pnl 500)
-              (> sharpe 0.3))
+              (>= score *score-min-legend*))
          (setf (strategy-rank-rank rank-data) :legend)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          (coming-of-age strategy-name "Veteran" "Legend")
          ;; Induct to Hall of Fame
          (induct-to-hall-of-fame strategy-name pnl current-rank 
-                                  (format nil "WR ~,0f%% | Sharpe ~,2f" (* 100 win-rate) sharpe))
+                                  (format nil "WR ~,0f%% | Score ~,2f" (* 100 win-rate) score))
          :legend)
         
-        ;; Demotion: 5+ consecutive losses at Warrior level OR Sharpe becomes negative
+        ;; Demotion: 5+ consecutive losses at Warrior level OR composite score degrades
         ((and (member current-rank '(:warrior :veteran))
               (or (< pnl -300)
-                  (and (> trades 20) (< sharpe -0.5))))  ; Significant degradation
+                  (and (> trades 20) (< score *score-demote-threshold*))))  ; Significant degradation
          (setf (strategy-rank-rank rank-data) :scout)
-         (format t "[L] ⚠️ ~a demoted to Scout due to poor performance (Sharpe: ~,2f)~%" strategy-name sharpe)
+         (format t "[L] ⚠️ ~a demoted to Scout due to poor performance (Score: ~,2f)~%" strategy-name score)
          :scout)
         
         (t current-rank)))))
