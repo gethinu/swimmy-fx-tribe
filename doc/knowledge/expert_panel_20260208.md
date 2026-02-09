@@ -184,3 +184,53 @@ Sを“教師信号”として使うなら、誤ラベルは学習の毒だ。C
 3. 昇格通知に **昇格理由（CPCV/ドラフト）** を必ず表示し、逸脱を即時検出可能にする。 `src/lisp/school/school-dalio.lisp:184`
 4. 「A→SがCPCV無しで成立しない」テストを追加し、抜け道を固定的に潰す。 `src/lisp/school/school-portfolio.lisp:31` `src/lisp/school/school-rank-system.lisp:52`
 5. ドキュメントのS定義と実装を一致させる（docs/llm/SPEC と owners_guide の整合性確認）。 `docs/llm/SPEC.md:96` `doc/owners_guide.md:176`
+
+# 🦅 Expert Panel Report (Critique)
+
+**Date:** 2026-02-08  
+**Leader:** Elon Musk  
+**Mode:** critique  
+**Trigger:** Phase2（V2）未実装のまま報告に出ている件（`Phase2 EndTime: N/A`）
+
+## 🏛️ 常設顧問の意見
+### Taleb:
+Phase2を“存在する前提”で報告に出すのは偽の確実性だ。未実装の検証ステージを表示すること自体が破滅リスクを隠蔽する。Phase2の発火は `request-backtest-v2` の `phase="phase2"` でしか記録されないのに、実行経路が無い。 `src/lisp/school/school-backtest-v2.lisp:41-105` `src/lisp/school/school-narrative.lisp:289-324`
+
+### Graham:
+仕様は `B→(OOS)→A→(CPCV)→S` と書いてある。Phase2が本当に必要なら、実装と運用に接続すべきで、無いならドキュメントから消せ。嘘の指標は信用毀損だ。 `doc/owners_guide.md:166-181` `src/lisp/school/school-backtest-v2.lisp:100-105`
+
+### Naval:
+Phase2の状態がメモリ変数 `*phase2-last-end-unix*` だけに依存していて、再起動で消えるのは自動化の敗北。永続化か、明示的に「Inactive」として扱うべきだ。 `src/lisp/core/globals.lisp:112-113` `src/lisp/school/school-narrative.lisp:289-324`
+
+### Simons:
+OOS検証とPhase2(V2)の二重系が混在し、どれが真の検証か不明瞭。統計的には「未実施の検証を実施済みに見せる」ことが最大のリスクだ。 `src/lisp/school/school-validation.lisp:244-299` `src/lisp/school/school-backtest-v2.lisp:100-105`
+
+## 💻 技術パネルの意見
+### Fowler:
+Phase2は定義されているが呼び出しが無い“死んだ経路”。さらにテストは表示のみを保証し、実行経路を保証していない。これは設計の負債だ。 `src/lisp/school/school-backtest-v2.lisp:100-105` `src/lisp/tests/school-split-tests.lisp:461-476`
+
+### Hickey:
+`Phase2 EndTime` がN/Aのままなら、そのフィールドは意味を持たない。意味のない語彙は削除するか「Inactive」と明示して意味論を守れ。 `src/lisp/school/school-narrative.lisp:289-324`
+
+### Uncle Bob:
+Phase2が動作しなくてもテストが通るのはバグ。少なくとも「Phase2が実行されたら end_time が更新される」統合テストが必要だ。 `src/lisp/tests/school-split-tests.lisp:461-476` `src/lisp/school/school-backtest-v2.lisp:41-105`
+
+## 🚀 ビジョナリーの意見
+### Ng:
+Phase2が未接続なら学習信号が欠損し、OOSとPhase2の意味が混線する。状態は「実行済み/未実行/無効」を明示して再現性を担保すべきだ。 `src/lisp/school/school-validation.lisp:244-299` `src/lisp/school/school-narrative.lisp:289-324`
+
+### López de Prado:
+検証ステージの空欄は過学習の温床だ。Phase2を使わないなら削除し、使うなら厳格に接続して監査可能にせよ。 `src/lisp/school/school-backtest-v2.lisp:100-105` `doc/owners_guide.md:166-181`
+
+### Gene Kim:
+“N/A”は故障なのか正常なのか判別できない。運用指標は状態遷移を持つべきだ。`Phase2: INACTIVE` のような明示が必要。 `src/lisp/school/school-narrative.lisp:289-324`
+
+## 🚀 Musk's Decision (Final)
+> 「**Phase2は今すぐ意思決定する。** 使うなら実運用へ接続。使わないならレポートから削除し“Inactive”と明記する。」
+
+## Actionable Items
+1. Phase2(V2)を **実運用に接続するか、Reportから除去/Inactive表示にするか** を決定し反映。 `src/lisp/school/school-backtest-v2.lisp:100-105` `src/lisp/school/school-narrative.lisp:289-324`
+2. Phase2を使う場合、**呼び出し元を明示的に追加**（例: 検証パイプラインで `run-phase-2-validation` を発火）。 `src/lisp/school/school-validation.lisp:276-299` `src/lisp/school/school-backtest-v2.lisp:100-105`
+3. **Phase2 end_time の永続化 or 明示的無効化** を実装し、再起動で状態が消えないようにする。 `src/lisp/core/globals.lisp:112-113` `src/lisp/school/school-narrative.lisp:289-324`
+4. **統合テスト**で Phase2 実行→ end_time 更新を保証する。 `src/lisp/tests/school-split-tests.lisp:461-476`
+5. **仕様書と報告の整合**を取る（Phase2が無いならドキュメントからも削除）。 `doc/owners_guide.md:166-181`
