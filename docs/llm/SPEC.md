@@ -30,6 +30,8 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - **Symbolic Hashing**: 論理的に同一な戦略を自動排除 (Jaccard Similarity)。
   - **Highlander Rule**: 類似戦略は強い方だけが生き残る。
   - **Engine of Life**: 親子対決(Deathmatch)による世代交代。
+  - **選抜スコア (Selection Score)**: Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。
+  - **投票ウェイト**: `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
 
 ## 5. リスク管理 (Guardian & Lisp)
 - **Risk Gate (Rust)**:
@@ -58,7 +60,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Daily PnL Aggregation**: `strategy_daily_pnl`（日次損益の集計テーブル）を正本として使用。
   - **Sharded Files**: 戦略本体 (S式)。
-- **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（`schema_version=1`、tmp→renameで原子書き込み）。`data/` と `db/data/` のJSON/JSONLはレガシー維持だが、**Structured Telemetry** は `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL出力（`log_type="telemetry"`）。
+- **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（tmp→renameで原子書き込み）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。`data/` と `db/data/` のJSON/JSONLはレガシー維持だが、**Structured Telemetry** は `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL出力（`log_type="telemetry"`）。
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)

@@ -26,6 +26,7 @@
 - **Transport**: stdio（Content-Length フレーミング）
 - **Methods**: `health.ping` / `system.status` / `system.metrics` / `backtest.submit` / `backtest.status` / `trade.submit`(403)
 - **Params**: `api_key` 必須（`SWIMMY_MCP_API_KEY` と一致）
+ - **Bridge**: MCP Gateway は JSON‑RPC を受け取り、S式に変換して `:5559`（External Command）へPUBする。
 
 ## データスキーマ (S-expression)
 S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。

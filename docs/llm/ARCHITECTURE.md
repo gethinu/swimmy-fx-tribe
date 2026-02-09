@@ -19,6 +19,7 @@ graph TD
         Notifier[Notifier Service]
         RiskGateway[Risk Gateway]
         BacktestSvc[Backtest Service]
+        MCPGateway[MCP Gateway (stdio JSON-RPC)]
         DB[(SQLite / Files)]
     end
 
@@ -38,12 +39,14 @@ graph TD
 
     Lisp -- "PUSH :5580 (Backtest, S-exp)" --> BacktestSvc
     BacktestSvc -- "PUSH :5581 (Result, S-exp)" --> Lisp
+
+    MCPGateway -- "PUB :5559 (External Cmd, S-exp)" --> Rust
     
     Lisp <--> DB
     Rust <--> DB
 ```
 
-**通信エンコーディング方針**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP等）はJSONを維持する。
+**通信エンコーディング方針**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持する。MCP Gatewayは JSON‑RPC(stdio) を受け取り、S式に変換して `:5559` にPUBする。
 
 ## コンポーネント詳細
 
