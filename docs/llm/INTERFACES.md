@@ -262,6 +262,16 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
 
 **備考**: 以前のJSON要求形式は廃止（後方互換なし）。Backtest Service は **S式のみ**受理/返却する。  
 
+**CPCV_VALIDATE (Request, S-Expression)**:
+```
+((action . "CPCV_VALIDATE")
+ (strategy_name . "Volvo-Scalp-Gen0")  ; 必須
+ (symbol . "USDJPY")                   ; 必須
+ (candles_file . "/home/swimmy/swimmy/data/historical/USDJPY_M1.csv") ; 必須
+ (request_id . "RID-123")              ; optional: 相関ID
+ (strategy_params . ((sma_short . 10) (sma_long . 50) (sl . 50.0) (tp . 100.0)))) ; 必須(空でも可)
+```
+
 **CPCV_RESULT (Response, Guardianフォーマット)**:
 ```
 ((type . "CPCV_RESULT")
