@@ -31,8 +31,11 @@
 (defun mutate-indicators-with-library (indicators category)
   "Mutate indicators by swapping one with a regime-aware alternative.
    V49.5: Prevents 'Genetic Stagnation' using indicators-library."
-  (if (> (random 1.0) 0.7) ; 30% chance to swap an indicator
-      (let* ((idx (random (length indicators)))
+  (let ((len (length indicators)))
+    (when (zerop len)
+      (return-from mutate-indicators-with-library indicators))
+    (if (> (random 1.0) 0.7) ; 30% chance to swap an indicator
+        (let* ((idx (random len))
              (regime (case category
                        (:trend :trend)
                        (:reversion :reversion)
@@ -44,7 +47,7 @@
                 (nth idx indicators) new-indicator regime)
         (setf (nth idx indicators) new-indicator)
         indicators)
-      indicators))
+        indicators)))
 
 (defun mutate-indicator-params (params)
   "Recursively mutate numeric parameters in an indicator list (e.g. RSI 14 -> 15).
@@ -279,23 +282,38 @@
   "Analyze the Knowledge Base and extract 'Wisdom' (Best Genes).
    Replaces extract_wisdom.py."
   (format t "[WISDOM] 🧠 Analyzing Veterans for Gene Extraction...~%")
-  (let* ((unique-strats (remove-duplicates *strategy-knowledge-base* :key #'strategy-name :test #'string=))
-         ;; Filter: Positive Sharpe only, or just take top N?
-         ;; For now, let's take anyone with Sharpe > 0.1 to allow early evolution.
-         (candidates (remove-if-not (lambda (s) (and (strategy-sharpe s) (> (strategy-sharpe s) 0.1))) unique-strats))
-         ;; Sort by Sharpe
-         (best (sort (copy-list candidates) #'> :key #'strategy-sharpe))
-         ;; Take Top 50
-         (elite (subseq best 0 (min (length best) 50)))
-         (genes (mapcar #'extract-params-from-strategy elite)))
-    
-    (format t "[WISDOM] Found ~d candidates (Sharpe > 0.1). Extracting ~d Elite Genes.~%" (length candidates) (length elite))
-    
-    (if genes
-        (save-optimized-params-to-file genes)
-        (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
-    
-    (length genes)))
+  (let* ((total (length *strategy-knowledge-base*)))
+    (format t "[WISDOM] 🔍 De-duplication starting: ~d strategies...~%" total)
+    (let* ((t0 (get-internal-real-time))
+           (unique-strats (remove-duplicates *strategy-knowledge-base* :key #'strategy-name :test #'string=))
+           (dedup-secs (/ (- (get-internal-real-time) t0)
+                          internal-time-units-per-second)))
+      (format t "[WISDOM] ✅ De-dup complete: ~d unique (~,2fs)~%" (length unique-strats) dedup-secs)
+      ;; Filter: Positive Sharpe only, or just take top N?
+      ;; For now, let's take anyone with Sharpe > 0.1 to allow early evolution.
+      (format t "[WISDOM] 🔍 Filtering candidates (Sharpe > 0.1) from ~d...~%" (length unique-strats))
+      (let* ((t1 (get-internal-real-time))
+             (candidates (remove-if-not (lambda (s) (and (strategy-sharpe s) (> (strategy-sharpe s) 0.1)))
+                                        unique-strats))
+             (filter-secs (/ (- (get-internal-real-time) t1)
+                             internal-time-units-per-second)))
+        (format t "[WISDOM] ✅ Filter complete: ~d candidates (~,2fs)~%" (length candidates) filter-secs)
+        ;; Sort by Sharpe
+        (format t "[WISDOM] 🔍 Sorting candidates by Sharpe...~%")
+        (let* ((t2 (get-internal-real-time))
+               (best (sort (copy-list candidates) #'> :key #'strategy-sharpe))
+               (sort-secs (/ (- (get-internal-real-time) t2)
+                             internal-time-units-per-second)))
+          (format t "[WISDOM] ✅ Sort complete (~,2fs)~%" sort-secs)
+          ;; Take Top 50
+          (let* ((elite (subseq best 0 (min (length best) 50)))
+                 (genes (mapcar #'extract-params-from-strategy elite)))
+            (format t "[WISDOM] Found ~d candidates (Sharpe > 0.1). Extracting ~d Elite Genes.~%"
+                    (length candidates) (length elite))
+            (if genes
+                (save-optimized-params-to-file genes)
+                (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
+            (length genes)))))))
 
 ;;; ============================================================================
 ;;; DEATHMATCH ARENA (Phase 21)

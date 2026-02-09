@@ -144,10 +144,21 @@
 
     ;; Sync metrics/ranks from DB for multi-process coherence
     (when (fboundp 'refresh-strategy-metrics-from-db)
-      (refresh-strategy-metrics-from-db))
+      (format t "[CONNECTOR] 🔄 DB sync start...~%")
+      (finish-output)
+      (let ((t0 (get-internal-real-time)))
+        (refresh-strategy-metrics-from-db)
+        (let ((elapsed (/ (- (get-internal-real-time) t0)
+                          internal-time-units-per-second)))
+          (format t "[CONNECTOR] ✅ DB sync end (~,2fs)~%" elapsed)
+          (finish-output))))
     
     ;; 1. Validation Batch (Formerly RR/Optimize)
+    (format t "[CONNECTOR] ▶ Phase 1 validation start~%")
+    (finish-output)
     (phase-1-validation)
+    (format t "[CONNECTOR] ◀ Phase 1 validation end~%")
+    (finish-output)
     
     ;; 2. [REMOVED] Legacy Python Phase 2
     ;; Logic absorbed into Evolution Engine
