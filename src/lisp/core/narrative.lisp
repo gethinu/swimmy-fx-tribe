@@ -4,7 +4,7 @@
 ;;; NARRATIVE - Extracted from tick-handler.lisp (SRP Refactor)
 ;;; ==========================================
 ;;; Handles:
-;;; - Daily tribal narrative generation
+;;; - Daily category narrative generation
 ;;; - Flood/Risk status metaphors
 ;;; - Discord message formatting
 

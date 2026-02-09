@@ -122,7 +122,7 @@
 (defparameter *win-rate-history* nil "Historical win rates")
 (defparameter *max-win-rate-history* 100 "Max size of win rate history")
 
-;; Tribe signal integration (moved to globals.lisp)
+;; Signal integration (moved to globals.lisp)
 
 ;;; ==========================================
 ;;; GLOBAL MACRO STATE (Phase 19/23 - Simons)

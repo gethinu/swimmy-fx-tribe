@@ -1,4 +1,4 @@
-;; school-strategy.lisp - Swimmy School: Strategy & Clan Management
+;; school-strategy.lisp - Swimmy School: Strategy & Category Management
 ;; Extracted from school.lisp (V6.14) for better modularity
 
 (in-package :swimmy.school)
@@ -125,7 +125,7 @@
 
 
 ;;; ==========================================
-;;; CATEGORY ALLOCATION (with Clan mapping)
+;;; CATEGORY ALLOCATION
 ;;; ===========================================
 
 (defparameter *category-allocation*

@@ -336,9 +336,9 @@
            (setf approval nil reason "🛡️ REJECTED: Danger Lv2 requires 70%+ swarm consensus")))
            
       ((eq volatility-state :extreme)
-       (if (member category '(:breakers :shamans))
-           (setf approval t reason "🌊 APPROVED: Extreme volatility fits Clan")
-           (setf approval nil reason "⛔ REJECTED: Too volatile for Clan")))
+       (if (member category '(:breakout :reversion))
+           (setf approval t reason "🌊 APPROVED: Extreme volatility fits Category")
+           (setf approval nil reason "⛔ REJECTED: Too volatile for Category")))
            
       (t (setf approval t reason "✅ APPROVED: Standard deployment")))
        

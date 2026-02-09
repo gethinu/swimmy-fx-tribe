@@ -32,7 +32,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 1. VOLATILITY SCALPER (Source: TradingView/PineScript Communities)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Scalper (Raiders)
+;;; Category: Scalp
 
 (def-founder :volvo "Volvo-Scalp-Gen0"
   "Volatility Scalping logic (BB + RSI + EMA). Low Risk, High Frequency."
@@ -62,7 +62,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 2. LONDON BREAKOUT (Source: Classic Forex Strategy)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Breakout (Breakers)
+;;; Category: Breakout
 
 (def-founder :london "London-Breakout-Gen0"
   "Asian Session Range Breakout. Time-based logic."
@@ -86,7 +86,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 3. ICHIMOKU KIJUN CROSS (Trend - Balanced)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Trend (Followers)
+;;; Category: Trend
 ;;; Logic: Structural Trend following using Ichimoku Equilibrium.
 ;;; Indicators: Tenkan (9), Kijun (26), Senkou B (52)
 
@@ -113,7 +113,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 3. DONCHIAN BREAKOUT (Trend - Structural Break)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Trend (Followers)
+;;; Category: Trend
 ;;; Logic: Price breaks the N-period High/Low. Pure price action structure.
 
 (def-founder :donchian "Donchian-Trend-Gen0"
@@ -138,7 +138,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 3. BOLLINGER BOUNCE (Reversion - Mean Reversion)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Reversion (Swingers)
+;;; Category: Reversion
 ;;; Logic: Price touches 2.5 Sigma Band and RSI is extreme.
 
 (def-founder :bb-bounce "BB-Bounce-Gen0"
@@ -164,7 +164,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 4. MACD ZERO LAG (Trend - Momentum)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Trend (Followers)
+;;; Category: Trend
 ;;; Logic: MACD Histogram flip.
 
 (def-founder :macd-cross "MACD-Cross-Gen0"
@@ -188,7 +188,7 @@
 ;;; ----------------------------------------------------------------------------
 ;;; 5. RSI 2-PERIOD (Reversion - Aggressive)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Reversion (Swingers)
+;;; Category: Reversion
 ;;; Source: Larry Connors
 ;;; Logic: RSI(2) < 10 buy, > 90 sell.
 
@@ -216,7 +216,7 @@
 
 ;;; 7. TURTLE SOUP (Reversion - False Breakout)
 ;;; ----------------------------------------------------------------------------
-;;; Clan: Reversion (Swingers)
+;;; Category: Reversion
 ;;; Source: Linda Raschke
 ;;; Logic: Reversal after 20-day breakout fails.
 

@@ -1,4 +1,4 @@
-# 🦈 Swimmy FX-Tribe V3.0 専門家レビュー
+# 🦈 Swimmy FX V3.0 専門家レビュー
 
 **更新日**: 2025-12-29 21:00  
 **対象ドキュメント**: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)

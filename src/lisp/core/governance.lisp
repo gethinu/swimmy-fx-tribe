@@ -212,7 +212,7 @@
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  HIGH COUNCIL (御前会議)
 ;;; ══════════════════════════════════════════════════════════════════
-;;; 参加者: Grand Chieftain (あなた), Shaman (Opus), 4 Clan Chiefs
+;;; 参加者: Grand Chieftain (あなた), Opus, 4 Category Leads
 ;;; 重要な決定は大首長に通知
 
 (defstruct council-decision

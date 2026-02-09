@@ -1,5 +1,5 @@
 ;;; comomentum.lisp - Market Crowding Indicator
-;;; Extracted from mixseek.lisp (V48.0: 4-Clan Removal)
+;;; Extracted from mixseek.lisp (V48.0: Category Unification)
 ;;; 
 ;;; Measures how "crowded" a trade is by detecting correlation clustering
 ;;; High Comomentum = Many traders doing the same thing = Danger

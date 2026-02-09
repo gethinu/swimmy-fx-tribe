@@ -148,7 +148,7 @@
   (format t "- **dreamer2.lisp** - Evolution and backtesting~%~%")
   
   (format t "## Civilization Layer~%~%")
-  (format t "- **4 Great Clans** - Hunters, Shamans, Breakers, Raiders~%")
+  (format t "- **4 Core Categories** - Trend, Reversion, Breakout, Scalp~%")
   (format t "- **Constitution** - Core values governing behavior~%")
   (format t "- **Elders Council** - Hall of Fame wisdom~%")
   (format t "- **Reputation** - Trust scoring system~%~%")

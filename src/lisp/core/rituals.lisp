@@ -10,7 +10,7 @@
   "Morning Ritual - Recite the Constitution and gather the system"
   (format t "~%")
   (format t "[L] ═══════════════════════════════════════~%")
-  (format t "[L] 🌅 MORNING RITUAL - The Clans Gather~%")
+  (format t "[L] 🌅 MORNING RITUAL - Categories Assemble~%")
   (format t "[L] ═══════════════════════════════════════~%")
   
   ;; Recite the Constitution

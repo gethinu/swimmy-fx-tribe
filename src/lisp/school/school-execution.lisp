@@ -220,7 +220,7 @@
   (multiple-value-bind (slot-index magic) 
       (try-reserve-warrior-slot category lead-name symbol direction :pair-id pair-id :lot lot)
     (unless slot-index 
-      (format t "[ALLOC] ⚠️ Clan ~a Full (4/4)!~%" category)
+      (format t "[ALLOC] ⚠️ Category ~a Full (4/4)!~%" category)
       (return-from execute-order-sequence nil))
     
     (let ((committed nil))

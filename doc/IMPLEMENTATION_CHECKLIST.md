@@ -106,4 +106,4 @@
 |------|------|
 | `contribute-to-treasury` | ✅ school.lisp:2201 |
 | `ind-kalman-velocity` | ✅ get-raider-signal で使用 |
-| TRIBE warn (rating) | 🔶 handler-caseで抑制 |
+| CATEGORY warn (rating) | 🔶 handler-caseで抑制 |

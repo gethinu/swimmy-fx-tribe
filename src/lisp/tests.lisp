@@ -1001,6 +1001,45 @@
       (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
       (setf swimmy.globals::*current-volatility-state* orig-vol))))
 
+(deftest test-verify-parallel-scenarios-uses-category-keys
+  "parallel verification should map canonical categories"
+  (let ((orig-regime swimmy.school::*market-regime*)
+        (orig-vol swimmy.school::*current-volatility-state*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*market-regime* :trending)
+          (setf swimmy.school::*current-volatility-state* :normal)
+          (assert-true (swimmy.school::verify-parallel-scenarios "USDJPY" :buy :trend))
+          (assert-true (swimmy.school::verify-parallel-scenarios "USDJPY" :buy :scalp))
+          (setf swimmy.school::*market-regime* :ranging)
+          (assert-true (swimmy.school::verify-parallel-scenarios "USDJPY" :buy :reversion))
+          (setf swimmy.school::*market-regime* :volatile)
+          (assert-true (swimmy.school::verify-parallel-scenarios "USDJPY" :buy :breakout)))
+      (setf swimmy.school::*market-regime* orig-regime)
+      (setf swimmy.school::*current-volatility-state* orig-vol))))
+
+(deftest test-high-council-extreme-volatility-uses-category-keys
+  "extreme volatility approvals should use canonical categories"
+  (let ((orig-danger swimmy.globals::*danger-level*)
+        (orig-swarm swimmy.globals::*last-swarm-consensus*)
+        (orig-vol swimmy.globals::*current-volatility-state*)
+        (orig-notify (symbol-function 'swimmy.core:notify-discord-symbol)))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*danger-level* 0)
+          (setf swimmy.globals::*last-swarm-consensus* 0.0)
+          (setf swimmy.globals::*current-volatility-state* :extreme)
+          (setf (symbol-function 'swimmy.core:notify-discord-symbol)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (assert-true (swimmy.school::convene-high-council
+                        '(:symbol "USDJPY" :direction :buy) :breakout))
+          (assert-false (swimmy.school::convene-high-council
+                         '(:symbol "USDJPY" :direction :buy) :trend)))
+      (setf swimmy.globals::*danger-level* orig-danger)
+      (setf swimmy.globals::*last-swarm-consensus* orig-swarm)
+      (setf swimmy.globals::*current-volatility-state* orig-vol)
+      (setf (symbol-function 'swimmy.core:notify-discord-symbol) orig-notify))))
+
 (deftest test-live-status-schema-v2-no-tribe
   "live_status should be schema v2 and omit tribe fields"
   (let ((captured nil)
@@ -1055,6 +1094,51 @@
           (assert-true (null (search "Tribe" captured)))
           (assert-true (null (search "部族" captured))))
       (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
+
+(deftest test-recruit-notification-uses-category
+  "recruit notification should say Category and omit Clan/tribe"
+  (let ((captured nil)
+        (orig (symbol-function 'swimmy.core:notify-discord-recruit)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:notify-discord-recruit)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)))
+          (let ((strat (swimmy.school:make-strategy
+                        :name "UT-RECRUIT"
+                        :symbol "USDJPY"
+                        :timeframe 5
+                        :direction :BUY
+                        :category :trend)))
+            (swimmy.school::notify-recruit-unified strat :founder))
+          (assert-true (and captured (> (length captured) 0)))
+          (assert-true (search "Category" captured))
+          (assert-false (search "Clan" captured))
+          (assert-false (search "Tribe" captured))
+          (assert-false (search "部族" captured)))
+      (setf (symbol-function 'swimmy.core:notify-discord-recruit) orig))))
+
+(deftest test-category-vocabulary-omits-clan-terms-in-sources
+  "key source files should not contain clan/tribe vocabulary"
+  (dolist (path '("src/lisp/core/rituals.lisp"
+                  "src/lisp/mixseek.lisp"
+                  "src/lisp/quality.lisp"
+                  "src/lisp/school/school-execution.lisp"
+                  "src/lisp/school/school-founders.lisp"))
+    (let ((content (uiop:read-file-string path)))
+      (assert-false (search "Clan" content))
+      (assert-false (search "Clans" content))
+      (assert-false (search "Hunters" content))
+      (assert-false (search "Shamans" content))
+      (assert-false (search "Breakers" content))
+      (assert-false (search "Raiders" content)))))
+
+(deftest test-founder-template-uses-category-placeholder
+  "founder template should use CATEGORY placeholder and omit CLAN"
+  (let ((content (uiop:read-file-string "src/lisp/templates/founder.lisp.template")))
+    (assert-true (search ":{{CATEGORY}}" content))
+    (assert-false (search ":{{CLAN}}" content))))
 
 (deftest test-ledger-omits-tribe-fields
   "save-state should omit tribe fields"
@@ -2572,9 +2656,14 @@
                   test-telemetry-event-schema
                   test-category-trade-interval
                   test-high-council-danger-lv2-uses-swarm-consensus
+                  test-verify-parallel-scenarios-uses-category-keys
+                  test-high-council-extreme-volatility-uses-category-keys
                   test-live-status-schema-v2-no-tribe
                   test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
+                  test-recruit-notification-uses-category
+                  test-category-vocabulary-omits-clan-terms-in-sources
+                  test-founder-template-uses-category-placeholder
                   test-ledger-omits-tribe-fields
                   test-category-vote-list
                   test-dynamic-narrative-uses-category-display

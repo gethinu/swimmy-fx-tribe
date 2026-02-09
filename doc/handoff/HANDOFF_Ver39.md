@@ -59,16 +59,16 @@ Scout (25%) → Warrior (100%) → Veteran (125%) → Legend (150%)
 
 **プロセス**:
 ```
-族長が提案 → 全氏族投票 → 長老助言 → 憲法確認 → 70%以上で承認
+カテゴリ代表が提案 → 全カテゴリ投票 → 長老助言 → 憲法確認 → 70%以上で承認
 ```
 
-### 3. 氏族間経済 (Inter-Tribal Economics)
+### 3. カテゴリ間経済 (Inter-Category Economics)
 
 - **場所**: `school.lisp` (line 1018-1092)
 - **機能**:
-  - **Mutual Aid**: Raiders の日銭を Hunters に援助
-  - **Hedge**: Shamans が Breakers のリスクをヘッジ
-  - **Treasury**: 各氏族の貢献度を追跡
+  - **Mutual Aid**: Scalp の日銭を Trend に援助
+  - **Hedge**: Reversion が Breakout のリスクをヘッジ
+  - **Treasury**: 各カテゴリの貢献度を追跡
 
 ---
 
@@ -82,11 +82,11 @@ Swimmy Ver 39.0 Architecture
 │   ├── High Council          - 御前会議
 │   ├── Elders                - 長老会議（Hall of Fame）
 │   ├── Reputation            - 評判システム
-│   └── Tribal Dialect        - 部族方言
+│   └── Category Dialect      - カテゴリ方言
 ├── School (Lisp)             - 戦略管理
-│   ├── 4 Great Clans         - Hunters/Shamans/Breakers/Raiders
+│   ├── 4 Core Categories     - Trend/Reversion/Breakout/Scalp
 │   ├── Hierarchy             - 階級制度
-│   ├── Economics             - 氏族間経済
+│   ├── Economics             - カテゴリ間経済
 │   └── Swarm Intelligence    - 群れの知能
 └── Quality Modules (Lisp)
     ├── error-handling.lisp   - エラー処理
@@ -141,7 +141,7 @@ Swimmy Ver 39.0 Architecture
 
 - [ ] **WARMUP → 本番移行**: `*category-trades*` が50に到達待ち
 - [ ] **Scout → Warrior昇格**: 成績優秀な戦略の昇格待ち
-- [ ] **Mutual Aid 発動**: Raiders が利益を出し、Hunters が待機中の状況待ち
+- [ ] **Mutual Aid 発動**: Scalp が利益を出し、Trend が待機中の状況待ち
 
 ### 📋 次回タスク（優先度順）
 
