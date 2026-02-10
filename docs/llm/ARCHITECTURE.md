@@ -16,6 +16,7 @@ graph TD
         Rust[Rust Guardian]
         Lisp[Lisp Brain / School]
         DataKeeper[Python Data Keeper]
+        PatternSim[Pattern Similarity Service]
         Notifier[Notifier Service]
         RiskGateway[Risk Gateway]
         BacktestSvc[Backtest Service]
@@ -31,6 +32,7 @@ graph TD
     
     Rust <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
     Lisp <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
+    Lisp <-->|REQ/REP :5564 (Pattern, S-exp)| PatternSim
 
     Lisp -- "PUSH :5562 (Notify, S-exp)" --> Notifier
     Rust -- "PUSH :5562 (Notify, S-exp)" --> Notifier
@@ -70,8 +72,13 @@ graph TD
 
 ### 4. Data Keeper (Memory)
 - **Python Service (Port 5561 / REQ/REP + S-expression, schema_version=1)**
-- 最大 500k candles / symbol / TF。ヒストリカルデータの非同期保存を担当。
+- ヒストリカルデータの非同期保存を担当（**M1は最大 10M candles / symbol、その他TFは最大 500k / symbol / TF**）。
 - メインプロセスのI/O負荷を軽減。
+
+### 5. Pattern Similarity Service (Perception)
+- **Python Service (Port 5564 / REQ/REP + S-expression, schema_version=1)**
+- チャートパターンの画像化・埋め込み・近傍検索を担当。
+- 生成した埋め込みとインデックスは `data/patterns/` に保存。
 
 ## 実行タイミング
 | 頻度 | 主体 | 処理内容 |

@@ -13,6 +13,7 @@
   - `5561`: Data Keeper (REQ/REP, S-expression) -> Data Keeper Service
   - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
   - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service
+  - `5564`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -411,6 +412,54 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
  (timeframe . "M1"))
 ```
 
+**GET_TICKS (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "GET_TICKS")
+ (symbol . "USDJPY")
+ (count . 2000)
+ (start_time . 1709234567)  ; optional (Unix seconds)
+ (end_time . 1709238567))   ; optional (Unix seconds)
+```
+
+**GET_TICKS (Response, newest first)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (symbol . "USDJPY")
+ (count . 2)
+ (ticks . (((timestamp . 1709234567)
+             (bid . 145.205)
+             (ask . 145.218)
+             (volume . 12))
+            ((timestamp . 1709234566)
+             (bid . 145.204)
+             (ask . 145.217)
+             (volume . 8)))))
+```
+
+**ADD_TICK (Request)**:
+```
+((type . "DATA_KEEPER")
+ (schema_version . 1)
+ (action . "ADD_TICK")
+ (symbol . "USDJPY")
+ (tick . ((timestamp . 1709234567)
+          (bid . 145.205)
+          (ask . 145.218)
+          (volume . 12))))
+```
+
+**ADD_TICK (Response)**:
+```
+((type . "DATA_KEEPER_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (symbol . "USDJPY"))
+```
+
 **SAVE_ALL (Request)**:
 ```
 ((type . "DATA_KEEPER")
@@ -494,6 +543,102 @@ Discord通知の非同期中継（Python）。
  (schema_version . 1)
  (status . "RESET_COMPLETE"))
 ```
+
+### 9. Pattern Similarity Service (Port 5564)
+チャートパターンの画像化・埋め込み・近傍検索を行う補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。  
+**注意**: **バイナリ送信は禁止**（画像は送らず、OHLCVのS式のみ）。  
+
+**STATUS (Request)**:
+```
+((type . "PATTERN_SIMILARITY")
+ (schema_version . 1)
+ (action . "STATUS"))
+```
+
+**STATUS (Response)**:
+```
+((type . "PATTERN_SIMILARITY_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (model . "clip-vit-b32")
+ (indices . (((symbol . "USDJPY")
+              (timeframe . "H1")
+              (count . 12345)
+              (last_built . 1709234567))))))
+```
+
+**BUILD_INDEX (Request)**:
+```
+((type . "PATTERN_SIMILARITY")
+ (schema_version . 1)
+ (action . "BUILD_INDEX")
+ (symbol . "USDJPY")
+ (timeframes . ("M5" "M15" "H1" "H4" "D1" "W1" "MN1"))
+ (start_time . 1167600000)   ; optional
+ (end_time . 1735689600)     ; optional
+ (force . false))            ; optional
+```
+
+**BUILD_INDEX (Response)**:
+```
+((type . "PATTERN_SIMILARITY_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (message . "build started"))
+```
+
+**QUERY (Request)**:
+```
+((type . "PATTERN_SIMILARITY")
+ (schema_version . 1)
+ (action . "QUERY")
+ (symbol . "USDJPY")
+ (timeframe . "H1")
+ (as_of . 1709234560)    ; optional
+ (k . 30)                ; optional
+ (candles . (((timestamp . 1709234500)
+              (open . 145.10)
+              (high . 145.20)
+              (low . 145.05)
+              (close . 145.18)
+              (volume . 98))
+             ((timestamp . 1709234560)
+              (open . 145.18)
+              (high . 145.24)
+              (low . 145.12)
+              (close . 145.21)
+              (volume . 120))))))
+```
+
+**QUERY (Response)**:
+```
+((type . "PATTERN_SIMILARITY_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (result . ((p_up . 0.62)
+            (p_down . 0.21)
+            (p_flat . 0.17)
+            (top_k . (((id . "H1:USDJPY:1700000000")
+                       (distance . 0.12)
+                       (label . "UP"))
+                      ((id . "H1:USDJPY:1690000000")
+                       (distance . 0.15)
+                       (label . "FLAT"))))))))
+```
+
+**Error (Response)**:
+```
+((type . "PATTERN_SIMILARITY_RESULT")
+ (schema_version . 1)
+ (status . "error")
+ (error . "message"))
+```
+
+**Notes**:
+- `candles` はTFごとの **window_bars** と一致する長さを要求する。  
+- ペイロードサイズ上限は **デフォルト 2MB（設定で変更可）**（超過時は `error`）。  
 
 ## エラーとタイムアウト
 - **タイムアウト**:

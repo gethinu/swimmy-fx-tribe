@@ -29,6 +29,15 @@
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
+- **Pattern Similarity Service**: 5564(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
+- **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
+- **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
+- **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
+- **ラベル評価幅**: M5/M15=4時間、H1/H4=1日、D1=1週間、W1/MN1=1か月（ATR基準のUp/Down/Flat）。
+- **サンプルストライド**: M5=30分(6本)、M15=1時間(4本)、H1/H4/D1/W1/MN1=1本。
+- **画像ウィンドウ本数**: M5=120、M15=120、H1=120、H4=120、D1=120、W1=104、MN1=120。
+- **VAP**: 価格帯別出来高はMT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**）。
+- **Tick API**: Data Keeper に `GET_TICKS` / `ADD_TICK` を追加し、VAP用のティック履歴を取得できるようにする。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Startup Liveness**: Brain起動時は「受信ループ（Backtest結果/Guardian stream）」へ先に入る。重い一括処理（Deferred Backtest Flush）は **後回し＋レート制限**で段階的に実行する（起動で詰まらせない）。`SWIMMY_DEFERRED_FLUSH_BATCH`（1回の送信上限、0で無効）と `SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC`（実行間隔秒）で調整する。
 - **OOS Queue Startup Cleanup**: 起動時に `oos_queue` を全クリアし、OOS再キューは通常の検証ループで再投入する（古い request_id を残さない）。

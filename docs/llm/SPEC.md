@@ -10,11 +10,12 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 | **SwimmyBridge** | MQL5 (V15.2) | Execution Node | Tick送信、注文執行、口座情報フィード、DeadManSwitch監視 |
 | **Guardian** | Rust (V15.x) | Middleware | MT5-Lisp間の通信仲介、Risk Gate (拒否権)、高速バックテスト、ニューラルネット予測 |
 | **School/Brain** | Common Lisp (V50.6) | Cognitive Engine | 戦略の遺伝的進化(Breeding)、ポートフォリオ構築、物語生成、Discord通知 |
-| **Data Keeper** | Python | Persistence Layer | Port 5561（REQ/REP, S式 + schema_version=1）。ヒストリカルデータ保存（最大 500k candles / symbol / TF）。 |
+| **Data Keeper** | Python | Persistence Layer | Port 5561（REQ/REP, S式 + schema_version=1）。ヒストリカルデータ保存（**M1は最大 10M candles / symbol**、その他TFは最大 500k / symbol / TF）。ティック履歴も保存（VAP用途、GET_TICKS/ADD_TICK）。 |
+| **Pattern Similarity Service** | Python | Analytics/Gating | チャートパターン画像化・埋め込み・近傍検索・確率返却（REQ/REP 5564, S式 + schema_version=1）。 |
 
 ## 3. 取引前提
 - **銘柄**: USDJPY, EURUSD, GBPUSD (Config可変)。マルチカレンシー対応。
-- **時間足**: M1 (基本), H1/D1 (分析用)
+- **時間足**: M1 (保存/基礎), M5/M15 (M1リサンプル), H1/H4/D1/W1/MN1 (分析/レジーム/ゲート)
 - **取引時間**: 24時間 (土日除く)。Guardianが土曜朝(06:50 JST)に強制全決済(Weekend Close)を行う。
 
 ## 4. 戦略仕様
@@ -32,6 +33,33 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - **Engine of Life**: 親子対決(Deathmatch)による世代交代。
   - **選抜スコア (Selection Score)**: Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。
   - **投票ウェイト**: `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
+
+## 4.5. Pattern Similarity Gate (Regime/Gate)
+- **目的**: 類似チャートパターンの集合意識をレジーム/ゲートとして利用（既存戦略の前段フィルタ）。
+- **モデル**: 画像埋め込み（CLIP ViT-B/32相当）。GPU利用可能なら加速、不可ならCPUフォールバック。
+- **特徴量**: ローソク足画像 + ティック出来高 + 価格帯別出来高（VAP）。
+- **検索**: 近傍探索は **距離重み付き確率** を返す（k=30、閾値=0.60）。
+- **ゲート**: 不一致時はロットを **0.7倍** に減衰（ソフトゲート）。**ライブ/OOS/CPCV/バックテストに適用**。
+- **適用範囲**: **TF一致のみ**（H1以上の足確定時に評価）。
+- **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。
+  - M5/M15: 4時間
+  - H1/H4: 1日
+  - D1: 1週間
+  - W1/MN1: 1か月
+- **ウィンドウ本数（画像生成）**:
+  - H1: 120（5日）
+  - H4: 120（20日）
+  - D1: 120（約6か月）
+  - W1: 104（2年）
+  - MN1: 120（10年）
+  - M5: 120（10時間）
+  - M15: 120（30時間）
+- **ストライド（サンプル間隔）**:
+  - M5: 30分ごと（6本）
+  - M15: 1時間ごと（4本）
+  - H1/H4/D1/W1/MN1: 1本ごと
+- **保存**: `data/patterns/` に npz + FAISS インデックスを保存。SQLiteはメタ情報のみ保持。
+- **VAP生成**: MT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**。スキーマ/取得APIはTBD）。
 
 ## 5. リスク管理 (Guardian & Lisp)
 - **Risk Gate (Rust)**:
@@ -55,12 +83,14 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - Notifier (PUSH 5562, S式 + schema_version=1) -> Notifier Service
   - Risk Gateway (REQ/REP 5563, S式 + schema_version=1) <-> Lisp
   - Backtest Service (PUSH 5580 / PULL 5581, S式) <-> Lisp
+  - Pattern Similarity (REQ/REP 5564, S式 + schema_version=1) <-> Lisp
 - **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
   - **Daily PnL Aggregation**: `strategy_daily_pnl`（日次損益の集計テーブル）を正本として使用。
   - **Sharded Files**: 戦略本体 (S式)。
 - **Local Storage (方針)**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` を **S式のみ**で保存・参照する（tmp→renameで原子書き込み）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。`data/` と `db/data/` のJSON/JSONLはレガシー維持だが、**Structured Telemetry** は `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL出力（`log_type="telemetry"`）。
+- **Pattern DB**: `data/patterns/` に埋め込み（npz）＋インデックス（FAISS）を保存。SQLiteはメタ情報のみ保持。
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
@@ -75,6 +105,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **未来参照**: バックテスト時のLookahead Bias。
 - **テスト汚染**: テスト用データと本番データの混同。
 - **Regime Lock無視**: レジームと不整合な戦略の強制稼働。
+- **ZMQでバイナリ送信**: 画像などのバイナリは送らず、OHLCVのS式のみで連携する。
 
 ## 10. 未確定事項
 - `libzmq.dll` のバージョン管理。

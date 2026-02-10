@@ -111,3 +111,10 @@
 - [ ] `tools/legend_gate_compare.py` のSharpe/PF/MaxDD算出をGuardianの**日次リターン基準**に揃える or Guardian backtestに接続する: `tools/legend_gate_compare.py`, `guardian/src/backtester.rs`
 - [ ] 比較ツールに**スプレッド/手数料/ショート**前提を追加し、実運用に近い条件で検証する: `tools/legend_gate_compare.py`
 - [ ] モデル切替の固定閾値/窓/ブレンド係数を**設定化 or 廃止**し、説明できない常数を削減する: `src/lisp/core/research-algorithms.lisp`
+
+## Expert Panel 2026-02-10 (Deep Learning Level)
+- [ ] Pattern Similarity の学習パイプライン責務（Training Service/batch）をSPEC/STATEに追加: `docs/llm/SPEC.md`, `docs/llm/STATE.md`
+- [ ] Purged CV/Embargo 前提のラベル生成・検証仕様を明文化: `docs/llm/SPEC.md`
+- [ ] ティック欠損/VAP生成の品質保証方針を定義: `docs/llm/INTERFACES.md`, `docs/llm/STATE.md`
+- [ ] 既存NNオンライン学習との責務境界を明確化: `src/lisp/core/executor.lisp`
+- [ ] モデル版管理/ロールバック方針を運用に追記: `docs/llm/STATE.md`
