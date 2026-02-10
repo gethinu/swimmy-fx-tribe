@@ -1,44 +1,88 @@
 #!/usr/bin/env python3
 """
-inference_worker.py - Dedicated LLM Service
-===========================================
-Expert Panel Approved (2026-01-07) - Phase 4
+inference_worker.py - Dedicated LLM Service (S-exp)
+===================================================
+Phase 4 (Expert Panel Approved: 2026-01-07)
 
 Purpose:
     Offload blocking Gemini API calls from the Lisp Brain.
-    Handles rate limiting, retries, and API communication.
 
-Architecture:
-    [Swimmy Lisp] --(ZMQ REQ)--> [inference_worker.py] --(HTTP)--> [Google Gemini API]
+Protocol:
+    ZMQ REQ/REP + S-expression (alist), schema_version=1
+    (ZMQでJSONは受理しない)
 
-Usage:
-    python3 tools/inference_worker.py
-
-Commands (JSON):
-    INFERENCE: {
-        "prompt": "Explain Quantum Physics",
-        "max_tokens": 512,
-        "temperature": 0.5
-    }
-    -> Returns: {"status": "OK", "text": "..."} or {"status": "ERROR", "error": "..."}
+Port:
+    SWIMMY_PORT_INFERENCE (default: 5565)
 """
 
-import zmq
-import json
-import time
 import os
+import sys
+import json
+from pathlib import Path
+
+import zmq
 import requests
 
-# Configuration
-ZMQ_PORT = 5564
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME")
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
 
 
-def call_gemini_api(prompt, temp=0.5, max_tokens=512, api_key=None):
-    key = api_key if api_key else GEMINI_API_KEY
+BASE_DIR = resolve_base_dir()
+PYTHON_SRC = BASE_DIR / "src" / "python"
+if str(PYTHON_SRC) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SRC))
+
+from aux_sexp import parse_aux_request, sexp_response
+
+
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, "").strip()
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
+ZMQ_PORT = _env_int("SWIMMY_PORT_INFERENCE", 5565)
+GEMINI_API_KEY = os.environ.get("SWIMMY_GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY", "")
+MODEL_URL = os.environ.get(
+    "SWIMMY_GEMINI_MODEL_URL",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent",
+)
+
+
+def _coerce_float(value, default: float):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _coerce_int(value, default: int):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def call_gemini_api(prompt: str, *, temp: float = 0.5, max_tokens: int = 512, api_key: str | None = None) -> dict:
+    key = (api_key or "").strip() or (GEMINI_API_KEY or "").strip()
     if not key:
-        return {"status": "ERROR", "error": "MISSING_API_KEY"}
+        return {"status": "error", "error": "MISSING_API_KEY"}
 
     url = f"{MODEL_URL}?key={key}"
     headers = {"Content-Type": "application/json"}
@@ -49,32 +93,85 @@ def call_gemini_api(prompt, temp=0.5, max_tokens=512, api_key=None):
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
-
         if response.status_code == 200:
             data = response.json()
             try:
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return {"status": "OK", "text": text}
+                return {"status": "ok", "text": text}
             except (KeyError, IndexError):
-                return {"status": "ERROR", "error": "INVALID_API_RESPONSE"}
-        else:
-            return {
-                "status": "ERROR",
-                "error": f"HTTP_{response.status_code}: {response.text}",
-            }
+                return {"status": "error", "error": "INVALID_API_RESPONSE"}
+
+        # Keep response body small in error to avoid blowing ZMQ payload limits elsewhere.
+        body = response.text
+        if isinstance(body, str) and len(body) > 500:
+            body = body[:500] + "..."
+        return {"status": "error", "error": f"HTTP_{response.status_code}: {body}"}
 
     except requests.exceptions.Timeout:
-        return {"status": "ERROR", "error": "TIMEOUT"}
+        return {"status": "error", "error": "TIMEOUT"}
     except Exception as e:
-        return {"status": "ERROR", "error": str(e)}
+        return {"status": "error", "error": str(e)}
 
 
-def main():
-    print("=" * 60)
-    print("  🧠 INFERENCE WORKER - Dedicated LLM Service")
-    print("  Phase 4 Implementation")
-    print(f"  Key Present: {'Yes' if GEMINI_API_KEY else 'NO'}")
-    print("=" * 60)
+def _error_response(message: str) -> str:
+    return sexp_response({"type": "INFERENCE_RESULT", "status": "error", "error": message})
+
+
+def handle_request_sexp(message: str) -> str:
+    try:
+        data = parse_aux_request(message)
+    except Exception as e:
+        return _error_response(str(e))
+
+    msg_type = str(data.get("type", "")).upper()
+    if msg_type != "INFERENCE":
+        return _error_response(f"Invalid type: {msg_type}")
+
+    schema_version = data.get("schema_version")
+    try:
+        schema_version = int(float(schema_version))
+    except Exception:
+        schema_version = None
+    if schema_version != 1:
+        return _error_response("Unsupported schema_version")
+
+    action = str(data.get("action", "")).upper()
+    if not action:
+        return _error_response("Missing action")
+
+    if action == "STATUS":
+        return sexp_response(
+            {
+                "type": "INFERENCE_RESULT",
+                "status": "ok",
+                "model_url": MODEL_URL,
+                "key_present": bool((GEMINI_API_KEY or "").strip()),
+            }
+        )
+
+    if action == "ASK":
+        prompt = data.get("prompt")
+        if not prompt:
+            return _error_response("Missing prompt")
+        prompt = str(prompt)
+        temp = _coerce_float(data.get("temperature"), 0.5)
+        max_tokens = _coerce_int(data.get("max_tokens"), 512)
+        api_key = data.get("api_key")
+        api_key = str(api_key) if api_key else None
+
+        result = call_gemini_api(prompt, temp=temp, max_tokens=max_tokens, api_key=api_key)
+        if result.get("status") != "ok":
+            return _error_response(str(result.get("error", "ERROR")))
+        return sexp_response({"type": "INFERENCE_RESULT", "status": "ok", "text": str(result.get("text", ""))})
+
+    return _error_response(f"Unknown action: {action}")
+
+
+def run_server() -> None:
+    print("🧠 Swimmy Inference Worker (S-exp, REQ/REP)")
+    print("==========================================")
+    print(f"[INFERENCE] Port: {ZMQ_PORT}")
+    print(f"[INFERENCE] Key Present: {'Yes' if (GEMINI_API_KEY or '').strip() else 'NO'}")
 
     context = zmq.Context()
     socket = context.socket(zmq.REP)
@@ -84,44 +181,15 @@ def main():
     while True:
         try:
             msg_str = socket.recv_string()
-
-            # Simple Protocol: "PROMPT_TEXT" or "JSON"
-            # To be robust, let's assume JSON input for params, or raw string as simple prompt
-
-            prompt = msg_str
-            temp = 0.5
-            max_tokens = 512
-            api_key = None
-
-            # Try parsing as JSON for advanced params
-            try:
-                data = json.loads(msg_str)
-                if isinstance(data, dict) and "prompt" in data:
-                    prompt = data["prompt"]
-                    temp = data.get("temperature", 0.5)
-                    max_tokens = data.get("max_tokens", 512)
-                    api_key = data.get("api_key")
-            except json.JSONDecodeError:
-                pass  # Treat as raw string
-
-            print(f"[INFERENCE] Processing request: {prompt[:50]}...")
-
-            result = call_gemini_api(prompt, temp, max_tokens, api_key)
-
-            # Send back JSON response
-            socket.send_string(json.dumps(result))
-
+            resp = handle_request_sexp(msg_str)
+            socket.send_string(resp)
         except KeyboardInterrupt:
             print("\n[INFERENCE] Shutting down...")
             break
         except Exception as e:
-            print(f"[INFERENCE] Critical Error: {e}")
-            # Send error if socket is still in REQ/REP lockstep
             try:
-                socket.send_string(
-                    json.dumps({"status": "ERROR", "error": "WORKER_CRASH_RECOVERED"})
-                )
-            except:
+                socket.send_string(_error_response(f"Unhandled error: {e}"))
+            except Exception:
                 pass
 
     socket.close()
@@ -129,4 +197,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_server()
+

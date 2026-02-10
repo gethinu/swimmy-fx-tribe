@@ -14,6 +14,7 @@
   - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
   - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service
   - `5564`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
+  - `5565`: Inference Worker (REQ/REP, S-expression) -> Inference Worker Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -639,6 +640,53 @@ Discord通知の非同期中継（Python）。
 **Notes**:
 - `candles` はTFごとの **window_bars** と一致する長さを要求する。  
 - ペイロードサイズ上限は **デフォルト 2MB（設定で変更可）**（超過時は `error`）。  
+
+### 10. Inference Worker Service (Port 5565)
+LLM推論を行う補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。  
+
+**STATUS (Request)**:
+```
+((type . "INFERENCE")
+ (schema_version . 1)
+ (action . "STATUS"))
+```
+
+**STATUS (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (key_present . true)
+ (model_url . "https://..."))
+```
+
+**ASK (Request)**:
+```
+((type . "INFERENCE")
+ (schema_version . 1)
+ (action . "ASK")
+ (prompt . "Summarize today's trading notes.")
+ (temperature . 0.5)   ; optional
+ (max_tokens . 512))   ; optional
+```
+
+**ASK (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (text . "...."))
+```
+
+**Error (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "error")
+ (error . "message"))
+```
 
 ## エラーとタイムアウト
 - **タイムアウト**:

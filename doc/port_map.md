@@ -1,6 +1,6 @@
 # Swimmy Port Map
 
-## Core Ports (5555-5564)
+## Core Ports (5555-5565)
 
 | Port | Process | Direction | Purpose |
 |------|---------|-----------|---------|
@@ -12,7 +12,8 @@
 | 5561 | data_keeper.py | REP/bind | Data Keeper - ヒストリカルデータ提供 |
 | 5562 | notifier.py | PULL/bind | Notifier - Discord通知キュー |
 | 5563 | risk_gateway.py | REP/bind | Risk Gateway - リスクチェック |
-| 5564 | inference_worker.py | REP/bind | Inference Worker - AI推論 |
+| 5564 | pattern_similarity_service.py | REP/bind | Pattern Similarity - チャートパターン類似度（S式） |
+| 5565 | inference_worker.py | REP/bind | Inference Worker - AI推論（S式） |
 
 ## エフェメラルポート (32xxx, 33xxx, 34xxx)
 

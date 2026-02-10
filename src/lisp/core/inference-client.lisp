@@ -2,11 +2,13 @@
 
 ;; core/inference-client.lisp - Client for Inference Worker Service
 ;; V8.0: Phase 4 LLM Service
-;; Communicates with tools/inference_worker.py via ZMQ REQ
+;; Communicates with tools/inference_worker.py via ZMQ REQ (S-expression)
 
-(defparameter *inference-endpoint* "tcp://localhost:5564")
+(defparameter *inference-endpoint* (zmq-connect-endpoint *port-inference*)
+  "ZMQ endpoint for Inference Worker Service.")
 (defparameter *inference-socket* nil)
 (defparameter *inference-context* nil)
+(defparameter *inference-timeout-ms* 40000) ; Gemini can be slow
 
 (defun ensure-inference-connection ()
   "Ensure ZMQ connection to Inference Worker is active"
@@ -15,8 +17,7 @@
   (unless *inference-socket*
     (setf *inference-socket* (pzmq:socket *inference-context* :req))
     (pzmq:connect *inference-socket* *inference-endpoint*)
-    ;; Set timeout to 40 seconds (Gemini can be slow)
-    (pzmq:setsockopt *inference-socket* :rcvtimeo 40000)
+    (pzmq:setsockopt *inference-socket* :rcvtimeo *inference-timeout-ms*)
     (pzmq:setsockopt *inference-socket* :sndtimeo 5000)
     (format t "[AI-CLIENT] Connected to Inference Worker at ~a~%" *inference-endpoint*)))
 
@@ -25,28 +26,26 @@
   (ensure-inference-connection)
   
   (handler-case
-      (let* ((key (if (boundp 'cl-user::*gemini-api-key*) 
-                      (symbol-value 'cl-user::*gemini-api-key*) 
-                      nil))
-             (payload (jsown:new-js 
-                        ("prompt" prompt)
-                        ("temperature" temperature)
-                        ("max_tokens" max-tokens)
-                        ("api_key" key)))
-             (msg-str (jsown:to-json payload)))
+      (let* ((payload `((type . "INFERENCE")
+                        (schema_version . 1)
+                        (action . "ASK")
+                        (prompt . ,prompt)
+                        (temperature . ,temperature)
+                        (max_tokens . ,max-tokens)))
+             (msg-str (encode-sexp payload)))
         
         ;; Send request
         (pzmq:send *inference-socket* msg-str)
         
         ;; Receive response
         (let* ((resp (pzmq:recv-string *inference-socket*))
-               (json (jsown:parse resp))
-               (status (jsown:val json "status")))
-          
-          (if (string= status "OK")
-              (jsown:val json "text")
+               (alist (safe-read-sexp resp :package :swimmy.core))
+               (status (and alist (sexp-alist-get alist 'status))))
+          (if (and status (string= status "ok"))
+              (sexp-alist-get alist 'text)
               (progn
-                (format t "[AI-CLIENT] Error from worker: ~a~%" (jsown:val json "error"))
+                (format t "[AI-CLIENT] Error from worker: ~a~%"
+                        (and alist (sexp-alist-get alist 'error)))
                 nil))))
     
     (error (e)

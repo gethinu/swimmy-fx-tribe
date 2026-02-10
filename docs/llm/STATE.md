@@ -8,7 +8,7 @@
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
-- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service / Inference Worker は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
@@ -30,6 +30,7 @@
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Pattern Similarity Service**: 5564(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
+- **Inference Worker**: 5565(REQ/REP) で **S式のみ**受理（`type="INFERENCE"`）。`SWIMMY_PORT_INFERENCE` でポート上書き可能。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。

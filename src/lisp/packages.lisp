@@ -225,6 +225,7 @@
    #:*port-data-keeper*
    #:*port-notifier*
    #:*port-pattern-similarity*
+   #:*port-inference*
    #:*port-backtest-req*
    #:*port-backtest-res*
    #:*backtest-service-enabled*

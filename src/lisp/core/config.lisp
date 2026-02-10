@@ -108,6 +108,7 @@
 (defparameter *port-data-keeper* (env-int-or "SWIMMY_PORT_DATA_KEEPER" 5561))
 (defparameter *port-notifier* (env-int-or "SWIMMY_PORT_NOTIFIER" 5562))
 (defparameter *port-pattern-similarity* (env-int-or "SWIMMY_PORT_PATTERN_SIMILARITY" 5564))
+(defparameter *port-inference* (env-int-or "SWIMMY_PORT_INFERENCE" 5565))
 (defparameter *port-backtest-req* (env-int-or "SWIMMY_PORT_BACKTEST_REQ" 5580))
 (defparameter *port-backtest-res* (env-int-or "SWIMMY_PORT_BACKTEST_RES" 5581))
 
