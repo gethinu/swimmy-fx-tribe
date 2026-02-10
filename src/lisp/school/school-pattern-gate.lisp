@@ -36,7 +36,7 @@ Soft gate policy:
                                      &key (k 30) (threshold 0.60) (mismatch-multiplier 0.70) query-fn)
   "Apply Pattern Similarity soft gate to LOT.
 
-Returns (values new-lot multiplier reason).
+Returns (values new-lot multiplier reason p-up p-down p-flat).
 
 Fail-open:
 - When not applicable TF, insufficient history, missing query-fn, or service error -> multiplier=1.0."
@@ -45,17 +45,17 @@ Fail-open:
          (window (cond ((string= tf "W1") 104)
                        (t 120))))
     (cond
-      ((not allowed) (values (float lot) 1.0 "not_applicable"))
-      ((or (null history) (< (length history) window)) (values (float lot) 1.0 "insufficient_history"))
-      ((null query-fn) (values (float lot) 1.0 "missing_query_fn"))
+      ((not allowed) (values (float lot) 1.0 "not_applicable" nil nil nil))
+      ((or (null history) (< (length history) window)) (values (float lot) 1.0 "insufficient_history" nil nil nil))
+      ((null query-fn) (values (float lot) 1.0 "missing_query_fn" nil nil nil))
       (t
        (let* ((candles (subseq history 0 window))
               (resp (handler-case (funcall query-fn symbol tf candles :k k) (error () nil))))
          (if (null resp)
-             (values (float lot) 1.0 "query_error")
+             (values (float lot) 1.0 "query_error" nil nil nil)
              (let ((status (swimmy.core:sexp-alist-get resp 'status)))
                (if (not (and status (string= status "ok")))
-                   (values (float lot) 1.0 "service_error")
+                   (values (float lot) 1.0 "service_error" nil nil nil)
                    (let* ((result (swimmy.core:sexp-alist-get resp 'result))
                           (p-up (and result (swimmy.core:sexp-alist-get result 'p_up)))
                           (p-down (and result (swimmy.core:sexp-alist-get result 'p_down)))
@@ -65,4 +65,4 @@ Fail-open:
                                                   :threshold threshold
                                                   :mismatch-multiplier mismatch-multiplier)
                        (let ((new-lot (max 0.01 (* (float lot) (float mult)))))
-                         (values new-lot mult reason))))))))))))
+                         (values new-lot mult reason p-up p-down p-flat))))))))))))

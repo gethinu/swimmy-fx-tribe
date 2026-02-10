@@ -249,6 +249,28 @@
                     (pair-id (second overlay)))
                
                (when (verify-signal-authority symbol direction category final-lot rank lead-name)
+                  ;; Pattern Similarity Soft Gate (fail-open)
+                  (multiple-value-bind (gated-lot mult reason p-up p-down p-flat)
+                      (apply-pattern-similarity-gate
+                       symbol timeframe-key direction final-lot history
+                       :query-fn #'swimmy.core::pattern-similarity-query)
+                    (when (and (fboundp 'swimmy.core::emit-telemetry-event)
+                               (or (< mult 1.0) p-up p-down p-flat))
+                      (swimmy.core::emit-telemetry-event "pattern_similarity.gate"
+                        :service "school"
+                        :severity "info"
+                        :data (jsown:new-js
+                                ("symbol" symbol)
+                                ("timeframe" (string-upcase (format nil "~a" timeframe-key)))
+                                ("direction" (string-upcase (format nil "~a" direction)))
+                                ("lot_before" (float final-lot))
+                                ("lot_after" (float gated-lot))
+                                ("multiplier" (float mult))
+                                ("reason" reason)
+                                ("p_up" (if (numberp p-up) (float p-up) 0.0))
+                                ("p_down" (if (numberp p-down) (float p-down) 0.0))
+                                ("p_flat" (if (numberp p-flat) (float p-flat) 0.0)))))
+                    (setf final-lot gated-lot))
                   ;; Sleep Randomization (Anti-Gaming)
                   (sleep (/ (random 2000) 1000.0))
                   (execute-order-sequence category direction symbol bid ask final-lot lead-name timeframe-key nil
