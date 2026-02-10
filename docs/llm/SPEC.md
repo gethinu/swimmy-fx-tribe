@@ -60,6 +60,9 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - H1/H4/D1/W1/MN1: 1本ごと
 - **保存**: `data/patterns/` に npz + FAISS インデックスを保存。SQLiteはメタ情報のみ保持。
 - **VAP生成**: MT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**。スキーマ/取得APIはTBD）。
+- **EV一貫性**: Gate は単体で売買判断を置き換えず、**コスト込み期待値(EV)最大化**の前段フィルタとして扱う。
+  - `EV_net` が閾値未満なら No-Trade。Gate は低信頼時に `EV_threshold` を引き上げる、またはロットを減衰。
+  - 学習/検証は **Purged CV + Embargo** と WFV を前提にレジーム耐性を確認する。
 
 ## 5. リスク管理 (Guardian & Lisp)
 - **Risk Gate (Rust)**:

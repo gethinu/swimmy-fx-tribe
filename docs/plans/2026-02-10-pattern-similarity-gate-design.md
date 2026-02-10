@@ -78,6 +78,15 @@ Data Keeper (5561):
 - Structured Telemetry に確率・減衰率・対象TF・エラー理由を記録
 - BUILD_INDEX は STATUS で進捗を確認可能
 
+## EV-First補足（期待値で一貫させる）
+Pattern Similarity Gate は単体で売買判断を置き換えず、コスト込み期待値(EV)最大化の前段フィルタとして位置付ける。
+EV判断は Triple-Barrier の確率（Up/Down/Timeout）とコストモデル（spread/slippage/commission/swap）から
+`EV_net` を算出し、`EV_net` が閾値未満なら No-Trade とする。Gate はこの EV 判定にソフトに作用し、
+p_up/p_down/p_flat が不一致または低信頼のときは `EV_threshold` を引き上げる、または既定のロット 0.7 倍へ減衰する。
+学習と検証は Purged CV + Embargo を必須とし、WFV で年代別・セッション別のレジーム耐性を確認する。
+評価指標は分類精度ではなく `EV_net` の分布改善（平均EV、下方リスクの抑制）に置く。
+パターン埋め込みは特徴量の一部として扱い、最終判断は常に EV に一貫させる。
+
 ## Testing
 - S式契約テスト（STATUS/BUILD_INDEX/QUERY）
 - QUERY error時のフォールバック継続テスト
