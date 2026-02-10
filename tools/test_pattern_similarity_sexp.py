@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import os
 
 
 def resolve_base_dir() -> Path:
@@ -13,6 +14,9 @@ def resolve_base_dir() -> Path:
 BASE_DIR = resolve_base_dir()
 sys.path.insert(0, str(BASE_DIR / "src" / "python"))
 sys.path.insert(0, str(BASE_DIR / "tools"))
+
+# Keep contract tests deterministic even if optional DL deps are installed.
+os.environ.setdefault("SWIMMY_PATTERN_EMBED_BACKEND", "pixel")
 
 from sexp_utils import parse_sexp_alist
 from aux_sexp import sexp_request
