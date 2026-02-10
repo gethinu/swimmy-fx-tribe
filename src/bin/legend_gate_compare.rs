@@ -372,8 +372,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    print_table("IS Metrics (80% oldest)", &is_rows);
+    let is_title = format!("IS Metrics (80% oldest) [gate={gate_mode:?}]");
+    let oos_title = format!("OOS Metrics (newest 20%) [gate={gate_mode:?}]");
+
+    print_table(&is_title, &is_rows);
     println!();
-    print_table("OOS Metrics (newest 20%)", &oos_rows);
+    print_table(&oos_title, &oos_rows);
     Ok(())
 }
