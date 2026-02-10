@@ -80,6 +80,33 @@ impl StrategyNode {
                 let slice = &ctx.closes[start..=ctx.index];
                 slice.iter().sum::<f64>() / *period as f64
             },
+
+            StrategyNode::Rsi { period } => {
+                let period = *period;
+                if period == 0 || ctx.index < period + 1 {
+                    return f64::NAN;
+                }
+
+                let mut gains = 0.0;
+                let mut losses = 0.0;
+                for i in (ctx.index - period)..ctx.index {
+                    let change = ctx.closes[i] - ctx.closes[i - 1];
+                    if change > 0.0 {
+                        gains += change;
+                    } else {
+                        losses -= change;
+                    }
+                }
+
+                let avg_gain = gains / period as f64;
+                let avg_loss = losses / period as f64;
+                if avg_loss == 0.0 {
+                    100.0
+                } else {
+                    let rs = avg_gain / avg_loss;
+                    100.0 - (100.0 / (1.0 + rs))
+                }
+            },
             
             // Fallback for unimplemented indicators
             _ => f64::NAN, 
@@ -148,5 +175,42 @@ impl StrategyNode {
             // Default fallback for Value nodes used in Boolean context
             _ => self.eval_float(ctx) != 0.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rsi_eval_uptrend_is_high() {
+        let closes = [1.0, 2.0, 3.0, 4.0];
+        let ctx = EvalContext {
+            closes: &closes,
+            opens: &closes,
+            highs: &closes,
+            lows: &closes,
+            volumes: &[1.0, 1.0, 1.0, 1.0],
+            index: 3,
+        };
+        let node = StrategyNode::Rsi { period: 2 };
+        let rsi = node.eval_float(&ctx);
+        assert!(rsi > 99.0, "RSI should be near 100 for monotonic uptrend, got {}", rsi);
+    }
+
+    #[test]
+    fn test_rsi_eval_downtrend_is_low() {
+        let closes = [4.0, 3.0, 2.0, 1.0];
+        let ctx = EvalContext {
+            closes: &closes,
+            opens: &closes,
+            highs: &closes,
+            lows: &closes,
+            volumes: &[1.0, 1.0, 1.0, 1.0],
+            index: 3,
+        };
+        let node = StrategyNode::Rsi { period: 2 };
+        let rsi = node.eval_float(&ctx);
+        assert!(rsi < 1.0, "RSI should be near 0 for monotonic downtrend, got {}", rsi);
     }
 }

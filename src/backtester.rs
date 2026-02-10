@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use crate::strategy_ast::{StrategyNode, EvalContext}; // Phase 23: AST Integration
 
+pub const DEFAULT_SLIPPAGE: f64 = 0.005; // 0.5 pips (USDJPY calibrated)
+
 // Internal struct for CSV parsing (matches file header)
 #[derive(Debug, Deserialize)]
 struct CsvCandle {
@@ -455,11 +457,26 @@ enum Position {
     Short { entry: f64, sl: f64, tp: f64 },
 }
 
-/// Run backtest on given strategy and candles
-/// V6.11: Now supports multiple indicator types (SMA/RSI/BB/MACD/Stoch)
-/// V9.0: MTF Support with aux_candles
-/// V31.0: Swap Integration
-pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashMap<String, Vec<Candle>>, swap_history: &[SwapRecord]) -> BacktestResult {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateDecision {
+    Buy,
+    Sell,
+    Hold,
+}
+
+fn run_backtest_internal(
+    strategy: &Strategy,
+    candles: &[Candle],
+    aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
+    slippage: f64,
+    gate: Option<&[GateDecision]>,
+) -> BacktestResult {
+    let gate = match gate {
+        Some(g) if g.len() == candles.len() => Some(g),
+        _ => None,
+    };
+
     // V6.11: Minimum bars depends on indicator type
     let min_bars = match strategy.indicator_type {
         IndicatorType::Sma | IndicatorType::Ema => strategy.sma_long.max(strategy.sma_short) + 2,
@@ -492,16 +509,13 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
     let mut gross_profit = 0.0;
     let mut gross_loss = 0.0;
     // Keep 'returns' for existing logic (Sortino etc) but use daily_returns for Sharpe
-    let mut returns: Vec<f64> = Vec::new();
-    let mut equity_curve: Vec<f64> = vec![10000.0]; // Starting capital
-    
-    // V5.0: Slippage model (Adjusted from 0.02 to 0.005 - 0.5 pips for USDJPY)
-    const SLIPPAGE: f64 = 0.005;  // 0.5 pips
-
-    // [OPTIMIZATION] Pre-calculate Indicators to avoid O(N^2) complexity
-    let macd_data = if matches!(strategy.indicator_type, IndicatorType::Macd) {
-         Some(precalculate_macd(candles))
-    } else {
+	    let mut returns: Vec<f64> = Vec::new();
+	    let mut equity_curve: Vec<f64> = vec![10000.0]; // Starting capital
+	    
+	    // [OPTIMIZATION] Pre-calculate Indicators to avoid O(N^2) complexity
+	    let macd_data = if matches!(strategy.indicator_type, IndicatorType::Macd) {
+	         Some(precalculate_macd(candles))
+	    } else {
          None
     };
 
@@ -587,15 +601,15 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
         let mut trade_pnl = 0.0;
 
         // Check exits first
-        match position {
-            Position::Long { entry, sl, tp } => {
-                let exit = price <= sl || price >= tp || exit_long;
-                if exit {
-                    trade_pnl = (price - SLIPPAGE) - entry;
-                    
-                    // V31.0: Apply Swap (Long)
-                    let swap_points = calculate_swap(entry_time, timestamp, true, swap_history);
-                    trade_pnl += swap_points;
+	        match position {
+	            Position::Long { entry, sl, tp } => {
+	                let exit = price <= sl || price >= tp || exit_long;
+	                if exit {
+	                    trade_pnl = (price - slippage) - entry;
+	                    
+	                    // V31.0: Apply Swap (Long)
+	                    let swap_points = calculate_swap(entry_time, timestamp, true, swap_history);
+	                    trade_pnl += swap_points;
 
                     pnl += trade_pnl;
                     trades += 1;
@@ -620,14 +634,14 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                     position = Position::None;
                 }
             }
-            Position::Short { entry, sl, tp } => {
-                let exit = price >= sl || price <= tp || exit_short;
-                if exit {
-                    trade_pnl = entry - (price + SLIPPAGE);
-
-                    // V31.0: Apply Swap (Short)
-                    let swap_points = calculate_swap(entry_time, timestamp, false, swap_history);
-                    trade_pnl += swap_points;
+	            Position::Short { entry, sl, tp } => {
+	                let exit = price >= sl || price <= tp || exit_short;
+	                if exit {
+	                    trade_pnl = entry - (price + slippage);
+	                    
+	                    // V31.0: Apply Swap (Short)
+	                    let swap_points = calculate_swap(entry_time, timestamp, false, swap_history);
+	                    trade_pnl += swap_points;
 
                     pnl += trade_pnl;
                     trades += 1;
@@ -648,36 +662,53 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
                 }
             }
             Position::None => {}
-        }
-        
-        // Check entries
-        if position == Position::None {
-            // V9.0: Apply MTF Filter
-            let mut filter_passed = true;
-            if strategy.filter_enabled {
-                if let Some(tf_candles) = aux_candles.get(&strategy.filter_tf) {
+	        }
+	        
+	        // Check entries
+	        if position == Position::None {
+	            let mut entry_buy = buy_signal;
+	            let mut entry_sell = sell_signal;
+	            if let Some(g) = gate {
+	                match g[i] {
+	                    GateDecision::Buy => {
+	                        entry_sell = false;
+	                    }
+	                    GateDecision::Sell => {
+	                        entry_buy = false;
+	                    }
+	                    GateDecision::Hold => {
+	                        entry_buy = false;
+	                        entry_sell = false;
+	                    }
+	                }
+	            }
+
+	            // V9.0: Apply MTF Filter
+	            let mut filter_passed = true;
+	            if strategy.filter_enabled {
+	                if let Some(tf_candles) = aux_candles.get(&strategy.filter_tf) {
                     if !check_mtf_filter(strategy, tf_candles, timestamp) {
                         filter_passed = false;
                     }
                 }
             }
-            
-            if filter_passed {
-                if buy_signal {
-                let entry_price = price + SLIPPAGE;
-                position = Position::Long {
-                    entry: entry_price,
-                    sl: entry_price - strategy.sl,
-                    tp: entry_price + strategy.tp,
-                };
-                entry_time = timestamp;
-            } else if sell_signal {
-                let entry_price = price - SLIPPAGE;
-                position = Position::Short {
-                    entry: entry_price,
-                    sl: entry_price + strategy.sl,
-                    tp: entry_price - strategy.tp,
-                };
+	            
+	            if filter_passed {
+	                if entry_buy {
+	                let entry_price = price + slippage;
+	                position = Position::Long {
+	                    entry: entry_price,
+	                    sl: entry_price - strategy.sl,
+	                    tp: entry_price + strategy.tp,
+	                };
+	                entry_time = timestamp;
+	            } else if entry_sell {
+	                let entry_price = price - slippage;
+	                position = Position::Short {
+	                    entry: entry_price,
+	                    sl: entry_price + strategy.sl,
+	                    tp: entry_price - strategy.tp,
+	                };
                 entry_time = timestamp;
             }
          } // End filter_passed
@@ -743,8 +774,42 @@ pub fn run_backtest(strategy: &Strategy, candles: &[Candle], aux_candles: &HashM
         win_rate,
         profit_factor: if gross_loss != 0.0 { gross_profit / gross_loss } else { 0.0 },
         adjusted_sharpe: calculate_penalized_sharpe(sharpe, trades),
-        sharpe_ci_lower: ci_lower,
-    }
+	        sharpe_ci_lower: ci_lower,
+	    }
+	}
+
+/// Run backtest on given strategy and candles
+/// V6.11: Now supports multiple indicator types (SMA/RSI/BB/MACD/Stoch)
+/// V9.0: MTF Support with aux_candles
+/// V31.0: Swap Integration
+pub fn run_backtest(
+    strategy: &Strategy,
+    candles: &[Candle],
+    aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
+) -> BacktestResult {
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, DEFAULT_SLIPPAGE, None)
+}
+
+pub fn run_backtest_with_slippage(
+    strategy: &Strategy,
+    candles: &[Candle],
+    aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
+    slippage: f64,
+) -> BacktestResult {
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, None)
+}
+
+pub fn run_backtest_with_gate_and_slippage(
+    strategy: &Strategy,
+    candles: &[Candle],
+    aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
+    gate: &[GateDecision],
+    slippage: f64,
+) -> BacktestResult {
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, Some(gate))
 }
 
 // V6.11: Signal generators per indicator type
@@ -1154,6 +1219,52 @@ mod tests {
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
         assert!(!result.sharpe.is_nan());
+    }
+
+    #[test]
+    fn test_run_backtest_with_gate_blocks_entries() {
+        let mut candles = Vec::new();
+        // 0..6: Price 100.0
+        for i in 0..6 {
+            candles.push(Candle { timestamp: i as i64, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 });
+        }
+        // 6..9: Price 90.0 (Dip)
+        for i in 6..9 {
+            candles.push(Candle { timestamp: i as i64, open: 90.0, high: 90.0, low: 90.0, close: 90.0, volume: 100.0 });
+        }
+        // 9: Jump to 110.0
+        candles.push(Candle { timestamp: 9, open: 110.0, high: 110.0, low: 110.0, close: 110.0, volume: 100.0 });
+
+        // 10: Drop to 100.0 (Entry Here)
+        candles.push(Candle { timestamp: 10, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 });
+
+        // 11: Drop to 90.0 (Exit Here)
+        candles.push(Candle { timestamp: 11, open: 90.0, high: 90.0, low: 90.0, close: 90.0, volume: 100.0 });
+
+        let strategy = Strategy {
+            name: "TestGate".to_string(),
+            sma_short: 2,
+            sma_long: 5,
+            sl: 5.0,
+            tp: 5.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+
+        let base = run_backtest_with_slippage(&strategy, &candles, &std::collections::HashMap::new(), &[], 0.0);
+        assert_eq!(base.trades, 1, "sanity: base should trade");
+
+        let gate = vec![GateDecision::Hold; candles.len()];
+        let gated = run_backtest_with_gate_and_slippage(&strategy, &candles, &std::collections::HashMap::new(), &[], &gate, 0.0);
+        assert_eq!(gated.trades, 0, "gate should block all entries");
     }
 }
 
