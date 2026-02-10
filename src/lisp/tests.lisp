@@ -1305,12 +1305,86 @@
                         "Normal vol should choose :ensemble"))
       (setf (symbol-function 'swimmy.core::calculate-realized-volatility) orig))))
 
-(deftest test-model-allows-direction-p
-  "Model gate should allow only matching directions; :HOLD blocks."
-  (assert-true (swimmy.school::model-allows-direction-p nil :BUY) "nil model should allow")
-  (assert-false (swimmy.school::model-allows-direction-p :HOLD :BUY) ":HOLD should block")
-  (assert-true (swimmy.school::model-allows-direction-p :BUY :BUY) "matching direction should pass")
-  (assert-false (swimmy.school::model-allows-direction-p :SELL :BUY) "mismatch should block"))
+(deftest test-process-category-trades-ignores-model-gate
+  "process-category-trades should execute even if model predicts :HOLD (model gate abolished)."
+  (let ((orig-candle-histories swimmy.globals:*candle-histories*)
+        (orig-candle-history swimmy.globals:*candle-history*)
+        (orig-get-model (symbol-function 'swimmy.core::get-model-prediction))
+        (orig-trading-allowed (symbol-function 'swimmy.engine::trading-allowed-p))
+        (orig-s-rank-gate (symbol-function 'swimmy.school::s-rank-gate-passed-p))
+        (orig-cleanup (symbol-function 'swimmy.school::cleanup-stale-allocations))
+        (orig-close (symbol-function 'swimmy.school::close-category-positions))
+        (orig-safe (symbol-function 'swimmy.school::is-safe-to-trade-p))
+        (orig-vol-ok (symbol-function 'swimmy.school::volatility-allows-trading-p))
+        (orig-research (symbol-function 'swimmy.core::research-enhanced-analysis))
+        (orig-detect (symbol-function 'swimmy.core::detect-regime-hmm))
+        (orig-elect (symbol-function 'swimmy.school::elect-leader))
+        (orig-collect (symbol-function 'swimmy.school::collect-strategy-signals))
+        (orig-cache (symbol-function 'swimmy.school::get-cached-backtest))
+        (orig-can-trade (symbol-function 'swimmy.school::can-category-trade-p))
+        (orig-exec (symbol-function 'swimmy.school::execute-category-trade))
+        (orig-narrative (symbol-function 'swimmy.school::generate-dynamic-narrative))
+        (orig-record-time (symbol-function 'swimmy.school::record-category-trade-time))
+        (orig-record-strat (symbol-function 'swimmy.school::record-strategy-trade)))
+    (unwind-protect
+        (let ((executed nil)
+              (history (loop repeat 120 collect nil)))
+          ;; Ensure per-symbol history exists and is long enough.
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (setf (gethash "USDJPY" swimmy.globals:*candle-histories*) history)
+          (setf swimmy.globals:*candle-history* history)
+
+          ;; Force environment to allow trading and simplify control flow.
+          (setf (symbol-function 'swimmy.core::get-model-prediction)
+                (lambda (h) (declare (ignore h)) :HOLD))
+          (setf (symbol-function 'swimmy.engine::trading-allowed-p) (lambda () t))
+          (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) (lambda () t))
+          (setf (symbol-function 'swimmy.school::cleanup-stale-allocations) (lambda () nil))
+          (setf (symbol-function 'swimmy.school::close-category-positions) (lambda (s b a) (declare (ignore s b a)) nil))
+          (setf (symbol-function 'swimmy.school::is-safe-to-trade-p) (lambda () t))
+          (setf (symbol-function 'swimmy.school::volatility-allows-trading-p) (lambda () t))
+          (setf (symbol-function 'swimmy.core::research-enhanced-analysis) (lambda (h) (declare (ignore h)) nil))
+          (setf (symbol-function 'swimmy.core::detect-regime-hmm) (lambda (h) (declare (ignore h)) :unknown))
+          (setf (symbol-function 'swimmy.school::elect-leader) (lambda () nil))
+          (setf (symbol-function 'swimmy.school::collect-strategy-signals)
+                (lambda (s h)
+                  (declare (ignore s h))
+                  (list (list :strategy-name "UT-STRAT"
+                              :category :trend
+                              :direction :BUY))))
+          (setf (symbol-function 'swimmy.school::get-cached-backtest) (lambda (n) (declare (ignore n)) nil))
+          (setf (symbol-function 'swimmy.school::can-category-trade-p) (lambda (k) (declare (ignore k)) t))
+          (setf (symbol-function 'swimmy.school::execute-category-trade)
+                (lambda (cat dir sym bid ask)
+                  (declare (ignore cat dir sym bid ask))
+                  (setf executed t)
+                  t))
+          (setf (symbol-function 'swimmy.school::generate-dynamic-narrative) (lambda (&rest args) (declare (ignore args)) ""))
+          (setf (symbol-function 'swimmy.school::record-category-trade-time) (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::record-strategy-trade) (lambda (&rest args) (declare (ignore args)) nil))
+
+          (swimmy.school::process-category-trades "USDJPY" 100.0 100.1)
+          (assert-true executed "Expected execute-category-trade to run (model gate should not block)."))
+      ;; Restore globals/functions even if test fails.
+      (setf swimmy.globals:*candle-histories* orig-candle-histories)
+      (setf swimmy.globals:*candle-history* orig-candle-history)
+      (setf (symbol-function 'swimmy.core::get-model-prediction) orig-get-model)
+      (setf (symbol-function 'swimmy.engine::trading-allowed-p) orig-trading-allowed)
+      (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) orig-s-rank-gate)
+      (setf (symbol-function 'swimmy.school::cleanup-stale-allocations) orig-cleanup)
+      (setf (symbol-function 'swimmy.school::close-category-positions) orig-close)
+      (setf (symbol-function 'swimmy.school::is-safe-to-trade-p) orig-safe)
+      (setf (symbol-function 'swimmy.school::volatility-allows-trading-p) orig-vol-ok)
+      (setf (symbol-function 'swimmy.core::research-enhanced-analysis) orig-research)
+      (setf (symbol-function 'swimmy.core::detect-regime-hmm) orig-detect)
+      (setf (symbol-function 'swimmy.school::elect-leader) orig-elect)
+      (setf (symbol-function 'swimmy.school::collect-strategy-signals) orig-collect)
+      (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache)
+      (setf (symbol-function 'swimmy.school::can-category-trade-p) orig-can-trade)
+      (setf (symbol-function 'swimmy.school::execute-category-trade) orig-exec)
+      (setf (symbol-function 'swimmy.school::generate-dynamic-narrative) orig-narrative)
+      (setf (symbol-function 'swimmy.school::record-category-trade-time) orig-record-time)
+      (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strat))))
 
 ;;; ─────────────────────────────────────────
 ;;; CATEGORY EXECUTION TESTS
@@ -3308,7 +3382,7 @@
                   test-volatility-shifts
                   test-prediction-structure
                   test-select-optimal-model-normal-vol-uses-ensemble
-                  test-model-allows-direction-p
+                  test-process-category-trades-ignores-model-gate
                   ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy

@@ -361,20 +361,11 @@
              (format t "[GATE] 🛑 Demo Trading Blocked: Only ~d/5 S-Rank strategies ready.~%" s-count))
           nil))))
 
-(defun model-allows-direction-p (model-pred direction)
-  "Return t if model prediction allows trade; nil if it blocks."
-  (cond
-    ((null model-pred) t)
-    ((eq model-pred :HOLD) nil)
-    ((eq model-pred direction) t)
-    (t nil)))
-
 (defun process-category-trades (symbol bid ask)
   ;; V19: Periodic stale allocation cleanup
   (cleanup-stale-allocations)
   ;; V45: Use per-symbol history for regime detection (Fix: Opus 2026-01-20)
-  (let ((history (or (gethash symbol *candle-histories*) *candle-history*))
-        (model-pred nil))
+  (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))
     ;; V49.0: Added S-Rank Gate (Musk)
     (when (and (trading-allowed-p) (s-rank-gate-passed-p) history (> (length history) 100))
       (close-category-positions symbol bid ask)
@@ -383,7 +374,6 @@
     
       (when (>= (length history) 50)
         (research-enhanced-analysis history)
-        (setf model-pred (swimmy.core::get-model-prediction history))
         (detect-regime-hmm history))
     
       (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
@@ -417,16 +407,12 @@
                     (let* ((direction (getf top-sig :direction))
                            (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
                       (when (can-category-trade-p strat-key)
-                        (if (model-allows-direction-p model-pred direction)
-                            (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
-                              (when trade-executed
-                                (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                                (record-category-trade-time strat-key)
-                                (when (fboundp 'record-strategy-trade)
-                                  (record-strategy-trade top-name :trade 0))))
-                            (when model-pred
-                              (format t "[L] 🧭 MODEL GATE: predicted ~a, skipping ~a~%"
-                                      model-pred direction))))))))))
+                        (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
+                          (when trade-executed
+                            (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
+                            (record-category-trade-time strat-key)
+                            (when (fboundp 'record-strategy-trade)
+                              (record-strategy-trade top-name :trade 0)))))))))))
         (error (e)
           (declare (ignore e))
           nil)))))
