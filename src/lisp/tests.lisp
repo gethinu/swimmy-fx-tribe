@@ -3061,6 +3061,11 @@
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
                   test-data-keeper-request-sexp
+                  test-pattern-gate-aligned
+                  test-pattern-gate-disagree
+                  test-pattern-gate-low-confidence
+                  test-pattern-gate-flat
+                  test-pattern-gate-missing-probs-fail-open
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count

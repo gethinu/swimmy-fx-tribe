@@ -126,6 +126,7 @@
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
                (:file "src/lisp/school/school-pip-audit") ; Phase 28: Live Trade Audit
+               (:file "src/lisp/school/school-pattern-gate") ; Pattern Similarity soft gate
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
@@ -163,6 +164,7 @@
                (:file "src/lisp/tests")
                (:file "src/lisp/tests/local-storage-sexp-tests")
                (:file "src/lisp/tests/telemetry-tests")
+               (:file "src/lisp/tests/pattern-similarity-gate-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
                (:file "src/lisp/tests/pair-composite-tests")
