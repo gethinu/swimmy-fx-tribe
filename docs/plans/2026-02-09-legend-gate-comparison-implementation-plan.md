@@ -146,3 +146,18 @@ Expected: Prints IS/OOS tables for baseline vs gated across both strategies.
 **Step 2: Save summary in notes**
 
 Capture the output in the response (no file changes needed).
+
+---
+
+## Task 4 (Preferred): Run Comparison Using Guardian Backtester Metrics
+
+If you want the *same* Sharpe/PF/MaxDD definitions as production, use the Guardian-side comparator.
+
+**Runner:**
+- `guardian/src/bin/legend_gate_compare.rs`
+
+**Run:**
+```bash
+cd guardian
+cargo run -q --bin legend_gate_compare -- --pairs USDJPY EURUSD GBPUSD 2>/dev/null
+```

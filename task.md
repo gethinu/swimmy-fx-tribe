@@ -108,7 +108,7 @@
 - [ ] S式正本ルールに「バイナリ送信禁止」を明記: `docs/llm/SPEC.md`, `docs/llm/INTERFACES.md`
 
 ## Expert Panel 2026-02-09 (Model Gate Practicality)
-- [ ] `tools/legend_gate_compare.py` のSharpe/PF/MaxDD算出をGuardianの**日次リターン基準**に揃える or Guardian backtestに接続する: `tools/legend_gate_compare.py`, `guardian/src/backtester.rs`
+- [x] `tools/legend_gate_compare.py` のSharpe/PF/MaxDD算出をGuardianの**日次リターン基準**に揃える or Guardian backtestに接続する: `tools/legend_gate_compare.py`, `guardian/src/backtester.rs`
 - [ ] 比較ツールに**スプレッド/手数料/ショート**前提を追加し、実運用に近い条件で検証する: `tools/legend_gate_compare.py`
 - [ ] モデル切替の固定閾値/窓/ブレンド係数を**設定化 or 廃止**し、説明できない常数を削減する: `src/lisp/core/research-algorithms.lisp`
 
