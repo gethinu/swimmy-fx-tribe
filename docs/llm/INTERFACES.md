@@ -13,7 +13,7 @@
   - `5561`: Data Keeper (REQ/REP, S-expression) -> Data Keeper Service
   - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
   - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service
-  - `5564`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
+  - `5565`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -100,8 +100,11 @@ MT5からブロードキャストされる。
  (pnl . 1234.56)
  (symbol . "USDJPY")
  (ticket . 123456789)
- (magic . 123456))
+ (magic . 123456)
+ (entry_price . 145.120)  ; optional
+ (exit_price . 145.300))  ; optional
 ```
+注記: `entry_price` / `exit_price` は任意。存在する場合は執行スリッページの算出に利用する。
 
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
@@ -544,7 +547,7 @@ Discord通知の非同期中継（Python）。
  (status . "RESET_COMPLETE"))
 ```
 
-### 9. Pattern Similarity Service (Port 5564)
+### 9. Pattern Similarity Service (Port 5565)
 チャートパターンの画像化・埋め込み・近傍検索を行う補助サービス（Python）。  
 **プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
 **必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。  

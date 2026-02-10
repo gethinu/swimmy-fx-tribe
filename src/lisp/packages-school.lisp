@@ -36,6 +36,11 @@
    #:ind-bb
    #:ind-atr
    #:calculate-atr
+
+   ;; Execution Costs
+   #:get-pip-size
+   #:spread-pips-from-bid-ask
+   #:slippage-pips-from-fill
    
    ;; Meta Learning
    #:get-best-strategy-for-regime
@@ -71,6 +76,7 @@
    #:update-leader-stats
    #:update-global-stats ;; V44.3: Moved from Reporting
    #:lookup-strategy-by-magic  ;; V44.8: Resolving Unknown strategy names
+   #:lookup-entry-context-by-magic
    #:lookup-pair-id-by-magic
    #:generate-trade-result-narrative
    #:process-clone-check-result ;; V10: Exported for message-dispatcher

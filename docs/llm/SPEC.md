@@ -11,7 +11,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 | **Guardian** | Rust (V15.x) | Middleware | MT5-Lisp間の通信仲介、Risk Gate (拒否権)、高速バックテスト、ニューラルネット予測 |
 | **School/Brain** | Common Lisp (V50.6) | Cognitive Engine | 戦略の遺伝的進化(Breeding)、ポートフォリオ構築、物語生成、Discord通知 |
 | **Data Keeper** | Python | Persistence Layer | Port 5561（REQ/REP, S式 + schema_version=1）。ヒストリカルデータ保存（**M1は最大 10M candles / symbol**、その他TFは最大 500k / symbol / TF）。ティック履歴も保存（VAP用途、GET_TICKS/ADD_TICK）。 |
-| **Pattern Similarity Service** | Python | Analytics/Gating | チャートパターン画像化・埋め込み・近傍検索・確率返却（REQ/REP 5564, S式 + schema_version=1）。 |
+| **Pattern Similarity Service** | Python | Analytics/Gating | チャートパターン画像化・埋め込み・近傍検索・確率返却（REQ/REP 5565, S式 + schema_version=1）。 |
 
 ## 3. 取引前提
 - **銘柄**: USDJPY, EURUSD, GBPUSD (Config可変)。マルチカレンシー対応。
@@ -86,7 +86,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - Notifier (PUSH 5562, S式 + schema_version=1) -> Notifier Service
   - Risk Gateway (REQ/REP 5563, S式 + schema_version=1) <-> Lisp
   - Backtest Service (PUSH 5580 / PULL 5581, S式) <-> Lisp
-  - Pattern Similarity (REQ/REP 5564, S式 + schema_version=1) <-> Lisp
+  - Pattern Similarity (REQ/REP 5565, S式 + schema_version=1) <-> Lisp
 - **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。

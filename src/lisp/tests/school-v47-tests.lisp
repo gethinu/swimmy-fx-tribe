@@ -56,6 +56,29 @@
     (assert-true (> req-wr 0.30) "Sanity check")))
 
 ;;; ==========================================
+;;; EXECUTION COST TESTS
+;;; ==========================================
+
+(deftest test-pip-size-by-symbol
+  "Execution cost: pip size per symbol"
+  (assert-true (< (abs (- (swimmy.school:get-pip-size "USDJPY") 0.01)) 0.000001)
+               "USDJPY pip size should be 0.01")
+  (assert-true (< (abs (- (swimmy.school:get-pip-size "EURUSD") 0.0001)) 0.000001)
+               "EURUSD pip size should be 0.0001"))
+
+(deftest test-spread-pips-from-bid-ask
+  "Execution cost: spread pips calculation"
+  (let ((spread (swimmy.school:spread-pips-from-bid-ask "USDJPY" 150.00 150.02)))
+    (assert-true (< (abs (- spread 2.0)) 0.0001) "USDJPY spread should be ~2.0 pips")))
+
+(deftest test-slippage-pips-from-fill
+  "Execution cost: slippage pips calculation"
+  (let ((buy-slip (swimmy.school:slippage-pips-from-fill "USDJPY" :buy 150.00 150.02 150.025))
+        (sell-slip (swimmy.school:slippage-pips-from-fill "USDJPY" :sell 150.00 150.02 149.99)))
+    (assert-true (< (abs (- buy-slip 0.5)) 0.0001) "BUY slippage should be ~0.5 pips")
+    (assert-true (< (abs (- sell-slip 1.0)) 0.0001) "SELL slippage should be ~1.0 pips")))
+
+;;; ==========================================
 ;;; V47.5 LIVE TRADE AUDIT TESTS
 ;;; ==========================================
 
@@ -314,4 +337,3 @@
 ;;; ==========================================
 
 (format t "[V47.5+P8+P9+P11 TESTS] 27 tests loaded~%")
-

@@ -89,6 +89,25 @@
     (setf *backtest-queue-last-flush* now)
     (flush-backtest-send-queue)))
 
+(defun init-external-cmd-zmq ()
+  "Initialize PUB socket for external command channel (Guardian 5559).
+   Intended for non-brain processes (evolution daemon) so CMD sends don't drop."
+  (unless (and (boundp 'swimmy.globals:*cmd-publisher*)
+               swimmy.globals:*cmd-publisher*)
+    (handler-case
+        (let* ((ctx (pzmq:ctx-new))
+               (pub (pzmq:socket ctx :pub))
+               (endpoint (swimmy.core:zmq-connect-endpoint swimmy.core:*port-external*)))
+          (pzmq:connect pub endpoint)
+          (setf swimmy.globals:*cmd-publisher* pub)
+          (format t "[ZMQ] 🔌 Connected CMD publisher (PUB -> ~d)~%" swimmy.core:*port-external*)
+          t)
+      (error (e)
+        (format t "[ZMQ] ❌ Failed to init CMD publisher: ~a~%" e)
+        nil)))
+  (and (boundp 'swimmy.globals:*cmd-publisher*)
+       swimmy.globals:*cmd-publisher*))
+
 (defun send-zmq-msg (msg &key (target :cmd))
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."

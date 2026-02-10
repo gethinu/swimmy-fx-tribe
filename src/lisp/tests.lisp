@@ -247,6 +247,35 @@
       (setf (symbol-function 'pzmq:socket) orig-socket)
       (setf (symbol-function 'pzmq:connect) orig-connect))))
 
+(deftest test-init-external-cmd-zmq-sets-publisher
+  "init-external-cmd-zmq should connect and set cmd publisher when missing"
+  (let* ((fn (find-symbol "INIT-EXTERNAL-CMD-ZMQ" :swimmy.school))
+         (orig-pub (and (boundp 'swimmy.globals:*cmd-publisher*)
+                        swimmy.globals:*cmd-publisher*))
+         (orig-ctx (symbol-function 'pzmq:ctx-new))
+         (orig-socket (symbol-function 'pzmq:socket))
+         (orig-connect (symbol-function 'pzmq:connect))
+         (captured-endpoint nil))
+    (assert-true (and fn (fboundp fn)) "init-external-cmd-zmq exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*cmd-publisher* nil)
+          (setf (symbol-function 'pzmq:ctx-new) (lambda () :ctx))
+          (setf (symbol-function 'pzmq:socket)
+                (lambda (&rest _args) (declare (ignore _args)) :sock))
+          (setf (symbol-function 'pzmq:connect)
+                (lambda (_sock endpoint)
+                  (setf captured-endpoint endpoint)))
+          (funcall fn)
+          (assert-equal :sock swimmy.globals:*cmd-publisher* "publisher should be set")
+          (assert-equal (swimmy.core:zmq-connect-endpoint swimmy.core:*port-external*)
+                        captured-endpoint
+                        "should connect to external port"))
+      (setf swimmy.globals:*cmd-publisher* orig-pub)
+      (setf (symbol-function 'pzmq:ctx-new) orig-ctx)
+      (setf (symbol-function 'pzmq:socket) orig-socket)
+      (setf (symbol-function 'pzmq:connect) orig-connect))))
+
 (deftest test-backtest-result-preserves-request-id
   "BACKTEST_RESULT should carry request_id through the pipeline"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -430,6 +459,45 @@
         (setf (symbol-function 'swimmy.school:check-rank-criteria) orig-check)
         (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)))))
 
+(deftest test-cpcv-result-updates-db-when-strategy-missing
+  "CPCV_RESULT should update DB even when strategy is not in memory"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+           (orig-evolved (and (boundp 'swimmy.globals:*evolved-strategies*)
+                              swimmy.globals:*evolved-strategies*))
+           (orig-update (and (fboundp 'swimmy.school::update-cpcv-metrics-by-name)
+                             (symbol-function 'swimmy.school::update-cpcv-metrics-by-name)))
+           (orig-notify (symbol-function 'swimmy.core:notify-cpcv-result))
+           (called nil))
+      (unwind-protect
+          (progn
+            (setf swimmy.school::*strategy-knowledge-base* nil)
+            (when (boundp 'swimmy.globals:*evolved-strategies*)
+              (setf swimmy.globals:*evolved-strategies* nil))
+            (setf (symbol-function 'swimmy.core:notify-cpcv-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school::update-cpcv-metrics-by-name)
+                  (lambda (name median median-pf median-wr median-maxdd pass-rate &key request-id)
+                    (setf called (list name median median-pf median-wr median-maxdd pass-rate request-id))
+                    t))
+            (funcall fn "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID\") (median_sharpe . 1.2) (median_pf . 1.5) (median_wr . 0.55) (median_maxdd . 0.1) (pass_rate . 0.6))))")
+            (assert-true called "should update CPCV metrics even when strategy missing")
+            (assert-equal "AAA" (first called) "strategy name should match")
+            (assert-equal 1.2 (second called) "median_sharpe should match")
+            (assert-equal 1.5 (third called) "median_pf should match")
+            (assert-equal 0.55 (fourth called) "median_wr should match")
+            (assert-equal 0.1 (fifth called) "median_maxdd should match")
+            (assert-equal 0.6 (sixth called) "pass_rate should match")
+            (assert-equal "RID" (seventh called) "request_id should match"))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+        (when (boundp 'swimmy.globals:*evolved-strategies*)
+          (setf swimmy.globals:*evolved-strategies* orig-evolved))
+        (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)
+        (if orig-update
+            (setf (symbol-function 'swimmy.school::update-cpcv-metrics-by-name) orig-update)
+            (fmakunbound 'swimmy.school::update-cpcv-metrics-by-name))))))
+
 (deftest test-request-cpcv-includes-request-id
   "request-cpcv-validation should include request_id in payload"
   (let* ((fn (find-symbol "REQUEST-CPCV-VALIDATION" :swimmy.school))
@@ -521,13 +589,15 @@
           (setf (gethash :queued swimmy.school::*cpcv-metrics*) 5)
           (setf (gethash :sent swimmy.school::*cpcv-metrics*) 4)
           (setf (gethash :received swimmy.school::*cpcv-metrics*) 3)
-          (setf (gethash :failed swimmy.school::*cpcv-metrics*) 2)
+          (setf (gethash :send_failed swimmy.school::*cpcv-metrics*) 1)
+          (setf (gethash :result_failed swimmy.school::*cpcv-metrics*) 1)
           (setf swimmy.globals:*cpcv-start-time* 1)
           (let ((snippet (swimmy.school::build-cpcv-status-snippet)))
             (assert-true (search "queued" snippet) "snippet should include queued")
             (assert-true (search "sent" snippet) "snippet should include sent")
             (assert-true (search "received" snippet) "snippet should include received")
-            (assert-true (search "failed" snippet) "snippet should include failed")))
+            (assert-true (search "failed" snippet) "snippet should include failed")
+            (assert-true (search "inflight" snippet) "snippet should include inflight")))
       (setf swimmy.school::*cpcv-metrics* orig-metrics)
       (setf swimmy.globals:*cpcv-start-time* orig-start))))
 
@@ -543,7 +613,8 @@
           (setf (gethash :queued swimmy.school::*cpcv-metrics*) 7)
           (setf (gethash :sent swimmy.school::*cpcv-metrics*) 6)
           (setf (gethash :received swimmy.school::*cpcv-metrics*) 5)
-          (setf (gethash :failed swimmy.school::*cpcv-metrics*) 1)
+          (setf (gethash :send_failed swimmy.school::*cpcv-metrics*) 1)
+          (setf (gethash :result_failed swimmy.school::*cpcv-metrics*) 0)
           (swimmy.school::write-cpcv-status-file :reason "test")
           (assert-true (probe-file tmp) "status file should exist")
           (with-open-file (s tmp :direction :input)
@@ -551,10 +622,49 @@
               (assert-true (search "queued" content) "content should include queued")
               (assert-true (search "sent" content) "content should include sent")
               (assert-true (search "received" content) "content should include received")
-              (assert-true (search "failed" content) "content should include failed"))))
+              (assert-true (search "failed" content) "content should include failed")
+              (assert-true (search "inflight" content) "content should include inflight"))))
       (setf swimmy.school::*cpcv-status-path* orig-path)
       (setf swimmy.school::*cpcv-metrics* orig-metrics)
       (when (probe-file tmp) (delete-file tmp)))))
+
+(deftest test-notify-cpcv-result-distinguishes-error
+  "notify-cpcv-result should label error vs criteria failure"
+  (let* ((orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (captured nil))
+    (unwind-protect
+        (progn
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (msg &key color)
+                    (declare (ignore color))
+                    (setf captured msg)
+                    nil)))
+          (swimmy.core:notify-cpcv-result
+           (list :strategy-name "UT-CPCV-ERR"
+                 :error "timeout"
+                 :median-sharpe 0.0
+                 :path-count 0
+                 :passed-count 0
+                 :failed-count 0
+                 :pass-rate 0.0
+                 :is-passed nil))
+          (assert-true (and captured (search "ERROR" captured))
+                       "error should be labeled ERROR")
+          (setf captured nil)
+          (swimmy.core:notify-cpcv-result
+           (list :strategy-name "UT-CPCV-FAIL"
+                 :median-sharpe 0.1
+                 :path-count 10
+                 :passed-count 2
+                 :failed-count 8
+                 :pass-rate 0.2
+                 :is-passed nil))
+          (assert-true (and captured (search "FAILED" captured))
+                       "criteria failure should be labeled FAILED"))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify)))))
 
 (deftest test-backtest-debug-log-records-apply
   "BACKTEST_RESULT should write debug log around apply when debug enabled"
@@ -899,6 +1009,14 @@
     (assert-true (search "(lot . 0.1" payload) "Expected lot key")
     (assert-false (search "action" payload) "Should not contain action key")
     (assert-false (search "symbol" payload) "Should not contain symbol key")))
+
+(deftest test-sexp-string-avoids-array-syntax
+  "sexp->string should not emit #A for base strings (lexpr compatibility)"
+  (let* ((base-str (make-array 3 :element-type 'base-char :initial-contents "abc"))
+         (payload `((action . ,base-str)))
+         (out (swimmy.core::sexp->string payload :package :swimmy.school)))
+    (assert-true (search "\"abc\"" out) "Expected quoted string")
+    (assert-false (search "#A" out) "Should not include #A array syntax")))
 
 (deftest test-heartbeat-message-is-sexp
   "Heartbeat should return S-expression alist"
@@ -3049,6 +3167,7 @@
                   test-backtest-result-persists-trade-list
                   test-cpcv-result-persists-trade-list
                   test-cpcv-result-preserves-trade-meta
+                  test-cpcv-result-updates-db-when-strategy-missing
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
@@ -3065,6 +3184,7 @@
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
                   test-order-open-sexp-keys
+                  test-sexp-string-avoids-array-syntax
                   test-heartbeat-message-is-sexp
                   test-heartbeat-now-trigger-file
                   test-heartbeat-uses-heartbeat-webhook

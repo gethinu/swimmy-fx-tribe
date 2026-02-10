@@ -63,6 +63,7 @@
           (*print-pretty* nil)
           (*print-right-margin* most-positive-fixnum)
           (*print-escape* t)
+          (*print-readably* nil)
           (*package* (find-package package)))
       (format nil "~s" form))))
 

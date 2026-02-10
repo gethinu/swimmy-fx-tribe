@@ -10,6 +10,7 @@
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
 - **Aux Services**: Data Keeper / Notifier / Risk Gateway は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
+- **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
 - **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。

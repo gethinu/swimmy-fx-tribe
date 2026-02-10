@@ -193,18 +193,31 @@
     (setf (strategy-hash strat) (calculate-strategy-hash strat)))
   (let* ((name (strategy-name strat))
          (existing-row (ignore-errors (first (execute-to-list
-                                              "SELECT sharpe, profit_factor, win_rate, trades, max_dd FROM strategies WHERE name=?"
+                                              "SELECT sharpe, profit_factor, win_rate, trades, max_dd,
+                                                      cpcv_median, cpcv_median_pf, cpcv_median_wr,
+                                                      cpcv_median_maxdd, cpcv_pass_rate
+                                                 FROM strategies WHERE name=?"
                                               name))))
          (db-sharpe (if existing-row (or (first existing-row) 0.0) 0.0))
          (db-pf (if existing-row (or (second existing-row) 0.0) 0.0))
          (db-wr (if existing-row (or (third existing-row) 0.0) 0.0))
          (db-trades (if existing-row (or (fourth existing-row) 0) 0))
          (db-max-dd (if existing-row (or (fifth existing-row) 0.0) 0.0))
+         (db-cpcv-median (if existing-row (or (sixth existing-row) 0.0) 0.0))
+         (db-cpcv-pf (if existing-row (or (seventh existing-row) 0.0) 0.0))
+         (db-cpcv-wr (if existing-row (or (eighth existing-row) 0.0) 0.0))
+         (db-cpcv-maxdd (if existing-row (or (ninth existing-row) 0.0) 0.0))
+         (db-cpcv-pass (if existing-row (or (tenth existing-row) 0.0) 0.0))
          (cur-sharpe (or (strategy-sharpe strat) 0.0))
          (cur-pf (or (strategy-profit-factor strat) 0.0))
          (cur-wr (or (strategy-win-rate strat) 0.0))
          (cur-trades (or (strategy-trades strat) 0))
          (cur-max-dd (or (strategy-max-dd strat) 0.0))
+         (cur-cpcv-median (or (strategy-cpcv-median-sharpe strat) 0.0))
+         (cur-cpcv-pf (or (strategy-cpcv-median-pf strat) 0.0))
+         (cur-cpcv-wr (or (strategy-cpcv-median-wr strat) 0.0))
+         (cur-cpcv-maxdd (or (strategy-cpcv-median-maxdd strat) 0.0))
+         (cur-cpcv-pass (or (strategy-cpcv-pass-rate strat) 0.0))
          (updated-at (get-universal-time)))
     ;; Preserve non-zero DB metrics if in-memory values are zero.
     (when (and existing-row (zerop cur-sharpe) (not (zerop db-sharpe)))
@@ -217,6 +230,23 @@
       (setf cur-trades db-trades))
     (when (and existing-row (zerop cur-max-dd) (not (zerop db-max-dd)))
       (setf cur-max-dd db-max-dd))
+    ;; Preserve non-zero DB CPCV metrics when in-memory values are all zero.
+    (let ((cur-cpcv-empty (and (zerop cur-cpcv-median)
+                               (zerop cur-cpcv-pf)
+                               (zerop cur-cpcv-wr)
+                               (zerop cur-cpcv-maxdd)
+                               (zerop cur-cpcv-pass)))
+          (db-has-cpcv (or (not (zerop db-cpcv-median))
+                           (not (zerop db-cpcv-pf))
+                           (not (zerop db-cpcv-wr))
+                           (not (zerop db-cpcv-maxdd))
+                           (not (zerop db-cpcv-pass)))))
+      (when (and existing-row cur-cpcv-empty db-has-cpcv)
+        (setf cur-cpcv-median db-cpcv-median
+              cur-cpcv-pf db-cpcv-pf
+              cur-cpcv-wr db-cpcv-wr
+              cur-cpcv-maxdd db-cpcv-maxdd
+              cur-cpcv-pass db-cpcv-pass)))
     (handler-case
         (execute-non-query
          "INSERT OR REPLACE INTO strategies (
@@ -245,15 +275,42 @@
          (format nil "~a" (strategy-direction strat))
          (strategy-hash strat)
          (or (strategy-oos-sharpe strat) 0.0)
-         (or (strategy-cpcv-median-sharpe strat) 0.0)
-         (or (strategy-cpcv-median-pf strat) 0.0)
-         (or (strategy-cpcv-median-wr strat) 0.0)
-         (or (strategy-cpcv-median-maxdd strat) 0.0)
-         (or (strategy-cpcv-pass-rate strat) 0.0)
+         cur-cpcv-median
+         cur-cpcv-pf
+         cur-cpcv-wr
+         cur-cpcv-maxdd
+         cur-cpcv-pass
          (format nil "~s" strat)
          updated-at) ; Store full serialized object as backup
       (error (e) (format t "[DB] ❌ Upsert error for ~a: ~a~%" (strategy-name strat) e))))
   )
+
+(defun update-cpcv-metrics-by-name (name median median-pf median-wr median-maxdd pass-rate
+                                    &key request-id)
+  "Update CPCV metrics for a strategy row by name (when in-memory object missing)."
+  (when (and name (stringp name) (not (string= name "")))
+    (let ((updated-at (get-universal-time)))
+      (handler-case
+          (execute-non-query
+           "UPDATE strategies
+              SET cpcv_median = ?,
+                  cpcv_median_pf = ?,
+                  cpcv_median_wr = ?,
+                  cpcv_median_maxdd = ?,
+                  cpcv_pass_rate = ?,
+                  updated_at = ?
+            WHERE name = ?"
+           (float (or median 0.0))
+           (float (or median-pf 0.0))
+           (float (or median-wr 0.0))
+           (float (or median-maxdd 0.0))
+           (float (or pass-rate 0.0))
+           updated-at
+           name)
+        (error (e)
+          (format t "[DB] ❌ CPCV update error for ~a (req=~a): ~a~%"
+                  name (or request-id "N/A") e)
+          nil)))))
 
 (defun record-trade-to-db (record)
   "Log trade to SQL."

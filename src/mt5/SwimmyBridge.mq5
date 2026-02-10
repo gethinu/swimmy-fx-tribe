@@ -54,6 +54,7 @@ struct WarriorPosition {
    ulong magic;
    ulong ticket;
    string symbol;
+   double entry_price;
    bool active;
 };
 WarriorPosition g_warriors[16];
@@ -224,6 +225,7 @@ int OnInit() {
       g_warriors[i].magic = 0;
       g_warriors[i].ticket = 0;
       g_warriors[i].symbol = "";
+      g_warriors[i].entry_price = 0.0;
       g_warriors[i].active = false;
    }
    
@@ -261,11 +263,11 @@ int FindWarriorByMagic(ulong magic) {
    return -1;
 }
 
-void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic) {
+void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic, double entry_price, double exit_price) {
    if(!g_pub_connected) return;
    
-   string sexp = StringFormat("((type . \"TRADE_CLOSED\") (won . %s) (pnl . %.2f) (symbol . \"%s\") (ticket . %I64u) (magic . %I64u))",
-                              won ? "true" : "false", pnl, EscapeSexpString(symbol), ticket, magic);
+   string sexp = StringFormat("((type . \"TRADE_CLOSED\") (won . %s) (pnl . %.2f) (symbol . \"%s\") (ticket . %I64u) (magic . %I64u) (entry_price . %.5f) (exit_price . %.5f))",
+                              won ? "true" : "false", pnl, EscapeSexpString(symbol), ticket, magic, entry_price, exit_price);
    uchar data[];
    StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
@@ -298,12 +300,15 @@ void CheckPositionsClosed() {
                HistoryDealGetInteger(deal, DEAL_ENTRY) == DEAL_ENTRY_OUT) {
                double pnl = HistoryDealGetDouble(deal, DEAL_PROFIT);
                string sym = HistoryDealGetString(deal, DEAL_SYMBOL);
-               SendTradeResult(pnl > 0, pnl, sym, deal, g_warriors[i].magic);
+               double exit_price = HistoryDealGetDouble(deal, DEAL_PRICE);
+               double entry_price = g_warriors[i].entry_price;
+               SendTradeResult(pnl > 0, pnl, sym, deal, g_warriors[i].magic, entry_price, exit_price);
                break;
             }
          }
          g_warriors[i].active = false;
          g_warriors[i].magic = 0;
+         g_warriors[i].entry_price = 0.0;
          LogDebug("⚔️ Warrior #" + IntegerToString(i) + " returned from battle");
       }
    }
@@ -316,7 +321,11 @@ int RegisterWarrior(ulong magic, ulong ticket, string symbol) {
          g_warriors[i].magic = magic;
          g_warriors[i].ticket = ticket;
          g_warriors[i].symbol = symbol;
+         g_warriors[i].entry_price = 0.0;
          g_warriors[i].active = true;
+         if(PositionSelectByTicket(ticket)) {
+            g_warriors[i].entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+         }
          LogInfo("⚔️ Warrior #" + IntegerToString(i) + " deployed (Magic: " + IntegerToString(magic) + ")");
          return i;
       }

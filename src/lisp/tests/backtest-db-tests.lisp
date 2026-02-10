@@ -54,6 +54,47 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-upsert-preserves-cpcv-when-missing
+  "Upsert should not overwrite existing CPCV metrics with zero defaults."
+  (let* ((name "TEST-CPCV-PRESERVE")
+         (tmp-db (format nil "/tmp/swimmy-cpcv-preserve-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((strat (make-strategy
+                          :name name
+                          :symbol "USDJPY"
+                          :cpcv-median-sharpe 1.1
+                          :cpcv-median-pf 1.4
+                          :cpcv-median-wr 0.52
+                          :cpcv-median-maxdd 0.12
+                          :cpcv-pass-rate 0.8)))
+              (upsert-strategy strat))
+            (let ((strat2 (make-strategy :name name :symbol "USDJPY")))
+              (upsert-strategy strat2))
+            (let ((median (execute-single "SELECT cpcv_median FROM strategies WHERE name = ?" name))
+                  (pf (execute-single "SELECT cpcv_median_pf FROM strategies WHERE name = ?" name))
+                  (wr (execute-single "SELECT cpcv_median_wr FROM strategies WHERE name = ?" name))
+                  (maxdd (execute-single "SELECT cpcv_median_maxdd FROM strategies WHERE name = ?" name))
+                  (pass (execute-single "SELECT cpcv_pass_rate FROM strategies WHERE name = ?" name)))
+              (assert-true (< (abs (- median 1.1)) 0.0001)
+                           "cpcv_median should be preserved")
+              (assert-true (< (abs (- pf 1.4)) 0.0001)
+                           "cpcv_median_pf should be preserved")
+              (assert-true (< (abs (- wr 0.52)) 0.0001)
+                           "cpcv_median_wr should be preserved")
+              (assert-true (< (abs (- maxdd 0.12)) 0.0001)
+                           "cpcv_median_maxdd should be preserved")
+              (assert-true (< (abs (- pass 0.8)) 0.0001)
+                           "cpcv_pass_rate should be preserved")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-kill-strategy-persists-status
   "Soft kill should persist status to DB to survive restarts."
   (let* ((name "TEST-KILL-PERSIST")

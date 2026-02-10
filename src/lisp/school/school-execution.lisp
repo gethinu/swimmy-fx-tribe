@@ -200,44 +200,90 @@
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."
   (declare (ignore magic-override))
-  ;; Reservation
-  (multiple-value-bind (slot-index magic) 
-      (try-reserve-warrior-slot category lead-name symbol direction :pair-id pair-id :lot lot)
-    (unless slot-index 
-      (format t "[ALLOC] ⚠️ Category ~a Full (4/4)!~%" category)
-      (return-from execute-order-sequence nil))
-    
-    (let ((committed nil))
-      (unwind-protect
-           (progn 
-             (close-opposing-category-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
-             (let ((sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)) ;; Constants (Phase 3.2)
-               (cond
-                 ((eq direction :buy)
-                  (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
-                    (when (safe-order "BUY" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
-                      (setf committed t))))
-                 ((eq direction :sell)
-                  (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                    (when (safe-order "SELL" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
-                      (setf committed t))))))
-             (when committed
-                 (update-symbol-exposure symbol lot :open)
-                 (incf *category-trades*)
-                 (setf *last-entry-time* (get-universal-time))
-                 (format t "[EXEC] ✅ Committed: ~a ~a~%" category symbol)
-                 (request-mt5-positions)
-                 t))
-        ;; Cleanup
-        (unless committed
-           (remhash magic *pending-orders*)
-           (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
-           (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))
+  (let* ((entry-bid bid)
+         (entry-ask ask)
+         (entry-spread-pips (spread-pips-from-bid-ask symbol bid ask))
+         (entry-cost-pips entry-spread-pips))
+    ;; Reservation
+    (multiple-value-bind (slot-index magic)
+        (try-reserve-warrior-slot category lead-name symbol direction
+                                  :pair-id pair-id
+                                  :lot lot
+                                  :entry-bid entry-bid
+                                  :entry-ask entry-ask
+                                  :entry-spread-pips entry-spread-pips
+                                  :entry-cost-pips entry-cost-pips)
+      (unless slot-index
+        (format t "[ALLOC] ⚠️ Category ~a Full (4/4)!~%" category)
+        (return-from execute-order-sequence nil))
+
+      (let ((committed nil))
+        (unwind-protect
+            (progn
+              (close-opposing-category-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
+              (let ((sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)) ;; Constants (Phase 3.2)
+                (cond
+                  ((eq direction :buy)
+                   (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
+                     (when (safe-order "BUY" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
+                       (setf committed t))))
+                  ((eq direction :sell)
+                   (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
+                     (when (safe-order "SELL" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
+                       (setf committed t))))))
+              (when committed
+                (update-symbol-exposure symbol lot :open)
+                (incf *category-trades*)
+                (setf *last-entry-time* (get-universal-time))
+                (format t "[EXEC] ✅ Committed: ~a ~a~%" category symbol)
+                (when (fboundp 'swimmy.core::emit-telemetry-event)
+                  (let* ((dir (if (eq direction :buy) "BUY" "SELL"))
+                         (cat (if (keywordp category) (string-downcase (symbol-name category)) (format nil "~a" category)))
+                         (pip-size (get-pip-size symbol)))
+                    (swimmy.core::emit-telemetry-event "execution.order_submitted"
+                      :service "school"
+                      :severity "info"
+                      :data (jsown:new-js
+                              ("symbol" symbol)
+                              ("direction" dir)
+                              ("category" cat)
+                              ("strategy" (or lead-name "unknown"))
+                              ("timeframe" timeframe-key)
+                              ("lot" lot)
+                              ("magic" magic)
+                              ("entry_bid" entry-bid)
+                              ("entry_ask" entry-ask)
+                              ("spread_pips" entry-spread-pips)
+                              ("cost_pips" entry-cost-pips)
+                              ("pip_size" pip-size))))
+                (request-mt5-positions)
+                t))
+          ;; Cleanup
+          (unless committed
+            (remhash magic *pending-orders*)
+            (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
+            (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
 
 (defun execute-category-trade (category direction symbol bid ask)
   (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
   (handler-case
       (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
+        (let ((spread-pips (spread-pips-from-bid-ask symbol bid ask)))
+          (when (> spread-pips *max-spread-pips*)
+            (format t "[EXEC] 🚫 Spread Reject: ~a spread=~,2f pips (max=~,2f)~%"
+                    symbol spread-pips *max-spread-pips*)
+            (when (fboundp 'swimmy.core::emit-telemetry-event)
+              (swimmy.core::emit-telemetry-event "execution.spread_reject"
+                :service "school"
+                :severity "info"
+                :data (jsown:new-js
+                        ("symbol" symbol)
+                        ("bid" bid)
+                        ("ask" ask)
+                        ("spread_pips" spread-pips)
+                        ("max_spread_pips" *max-spread-pips*)
+                        ("pip_size" (get-pip-size symbol)))))
+            (return-from execute-category-trade nil)))
         (multiple-value-bind (lead-name timeframe-key history) (prepare-trade-context category symbol)
           (when (validate-trade-opportunity category symbol timeframe-key history)
              (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))

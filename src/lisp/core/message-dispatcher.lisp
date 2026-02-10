@@ -423,7 +423,7 @@
                        (when (fboundp 'swimmy.school::%cpcv-metric-inc)
                          (swimmy.school::%cpcv-metric-inc :received)
                          (when (or error-msg (not is-passed))
-                           (swimmy.school::%cpcv-metric-inc :failed))
+                           (swimmy.school::%cpcv-metric-inc :result_failed))
                          (when (fboundp 'swimmy.school::write-cpcv-status-file)
                            (ignore-errors (swimmy.school::write-cpcv-status-file :reason "result"))))
                        (swimmy.core:notify-cpcv-result result-plist)
@@ -437,19 +437,25 @@
                                               :key #'swimmy.school:strategy-name :test #'string=)
                                         (find name swimmy.globals:*evolved-strategies*
                                               :key #'swimmy.school:strategy-name :test #'string=))))
-                         (when (and strat (not error-msg))
-                           (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
-                           (setf (swimmy.school:strategy-cpcv-median-pf strat) median-pf)
-                           (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
-                           (setf (swimmy.school:strategy-cpcv-median-maxdd strat) median-maxdd)
-                           (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
-                           (swimmy.school:upsert-strategy strat)
-                           (when is-passed
-                             (if (swimmy.school:check-rank-criteria strat :S)
-                                 (swimmy.school:ensure-rank strat :S
-                                                            "CPCV Passed and Criteria Met")
-                                 (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
-                                         name))))))))
+                         (cond
+                           ((and strat (not error-msg))
+                            (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
+                            (setf (swimmy.school:strategy-cpcv-median-pf strat) median-pf)
+                            (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
+                            (setf (swimmy.school:strategy-cpcv-median-maxdd strat) median-maxdd)
+                            (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
+                            (swimmy.school:upsert-strategy strat)
+                            (when is-passed
+                              (if (swimmy.school:check-rank-criteria strat :S)
+                                  (swimmy.school:ensure-rank strat :S
+                                                             "CPCV Passed and Criteria Met")
+                                  (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
+                                          name))))
+                           ((and name (not error-msg)
+                                 (fboundp 'swimmy.school::update-cpcv-metrics-by-name))
+                           (swimmy.school::update-cpcv-metrics-by-name
+                             name median median-pf median-wr median-maxdd pass-rate
+                             :request-id request-id)))))))
                   ((string= type-str swimmy.core:+MSG-TICK+)
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
                           (bid (%alist-val sexp '(bid :bid) nil))

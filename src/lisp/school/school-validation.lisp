@@ -32,7 +32,7 @@
 
 ;; CPCV Metrics
 (defparameter *cpcv-metrics* (make-hash-table :test 'equal)
-  "Counters for CPCV pipeline. Keys: :queued :sent :received :failed.")
+  "Counters for CPCV pipeline. Keys: :queued :sent :received :send_failed :result_failed.")
 (defparameter *cpcv-status-path* (swimmy.core::swimmy-path "data/reports/cpcv_status.txt")
   "Path for CPCV status summary report.")
 
@@ -48,15 +48,20 @@
   (setf (gethash :queued *cpcv-metrics*) queued
         (gethash :sent *cpcv-metrics*) 0
         (gethash :received *cpcv-metrics*) 0
-        (gethash :failed *cpcv-metrics*) 0))
+        (gethash :send_failed *cpcv-metrics*) 0
+        (gethash :result_failed *cpcv-metrics*) 0))
 
 (defun cpcv-metrics-summary-line ()
   "Build a one-line CPCV status summary."
-  (format nil "~d queued | ~d sent | ~d received | ~d failed"
-          (gethash :queued *cpcv-metrics* 0)
-          (gethash :sent *cpcv-metrics* 0)
-          (gethash :received *cpcv-metrics* 0)
-          (gethash :failed *cpcv-metrics* 0)))
+  (let* ((queued (gethash :queued *cpcv-metrics* 0))
+         (sent (gethash :sent *cpcv-metrics* 0))
+         (received (gethash :received *cpcv-metrics* 0))
+         (send-failed (gethash :send_failed *cpcv-metrics* 0))
+         (result-failed (gethash :result_failed *cpcv-metrics* 0))
+         (failed-total (+ send-failed result-failed))
+         (inflight (max 0 (- sent received))))
+    (format nil "~d queued | ~d sent | ~d received | ~d failed (send ~d / result ~d) | inflight ~d"
+            queued sent received failed-total send-failed result-failed inflight)))
 
 (defun write-cpcv-status-file (&key (reason "event"))
   "Persist CPCV status summary to file."
@@ -540,9 +545,9 @@
               (declare (ignore _res _err))
               (if sent
                   (%cpcv-metric-inc :sent)
-                  (%cpcv-metric-inc :failed)))
+                  (%cpcv-metric-inc :send_failed)))
           (error (e)
-            (%cpcv-metric-inc :failed)
+            (%cpcv-metric-inc :send_failed)
             (format t "[CPCV] ⚠️ Error dispatching ~a: ~a~%" (strategy-name strat) e))))
       (ignore-errors (write-cpcv-status-file :reason "dispatch")))))
 

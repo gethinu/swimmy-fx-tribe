@@ -357,11 +357,25 @@
          (failed (or (getf data :failed-count) 0))
          (pass-rate (float (or (getf data :pass-rate) 0.0)))
          (is-passed (getf data :is-passed))
-         (status-emoji (if is-passed "✅" "❌"))
-         (status-text (if is-passed "PASSED" "FAILED"))
-         (color (if is-passed +color-success+ +color-alert+)) ; Green if passed, Red if failed
-         (msg (format nil "~a **CPCV Validation: ~a**~%Strategy: `~a`~%~%**Metrics:**~%• Median Sharpe: ~,2f~%• Paths: ~d~%• Result: ~d Passed / ~d Failed (~,1f%)~%~%**Outcome:** ~a"
-                      status-emoji status-text name median-sharpe paths passed failed (* 100 pass-rate) status-text)))
+         (error-msg (or (getf data :error) (getf data :error-msg) (getf data :err)))
+         (status-key (cond (error-msg :error)
+                           (is-passed :passed)
+                           (t :failed)))
+         (status-emoji (case status-key
+                         (:passed "✅")
+                         (:error "⚠️")
+                         (t "❌")))
+         (status-text (case status-key
+                        (:passed "PASSED")
+                        (:error "ERROR")
+                        (t "FAILED")))
+         (outcome-text (case status-key
+                         (:passed "PASSED")
+                         (:error "ERROR (runtime)")
+                         (t "FAILED (criteria)")))
+         (color (if (eq status-key :passed) +color-success+ +color-alert+)) ; Green if passed, Red if failed
+         (msg (format nil "~a **CPCV Validation: ~a**~%Strategy: `~a`~%~%**Metrics:**~%• Median Sharpe: ~,2f~%• Paths: ~d~%• Result: ~d Passed / ~d Failed (~,1f%)~%~%**Outcome:** ~a~%~@[**Error:** ~a~%~]"
+                      status-emoji status-text name median-sharpe paths passed failed (* 100 pass-rate) outcome-text error-msg)))
     (notify-discord-alert msg :color color)
     ;; V48.5: Performance Persistence (Expert Panel P3)
     (log-cpcv-to-file data)))

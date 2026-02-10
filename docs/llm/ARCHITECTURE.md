@@ -32,7 +32,7 @@ graph TD
     
     Rust <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
     Lisp <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
-    Lisp <-->|REQ/REP :5564 (Pattern, S-exp)| PatternSim
+    Lisp <-->|REQ/REP :5565 (Pattern, S-exp)| PatternSim
 
     Lisp -- "PUSH :5562 (Notify, S-exp)" --> Notifier
     Rust -- "PUSH :5562 (Notify, S-exp)" --> Notifier
@@ -76,7 +76,7 @@ graph TD
 - メインプロセスのI/O負荷を軽減。
 
 ### 5. Pattern Similarity Service (Perception)
-- **Python Service (Port 5564 / REQ/REP + S-expression, schema_version=1)**
+- **Python Service (Port 5565 / REQ/REP + S-expression, schema_version=1)**
 - チャートパターンの画像化・埋め込み・近傍検索を担当。
 - 生成した埋め込みとインデックスは `data/patterns/` に保存。
 

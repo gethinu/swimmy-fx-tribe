@@ -221,11 +221,13 @@
           ;; V44.0 FIX: Cleanup ONLY ONE warrior per TRADE_CLOSED (Expert Panel P1)
           ;; Match by magic number if available, else by symbol+direction (remove only first match)
           (when (boundp 'swimmy.school::*warrior-allocation*)
-            (let ((magic-from-json (%payload-number payload '(magic "magic") nil))
-                  (dir-key (cond ((search "BUY" (string-upcase direction)) :long)
-                                 ((search "SELL" (string-upcase direction)) :short)
-                                 (t :unknown)))
-                  (removed nil))
+            (let* ((magic-from-json (%payload-number payload '(magic "magic") nil))
+                   (dir-key (cond ((search "BUY" (string-upcase direction)) :long)
+                                  ((search "SELL" (string-upcase direction)) :short)
+                                  (t :unknown)))
+                   (entry-context (and magic-from-json
+                                       (swimmy.school:lookup-entry-context-by-magic magic-from-json)))
+                   (removed nil))
               (maphash (lambda (key warrior)
                          (when (and (not removed)
                                     (or (and magic-from-json (= (getf warrior :magic) magic-from-json))
@@ -235,7 +237,33 @@
                            (remhash key swimmy.school::*warrior-allocation*)
                            (setf removed t)
                            (format t "[L] 🧹 WARRIOR CLEANUP: Slot ~a freed (Ticket: ~a)~%" key ticket)))
-                       swimmy.school::*warrior-allocation*)))
+                       swimmy.school::*warrior-allocation*)
+              (when (and entry-context (fboundp 'swimmy.core::emit-telemetry-event))
+                (let* ((raw-entry (%payload-number payload '(entry_price "entry_price" entry-price "entry-price") 0.0))
+                       (entry-price (if (> raw-entry 0.00001) raw-entry nil))
+                       (entry-bid (getf entry-context :entry-bid))
+                       (entry-ask (getf entry-context :entry-ask))
+                       (entry-spread-pips (getf entry-context :entry-spread-pips))
+                       (entry-cost-pips (getf entry-context :entry-cost-pips))
+                       (entry-direction (or (getf entry-context :direction) direction)))
+                  (when entry-price
+                    (let ((slip (swimmy.school:slippage-pips-from-fill
+                                 symbol entry-direction entry-bid entry-ask entry-price)))
+                      (when slip
+                        (swimmy.core::emit-telemetry-event "execution.slippage"
+                          :service "executor"
+                          :severity "info"
+                          :data (jsown:new-js
+                                  ("symbol" symbol)
+                                  ("direction" (string-upcase direction))
+                                  ("magic" magic-from-json)
+                                  ("entry_expected_bid" entry-bid)
+                                  ("entry_expected_ask" entry-ask)
+                                  ("entry_actual" entry-price)
+                                  ("slippage_pips" slip)
+                                  ("entry_spread_pips" entry-spread-pips)
+                                  ("entry_cost_pips" entry-cost-pips)
+                                  ("pip_size" (swimmy.school:get-pip-size symbol)))))))))))
 
           ;; Record result for danger tracking
           (swimmy.school:record-trade-result (if is-win :win :loss))

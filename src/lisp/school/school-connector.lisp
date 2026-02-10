@@ -164,6 +164,9 @@
   "Main Loop: The Connector"
   (format t "♾️  STARTING EVOLUTION SERVICE (Lisp-Native Orchestration) ♾️~%")
   (start-stagnant-flush-loop)
+  ;; Ensure CMD publisher is available for CPCV/OOS dispatch in this daemon.
+  (when (fboundp 'init-external-cmd-zmq)
+    (init-external-cmd-zmq))
   (loop
     (format t "~%--- 🕰️ Cycle Start [Time: ~a] ---~%" (swimmy.core:get-time-string))
 

@@ -214,12 +214,8 @@ REVERSION : ~a"
   "Build CPCV status snippet for reports."
   (let* ((start-time swimmy.globals:*cpcv-start-time*)
          (start-text (if (> start-time 0) (format-timestamp start-time) "N/A"))
-         (queued (gethash :queued swimmy.school::*cpcv-metrics* 0))
-         (sent (gethash :sent swimmy.school::*cpcv-metrics* 0))
-         (received (gethash :received swimmy.school::*cpcv-metrics* 0))
-         (failed (gethash :failed swimmy.school::*cpcv-metrics* 0)))
-    (format nil "🔬 CPCV Status~%~d queued | ~d sent | ~d received | ~d failed | last start: ~a"
-            queued sent received failed start-text)))
+         (line (cpcv-metrics-summary-line)))
+    (format nil "🔬 CPCV Status~%~a | last start: ~a" line start-text)))
 
 (defparameter *evolution-report-path* "data/reports/evolution_factory_report.txt")
 (defparameter *evolution-heartbeat-path* "data/heartbeat/school.tick")
