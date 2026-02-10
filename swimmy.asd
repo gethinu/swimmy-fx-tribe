@@ -126,6 +126,7 @@
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
+               (:file "src/lisp/school/school-cost") ; EV-First: Cost/Pip utilities
                (:file "src/lisp/school/school-pip-audit") ; Phase 28: Live Trade Audit
                (:file "src/lisp/school/school-pattern-gate") ; Pattern Similarity soft gate
                (:file "src/lisp/school/school-execution") ; SRP Refactor
@@ -163,6 +164,7 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+               (:file "src/lisp/tests/school-v47-tests")
                (:file "src/lisp/tests/local-storage-sexp-tests")
                (:file "src/lisp/tests/telemetry-tests")
                (:file "src/lisp/tests/pattern-similarity-gate-tests")

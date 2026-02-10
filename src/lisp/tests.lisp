@@ -3245,6 +3245,10 @@
                   test-evaluate-strategy-performance-sends-to-graveyard
                   test-ensure-rank-retired-saves-pattern
                   test-lifecycle-retire-on-max-losses
+                  ;; EV-First: Cost/Pip utilities
+                  test-pip-size-by-symbol
+                  test-spread-pips-from-bid-ask
+                  test-cost-pips-defaults
                   ;; V8.5: Evolution Tests (Genetic Mutation)
                   test-rewrite-logic-symbols-sma
                   test-mutate-strategy-structure
