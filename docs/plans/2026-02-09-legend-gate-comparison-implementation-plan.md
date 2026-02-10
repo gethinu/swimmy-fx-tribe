@@ -159,5 +159,5 @@ If you want the *same* Sharpe/PF/MaxDD definitions as production, use the Guardi
 **Run:**
 ```bash
 cd guardian
-cargo run -q --bin legend_gate_compare -- --pairs USDJPY EURUSD GBPUSD 2>/dev/null
+cargo run -q --bin legend_gate_compare -- --gate-mode voltrend --pairs USDJPY EURUSD GBPUSD 2>/dev/null
 ```

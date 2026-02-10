@@ -9,7 +9,9 @@ Compare baseline Legend strategies vs model-gated versions across USDJPY, EURUSD
 - Strategies: Legend-Golden-Cross-Classic (H1), Legend-RSI2-Reversion (M5)
 - Pairs: USDJPY, EURUSD, GBPUSD
 - Data: data/historical/{PAIR}_{TF}.csv
-- Gate: get-model-prediction logic from src/lisp/core/research-algorithms.lisp (ported for comparison)
+- Gate (selectable):
+  - `model`: legacy get-model-prediction logic (kalman + dual-trend + vol switch)
+  - `voltrend`: realized-vol + trend-strength 2-axis regime filter
 
 ## Assumptions
 - Long-only signals.
@@ -30,7 +32,7 @@ Local Python comparator remains as a lightweight approximation:
 - `tools/legend_gate_compare.py`
 
 ## Data Flow
-CSV -> candles -> model predictions -> strategy AST signals -> backtest -> IS/OOS metrics.
+CSV -> candles -> gate decisions -> strategy AST signals -> backtest -> IS/OOS metrics.
 
 ## Error Handling
 - Missing/empty CSV: abort with clear message.
@@ -39,4 +41,4 @@ CSV -> candles -> model predictions -> strategy AST signals -> backtest -> IS/OO
 
 ## Validation
 - Run Guardian comparator once to capture summary tables for baseline vs gated cases:
-  - `cd guardian && cargo run -q --bin legend_gate_compare -- --pairs USDJPY EURUSD GBPUSD 2>/dev/null`
+  - `cd guardian && cargo run -q --bin legend_gate_compare -- --gate-mode voltrend --pairs USDJPY EURUSD GBPUSD 2>/dev/null`
