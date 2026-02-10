@@ -191,32 +191,78 @@ def model_gate_predict(closes: List[float]) -> List[Optional[str]]:
     return preds
 
 
-def compute_metrics(trade_returns: List[float]) -> dict:
-    if not trade_returns:
-        return {"sharpe": 0.0, "pf": 0.0, "win": 0.0, "trades": 0, "maxdd": 0.0}
-    wins = [r for r in trade_returns if r > 0]
-    losses = [r for r in trade_returns if r < 0]
-    mean = sum(trade_returns) / len(trade_returns)
-    var = sum((r - mean) ** 2 for r in trade_returns) / len(trade_returns)
-    std = math.sqrt(var)
-    sharpe = (mean / std * math.sqrt(len(trade_returns))) if std > 0 else 0.0
-    if losses:
-        pf = sum(wins) / abs(sum(losses))
-    else:
-        pf = float("inf") if wins else 0.0
-    win = len(wins) / len(trade_returns)
+def sharpe_ratio(returns: List[float]) -> float:
+    """Match Guardian's time-based (daily) Sharpe definition.
 
+    Guardian filters out near-zero returns when there are enough active samples,
+    then annualizes by sqrt(252).
+    """
+    if not returns:
+        return 0.0
+    active = [r for r in returns if abs(r) > 1e-12]
+    sample = active if len(active) >= 2 else returns
+    mean = sum(sample) / len(sample)
+    var = sum((r - mean) ** 2 for r in sample) / len(sample)
+    std = math.sqrt(var)
+    if std == 0.0:
+        return 0.0
+    return mean / std * math.sqrt(252.0)
+
+
+def _max_drawdown(returns: List[float]) -> float:
     equity = 1.0
     peak = 1.0
     maxdd = 0.0
-    for r in trade_returns:
+    for r in returns:
         equity *= (1.0 + r)
         if equity > peak:
             peak = equity
         dd = (peak - equity) / peak
         if dd > maxdd:
             maxdd = dd
+    return maxdd
 
+
+def daily_returns_from_trades(timestamps: List[int], trades: List[tuple]) -> List[float]:
+    """Aggregate realized trade returns into a daily return series.
+
+    - Includes 0.0 for days with no realized PnL, matching Guardian behavior.
+    - Compounds multiple trade returns within the same day.
+    """
+    if not timestamps:
+        return []
+    start_day = timestamps[0] // 86400
+    end_day = timestamps[-1] // 86400
+    by_day: dict[int, List[float]] = {}
+    for _entry_idx, exit_idx, ret in trades:
+        day = timestamps[exit_idx] // 86400
+        by_day.setdefault(day, []).append(ret)
+    equity = 1.0
+    out: List[float] = []
+    for day in range(start_day, end_day + 1):
+        eq_start = equity
+        for ret in by_day.get(day, []):
+            equity *= (1.0 + ret)
+        out.append(0.0 if eq_start == 0.0 else (equity / eq_start - 1.0))
+    return out
+
+
+def compute_metrics(trade_returns: List[float], *, daily_returns: Optional[List[float]] = None) -> dict:
+    """Return metrics where Sharpe/MaxDD are time-based (daily) if provided."""
+    daily = daily_returns or []
+    sharpe = sharpe_ratio(daily)
+    maxdd = _max_drawdown(daily) if daily else 0.0
+
+    if not trade_returns:
+        return {"sharpe": sharpe, "pf": 0.0, "win": 0.0, "trades": 0, "maxdd": maxdd}
+
+    wins = [r for r in trade_returns if r > 0]
+    losses = [r for r in trade_returns if r < 0]
+    if losses:
+        pf = sum(wins) / abs(sum(losses))
+    else:
+        pf = float("inf") if wins else 0.0
+    win = len(wins) / len(trade_returns)
     return {"sharpe": sharpe, "pf": pf, "win": win, "trades": len(trade_returns), "maxdd": maxdd}
 
 
@@ -246,13 +292,13 @@ def simulate_trades(
             if sl_hit or tp_hit:
                 exit_price = (entry_price - sl) if sl_hit else (entry_price + tp)
                 ret = (exit_price - entry_price) / entry_price
-                trades.append((entry_idx, ret))
+                trades.append((entry_idx, i, ret))
                 in_pos = False
                 continue
             if i in exit_set and i + 1 < n:
                 exit_price = opens[i + 1]
                 ret = (exit_price - entry_price) / entry_price
-                trades.append((entry_idx, ret))
+                trades.append((entry_idx, i + 1, ret))
                 in_pos = False
                 continue
         else:
@@ -266,6 +312,7 @@ def simulate_trades(
 def _load_ohlc(path: str) -> tuple:
     import csv
 
+    timestamps: List[int] = []
     opens: List[float] = []
     highs: List[float] = []
     lows: List[float] = []
@@ -273,11 +320,12 @@ def _load_ohlc(path: str) -> tuple:
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            timestamps.append(int(float(row["timestamp"])))
             opens.append(float(row["open"]))
             highs.append(float(row["high"]))
             lows.append(float(row["low"]))
             closes.append(float(row["close"]))
-    return opens, highs, lows, closes
+    return timestamps, opens, highs, lows, closes
 
 
 def _golden_cross_signals(closes: List[float], short: int = 50, long: int = 200) -> tuple:
@@ -309,12 +357,6 @@ def _rsi_reversion_signals(closes: List[float], period: int = 2, entry_th: float
     return entries, exits
 
 
-def _split_metrics(trades: List[tuple], split_idx: int) -> tuple:
-    is_trades = [ret for idx, ret in trades if idx < split_idx]
-    oos_trades = [ret for idx, ret in trades if idx >= split_idx]
-    return compute_metrics(is_trades), compute_metrics(oos_trades)
-
-
 def _pip_size(pair: str) -> float:
     return 0.01 if pair.endswith("JPY") else 0.0001
 
@@ -340,7 +382,7 @@ def run_comparison(pairs: List[str], data_dir: str = "data/historical") -> List[
     for pair in pairs:
         for strat in strategies:
             path = f"{data_dir}/{pair}_{strat['tf']}.csv"
-            opens, highs, lows, closes = _load_ohlc(path)
+            timestamps, opens, highs, lows, closes = _load_ohlc(path)
             if not closes:
                 raise ValueError(f"Empty data: {path}")
             split_idx = int(len(closes) * 0.8)
@@ -351,31 +393,42 @@ def run_comparison(pairs: List[str], data_dir: str = "data/historical") -> List[
                 entries, exits = _rsi_reversion_signals(closes)
 
             slippage = 0.5 * _pip_size(pair)
-            base_trades = simulate_trades(
-                opens,
-                highs,
-                lows,
-                closes,
-                entries=entries,
-                exits=exits,
-                sl=strat["sl"],
-                tp=strat["tp"],
-                slippage=slippage,
-            )
-            gate_entries = [i for i in entries if preds[i] == "BUY"]
-            gate_trades = simulate_trades(
-                opens,
-                highs,
-                lows,
-                closes,
-                entries=gate_entries,
-                exits=exits,
-                sl=strat["sl"],
-                tp=strat["tp"],
-                slippage=slippage,
-            )
-            base_is, base_oos = _split_metrics(base_trades, split_idx)
-            gate_is, gate_oos = _split_metrics(gate_trades, split_idx)
+
+            def _rel(idxs: List[int], start: int, end: int) -> List[int]:
+                return [i - start for i in idxs if start <= i < end]
+
+            def _segment_metrics(start: int, end: int, *, gate: bool) -> dict:
+                ts = timestamps[start:end]
+                op = opens[start:end]
+                hi = highs[start:end]
+                lo = lows[start:end]
+                cl = closes[start:end]
+
+                seg_entries = entries
+                if gate:
+                    seg_entries = [i for i in entries if preds[i] == "BUY"]
+
+                ent = _rel(seg_entries, start, end)
+                ex = _rel(exits, start, end)
+                trades = simulate_trades(
+                    op,
+                    hi,
+                    lo,
+                    cl,
+                    entries=ent,
+                    exits=ex,
+                    sl=strat["sl"],
+                    tp=strat["tp"],
+                    slippage=slippage,
+                )
+                trade_returns = [ret for _e, _x, ret in trades]
+                daily = daily_returns_from_trades(ts, trades)
+                return compute_metrics(trade_returns, daily_returns=daily)
+
+            base_is = _segment_metrics(0, split_idx, gate=False)
+            base_oos = _segment_metrics(split_idx, len(closes), gate=False)
+            gate_is = _segment_metrics(0, split_idx, gate=True)
+            gate_oos = _segment_metrics(split_idx, len(closes), gate=True)
             results.append(
                 {
                     "pair": pair,
@@ -398,8 +451,8 @@ def _fmt(val: float) -> str:
 def _print_table(results: List[dict], key: str, title: str) -> None:
     print(title)
     print(
-        "Pair/Strategy | Base Sharpe | Base PF | Base Win% | Base Trades | Base MaxDD | "
-        "Gate Sharpe | Gate PF | Gate Win% | Gate Trades | Gate MaxDD"
+        "Pair/Strategy | Base DailySharpe | Base PF | Base Win% | Base Trades | Base MaxDD | "
+        "Gate DailySharpe | Gate PF | Gate Win% | Gate Trades | Gate MaxDD"
     )
     for r in results:
         base = r[f"base_{key}"]
