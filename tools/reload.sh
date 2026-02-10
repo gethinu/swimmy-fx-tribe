@@ -8,15 +8,22 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Prefer systemd restart for safety (avoids port rebind conflicts)
-if systemctl --user status swimmy-brain >/dev/null 2>&1; then
-  echo -e "${GREEN}[ACTION] Restarting swimmy-brain via systemd...${NC}"
-  systemctl --user restart swimmy-brain
-  if [ $? -eq 0 ]; then
+if command -v systemctl >/dev/null 2>&1 && systemctl status swimmy-brain.service >/dev/null 2>&1; then
+  echo -e "${GREEN}[ACTION] Restarting swimmy-brain via systemd (system scope)...${NC}"
+  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    if systemctl restart swimmy-brain.service; then
       echo -e "${GREEN}[SUCCESS] swimmy-brain restarted.${NC}"
       exit 0
+    fi
+    echo -e "${RED}[WARN] Failed to restart swimmy-brain via systemd. Falling back to SIGHUP.${NC}"
+  elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    if sudo -n systemctl restart swimmy-brain.service; then
+      echo -e "${GREEN}[SUCCESS] swimmy-brain restarted.${NC}"
+      exit 0
+    fi
+    echo -e "${RED}[WARN] Failed to restart swimmy-brain via systemd. Falling back to SIGHUP.${NC}"
   else
-      echo -e "${RED}[ERROR] Failed to restart swimmy-brain via systemd.${NC}"
-      exit 1
+    echo -e "${RED}[WARN] swimmy-brain is managed by systemd, but restart requires root. Falling back to SIGHUP.${NC}"
   fi
 fi
 

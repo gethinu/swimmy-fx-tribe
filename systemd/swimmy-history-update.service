@@ -4,10 +4,14 @@ After=network.target swimmy-guardian.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/swimmy
-ExecStartPre=/usr/bin/systemctl --user stop swimmy-guardian.service
-ExecStart=%h/swimmy/.venv/bin/python3 %h/swimmy/tools/update_history_smart.py
-ExecStartPost=/usr/bin/systemctl --user start swimmy-guardian.service
-EnvironmentFile=%h/swimmy/.env
-StandardOutput=append:%h/swimmy/logs/history_update.log
-StandardError=append:%h/swimmy/logs/history_update.log
+User=swimmy
+Group=swimmy
+PermissionsStartOnly=true
+WorkingDirectory=/home/swimmy/swimmy
+ExecStartPre=-/usr/bin/systemctl stop swimmy-guardian.service
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/update_history_smart.py
+ExecStartPost=/usr/bin/systemctl start swimmy-guardian.service
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+StandardOutput=append:/home/swimmy/swimmy/logs/history_update.log
+StandardError=append:/home/swimmy/swimmy/logs/history_update.log

@@ -10,8 +10,16 @@ ALERT_FILE="/tmp/school_alert_sent"
 WEBHOOK_URL="${SWIMMY_DISCORD_ALERTS:-}"
 THRESHOLD_SECONDS=300 # 5 Minutes
 
+SYSTEMCTL_QUERY=(systemctl)
+SYSTEMCTL_MUTATE=()
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    SYSTEMCTL_MUTATE=(systemctl)
+elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    SYSTEMCTL_MUTATE=(sudo -n systemctl)
+fi
+
 # 1. Check if service is technically active (systemd view)
-if ! systemctl --user is-active --quiet "$SERVICE"; then
+if ! "${SYSTEMCTL_QUERY[@]}" is-active --quiet "$SERVICE"; then
     echo "$(date): Service is DOWN (Systemd)."
     RESTART_NEEDED=true
 else
@@ -37,26 +45,36 @@ else
 fi
 
 if [ "$RESTART_NEEDED" = true ]; then
+    ALERT_WAS_SENT=false
+    if [ -f "$ALERT_FILE" ]; then
+        ALERT_WAS_SENT=true
+    fi
+
     # Kill Zombie Process if it exists
     pkill -9 -f "school-daemon.lisp"
     
     echo "Attempting restart..."
-    systemctl --user restart "$SERVICE"
+    if [ "${#SYSTEMCTL_MUTATE[@]}" -eq 0 ]; then
+        echo "Restart requires root (sudo). Configure NOPASSWD for systemctl or run this script as root."
+    else
+        "${SYSTEMCTL_MUTATE[@]}" restart "$SERVICE" || true
+    fi
     sleep 10
     
     # Verify Restart
-    if systemctl --user is-active --quiet "$SERVICE"; then
+    if "${SYSTEMCTL_QUERY[@]}" is-active --quiet "$SERVICE"; then
         echo "Service restarted successfully."
         # Give it time to write a new heartbeat before clearing alert? 
         # Actually just exit, next run will verify heartbeat.
-        rm -f "$ALERT_FILE"
         
         # Send Recovery Notification if alert was previously sent
-        if [ -f "$ALERT_FILE" ] && [ -n "$WEBHOOK_URL" ]; then
+        if [ "$ALERT_WAS_SENT" = true ] && [ -n "$WEBHOOK_URL" ]; then
              curl -s -H "Content-Type: application/json" \
                 -d "{\"content\":\"@here\",\"embeds\":[{\"title\":\"🧟 ZOMBIE KILLED\",\"description\":\"Swimmy School was frozen (Zombie) and has been forcibly restarted.\",\"color\":65280}]}" \
                 "$WEBHOOK_URL" > /dev/null
         fi
+
+        rm -f "$ALERT_FILE"
         exit 0
     fi
     

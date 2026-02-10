@@ -16,7 +16,7 @@ def main():
         print("Bound to tcp://*:5556")
     except zmq.error.ZMQError as e:
         print(f"Failed to bind: {e}")
-        print("Did you stop swimmy-brain? 'systemctl --user stop swimmy-brain'")
+        print("Did you stop swimmy-brain? Try: sudo systemctl stop swimmy-brain.service")
         return
 
     # Wait for subscriber (Guardian) to connect
