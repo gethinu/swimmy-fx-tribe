@@ -8,7 +8,7 @@
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
-- **Aux Services**: Data Keeper / Notifier / Risk Gateway は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
@@ -33,7 +33,8 @@
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
-- **ラベル評価幅**: M5/M15=4時間、H1/H4=1日、D1=1週間、W1/MN1=1か月（ATR基準のUp/Down/Flat）。
+- **ラベル評価幅**: M5/M15=4時間、H1/H4=1日、D1=1週間、W1/MN1=1か月（ATR基準のUp/Down/Flat）。  
+  - 既定: `SWIMMY_PATTERN_LABEL_ATR_PERIOD=14` / `SWIMMY_PATTERN_LABEL_ATR_MULT=0.50`
 - **サンプルストライド**: M5=30分(6本)、M15=1時間(4本)、H1/H4/D1/W1/MN1=1本。
 - **画像ウィンドウ本数**: M5=120、M15=120、H1=120、H4=120、D1=120、W1=104、MN1=120。
 - **VAP**: 価格帯別出来高はMT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**）。

@@ -41,7 +41,11 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **検索**: 近傍探索は **距離重み付き確率** を返す（k=30、閾値=0.60）。
 - **ゲート**: 不一致時はロットを **0.7倍** に減衰（ソフトゲート）。**ライブ/OOS/CPCV/バックテストに適用**。
 - **適用範囲**: **TF一致のみ**（H1以上の足確定時に評価）。
-- **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。
+- **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。  
+  - `ATR(period)` はサンプルwindow末尾の直近 `period` 本から算出（既定 `period=14`、`SWIMMY_PATTERN_LABEL_ATR_PERIOD` で上書き）。  
+  - `future_return = close(t+horizon) - close(t)`  
+  - `threshold = ATR * atr_mult`（既定 `atr_mult=0.50`、`SWIMMY_PATTERN_LABEL_ATR_MULT` で上書き）  
+  - `future_return >= threshold => UP` / `future_return <= -threshold => DOWN` / それ以外 => `FLAT`
   - M5/M15: 4時間
   - H1/H4: 1日
   - D1: 1週間
@@ -94,7 +98,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
-- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）。
+- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-pattern-similarity`, `swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）。
 - **Hot Reload**: `./tools/reload.sh` でLispプロセスを停止せずにコード更新可能。
 
 ## 8. 非要件
