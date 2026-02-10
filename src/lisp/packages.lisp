@@ -224,6 +224,7 @@
    #:*port-external*
    #:*port-data-keeper*
    #:*port-notifier*
+   #:*port-pattern-similarity*
    #:*port-backtest-req*
    #:*port-backtest-res*
    #:*backtest-service-enabled*

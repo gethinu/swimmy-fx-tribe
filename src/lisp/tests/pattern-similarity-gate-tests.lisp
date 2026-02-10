@@ -51,3 +51,14 @@
       (declare (ignore reason))
       (assert-true (< (abs (- 0.035 new-lot)) 1e-6) "Expected lot scaled by 0.7")
       (assert-true (< (abs (- 0.70 mult)) 1e-6) "Expected multiplier 0.7"))))
+
+(deftest test-pattern-similarity-query-request-sexp
+  "pattern similarity query request should be S-expression with required keys"
+  (let* ((c (swimmy.core:make-candle :timestamp 1709234560 :open 1.0 :high 1.1 :low 0.9 :close 1.05 :volume 10))
+         (msg (swimmy.core::build-pattern-similarity-query-request "USDJPY" "H1" (list c) :k 30)))
+    (assert-true (search "(type . \"PATTERN_SIMILARITY\")" msg) "Expected type")
+    (assert-true (search "(schema_version . 1)" msg) "Expected schema_version")
+    (assert-true (search "(action . \"QUERY\")" msg) "Expected action")
+    (assert-true (search "(symbol . \"USDJPY\")" msg) "Expected symbol")
+    (assert-true (search "(timeframe . \"H1\")" msg) "Expected timeframe")
+    (assert-true (search "(candles" msg) "Expected candles")))

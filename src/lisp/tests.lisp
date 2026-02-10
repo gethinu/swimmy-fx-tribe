@@ -3067,6 +3067,7 @@
                   test-pattern-gate-flat
                   test-pattern-gate-missing-probs-fail-open
                   test-pattern-gate-apply-soft-gate
+                  test-pattern-similarity-query-request-sexp
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
