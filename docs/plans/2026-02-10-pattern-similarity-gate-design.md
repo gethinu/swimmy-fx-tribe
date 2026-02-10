@@ -5,6 +5,8 @@ Date: 2026-02-10
 ## Purpose
 チャートパターンの類似性を用いて、既存戦略の前段フィルタとしてレジーム/ゲートを提供する。
 
+関連: **期待値(EV)中心のEA設計**は `docs/plans/2026-02-10-expected-value-ea-design.md` を参照。
+
 ## Scope
 - FX: USDJPY / EURUSD / GBPUSD
 - Timeframes: M1保存、M5/M15リサンプル、H1/H4/D1/W1/MN1直取得
