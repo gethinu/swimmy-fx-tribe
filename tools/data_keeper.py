@@ -58,6 +58,7 @@ ZMQ_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
 # buffer to 5M candles (Sufficient for ~10 years M1)
 # M1 was causing OOM with 10M limit.
 MAX_CANDLES_PER_SYMBOL = 500_000
+MAX_TICKS_PER_SYMBOL = _env_int("SWIMMY_MAX_TICKS_PER_SYMBOL", 200_000)
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
 VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
@@ -66,6 +67,11 @@ VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
 candle_histories = defaultdict(
     lambda: defaultdict(lambda: deque(maxlen=MAX_CANDLES_PER_SYMBOL))
 )
+
+# In-memory storage: ticks[symbol] = deque (append-only, newest at right)
+tick_histories = defaultdict(lambda: deque(maxlen=MAX_TICKS_PER_SYMBOL))
+
+TICKS_DIR = Path(os.getenv("SWIMMY_TICKS_DIR", str(BASE_DIR / "data" / "ticks")))
 
 # Lock for thread safety during save
 save_lock = threading.Lock()
@@ -132,6 +138,104 @@ def _normalize_candle(candle):
         "close": close,
         "volume": volume,
     }, None
+
+
+def _normalize_tick(tick):
+    if not isinstance(tick, dict):
+        return None, "Invalid tick format"
+
+    def pick(*keys):
+        for key in keys:
+            if key in tick:
+                return tick[key]
+        return None
+
+    ts = _coerce_int(pick("timestamp", "t"))
+    bid = _coerce_float(pick("bid", "b"))
+    ask = _coerce_float(pick("ask", "a"))
+    volume = _coerce_int(pick("volume", "v"), default=0)
+
+    if None in (ts, bid, ask):
+        return None, "Missing required tick fields"
+
+    return {"timestamp": ts, "bid": bid, "ask": ask, "volume": volume}, None
+
+
+def _tick_file_path(symbol: str, timestamp_unix: int) -> Path:
+    day = datetime.utcfromtimestamp(int(timestamp_unix)).strftime("%Y%m%d")
+    return (TICKS_DIR / symbol / f"{day}.csv").resolve()
+
+
+def _append_tick_to_disk(symbol: str, tick: dict) -> None:
+    path = _tick_file_path(symbol, tick["timestamp"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    is_new = not path.exists()
+    with open(path, "a") as f:
+        if is_new:
+            f.write("timestamp,bid,ask,volume\n")
+        f.write(f"{tick['timestamp']},{tick['bid']},{tick['ask']},{tick['volume']}\n")
+
+
+def _tail_lines(path: Path, max_lines: int) -> list[str]:
+    if max_lines <= 0:
+        return []
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            block = 8192
+            data = bytearray()
+            pos = size
+            while pos > 0 and data.count(b"\n") <= max_lines + 1:
+                read_size = block if pos >= block else pos
+                pos -= read_size
+                f.seek(pos)
+                chunk = f.read(read_size)
+                data[:0] = chunk
+            lines = data.splitlines()
+            # Keep only the tail slice.
+            tail = lines[-max_lines:] if len(lines) > max_lines else lines
+            return [ln.decode("utf-8", errors="replace") for ln in tail]
+    except FileNotFoundError:
+        return []
+
+
+def _read_ticks_from_disk(symbol: str, count: int, start_time: int | None, end_time: int | None) -> list[dict]:
+    sym_dir = TICKS_DIR / symbol
+    if not sym_dir.exists():
+        return []
+
+    files = sorted(sym_dir.glob("*.csv"), reverse=True)
+    out: list[dict] = []
+    for path in files:
+        # Over-read to account for headers and range filtering.
+        lines = _tail_lines(path, max_lines=max(200, count * 10))
+        for line in reversed(lines):
+            line = line.strip()
+            if not line or line.startswith("timestamp"):
+                continue
+            parts = line.split(",")
+            if len(parts) < 4:
+                continue
+            try:
+                ts = int(float(parts[0]))
+                bid = float(parts[1])
+                ask = float(parts[2])
+                vol = int(float(parts[3])) if parts[3] else 0
+            except ValueError:
+                continue
+
+            if end_time is not None and ts > end_time:
+                continue
+            if start_time is not None and ts < start_time:
+                # Older than the requested range; we can stop completely because we are scanning newest->oldest.
+                return out
+
+            out.append({"timestamp": ts, "bid": bid, "ask": ask, "volume": vol})
+            if len(out) >= count:
+                return out
+
+    return out
 
 
 def _error_response(message: str):
@@ -409,6 +513,72 @@ def handle_request_sexp(message: str) -> str:
                 "status": "ok",
                 "symbol": symbol,
                 "timeframe": timeframe,
+            }
+        )
+
+    if action == "ADD_TICK":
+        symbol = _normalize_symbol(data.get("symbol"))
+        if not symbol:
+            return _error_response("Missing symbol")
+        if symbol not in SUPPORTED_SYMBOLS:
+            return _error_response(f"Unsupported symbol: {symbol}")
+        tick, err = _normalize_tick(data.get("tick"))
+        if err:
+            return _error_response(err)
+        with save_lock:
+            tick_histories[symbol].append(tick)
+            try:
+                _append_tick_to_disk(symbol, tick)
+            except Exception as e:
+                return _error_response(f"Tick persistence error: {e}")
+        return sexp_response(
+            {
+                "type": "DATA_KEEPER_RESULT",
+                "status": "ok",
+                "symbol": symbol,
+            }
+        )
+
+    if action == "GET_TICKS":
+        symbol = _normalize_symbol(data.get("symbol"))
+        if not symbol:
+            return _error_response("Missing symbol")
+        if symbol not in SUPPORTED_SYMBOLS:
+            return _error_response(f"Unsupported symbol: {symbol}")
+        count = _coerce_int(data.get("count"))
+        if not count or count <= 0:
+            return _error_response("Invalid count")
+        start_time = _coerce_int(data.get("start_time"))
+        end_time = _coerce_int(data.get("end_time"))
+
+        # Prefer in-memory for newest-only queries.
+        ticks: list[dict] = []
+        if start_time is None and end_time is None:
+            ticks = list(reversed(tick_histories[symbol]))[:count]
+        else:
+            for t in reversed(tick_histories[symbol]):
+                ts = t.get("timestamp")
+                if ts is None:
+                    continue
+                if end_time is not None and ts > end_time:
+                    continue
+                if start_time is not None and ts < start_time:
+                    break
+                ticks.append(t)
+                if len(ticks) >= count:
+                    break
+
+        if len(ticks) < count:
+            disk_ticks = _read_ticks_from_disk(symbol, count=count, start_time=start_time, end_time=end_time)
+            ticks = disk_ticks[:count]
+
+        return sexp_response(
+            {
+                "type": "DATA_KEEPER_RESULT",
+                "status": "ok",
+                "symbol": symbol,
+                "count": len(ticks),
+                "ticks": ticks,
             }
         )
 
