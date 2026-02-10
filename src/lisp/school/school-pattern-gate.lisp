@@ -32,3 +32,37 @@ Soft gate policy:
               ((and (eq direction :sell) (eq winner :down)) (values 1.0 "aligned"))
               (t (values mm "disagree"))))))))
 
+(defun apply-pattern-similarity-gate (symbol timeframe-key direction lot history
+                                     &key (k 30) (threshold 0.60) (mismatch-multiplier 0.70) query-fn)
+  "Apply Pattern Similarity soft gate to LOT.
+
+Returns (values new-lot multiplier reason).
+
+Fail-open:
+- When not applicable TF, insufficient history, missing query-fn, or service error -> multiplier=1.0."
+  (let* ((tf (string-upcase (format nil "~a" timeframe-key)))
+         (allowed (member tf '("H1" "H4" "D1" "W1" "MN1" "MN") :test #'string=))
+         (window (cond ((string= tf "W1") 104)
+                       (t 120))))
+    (cond
+      ((not allowed) (values (float lot) 1.0 "not_applicable"))
+      ((or (null history) (< (length history) window)) (values (float lot) 1.0 "insufficient_history"))
+      ((null query-fn) (values (float lot) 1.0 "missing_query_fn"))
+      (t
+       (let* ((candles (subseq history 0 window))
+              (resp (handler-case (funcall query-fn symbol tf candles :k k) (error () nil))))
+         (if (null resp)
+             (values (float lot) 1.0 "query_error")
+             (let ((status (swimmy.core:sexp-alist-get resp 'status)))
+               (if (not (and status (string= status "ok")))
+                   (values (float lot) 1.0 "service_error")
+                   (let* ((result (swimmy.core:sexp-alist-get resp 'result))
+                          (p-up (and result (swimmy.core:sexp-alist-get result 'p_up)))
+                          (p-down (and result (swimmy.core:sexp-alist-get result 'p_down)))
+                          (p-flat (and result (swimmy.core:sexp-alist-get result 'p_flat))))
+                     (multiple-value-bind (mult reason)
+                         (pattern-gate-multiplier direction p-up p-down p-flat
+                                                  :threshold threshold
+                                                  :mismatch-multiplier mismatch-multiplier)
+                       (let ((new-lot (max 0.01 (* (float lot) (float mult)))))
+                         (values new-lot mult reason))))))))))))

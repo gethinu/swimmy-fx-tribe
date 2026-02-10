@@ -3066,6 +3066,7 @@
                   test-pattern-gate-low-confidence
                   test-pattern-gate-flat
                   test-pattern-gate-missing-probs-fail-open
+                  test-pattern-gate-apply-soft-gate
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
