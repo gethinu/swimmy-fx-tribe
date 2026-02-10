@@ -5,7 +5,7 @@ mod strategy_ast;
 
 use backtester::{
     load_candles_from_csv, run_backtest_with_gate_and_slippage, run_backtest_with_slippage,
-    GateDecision, IndicatorType, Strategy,
+    GateDecision, IndicatorType, Strategy, VolTrendGateTarget, vol_trend_regime_gate,
 };
 use strategy_ast::StrategyNode;
 
@@ -22,6 +22,12 @@ const KALMAN_R: f64 = 0.1;
 const KALMAN_VEL_ADJ: f64 = 0.1;
 const KALMAN_VEL_DECAY: f64 = 0.95;
 const KALMAN_THRESH: f64 = 0.0001;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GateMode {
+    Model,
+    VolTrend,
+}
 
 fn pip_size(pair: &str) -> f64 {
     if pair.ends_with("JPY") {
@@ -287,9 +293,25 @@ fn parse_pairs(args: &[String]) -> Vec<String> {
     }
 }
 
+fn parse_gate_mode(args: &[String]) -> GateMode {
+    for i in 0..args.len() {
+        if args[i] == "--gate-mode" {
+            if let Some(v) = args.get(i + 1) {
+                match v.as_str() {
+                    "model" => return GateMode::Model,
+                    "voltrend" => return GateMode::VolTrend,
+                    _ => {}
+                }
+            }
+        }
+    }
+    GateMode::Model
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let pairs = parse_pairs(&args);
+    let gate_mode = parse_gate_mode(&args);
     let data_dir = {
         let mut dd: Option<&str> = None;
         for i in 0..args.len() {
@@ -318,6 +340,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let split_idx = (candles.len() as f64 * 0.8) as usize;
 
             let strat = strat_builder(&pair);
+            let vt_target = if tf == "H1" {
+                VolTrendGateTarget::TrendFollow
+            } else {
+                VolTrendGateTarget::MeanRevert
+            };
 
             let aux: HashMap<String, Vec<backtester::Candle>> = HashMap::new();
             let swap: Vec<backtester::SwapRecord> = Vec::new();
@@ -326,11 +353,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let oos_slice = &candles[split_idx..];
 
             let base_is = run_backtest_with_slippage(&strat, is_slice, &aux, &swap, slippage);
-            let gate_is_preds = model_gate_predict(is_slice);
+            let gate_is_preds = match gate_mode {
+                GateMode::Model => model_gate_predict(is_slice),
+                GateMode::VolTrend => vol_trend_regime_gate(is_slice, 20, 50, vt_target),
+            };
             let gate_is = run_backtest_with_gate_and_slippage(&strat, is_slice, &aux, &swap, &gate_is_preds, slippage);
 
             let base_oos = run_backtest_with_slippage(&strat, oos_slice, &aux, &swap, slippage);
-            let gate_oos_preds = model_gate_predict(oos_slice);
+            let gate_oos_preds = match gate_mode {
+                GateMode::Model => model_gate_predict(oos_slice),
+                GateMode::VolTrend => vol_trend_regime_gate(oos_slice, 20, 50, vt_target),
+            };
             let gate_oos = run_backtest_with_gate_and_slippage(&strat, oos_slice, &aux, &swap, &gate_oos_preds, slippage);
 
             let label = format!("{pair}/{name}", name = strat.name);
@@ -344,4 +377,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_table("OOS Metrics (newest 20%)", &oos_rows);
     Ok(())
 }
-

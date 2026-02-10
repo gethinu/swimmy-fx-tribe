@@ -464,6 +464,101 @@ pub enum GateDecision {
     Hold,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolTrendGateTarget {
+    TrendFollow,
+    MeanRevert,
+}
+
+fn median_in_place(values: &mut [f64]) -> f64 {
+    if values.is_empty() {
+        return f64::INFINITY;
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = values.len() / 2;
+    if values.len() % 2 == 1 {
+        values[mid]
+    } else {
+        (values[mid - 1] + values[mid]) / 2.0
+    }
+}
+
+fn realized_volatility_series(closes: &[f64], period: usize) -> Vec<Option<f64>> {
+    let n = closes.len();
+    let mut out = vec![None; n];
+    if n < 2 || period == 0 {
+        return out;
+    }
+
+    // Simple realized vol: stddev of percent returns over the trailing window.
+    let mut returns = vec![0.0; n];
+    for i in 1..n {
+        let prev = closes[i - 1];
+        returns[i] = if prev == 0.0 { 0.0 } else { 100.0 * (closes[i] - prev) / prev };
+    }
+
+    for i in period..n {
+        let start = i + 1 - period;
+        let window = &returns[start..=i];
+        let mean = window.iter().sum::<f64>() / period as f64;
+        let var = window.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / period as f64;
+        out[i] = Some(var.sqrt());
+    }
+    out
+}
+
+fn abs_trend_return_series(closes: &[f64], period: usize) -> Vec<Option<f64>> {
+    let n = closes.len();
+    let mut out = vec![None; n];
+    if n == 0 || period <= 1 {
+        return out;
+    }
+    for i in (period - 1)..n {
+        let first = closes[i + 1 - period];
+        let last = closes[i];
+        let val = if first == 0.0 { 0.0 } else { ((last - first) / first).abs() };
+        out[i] = Some(val);
+    }
+    out
+}
+
+pub fn vol_trend_regime_gate(
+    candles: &[Candle],
+    vol_period: usize,
+    trend_period: usize,
+    target: VolTrendGateTarget,
+) -> Vec<GateDecision> {
+    let closes: Vec<f64> = candles.iter().map(|c| c.close).collect();
+    let vols = realized_volatility_series(&closes, vol_period);
+    let trends = abs_trend_return_series(&closes, trend_period);
+
+    let mut vol_vals: Vec<f64> = vols.iter().filter_map(|v| *v).filter(|v| v.is_finite()).collect();
+    let mut trend_vals: Vec<f64> = trends.iter().filter_map(|v| *v).filter(|v| v.is_finite()).collect();
+    let vol_th = median_in_place(&mut vol_vals);
+    let trend_th = median_in_place(&mut trend_vals);
+
+    let mut out = vec![GateDecision::Hold; candles.len()];
+    for i in 0..candles.len() {
+        let (Some(vol), Some(tr)) = (vols[i], trends[i]) else { continue };
+        if !vol.is_finite() || !tr.is_finite() {
+            continue;
+        }
+        // Relative regime classification; strict inequality keeps constant-series as low/weak.
+        let vol_high = vol > vol_th;
+        let trend_strong = tr > trend_th;
+
+        let allow = match target {
+            VolTrendGateTarget::TrendFollow => vol_high && trend_strong,
+            VolTrendGateTarget::MeanRevert => !vol_high && !trend_strong,
+        };
+        if allow {
+            out[i] = GateDecision::Buy;
+        }
+    }
+
+    out
+}
+
 fn run_backtest_internal(
     strategy: &Strategy,
     candles: &[Candle],
@@ -1265,6 +1360,52 @@ mod tests {
         let gate = vec![GateDecision::Hold; candles.len()];
         let gated = run_backtest_with_gate_and_slippage(&strategy, &candles, &std::collections::HashMap::new(), &[], &gate, 0.0);
         assert_eq!(gated.trades, 0, "gate should block all entries");
+    }
+
+    #[test]
+    fn test_vol_trend_regime_gate_splits_flat_vs_trend() {
+        let mut candles: Vec<Candle> = Vec::new();
+
+        // Flat regime (low vol, weak trend)
+        for i in 0..40 {
+            candles.push(Candle {
+                timestamp: i as i64,
+                open: 100.0,
+                high: 100.0,
+                low: 100.0,
+                close: 100.0,
+                volume: 0.0,
+            });
+        }
+
+        // Trend regime (non-zero vol + positive trend)
+        for i in 40..70 {
+            let step = (i - 39) as f64;
+            let noise = if i % 2 == 0 { 0.05 } else { -0.05 };
+            let close = 100.0 + step * 0.10 + noise;
+            candles.push(Candle {
+                timestamp: i as i64,
+                open: close,
+                high: close,
+                low: close,
+                close,
+                volume: 0.0,
+            });
+        }
+
+        let mr = vol_trend_regime_gate(&candles, 5, 5, VolTrendGateTarget::MeanRevert);
+        let tf = vol_trend_regime_gate(&candles, 5, 5, VolTrendGateTarget::TrendFollow);
+
+        assert_eq!(mr.len(), candles.len());
+        assert_eq!(tf.len(), candles.len());
+
+        // In the flat regime, mean-reversion gate should allow entries, trend-follow should block.
+        assert_eq!(mr[10], GateDecision::Buy);
+        assert_eq!(tf[10], GateDecision::Hold);
+
+        // In the trend regime, trend-follow gate should allow entries, mean-reversion should block.
+        assert_eq!(mr[50], GateDecision::Hold);
+        assert_eq!(tf[50], GateDecision::Buy);
     }
 }
 
