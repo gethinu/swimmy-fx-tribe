@@ -3,6 +3,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+import numpy as np
 
 
 
@@ -65,6 +66,28 @@ def _seed_history(tmpdir: Path):
         writer.writerow(["timestamp", "open", "high", "low", "close", "volume"])
         writer.writerows(rows)
     return rows
+
+
+def _make_training_samples(n=96, channels=5, window=120):
+    rng = np.random.default_rng(7)
+    samples = np.zeros((n, channels, window), dtype=np.float32)
+    labels = np.zeros((n,), dtype=np.int32)
+    for i in range(n):
+        cls = i % 3
+        labels[i] = cls
+        x = np.linspace(0.0, 1.0, window, dtype=np.float32)
+        if cls == 0:
+            trend = x
+        elif cls == 1:
+            trend = -x
+        else:
+            trend = np.sin(np.linspace(0.0, np.pi * 4.0, window, dtype=np.float32)) * 0.2
+        samples[i, 0] = trend + rng.normal(0.0, 0.01, window).astype(np.float32)
+        samples[i, 1] = np.abs(rng.normal(0.03, 0.005, window)).astype(np.float32)
+        samples[i, 2] = rng.normal(0.0, 0.01, window).astype(np.float32)
+        samples[i, 3] = rng.normal(0.0, 0.01, window).astype(np.float32)
+        samples[i, 4] = rng.normal(0.0, 0.01, window).astype(np.float32)
+    return samples, labels
 
 
 def test_status_contract():
@@ -138,9 +161,45 @@ def test_query_rejects_wrong_window_length():
     assert parsed["status"] == "error"
 
 
+def test_status_reports_siamese_backend_when_checkpoint_exists():
+    tmp = Path(tempfile.mkdtemp(prefix="pattern_svc_test_model_"))
+    try:
+        model_dir = tmp / "patterns" / "models"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = model_dir / "vector_siamese_v1.pt"
+
+        import pattern_vector_dl as dl
+
+        samples, labels = _make_training_samples()
+        train_meta = dl.train_siamese_triplet(
+            samples=samples,
+            labels=labels,
+            output_path=model_path,
+            epochs=1,
+            batch_size=16,
+            max_triplets=96,
+            device="cpu",
+            seed=7,
+        )
+        assert train_meta["backend"].startswith("vector-siamese")
+
+        svc.HISTORICAL_DIR = tmp / "historical"
+        svc.PATTERN_ROOT = tmp / "patterns"
+        svc._reset_runtime_state_for_tests()
+        svc._reload_embedder_for_tests(model_path)
+
+        req = '((type . "PATTERN_SIMILARITY") (schema_version . 1) (action . "STATUS"))'
+        res = parse_sexp_alist(svc.handle_request_sexp(req))
+        assert res["status"] == "ok"
+        assert str(res["model"]).startswith("vector-siamese")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_status_contract()
     test_build_index_and_query_contract()
     test_invalid_type_returns_error()
     test_query_rejects_wrong_window_length()
+    test_status_reports_siamese_backend_when_checkpoint_exists()
     print("OK")

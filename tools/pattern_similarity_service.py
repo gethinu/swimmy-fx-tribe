@@ -88,12 +88,18 @@ if str(PYTHON_SRC) not in sys.path:
 
 from aux_sexp import parse_aux_request, sexp_response
 
+try:
+    import pattern_vector_dl as pdl
+except Exception:  # pragma: no cover - optional deep backend
+    pdl = None
+
 
 ZMQ_PORT = _env_int("SWIMMY_PORT_PATTERN_SIMILARITY", 5565)
 MAX_PAYLOAD_BYTES = _env_int("SWIMMY_PATTERN_MAX_PAYLOAD_BYTES", 2 * 1024 * 1024)
 
 HISTORICAL_DIR = BASE_DIR / "data" / "historical"
 PATTERN_ROOT = BASE_DIR / "data" / "patterns"
+_DL_MODEL_ENV = os.getenv("SWIMMY_PATTERN_DL_MODEL_PATH", "").strip()
 
 
 @dataclass
@@ -108,10 +114,65 @@ class IndexBundle:
 
 
 _INDEX_CACHE: Dict[Tuple[str, str], IndexBundle] = {}
+_DL_MODEL = None
+_DL_META: Optional[dict] = None
+_DL_MODEL_PATH_OVERRIDE: Optional[Path] = None
 
 
 def _reset_runtime_state_for_tests() -> None:
     _INDEX_CACHE.clear()
+    global _DL_MODEL, _DL_META, _DL_MODEL_PATH_OVERRIDE
+    _DL_MODEL = None
+    _DL_META = None
+    _DL_MODEL_PATH_OVERRIDE = None
+
+
+def _resolve_dl_model_path() -> Path:
+    if _DL_MODEL_PATH_OVERRIDE is not None:
+        return _DL_MODEL_PATH_OVERRIDE
+    if _DL_MODEL_ENV:
+        return Path(_DL_MODEL_ENV).expanduser()
+    return PATTERN_ROOT / "models" / "vector_siamese_v1.pt"
+
+
+def _load_dl_embedder(force: bool = False) -> None:
+    global _DL_MODEL, _DL_META
+    if pdl is None:
+        _DL_MODEL = None
+        _DL_META = None
+        return
+
+    if _DL_MODEL is not None and _DL_META is not None and not force:
+        return
+
+    model_path = _resolve_dl_model_path()
+    if not model_path.exists():
+        _DL_MODEL = None
+        _DL_META = None
+        return
+
+    try:
+        model, meta = pdl.load_siamese_encoder(model_path, device="auto")
+        _DL_MODEL = model
+        _DL_META = meta
+    except Exception:
+        _DL_MODEL = None
+        _DL_META = None
+
+
+def _active_backend_name() -> str:
+    _load_dl_embedder()
+    if _DL_META and str(_DL_META.get("backend", "")).strip():
+        return str(_DL_META["backend"])
+    return "vector-fallback-v1"
+
+
+def _reload_embedder_for_tests(model_path: Optional[Path] = None) -> None:
+    global _DL_MODEL_PATH_OVERRIDE, _DL_MODEL, _DL_META
+    _DL_MODEL_PATH_OVERRIDE = Path(model_path) if model_path else None
+    _DL_MODEL = None
+    _DL_META = None
+    _load_dl_embedder(force=True)
 
 
 def _error_response(message: str) -> str:
@@ -276,8 +337,20 @@ def _fallback_embed(candles: List[dict]) -> np.ndarray:
 
 
 def _embed(candles: List[dict]) -> Tuple[str, np.ndarray]:
-    # Phase 1 baseline: deterministic vector embedding.
-    # CLIP backend can be plugged in later behind this function.
+    _load_dl_embedder()
+    if pdl is not None and _DL_MODEL is not None and _DL_META is not None:
+        try:
+            window = int(_DL_META.get("window", 120))
+            vec = pdl.embed_candles(
+                candles,
+                model=_DL_MODEL,
+                window=window,
+                device=str(_DL_META.get("device", "cpu")),
+            )
+            return str(_DL_META.get("backend", "vector-siamese-v1")), vec.astype(np.float32)
+        except Exception:
+            # Fall back to deterministic embedding when DL backend is unavailable.
+            pass
     return "vector-fallback-v1", _fallback_embed(candles)
 
 
@@ -541,7 +614,7 @@ def handle_request_sexp(message: str) -> str:
             {
                 "type": "PATTERN_SIMILARITY_RESULT",
                 "status": "ok",
-                "model": "vector-fallback-v1",
+                "model": _active_backend_name(),
                 "indices": _collect_index_status(),
             }
         )
