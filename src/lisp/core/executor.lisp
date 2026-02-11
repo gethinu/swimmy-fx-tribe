@@ -106,7 +106,8 @@
 
 (defun send-heartbeat ()
   (let ((now (get-universal-time)))
-    (when (> (- now *last-heartbeat-sent*) 30)
+    ;; Heartbeat must be frequent enough to prevent Guardian/Watchdog false "brain silence".
+    (when (> (- now *last-heartbeat-sent*) 10)
       (pulse-check) ; Added Pulse Check here
       (let* ((heartbeat-msg (make-heartbeat-message))
              (hb-id (ignore-errors (swimmy.core:sexp-alist-get heartbeat-msg "id")))
@@ -122,7 +123,7 @@
                   ("source" hb-source)))
         (when (and (boundp '*cmd-publisher*) *cmd-publisher*)
           (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp heartbeat-msg))))
-      ;; V43.0: Position Status Report every 5 minutes (10 heartbeats)
+      ;; V43.0: Position Status Report every 5 minutes
       (when (and (= (mod (floor now 30) 10) 0)
                  (boundp 'swimmy.school::*warrior-allocation*)
                  (> (hash-table-count swimmy.school::*warrior-allocation*) 0))

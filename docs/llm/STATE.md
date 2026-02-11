@@ -14,6 +14,15 @@
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
 - **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。
+  - **Report表示**: Graveyard/Retired は DB値を表示しつつ、Libraryとの差分（ドリフト）も併記する（「数がリセット」誤解を防ぐ）。
+  - **ドリフト修復**: `tools/ops/reconcile_archive_db.py` で `data/library/GRAVEYARD/`・`data/library/RETIRED/` をスキャンし、DBへ backfill / rank補正できる（非破壊、ただし大量更新のため運用タイミングに注意）。
+  - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
+- **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
+- **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
+  - **failed内訳**: `failed` は `send_failed + criteria_failed + result_error` の合算として表示し、ゲート未達（criteria）と実行系エラー（result_error）を分離して解釈する。
+- **CPCV Validate (評価条件)**: Guardian の `CPCV_VALIDATE` は `strategy_params` の `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する（timeframe>1はResample、filter有効時は同一データからauxを生成してMTF filter適用）。
+- **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
+- **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 
 ## 決定事項
@@ -25,12 +34,13 @@
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
+- **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
+- **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
-- **S判定ルール**: **IS Sharpe ≥ 0.5** を必須とし、**PF/WR/MaxDDはCPCV中央値**（`median_pf/median_wr/median_maxdd`）で最終判定する。CPCV gateは `median_sharpe ≥ 0.5` と `pass_rate ≥ 50%` を含む。
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
-- **Pattern Similarity Service**: 5564(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
+- **Pattern Similarity Service**: 5565(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
@@ -63,6 +73,15 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-11**: `upsert-strategy` に Archive Rank 保護を追加し、DB既存 `:GRAVEYARD/:RETIRED` が通常upsertで `NIL/Active` に戻る退行を防止。
+- **2026-02-11**: OOS dispatch の成否契約を厳格化。Backtest送信が受理されなかった要求を `sent` に残さず `error` 化し、`oos_status` の `sent/pending` 誤増加を抑制。
+- **2026-02-11**: CPCV status の `failed` を内訳表示（`send_failed/criteria_failed/result_error`）に拡張し、ゲート未達と実行系エラーを区別可能にした。
+- **2026-02-11**: ランク判定を `Balanced + 2段階ゲート` に更新する方針を確定。Stage 1固定閾値（B/A/S）を引き上げ、Stage 2に OOS/CPCV/MC/DryRun を組み合わせる昇格ゲートを正本化。
+- **2026-02-11**: `systemd/swimmy-guardian.service` の再起動ポリシーを強化（`Restart=always`、`StartLimitIntervalSec=300`、`StartLimitBurst=5`）。
+- **2026-02-11**: `swimmy-guardian` の Brain auto-revival を強化。`systemctl restart swimmy-brain` が失敗した場合に `systemctl show -p MainPID --value swimmy-brain` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させるフォールバックを追加。
+- **2026-02-11**: Guardian の `CPCV_VALIDATE` S式パーサでキー正規化を強化。`swimmy.school::action` のような package 修飾キーでも `action` として受理し、`missing action` による parse/serialize error を抑止。
+- **2026-02-11**: Brain の Port 5556（Motor Output）に `HEARTBEAT` を定期送信する運用を明記（Guardian の Brain Silence（>120s）誤検知を防ぐ）。送信は periodic maintenance から呼び出し、内部で約10秒スロットル。
+- **2026-02-10**: `swimmy-watchdog` の自動復旧で `systemctl restart` が権限不足（polkit）で失敗するケースに対応し、失敗時は `systemctl show MainPID` → `SIGTERM/SIGKILL` で MainPID を落として systemd の `Restart=` に復旧させるフォールバックを追加。
 - **2026-02-06**: `strategy_daily_pnl` の日次集計と 00:10 JST スケジュールを追加。日次PnL相関（Pearson）と非相関スコア通知（A/S昇格時）を実装。
 - **2026-02-06**: Retired Rank を追加（Max Age退役、`data/library/RETIRED/`・`data/memory/retired.sexp`）。Evolution Report/DB集計に Retired を追加。
 - **2026-02-06**: Pair-Composite の設計を確定し、`trade_logs` に `pair_id`、`backtest_trade_logs` を追加。`BACKTEST_RESULT` の `trade_list` を永続化し、`trades` は件数のまま維持。PnL系列は OOS/CPCV/Backtest を結合、`oos_kind` は `-OOS`=OOS / `-QUAL/-RR`=BACKTEST(IS) とする方針を明記（ペア選定/スコアは未実装）。候補母集団は **シンボル×TFごとの上位N=50** とする方針を追加。

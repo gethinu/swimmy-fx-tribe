@@ -104,7 +104,7 @@ MT5からブロードキャストされる。
  (entry_price . 145.120)  ; optional
  (exit_price . 145.300))  ; optional
 ```
-注記: `entry_price` / `exit_price` は任意。存在する場合は執行スリッページの算出に利用する。
+注記: `entry_price` / `exit_price` は任意。存在する場合は執行スリッページの算出に利用する。`Rank昇格のDryRunゲート` はこの実測スリッページ算出結果を参照するため、取得可能な環境では両キーを送る。
 
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
@@ -179,6 +179,18 @@ Brainが即時で処理する管理系コマンド。
 Lisp -> Rustへ「意図」を送る。
 スキーマはExecution用とほぼ同じだが、Risk Gate用のメタデータが含まれる場合がある。
 
+**HEARTBEAT**:
+Brain の生存通知。Guardian は Port 5556 の受信が一定時間止まると Dead Man's Switch（Brain Silence）を発火するため、Brain は定期的に HEARTBEAT を送る。
+```
+((type . "HEARTBEAT")
+ (id . "uuid-v4")
+ (timestamp . "2026-02-11T00:24:10Z")  ; ISO-8601 string
+ (version . "2.0")
+ (source . "BRAIN")
+ (status . "OK"))
+```
+
+**SIGNAL**:
 ```
 ((type . "SIGNAL")
  (strategy . "Trend-Follow-V1")
@@ -277,13 +289,20 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
  (strategy_params . ((name . "Volvo-Scalp-Gen0")
                      (sma_short . 10)
                      (sma_long . 50)
-                     (sl . 50.0)
-                     (tp . 100.0)
-                     (volume . 0.01))))) ; 必須(空でも可)
+                     (sl . 0.15)
+                     (tp . 0.40)
+                     (volume . 0.01)
+                     ;; optional (strategy-to-alistが持つキー)
+                     (indicator_type . rsi)
+                     (timeframe . 60)              ; minutes (H1=60)
+                     (filter_enabled . t)
+                     (filter_tf . "D1")
+                     (filter_period . 200)
+                     (filter_logic . "PRICE_ABOVE_SMA"))))) ; 必須(空でも可)
 ```
 **Required keys**: `action`, `strategy_name`, `symbol`, `candles_file`, `strategy_params`  
 **Optional keys**: `request_id`  
-**Notes**: `strategy_params` は `strategy-to-alist` 出力（S式のalist）。空でもキー自体は必須。  
+**Notes**: `strategy_params` は `strategy-to-alist` 出力（S式のalist）。空でもキー自体は必須。Guardianは `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する。トップレベルキーは package 修飾付き（例: `swimmy.school::action`, `swimmy.school:action`）でも受理する。  
 
 **CPCV_RESULT (Response, Guardianフォーマット)**:
 ```
