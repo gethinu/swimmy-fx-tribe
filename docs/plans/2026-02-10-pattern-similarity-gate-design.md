@@ -8,7 +8,7 @@ Date: 2026-02-10
 ## Scope
 - FX: USDJPY / EURUSD / GBPUSD
 - Timeframes: M1保存、M5/M15リサンプル、H1/H4/D1/W1/MN1直取得
-- Pattern Similarity Service (Python, ZMQ REQ/REP 5564, S-expression)
+- Pattern Similarity Service (Python, ZMQ REQ/REP 5565, S-expression)
 
 ## Non-Goals
 - 取引戦略の置き換え
@@ -38,7 +38,7 @@ Date: 2026-02-10
 5. Lisp が確率に基づきロットを 0.7 倍に減衰（不一致時）
 
 ## Interfaces
-Pattern Similarity Service (5564):
+Pattern Similarity Service (5565):
 - STATUS / BUILD_INDEX / QUERY
 - QUERY入力: S式OHLCV窓（window_bars）
 - QUERY出力: p_up/p_down/p_flat と top_k

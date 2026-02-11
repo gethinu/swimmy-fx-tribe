@@ -2,6 +2,8 @@
 Description=Swimmy Guardian Service (Rust)
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -20,7 +22,7 @@ StandardOutput=append:/home/swimmy/swimmy/logs/guardian.log
 StandardError=append:/home/swimmy/swimmy/logs/guardian.log
 Environment=HOME=/home/swimmy
 EnvironmentFile=/home/swimmy/swimmy/.env
-Restart=on-failure
+Restart=always
 RestartSec=5
 LimitNOFILE=65536
 

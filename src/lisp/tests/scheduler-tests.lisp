@@ -287,3 +287,27 @@
           (assert-true called "Expected timeout flushes to be invoked"))
       (setf (symbol-function 'swimmy.core::check-timeout-flushes) orig-flush)
       (setf (symbol-function 'swimmy.main::check-scheduled-tasks) orig-check))))
+
+(deftest test-periodic-maintenance-sends-brain-heartbeat
+  "run-periodic-maintenance should send Brain->Guardian heartbeat to avoid false silence detection."
+  (let ((called 0)
+        (orig-hb (and (fboundp 'swimmy.executor:send-heartbeat)
+                      (symbol-function 'swimmy.executor:send-heartbeat)))
+        (orig-check (symbol-function 'swimmy.main::check-scheduled-tasks)))
+    (unwind-protect
+        (progn
+          (when orig-hb
+            (setf (symbol-function 'swimmy.executor:send-heartbeat)
+                  (lambda () (incf called) nil)))
+          ;; Avoid running scheduled tasks in this unit test.
+          (setf (symbol-function 'swimmy.main::check-scheduled-tasks)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (let ((now (get-universal-time)))
+            (setf swimmy.main::*last-maintenance-time* now)
+            (setf swimmy.main::*last-evolution-time* now)
+            (setf swimmy.school::*last-macro-load-time* now))
+          (swimmy.main::run-periodic-maintenance)
+          (assert-true (> called 0) "Expected send-heartbeat to be invoked"))
+      (when orig-hb
+        (setf (symbol-function 'swimmy.executor:send-heartbeat) orig-hb))
+      (setf (symbol-function 'swimmy.main::check-scheduled-tasks) orig-check))))

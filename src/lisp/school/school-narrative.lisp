@@ -142,6 +142,8 @@ REVERSION : ~a"
 (defun candidate-rank-label (strategy)
   "Generate a human-friendly rank status label for reports."
   (let* ((rank (strategy-rank strategy))
+         (a-criteria (get-rank-criteria :A))
+         (a-sharpe-min (getf a-criteria :sharpe-min 0.45))
          (s-eligible (check-rank-criteria strategy :S))
          (s-base (check-rank-criteria strategy :S :include-cpcv nil))
          (a-eligible (check-rank-criteria strategy :A))
@@ -156,7 +158,7 @@ REVERSION : ~a"
       ((and (eq rank :A) s-base)
        (format nil "CPCV PENDING (median=~,2f pass=~,0f%%)" cpcv (* 100 cpcv-pass)))
       ((and a-eligible (eq rank :B)) "A: PROMOTION PENDING")
-      ((and (eq rank :B) (>= sharpe 0.3) (not a-base)) "A: BASE METRICS FAIL")
+      ((and (eq rank :B) (>= sharpe a-sharpe-min) (not a-base)) "A: BASE METRICS FAIL")
       ((and a-eligible (eq rank :A)) "A")
       ((and (eq rank :B) a-base)
        (format nil "OOS PENDING (OOS=~,2f)" oos))
@@ -181,20 +183,34 @@ REVERSION : ~a"
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 
 (defun %format-db-rank-label (rank)
-  (cond
-    ((null rank) "UNRANKED")
-    ((stringp rank)
-     (let ((r (string-upcase rank)))
-       (if (and (> (length r) 0) (char= (char r 0) #\:))
-           (subseq r 1)
-           r)))
-    ((symbolp rank) (symbol-name rank))
-    (t "UNRANKED")))
+  "Normalize DB rank text into a human-facing label.
+   DB stores ranks as strings like \":B\" or \"NIL\"; never display NIL."
+  (labels ((normalize (s)
+             (let* ((trimmed (string-upcase (string-trim '(#\Space #\Newline #\Tab) s)))
+                    (no-colon (if (and (> (length trimmed) 0) (char= (char trimmed 0) #\:))
+                                  (subseq trimmed 1)
+                                  trimmed)))
+               no-colon)))
+    (let* ((raw (cond
+                  ((null rank) nil)
+                  ((stringp rank) rank)
+                  ((symbolp rank) (symbol-name rank))
+                  (t (format nil "~a" rank))))
+           (r (and raw (normalize raw))))
+      (cond
+        ((or (null r) (string= r "") (string= r "NIL") (string= r "UNRANKED")) "INCUBATOR")
+        (t r)))))
 
 (defun build-top-candidates-snippet-from-db ()
   "Build top candidates snippet using DB as source of truth."
   (handler-case
-      (let* ((rows (execute-to-list "SELECT name, sharpe, rank FROM strategies ORDER BY sharpe DESC LIMIT 5"))
+      ;; Show only active candidates (exclude GRAVEYARD/RETIRED). Rank NIL is treated as INCUBATOR for display.
+      (let* ((rows (execute-to-list
+                    (concatenate 'string
+                                 "SELECT name, sharpe, rank "
+                                 "FROM strategies "
+                                 "WHERE rank IS NULL OR (UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) "
+                                 "ORDER BY sharpe DESC LIMIT 5")))
              (limit (length rows)))
         (with-output-to-string (s)
           (format s "~%🌟 **Top Candidates:**~%")
@@ -212,10 +228,30 @@ REVERSION : ~a"
 
 (defun build-cpcv-status-snippet ()
   "Build CPCV status snippet for reports."
-  (let* ((start-time swimmy.globals:*cpcv-start-time*)
-         (start-text (if (> start-time 0) (format-timestamp start-time) "N/A"))
-         (line (cpcv-metrics-summary-line)))
-    (format nil "🔬 CPCV Status~%~a | last start: ~a" line start-text)))
+  ;; CPCV counters and start-time are split across daemons (dispatch vs result recv).
+  ;; Use the shared status file as source-of-truth to avoid "sent=0/last start=N/A" confusion.
+  (let* ((path (and (boundp 'swimmy.school::*cpcv-status-path*) swimmy.school::*cpcv-status-path*))
+         (lines (when (and path (probe-file path))
+                  (with-open-file (in path :direction :input)
+                    (loop for line = (read-line in nil nil)
+                          while line collect line))))
+         (summary (or (and lines (first lines))
+                      (cpcv-metrics-summary-line)))
+         (last-start-unix
+           (when lines
+             (loop for l in lines
+                   for prefix = "last_start_unix:"
+                   when (and (>= (length l) (length prefix))
+                             (string-equal prefix (subseq l 0 (length prefix))))
+                     do (let* ((tail (string-trim '(#\Space #\Tab) (subseq l (length prefix))))
+                               (n (ignore-errors (parse-integer tail))))
+                          (when (and n (> n 0)) (return n))))))
+         (start-time (or last-start-unix (and (boundp 'swimmy.globals:*cpcv-start-time*)
+                                              swimmy.globals:*cpcv-start-time*) 0))
+         (start-text (if (and start-time (> start-time 0))
+                         (format-timestamp start-time)
+                         "N/A")))
+    (format nil "🔬 CPCV Status~%~a | last start: ~a" summary start-text)))
 
 (defparameter *evolution-report-path* "data/reports/evolution_factory_report.txt")
 (defparameter *evolution-heartbeat-path* "data/heartbeat/school.tick")
@@ -275,6 +311,10 @@ REVERSION : ~a"
          (b-rank (getf counts :b 0)) ; Selection
          (graveyard (getf counts :graveyard 0))
          (retired (getf counts :retired 0))
+         (lib-counts (ignore-errors (get-library-rank-counts)))
+         (lib-graveyard (and lib-counts (getf lib-counts :graveyard 0)))
+         (lib-retired (and lib-counts (getf lib-counts :retired 0)))
+         (drift-warnings (ignore-errors (report-source-drift)))
          ;; New Recruits (24h) - using new creation-time slot (P13)
          (one-day-ago (- (get-universal-time) 86400))
          (new-recruits (count-if (lambda (s)
@@ -285,17 +325,22 @@ REVERSION : ~a"
            (a-rank-db (or (ignore-errors (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))
                           '()))
            (cpcv-gate-counts (cpcv-gate-failure-counts a-rank-db))
-           (cpcv-gate-line (format nil "CPCV Gate Failures: sharpe<0.5=~d pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d elite=~d total=~d"
+           (cpcv-gate-line (format nil "CPCV Gate Failures: sharpe<~,2f=~d pf<~,2f=~d wr<~,2f=~d maxdd>=~,2f=~d elite=~d total=~d"
+                                   (getf cpcv-gate-counts :sharpe-min 0.75)
                                    (getf cpcv-gate-counts :sharpe 0)
+                                   (getf cpcv-gate-counts :pf-min 1.70)
                                    (getf cpcv-gate-counts :pf 0)
+                                   (getf cpcv-gate-counts :wr-min 0.50)
                                    (getf cpcv-gate-counts :wr 0)
+                                   (getf cpcv-gate-counts :maxdd-max 0.10)
                                    (getf cpcv-gate-counts :maxdd 0)
                                    (getf cpcv-gate-counts :pass 0)
                                    (getf cpcv-gate-counts :total 0)))
            (cpcv-median-counts (cpcv-median-failure-counts a-rank-db))
-           (cpcv-median-line (format nil "CPCV Median Failures: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d total=~d"
-                                     (getf cpcv-median-counts :pf 0)
-                                     (getf cpcv-median-counts :wr 0)
+           (cpcv-median-line (format nil "CPCV Stage2 Failures: pass_rate<~,0f%%=~d maxdd>=~,2f=~d total=~d"
+                                     (* 100 (getf cpcv-median-counts :pass-min 0.70))
+                                     (getf cpcv-median-counts :pass-rate 0)
+                                     (getf cpcv-median-counts :maxdd-max 0.12)
                                      (getf cpcv-median-counts :maxdd 0)
                                      (getf cpcv-median-counts :total 0)))
            (cpcv-snippet (format nil "~a~%~a~%~a"
@@ -303,8 +348,20 @@ REVERSION : ~a"
                                  cpcv-gate-line
                                  cpcv-median-line))
            (oos-snippet (oos-metrics-summary-line)))
+      (let* ((graveyard-text (if lib-counts
+                                 (format nil "~d (Library ~d)" graveyard lib-graveyard)
+                                 (format nil "~d" graveyard)))
+             (retired-text (if lib-counts
+                               (format nil "~d (Library ~d)" retired lib-retired)
+                               (format nil "~d" retired)))
+             (drift-text (if (and drift-warnings (not (null drift-warnings)))
+                             (with-output-to-string (s)
+                               (format s "~%📎 **Source Drift:**~%")
+                               (dolist (w drift-warnings)
+                                 (format s " - ~a~%" w)))
+                             "")))
     
-    (format nil "
+        (format nil "
 🏭 **Evolution Factory Report**
 Current status of the autonomous strategy generation pipeline.
 
@@ -312,22 +369,23 @@ Current status of the autonomous strategy generation pipeline.
 ~d Strategies
 
 🏆 **S-Rank (Verified Elite)**
-~d (IS Sharpe≥0.5 + CPCV median PF/WR/MaxDD + pass_rate)
+~d (IS Sharpe≥0.75 PF≥1.70 WR≥50% MaxDD<10% + CPCV pass_rate≥70% & median MaxDD<12% + MC/DryRun)
 
 🎖️ **A-Rank (Pro)**
-~d (Sharpe≥0.3 PF≥1.2 WR≥40% MaxDD<20% + OOS)
+~d (Sharpe≥0.45 PF≥1.30 WR≥43% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
 
 🪜 **B-Rank (Selection)**
-~d (Sharpe≥0.1 PF≥1.0 WR≥30% MaxDD<30%)
+~d (Sharpe≥0.15 PF≥1.05 WR≥35% MaxDD<25%)
 
 👶 New Recruits (24h)
 ~d
 
 👻 Graveyard
-~d
+~a
 
 🧊 Retired
-~d
+~a
+~a
 
 ~a
 
@@ -344,12 +402,13 @@ Current status of the autonomous strategy generation pipeline.
             a-rank
             b-rank
             new-recruits
-            graveyard
-            retired
+            graveyard-text
+            retired-text
+            drift-text
             cpcv-snippet
             oos-snippet
             top-snippet
-            (format-timestamp (get-universal-time)))))) 
+            (format-timestamp (get-universal-time)))))))
 
 (defun write-evolution-report-files (report)
   "Persist the Evolution Factory Report to local files."

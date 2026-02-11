@@ -498,6 +498,59 @@
             (setf (symbol-function 'swimmy.school::update-cpcv-metrics-by-name) orig-update)
             (fmakunbound 'swimmy.school::update-cpcv-metrics-by-name))))))
 
+(deftest test-cpcv-result-metrics-split-runtime-vs-criteria
+  "CPCV_RESULT should split runtime errors and criteria failures in counters"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+           (orig-metrics swimmy.school::*cpcv-metrics*)
+           (orig-record (symbol-function 'swimmy.school:record-backtest-trades))
+           (orig-notify (symbol-function 'swimmy.core:notify-cpcv-result))
+           (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+           (orig-write (symbol-function 'swimmy.school::write-cpcv-status-file)))
+      (unwind-protect
+          (progn
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "AAA" :rank :A)))
+            (setf swimmy.school::*cpcv-metrics* (make-hash-table :test 'equal))
+            (swimmy.school::reset-cpcv-metrics :queued 0)
+            (setf (symbol-function 'swimmy.school:record-backtest-trades)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.core:notify-cpcv-result)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest args) (declare (ignore args)) nil))
+            (setf (symbol-function 'swimmy.school::write-cpcv-status-file)
+                  (lambda (&rest args) (declare (ignore args)) t))
+
+            ;; Runtime error path
+            (funcall fn
+                     "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-ERR\") (error . \"boom\") (is_passed . nil))))")
+            (assert-equal 1 (gethash :received swimmy.school::*cpcv-metrics* 0)
+                          "received should increment")
+            (assert-equal 1 (gethash :result_runtime_failed swimmy.school::*cpcv-metrics* 0)
+                          "runtime failure should increment")
+            (assert-equal 0 (gethash :result_criteria_failed swimmy.school::*cpcv-metrics* 0)
+                          "criteria failure should not increment on runtime error")
+
+            ;; Criteria fail path
+            (funcall fn
+                     "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-FAIL\") (median_sharpe . 0.1) (is_passed . nil))))")
+            (assert-equal 2 (gethash :received swimmy.school::*cpcv-metrics* 0)
+                          "received should increment")
+            (assert-equal 1 (gethash :result_runtime_failed swimmy.school::*cpcv-metrics* 0)
+                          "runtime failure count should remain")
+            (assert-equal 1 (gethash :result_criteria_failed swimmy.school::*cpcv-metrics* 0)
+                          "criteria failure should increment")
+            (assert-equal 2 (gethash :result_failed swimmy.school::*cpcv-metrics* 0)
+                          "total result failure should remain backward compatible"))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+        (setf swimmy.school::*cpcv-metrics* orig-metrics)
+        (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)
+        (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+        (setf (symbol-function 'swimmy.school::write-cpcv-status-file) orig-write)))))
+
 (deftest test-request-cpcv-includes-request-id
   "request-cpcv-validation should include request_id in payload"
   (let* ((fn (find-symbol "REQUEST-CPCV-VALIDATION" :swimmy.school))
@@ -541,30 +594,30 @@
                (swimmy.school:make-strategy :name name :rank :A
                                             :sharpe sharpe :profit-factor pf
                                             :win-rate wr :max-dd dd)))
-         (s-pass (funcall mk "S-PASS" 0.6 1.6 0.5 0.1))
-         (s-fs (funcall mk "S-FS" 0.4 2.0 0.5 0.1))
-         (s-fpf (funcall mk "S-FPF" 0.6 1.2 0.5 0.1))
-         (s-fwr (funcall mk "S-FWR" 0.6 1.6 0.4 0.1))
-         (s-fdd (funcall mk "S-FDD" 0.6 1.6 0.5 0.2))
+         (s-pass (funcall mk "S-PASS" 0.80 1.8 0.55 0.09))
+         (s-fs (funcall mk "S-FS" 0.70 2.0 0.55 0.09))
+         (s-fpf (funcall mk "S-FPF" 0.80 1.6 0.55 0.09))
+         (s-fwr (funcall mk "S-FWR" 0.80 1.8 0.49 0.09))
+         (s-fdd (funcall mk "S-FDD" 0.80 1.8 0.55 0.11))
          (counts (swimmy.school::cpcv-gate-failure-counts
                   (list s-pass s-fs s-fpf s-fwr s-fdd))))
     (assert-equal 5 (getf counts :total) "total count")
-    (assert-equal 4 (getf counts :pass) "elite pass count (sharpe>=0.5)")
+    (assert-equal 4 (getf counts :pass) "elite pass count (sharpe>=0.75)")
     (assert-equal 1 (getf counts :sharpe) "sharpe fail count")
     (assert-equal 1 (getf counts :pf) "pf fail count")
     (assert-equal 1 (getf counts :wr) "wr fail count")
     (assert-equal 1 (getf counts :maxdd) "maxdd fail count")))
 
 (deftest test-fetch-cpcv-candidates-filters-by-elite-sharpe
-  "fetch-cpcv-candidates should return A-rank elites (sharpe>=0.5)"
+  "fetch-cpcv-candidates should return A-rank elites (sharpe>=0.75)"
   (let* ((mk (lambda (name sharpe pf wr dd)
                (swimmy.school:make-strategy :name name :rank :A
                                             :sharpe sharpe :profit-factor pf
                                             :win-rate wr :max-dd dd)))
-         (s-pass (funcall mk "S-PASS" 0.6 1.6 0.5 0.1))
-         (s-fpf (funcall mk "S-FPF" 0.6 1.2 0.5 0.1))
+         (s-pass (funcall mk "S-PASS" 0.8 1.8 0.55 0.09))
+         (s-fpf (funcall mk "S-FPF" 0.8 1.6 0.55 0.09))
          (b-elite (swimmy.school:make-strategy :name "B-ELITE" :rank :B
-                                               :sharpe 0.6 :profit-factor 2.0
+                                               :sharpe 0.8 :profit-factor 2.0
                                                :win-rate 0.6 :max-dd 0.1))
          (orig-fetch (symbol-function 'swimmy.school:fetch-candidate-strategies)))
     (unwind-protect
@@ -581,25 +634,29 @@
 
 (deftest test-build-cpcv-status-snippet-includes-metrics
   "build-cpcv-status-snippet should include queued/sent/received/failed"
-  (let* ((orig-metrics swimmy.school::*cpcv-metrics*)
-         (orig-start swimmy.globals:*cpcv-start-time*))
+  (let* ((orig-path swimmy.school::*cpcv-status-path*)
+         (orig-metrics swimmy.school::*cpcv-metrics*)
+         (orig-start swimmy.globals:*cpcv-start-time*)
+         (tmp (merge-pathnames (format nil "/tmp/cpcv-snippet-~a.txt" (get-universal-time)))))
     (unwind-protect
         (progn
-          (setf swimmy.school::*cpcv-metrics* (make-hash-table :test 'equal))
-          (setf (gethash :queued swimmy.school::*cpcv-metrics*) 5)
-          (setf (gethash :sent swimmy.school::*cpcv-metrics*) 4)
-          (setf (gethash :received swimmy.school::*cpcv-metrics*) 3)
-          (setf (gethash :send_failed swimmy.school::*cpcv-metrics*) 1)
-          (setf (gethash :result_failed swimmy.school::*cpcv-metrics*) 1)
-          (setf swimmy.globals:*cpcv-start-time* 1)
+          ;; build-cpcv-status-snippet uses the shared status file as source of truth.
+          (setf swimmy.school::*cpcv-status-path* tmp)
+          (with-open-file (out tmp :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (write-line "5 queued | 4 sent | 3 received | 2 failed (send 1 / result 1) | inflight 1" out)
+            (write-line "last_start_unix: 1" out)
+            (write-line "updated: 01/01 00:00 JST / 00:00 UTC reason: test" out))
           (let ((snippet (swimmy.school::build-cpcv-status-snippet)))
             (assert-true (search "queued" snippet) "snippet should include queued")
             (assert-true (search "sent" snippet) "snippet should include sent")
             (assert-true (search "received" snippet) "snippet should include received")
             (assert-true (search "failed" snippet) "snippet should include failed")
-            (assert-true (search "inflight" snippet) "snippet should include inflight")))
+            (assert-true (search "inflight" snippet) "snippet should include inflight")
+            (assert-false (search "last start: N/A" snippet) "should include last start when available")))
       (setf swimmy.school::*cpcv-metrics* orig-metrics)
-      (setf swimmy.globals:*cpcv-start-time* orig-start))))
+      (setf swimmy.school::*cpcv-status-path* orig-path)
+      (setf swimmy.globals:*cpcv-start-time* orig-start)
+      (when (probe-file tmp) (delete-file tmp)))))
 
 (deftest test-write-cpcv-status-file
   "write-cpcv-status-file should persist metrics"
@@ -627,6 +684,26 @@
       (setf swimmy.school::*cpcv-status-path* orig-path)
       (setf swimmy.school::*cpcv-metrics* orig-metrics)
       (when (probe-file tmp) (delete-file tmp)))))
+
+(deftest test-cpcv-metrics-summary-line-breakdown
+  "cpcv-metrics-summary-line should include runtime/criteria breakdown"
+  (let* ((orig-metrics swimmy.school::*cpcv-metrics*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*cpcv-metrics* (make-hash-table :test 'equal))
+          (setf (gethash :queued swimmy.school::*cpcv-metrics*) 7)
+          (setf (gethash :sent swimmy.school::*cpcv-metrics*) 6)
+          (setf (gethash :received swimmy.school::*cpcv-metrics*) 5)
+          (setf (gethash :send_failed swimmy.school::*cpcv-metrics*) 1)
+          (setf (gethash :result_runtime_failed swimmy.school::*cpcv-metrics*) 2)
+          (setf (gethash :result_criteria_failed swimmy.school::*cpcv-metrics*) 1)
+          (setf (gethash :result_failed swimmy.school::*cpcv-metrics*) 3)
+          (let ((line (swimmy.school::cpcv-metrics-summary-line)))
+            (assert-true (search "send 1 / result 3" line)
+                         "summary should include send/result totals")
+            (assert-true (search "runtime 2 / criteria 1" line)
+                         "summary should include runtime/criteria split")))
+      (setf swimmy.school::*cpcv-metrics* orig-metrics))))
 
 (deftest test-notify-cpcv-result-distinguishes-error
   "notify-cpcv-result should label error vs criteria failure"
@@ -2684,32 +2761,103 @@
       (setf (symbol-function 'swimmy.school::send-to-graveyard) orig-send))))
 
 (deftest test-check-rank-criteria-requires-cpcv-pass-rate
-  "S-RANK criteria should require CPCV pass-rate >= 0.5"
+  "S-RANK criteria should require CPCV pass-rate >= 0.7"
   (let ((strat (swimmy.school:make-strategy :name "UT-CPCV-PASS"
                                             :rank :A
-                                            :sharpe 0.7
+                                            :sharpe 0.75
                                             :profit-factor 1.8
                                             :win-rate 0.55
                                             :max-dd 0.10
-                                            :cpcv-median-sharpe 0.7
+                                            :cpcv-median-sharpe 0.8
                                             :cpcv-median-pf 1.6
                                             :cpcv-median-wr 0.5
                                             :cpcv-median-maxdd 0.12
-                                            :cpcv-pass-rate 0.4)))
+                                            :cpcv-pass-rate 0.69)))
     (assert-false (swimmy.school::check-rank-criteria strat :S)
-                  "Expected S criteria to fail when CPCV pass-rate < 0.5")))
+                  "Expected S criteria to fail when CPCV pass-rate < 0.7")))
 
 (deftest test-check-rank-criteria-cpcv-medians-pass
   "S-RANK criteria should accept CPCV medians when all thresholds are met."
   (let ((strat (swimmy.school:make-strategy :name "UT-S-OK"
                                             :rank :A
-                                            :sharpe 0.6
-                                            :cpcv-median-sharpe 0.6
-                                            :cpcv-pass-rate 0.6
-                                            :cpcv-median-pf 1.6
-                                            :cpcv-median-wr 0.5
-                                            :cpcv-median-maxdd 0.12)))
+                                            :sharpe 0.75
+                                            :profit-factor 1.8
+                                            :win-rate 0.55
+                                            :max-dd 0.09
+                                            :cpcv-median-sharpe 0.8
+                                            :cpcv-pass-rate 0.7
+                                            :cpcv-median-pf 1.8
+                                            :cpcv-median-wr 0.55
+                                            :cpcv-median-maxdd 0.10)))
     (assert-true (swimmy.school::check-rank-criteria strat :S))))
+
+(deftest test-check-rank-criteria-vnext-a-oos-threshold
+  "A-RANK OOS gate should require OOS Sharpe >= 0.35"
+  (let ((strat (swimmy.school:make-strategy :name "UT-A-OOS"
+                                            :rank :B
+                                            :sharpe 0.45
+                                            :profit-factor 1.3
+                                            :win-rate 0.43
+                                            :max-dd 0.15
+                                            :oos-sharpe 0.34)))
+    (assert-false (swimmy.school::check-rank-criteria strat :A)
+                  "Expected A criteria to fail when OOS Sharpe < 0.35")))
+
+(deftest test-validate-a-rank-requires-positive-net-expectancy
+  "A promotion should require positive cost-adjusted expectancy."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-A-NET-EXP"
+                                             :rank :B
+                                             :sharpe 0.60
+                                             :profit-factor 1.5
+                                             :win-rate 0.50
+                                             :max-dd 0.10
+                                             :sl 70
+                                             :tp 20))
+         (promoted nil)
+         (orig-oos (symbol-function 'swimmy.school::run-oos-validation))
+         (orig-promote (symbol-function 'swimmy.school::promote-rank)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::run-oos-validation)
+                (lambda (_strat)
+                  (declare (ignore _strat))
+                  (values t 0.40 "OOS mocked pass")))
+          (setf (symbol-function 'swimmy.school::promote-rank)
+                (lambda (&rest _args)
+                  (setf promoted t)
+                  :A))
+          (assert-false (swimmy.school::validate-for-a-rank-promotion strat)
+                        "Negative net expectancy should block A promotion")
+          (assert-false promoted "promote-rank should not be called"))
+      (setf (symbol-function 'swimmy.school::run-oos-validation) orig-oos)
+      (setf (symbol-function 'swimmy.school::promote-rank) orig-promote))))
+
+(deftest test-evaluate-a-rank-requires-common-stage2-gates
+  "S promotion should require common MC/DryRun gates."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-S-STAGE2"
+                                             :rank :A
+                                             :sharpe 0.80
+                                             :profit-factor 1.9
+                                             :win-rate 0.56
+                                             :max-dd 0.09
+                                             :cpcv-median-sharpe 0.9
+                                             :cpcv-median-pf 1.9
+                                             :cpcv-median-wr 0.56
+                                             :cpcv-median-maxdd 0.10
+                                             :cpcv-pass-rate 0.9))
+         (orig-promote (symbol-function 'swimmy.school::promote-rank))
+         (promoted nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::promote-rank)
+                (lambda (&rest _args)
+                  (setf promoted t)
+                  :S))
+          (let ((result (swimmy.school::evaluate-a-rank-strategy strat)))
+            (assert-false (eq result :S)
+                          "Without common stage2 evidence, strategy should not become S")
+            (assert-false promoted "promote-rank should not be called")))
+      (setf (symbol-function 'swimmy.school::promote-rank) orig-promote))))
 
 (deftest test-ensure-rank-blocks-s-without-cpcv
   "ensure-rank should block S promotion when CPCV criteria are missing"
@@ -3242,6 +3390,8 @@
                   test-cpcv-result-persists-trade-list
                   test-cpcv-result-preserves-trade-meta
                   test-cpcv-result-updates-db-when-strategy-missing
+                  test-cpcv-result-metrics-split-runtime-vs-criteria
+                  test-cpcv-metrics-summary-line-breakdown
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
@@ -3263,10 +3413,11 @@
                   test-heartbeat-now-trigger-file
                   test-heartbeat-uses-heartbeat-webhook
                   test-heartbeat-now-trigger-file
-                  test-heartbeat-summary-no-data-omits-age
-                  test-executor-heartbeat-sends-sexp
-                  test-executor-pending-orders-sends-sexp
-                  test-internal-cmd-json-disallowed
+	                  test-heartbeat-summary-no-data-omits-age
+	                  test-executor-heartbeat-sends-sexp
+	                  test-heartbeat-throttle-allows-10s
+	                  test-executor-pending-orders-sends-sexp
+	                  test-internal-cmd-json-disallowed
                   test-internal-process-msg-tick-sexp
                   test-internal-process-msg-history-sexp
                   test-process-account-info-sexp
@@ -3288,10 +3439,11 @@
                   test-weekly-summary-dedup
                   test-periodic-maintenance-flushes-stagnant-c-rank
                   test-evolution-report-throttle-uses-last-write
-                  test-evolution-report-staleness-alert-throttles
-                  test-scheduler-calls-timeout-flushes
-                  test-stagnant-crank-daily-guard
-                  test-promotion-triggers-noncorrelation-notification
+	                  test-evolution-report-staleness-alert-throttles
+	                  test-scheduler-calls-timeout-flushes
+	                  test-periodic-maintenance-sends-brain-heartbeat
+	                  test-stagnant-crank-daily-guard
+	                  test-promotion-triggers-noncorrelation-notification
                   test-composite-score-prefers-stable-pf-wr
                   test-composite-score-penalizes-high-dd
                   test-b-rank-cull-uses-composite-score
@@ -3299,6 +3451,9 @@
                   test-promotion-uses-composite-score
                   test-a-rank-evaluation-uses-composite-score
                   test-check-rank-criteria-requires-cpcv-pass-rate
+                  test-check-rank-criteria-vnext-a-oos-threshold
+                  test-validate-a-rank-requires-positive-net-expectancy
+                  test-evaluate-a-rank-requires-common-stage2-gates
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv
                   test-draft-counts-only-successful-promotions

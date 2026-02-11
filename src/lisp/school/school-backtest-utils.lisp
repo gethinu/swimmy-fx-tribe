@@ -115,7 +115,7 @@
     (unless (backtest-send-allowed-p)
       (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
               (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
-      (return-from send-zmq-msg nil))
+      (return-from send-zmq-msg :throttled))
     (when (and swimmy.core:*backtest-service-enabled*
                (or (not (boundp 'swimmy.globals:*backtest-requester*))
                    (null swimmy.globals:*backtest-requester*)))
@@ -128,16 +128,29 @@
     ((and (eq target :backtest)
           (boundp 'swimmy.globals:*backtest-requester*)
           swimmy.globals:*backtest-requester*)
-     (pzmq:send swimmy.globals:*backtest-requester* msg))
+     (handler-case
+         (progn
+           (pzmq:send swimmy.globals:*backtest-requester* msg)
+           t)
+       (error (e)
+         (format t "[ZMQ] ❌ Backtest send failed: ~a~%" e)
+         nil)))
     ((and (boundp 'swimmy.globals:*cmd-publisher*)
           swimmy.globals:*cmd-publisher*)
      ;; V27: Throttle to prevent Guardian EOF (Rust Buffer Overflow)
      (sleep 0.005)
      (when (eq target :backtest)
        (format t "[ZMQ] ⚠️ Backtest requester missing. Falling back to CMD publisher.~%"))
-     (pzmq:send swimmy.globals:*cmd-publisher* msg))
+     (handler-case
+         (progn
+           (pzmq:send swimmy.globals:*cmd-publisher* msg)
+           t)
+       (error (e)
+         (format t "[ZMQ] ❌ CMD send failed: ~a~%" e)
+         nil)))
     (t
-     (format t "[ZMQ] ❌ No publisher bound for target ~a. Msg dropped.~%" target))))
+     (format t "[ZMQ] ❌ No publisher bound for target ~a. Msg dropped.~%" target)
+     nil)))
 
 (defun load-backtest-cache ()
   "Load backtest results from disk."

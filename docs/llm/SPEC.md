@@ -21,9 +21,15 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 ## 4. 戦略仕様
 - **KB (Knowledge Base)**: 戦略はSQLite (`swimmy.db`) とフラットファイル (`data/library/`) で管理。
 - **ランク体系**: 
-  - **Incubator/B-RANK**: Sharpe ≥ 0.1
-  - **A-RANK**: Sharpe ≥ 0.3 + OOS検証合格
-  - **S-RANK**: **IS Sharpe ≥ 0.5** + CPCV検証合格（実弾許可、PF/WR/MaxDDはCPCV中央値で判定）
+  - **Stage 1（固定閾値）**
+  - **B-RANK**: Sharpe >= 0.15 / PF >= 1.05 / WR >= 35% / MaxDD < 25%
+  - **A-RANK**: Sharpe >= 0.45 / PF >= 1.30 / WR >= 43% / MaxDD < 16%
+  - **S-RANK**: Sharpe >= 0.75 / PF >= 1.70 / WR >= 50% / MaxDD < 10%
+  - **Stage 2（検証ゲート）**
+  - **A昇格**: OOS Sharpe >= 0.35 かつ コスト控除後 Expectancy > 0
+  - **S昇格**: CPCV pass_rate >= 70% かつ CPCV median MaxDD < 12%
+  - **共通（A/S昇格時）**: Monte Carlo `prob_ruin <= 2%` を満たし、DryRun 実測スリッページが運用上限以下であること
+  - **Incubator**: Stage 1 の B-RANK 条件未満
   - **Legend**: 不老不死（外部導入戦略）
   - **Graveyard**: 廃棄戦略（失敗パターン分析用）
   - **Retired**: Max Age 退役アーカイブ（低ウェイト学習、`data/library/RETIRED/`・`data/memory/retired.sexp`）
@@ -134,10 +140,10 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 
 | Rank | Label | Criteria (AND条件) | Validation Gate |
 | :--- | :--- | :--- | :--- |
-| **S-Rank** | Verified Elite | **IS Sharpe ≥ 0.5** | **CPCV** (Combinatorial Purged Cross-Validation)<br>- Median Sharpe ≥ 0.5<br>- Median PF ≥ 1.5<br>- Median WR ≥ 45%<br>- Median MaxDD < 15%<br>- Pass Rate ≥ 50% |
-| **A-Rank** | Pro | Sharpe ≥ 0.3<br>PF ≥ 1.2<br>WR ≥ 40%<br>MaxDD < 20% | **OOS** (Out-of-Sample)<br>- OOS Sharpe ≥ 0.3 |
-| **B-Rank** | Selection | Sharpe ≥ 0.1<br>PF ≥ 1.0<br>WR ≥ 30%<br>MaxDD < 30% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
-| **Incubator** | - | Sharpe < 0.1 | (None) |
+| **S-Rank** | Verified Elite | Sharpe >= 0.75<br>PF >= 1.70<br>WR >= 50%<br>MaxDD < 10% | **CPCV**<br>- pass_rate >= 70%<br>- median MaxDD < 12%<br>- 共通ゲート（MC/DryRun）合格 |
+| **A-Rank** | Pro | Sharpe >= 0.45<br>PF >= 1.30<br>WR >= 43%<br>MaxDD < 16% | **OOS**<br>- OOS Sharpe >= 0.35<br>- コスト控除後 Expectancy > 0<br>- 共通ゲート（MC/DryRun）合格 |
+| **B-Rank** | Selection | Sharpe >= 0.15<br>PF >= 1.05<br>WR >= 35%<br>MaxDD < 25% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
+| **Incubator** | - | B-Rank条件未満 | (None) |
 | **Retired** | Archive | Max Age 退役 / 明示退役 | (None) |
 
 ### 11.3. Persistence Logic

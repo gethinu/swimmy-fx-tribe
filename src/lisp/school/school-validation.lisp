@@ -12,7 +12,7 @@
 (defparameter *oos-test-ratio* 0.3
   "Ratio of data to use for out-of-sample testing (30%)")
 
-(defparameter *oos-min-sharpe* 0.3
+(defparameter *oos-min-sharpe* 0.35
   "Minimum Sharpe ratio required to pass OOS validation for A-RANK")
 
 (defparameter *oos-pending* nil
@@ -30,9 +30,121 @@
 (defparameter *oos-status-path* (swimmy.core::swimmy-path "data/reports/oos_status.txt")
   "Path for OOS status summary report.")
 
+;; vNext Stage2 Gates
+(defparameter *mc-prob-ruin-threshold* 0.02
+  "Maximum allowed Monte Carlo probability of ruin (MaxDD > 20%).")
+
+(defparameter *mc-min-trades* 30
+  "Minimum number of pnl-history trades required for MC gate.")
+
+(defparameter *mc-validation-iterations* 250
+  "Monte Carlo iterations used for rank-gate validation.")
+
+(defparameter *dryrun-min-slippage-samples* 20
+  "Minimum DryRun slippage samples required for Stage2 slippage gate.")
+
+(defparameter *dryrun-slippage-sample-cap* 200
+  "Per-strategy cap for retained DryRun slippage samples.")
+
+(defparameter *dryrun-slippage-by-strategy* (make-hash-table :test 'equal)
+  "Strategy-name keyed list of absolute slippage samples (pips).")
+
+(defun %normalize-strategy-name (strategy-name)
+  (cond
+    ((stringp strategy-name) strategy-name)
+    ((symbolp strategy-name) (symbol-name strategy-name))
+    (t nil)))
+
+(defun record-dryrun-slippage (strategy-name slippage-pips)
+  "Record one DryRun slippage sample for rank-stage gating."
+  (let ((name (%normalize-strategy-name strategy-name)))
+    (when (and name (numberp slippage-pips))
+      (let* ((sample (abs (float slippage-pips 0.0)))
+             (history (gethash name *dryrun-slippage-by-strategy* '()))
+             (next (cons sample history)))
+        (when (> (length next) *dryrun-slippage-sample-cap*)
+          (setf next (subseq next 0 *dryrun-slippage-sample-cap*)))
+        (setf (gethash name *dryrun-slippage-by-strategy*) next)
+        sample))))
+
+(defun %p95-from-list (samples)
+  "Return empirical p95 from a non-empty numeric list."
+  (when samples
+    (let* ((sorted (sort (copy-list samples) #'<))
+           (n (length sorted))
+           (idx (floor (* 0.95 (max 0 (1- n))))))
+      (nth idx sorted))))
+
+(defun dryrun-slippage-p95 (strategy-name)
+  "Return p95(abs(slippage_pips)) for strategy if enough samples exist."
+  (let* ((name (%normalize-strategy-name strategy-name))
+         (samples (and name (gethash name *dryrun-slippage-by-strategy* '()))))
+    (when (and samples (>= (length samples) *dryrun-min-slippage-samples*))
+      (%p95-from-list samples))))
+
+(defun a-net-expectancy-pips (strategy)
+  "Cost-adjusted expectancy for A gate: avg-pips - max-spread-pips."
+  (when (and strategy (fboundp 'calculate-avg-pips))
+    (let ((avg-pips (calculate-avg-pips strategy)))
+      (when (numberp avg-pips)
+        (- (float avg-pips 0.0) *max-spread-pips*)))))
+
+(defun a-expectancy-gate-passed-p (strategy)
+  "Return (values passed-p net-expectancy-pips)."
+  (let ((net (a-net-expectancy-pips strategy)))
+    (if (numberp net)
+        (values (> net 0.0) net)
+        (values nil nil))))
+
+(defun strategy-mc-prob-ruin (strategy &key (iterations *mc-validation-iterations*))
+  "Compute MC prob_ruin from strategy pnl-history, or NIL if insufficient evidence."
+  (let* ((history (remove-if-not #'numberp (copy-list (or (strategy-pnl-history strategy) '())))))
+    (when (>= (length history) *mc-min-trades*)
+      (multiple-value-bind (drawdowns final-pnls)
+          (run-monte-carlo-simulation history :iterations iterations)
+        (when (and drawdowns final-pnls)
+          (mc-result-prob-ruin
+           (analyze-monte-carlo-results
+            (or (strategy-name strategy) "UNKNOWN")
+            drawdowns
+            final-pnls)))))))
+
+(defun common-stage2-gates-passed-p (strategy &key (mc-iterations *mc-validation-iterations*))
+  "A/S shared Stage2 gates:
+   - MC prob_ruin <= 2%
+   - DryRun p95(abs(slippage_pips)) <= *max-spread-pips*"
+  (let ((prob-ruin (strategy-mc-prob-ruin strategy :iterations mc-iterations)))
+    (cond
+      ((null prob-ruin)
+       (values nil
+               (format nil "MC gate failed: insufficient pnl-history (need >=~d trades)" *mc-min-trades*)))
+      ((> prob-ruin *mc-prob-ruin-threshold*)
+       (values nil
+               (format nil "MC gate failed: prob_ruin=~,3f > ~,3f"
+                       prob-ruin
+                       *mc-prob-ruin-threshold*)))
+      (t
+       (let ((p95 (dryrun-slippage-p95 (strategy-name strategy))))
+         (cond
+           ((null p95)
+            (values nil
+                    (format nil "DryRun gate failed: insufficient slippage samples (need >=~d)"
+                            *dryrun-min-slippage-samples*)))
+           ((> p95 *max-spread-pips*)
+            (values nil
+                    (format nil "DryRun gate failed: p95=~,2f pips > spread cap ~,2f"
+                            p95
+                            *max-spread-pips*)))
+           (t
+            (values t
+                    (format nil "Common Stage2 passed: prob_ruin=~,3f p95=~,2f"
+                            prob-ruin
+                            p95)))))))))
+
 ;; CPCV Metrics
 (defparameter *cpcv-metrics* (make-hash-table :test 'equal)
-  "Counters for CPCV pipeline. Keys: :queued :sent :received :send_failed :result_failed.")
+  "Counters for CPCV pipeline.
+Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed :result_criteria_failed.")
 (defparameter *cpcv-status-path* (swimmy.core::swimmy-path "data/reports/cpcv_status.txt")
   "Path for CPCV status summary report.")
 
@@ -49,7 +161,9 @@
         (gethash :sent *cpcv-metrics*) 0
         (gethash :received *cpcv-metrics*) 0
         (gethash :send_failed *cpcv-metrics*) 0
-        (gethash :result_failed *cpcv-metrics*) 0))
+        (gethash :result_failed *cpcv-metrics*) 0
+        (gethash :result_runtime_failed *cpcv-metrics*) 0
+        (gethash :result_criteria_failed *cpcv-metrics*) 0))
 
 (defun cpcv-metrics-summary-line ()
   "Build a one-line CPCV status summary."
@@ -57,21 +171,49 @@
          (sent (gethash :sent *cpcv-metrics* 0))
          (received (gethash :received *cpcv-metrics* 0))
          (send-failed (gethash :send_failed *cpcv-metrics* 0))
-         (result-failed (gethash :result_failed *cpcv-metrics* 0))
+         (legacy-result-failed (gethash :result_failed *cpcv-metrics* 0))
+         (runtime-failed (gethash :result_runtime_failed *cpcv-metrics* 0))
+         (criteria-failed (gethash :result_criteria_failed *cpcv-metrics* 0))
+         (split-total (+ runtime-failed criteria-failed))
+         (result-failed (if (> split-total 0) split-total legacy-result-failed))
+         (runtime-failed (if (> split-total 0) runtime-failed 0))
+         (criteria-failed (if (> split-total 0) criteria-failed legacy-result-failed))
          (failed-total (+ send-failed result-failed))
          (inflight (max 0 (- sent received))))
-    (format nil "~d queued | ~d sent | ~d received | ~d failed (send ~d / result ~d) | inflight ~d"
-            queued sent received failed-total send-failed result-failed inflight)))
+    (format nil "~d queued | ~d sent | ~d received | ~d failed (send ~d / result ~d: runtime ~d / criteria ~d) | inflight ~d"
+            queued sent received failed-total send-failed result-failed runtime-failed criteria-failed inflight)))
 
 (defun write-cpcv-status-file (&key (reason "event"))
   "Persist CPCV status summary to file."
   (handler-case
       (let* ((line (cpcv-metrics-summary-line))
              (ts (get-universal-time))
+             ;; Dispatch and result processing can run in different daemons.
+             ;; Preserve the last known CPCV batch start time across writers.
+             (start (let ((cur swimmy.globals:*cpcv-start-time*))
+                      (if (and (numberp cur) (> cur 0))
+                          cur
+                          (handler-case
+                              (when (probe-file *cpcv-status-path*)
+                                (with-open-file (in *cpcv-status-path* :direction :input)
+                                  (loop for l = (read-line in nil nil)
+                                        while l
+                                        for prefix = "last_start_unix:"
+                                        when (and (>= (length l) (length prefix))
+                                                  (string-equal prefix (subseq l 0 (length prefix))))
+                                          do (let* ((tail (string-trim '(#\Space #\Tab)
+                                                                       (subseq l (length prefix))))
+                                                    (n (ignore-errors (parse-integer tail))))
+                                               (when (and n (> n 0)) (return n))))))
+                            (error () 0)))))
+             (start-stamp (if (and (numberp start) (> start 0) (fboundp 'format-timestamp))
+                              (format-timestamp start)
+                              "N/A"))
              (stamp (if (fboundp 'format-timestamp)
                         (format-timestamp ts)
                         (format nil "~a" ts)))
-             (content (format nil "~a~%updated: ~a reason: ~a" line stamp reason)))
+             (content (format nil "~a~%last_start_unix: ~a~%last_start: ~a~%updated: ~a reason: ~a"
+                              line (or start 0) start-stamp stamp reason)))
         (ensure-directories-exist *cpcv-status-path*)
         (with-open-file (out *cpcv-status-path* :direction :output :if-exists :supersede :if-does-not-exist :create)
           (write-string content out))
@@ -83,13 +225,18 @@
 (defun cpcv-elite-p (strategy)
   "Return T if strategy is elite enough for CPCV dispatch (Sharpe>=S threshold)."
   (let* ((criteria (get-rank-criteria :S))
-         (min-sharpe (getf criteria :sharpe-min 0.5))
+         (min-sharpe (getf criteria :sharpe-min 0.75))
          (s-sharpe (or (strategy-sharpe strategy) 0.0)))
     (>= s-sharpe min-sharpe)))
 
 (defun cpcv-gate-failure-counts (strategies)
   "Count CPCV elite-gate failures and S-base criteria distribution for A-rank strategies."
-  (let ((total 0) (pass 0) (sharpe 0) (pf 0) (wr 0) (maxdd 0))
+  (let* ((criteria (get-rank-criteria :S))
+         (sh-min (getf criteria :sharpe-min 0.75))
+         (pf-min (getf criteria :pf-min 1.70))
+         (wr-min (getf criteria :wr-min 0.50))
+         (dd-max (getf criteria :maxdd-max 0.10))
+         (total 0) (pass 0) (sharpe 0) (pf 0) (wr 0) (maxdd 0))
     (dolist (s (or strategies '()))
       (incf total)
       (let* ((s-pf (or (strategy-profit-factor s) 0.0))
@@ -97,37 +244,42 @@
              (s-maxdd (or (strategy-max-dd s) 1.0))
              (elite (cpcv-elite-p s)))
         (when (not elite) (incf sharpe))
-        (when (< s-pf 1.5) (incf pf))
-        (when (< s-wr 0.45) (incf wr))
-        (when (>= s-maxdd 0.15) (incf maxdd))
+        (when (< s-pf pf-min) (incf pf))
+        (when (< s-wr wr-min) (incf wr))
+        (when (>= s-maxdd dd-max) (incf maxdd))
         (when elite (incf pass))))
-    (list :total total :pass pass :sharpe sharpe :pf pf :wr wr :maxdd maxdd)))
+    (list :total total :pass pass :sharpe sharpe :pf pf :wr wr :maxdd maxdd
+          :sharpe-min sh-min :pf-min pf-min :wr-min wr-min :maxdd-max dd-max)))
 
 (defun cpcv-gate-failure-summary (counts)
   "Format gate failure counts for logs."
-  (format nil "[CPCV] ℹ️ No A-RANK elites ready for CPCV (Sharpe gate: sharpe<0.5=~d | S-base: pf<1.5=~d wr<0.45=~d maxdd>=0.15=~d elite=~d total=~d)"
+  (format nil "[CPCV] ℹ️ No A-RANK elites ready for CPCV (Sharpe gate: sharpe<~,2f=~d | S-base: pf<~,2f=~d wr<~,2f=~d maxdd>=~,2f=~d elite=~d total=~d)"
+          (getf counts :sharpe-min 0.75)
           (getf counts :sharpe 0)
+          (getf counts :pf-min 1.70)
           (getf counts :pf 0)
+          (getf counts :wr-min 0.50)
           (getf counts :wr 0)
+          (getf counts :maxdd-max 0.10)
           (getf counts :maxdd 0)
           (getf counts :pass 0)
           (getf counts :total 0)))
 
 (defun cpcv-median-failure-counts (strategies)
-  "Count CPCV median failures for S criteria (PF/WR/MaxDD)."
+  "Count CPCV stage2 failures for S criteria (pass-rate/MaxDD)."
   (let* ((criteria (get-rank-criteria :S))
-         (total 0) (pf 0) (wr 0) (maxdd 0))
+         (total 0) (pass-rate 0) (maxdd 0))
     (dolist (s (or strategies '()))
       (when (and (strategy-cpcv-median-sharpe s)
                  (> (strategy-cpcv-median-sharpe s) 0.0))
         (incf total)
-        (when (< (or (strategy-cpcv-median-pf s) 0.0) (getf criteria :cpcv-pf-min 1.5))
-          (incf pf))
-        (when (< (or (strategy-cpcv-median-wr s) 0.0) (getf criteria :cpcv-wr-min 0.45))
-          (incf wr))
-        (when (>= (or (strategy-cpcv-median-maxdd s) 1.0) (getf criteria :cpcv-maxdd-max 0.15))
+        (when (< (or (strategy-cpcv-pass-rate s) 0.0) (getf criteria :cpcv-pass-min 0.70))
+          (incf pass-rate))
+        (when (>= (or (strategy-cpcv-median-maxdd s) 1.0) (getf criteria :cpcv-maxdd-max 0.12))
           (incf maxdd))))
-    (list :total total :pf pf :wr wr :maxdd maxdd)))
+    (list :total total :pass-rate pass-rate :maxdd maxdd
+          :pass-min (getf criteria :cpcv-pass-min 0.70)
+          :maxdd-max (getf criteria :cpcv-maxdd-max 0.12))))
 
 (defun %oos-metric-inc (key &optional (delta 1))
   (incf (gethash key *oos-metrics* 0) delta))
@@ -246,20 +398,44 @@
          (handler-case
              (progn
                (enqueue-oos-request name req-id :status status :requested-at now)
-               (request-backtest strat :suffix "-OOS" :request-id req-id)
-               (%oos-metric-inc (if last-id :retry :sent))
-               (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a)~%" name status req-id)
-               (let ((data (jsown:new-js
-                             ("request_id" req-id)
-                             ("oos_kind" "a-rank")
-                             ("status" status))))
-                 (swimmy.core::emit-telemetry-event "oos.requested"
-                   :service "school"
-                   :severity "info"
-                   :correlation-id req-id
-                   :data data))
-               (ignore-errors (write-oos-status-file :reason status))
-               req-id)
+               (let ((dispatch-state (request-backtest strat :suffix "-OOS" :request-id req-id)))
+                 (cond
+                   ;; Backward-compatible success contract:
+                   ;; accept any non-NIL state except explicit throttle rejection.
+                   ((and dispatch-state (not (eq dispatch-state :throttled)))
+                    (%oos-metric-inc (if last-id :retry :sent))
+                    (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a, state=~a)~%"
+                            name status req-id dispatch-state)
+                    (let ((data (jsown:new-js
+                                  ("request_id" req-id)
+                                  ("oos_kind" "a-rank")
+                                  ("status" status)
+                                  ("dispatch_state" (format nil "~a" dispatch-state)))))
+                      (swimmy.core::emit-telemetry-event "oos.requested"
+                        :service "school"
+                        :severity "info"
+                        :correlation-id req-id
+                        :data data))
+                    (ignore-errors (write-oos-status-file :reason status))
+                    req-id)
+                   (t
+                    (%oos-failure-inc :send-failure)
+                    (record-oos-error name req-id (format nil "dispatch rejected: ~a" dispatch-state))
+                    (format t "[OOS] ❌ Dispatch rejected for ~a (req ~a, state=~a)~%"
+                            name req-id dispatch-state)
+                    (let ((data (jsown:new-js
+                                  ("request_id" req-id)
+                                  ("oos_kind" "a-rank")
+                                  ("status" "error")
+                                  ("dispatch_state" (format nil "~a" dispatch-state))
+                                  ("error" "dispatch rejected"))))
+                      (swimmy.core::emit-telemetry-event "oos.dispatch_failed"
+                        :service "school"
+                        :severity "error"
+                        :correlation-id req-id
+                        :data data))
+                    (ignore-errors (write-oos-status-file :reason "error"))
+                    nil))))
            (error (e)
              (%oos-failure-inc :send-failure)
              (record-oos-error name req-id (format nil "~a" e))
@@ -320,10 +496,10 @@
             :severity "info"
             :correlation-id req-id
             :data data))
-        ;; Attempt promotion if core metrics are already strong enough
+        ;; Attempt promotion using full vNext gates when core metrics are strong enough.
         (when (meets-a-rank-criteria strat)
           (if (>= sharpe *oos-min-sharpe*)
-              (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe))
+              (validate-for-a-rank-promotion strat)
               (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))
         (ignore-errors (write-oos-status-file :reason "result"))))))
 
@@ -387,25 +563,39 @@
             (* 100 (or (strategy-win-rate strat) 0.0))
             (* 100 (or (strategy-max-dd strat) 1.0)))
     (return-from validate-for-a-rank-promotion nil))
+
+  ;; Stage2 A gate: positive cost-adjusted expectancy
+  (multiple-value-bind (exp-pass net-exp) (a-expectancy-gate-passed-p strat)
+    (unless exp-pass
+      (format t "[A-RANK] ❌ ~a: Expectancy gate failed (net_expectancy_pips=~a, required > 0.00)~%"
+              (strategy-name strat)
+              (if (numberp net-exp) (format nil "~,2f" net-exp) "N/A"))
+      (return-from validate-for-a-rank-promotion nil)))
   
   ;; Run OOS validation (async)
   (multiple-value-bind (passed sharpe msg) (run-oos-validation strat)
     (format t "[A-RANK] ~a ~a: ~a~%" 
             (if passed "✅" "⏳") (strategy-name strat) msg)
-    (when passed
-      (promote-rank strat :A (format nil "OOS Validated: Sharpe=~,2f" sharpe)))
-    passed))
+    (unless passed
+      (return-from validate-for-a-rank-promotion nil))
+    (multiple-value-bind (common-pass common-msg) (common-stage2-gates-passed-p strat)
+      (unless common-pass
+        (format t "[A-RANK] ❌ ~a: ~a~%" (strategy-name strat) common-msg)
+        (return-from validate-for-a-rank-promotion nil)))
+    (promote-rank strat :A (format nil "OOS+Stage2 validated: Sharpe=~,2f" sharpe))
+    t))
 
 (defun meets-a-rank-criteria (strat)
   "Check if strategy meets basic A-RANK criteria (without OOS)."
-  (let ((sharpe (or (strategy-sharpe strat) 0.0))
+  (let* ((criteria (get-rank-criteria :A))
+        (sharpe (or (strategy-sharpe strat) 0.0))
         (pf (or (strategy-profit-factor strat) 0.0))
         (wr (or (strategy-win-rate strat) 0.0))
         (maxdd (or (strategy-max-dd strat) 1.0)))
-    (and (>= sharpe 0.3)
-         (>= pf 1.2)
-         (>= wr 0.4)
-         (< maxdd 0.2))))
+    (and (>= sharpe (getf criteria :sharpe-min 0.45))
+         (>= pf (getf criteria :pf-min 1.30))
+         (>= wr (getf criteria :wr-min 0.43))
+         (< maxdd (getf criteria :maxdd-max 0.16)))))
 
 ;;; ============================================================================
 ;;; P12: CPCV LISP-RUST INTEGRATION
@@ -431,18 +621,19 @@
 
 (defun validate-for-s-rank-promotion (strat)
   "Validate strategy is ready for S-RANK promotion using true CPCV.
-   S-RANK criteria: IS Sharpe >= 0.5
-   Plus: CPCV validation must pass (median Sharpe >= 0.5, 50%+ paths passing),
-         and CPCV median PF/WR/MaxDD must satisfy S thresholds.
+   S-RANK criteria: IS Sharpe >= S threshold.
+   Plus: CPCV stage2 gate and common MC/DryRun gates must pass.
    Returns T if strategy passes all S-RANK criteria including CPCV."
   (format t "[S-RANK] 🏆 Validating ~a for S-RANK promotion...~%"
           (strategy-name strat))
   
   ;; Check IS Sharpe gate first
-  (let ((sharpe (or (strategy-sharpe strat) 0.0)))
-    (unless (>= sharpe 0.5)
-      (format t "[S-RANK] ❌ ~a: Does not meet IS Sharpe gate (S=~,2f)~%"
-              (strategy-name strat) sharpe)
+  (let* ((criteria (get-rank-criteria :S))
+         (min-sharpe (getf criteria :sharpe-min 0.75))
+         (sharpe (or (strategy-sharpe strat) 0.0)))
+    (unless (>= sharpe min-sharpe)
+      (format t "[S-RANK] ❌ ~a: Does not meet IS Sharpe gate (S=~,2f < ~,2f)~%"
+              (strategy-name strat) sharpe min-sharpe)
       (return-from validate-for-s-rank-promotion nil)))
   
   ;; Run CPCV validation via Guardian
@@ -469,12 +660,16 @@
                  (getf result :passed-count)
                  (getf result :path-count))
          (if (check-rank-criteria strat :S)
-             t
+             (multiple-value-bind (common-pass common-msg) (common-stage2-gates-passed-p strat)
+               (if common-pass
+                   t
+                   (progn
+                     (format t "[S-RANK] ❌ ~a: ~a~%" (strategy-name strat) common-msg)
+                     nil)))
              (progn
-               (format t "[S-RANK] ❌ ~a: CPCV medians failed S criteria (PF=~,2f WR=~,2f DD=~,2f)~%"
+               (format t "[S-RANK] ❌ ~a: CPCV stage2 failed (pass_rate=~,2f DD=~,2f)~%"
                        (strategy-name strat)
-                       (or median-pf 0.0)
-                       (or median-wr 0.0)
+                       (or pass-rate 0.0)
                        (or median-maxdd 1.0))
                nil))))
       (t

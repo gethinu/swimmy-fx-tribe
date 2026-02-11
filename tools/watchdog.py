@@ -22,9 +22,10 @@ import json
 import time
 import os
 import sys
+import signal
 import subprocess
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 # =============================================================================
@@ -211,6 +212,93 @@ brain_tracker = RevivalTracker("swimmy-brain")
 # =============================================================================
 
 
+def _pid_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # If we can't signal it, it still exists.
+        return True
+    except Exception:
+        return False
+
+
+def _systemd_main_pid(service_name: str) -> Optional[int]:
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", "-p", "MainPID", "--value", service_name],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print(
+                f"[WATCHDOG] systemctl show MainPID FAILED for {service_name}: {result.stderr}"
+            )
+            return None
+
+        raw = (result.stdout or "").strip()
+        if not raw:
+            return None
+
+        pid = int(raw)
+        if pid <= 0:
+            return None
+        return pid
+    except Exception as e:
+        print(f"[WATCHDOG] Failed to read MainPID for {service_name}: {e}")
+        return None
+
+
+def _kill_service_main_pid(service_name: str) -> bool:
+    """
+    Best-effort non-privileged restart for system services running as our user.
+
+    We cannot `systemctl restart` a system unit without privileges, but we can
+    signal the service's MainPID (owned by User=swimmy) and rely on `Restart=`
+    to bring it back.
+    """
+    pid = _systemd_main_pid(service_name)
+    if not pid:
+        print(f"[WATCHDOG] No MainPID for {service_name}; cannot kill for restart.")
+        return False
+
+    print(
+        f"[WATCHDOG] Fallback restart: SIGTERM {service_name} MainPID={pid} (systemd should relaunch)"
+    )
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        # Already exited; systemd should be restarting it or it's already down.
+        return True
+    except PermissionError as e:
+        print(f"[WATCHDOG] Permission denied SIGTERM {service_name} pid={pid}: {e}")
+        return False
+    except Exception as e:
+        print(f"[WATCHDOG] Failed SIGTERM {service_name} pid={pid}: {e}")
+        return False
+
+    # Give it a brief chance to exit cleanly, then escalate.
+    for _ in range(50):  # ~5s at 0.1s
+        if not _pid_is_alive(pid):
+            return True
+        time.sleep(0.1)
+
+    print(f"[WATCHDOG] {service_name} pid={pid} still alive; escalating to SIGKILL")
+    try:
+        os.kill(pid, signal.SIGKILL)
+        return True
+    except ProcessLookupError:
+        return True
+    except PermissionError as e:
+        print(f"[WATCHDOG] Permission denied SIGKILL {service_name} pid={pid}: {e}")
+        return False
+    except Exception as e:
+        print(f"[WATCHDOG] Failed SIGKILL {service_name} pid={pid}: {e}")
+        return False
+
+
 def send_discord_alert(
     title: str, description: str, color: int = 16711680, mention: bool = True
 ):
@@ -230,7 +318,7 @@ def send_discord_alert(
                     "title": title,
                     "description": description,
                     "color": color,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             ]
         }
@@ -298,6 +386,12 @@ def restart_service(tracker: RevivalTracker) -> bool:
         return True
     else:
         print(f"[WATCHDOG] ❌ {tracker.service} restart FAILED: {result.stderr}")
+        # Fallback: for system units we may lack privileges; kill MainPID and let systemd Restart= relaunch.
+        if _kill_service_main_pid(tracker.service):
+            print(
+                f"[WATCHDOG] ✅ {tracker.service} fallback restart SUCCESS (signaled MainPID)"
+            )
+            return True
         return False
 
 

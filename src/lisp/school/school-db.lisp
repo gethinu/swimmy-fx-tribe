@@ -195,7 +195,7 @@
          (existing-row (ignore-errors (first (execute-to-list
                                               "SELECT sharpe, profit_factor, win_rate, trades, max_dd,
                                                       cpcv_median, cpcv_median_pf, cpcv_median_wr,
-                                                      cpcv_median_maxdd, cpcv_pass_rate
+                                                      cpcv_median_maxdd, cpcv_pass_rate, rank
                                                  FROM strategies WHERE name=?"
                                               name))))
          (db-sharpe (if existing-row (or (first existing-row) 0.0) 0.0))
@@ -208,6 +208,7 @@
          (db-cpcv-wr (if existing-row (or (eighth existing-row) 0.0) 0.0))
          (db-cpcv-maxdd (if existing-row (or (ninth existing-row) 0.0) 0.0))
          (db-cpcv-pass (if existing-row (or (tenth existing-row) 0.0) 0.0))
+         (db-rank-raw (if existing-row (nth 10 existing-row) nil))
          (cur-sharpe (or (strategy-sharpe strat) 0.0))
          (cur-pf (or (strategy-profit-factor strat) 0.0))
          (cur-wr (or (strategy-win-rate strat) 0.0))
@@ -218,7 +219,31 @@
          (cur-cpcv-wr (or (strategy-cpcv-median-wr strat) 0.0))
          (cur-cpcv-maxdd (or (strategy-cpcv-median-maxdd strat) 0.0))
          (cur-cpcv-pass (or (strategy-cpcv-pass-rate strat) 0.0))
+         (incoming-rank (strategy-rank strat))
          (updated-at (get-universal-time)))
+    (labels ((normalize-rank (rank)
+               (cond
+                 ((null rank) "NIL")
+                 ((stringp rank)
+                  (let ((s (string-upcase (string-trim '(#\Space #\Tab #\Newline) rank))))
+                    (if (and (> (length s) 0) (char= (char s 0) #\:))
+                        (subseq s 1)
+                        s)))
+                 ((symbolp rank) (normalize-rank (symbol-name rank)))
+                 (t (normalize-rank (format nil "~a" rank)))))
+             (archive-rank-p (rank)
+               (member (normalize-rank rank) '("GRAVEYARD" "RETIRED") :test #'string=))
+             (rank->db-string (rank)
+               (let ((norm (normalize-rank rank)))
+                 (if (string= norm "NIL")
+                     "NIL"
+                     (format nil ":~a" norm)))))
+      ;; Guard against accidental resurrection: keep archived rank unless an archived rank is explicitly provided.
+      (when (and existing-row
+                 (archive-rank-p db-rank-raw)
+                 (not (archive-rank-p incoming-rank)))
+        (setf incoming-rank (swimmy.core:safe-read-sexp (rank->db-string db-rank-raw) :package :swimmy.school))
+        (setf (strategy-rank strat) incoming-rank)))
     ;; Preserve non-zero DB metrics if in-memory values are zero.
     (when (and existing-row (zerop cur-sharpe) (not (zerop db-sharpe)))
       (setf cur-sharpe db-sharpe))
@@ -270,7 +295,7 @@
          (format nil "~a" (strategy-category strat))
          (strategy-timeframe strat)
          (strategy-generation strat)
-         (format nil "~s" (strategy-rank strat)) ; Store as ":RANK"
+         (format nil "~s" incoming-rank) ; Store as ":RANK"
          (or (strategy-symbol strat) "USDJPY")
          (format nil "~a" (strategy-direction strat))
          (strategy-hash strat)

@@ -119,6 +119,9 @@
           
     ;; PROFILE SECTION 3
     (with-profiling "maintenance-section-3"
+      ;; Brain -> Guardian heartbeat (PUB 5556). Internally throttled; safe to call every loop.
+      (when (fboundp 'swimmy.executor:send-heartbeat)
+        (ignore-errors (swimmy.executor:send-heartbeat)))
       ;; SECTION 3: Self-Throttled Operations (Discord Heartbeat)
       (when (fboundp 'swimmy.main::maybe-trigger-heartbeat-now)
         (swimmy.main::maybe-trigger-heartbeat-now))

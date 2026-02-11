@@ -246,11 +246,15 @@
                        (entry-ask (getf entry-context :entry-ask))
                        (entry-spread-pips (getf entry-context :entry-spread-pips))
                        (entry-cost-pips (getf entry-context :entry-cost-pips))
-                       (entry-direction (or (getf entry-context :direction) direction)))
+                       (entry-direction (or (getf entry-context :direction) direction))
+                       (strategy-name (getf entry-context :strategy)))
                   (when entry-price
                     (let ((slip (swimmy.school:slippage-pips-from-fill
                                  symbol entry-direction entry-bid entry-ask entry-price)))
                       (when slip
+                        (when (and strategy-name
+                                   (fboundp 'swimmy.school::record-dryrun-slippage))
+                          (swimmy.school::record-dryrun-slippage strategy-name slip))
                         (swimmy.core::emit-telemetry-event "execution.slippage"
                           :service "executor"
                           :severity "info"

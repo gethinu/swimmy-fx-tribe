@@ -234,6 +234,21 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 ```
 
 > [!IMPORTANT]
+> **Watchdog自動復旧の注記 (2026-02-10)**  
+> `swimmy-watchdog` は systemd(system) のサービスですが `User=swimmy` で動くため、権限がない環境では `systemctl restart swimmy-...` が `Interactive authentication required` で失敗します。  
+> この場合でも systemd の `Restart=` を活かして復旧できるので、下の「PID kill で復旧」を使ってください（watchdogも同様）。
+>
+> ```bash
+> # PID kill で復旧（sudo不要, systemdのRestart=で自動再起動させる）
+> pid=$(systemctl show -p MainPID --value swimmy-brain);    [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> pid=$(systemctl show -p MainPID --value swimmy-guardian); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> pid=$(systemctl show -p MainPID --value swimmy-watchdog); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> 
+> # 反映/復旧確認
+> systemctl status swimmy-brain swimmy-guardian swimmy-watchdog --no-pager
+> ```
+
+> [!IMPORTANT]
 > **運用注記（systemd状態と実稼働の不一致）**  
 > この環境では **systemd --user が inactive でもプロセスが稼働している**ケースがあります。  
 > そのまま再起動すると二重起動でポート競合が起きるため、**systemd状態と実稼働を必ず突き合わせてから操作**してください。
@@ -485,3 +500,23 @@ Lispでシステム停止なしにロジック修正可能。
 
 ### 3. SRP = Antifragility
 細かいモジュール分割により、1箇所の障害が全体を殺さない。
+## 🆕 V50.7 運用メモ (2026-02-10) - CPCV可視化と単一運用
+
+### 1. CPCV status の見方
+- `data/reports/cpcv_status.txt` 形式  
+  `queued | sent | received | failed (send X / result Y: runtime R / criteria C) | inflight Z`
+- **send** = 送信失敗（そもそも動いていない）
+- **runtime** = 実行時エラー（実行はされたが処理失敗）
+- **criteria** = 実行成功だが基準不合格（期待どおりの不合格）
+- **inflight** = 送信済みで結果未達（処理中）
+
+### 2. CPCV通知のFAIL区別
+- DiscordのCPCV通知で `ERROR (runtime)` と `FAILED (criteria)` を明示
+
+### 3. 進化ループの単一運用
+- **推奨**: systemd `swimmy-school.service` を唯一の進化ループにする
+- `tools/evolution_daemon.py` を同時起動しない（多重起動の原因）
+- `tools/evolution_daemon.py` は `school-daemon.lisp` 稼働中に自動待機する（V50.7.1）
+- 例外運用が必要な場合のみ `SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` を設定
+- 停止/再起動は `sudo systemctl start/stop swimmy-school` が必要
+- 1行チェック: `ps aux | rg -i 'school-daemon\\.lisp|evolution_daemon\\.py|run_lisp_evolution\\.lisp'`

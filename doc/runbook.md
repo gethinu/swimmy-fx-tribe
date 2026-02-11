@@ -113,6 +113,10 @@ sudo systemctl start swimmy-brain swimmy-backtest
 **対応**:
 1. Guardian が自動で `CLOSE_SHORT_TF` を発行 (120秒後)
 2. Brain 再起動: `sudo systemctl restart swimmy-brain`
+   sudoが使えない場合（polkit等で `Interactive authentication required` になる場合）:
+   ```bash
+   pid=$(systemctl show -p MainPID --value swimmy-brain); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+   ```
 3. ログ確認: `journalctl -u swimmy-brain -f`
 
 ### 3.2 Guardian Crash
@@ -120,6 +124,10 @@ sudo systemctl start swimmy-brain swimmy-backtest
 
 **対応**:
 1. `sudo systemctl restart swimmy-guardian`
+   sudoが使えない場合:
+   ```bash
+   pid=$(systemctl show -p MainPID --value swimmy-guardian); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+   ```
 2. ポジション確認: MT5 で手動確認
 
 ### 3.3 MT5 接続断

@@ -143,6 +143,18 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 ./tools/monitor_evolution.sh
 ```
 
+> [!IMPORTANT]
+> **Watchdog自動復旧の注記 (2026-02-10)**  
+> `swimmy-watchdog` は `User=swimmy` で動くため、権限がない環境では `systemctl restart swimmy-...` が `Interactive authentication required` で失敗します。  
+> その場合は systemd の `Restart=` を活かして、MainPID を `kill` してください（sudo不要）。
+>
+> ```bash
+> pid=$(systemctl show -p MainPID --value swimmy-brain);    [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> pid=$(systemctl show -p MainPID --value swimmy-guardian); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> pid=$(systemctl show -p MainPID --value swimmy-watchdog); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
+> systemctl status swimmy-brain swimmy-guardian swimmy-watchdog --no-pager
+> ```
+
 ---
 
 ## 🌊 Lisp Native Implementation (V46.0)

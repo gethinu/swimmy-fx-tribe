@@ -19,7 +19,7 @@
   - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
 - **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
 - **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
-  - **failed内訳**: `failed` は `send_failed + criteria_failed + result_error` の合算として表示し、ゲート未達（criteria）と実行系エラー（result_error）を分離して解釈する。
+  - **failed内訳**: `failed` は `send_failed + result_failed` の合算で、`result_failed` は `runtime` と `criteria` の内訳を表示する。
 - **CPCV Validate (評価条件)**: Guardian の `CPCV_VALIDATE` は `strategy_params` の `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する（timeframe>1はResample、filter有効時は同一データからauxを生成してMTF filter適用）。
 - **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
@@ -36,6 +36,12 @@
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
+- **昇格ゲート実装値（2026-02-11）**:
+  - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
+  - `MC gate`: `school-monte-carlo` の `prob_ruin`（`MaxDD > 20%` の発生確率）を使い、`prob_ruin <= 0.02` を必須とする。
+    - 実装既定: `strategy-pnl-history` が **30トレード以上**ある場合のみ判定し、`iterations=250` で評価する（不足時は不合格）。
+  - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
+    - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
@@ -75,8 +81,9 @@
 ## 直近の変更履歴
 - **2026-02-11**: `upsert-strategy` に Archive Rank 保護を追加し、DB既存 `:GRAVEYARD/:RETIRED` が通常upsertで `NIL/Active` に戻る退行を防止。
 - **2026-02-11**: OOS dispatch の成否契約を厳格化。Backtest送信が受理されなかった要求を `sent` に残さず `error` 化し、`oos_status` の `sent/pending` 誤増加を抑制。
-- **2026-02-11**: CPCV status の `failed` を内訳表示（`send_failed/criteria_failed/result_error`）に拡張し、ゲート未達と実行系エラーを区別可能にした。
+- **2026-02-11**: CPCV status の `failed` を内訳表示（`send_failed/result_failed(runtime/criteria)`）に拡張し、ゲート未達と実行系エラーを区別可能にした。
 - **2026-02-11**: ランク判定を `Balanced + 2段階ゲート` に更新する方針を確定。Stage 1固定閾値（B/A/S）を引き上げ、Stage 2に OOS/CPCV/MC/DryRun を組み合わせる昇格ゲートを正本化。
+- **2026-02-11**: ランク昇格ロジックを実装更新。A昇格に `Expectancy>0` を追加し、A/S共通で `MC prob_ruin<=2%` と `DryRun p95(slippage)<=max_spread` を必須化。`TRADE_CLOSED` のスリッページ計測を戦略単位で蓄積して DryRun ゲートに接続。
 - **2026-02-11**: `systemd/swimmy-guardian.service` の再起動ポリシーを強化（`Restart=always`、`StartLimitIntervalSec=300`、`StartLimitBurst=5`）。
 - **2026-02-11**: `swimmy-guardian` の Brain auto-revival を強化。`systemctl restart swimmy-brain` が失敗した場合に `systemctl show -p MainPID --value swimmy-brain` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させるフォールバックを追加。
 - **2026-02-11**: Guardian の `CPCV_VALIDATE` S式パーサでキー正規化を強化。`swimmy.school::action` のような package 修飾キーでも `action` として受理し、`missing action` による parse/serialize error を抑止。

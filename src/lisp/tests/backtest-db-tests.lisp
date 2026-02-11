@@ -95,6 +95,28 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-upsert-preserves-archive-rank
+  "Upsert should not accidentally revive RETIRED/GRAVEYARD rows to active/NIL."
+  (let* ((name "TEST-ARCHIVE-RANK-LOCK")
+         (tmp-db (format nil "/tmp/swimmy-archive-rank-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; First write archived rank.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :retired))
+            ;; Later upsert without rank information should not revive it.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank nil))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":RETIRED" rank "Archive rank must be preserved")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-kill-strategy-persists-status
   "Soft kill should persist status to DB to survive restarts."
   (let* ((name "TEST-KILL-PERSIST")
@@ -669,3 +691,50 @@
                            "Graveyard count should be 1 (DB)")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-top-candidates-excludes-archive-and-hides-nil-rank
+  "Top Candidates should exclude Graveyard/Retired and never display NIL."
+  (let* ((tmp-db (format nil "/tmp/swimmy-topcand-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-topcand-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; Insert 4 strategies where archive ranks have higher Sharpe (should be excluded).
+            (swimmy.school::upsert-strategy (make-strategy :name "TC-ACT" :sharpe 1.0 :symbol "USDJPY" :rank :B))
+            (swimmy.school::upsert-strategy (make-strategy :name "TC-GY" :sharpe 2.0 :symbol "USDJPY" :rank :graveyard))
+            (swimmy.school::upsert-strategy (make-strategy :name "TC-RT" :sharpe 1.5 :symbol "USDJPY" :rank :retired))
+            (swimmy.school::upsert-strategy (make-strategy :name "TC-NIL" :sharpe 3.0 :symbol "USDJPY" :rank nil))
+            (let ((snippet (swimmy.school::build-top-candidates-snippet-from-db)))
+              (assert-true (search "TC-NIL" snippet) "Unranked strategy should appear")
+              (assert-true (search "INCUBATOR" snippet) "NIL rank must be displayed as INCUBATOR")
+              (assert-false (search "TC-GY" snippet) "Graveyard strategy must be excluded")
+              (assert-false (search "TC-RT" snippet) "Retired strategy must be excluded")
+              (assert-false (search ", NIL)" snippet) "Must never display NIL rank literal")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-cpcv-status-snippet-reads-status-file-and-last-start
+  "CPCV status snippet should read cpcv_status.txt (shared) and include last_start_unix."
+  (let* ((tmp-status (format nil "/tmp/swimmy-cpcv-status-~a.txt" (get-universal-time)))
+         (orig swimmy.school::*cpcv-status-path*)
+         (orig-start swimmy.globals:*cpcv-start-time*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*cpcv-status-path* tmp-status)
+          (setf swimmy.globals:*cpcv-start-time* 0)
+          (with-open-file (out tmp-status :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (write-line "1 queued | 1 sent | 1 received | 1 failed (send 0 / result 1) | inflight 0" out)
+            (write-line "last_start_unix: 1" out)
+            (write-line "updated: 01/01 00:00 JST / 00:00 UTC reason: test" out))
+          (let ((snippet (swimmy.school::build-cpcv-status-snippet)))
+            (assert-true (search "1 queued" snippet) "Should include summary from file")
+            (assert-false (search "last start: N/A" snippet) "Should not be N/A when last_start_unix exists")))
+      (setf swimmy.school::*cpcv-status-path* orig)
+      (setf swimmy.globals:*cpcv-start-time* orig-start)
+      (ignore-errors (delete-file tmp-status)))))

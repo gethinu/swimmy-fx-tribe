@@ -5,9 +5,9 @@
 ;;; Implements the new rank-based lifecycle per Expert Panel (2026-01-21).
 ;;;
 ;;; RANKS:
-;;; 1. :B - Phase 1 Backtest passed (Sharpe≥0.1, PF≥1.0, WR≥30%, MaxDD<30%)
-;;; 2. :A - CPCV validated (Sharpe≥0.3, PF≥1.2, WR≥40%, MaxDD<20%)
-;;; 3. :S - Live trading permitted (Sharpe≥0.5, PF≥1.5, WR≥45%, MaxDD<15%)
+;;; 1. :B - Phase 1 Backtest passed (Sharpe>=0.15, PF>=1.05, WR>=35%, MaxDD<25%)
+;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=43%, MaxDD<16%, OOS>=0.35)
+;;; 3. :S - Live trading permitted (Sharpe>=0.75, PF>=1.70, WR>=50%, MaxDD<10%, CPCV pass>=70%, CPCV median MaxDD<12%)
 ;;; 4. :graveyard - Failed strategies (learning data)
 ;;; 5. :retired - Max Age archive (low-weight learning)
 ;;; 6. :legend - Protected strategies (61 total, never discarded)
@@ -20,11 +20,10 @@
 ;;; ---------------------------------------------------------------------------
 
 (defparameter *rank-criteria*
-  '((:B       :sharpe-min 0.1  :pf-min 1.0  :wr-min 0.30  :maxdd-max 0.30)
-    (:A       :sharpe-min 0.3  :pf-min 1.2  :wr-min 0.40  :maxdd-max 0.20 :oos-min 0.3)
-    (:S       :sharpe-min 0.5
-              :cpcv-min 0.5 :cpcv-pass-min 0.5
-              :cpcv-pf-min 1.5 :cpcv-wr-min 0.45 :cpcv-maxdd-max 0.15))
+  '((:B       :sharpe-min 0.15 :pf-min 1.05 :wr-min 0.35 :maxdd-max 0.25)
+    (:A       :sharpe-min 0.45 :pf-min 1.30 :wr-min 0.43 :maxdd-max 0.16 :oos-min 0.35)
+    (:S       :sharpe-min 0.75 :pf-min 1.70 :wr-min 0.50 :maxdd-max 0.10
+              :cpcv-pass-min 0.70 :cpcv-maxdd-max 0.12))
   "Rank criteria thresholds. All conditions must be met (AND logic).")
 
 (defparameter *culling-threshold* 10
@@ -98,12 +97,12 @@
     (cond
       ((eq target-rank :S)
        (and (>= sharpe (getf criteria :sharpe-min 0))
+            (>= pf (getf criteria :pf-min 0))
+            (>= wr (getf criteria :wr-min 0))
+            (< maxdd (getf criteria :maxdd-max 1.0))
             (or (not include-cpcv)
-                ;; S判定のPF/WR/MaxDDはCPCV中央値で評価する
-                (and (>= (or (strategy-cpcv-median-sharpe strategy) 0.0) (getf criteria :cpcv-min 0))
-                     (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
-                     (>= (or (strategy-cpcv-median-pf strategy) 0.0) (getf criteria :cpcv-pf-min 0))
-                     (>= (or (strategy-cpcv-median-wr strategy) 0.0) (getf criteria :cpcv-wr-min 0))
+                ;; vNext: S stage2 gate uses CPCV pass-rate + median maxdd
+                (and (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
                      (< (or (strategy-cpcv-median-maxdd strategy) 1.0) (getf criteria :cpcv-maxdd-max 1.0))))))
       (t
        (and (>= sharpe (getf criteria :sharpe-min 0))
@@ -431,10 +430,18 @@
                                :max-dd (strategy-max-dd strategy))))
                     (or (strategy-sharpe strategy) 0.0))))
     (if (check-rank-criteria strategy :S)
-        (progn
-          (remhash name *a-rank-probation-tracker*)
-          (promote-rank strategy :S "CPCV Validated - LIVE TRADING PERMITTED")
-          :S)
+        (multiple-value-bind (common-pass common-msg)
+            (if (fboundp 'common-stage2-gates-passed-p)
+                (common-stage2-gates-passed-p strategy)
+                (values nil "Common Stage2 gate unavailable"))
+          (if common-pass
+              (progn
+                (remhash name *a-rank-probation-tracker*)
+                (promote-rank strategy :S "CPCV+CommonStage2 validated - LIVE TRADING PERMITTED")
+                :S)
+              (progn
+                (format t "[RANK] ⛔ ~a blocked for S-RANK: ~a~%" name common-msg)
+                :A)))
         ;; V50.3: No more automatic A->S shortcuts. 
         ;; We just check if it's ready for CPCV dispatch.
         (progn
@@ -474,7 +481,9 @@
 (defun run-b-rank-culling (&optional single-tf)
   "Run culling for all TF × Direction × Symbol categories.
    V49.3: Dynamic symbol detection to prevent zombie-accumulation in non-major pairs."
-  (let ((timeframes (if single-tf (list single-tf) *supported-timeframes*))
+  (let* ((timeframes (if single-tf (list single-tf) *supported-timeframes*))
+        (a-criteria (get-rank-criteria :A))
+        (a-sharpe-min (getf a-criteria :sharpe-min 0.45))
         (symbols (collect-active-symbols))) ;; Dynamic Symbols
     (dolist (tf timeframes)
       (dolist (dir *supported-directions*)
@@ -483,7 +492,7 @@
     
     ;; V48.7: Meritocratic Promotion (A-Rank) -> Now queues for OOS
     (dolist (s (get-strategies-by-rank :B))
-      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) 0.3))
+      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) a-sharpe-min))
         (validate-for-a-rank-promotion s)))))
 
 (defun run-rank-evaluation ()

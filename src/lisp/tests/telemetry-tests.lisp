@@ -43,13 +43,49 @@
           (setf (symbol-function 'swimmy.school::enqueue-oos-request)
                 (lambda (&rest args) (declare (ignore args)) nil))
           (setf (symbol-function 'swimmy.school::request-backtest)
-                (lambda (&rest args) (declare (ignore args)) nil))
+                (lambda (&rest args) (declare (ignore args)) t))
           (when orig-write
             (setf (symbol-function 'swimmy.school::write-oos-status-file)
                   (lambda (&rest args) (declare (ignore args)) nil)))
           (swimmy.school::maybe-request-oos-backtest
            (swimmy.school:make-strategy :name "UT-OOS" :symbol "USDJPY"))
           (assert-true (find "oos.requested" events :key #'first :test #'string=)))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function 'swimmy.school::init-db) orig-init)
+      (setf (symbol-function 'swimmy.school::lookup-oos-request) orig-lookup)
+      (setf (symbol-function 'swimmy.school::enqueue-oos-request) orig-enqueue)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (when orig-write
+        (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write)))))
+
+(deftest test-oos-telemetry-dispatch-failed
+  (let ((events nil)
+        (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+        (orig-init (symbol-function 'swimmy.school::init-db))
+        (orig-lookup (symbol-function 'swimmy.school::lookup-oos-request))
+        (orig-enqueue (symbol-function 'swimmy.school::enqueue-oos-request))
+        (orig-request (symbol-function 'swimmy.school::request-backtest))
+        (orig-write (and (fboundp 'swimmy.school::write-oos-status-file)
+                         (symbol-function 'swimmy.school::write-oos-status-file))))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (push (list event-type data) events)))
+          (setf (symbol-function 'swimmy.school::init-db)
+                (lambda () nil))
+          (setf (symbol-function 'swimmy.school::lookup-oos-request)
+                (lambda (name) (declare (ignore name)) (values nil nil nil)))
+          (setf (symbol-function 'swimmy.school::enqueue-oos-request)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (when orig-write
+            (setf (symbol-function 'swimmy.school::write-oos-status-file)
+                  (lambda (&rest args) (declare (ignore args)) nil)))
+          (swimmy.school::maybe-request-oos-backtest
+           (swimmy.school:make-strategy :name "UT-OOS-FAIL" :symbol "USDJPY"))
+          (assert-true (find "oos.dispatch_failed" events :key #'first :test #'string=)))
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function 'swimmy.school::init-db) orig-init)
       (setf (symbol-function 'swimmy.school::lookup-oos-request) orig-lookup)
@@ -127,6 +163,30 @@
                     (id . "HB-1"))))
           (let ((swimmy.executor::*last-heartbeat-sent* 0)
                 (swimmy.executor::*cmd-publisher* nil))
+            (swimmy.executor::send-heartbeat))
+          (assert-true (find "heartbeat.sent" events :test #'string=)))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function 'swimmy.core::make-heartbeat-message) orig-make))))
+
+(deftest test-heartbeat-throttle-allows-10s
+  "Brain heartbeat should be frequent enough to avoid watchdog false positives."
+  (let ((events nil)
+        (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+        (orig-make (symbol-function 'swimmy.core::make-heartbeat-message)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key data &allow-other-keys)
+                  (declare (ignore data))
+                  (push event-type events)))
+          (setf (symbol-function 'swimmy.core::make-heartbeat-message)
+                (lambda (&optional status)
+                  (declare (ignore status))
+                  `((type . ,swimmy.core:+MSG-HEARTBEAT+)
+                    (id . "HB-10S"))))
+          (let* ((now (get-universal-time))
+                 (swimmy.executor::*last-heartbeat-sent* (- now 11))
+                 (swimmy.executor::*cmd-publisher* nil))
             (swimmy.executor::send-heartbeat))
           (assert-true (find "heartbeat.sent" events :test #'string=)))
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)

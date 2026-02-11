@@ -317,7 +317,8 @@
          (orig-db swimmy.core::*db-path-default*))
     (unwind-protect
          (let ((swimmy.core::*db-path-default* tmp-db)
-               (swimmy.core::*sqlite-conn* nil))
+               (swimmy.core::*sqlite-conn* nil)
+               (swimmy.school::*disable-auto-migration* t))
            (swimmy.core:close-db-connection)
            (swimmy.school::init-db)
            (let* ((strat (cl-user::make-strategy :name "UT-OOS-STALE"
@@ -336,6 +337,35 @@
                (assert-equal "RID-NEW" rid
                              "stale result should not clear queue"))))
       (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
+(deftest test-oos-dispatch-failure-marks-error-not-sent
+  "Rejected OOS dispatch should not remain as sent in oos_queue."
+  (let* ((tmp-db (format nil "/tmp/swimmy-oos-dispatch-fail-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-auto swimmy.school::*disable-auto-migration*)
+         (orig-request (symbol-function 'swimmy.school::request-backtest)))
+    (unwind-protect
+         (let ((swimmy.core::*db-path-default* tmp-db)
+               (swimmy.core::*sqlite-conn* nil))
+           (setf swimmy.school::*disable-auto-migration* t)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (setf (symbol-function 'swimmy.school::request-backtest)
+                 (lambda (&rest _args) (declare (ignore _args)) nil))
+           (let* ((name "UT-OOS-DISPATCH-FAIL")
+                  (rid (swimmy.school::maybe-request-oos-backtest
+                        (cl-user::make-strategy :name name :symbol "USDJPY" :oos-sharpe nil))))
+             (assert-true (null rid) "dispatch failure should return NIL")
+             (multiple-value-bind (_req-id _req-at status) (swimmy.school::lookup-oos-request name)
+               (declare (ignore _req-id _req-at))
+               (assert-equal "error" status "queue row should be marked error"))
+             (let ((metrics (swimmy.school::report-oos-db-metrics)))
+               (assert-equal 0 (getf metrics :sent 0) "sent should remain zero"))))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (setf swimmy.school::*disable-auto-migration* orig-auto)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
@@ -418,21 +448,21 @@
                               (declare (ignore _args))
                               (list
                                (cl-user::make-strategy :name "Gate-1" :symbol "USDJPY"
-                                                       :sharpe 0.4 :profit-factor 1.6
-                                                       :win-rate 0.5 :max-dd 0.1 :rank :A)
+                                                       :sharpe 0.4 :profit-factor 1.8
+                                                       :win-rate 0.55 :max-dd 0.09 :rank :A)
                                (cl-user::make-strategy :name "Gate-2" :symbol "USDJPY"
-                                                       :sharpe 0.6 :profit-factor 1.0
+                                                       :sharpe 0.8 :profit-factor 1.0
                                                        :win-rate 0.4 :max-dd 0.2 :rank :A))))
                       (let ((report (swimmy.school::generate-evolution-report)))
                         (assert-true (search "CPCV Gate Failures:" report)
                                      "Report should include CPCV gate failure line")
-                        (assert-true (search "sharpe<0.5=1" report)
+                        (assert-true (search "sharpe<0.75=1" report)
                                      "Gate sharpe count should appear")
-                        (assert-true (search "pf<1.5=1" report)
+                        (assert-true (search "pf<1.70=1" report)
                                      "Gate PF count should appear")
-                        (assert-true (search "wr<0.45=1" report)
+                        (assert-true (search "wr<0.50=1" report)
                                      "Gate WR count should appear")
-                        (assert-true (search "maxdd>=0.15=1" report)
+                        (assert-true (search "maxdd>=0.10=1" report)
                                      "Gate MaxDD count should appear")
                         (assert-true (search "elite=1" report)
                                      "Gate elite count should appear")

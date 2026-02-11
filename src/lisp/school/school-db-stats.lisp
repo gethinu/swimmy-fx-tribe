@@ -53,8 +53,27 @@
 
 (defun get-library-rank-counts (&optional (root swimmy.persistence:*library-path*))
   "Return plist of library counts by rank dir."
+  ;; NOTE: Do not use CL:DIRECTORY here for huge dirs (e.g., GRAVEYARD) because it
+  ;; materializes a full pathname list and can exhaust memory. We count via `find`
+  ;; and measure output length (1 dot per file).
   (labels ((count-dir (dir)
-             (length (directory (merge-pathnames (format nil "~a/*.lisp" dir) root)))))
+             (let* ((dirpath (merge-pathnames (format nil "~a/" dir) root))
+                    (dirstr (namestring dirpath)))
+               (if (and (fboundp 'uiop:directory-exists-p)
+                        (not (uiop:directory-exists-p dirpath)))
+                   0
+                   (handler-case
+                       (length
+                        (or (uiop:run-program
+                             (list "find" dirstr
+                                   "-maxdepth" "1"
+                                   "-type" "f"
+                                   "-name" "*.lisp"
+                                   "-printf" ".")
+                             :output :string
+                             :ignore-error-status t)
+                            ""))
+                     (error () 0))))))
     (list :s (count-dir "S")
           :a (count-dir "A")
           :b (count-dir "B")

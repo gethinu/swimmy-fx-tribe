@@ -422,8 +422,13 @@
                          (swimmy.school:record-backtest-trades request-id name "CPCV" trade-list))
                        (when (fboundp 'swimmy.school::%cpcv-metric-inc)
                          (swimmy.school::%cpcv-metric-inc :received)
-                         (when (or error-msg (not is-passed))
-                           (swimmy.school::%cpcv-metric-inc :result_failed))
+                         (cond
+                           (error-msg
+                            (swimmy.school::%cpcv-metric-inc :result_runtime_failed)
+                            (swimmy.school::%cpcv-metric-inc :result_failed))
+                           ((not is-passed)
+                            (swimmy.school::%cpcv-metric-inc :result_criteria_failed)
+                            (swimmy.school::%cpcv-metric-inc :result_failed)))
                          (when (fboundp 'swimmy.school::write-cpcv-status-file)
                            (ignore-errors (swimmy.school::write-cpcv-status-file :reason "result"))))
                        (swimmy.core:notify-cpcv-result result-plist)
