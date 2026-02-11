@@ -50,6 +50,8 @@ def _env_int(key: str, default: int) -> int:
 ZMQ_PORT = _env_int("SWIMMY_PORT_NOTIFIER", 5562)  # Notifier Port
 RETRY_LIMIT = 3
 RATE_LIMIT_DELAY = 1.0  # Seconds between requests to same webhook
+PREVIEW_MAX_LEN = _env_int("SWIMMY_NOTIFIER_PREVIEW_MAX_LEN", 120)
+STATUS_PREVIEW_MAX_LEN = _env_int("SWIMMY_NOTIFIER_STATUS_PREVIEW_MAX_LEN", 360)
 
 # Queue for outgoing messages
 # (webhook_url, payload)
@@ -135,6 +137,13 @@ def format_payload_preview(payload: dict, max_len: int = 120) -> str:
         return text
     except Exception:
         return ""
+
+
+def select_preview_max_len(title: str) -> int:
+    """Return preview max length based on embed title."""
+    if isinstance(title, str) and "status" in title.casefold():
+        return max(PREVIEW_MAX_LEN, STATUS_PREVIEW_MAX_LEN)
+    return PREVIEW_MAX_LEN
 
 
 def process_queue():
@@ -236,7 +245,9 @@ def main():
                 webhook, payload = parse_notifier_message(msg_str)
                 message_queue.append((webhook, payload))
                 title = payload.get("embeds", [{}])[0].get("title", "Message")
-                preview = format_payload_preview(payload)
+                preview = format_payload_preview(
+                    payload, max_len=select_preview_max_len(title)
+                )
                 if preview:
                     print(f"[NOTIFIER] Queued: {title} | {preview}", flush=True)
                 else:

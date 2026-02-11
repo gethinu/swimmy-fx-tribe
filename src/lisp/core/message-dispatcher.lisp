@@ -259,6 +259,34 @@
       (string-equal name "NIL")
       (string-equal name "nil")))
 
+(defun %as-count (value)
+  "Normalize VALUE into a non-negative integer count."
+  (let ((n (cond
+             ((numberp value) value)
+             ((stringp value) (or (swimmy.core:safe-parse-number value) 0))
+             (t 0))))
+    (max 0 (truncate n))))
+
+(defun %find-strategy-in-memory (name)
+  "Find strategy object by NAME from KB/evolved caches."
+  (when (and (stringp name) (not (%invalid-name-p name)))
+    (or (find name swimmy.school::*strategy-knowledge-base*
+              :key #'swimmy.school:strategy-name :test #'string=)
+        (find name swimmy.globals:*evolved-strategies*
+              :key #'swimmy.school:strategy-name :test #'string=))))
+
+(defun %strategy-exists-in-db-p (name)
+  "Return T if strategy NAME exists in DB."
+  (and (stringp name)
+       (not (%invalid-name-p name))
+       (handler-case
+           (and (fboundp 'swimmy.school::execute-single)
+                (swimmy.school::execute-single
+                 "SELECT 1 FROM strategies WHERE name = ? LIMIT 1"
+                 name)
+                t)
+         (error () nil))))
+
 (defun internal-process-msg (msg)
   (multiple-value-bind (result err)
       (ignore-errors
@@ -401,21 +429,37 @@
                           (median-pf (%result-val-normalized result '(median_pf median-pf) 0.0))
                           (median-wr (%result-val-normalized result '(median_wr median-wr) 0.0))
                           (median-maxdd (%result-val-normalized result '(median_maxdd median-maxdd) 0.0))
-                          (paths (%result-val-normalized result '(path_count path-count paths) 0))
-                          (passed (%result-val-normalized result '(passed_count passed-count passed) 0))
-                          (failed (%result-val-normalized result '(failed_count failed-count failed) 0))
+                          (missing-marker (cons :missing nil))
+                          (paths-raw (%result-val-normalized result '(path_count path-count paths) missing-marker))
+                          (passed-raw (%result-val-normalized result '(passed_count passed-count passed) missing-marker))
+                          (failed-raw (%result-val-normalized result '(failed_count failed-count failed) missing-marker))
+                          (counts-present-p (or (not (eq paths-raw missing-marker))
+                                                (not (eq passed-raw missing-marker))
+                                                (not (eq failed-raw missing-marker))))
+                          (paths-count (%as-count (if (eq paths-raw missing-marker) 0 paths-raw)))
+                          (passed-count (%as-count (if (eq passed-raw missing-marker) 0 passed-raw)))
+                          (failed-count (%as-count (if (eq failed-raw missing-marker) 0 failed-raw)))
                           (pass-rate (%result-val-normalized result '(pass_rate pass-rate) 0.0))
                           (is-passed (%normalize-bool
                                       (%result-val-normalized result '(is_passed is-passed passed_ok) nil)
                                       nil))
-                          (error-msg (%result-val-normalized result '(error err error_msg) nil)))
+                          (error-msg (%result-val-normalized result '(error err error_msg) nil))
+                          (empty-result-p (and counts-present-p
+                                               (zerop paths-count)
+                                               (zerop passed-count)
+                                               (zerop failed-count)))
+                          (runtime-error-msg (or error-msg
+                                                 (when empty-result-p
+                                                   "empty CPCV result: path_count/passed_count/failed_count are all zero")))
+                          (strat (%find-strategy-in-memory name))
+                          (known-strategy-p (or strat (%strategy-exists-in-db-p name))))
                      (let ((result-plist (list :strategy-name name :median-sharpe median
                                                :median-pf median-pf :median-wr median-wr
                                                :median-maxdd median-maxdd
-                                               :path-count paths :passed-count passed
-                                               :failed-count failed :pass-rate pass-rate
+                                               :path-count paths-count :passed-count passed-count
+                                               :failed-count failed-count :pass-rate pass-rate
                                                :is-passed is-passed :request-id request-id
-                                               :error error-msg
+                                               :error runtime-error-msg
                                                :trades-truncated trades-truncated
                                                :trades-ref trades-ref)))
                        (when (and trade-list name)
@@ -423,7 +467,7 @@
                        (when (fboundp 'swimmy.school::%cpcv-metric-inc)
                          (swimmy.school::%cpcv-metric-inc :received)
                          (cond
-                           (error-msg
+                           (runtime-error-msg
                             (swimmy.school::%cpcv-metric-inc :result_runtime_failed)
                             (swimmy.school::%cpcv-metric-inc :result_failed))
                            ((not is-passed)
@@ -431,19 +475,16 @@
                             (swimmy.school::%cpcv-metric-inc :result_failed)))
                          (when (fboundp 'swimmy.school::write-cpcv-status-file)
                            (ignore-errors (swimmy.school::write-cpcv-status-file :reason "result"))))
-                       (swimmy.core:notify-cpcv-result result-plist)
+                       (when known-strategy-p
+                         (swimmy.core:notify-cpcv-result result-plist))
                        (push result-plist swimmy.globals:*cpcv-results-buffer*)
                        (let ((count (length swimmy.globals:*cpcv-results-buffer*))
                              (expected swimmy.globals:*expected-cpcv-count*))
                          (when (and (> expected 0)
                                     (>= count (max 1 (floor (* expected 0.9)))))
                            (swimmy.core:notify-cpcv-summary)))
-                       (let ((strat (or (find name swimmy.school::*strategy-knowledge-base*
-                                              :key #'swimmy.school:strategy-name :test #'string=)
-                                        (find name swimmy.globals:*evolved-strategies*
-                                              :key #'swimmy.school:strategy-name :test #'string=))))
-                         (cond
-                           ((and strat (not error-msg))
+                       (cond
+                           ((and strat (not runtime-error-msg))
                             (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
                             (setf (swimmy.school:strategy-cpcv-median-pf strat) median-pf)
                             (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
@@ -456,11 +497,15 @@
                                                              "CPCV Passed and Criteria Met")
                                   (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
                                           name))))
-                           ((and name (not error-msg)
+                           ((and name (not runtime-error-msg)
                                  (fboundp 'swimmy.school::update-cpcv-metrics-by-name))
                            (swimmy.school::update-cpcv-metrics-by-name
                              name median median-pf median-wr median-maxdd pass-rate
-                             :request-id request-id)))))))
+                             :request-id request-id)))
+                       (when (and (not known-strategy-p)
+                                  (not (%invalid-name-p name)))
+                         (format t "[CPCV] ℹ️ Unknown strategy result (alert suppressed): ~a req=~a~%"
+                                 name (or request-id "N/A"))))))
                   ((string= type-str swimmy.core:+MSG-TICK+)
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
                           (bid (%alist-val sexp '(bid :bid) nil))

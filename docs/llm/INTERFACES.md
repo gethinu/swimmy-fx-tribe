@@ -338,6 +338,10 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (trades_truncated . false)
             (trades_ref . "RID-123"))))
 ```
+**Notes**:
+- 正常評価結果では `path_count` は **1以上**であること。
+- 評価不能時は `error` を必ず含める（`path_count/passed_count/failed_count` が 0 のみの結果を返さない）。
+- Brain/School は `path_count/passed_count/failed_count` がすべて 0 かつ `error` なしの結果を **runtime error 相当の無効結果** として扱う（criteria failure にしない）。
 
 ### 6. Data Keeper Service (Port 5561)
 ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  

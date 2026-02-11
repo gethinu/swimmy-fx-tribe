@@ -205,6 +205,80 @@
         (format t "[SHELL] ⚠️ Failed to generate weekly summary: ~a~%" e)
         nil)))))
 
+(defun %status-label (value)
+  "Normalize status values for compact report output."
+  (string-upcase
+   (cond
+     ((null value) "UNKNOWN")
+     ((symbolp value) (symbol-name value))
+     (t (format nil "~a" value)))))
+
+(defun %status-source-label (source)
+  "Human-readable source label for report evidence."
+  (case source
+    (:symbol-history "シンボル別履歴（再計算）")
+    (:global-fallback "全体状態フォールバック（推定保留）")
+    (otherwise (%status-label source))))
+
+(defun %status-market-reason-label (reason)
+  "Human-readable market reason label."
+  (case reason
+    (:ok "履歴再計算OK")
+    (:insufficient-history "履歴不足（60本未満）")
+    (otherwise (%status-label reason))))
+
+(defun %status-prediction-reason-label (reason)
+  "Human-readable prediction reason label."
+  (case reason
+    (:ok "予測成立")
+    (:low-confidence "信頼度不足（閾値未満）")
+    (:insufficient-history "履歴不足（50本以下）")
+    (otherwise (%status-label reason))))
+
+(defun %status-symbol-history (symbol)
+  "Fetch symbol-specific candle history, with legacy fallback."
+  (or (and (hash-table-p *candle-histories*)
+           symbol
+           (gethash symbol *candle-histories*))
+      *candle-history*))
+
+(defun %status-freshness-summary (history &optional (now (get-universal-time)))
+  "Human-readable candle freshness for status reports."
+  (let* ((bars (if (listp history) (length history) 0))
+         (latest-ts (and history (ignore-errors (candle-timestamp (first history)))))
+         (age (and (numberp latest-ts) (max 0 (- now latest-ts)))))
+    (cond
+      ((null history) "履歴なし")
+      ((null age) (format nil "時刻不明 (M1 ~d本)" bars))
+      (t (format nil "~d秒前 (M1 ~d本)" age bars)))))
+
+(defun %status-symbol-market-context (symbol)
+  "Return values: regime volatility source reason history."
+  (let* ((fallback-regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
+         (fallback-vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
+         (history (%status-symbol-history symbol)))
+    (if (or (null history)
+            (< (length history) 60)
+            (not (fboundp 'swimmy.school::detect-market-regime)))
+        (values fallback-regime fallback-vol :global-fallback :insufficient-history history)
+        (let ((orig-history *candle-history*)
+              (orig-regime fallback-regime)
+              (orig-vol fallback-vol))
+          (unwind-protect
+              (progn
+                (setf *candle-history* history)
+                (let ((computed-regime (or (ignore-errors (swimmy.school::detect-market-regime))
+                                           fallback-regime))
+                      (computed-vol (if (boundp 'swimmy.school:*volatility-regime*)
+                                        swimmy.school:*volatility-regime*
+                                        fallback-vol)))
+                  (values computed-regime computed-vol :symbol-history :ok history)))
+            (setf *candle-history* orig-history)
+            (when (boundp 'swimmy.school:*current-regime*)
+              (setf swimmy.school:*current-regime* orig-regime))
+            (when (boundp 'swimmy.school:*volatility-regime*)
+              (setf swimmy.school:*volatility-regime* orig-vol)))))))
+
 (defun send-periodic-status-report (symbol bid)
   "V49.0: Redesigned Japanese Status Report.
    Includes Regime (Soros), Volatility (Taleb), and Category-based S-Rank monitoring."
@@ -212,33 +286,36 @@
          (last-time (gethash symbol *last-status-notification-time* 0)))
     (when (and (> (- now last-time) *status-notification-interval*)
                (fx-market-open-p now))
-      (let* ((regime (if (boundp 'swimmy.school:*current-regime*) swimmy.school:*current-regime* :unknown))
-             (vol (if (boundp 'swimmy.school:*volatility-regime*) swimmy.school:*volatility-regime* :normal))
-             (danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
-             (pred :hold)
-             (conf 0.0)
-             (watchers
-              ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
-              ;; 3 Directions x 6 TFs = 18 possible categories per symbol
-              (let ((results nil)
-                    (tfs '(5 15 60 240 1440 10080))
-                    (dirs '(:BUY :SELL :BOTH)))
-                (dolist (tf tfs)
-                  (dolist (dir dirs)
-                    (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
-                      (when s-strats
-                        (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
-                          (push (format nil "  • M~d ~a: `~a` (S:~,2f)" 
-                                        tf dir 
-                                        (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
-                                        (or (swimmy.school:strategy-sharpe best) 0.0))
-                                results))))))
-                (if results (nreverse results) '("  (Sランク待機なし)")))))
-        (multiple-value-setq (pred conf)
-          (swimmy.school:summarize-status-prediction symbol))
-
-        (swimmy.core:notify-discord-status 
-          (format nil "🕒 **~a 状況レポート**
+      (multiple-value-bind (regime vol market-source market-reason history)
+          (%status-symbol-market-context symbol)
+        (multiple-value-bind (pred conf pred-reason)
+            (swimmy.school:summarize-status-prediction symbol)
+          (let* ((danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
+                 (watchers
+                  ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
+                  ;; 3 Directions x 6 TFs = 18 possible categories per symbol
+                  (let ((results nil)
+                        (tfs '(5 15 60 240 1440 10080))
+                        (dirs '(:BUY :SELL :BOTH)))
+                    (dolist (tf tfs)
+                      (dolist (dir dirs)
+                        (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
+                          (when s-strats
+                            (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
+                              (push (format nil "  • M~d ~a: `~a` (S:~,2f)"
+                                            tf dir
+                                            (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
+                                            (or (swimmy.school:strategy-sharpe best) 0.0))
+                                    results))))))
+                    (if results (nreverse results) '("  (Sランク待機なし)"))))
+                 (market-source-str (%status-source-label market-source))
+                 (market-reason-str (%status-market-reason-label market-reason))
+                 (pred-reason-str (%status-prediction-reason-label pred-reason))
+                 (freshness-str (%status-freshness-summary history now))
+                 (pred-action (if (symbolp pred) (string-upcase (symbol-name pred)) "HOLD"))
+                 (pred-conf (* 100 (if (numberp conf) conf 0.0))))
+            (swimmy.core:notify-discord-status
+             (format nil "🕒 **~a 状況レポート**
 価格: **~,3f**
 
 相場環境: **~a**
@@ -248,12 +325,18 @@
   AI予測: ~a (~,1f%)
   危険レベル: Lv~d
 
+🧾 **判定根拠/鮮度:**
+  相場判定: ~a (~a)
+  AI根拠: ~a
+  データ鮮度: ~a
+
 ⚔️ **配置中の精鋭戦略 (S-Rank Watchers):**
 ~{~a~^~%~}"
-                    symbol bid regime vol (string-upcase (symbol-name pred)) (* 100 conf) danger 
-                    (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
-          :color swimmy.core:+color-status+)
-        (setf (gethash symbol *last-status-notification-time*) now)))))
+                     symbol bid regime vol pred-action pred-conf danger
+                     market-source-str market-reason-str pred-reason-str freshness-str
+                     (subseq watchers 0 (min (length watchers) 10))) ;; Limit to top 10 categories to avoid spam
+             :color swimmy.core:+color-status+)
+            (setf (gethash symbol *last-status-notification-time*) now)))))))
 
 (defun fx-market-open-p (&optional (timestamp (get-universal-time)))
   "Return T when FX market is open (weekend close based on UTC)."

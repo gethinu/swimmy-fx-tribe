@@ -6,7 +6,7 @@
 ;;;
 ;;; RANKS:
 ;;; 1. :B - Phase 1 Backtest passed (Sharpe>=0.15, PF>=1.05, WR>=35%, MaxDD<25%)
-;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=43%, MaxDD<16%, OOS>=0.35)
+;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=38%, MaxDD<16%, OOS>=0.35)
 ;;; 3. :S - Live trading permitted (Sharpe>=0.75, PF>=1.70, WR>=50%, MaxDD<10%, CPCV pass>=70%, CPCV median MaxDD<12%)
 ;;; 4. :graveyard - Failed strategies (learning data)
 ;;; 5. :retired - Max Age archive (low-weight learning)
@@ -21,7 +21,8 @@
 
 (defparameter *rank-criteria*
   '((:B       :sharpe-min 0.15 :pf-min 1.05 :wr-min 0.35 :maxdd-max 0.25)
-    (:A       :sharpe-min 0.45 :pf-min 1.30 :wr-min 0.43 :maxdd-max 0.16 :oos-min 0.35)
+    ;; A-RANK WR floor is tuned for high-RR systems; expectancy/OOS/Stage2 gates stay mandatory.
+    (:A       :sharpe-min 0.45 :pf-min 1.30 :wr-min 0.38 :maxdd-max 0.16 :oos-min 0.35)
     (:S       :sharpe-min 0.75 :pf-min 1.70 :wr-min 0.50 :maxdd-max 0.10
               :cpcv-pass-min 0.70 :cpcv-maxdd-max 0.12))
   "Rank criteria thresholds. All conditions must be met (AND logic).")

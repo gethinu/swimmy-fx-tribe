@@ -52,6 +52,9 @@
 (defparameter *dryrun-slippage-by-strategy* (make-hash-table :test 'equal)
   "Strategy-name keyed list of absolute slippage samples (pips).")
 
+(defparameter *a-rank-require-dryrun* nil
+  "When NIL, A-rank Stage2 can bootstrap without DryRun samples (MC still required).")
+
 (defun %normalize-strategy-name (strategy-name)
   (cond
     ((stringp strategy-name) strategy-name)
@@ -124,7 +127,7 @@
             drawdowns
             final-pnls)))))))
 
-(defun common-stage2-gates-passed-p (strategy &key (mc-iterations *mc-validation-iterations*))
+(defun common-stage2-gates-passed-p (strategy &key (mc-iterations *mc-validation-iterations*) (require-dryrun t))
   "A/S shared Stage2 gates:
    - MC prob_ruin <= 2%
    - DryRun p95(abs(slippage_pips)) <= *max-spread-pips*"
@@ -142,9 +145,14 @@
        (let ((p95 (dryrun-slippage-p95 (strategy-name strategy))))
          (cond
            ((null p95)
-            (values nil
-                    (format nil "DryRun gate failed: insufficient slippage samples (need >=~d)"
-                            *dryrun-min-slippage-samples*)))
+            (if require-dryrun
+                (values nil
+                        (format nil "DryRun gate failed: insufficient slippage samples (need >=~d)"
+                                *dryrun-min-slippage-samples*))
+                (values t
+                        (format nil "MC passed: prob_ruin=~,3f (DryRun deferred: need >=~d samples)"
+                                prob-ruin
+                                *dryrun-min-slippage-samples*))))
            ((> p95 *max-spread-pips*)
             (values nil
                     (format nil "DryRun gate failed: p95=~,2f pips > spread cap ~,2f"
@@ -593,7 +601,8 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
             (if passed "✅" "⏳") (strategy-name strat) msg)
     (unless passed
       (return-from validate-for-a-rank-promotion nil))
-    (multiple-value-bind (common-pass common-msg) (common-stage2-gates-passed-p strat)
+    (multiple-value-bind (common-pass common-msg)
+        (common-stage2-gates-passed-p strat :require-dryrun *a-rank-require-dryrun*)
       (unless common-pass
         (format t "[A-RANK] ❌ ~a: ~a~%" (strategy-name strat) common-msg)
         (return-from validate-for-a-rank-promotion nil)))

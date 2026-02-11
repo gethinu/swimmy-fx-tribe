@@ -3,7 +3,7 @@
 ### 1. ランク判定の2段階化（Balanced）
 - **Stage 1 固定閾値**
   - B: Sharpe ≥ 0.15 / PF ≥ 1.05 / WR ≥ 35% / MaxDD < 25%
-  - A: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%
+  - A: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 38% / MaxDD < 16%
   - S: Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%
 - **Stage 2 検証ゲート**
   - A昇格: OOS Sharpe ≥ 0.35 かつ `net_expectancy_pips > 0`
@@ -190,19 +190,19 @@
 - 判定: Phase 1 Backtest合格でBへ昇格  
 
 **A-RANK (Pro)**  
-- 条件: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%  
+- 条件: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 38% / MaxDD < 16%  
 - 判定: OOS Sharpe ≥ 0.35、`net_expectancy_pips > 0`、共通ゲート（MC/DryRun）合格でAへ昇格  
 
 **S-RANK (Verified Elite)**  
 - 条件: Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%  
 - 判定: CPCV `pass_rate ≥ 70%` かつ `median MaxDD < 12%`、共通ゲート（MC/DryRun）合格でSへ昇格 (ライブ実行許可)
 
-**共通ゲート（A/S昇格時）**
-- MC: `prob_ruin <= 2%`（実装既定: `strategy-pnl-history` 30トレード以上、`iterations=250`）
-- DryRun: `p95(abs(slippage_pips)) <= *max-spread-pips*`（実装既定: 20サンプル以上）
+**Stage2ゲート（昇格時）**
+- A: MC `prob_ruin <= 2%` を必須。DryRunは `*a-rank-require-dryrun*` が `NIL` の既定ではサンプル不足時にブートストラップ許可（サンプルがある場合は上限判定を適用）
+- S: MC `prob_ruin <= 2%` と DryRun `p95(abs(slippage_pips)) <= *max-spread-pips*` を必須（実装既定: 20サンプル以上）
 
 **昇格フロー**  
-`B → (OOS + Expectancy + MC/DryRun) → A → (CPCV + MC/DryRun) → S`
+`B → (OOS + Expectancy + MC[+DryRun]) → A → (CPCV + MC/DryRun) → S`
 
 **関連コード**  
 - `src/lisp/school/school-rank-system.lisp`  

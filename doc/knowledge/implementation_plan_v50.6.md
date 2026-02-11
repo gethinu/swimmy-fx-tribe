@@ -9,10 +9,10 @@
 
 | 項目 | 現行実装 |
 |------|----------|
-| **Stage 1 閾値** | B=`Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%` / A=`Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%` / S=`Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` |
+| **Stage 1 閾値** | B=`Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%` / A=`Sharpe>=0.45 PF>=1.30 WR>=38% MaxDD<16%` / S=`Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` |
 | **A昇格ゲート** | OOS `Sharpe>=0.35` かつ `net_expectancy_pips > 0`（`calculate-avg-pips - *max-spread-pips*`） |
 | **S昇格ゲート** | CPCV `pass_rate>=70%` かつ `median MaxDD<12%` |
-| **A/S共通ゲート** | MC `prob_ruin<=2%`（実装既定: 30 trades / 250 iterations）+ DryRun `p95(abs(slippage_pips))<=*max-spread-pips*`（実装既定: 20 samples） |
+| **Stage2ゲート** | A: MC `prob_ruin<=2%` 必須（DryRunは `*a-rank-require-dryrun*=NIL` 既定でサンプル不足時ブートストラップ可） / S: MC + DryRun `p95(abs(slippage_pips))<=*max-spread-pips*` 必須（20 samples） |
 | **DryRun永続化** | `dryrun_slippage_samples` に保存、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）保持 |
 | **DryRun期間保持** | `*dryrun-slippage-max-age-seconds*` が正値なら保持期間外を削除。`NIL` は無効 |
 
@@ -181,15 +181,14 @@ graph TD
 | ランク | Sharpe | PF | WR | MaxDD |
 |--------|--------|-----|-----|-------|
 | B | ≥0.15 | ≥1.05 | ≥35% | <25% |
-| A | ≥0.45 | ≥1.30 | ≥43% | <16% |
+| A | ≥0.45 | ≥1.30 | ≥38% | <16% |
 | S | ≥0.75 | ≥1.70 | ≥50% | <10% |
 
 **※ 全条件 AND で判定**
 
 ### Stage 2 検証ゲート（A/S昇格時）
-- **A**: OOS `Sharpe >= 0.35` かつ `net_expectancy_pips > 0`
-- **S**: CPCV `pass_rate >= 70%` かつ `median MaxDD < 12%`
-- **共通**: MC `prob_ruin <= 2%` + DryRun `p95(abs(slippage_pips)) <= *max-spread-pips*`
+- **A**: OOS `Sharpe >= 0.35` かつ `net_expectancy_pips > 0` + MC `prob_ruin <= 2%`（DryRunは `*a-rank-require-dryrun*=NIL` 既定でサンプル不足時ブートストラップ可）
+- **S**: CPCV `pass_rate >= 70%` かつ `median MaxDD < 12%` + MC `prob_ruin <= 2%` + DryRun `p95(abs(slippage_pips)) <= *max-spread-pips*`
 
 ---
 

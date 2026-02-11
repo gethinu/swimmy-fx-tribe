@@ -402,10 +402,13 @@
     (let* ((msg "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-CPCV\") (trade_list . (((timestamp . 1) (pnl . 1.0) (symbol . \"USDJPY\")))) (trades_truncated . t) (trades_ref . \"RID-CPCV\"))))")
            (called nil)
            (captured nil)
+           (orig-kb swimmy.school::*strategy-knowledge-base*)
            (orig-record (symbol-function 'swimmy.school:record-backtest-trades))
            (orig-notify (symbol-function 'swimmy.core:notify-cpcv-result)))
       (unwind-protect
           (progn
+            (setf swimmy.school::*strategy-knowledge-base*
+                  (list (swimmy.school:make-strategy :name "AAA" :rank :A)))
             (setf (symbol-function 'swimmy.school:record-backtest-trades)
                   (lambda (rid name kind trades)
                     (setf called (list rid name kind trades))
@@ -421,6 +424,7 @@
                           "trades_truncated should be preserved")
             (assert-equal "RID-CPCV" (getf captured :trades-ref)
                           "trades_ref should be preserved"))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb)
         (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)
         (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)))))
 
@@ -543,13 +547,75 @@
             (assert-equal 1 (gethash :result_criteria_failed swimmy.school::*cpcv-metrics* 0)
                           "criteria failure should increment")
             (assert-equal 2 (gethash :result_failed swimmy.school::*cpcv-metrics* 0)
-                          "total result failure should remain backward compatible"))
+                          "total result failure should remain backward compatible")
+
+            ;; Empty-path result should be runtime fail, not criteria fail
+            (funcall fn
+                     "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"AAA\") (request_id . \"RID-EMPTY\") (path_count . 0) (passed_count . 0) (failed_count . 0) (pass_rate . 0.0))))")
+            (assert-equal 3 (gethash :received swimmy.school::*cpcv-metrics* 0)
+                          "received should increment for empty result")
+            (assert-equal 2 (gethash :result_runtime_failed swimmy.school::*cpcv-metrics* 0)
+                          "empty result should increment runtime failure")
+            (assert-equal 1 (gethash :result_criteria_failed swimmy.school::*cpcv-metrics* 0)
+                          "empty result should not increment criteria failure")
+            (assert-equal 3 (gethash :result_failed swimmy.school::*cpcv-metrics* 0)
+                          "total failure should include empty runtime result"))
         (setf swimmy.school::*strategy-knowledge-base* orig-kb)
         (setf swimmy.school::*cpcv-metrics* orig-metrics)
         (setf (symbol-function 'swimmy.school:record-backtest-trades) orig-record)
         (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)
         (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
         (setf (symbol-function 'swimmy.school::write-cpcv-status-file) orig-write)))))
+
+(deftest test-cpcv-result-skips-notify-for-unknown-strategy
+  "CPCV_RESULT should not send per-strategy alert for unknown strategy names"
+  (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (let* ((unknown-name "UT-UNKNOWN-CPCV-ALERT")
+           (orig-kb swimmy.school::*strategy-knowledge-base*)
+           (orig-evolved (and (boundp 'swimmy.globals:*evolved-strategies*)
+                              swimmy.globals:*evolved-strategies*))
+           (orig-notify (symbol-function 'swimmy.core:notify-cpcv-result))
+           (orig-update (and (fboundp 'swimmy.school::update-cpcv-metrics-by-name)
+                             (symbol-function 'swimmy.school::update-cpcv-metrics-by-name)))
+           (notify-count 0)
+           (update-called nil))
+      (unwind-protect
+          (progn
+            (setf swimmy.school::*strategy-knowledge-base* nil)
+            (when (boundp 'swimmy.globals:*evolved-strategies*)
+              (setf swimmy.globals:*evolved-strategies* nil))
+            (when (fboundp 'swimmy.school::execute-non-query)
+              (ignore-errors
+                (swimmy.school::execute-non-query
+                 "DELETE FROM strategies WHERE name = ?"
+                 unknown-name)))
+            (setf (symbol-function 'swimmy.core:notify-cpcv-result)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    (incf notify-count)
+                    nil))
+            (when (fboundp 'swimmy.school::update-cpcv-metrics-by-name)
+              (setf (symbol-function 'swimmy.school::update-cpcv-metrics-by-name)
+                    (lambda (&rest _args)
+                      (declare (ignore _args))
+                      (setf update-called t)
+                      t)))
+            (funcall fn
+                     (format nil
+                             "((type . \"CPCV_RESULT\") (result . ((strategy_name . \"~a\") (request_id . \"RID-U\") (median_sharpe . 0.3) (median_pf . 1.1) (median_wr . 0.4) (median_maxdd . 0.2) (path_count . 10) (passed_count . 3) (failed_count . 7) (pass_rate . 0.3) (is_passed . nil))))"
+                             unknown-name))
+            (assert-true update-called
+                         "DB update path should still run for unknown strategy")
+            (assert-equal 0 notify-count
+                          "unknown strategy should not trigger CPCV per-strategy notification"))
+        (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+        (when (boundp 'swimmy.globals:*evolved-strategies*)
+          (setf swimmy.globals:*evolved-strategies* orig-evolved))
+        (setf (symbol-function 'swimmy.core:notify-cpcv-result) orig-notify)
+        (if orig-update
+            (setf (symbol-function 'swimmy.school::update-cpcv-metrics-by-name) orig-update)
+            (fmakunbound 'swimmy.school::update-cpcv-metrics-by-name))))))
 
 (deftest test-request-cpcv-includes-request-id
   "request-cpcv-validation should include request_id in payload"
@@ -739,7 +805,18 @@
                  :pass-rate 0.2
                  :is-passed nil))
           (assert-true (and captured (search "FAILED" captured))
-                       "criteria failure should be labeled FAILED"))
+                       "criteria failure should be labeled FAILED")
+          (setf captured nil)
+          (swimmy.core:notify-cpcv-result
+           (list :strategy-name "UT-CPCV-EMPTY"
+                 :median-sharpe 0.0
+                 :path-count 0
+                 :passed-count 0
+                 :failed-count 0
+                 :pass-rate 0.0
+                 :is-passed nil))
+          (assert-true (and captured (search "ERROR (runtime)" captured))
+                       "empty result should be labeled runtime error"))
       (when orig-notify
         (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify)))))
 
@@ -1268,6 +1345,160 @@
       (setf swimmy.globals:*candle-histories-tf* orig-hist-tf)
       (when (boundp 'swimmy.main::*candle-history*)
         (setf swimmy.main::*candle-history* orig-main-hist)))))
+
+(deftest test-periodic-status-report-uses-symbol-history-context
+  "periodic status should use symbol-specific market context when history exists"
+  (let* ((orig-notify (and (fboundp 'swimmy.core:notify-discord-status)
+                           (symbol-function 'swimmy.core:notify-discord-status)))
+         (orig-fx-open (and (fboundp 'swimmy.shell::fx-market-open-p)
+                            (symbol-function 'swimmy.shell::fx-market-open-p)))
+         (orig-predict (and (fboundp 'swimmy.school:summarize-status-prediction)
+                            (symbol-function 'swimmy.school:summarize-status-prediction)))
+         (orig-rank (and (fboundp 'swimmy.school:get-strategies-by-rank)
+                         (symbol-function 'swimmy.school:get-strategies-by-rank)))
+         (orig-detect (and (fboundp 'swimmy.school::detect-market-regime)
+                           (symbol-function 'swimmy.school::detect-market-regime)))
+         (orig-hist swimmy.globals:*candle-histories*)
+         (orig-single swimmy.globals:*candle-history*)
+         (orig-last swimmy.globals:*last-status-notification-time*)
+         (orig-interval swimmy.globals:*status-notification-interval*)
+         (orig-regime swimmy.school:*current-regime*)
+         (orig-vol swimmy.school:*volatility-regime*)
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*status-notification-interval* 0)
+          (setf swimmy.globals:*last-status-notification-time* (make-hash-table :test 'equal))
+          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
+          (setf swimmy.globals:*candle-history* nil)
+          (setf swimmy.school:*current-regime* :unknown)
+          (setf swimmy.school:*volatility-regime* :normal)
+          (setf (gethash "GBPUSD" swimmy.globals:*candle-histories*)
+                (loop for i from 1 to 80
+                      collect (swimmy.globals:make-candle
+                               :timestamp (+ 1700000000 i)
+                               :open (+ 1.3000 (* i 0.0001))
+                               :high (+ 1.3003 (* i 0.0001))
+                               :low (+ 1.2997 (* i 0.0001))
+                               :close (+ 1.3001 (* i 0.0001))
+                               :volume 1)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-status)
+                  (lambda (msg &key color)
+                    (declare (ignore color))
+                    (setf captured msg))))
+          (when orig-fx-open
+            (setf (symbol-function 'swimmy.shell::fx-market-open-p)
+                  (lambda (&optional _ts)
+                    (declare (ignore _ts))
+                    t)))
+          (when orig-predict
+            (setf (symbol-function 'swimmy.school:summarize-status-prediction)
+                  (lambda (_symbol)
+                    (declare (ignore _symbol))
+                    (values :buy 0.825 :ok))))
+          (when orig-rank
+            (setf (symbol-function 'swimmy.school:get-strategies-by-rank)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    nil)))
+          (when orig-detect
+            (setf (symbol-function 'swimmy.school::detect-market-regime)
+                  (lambda ()
+                    (setf swimmy.school:*volatility-regime* :high)
+                    :trend-early)))
+          (swimmy.shell:send-periodic-status-report "GBPUSD" 1.365)
+          (assert-true captured "Expected periodic status notification")
+          (assert-true (search "TREND-EARLY" captured)
+                       "Expected regime from symbol-specific detection")
+          (assert-true (search "HIGH" captured)
+                       "Expected volatility from symbol-specific detection")
+          (assert-true (search "シンボル別履歴（再計算）" captured)
+                       "Expected explicit symbol-history source label")
+          (assert-true (search "履歴再計算OK" captured)
+                       "Expected explicit market reason label"))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify))
+      (when orig-fx-open
+        (setf (symbol-function 'swimmy.shell::fx-market-open-p) orig-fx-open))
+      (when orig-predict
+        (setf (symbol-function 'swimmy.school:summarize-status-prediction) orig-predict))
+      (when orig-rank
+        (setf (symbol-function 'swimmy.school:get-strategies-by-rank) orig-rank))
+      (when orig-detect
+        (setf (symbol-function 'swimmy.school::detect-market-regime) orig-detect))
+      (setf swimmy.globals:*candle-histories* orig-hist)
+      (setf swimmy.globals:*candle-history* orig-single)
+      (setf swimmy.globals:*last-status-notification-time* orig-last)
+      (setf swimmy.globals:*status-notification-interval* orig-interval)
+      (setf swimmy.school:*current-regime* orig-regime)
+      (setf swimmy.school:*volatility-regime* orig-vol))))
+
+(deftest test-periodic-status-report-includes-evidence-and-freshness
+  "periodic status should include reason/freshness lines"
+  (let* ((orig-notify (and (fboundp 'swimmy.core:notify-discord-status)
+                           (symbol-function 'swimmy.core:notify-discord-status)))
+         (orig-fx-open (and (fboundp 'swimmy.shell::fx-market-open-p)
+                            (symbol-function 'swimmy.shell::fx-market-open-p)))
+         (orig-predict (and (fboundp 'swimmy.school:summarize-status-prediction)
+                            (symbol-function 'swimmy.school:summarize-status-prediction)))
+         (orig-rank (and (fboundp 'swimmy.school:get-strategies-by-rank)
+                         (symbol-function 'swimmy.school:get-strategies-by-rank)))
+         (orig-last swimmy.globals:*last-status-notification-time*)
+         (orig-interval swimmy.globals:*status-notification-interval*)
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*status-notification-interval* 0)
+          (setf swimmy.globals:*last-status-notification-time* (make-hash-table :test 'equal))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-status)
+                  (lambda (msg &key color)
+                    (declare (ignore color))
+                    (setf captured msg))))
+          (when orig-fx-open
+            (setf (symbol-function 'swimmy.shell::fx-market-open-p)
+                  (lambda (&optional _ts)
+                    (declare (ignore _ts))
+                    t)))
+          (when orig-predict
+            (setf (symbol-function 'swimmy.school:summarize-status-prediction)
+                  (lambda (_symbol)
+                    (declare (ignore _symbol))
+                    (values :hold 0.0 :insufficient-history))))
+          (when orig-rank
+            (setf (symbol-function 'swimmy.school:get-strategies-by-rank)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    nil)))
+          (swimmy.shell:send-periodic-status-report "GBPUSD" 1.367)
+          (assert-true captured "Expected periodic status notification")
+          (assert-true (search "判定根拠/鮮度" captured)
+                       "Expected evidence header in status message")
+          (assert-true (search "データ鮮度:" captured)
+                       "Expected freshness line in status message")
+          (assert-true (search "全体状態フォールバック（推定保留）" captured)
+                       "Expected human-readable market source label")
+          (assert-true (search "履歴不足（60本未満）" captured)
+                       "Expected explicit market fallback reason label")
+          (assert-true (search "履歴不足（50本以下）" captured)
+                       "Expected explicit prediction reason label")
+          (assert-false (search "GLOBAL-FALLBACK" captured)
+                        "Internal source key should not be shown")
+          (assert-false (search "INSUFFICIENT-HISTORY" captured)
+                        "Internal reason key should not be shown")
+          (assert-false (search "全体状態フォールバック (" captured)
+                        "Legacy ASCII parenthesis label should not remain"))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-status) orig-notify))
+      (when orig-fx-open
+        (setf (symbol-function 'swimmy.shell::fx-market-open-p) orig-fx-open))
+      (when orig-predict
+        (setf (symbol-function 'swimmy.school:summarize-status-prediction) orig-predict))
+      (when orig-rank
+        (setf (symbol-function 'swimmy.school:get-strategies-by-rank) orig-rank))
+      (setf swimmy.globals:*last-status-notification-time* orig-last)
+      (setf swimmy.globals:*status-notification-interval* orig-interval))))
 
 (deftest test-process-account-info-sexp
   "process-account-info should accept S-expression alist"
@@ -2803,6 +3034,18 @@
     (assert-false (swimmy.school::check-rank-criteria strat :A)
                   "Expected A criteria to fail when OOS Sharpe < 0.35")))
 
+(deftest test-check-rank-criteria-vnext-a-wr-floor-supports-high-rr
+  "A-RANK base gate should allow high-RR candidates at WR >= 38%."
+  (let ((strat (swimmy.school:make-strategy :name "UT-A-WR-FLOOR"
+                                            :rank :B
+                                            :sharpe 1.20
+                                            :profit-factor 1.35
+                                            :win-rate 0.38
+                                            :max-dd 0.12
+                                            :oos-sharpe 0.40)))
+    (assert-true (swimmy.school::check-rank-criteria strat :A)
+                 "Expected A criteria to pass for WR=38% high-RR candidate")))
+
 (deftest test-validate-a-rank-requires-positive-net-expectancy
   "A promotion should require positive cost-adjusted expectancy."
   (let* ((strat (swimmy.school:make-strategy :name "UT-A-NET-EXP"
@@ -2831,6 +3074,58 @@
           (assert-false promoted "promote-rank should not be called"))
       (setf (symbol-function 'swimmy.school::run-oos-validation) orig-oos)
       (setf (symbol-function 'swimmy.school::promote-rank) orig-promote))))
+
+(deftest test-validate-a-rank-allows-dryrun-bootstrap-when-mc-passes
+  "A promotion should not hard-fail only because DryRun samples are missing during bootstrap."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-A-DRYRUN-BOOTSTRAP"
+                                             :rank :B
+                                             :sharpe 0.80
+                                             :profit-factor 1.50
+                                             :win-rate 0.50
+                                             :max-dd 0.10
+                                             :oos-sharpe 0.40))
+         (promoted nil)
+         (orig-oos (symbol-function 'swimmy.school::run-oos-validation))
+         (orig-promote (symbol-function 'swimmy.school::promote-rank))
+         (orig-exp (symbol-function 'swimmy.school::a-expectancy-gate-passed-p))
+         (orig-mc (symbol-function 'swimmy.school::strategy-mc-prob-ruin))
+         (orig-dryrun (symbol-function 'swimmy.school::dryrun-slippage-p95))
+         (had-require (boundp 'swimmy.school::*a-rank-require-dryrun*))
+         (orig-require (when had-require swimmy.school::*a-rank-require-dryrun*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*a-rank-require-dryrun* nil)
+          (setf (symbol-function 'swimmy.school::run-oos-validation)
+                (lambda (_strat)
+                  (declare (ignore _strat))
+                  (values t 0.40 "OOS mocked pass")))
+          (setf (symbol-function 'swimmy.school::a-expectancy-gate-passed-p)
+                (lambda (_strat)
+                  (declare (ignore _strat))
+                  (values t 1.20)))
+          (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin)
+                (lambda (_strat &key iterations)
+                  (declare (ignore _strat iterations))
+                  0.01))
+          (setf (symbol-function 'swimmy.school::dryrun-slippage-p95)
+                (lambda (_name)
+                  (declare (ignore _name))
+                  nil))
+          (setf (symbol-function 'swimmy.school::promote-rank)
+                (lambda (&rest _args)
+                  (setf promoted t)
+                  :A))
+          (assert-true (swimmy.school::validate-for-a-rank-promotion strat)
+                       "Bootstrap path should allow A promotion without DryRun samples")
+          (assert-true promoted "promote-rank should be called"))
+      (setf (symbol-function 'swimmy.school::run-oos-validation) orig-oos)
+      (setf (symbol-function 'swimmy.school::promote-rank) orig-promote)
+      (setf (symbol-function 'swimmy.school::a-expectancy-gate-passed-p) orig-exp)
+      (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin) orig-mc)
+      (setf (symbol-function 'swimmy.school::dryrun-slippage-p95) orig-dryrun)
+      (if had-require
+          (setf swimmy.school::*a-rank-require-dryrun* orig-require)
+          (makunbound 'swimmy.school::*a-rank-require-dryrun*)))))
 
 (deftest test-evaluate-a-rank-requires-common-stage2-gates
   "S promotion should require common MC/DryRun gates."
@@ -3502,7 +3797,9 @@
                   test-cpcv-result-preserves-trade-meta
                   test-cpcv-result-updates-db-when-strategy-missing
                   test-cpcv-result-metrics-split-runtime-vs-criteria
+                  test-cpcv-result-skips-notify-for-unknown-strategy
                   test-cpcv-metrics-summary-line-breakdown
+                  test-notify-cpcv-result-distinguishes-error
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
@@ -3531,6 +3828,8 @@
 	                  test-internal-cmd-json-disallowed
                   test-internal-process-msg-tick-sexp
                   test-internal-process-msg-history-sexp
+                  test-periodic-status-report-uses-symbol-history-context
+                  test-periodic-status-report-includes-evidence-and-freshness
                   test-process-account-info-sexp
                   test-process-trade-closed-sexp
                   test-normalize-legacy-plist->strategy
@@ -3563,7 +3862,9 @@
                   test-a-rank-evaluation-uses-composite-score
                   test-check-rank-criteria-requires-cpcv-pass-rate
                   test-check-rank-criteria-vnext-a-oos-threshold
+                  test-check-rank-criteria-vnext-a-wr-floor-supports-high-rr
                   test-validate-a-rank-requires-positive-net-expectancy
+                  test-validate-a-rank-allows-dryrun-bootstrap-when-mc-passes
                   test-evaluate-a-rank-requires-common-stage2-gates
                   test-dryrun-slippage-persists-across-memory-reset
                   test-dryrun-slippage-db-cap-prunes-old-samples

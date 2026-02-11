@@ -4,6 +4,12 @@ import notifier
 
 
 class TestNotifierPreview(unittest.TestCase):
+    def test_status_preview_limit_is_extended(self):
+        self.assertEqual(360, notifier.select_preview_max_len("📊 Status"))
+
+    def test_non_status_preview_limit_uses_default(self):
+        self.assertEqual(120, notifier.select_preview_max_len("🚨 ALERT"))
+
     def test_preview_from_embed_description(self):
         payload = {
             "embeds": [

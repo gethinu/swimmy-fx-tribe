@@ -1,0 +1,37 @@
+{
+  "backend": "vector-siamese-v1",
+  "output_path": "/home/swimmy/swimmy/data/patterns/models/vector_siamese_v1.pt",
+  "data": {
+    "symbols": [
+      "USDJPY",
+      "EURUSD",
+      "GBPUSD"
+    ],
+    "timeframes": [
+      "M5",
+      "M15",
+      "H1",
+      "H4",
+      "D1",
+      "W1",
+      "MN1"
+    ],
+    "collected": 60000,
+    "label_counts": {
+      "0": 32391,
+      "1": 27591,
+      "2": 18
+    }
+  },
+  "train": {
+    "backend": "vector-siamese-v1",
+    "path": "/home/swimmy/swimmy/data/patterns/models/vector_siamese_v1.pt",
+    "samples": 60000,
+    "triplets": 30000,
+    "embedding_dim": 128,
+    "window": 120,
+    "channels": 5,
+    "device": "cpu",
+    "last_loss": 0.06833643274012405
+  }
+}
