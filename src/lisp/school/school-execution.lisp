@@ -8,6 +8,14 @@
 (defparameter *last-category-trade-time* (make-hash-table :test 'equal))
 (defparameter *min-trade-interval* 300)
 (defparameter *category-entries* (make-hash-table :test 'equal))
+(defparameter *pattern-gate-threshold* 0.60
+  "Minimum directional probability to accept pattern alignment.")
+(defparameter *pattern-gate-lot-multiplier* 0.70
+  "Soft gate multiplier when pattern direction mismatches.")
+(defparameter *pattern-gate-k* 30
+  "Top-k neighbors for Pattern Similarity query.")
+(defparameter *pattern-gate-timeframes* '("H1" "H4" "D1" "W1" "MN1")
+  "Timeframes where pattern soft-gate is enabled.")
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -154,6 +162,123 @@
                  (min (correlation-adjusted-lot symbol vol-scaled) 
                       rp-lot hdrl-lot kelly-adj)))))
 
+(defun pattern-gate-enabled-timeframe-p (timeframe-key)
+  "Return T when Pattern gate should run for TIMEFRAME-KEY."
+  (member (string-upcase (format nil "~a" timeframe-key))
+          *pattern-gate-timeframes*
+          :test #'string=))
+
+(defun %pattern-gate-coerce-float (value &optional (default 0.0))
+  "Best-effort conversion to float."
+  (cond
+    ((numberp value) (float value))
+    ((stringp value)
+     (handler-case
+         (let ((*read-eval* nil))
+           (multiple-value-bind (obj _pos) (read-from-string value nil nil)
+             (declare (ignore _pos))
+             (if (numberp obj) (float obj) default)))
+       (error () default)))
+    (t default)))
+
+(defun %pattern-best-label (p-up p-down p-flat)
+  "Return :UP/:DOWN/:FLAT from probabilities."
+  (cond
+    ((and (>= p-up p-down) (>= p-up p-flat)) :up)
+    ((and (>= p-down p-up) (>= p-down p-flat)) :down)
+    (t :flat)))
+
+(defun %pattern-gate-get (gate key &optional default)
+  "Fetch KEY from gate alist."
+  (let ((cell (assoc key gate)))
+    (if cell (cdr cell) default)))
+
+(defun apply-pattern-soft-gate (category symbol direction timeframe-key history lot lead-name)
+  "Apply pattern soft gate. Returns (values adjusted-lot gate-info-alist)."
+  (let ((base-lot (max 0.01 (float lot))))
+    (unless (pattern-gate-enabled-timeframe-p timeframe-key)
+      (return-from apply-pattern-soft-gate
+        (values base-lot
+                `((:applied . nil)
+                  (:reason . "SKIP_TF")
+                  (:category . ,category)
+                  (:symbol . ,symbol)
+                  (:timeframe . ,timeframe-key)
+                  (:strategy . ,lead-name)
+                  (:lot_before . ,base-lot)
+                  (:lot_after . ,base-lot)))))
+
+    (multiple-value-bind (result err)
+        (swimmy.core:query-pattern-similarity symbol timeframe-key history :k *pattern-gate-k*)
+      (when err
+        (return-from apply-pattern-soft-gate
+          (values base-lot
+                  `((:applied . nil)
+                    (:reason . "UNAVAILABLE")
+                    (:error . ,err)
+                    (:category . ,category)
+                    (:symbol . ,symbol)
+                    (:timeframe . ,timeframe-key)
+                    (:strategy . ,lead-name)
+                    (:lot_before . ,base-lot)
+                    (:lot_after . ,base-lot)))))
+
+      (let* ((p-up (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_up) (/ 1.0 3.0)))
+             (p-down (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_down) (/ 1.0 3.0)))
+             (p-flat (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_flat) (/ 1.0 3.0)))
+             (expected (if (eq direction :buy) :up :down))
+             (expected-prob (if (eq expected :up) p-up p-down))
+             (best-label (%pattern-best-label p-up p-down p-flat))
+             (match-p (and (>= expected-prob *pattern-gate-threshold*)
+                           (eq best-label expected)))
+             (applied (not match-p))
+             (adjusted (if applied
+                           (max 0.01 (* base-lot *pattern-gate-lot-multiplier*))
+                           base-lot)))
+        (values adjusted
+                `((:applied . ,applied)
+                  (:reason . ,(if applied "MISMATCH" "MATCH"))
+                  (:category . ,category)
+                  (:symbol . ,symbol)
+                  (:timeframe . ,timeframe-key)
+                  (:strategy . ,lead-name)
+                  (:direction . ,(if (eq direction :buy) "BUY" "SELL"))
+                  (:expected_label . ,(string-upcase (symbol-name expected)))
+                  (:best_label . ,(string-upcase (symbol-name best-label)))
+                  (:expected_prob . ,expected-prob)
+                  (:p_up . ,p-up)
+                  (:p_down . ,p-down)
+                  (:p_flat . ,p-flat)
+                  (:threshold . ,*pattern-gate-threshold*)
+                  (:k . ,*pattern-gate-k*)
+                  (:lot_before . ,base-lot)
+                  (:lot_after . ,adjusted)))))))
+
+(defun emit-pattern-gate-telemetry (symbol timeframe-key gate-info)
+  "Emit structured telemetry for pattern gate decision."
+  (when (fboundp 'swimmy.core::emit-telemetry-event)
+    (swimmy.core::emit-telemetry-event "execution.pattern_gate"
+      :service "school"
+      :severity "info"
+      :data (jsown:new-js
+              ("symbol" symbol)
+              ("timeframe" timeframe-key)
+              ("strategy" (%pattern-gate-get gate-info :strategy "unknown"))
+              ("direction" (%pattern-gate-get gate-info :direction "UNKNOWN"))
+              ("applied" (if (%pattern-gate-get gate-info :applied nil) t nil))
+              ("reason" (%pattern-gate-get gate-info :reason "UNKNOWN"))
+              ("error" (%pattern-gate-get gate-info :error ""))
+              ("expected_label" (%pattern-gate-get gate-info :expected_label ""))
+              ("best_label" (%pattern-gate-get gate-info :best_label ""))
+              ("expected_prob" (%pattern-gate-get gate-info :expected_prob 0.0))
+              ("p_up" (%pattern-gate-get gate-info :p_up 0.0))
+              ("p_down" (%pattern-gate-get gate-info :p_down 0.0))
+              ("p_flat" (%pattern-gate-get gate-info :p_flat 0.0))
+              ("threshold" (%pattern-gate-get gate-info :threshold *pattern-gate-threshold*))
+              ("k" (%pattern-gate-get gate-info :k *pattern-gate-k*))
+              ("lot_before" (%pattern-gate-get gate-info :lot_before 0.0))
+              ("lot_after" (%pattern-gate-get gate-info :lot_after 0.0))))))
+
 
 ;;; P3 Refactor: Decomposed Execution Helpers (Expert Panel 2026-01-20)
 
@@ -164,7 +289,9 @@
          (lead-name (when lead-strat (strategy-name lead-strat)))
          (timeframe (if lead-strat (strategy-timeframe lead-strat) 1))
          (timeframe-key (cond ((= timeframe 5) "M5") ((= timeframe 15) "M15") ((= timeframe 30) "M30")
-                             ((= timeframe 60) "H1") ((= timeframe 240) "H4") ((= timeframe 1440) "D1") (t "M1")))
+                             ((= timeframe 60) "H1") ((= timeframe 240) "H4") ((= timeframe 1440) "D1")
+                             ((= timeframe 10080) "W1") ((= timeframe 43200) "MN1")
+                             (t "M1")))
          (history (if (= timeframe 1) (gethash symbol *candle-histories*)
                       (let ((tf-map (gethash symbol *candle-histories-tf*)))
                         (or (and tf-map (gethash timeframe-key tf-map))
@@ -293,12 +420,14 @@
                     (overlay (apply-pair-overlay lead-name direction symbol lot))
                     (final-lot (first overlay))
                     (pair-id (second overlay)))
-               
-               (when (verify-signal-authority symbol direction category final-lot rank lead-name)
-                  ;; Sleep Randomization (Anti-Gaming)
-                  (sleep (/ (random 2000) 1000.0))
-                  (execute-order-sequence category direction symbol bid ask final-lot lead-name timeframe-key nil
-                                          :pair-id pair-id))))))
+               (multiple-value-bind (gated-lot gate-info)
+                   (apply-pattern-soft-gate category symbol direction timeframe-key history final-lot lead-name)
+                 (emit-pattern-gate-telemetry symbol timeframe-key gate-info)
+                 (when (verify-signal-authority symbol direction category gated-lot rank lead-name)
+                    ;; Sleep Randomization (Anti-Gaming)
+                    (sleep (/ (random 2000) 1000.0))
+                    (execute-order-sequence category direction symbol bid ask gated-lot lead-name timeframe-key nil
+                                            :pair-id pair-id)))))))
     (error (e) (format t "[EXEC] 🚨 Error: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)

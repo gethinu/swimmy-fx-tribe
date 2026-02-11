@@ -53,7 +53,7 @@
                      :close (if close (float close) 0.0)
                      :volume (if vol (float vol) 0.0))))))
 
-(defun build-data-keeper-request (action &key symbol timeframe count candle)
+(defun build-data-keeper-request (action &key symbol timeframe count candle tick start-time end-time)
   "Build S-expression request string for Data Keeper."
   (let ((alist `((type . "DATA_KEEPER")
                  (schema_version . 1)
@@ -66,6 +66,12 @@
       (setf alist (append alist `((count . ,count)))))
     (when candle
       (setf alist (append alist `((candle . ,candle)))))
+    (when tick
+      (setf alist (append alist `((tick . ,tick)))))
+    (when start-time
+      (setf alist (append alist `((start_time . ,start-time)))))
+    (when end-time
+      (setf alist (append alist `((end_time . ,end-time)))))
     (encode-sexp alist)))
 
 (defun init-data-keeper-client ()
@@ -154,6 +160,49 @@
                                                :symbol symbol
                                                :candle candle-alist)))
       (data-keeper-query command))))
+
+(defun %sexp-tick->alist (entry)
+  "Convert DATA_KEEPER tick alist to normalized key/value alist."
+  (when (listp entry)
+    (let ((ts (%alist-val entry '(timestamp t) nil))
+          (bid (%alist-val entry '(bid b) nil))
+          (ask (%alist-val entry '(ask a) nil))
+          (vol (%alist-val entry '(volume v) 0)))
+      (when ts
+        `((timestamp . ,ts)
+          (bid . ,(if bid (float bid) 0.0))
+          (ask . ,(if ask (float ask) 0.0))
+          (volume . ,(if vol (float vol) 0.0)))))))
+
+(defun add-tick-to-keeper (symbol timestamp bid ask &optional (volume 0))
+  "Push a tick to Data Keeper for VAP/pattern analytics."
+  (when *data-keeper-available*
+    (let* ((tick-alist `((timestamp . ,timestamp)
+                         (bid . ,(float bid))
+                         (ask . ,(float ask))
+                         (volume . ,volume)))
+           (command (build-data-keeper-request "ADD_TICK"
+                                               :symbol symbol
+                                               :tick tick-alist))
+           (response (data-keeper-query command)))
+      (and response
+           (string= (or (sexp-alist-get response 'status) "") "ok")))))
+
+(defun get-ticks-from-keeper (symbol count &key start-time end-time)
+  "Get ticks from Data Keeper (newest first)."
+  (if *data-keeper-available*
+      (let* ((query (build-data-keeper-request "GET_TICKS"
+                                              :symbol symbol
+                                              :count count
+                                              :start-time start-time
+                                              :end-time end-time))
+             (response (data-keeper-query query))
+             (status (and response (sexp-alist-get response 'status))))
+        (if (and response (string= status "ok"))
+            (let ((ticks (sexp-alist-get response 'ticks)))
+              (remove nil (mapcar #'%sexp-tick->alist (or ticks '()))))
+            nil))
+      nil))
 
 (defvar *last-backfill-time* (make-hash-table :test 'equal)
   "Throttle backfill requests per symbol to prevent infinite loop")

@@ -226,6 +226,7 @@
    #:*port-notifier*
    #:*port-backtest-req*
    #:*port-backtest-res*
+   #:*port-pattern-similarity*
    #:*backtest-service-enabled*
    #:zmq-connect-endpoint
    #:zmq-bind-endpoint
@@ -278,8 +279,14 @@
    #:data-keeper-status
    #:get-history-from-keeper
    #:add-candle-to-keeper
+   #:add-tick-to-keeper
+   #:get-ticks-from-keeper
    #:close-data-keeper-client
    #:check-data-gap
+
+   ;; Pattern Similarity Client (Phase 1)
+   #:query-pattern-similarity
+   #:close-pattern-similarity-client
    
    ;; Risk Gateway Client (V8.0)
    #:request-trade-approval

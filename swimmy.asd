@@ -23,6 +23,7 @@
                (:file "src/lisp/core/db-adapter")  ; Phase 9: DB Adapter
                (:file "src/lisp/core/sqlite-manager") ; V49.8: SQL Connection Management
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
+               (:file "src/lisp/core/pattern-similarity-client") ; Pattern Similarity client
                (:file "src/lisp/core/risk-client")  ; V8.0: Risk Gateway client
                (:file "src/lisp/core/inference-client") ; V8.0: Inference client
                (:file "src/lisp/core/profiling")

@@ -60,6 +60,25 @@
       (assert-true (< low-sim 0.5) "Different patterns should have low similarity")
       (assert-true (> high-sim low-sim) "Matching should be higher than non-matching"))))
 
+(deftest test-pattern-soft-gate-reduces-lot-on-mismatch
+  "Pattern gate should reduce lot by 0.7x on H1 mismatch."
+  (let ((orig-query (symbol-function 'swimmy.core:query-pattern-similarity)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:query-pattern-similarity)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (values '((p_up . 0.30) (p_down . 0.55) (p_flat . 0.15)) nil)))
+          (multiple-value-bind (lot gate)
+              (swimmy.school::apply-pattern-soft-gate
+               :trend "USDJPY" :buy "H1" nil 0.10 "UT-STRAT")
+            (assert-equal 0.07 lot "Expected 0.7x lot on mismatch")
+            (assert-true (eq t (cdr (assoc :applied gate)))
+                         "Gate should be applied")
+            (assert-equal "MISMATCH" (cdr (assoc :reason gate))
+                          "Reason should be MISMATCH")))
+      (setf (symbol-function 'swimmy.core:query-pattern-similarity) orig-query))))
+
 ;;; ==========================================
 ;;; SCHOOL-VOLATILITY TESTS
 ;;; ==========================================
@@ -503,6 +522,44 @@
               (assert-true (search "oldest:" line) "DB oldest age should appear")))
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-oos-status-line-includes-failure-breakdown-and-latency
+  "OOS status line should include data/send/db failure stats and latency metrics."
+  (let ((orig-db (and (fboundp 'swimmy.school::report-oos-db-metrics)
+                      (symbol-function 'swimmy.school::report-oos-db-metrics)))
+        (orig-queue (and (fboundp 'swimmy.school::fetch-oos-queue-stats)
+                         (symbol-function 'swimmy.school::fetch-oos-queue-stats)))
+        (orig-failure (and (fboundp 'swimmy.school::report-oos-failure-stats)
+                           (symbol-function 'swimmy.school::report-oos-failure-stats)))
+        (orig-latency (and (fboundp 'swimmy.school::report-oos-metrics)
+                           (symbol-function 'swimmy.school::report-oos-metrics))))
+    (unwind-protect
+         (progn
+           (setf (symbol-function 'swimmy.school::report-oos-db-metrics)
+                 (lambda () (list :sent 2 :retry 1 :success 7 :failure 3)))
+           (setf (symbol-function 'swimmy.school::fetch-oos-queue-stats)
+                 (lambda () (list :pending 4 :oldest-age 12)))
+           (setf (symbol-function 'swimmy.school::report-oos-failure-stats)
+                 (lambda () (list :data-invalid 4 :send-failure 5 :db-error 6)))
+           (setf (symbol-function 'swimmy.school::report-oos-metrics)
+                 (lambda () (list :latency-avg 1.25 :latency-min 0.8 :latency-max 2.4)))
+           (let ((line (swimmy.school::oos-metrics-summary-line)))
+             (assert-true (search "sent: 2" line) "Sent count should appear")
+             (assert-true (search "retry: 1" line) "Retry count should appear")
+             (assert-true (search "success: 7" line) "Success count should appear")
+             (assert-true (search "failure: 3" line) "Failure count should appear")
+             (assert-true (search "(data 4 send 5 db 6)" line)
+                          "Failure breakdown should use real values")
+             (assert-true (search "latency(avg/min/max): 1.25/0.80/2.40 sec" line)
+                          "Latency metrics should use real values")))
+      (when orig-db
+        (setf (symbol-function 'swimmy.school::report-oos-db-metrics) orig-db))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.school::fetch-oos-queue-stats) orig-queue))
+      (when orig-failure
+        (setf (symbol-function 'swimmy.school::report-oos-failure-stats) orig-failure))
+      (when orig-latency
+        (setf (symbol-function 'swimmy.school::report-oos-metrics) orig-latency)))))
 
 (deftest test-oos-status-line-no-queue-duplication
   "OOS status line should not duplicate queue stats suffix."

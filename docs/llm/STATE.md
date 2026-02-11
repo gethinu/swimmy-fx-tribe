@@ -23,6 +23,7 @@
 - **CPCV Validate (評価条件)**: Guardian の `CPCV_VALIDATE` は `strategy_params` の `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する（timeframe>1はResample、filter有効時は同一データからauxを生成してMTF filter適用）。
 - **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
+- **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 
 ## 決定事項
@@ -49,7 +50,7 @@
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Pattern Similarity Service**: 5565(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
-- **Pattern Similarity 実装状態（Phase 1）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。
+- **Pattern Similarity 実装状態（Phase 1）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。Lisp側は `src/lisp/core/pattern-similarity-client.lisp` で 5565 に接続し、`school-execution` で H1/H4/D1/W1/MN1 のソフトゲート（不一致時 lot 0.7x）と `execution.pattern_gate` telemetry を実装。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
@@ -57,7 +58,7 @@
 - **サンプルストライド**: M5=30分(6本)、M15=1時間(4本)、H1/H4/D1/W1/MN1=1本。
 - **画像ウィンドウ本数**: M5=120、M15=120、H1=120、H4=120、D1=120、W1=104、MN1=120。
 - **VAP**: 価格帯別出来高はMT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**）。
-- **Tick API**: Data Keeper に `GET_TICKS` / `ADD_TICK` を追加し、VAP用のティック履歴を取得できるようにする。
+- **Tick API**: Data Keeper に `GET_TICKS` / `ADD_TICK` を実装し、VAP用のティック履歴を取得できる（newest-first, `start_time/end_time` フィルタ対応）。
 - **Backtest Phase方針**: Phase1=2011-2020、Phase2=2021-CSV末尾(rolling end_time)。Backtest要求に `phase`/`range_id` と `start_time`/`end_time` を含める。Evolution Reportに Phase2 end_time を明記する。
 - **Startup Liveness**: Brain起動時は「受信ループ（Backtest結果/Guardian stream）」へ先に入る。重い一括処理（Deferred Backtest Flush）は **後回し＋レート制限**で段階的に実行する（起動で詰まらせない）。`SWIMMY_DEFERRED_FLUSH_BATCH`（1回の送信上限、0で無効）と `SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC`（実行間隔秒）で調整する。
 - **OOS Queue Startup Cleanup**: 起動時に `oos_queue` を全クリアし、OOS再キューは通常の検証ループで再投入する（古い request_id を残さない）。
@@ -82,9 +83,12 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-11**: Data Keeper の Tick API（`ADD_TICK` / `GET_TICKS`）を実装。`tools/test_data_keeper_sexp.py` に契約テスト（追加/取得/時間窓）を追加。
+- **2026-02-11**: Lisp Core に Pattern Similarity client を追加（`SWIMMY_PORT_PATTERN_SIMILARITY` / 既定5565）。`school-execution` に H1+ のソフトゲート（不一致時 lot 0.7x）を接続し、`execution.pattern_gate` telemetry を追加。
 - **2026-02-11**: Pattern Similarity Service (5565) の Phase 1 実装を追加。`tools/pattern_similarity_service.py`、`systemd/swimmy-pattern-similarity.service`、`tools/test_pattern_similarity_sexp.py` を追加し、`tools/install_services.sh` / `tools/system_audit.sh` にサービス反映。
 - **2026-02-11**: `upsert-strategy` に Archive Rank 保護を追加し、DB既存 `:GRAVEYARD/:RETIRED` が通常upsertで `NIL/Active` に戻る退行を防止。
 - **2026-02-11**: OOS dispatch の成否契約を厳格化。Backtest送信が受理されなかった要求を `sent` に残さず `error` 化し、`oos_status` の `sent/pending` 誤増加を抑制。
+- **2026-02-11**: OOS status 表示のダミー値を廃止。`data/send/db` の失敗内訳と latency(avg/min/max) を実測から表示するよう更新。
 - **2026-02-11**: CPCV status の `failed` を内訳表示（`send_failed/result_failed(runtime/criteria)`）に拡張し、ゲート未達と実行系エラーを区別可能にした。
 - **2026-02-11**: ランク判定を `Balanced + 2段階ゲート` に更新する方針を確定。Stage 1固定閾値（B/A/S）を引き上げ、Stage 2に OOS/CPCV/MC/DryRun を組み合わせる昇格ゲートを正本化。
 - **2026-02-11**: ランク昇格ロジックを実装更新。A昇格に `Expectancy>0` を追加し、A/S共通で `MC prob_ruin<=2%` と `DryRun p95(slippage)<=max_spread` を必須化。`TRADE_CLOSED` のスリッページ計測を戦略単位で蓄積して DryRun ゲートに接続。

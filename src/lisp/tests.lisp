@@ -3647,6 +3647,7 @@
                   test-retired-patterns-weighted-in-avoidance
                   test-pattern-similarity
                   test-calculate-pattern-similarity-behavior ; [V8.2] Uncle Bob
+                  test-pattern-soft-gate-reduces-lot-on-mismatch
                   test-atr-calculation-logic
                   test-volatility-shifts
                   test-prediction-structure
