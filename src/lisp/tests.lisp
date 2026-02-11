@@ -2584,15 +2584,15 @@
          (strat (swimmy.school:make-strategy :name "PROMO"
                                              :symbol "USDJPY"
                                              :rank :B
-                                             :sharpe 0.7
+                                             :sharpe 0.8
                                              :profit-factor 1.8
                                              :win-rate 0.55
-                                             :max-dd 0.10
-                                             :cpcv-median-sharpe 0.7
+                                             :max-dd 0.09
+                                             :cpcv-median-sharpe 0.8
                                              :cpcv-median-pf 1.6
                                              :cpcv-median-wr 0.5
-                                             :cpcv-median-maxdd 0.12
-                                             :cpcv-pass-rate 0.6))
+                                             :cpcv-median-maxdd 0.10
+                                             :cpcv-pass-rate 0.8))
          (called 0)
          (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
                     (symbol-function 'swimmy.school::notify-noncorrelated-promotion))))
