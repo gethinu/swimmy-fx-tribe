@@ -104,6 +104,7 @@ def print_dashboard():
     print(f"  🛡️  Guardian:   {get_service_status('swimmy-guardian')}")
     print(f"  🔔 Notifier:   {get_service_status('swimmy-notifier')}")
     print(f"  💾 DataKeeper: {get_service_status('swimmy-data-keeper')}")
+    print(f"  🧩 PatternSim: {get_service_status('swimmy-pattern-similarity')}")
     print("")
 
     metrics = parse_brain_metrics()

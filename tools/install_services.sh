@@ -27,7 +27,7 @@ if [ "${#unit_files[@]}" -eq 0 ]; then
   exit 1
 fi
 
-SERVICES_STR="${SWIMMY_SERVICES:-swimmy-backtest swimmy-notifier swimmy-data-keeper swimmy-risk}"
+SERVICES_STR="${SWIMMY_SERVICES:-swimmy-backtest swimmy-notifier swimmy-data-keeper swimmy-risk swimmy-pattern-similarity}"
 read -r -a SERVICES <<<"$SERVICES_STR"
 
 for svc in "${SERVICES[@]}"; do
@@ -72,4 +72,3 @@ echo "Status:"
 systemctl status --no-pager "${SERVICES[@]/%/.service}" || true
 
 echo "OK"
-

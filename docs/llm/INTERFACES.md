@@ -584,7 +584,7 @@ Discord通知の非同期中継（Python）。
 ((type . "PATTERN_SIMILARITY_RESULT")
  (schema_version . 1)
  (status . "ok")
- (model . "clip-vit-b32")
+ (model . "vector-fallback-v1") ; 実装モデル名（例: clip-vit-b32 / vector-fallback-v1）
  (indices . (((symbol . "USDJPY")
               (timeframe . "H1")
               (count . 12345)
@@ -608,7 +608,10 @@ Discord通知の非同期中継（Python）。
 ((type . "PATTERN_SIMILARITY_RESULT")
  (schema_version . 1)
  (status . "ok")
- (message . "build started"))
+ (message . "build started")
+ (details . (((symbol . "USDJPY")
+              (timeframe . "H1")
+              (count . 12345))))) ; optional
 ```
 
 **QUERY (Request)**:
@@ -661,6 +664,7 @@ Discord通知の非同期中継（Python）。
 **Notes**:
 - `candles` はTFごとの **window_bars** と一致する長さを要求する。  
 - ペイロードサイズ上限は **デフォルト 2MB（設定で変更可）**（超過時は `error`）。  
+- `model` は実装モデル名を返す（例: `clip-vit-b32`, `vector-fallback-v1`）。  
 
 ## エラーとタイムアウト
 - **タイムアウト**:

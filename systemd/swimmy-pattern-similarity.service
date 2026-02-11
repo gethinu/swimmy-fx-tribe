@@ -1,0 +1,20 @@
+[Unit]
+Description=Swimmy Pattern Similarity Service
+After=network.target
+
+[Service]
+Type=simple
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/pattern_similarity_service.py
+Restart=always
+RestartSec=5
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+# Logs
+StandardOutput=append:/home/swimmy/swimmy/logs/pattern_similarity.log
+StandardError=append:/home/swimmy/swimmy/logs/pattern_similarity.log
+
+[Install]
+WantedBy=default.target

@@ -8,7 +8,7 @@
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
-- **Aux Services**: Data Keeper / Notifier / Risk Gateway は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
@@ -42,11 +42,14 @@
     - 実装既定: `strategy-pnl-history` が **30トレード以上**ある場合のみ判定し、`iterations=250` で評価する（不足時は不合格）。
   - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
     - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
+    - 永続化方針: `dryrun_slippage_samples` テーブルへ保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持する。再起動後もゲート判定を継続できるようにする。
+    - 削除ポリシー: `*dryrun-slippage-max-age-seconds*` が正の値のとき、`dryrun_slippage_samples` の古い行（`observed_at` が保持期間外）を戦略単位で削除する。`NIL` は期間削除を無効化。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Pattern Similarity Service**: 5565(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
+- **Pattern Similarity 実装状態（Phase 1）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
@@ -79,11 +82,13 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-11**: Pattern Similarity Service (5565) の Phase 1 実装を追加。`tools/pattern_similarity_service.py`、`systemd/swimmy-pattern-similarity.service`、`tools/test_pattern_similarity_sexp.py` を追加し、`tools/install_services.sh` / `tools/system_audit.sh` にサービス反映。
 - **2026-02-11**: `upsert-strategy` に Archive Rank 保護を追加し、DB既存 `:GRAVEYARD/:RETIRED` が通常upsertで `NIL/Active` に戻る退行を防止。
 - **2026-02-11**: OOS dispatch の成否契約を厳格化。Backtest送信が受理されなかった要求を `sent` に残さず `error` 化し、`oos_status` の `sent/pending` 誤増加を抑制。
 - **2026-02-11**: CPCV status の `failed` を内訳表示（`send_failed/result_failed(runtime/criteria)`）に拡張し、ゲート未達と実行系エラーを区別可能にした。
 - **2026-02-11**: ランク判定を `Balanced + 2段階ゲート` に更新する方針を確定。Stage 1固定閾値（B/A/S）を引き上げ、Stage 2に OOS/CPCV/MC/DryRun を組み合わせる昇格ゲートを正本化。
 - **2026-02-11**: ランク昇格ロジックを実装更新。A昇格に `Expectancy>0` を追加し、A/S共通で `MC prob_ruin<=2%` と `DryRun p95(slippage)<=max_spread` を必須化。`TRADE_CLOSED` のスリッページ計測を戦略単位で蓄積して DryRun ゲートに接続。
+- **2026-02-11**: DryRunスリッページの永続化を追加。`dryrun_slippage_samples` を導入し、戦略ごとの最新サンプル保持（既定200件）と再起動後のゲート継続を実装。
 - **2026-02-11**: `systemd/swimmy-guardian.service` の再起動ポリシーを強化（`Restart=always`、`StartLimitIntervalSec=300`、`StartLimitBurst=5`）。
 - **2026-02-11**: `swimmy-guardian` の Brain auto-revival を強化。`systemctl restart swimmy-brain` が失敗した場合に `systemctl show -p MainPID --value swimmy-brain` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させるフォールバックを追加。
 - **2026-02-11**: Guardian の `CPCV_VALIDATE` S式パーサでキー正規化を強化。`swimmy.school::action` のような package 修飾キーでも `action` として受理し、`missing action` による parse/serialize error を抑止。
