@@ -752,7 +752,9 @@ fn run_backtest_internal(
                     *daily_pnl.entry(day_idx).or_insert(0.0) += trade_pnl;
                     
                     returns.push(trade_pnl / entry);
-                    equity_curve.push(equity_curve.last().unwrap() + trade_pnl * 100.0);
+                    // Keep equity curve updates consistent for long/short. `trade_pnl` is already
+                    // the raw price diff (+swap), so do not amplify here.
+                    equity_curve.push(equity_curve.last().unwrap() + trade_pnl);
                     position = Position::None;
                 }
             }
@@ -1314,6 +1316,57 @@ mod tests {
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
         assert!(!result.sharpe.is_nan());
+    }
+
+    #[test]
+    fn test_max_drawdown_short_trade_not_scaled_by_100() {
+        // A single short trade should not amplify equity changes by 100x.
+        // Construct candles to force:
+        // - i=4: Death cross -> short entry at close=100
+        // - i=5: Golden cross -> short exit at close=150 (loss ~= 50)
+        let candles = vec![
+            Candle { timestamp: 0, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 }, // c0
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 }, // c1
+            Candle { timestamp: 2, open: 200.0, high: 200.0, low: 200.0, close: 200.0, volume: 100.0 }, // c2
+            Candle { timestamp: 3, open: 50.0,  high: 50.0,  low: 50.0,  close: 50.0,  volume: 100.0 }, // c3
+            Candle { timestamp: 4, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 }, // c4 (entry)
+            Candle { timestamp: 5, open: 150.0, high: 150.0, low: 150.0, close: 150.0, volume: 100.0 }, // c5 (exit)
+        ];
+
+        let strategy = Strategy {
+            name: "TestShortDD".to_string(),
+            sma_short: 1,
+            sma_long: 2,
+            sl: 1000.0,
+            tp: 1000.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+
+        let result = run_backtest_with_slippage(
+            &strategy,
+            &candles,
+            &std::collections::HashMap::new(),
+            &[],
+            0.0,
+        );
+
+        assert_eq!(result.trades, 1, "sanity: should close exactly 1 trade");
+        // With raw PnL, max drawdown should be about 50/10000 = 0.005.
+        // If short PnL is incorrectly scaled (e.g., * 100), this will jump to ~0.5.
+        assert!(
+            result.max_drawdown < 0.05,
+            "max_drawdown too large (likely scaled): {}",
+            result.max_drawdown
+        );
     }
 
     #[test]

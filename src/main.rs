@@ -257,7 +257,13 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
 }
 
 fn normalize_sexp_key(raw: &str) -> String {
-    raw.trim_start_matches(':').to_ascii_lowercase()
+    let mut key = raw.trim();
+    if let Some((_, tail)) = key.rsplit_once("::") {
+        key = tail;
+    } else if let Some((_, tail)) = key.rsplit_once(':') {
+        key = tail;
+    }
+    key.trim_start_matches(':').to_ascii_lowercase()
 }
 
 fn lexpr_key_to_string(val: &lexpr::Value) -> Option<String> {
@@ -1129,23 +1135,78 @@ fn main() {
                     
                     // V15.4 P1 (Graham): Use systemctl instead of pkill for safer lifecycle management
                     let restart_result = std::process::Command::new("systemctl")
-                        .arg("--user")
                         .arg("restart")
                         .arg("swimmy-brain")
                         .output();
                     
                     // V15.4 P3 (Uncle Bob): Log the result
-                    match restart_result {
+                    let restart_ok = match restart_result {
                         Ok(output) => {
                             if output.status.success() {
                                 println!("✅ systemctl restart swimmy-brain: SUCCESS");
+                                true
                             } else {
                                 println!("❌ systemctl restart failed: exit code {:?}", output.status.code());
                                 println!("   stderr: {}", String::from_utf8_lossy(&output.stderr));
+                                false
                             }
                         },
                         Err(e) => {
                             println!("❌ Failed to execute systemctl: {}", e);
+                            false
+                        }
+                    };
+
+                    if !restart_ok {
+                        let pid_result = std::process::Command::new("systemctl")
+                            .arg("show")
+                            .arg("-p")
+                            .arg("MainPID")
+                            .arg("--value")
+                            .arg("swimmy-brain")
+                            .output();
+
+                        match pid_result {
+                            Ok(output) => {
+                                if output.status.success() {
+                                    let pid_raw = String::from_utf8_lossy(&output.stdout);
+                                    match pid_raw.trim().parse::<i32>() {
+                                        Ok(pid) if pid > 0 => {
+                                            println!("🪓 Fallback revive: SIGTERM MainPID={}", pid);
+                                            let _ = std::process::Command::new("kill")
+                                                .arg("-TERM")
+                                                .arg(pid.to_string())
+                                                .output();
+
+                                            std::thread::sleep(std::time::Duration::from_secs(3));
+
+                                            let still_alive = std::process::Command::new("kill")
+                                                .arg("-0")
+                                                .arg(pid.to_string())
+                                                .status()
+                                                .map(|s| s.success())
+                                                .unwrap_or(false);
+
+                                            if still_alive {
+                                                println!("🪓 Fallback revive: MainPID still alive, SIGKILL MainPID={}", pid);
+                                                let _ = std::process::Command::new("kill")
+                                                    .arg("-KILL")
+                                                    .arg(pid.to_string())
+                                                    .output();
+                                            }
+                                        }
+                                        _ => {
+                                            println!("❌ Fallback revive: invalid MainPID value: {:?}", pid_raw.trim());
+                                        }
+                                    }
+                                } else {
+                                    println!("❌ Fallback revive: systemctl show MainPID failed: exit code {:?}", output.status.code());
+                                    println!("   stderr: {}", String::from_utf8_lossy(&output.stderr));
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Fallback revive: failed to execute systemctl show MainPID: {}", e);
+                            }
                         }
                     }
                 }
@@ -2100,6 +2161,31 @@ mod tests {
     }
 
     #[test]
+    fn test_build_cpcv_response_str_sexp_accepts_package_qualified_keys() {
+        let msg = r#"((swimmy.school::action . "CPCV_VALIDATE")
+                      (swimmy.school::strategy_name . "UT-CPCV-PKG")
+                      (swimmy.school::symbol . "USDJPY")
+                      (swimmy.school::candles_file . "/tmp/does-not-exist.csv")
+                      (swimmy.school::request_id . "RID-PKG")
+                      (swimmy.school::strategy_params . NIL))"#;
+
+        let response = build_cpcv_response_str(msg, true).expect("response should serialize");
+
+        assert!(
+            response.contains("CPCV_RESULT"),
+            "response should be CPCV_RESULT"
+        );
+        assert!(
+            response.contains("UT-CPCV-PKG"),
+            "response should include strategy name"
+        );
+        assert!(
+            response.contains("RID-PKG"),
+            "response should include request_id"
+        );
+    }
+
+    #[test]
     fn heartbeat_is_sexp() {
         let msg = guardian_heartbeat_message();
         assert!(msg.starts_with('('), "heartbeat must be S-expression");
@@ -2337,6 +2423,51 @@ mod tests {
             Ok(_) => assert!(true, "Order passes when Brain reconnected"),
             Err(e) => panic!("Should allow order after Brain reconnects: {}", e),
         }
+    }
+
+    #[test]
+    fn test_revival_does_not_use_systemctl_user_mode() {
+        // In this deployment, Swimmy services run under system (not user) systemd.
+        // `systemctl --user` is expected to fail (no user bus), so guard against regressions.
+        let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("main.rs");
+        let src = std::fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", src_path.display(), e));
+
+        let needle = format!(".arg(\"{}\")", "--user");
+        assert!(
+            !src.contains(&needle),
+            "guardian must not call systemctl in --user mode in auto-revival"
+        );
+    }
+
+    #[test]
+    fn test_revival_has_mainpid_kill_fallback() {
+        // Auto-revival should tolerate systemctl restart failures (polkit/no tty)
+        // by falling back to MainPID-based kill so systemd Restart= can relaunch.
+        let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("main.rs");
+        let src = std::fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", src_path.display(), e));
+
+        let start = src.find("Attempting to Revive Brain")
+            .expect("revival block start marker must exist");
+        let end = src[start..]
+            .find("EMERGENCY CLOSE")
+            .map(|i| start + i)
+            .expect("revival block end marker must exist");
+        let revival_block = &src[start..end];
+
+        assert!(
+            revival_block.contains("show") && revival_block.contains("MainPID") && revival_block.contains("--value"),
+            "guardian auto-revival must query MainPID via systemctl show"
+        );
+        assert!(
+            revival_block.contains("-TERM"),
+            "guardian auto-revival must send SIGTERM fallback to MainPID"
+        );
     }
 }
 

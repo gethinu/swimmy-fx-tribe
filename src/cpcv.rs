@@ -352,7 +352,7 @@ fn run_backtest_range(
     end_row: usize,
 ) -> Result<BacktestResult, String> {
     // V47.1: Implement range-based backtest
-    use crate::backtester::{load_candles_from_csv, run_backtest, Strategy, IndicatorType};
+    use crate::backtester::{load_candles_from_csv, run_backtest, resample_candles, Strategy, IndicatorType};
     
     // Load candles
     let all_candles = load_candles_from_csv(candles_path)
@@ -366,7 +366,82 @@ fn run_backtest_range(
         return Err(format!("Insufficient data in range: {} bars", end_clamped - start_clamped));
     }
     
-    let range_candles: Vec<_> = all_candles[start_clamped..end_clamped].to_vec();
+    let range_slice = &all_candles[start_clamped..end_clamped];
+
+    let indicator_type = match strategy_params
+        .get("indicator_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("sma")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "sma" => IndicatorType::Sma,
+        "ema" => IndicatorType::Ema,
+        "rsi" => IndicatorType::Rsi,
+        "macd" => IndicatorType::Macd,
+        "bb" | "bollinger" => IndicatorType::Bb,
+        "stoch" | "stochastic" => IndicatorType::Stoch,
+        _ => IndicatorType::Sma,
+    };
+
+    let filter_enabled = match strategy_params.get("filter_enabled") {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) != 0,
+        Some(serde_json::Value::String(s)) => {
+            matches!(s.to_ascii_lowercase().as_str(), "t" | "true" | "1" | "yes" | "y")
+        }
+        _ => false,
+    };
+
+    let filter_tf = strategy_params
+        .get("filter_tf")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let filter_period = strategy_params
+        .get("filter_period")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+
+    let filter_logic = strategy_params
+        .get("filter_logic")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let timeframe_min = strategy_params
+        .get("timeframe")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1);
+
+    // Align CPCV evaluation with normal BACKTEST behavior: optional resampling to strategy timeframe.
+    let working_candles: Vec<_> = if timeframe_min > 1 {
+        resample_candles(range_slice, timeframe_min.saturating_mul(60))
+    } else {
+        range_slice.to_vec()
+    };
+
+    // If the strategy uses MTF filter, derive aux candles from the same M1 slice via resampling.
+    let mut aux: std::collections::HashMap<String, Vec<crate::backtester::Candle>> =
+        std::collections::HashMap::new();
+    if filter_enabled && !filter_tf.trim().is_empty() {
+        let tf = filter_tf.trim().to_ascii_uppercase();
+        let tf_seconds: i64 = match tf.as_str() {
+            "M1" => 60,
+            "M5" => 300,
+            "M15" => 900,
+            "M30" => 1800,
+            "H1" => 3600,
+            "H4" => 14400,
+            "D1" => 86400,
+            "W1" => 604800,
+            // Accept MN/MN1 but keep defaults conservative.
+            "MN" | "MN1" => 2592000,
+            _ => 3600,
+        };
+        aux.insert(tf.clone(), resample_candles(range_slice, tf_seconds));
+    }
     
     // Parse strategy from JSON
     let strategy = Strategy {
@@ -376,11 +451,11 @@ fn run_backtest_range(
         sl: strategy_params.get("sl").and_then(|v| v.as_f64()).unwrap_or(50.0),
         tp: strategy_params.get("tp").and_then(|v| v.as_f64()).unwrap_or(100.0),
         volume: strategy_params.get("volume").and_then(|v| v.as_f64()).unwrap_or(0.01),
-        indicator_type: IndicatorType::Sma,
-        filter_enabled: false,
-        filter_tf: String::new(),
-        filter_period: 0,
-        filter_logic: String::new(),
+        indicator_type,
+        filter_enabled,
+        filter_tf,
+        filter_period,
+        filter_logic,
         // Phase 23: AST deserialization
         entry_long_ast: strategy_params.get("entry_long_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
         entry_short_ast: strategy_params.get("entry_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
@@ -389,7 +464,7 @@ fn run_backtest_range(
     };
     
     // Run backtest on the range
-    let result = run_backtest(&strategy, &range_candles, &std::collections::HashMap::new(), &[]);
+    let result = run_backtest(&strategy, &working_candles, &aux, &[]);
     
     Ok(result)
 }
@@ -452,6 +527,8 @@ fn calculate_aggregate(results: &[CpcvPathResult]) -> CpcvAggregateResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
     
     #[test]
     fn test_block_creation() {
@@ -465,6 +542,51 @@ mod tests {
     fn test_path_generation() {
         let paths = generate_cpcv_paths(5, 2);
         assert_eq!(paths.len(), 10); // 5C2 = 10
+    }
+
+    #[test]
+    fn test_run_backtest_range_respects_indicator_type() {
+        // Regression: CPCV range backtest must respect `strategy_params.indicator_type`.
+        // If hard-coded to SMA, setting `sma_long` huge makes min_bars too large -> no trades.
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_nanos();
+        path.push(format!("swimmy-ut-cpcv-indicator-{}.csv", nanos));
+
+        let mut f = std::fs::File::create(&path).expect("create temp csv");
+        writeln!(f, "timestamp,open,high,low,close,volume").unwrap();
+
+        // 1200 bars: 600 downtrend then 600 uptrend to trigger RSI oversold-bounce.
+        let start = 1000.0_f64;
+        for i in 0..600 {
+            let close = start - i as f64;
+            writeln!(f, "{},{},{},{},{},{}", (i as i64) * 60, close, close, close, close, 1.0).unwrap();
+        }
+        let bottom = start - 599.0;
+        for j in 0..600 {
+            let i = 600 + j;
+            let close = bottom + j as f64;
+            writeln!(f, "{},{},{},{},{},{}", (i as i64) * 60, close, close, close, close, 1.0).unwrap();
+        }
+        drop(f);
+
+        let params = serde_json::json!({
+            "name": "UT-CPCV-IND",
+            "sma_short": 7,
+            "sma_long": 5000,
+            "sl": 1.0,
+            "tp": 1.0,
+            "volume": 0.01,
+            "indicator_type": "rsi"
+        });
+
+        let bt = run_backtest_range(path.to_str().unwrap(), &params, 0, 1200)
+            .expect("backtest range should succeed");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(bt.trades > 0, "expected RSI strategy to close trades; got {}", bt.trades);
     }
 
     #[test]
