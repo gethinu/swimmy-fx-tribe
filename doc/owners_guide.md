@@ -1,3 +1,22 @@
+## 🆕 V50.8 実装反映 (2026-02-11) - Rank Stage2 Gate Hardening
+
+### 1. ランク判定の2段階化（Balanced）
+- **Stage 1 固定閾値**
+  - B: Sharpe ≥ 0.15 / PF ≥ 1.05 / WR ≥ 35% / MaxDD < 25%
+  - A: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%
+  - S: Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%
+- **Stage 2 検証ゲート**
+  - A昇格: OOS Sharpe ≥ 0.35 かつ `net_expectancy_pips > 0`
+  - S昇格: CPCV `pass_rate ≥ 70%` かつ `median MaxDD < 12%`
+  - A/S共通: Monte Carlo `prob_ruin <= 2%` と DryRun実測スリッページ上限を満たすこと
+
+### 2. DryRun スリッページ永続化
+- 実測 `slippage_pips` から `p95(abs(slippage_pips))` を算出して昇格ゲートに利用
+- `dryrun_slippage_samples` テーブルに保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持
+- 期間保持（TTL）を追加: `*dryrun-slippage-max-age-seconds*` が正値なら保持期間外サンプルを削除、`NIL` は無効
+
+---
+
 ## 🆕 V50.6 新機能 (2026-02-03) - Structured Telemetry
 
 ### 1. JSONLイベント統合
@@ -167,19 +186,23 @@
 ## 🎯 ランク体系 (B/A/S)
 
 **B-RANK (Selection)**  
-- 条件: Sharpe ≥ 0.1 / PF ≥ 1.0 / WR ≥ 30% / MaxDD < 30%  
+- 条件: Sharpe ≥ 0.15 / PF ≥ 1.05 / WR ≥ 35% / MaxDD < 25%  
 - 判定: Phase 1 Backtest合格でBへ昇格  
 
 **A-RANK (Pro)**  
-- 条件: Sharpe ≥ 0.3 / PF ≥ 1.2 / WR ≥ 40% / MaxDD < 20% / OOS Sharpe ≥ 0.3  
-- 判定: OOS検証 (CPCV Lite) 合格でAへ昇格  
+- 条件: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%  
+- 判定: OOS Sharpe ≥ 0.35、`net_expectancy_pips > 0`、共通ゲート（MC/DryRun）合格でAへ昇格  
 
 **S-RANK (Verified Elite)**  
-- 条件: Sharpe ≥ 0.5 / PF ≥ 1.5 / WR ≥ 45% / MaxDD < 15% / CPCV Median Sharpe ≥ 0.5  
-- 判定: CPCV合格でSへ昇格 (ライブ実行許可)
+- 条件: Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%  
+- 判定: CPCV `pass_rate ≥ 70%` かつ `median MaxDD < 12%`、共通ゲート（MC/DryRun）合格でSへ昇格 (ライブ実行許可)
+
+**共通ゲート（A/S昇格時）**
+- MC: `prob_ruin <= 2%`（実装既定: `strategy-pnl-history` 30トレード以上、`iterations=250`）
+- DryRun: `p95(abs(slippage_pips)) <= *max-spread-pips*`（実装既定: 20サンプル以上）
 
 **昇格フロー**  
-`B → (OOS) → A → (CPCV) → S`
+`B → (OOS + Expectancy + MC/DryRun) → A → (CPCV + MC/DryRun) → S`
 
 **関連コード**  
 - `src/lisp/school/school-rank-system.lisp`  
