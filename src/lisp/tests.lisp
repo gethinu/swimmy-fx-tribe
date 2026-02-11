@@ -2859,6 +2859,117 @@
             (assert-false promoted "promote-rank should not be called")))
       (setf (symbol-function 'swimmy.school::promote-rank) orig-promote))))
 
+(deftest test-dryrun-slippage-persists-across-memory-reset
+  "DryRun slippage p95 should be recoverable from DB after in-memory reset."
+  (let* ((tmp-db (format nil "/tmp/swimmy-dryrun-persist-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-conn swimmy.core::*sqlite-conn*)
+         (orig-disable swimmy.school::*disable-auto-migration*)
+         (orig-min swimmy.school::*dryrun-min-slippage-samples*)
+         (orig-cap swimmy.school::*dryrun-slippage-sample-cap*)
+         (orig-cache swimmy.school::*dryrun-slippage-by-strategy*))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*disable-auto-migration* t
+                swimmy.school::*dryrun-min-slippage-samples* 3
+                swimmy.school::*dryrun-slippage-sample-cap* 10
+                swimmy.school::*dryrun-slippage-by-strategy* (make-hash-table :test 'equal))
+          (swimmy.school::init-db)
+          (swimmy.school::record-dryrun-slippage "UT-DRYRUN-PERSIST" 0.2)
+          (swimmy.school::record-dryrun-slippage "UT-DRYRUN-PERSIST" 0.8)
+          (swimmy.school::record-dryrun-slippage "UT-DRYRUN-PERSIST" 1.2)
+          ;; Simulate process restart: clear memory cache, keep DB.
+          (setf swimmy.school::*dryrun-slippage-by-strategy* (make-hash-table :test 'equal))
+          (let ((p95 (swimmy.school::dryrun-slippage-p95 "UT-DRYRUN-PERSIST")))
+            (assert-true (numberp p95)
+                         "Expected p95 to be recovered from persisted samples")))
+      (setf swimmy.core::*db-path-default* orig-db
+            swimmy.core::*sqlite-conn* orig-conn
+            swimmy.school::*disable-auto-migration* orig-disable
+            swimmy.school::*dryrun-min-slippage-samples* orig-min
+            swimmy.school::*dryrun-slippage-sample-cap* orig-cap
+            swimmy.school::*dryrun-slippage-by-strategy* orig-cache)
+      (ignore-errors (swimmy.school::close-db-connection))
+      (when (probe-file tmp-db) (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-dryrun-slippage-db-cap-prunes-old-samples
+  "DryRun sample persistence should keep only the latest N samples per strategy."
+  (let* ((tmp-db (format nil "/tmp/swimmy-dryrun-cap-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-conn swimmy.core::*sqlite-conn*)
+         (orig-disable swimmy.school::*disable-auto-migration*)
+         (orig-cap swimmy.school::*dryrun-slippage-sample-cap*)
+         (orig-cache swimmy.school::*dryrun-slippage-by-strategy*))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*disable-auto-migration* t
+                swimmy.school::*dryrun-slippage-sample-cap* 5
+                swimmy.school::*dryrun-slippage-by-strategy* (make-hash-table :test 'equal))
+          (swimmy.school::init-db)
+          (dotimes (i 8)
+            (swimmy.school::record-dryrun-slippage "UT-DRYRUN-CAP" (+ 0.1 i)))
+          (let ((cnt (ignore-errors
+                       (swimmy.school::execute-single
+                        "SELECT count(*) FROM dryrun_slippage_samples WHERE strategy_name=?"
+                        "UT-DRYRUN-CAP"))))
+            (assert-equal 5 cnt "Expected DB sample count to be capped at 5")))
+      (setf swimmy.core::*db-path-default* orig-db
+            swimmy.core::*sqlite-conn* orig-conn
+            swimmy.school::*disable-auto-migration* orig-disable
+            swimmy.school::*dryrun-slippage-sample-cap* orig-cap
+            swimmy.school::*dryrun-slippage-by-strategy* orig-cache)
+      (ignore-errors (swimmy.school::close-db-connection))
+      (when (probe-file tmp-db) (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-dryrun-slippage-db-period-prunes-old-samples
+  "DryRun sample persistence should prune samples older than retention period."
+  (let* ((tmp-db (format nil "/tmp/swimmy-dryrun-period-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-conn swimmy.core::*sqlite-conn*)
+         (orig-disable swimmy.school::*disable-auto-migration*)
+         (now (get-universal-time))
+         (cutoff-seconds 3600)
+         (strategy "UT-DRYRUN-PERIOD"))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::init-db)
+          (swimmy.school::execute-non-query
+           "INSERT INTO dryrun_slippage_samples (strategy_name, sample_abs_pips, observed_at)
+            VALUES (?, ?, ?)"
+           strategy 0.1 (- now 7200))
+          (swimmy.school::execute-non-query
+           "INSERT INTO dryrun_slippage_samples (strategy_name, sample_abs_pips, observed_at)
+            VALUES (?, ?, ?)"
+           strategy 0.2 (- now 60))
+          (swimmy.school::record-dryrun-slippage-sample
+           strategy 0.3
+           :max-samples 10
+           :max-age-seconds cutoff-seconds
+           :observed-at now)
+          (let ((stale-count (swimmy.school::execute-single
+                              "SELECT count(*) FROM dryrun_slippage_samples
+                                WHERE strategy_name=? AND observed_at < ?"
+                              strategy
+                              (- now cutoff-seconds)))
+                (total-count (swimmy.school::execute-single
+                              "SELECT count(*) FROM dryrun_slippage_samples
+                                WHERE strategy_name=?"
+                              strategy)))
+            (assert-equal 0 stale-count "Expected stale samples to be deleted")
+            (assert-equal 2 total-count "Expected recent + new sample to remain")))
+      (setf swimmy.core::*db-path-default* orig-db
+            swimmy.core::*sqlite-conn* orig-conn
+            swimmy.school::*disable-auto-migration* orig-disable)
+      (ignore-errors (swimmy.school::close-db-connection))
+      (when (probe-file tmp-db) (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-ensure-rank-blocks-s-without-cpcv
   "ensure-rank should block S promotion when CPCV criteria are missing"
   (let* ((strat (swimmy.school:make-strategy :name "UT-S-BLOCK"
@@ -3454,6 +3565,9 @@
                   test-check-rank-criteria-vnext-a-oos-threshold
                   test-validate-a-rank-requires-positive-net-expectancy
                   test-evaluate-a-rank-requires-common-stage2-gates
+                  test-dryrun-slippage-persists-across-memory-reset
+                  test-dryrun-slippage-db-cap-prunes-old-samples
+                  test-dryrun-slippage-db-period-prunes-old-samples
                   test-ensure-rank-blocks-s-without-cpcv
                   test-draft-does-not-promote-without-cpcv
                   test-draft-counts-only-successful-promotions

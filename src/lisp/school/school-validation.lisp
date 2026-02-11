@@ -46,6 +46,9 @@
 (defparameter *dryrun-slippage-sample-cap* 200
   "Per-strategy cap for retained DryRun slippage samples.")
 
+(defparameter *dryrun-slippage-max-age-seconds* nil
+  "Optional DryRun sample retention window in seconds. NIL disables age pruning.")
+
 (defparameter *dryrun-slippage-by-strategy* (make-hash-table :test 'equal)
   "Strategy-name keyed list of absolute slippage samples (pips).")
 
@@ -65,6 +68,11 @@
         (when (> (length next) *dryrun-slippage-sample-cap*)
           (setf next (subseq next 0 *dryrun-slippage-sample-cap*)))
         (setf (gethash name *dryrun-slippage-by-strategy*) next)
+        ;; Persist for restart-safe Stage2 gating.
+        (ignore-errors (record-dryrun-slippage-sample
+                        name sample
+                        :max-samples *dryrun-slippage-sample-cap*
+                        :max-age-seconds *dryrun-slippage-max-age-seconds*))
         sample))))
 
 (defun %p95-from-list (samples)
@@ -78,7 +86,14 @@
 (defun dryrun-slippage-p95 (strategy-name)
   "Return p95(abs(slippage_pips)) for strategy if enough samples exist."
   (let* ((name (%normalize-strategy-name strategy-name))
-         (samples (and name (gethash name *dryrun-slippage-by-strategy* '()))))
+         (db-samples (and name (ignore-errors
+                           (fetch-dryrun-slippage-samples
+                            name
+                            :limit *dryrun-slippage-sample-cap*
+                            :max-age-seconds *dryrun-slippage-max-age-seconds*))))
+         (samples (if (and db-samples (> (length db-samples) 0))
+                      db-samples
+                      (and name (gethash name *dryrun-slippage-by-strategy* '())))))
     (when (and samples (>= (length samples) *dryrun-min-slippage-samples*))
       (%p95-from-list samples))))
 

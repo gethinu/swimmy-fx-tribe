@@ -160,8 +160,20 @@
       last_error TEXT
     )")
 
+  ;; Table: DryRun Slippage Samples (Stage2 persistence)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS dryrun_slippage_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_name TEXT NOT NULL,
+      sample_abs_pips REAL NOT NULL,
+      observed_at INTEGER NOT NULL
+    )")
+
   ;; Indices for fast draft/selection
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
+  (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
+      ON dryrun_slippage_samples(strategy_name, id DESC)")
 
   (format t "[DB] 🗄️ SQLite tables ensured.~%")
 
@@ -544,6 +556,89 @@
                    symbol, timeframe, sharpe, profit_factor, score, corr,
                    rank, oos_sharpe, cpcv_median, cpcv_pass_rate, last_updated
             FROM pair_strategies")))
+
+(defun record-dryrun-slippage-sample (strategy-name
+                                      sample-abs-pips
+                                      &key
+                                        (max-samples 200)
+                                        max-age-seconds
+                                        observed-at)
+  "Persist one absolute slippage sample.
+Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
+  (when (and strategy-name (numberp sample-abs-pips))
+    (let* ((ts (if (numberp observed-at)
+                   (truncate observed-at)
+                   (get-universal-time)))
+           (retention-cutoff (and (numberp max-age-seconds)
+                                  (> max-age-seconds 0)
+                                  (- ts (truncate max-age-seconds)))))
+      (handler-case
+          (progn
+            (execute-non-query
+             "INSERT INTO dryrun_slippage_samples (strategy_name, sample_abs_pips, observed_at)
+              VALUES (?, ?, ?)"
+             strategy-name
+             (float sample-abs-pips 0.0)
+             ts)
+            (when retention-cutoff
+              (execute-non-query
+               "DELETE FROM dryrun_slippage_samples
+                 WHERE strategy_name = ?
+                   AND observed_at < ?"
+               strategy-name
+               retention-cutoff))
+            (when (and (integerp max-samples) (> max-samples 0))
+              (execute-non-query
+               "DELETE FROM dryrun_slippage_samples
+                 WHERE strategy_name = ?
+                   AND id NOT IN (
+                       SELECT id
+                         FROM dryrun_slippage_samples
+                        WHERE strategy_name = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                   )"
+               strategy-name
+               strategy-name
+               max-samples))
+            t)
+        (error (e)
+          (format t "[DB] ⚠️ Failed to persist dryrun slippage for ~a: ~a~%"
+                  strategy-name e)
+          nil)))))
+
+(defun fetch-dryrun-slippage-samples (strategy-name &key (limit 200) max-age-seconds)
+  "Fetch recent absolute slippage samples for STRATEGY-NAME."
+  (if (or (null strategy-name) (not (stringp strategy-name)))
+      '()
+      (handler-case
+          (let* ((retention-cutoff (and (numberp max-age-seconds)
+                                        (> max-age-seconds 0)
+                                        (- (get-universal-time) (truncate max-age-seconds))))
+                 (rows (if retention-cutoff
+                           (execute-to-list
+                            "SELECT sample_abs_pips
+                               FROM dryrun_slippage_samples
+                              WHERE strategy_name = ?
+                                AND observed_at >= ?
+                              ORDER BY id DESC
+                              LIMIT ?"
+                            strategy-name
+                            retention-cutoff
+                            limit)
+                           (execute-to-list
+                            "SELECT sample_abs_pips
+                               FROM dryrun_slippage_samples
+                              WHERE strategy_name = ?
+                              ORDER BY id DESC
+                              LIMIT ?"
+                            strategy-name
+                            limit))))
+            (remove-if-not #'numberp (mapcar #'first rows)))
+        (error (e)
+          (format t "[DB] ⚠️ Failed to fetch dryrun slippage for ~a: ~a~%"
+                  strategy-name e)
+          '()))))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60

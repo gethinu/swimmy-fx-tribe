@@ -89,6 +89,7 @@
 - **2026-02-11**: ランク判定を `Balanced + 2段階ゲート` に更新する方針を確定。Stage 1固定閾値（B/A/S）を引き上げ、Stage 2に OOS/CPCV/MC/DryRun を組み合わせる昇格ゲートを正本化。
 - **2026-02-11**: ランク昇格ロジックを実装更新。A昇格に `Expectancy>0` を追加し、A/S共通で `MC prob_ruin<=2%` と `DryRun p95(slippage)<=max_spread` を必須化。`TRADE_CLOSED` のスリッページ計測を戦略単位で蓄積して DryRun ゲートに接続。
 - **2026-02-11**: DryRunスリッページの永続化を追加。`dryrun_slippage_samples` を導入し、戦略ごとの最新サンプル保持（既定200件）と再起動後のゲート継続を実装。
+- **2026-02-11**: DryRunスリッページ永続化に期間保持（TTL）を追加。`*dryrun-slippage-max-age-seconds*` が正値のとき、`dryrun_slippage_samples` の保持期間外サンプルを戦略単位で削除する。
 - **2026-02-11**: `systemd/swimmy-guardian.service` の再起動ポリシーを強化（`Restart=always`、`StartLimitIntervalSec=300`、`StartLimitBurst=5`）。
 - **2026-02-11**: `swimmy-guardian` の Brain auto-revival を強化。`systemctl restart swimmy-brain` が失敗した場合に `systemctl show -p MainPID --value swimmy-brain` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させるフォールバックを追加。
 - **2026-02-11**: Guardian の `CPCV_VALIDATE` S式パーサでキー正規化を強化。`swimmy.school::action` のような package 修飾キーでも `action` として受理し、`missing action` による parse/serialize error を抑止。
