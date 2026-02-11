@@ -25,6 +25,7 @@
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
+- **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
 
 ## 決定事項
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
@@ -83,6 +84,7 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-11**: School heartbeat 更新をサイクル完了依存から独立tickへ変更。`run-stagnant-flush-tick` で `data/heartbeat/school.tick` を更新し、長時間フェーズ実行中の `Evolution report/heartbeat stale` 誤検知を抑制。
 - **2026-02-11**: Data Keeper の Tick API（`ADD_TICK` / `GET_TICKS`）を実装。`tools/test_data_keeper_sexp.py` に契約テスト（追加/取得/時間窓）を追加。
 - **2026-02-11**: Lisp Core に Pattern Similarity client を追加（`SWIMMY_PORT_PATTERN_SIMILARITY` / 既定5565）。`school-execution` に H1+ のソフトゲート（不一致時 lot 0.7x）を接続し、`execution.pattern_gate` telemetry を追加。
 - **2026-02-11**: Pattern Similarity Service (5565) の Phase 1 実装を追加。`tools/pattern_similarity_service.py`、`systemd/swimmy-pattern-similarity.service`、`tools/test_pattern_similarity_sexp.py` を追加し、`tools/install_services.sh` / `tools/system_audit.sh` にサービス反映。

@@ -141,17 +141,26 @@
 (deftest test-stagnant-flush-tick-invokes-timeout-flush
   "Flush tick should invoke check-timeout-flushes without evolution loop."
   (let ((called 0)
+        (heartbeat-called 0)
         (orig (and (fboundp 'swimmy.core:check-timeout-flushes)
-                   (symbol-function 'swimmy.core:check-timeout-flushes))))
+                   (symbol-function 'swimmy.core:check-timeout-flushes)))
+        (orig-heartbeat (and (fboundp 'swimmy.school::update-heartbeat-file)
+                             (symbol-function 'swimmy.school::update-heartbeat-file))))
     (unwind-protect
         (progn
           (when orig
             (setf (symbol-function 'swimmy.core:check-timeout-flushes)
                   (lambda () (incf called))))
+          (when orig-heartbeat
+            (setf (symbol-function 'swimmy.school::update-heartbeat-file)
+                  (lambda () (incf heartbeat-called))))
           (swimmy.school::run-stagnant-flush-tick)
-          (assert-equal 1 called "Should call check-timeout-flushes"))
+          (assert-equal 1 called "Should call check-timeout-flushes")
+          (assert-equal 1 heartbeat-called "Should refresh heartbeat on flush tick"))
       (when orig
-        (setf (symbol-function 'swimmy.core:check-timeout-flushes) orig)))))
+        (setf (symbol-function 'swimmy.core:check-timeout-flushes) orig))
+      (when orig-heartbeat
+        (setf (symbol-function 'swimmy.school::update-heartbeat-file) orig-heartbeat)))))
 
 (deftest test-evolution-report-throttle-uses-last-write
   "Evolution report should only send when last write exceeds interval"

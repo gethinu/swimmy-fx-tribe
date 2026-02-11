@@ -143,7 +143,9 @@
 
 (defun run-stagnant-flush-tick ()
   (when (fboundp 'swimmy.core:check-timeout-flushes)
-    (swimmy.core:check-timeout-flushes)))
+    (swimmy.core:check-timeout-flushes))
+  (when (fboundp 'update-heartbeat-file)
+    (ignore-errors (update-heartbeat-file))))
 
 (defun start-stagnant-flush-loop (&key (interval *stagnant-flush-interval*))
   (unless (and *stagnant-flush-thread*
