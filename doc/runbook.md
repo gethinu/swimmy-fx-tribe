@@ -2,6 +2,10 @@
 
 **正本**: systemd(system) を正本とし、user unit は診断用途のみ。
 
+**関連運用ドキュメント**:
+- Opsスクリプト一覧: `tools/ops/README.md`
+- CPCV fail内訳スモーク: `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode runtime|criteria`
+
 ## 1. 起動手順
 
 ### 1.1 通常起動 (systemd)
@@ -194,6 +198,8 @@ sudo systemctl start swimmy-brain swimmy-backtest
 |:---|:---|
 | `make run` | 開発モード起動 |
 | `./tools/quality_gate.sh` | テスト＆整合性チェック |
+| `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode runtime` | CPCV runtime(ERROR) 経路の確認 |
+| `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode criteria --send-count 3` | CPCV criteria(FAILED) 経路の確認 |
 | `/deploy` | 本番デプロイ (systemd restart) |
 | `CLOSE_ALL` | 全ポジション決済 |
 | `CLOSE_SHORT_TF` | H4以下のポジション決済 |

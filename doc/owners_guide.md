@@ -520,3 +520,58 @@ Lispでシステム停止なしにロジック修正可能。
 - 例外運用が必要な場合のみ `SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` を設定
 - 停止/再起動は `sudo systemctl start/stop swimmy-school` が必要
 - 1行チェック: `ps aux | rg -i 'school-daemon\\.lisp|evolution_daemon\\.py|run_lisp_evolution\\.lisp'`
+
+### 4. CPCV fail内訳の手動スモークテスト
+- 目的: `fail` が「動作中の不合格(criteria)」か「実行失敗(runtime)」かを即確認する
+- 監視: `watch -n 2 "sed -n '1,2p' data/reports/cpcv_status.txt"`
+- 推奨（短縮コマンド）:
+  - runtime: `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode runtime`
+  - criteria: `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode criteria --send-count 3`
+  - 送信せず確認: `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode runtime --dry-run`
+- 詳細: `tools/ops/README.md`
+
+Runtime (ERROR) を1件作る:
+```bash
+.venv/bin/python3 - <<'PY'
+import time, zmq
+ts = int(time.time())
+name = f"MANUAL-RUNTIME-{ts}"
+rid = f"RID-MANUAL-RUNTIME-{ts}"
+msg = f'((action . "CPCV_VALIDATE") (strategy_name . "{name}") (symbol . "USDJPY") (candles_file . "/tmp/does-not-exist.csv") (request_id . "{rid}") (strategy_params . NIL))'
+ctx = zmq.Context.instance()
+pub = ctx.socket(zmq.PUB)
+pub.connect("tcp://127.0.0.1:5559")
+time.sleep(1.0)
+pub.send_string(msg)
+print(name, rid)
+pub.close(0)
+PY
+```
+
+Criteria (FAILED) を1件作る:
+```bash
+.venv/bin/python3 - <<'PY'
+import time, zmq
+ts = int(time.time())
+name = f"MANUAL-CRITERIA-{ts}"
+rid = f"RID-MANUAL-CRITERIA-{ts}"
+msg = (
+  f'((action . "CPCV_VALIDATE") (strategy_name . "{name}") (symbol . "USDJPY") '
+  f'(candles_file . "/home/swimmy/swimmy/data/historical/USDJPY_M1.csv") '
+  f'(request_id . "{rid}") '
+  f'(strategy_params . ((name . "{name}") (sma_short . 2) (sma_long . 400) '
+  f'(sl . 8.0) (tp . 8.0) (volume . 0.01) (indicator_type . "sma"))))'
+)
+ctx = zmq.Context.instance()
+pub = ctx.socket(zmq.PUB)
+pub.connect("tcp://127.0.0.1:5559")
+time.sleep(1.0)
+pub.send_string(msg)
+print(name, rid)
+pub.close(0)
+PY
+```
+
+判定ログ:
+- `logs/notifier.log` に `CPCV Validation: ERROR` が出れば runtime
+- `logs/notifier.log` に `CPCV Validation: FAILED` が出れば criteria
