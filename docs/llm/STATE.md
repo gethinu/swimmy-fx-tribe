@@ -29,6 +29,9 @@
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 - **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
+- **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
+- **Evolution Report 保存先**: レポート保存は `*evolution-report-path*` を正本とし、`write-evolution-report-files` は固定パスを直接書かない。テスト/運用で保存先をバインド可能にして本番 `data/reports/evolution_factory_report.txt` の意図しない上書きを防ぐ。
+  - **テスト隔離**: `run-all-tests` は `*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、本番レポートを汚染しない。
 
 ## 決定事項
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
@@ -43,6 +46,9 @@
 - **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
 - **A基準不合格内訳の可視化**: Evolution/Backtest系レポートには A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示し、昇格停滞の要因を定点観測できるようにする。
 - **A Near-Miss 可視化**: Evolution Report は Bランク候補のうち `a-base-deficit-score` が小さい戦略（A Stage1 に近い候補）を表示し、各候補の不足ゲート（Sharpe/PF/WR/MaxDD）を明示する。ランク閾値や昇格ゲートは変更しない。
+- **レポート表示整形**: Evolution Report の `%` 表記は単一 `%` を正本とする（`%%` 表示を出さない）。A Near-Miss 候補は `strategy_name` 単位で重複を除外して表示する。
+- **候補名短縮表示**: Evolution Report の候補名は先頭のみの切り詰めを禁止し、必要時は「先頭 + 末尾」を保持した短縮表示にする（同一prefixで別戦略が同名に見える衝突を防止）。
+- **Validation Coverage 表示**: Evolution Report に OOS/CPCV の DB累計カバレッジ（全体/Active）を表示し、`CPCV Status` の瞬間値が 0 のときでも「未実行」か「過去実行済みで現行バッチ対象なし」かを判別できるようにする。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **昇格ゲート実装値（2026-02-11）**:
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
@@ -78,9 +84,11 @@
 - **Dashboard Drift 可視化**: `tools/dashboard.py` は `swimmy-backtest` の systemd 状態に加えて 5580 listener と MainPID の整合（drift有無）を表示し、inactive/manual 混在を即時判別できるようにする。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
 - **Backtest Throttle 診断ログ**: throttleログは `pending上限超過` と `rate未達` を原因別に表示する。`pending` だけを表示して rate throttle を誤診しないことを正本とする。
+- **Backtest Rate Limit 運用値**: `SWIMMY_BACKTEST_RATE_LIMIT` は運用チューニング対象とし、2026-02-12 時点の適用値は `140`（従来 `100`）。`pending` が低いのに `rate limit` 再キューが連発する場合は段階的に見直す（例: 100→120→140）。
 - **Backtest Queue 実装契約**: `backtest-send-queue` の enqueue/dequeue は O(1) を維持する（`length`/`nconc` に依存しない）。高頻度スロットル時にキュー操作コストが送信ループの律速にならないことを正本とする。
 - **Backtest Queue 上限設定**: `backtest-send-queue` の容量は `SWIMMY_BACKTEST_SEND_QUEUE_MAX` で調整可能（未指定時は既定値）。運用側で burst 耐性を増やす際はこの値を優先して調整する。
 - **Backtest Service Workers**: `tools/backtest_service.py` は複数 Guardian worker を並列起動できる（`SWIMMY_BACKTEST_WORKERS`、既定はCPU数ベースで自動決定）。受信ループは inflight を管理して非同期に結果を返し、`pending` 張り付き時の処理詰まりを緩和する。
+- **Backtest Worker 運用値**: `SWIMMY_BACKTEST_WORKERS` は運用チューニング対象とし、2026-02-12 時点の適用値は `6`（既定 `4`）。CPU余力がある場合は段階的に増やし、メモリ圧迫や Guardian worker の失敗率を監視しながら調整する。
 - **Deferred Flush pacing**: `flush-deferred-founders` は Backtest レート制限時に送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）で dispatch し、同一tick内の即時 `:throttled` 連発による `1件/tick` 近傍への失速を抑制する。
 - **RR Batch pacing**: `batch-backtest-knowledge` も受理済み dispatch ごとに送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）を挿入し、RRバッチ内で即時 `:throttled` が連発して `Queued: 1` 近傍へ失速するのを抑制する。
 - **Backtest Dispatch 計上契約**: RR/QUAL/Deferred/OOS の dispatch 計上は「受理された送信状態」のみ対象とする。`NIL` / `:throttled` は非受理として expected/sent に含めない。
@@ -105,7 +113,13 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-12**: Evolution Report の `System Status` 契約を更新。`Evolution Daemon Active` を固定表示せず、systemd実状態（`swimmy-evolution.service`）を反映し、`systemctl` 取得不能時のみ heartbeat 補助判定へ切替える方針を追加。
+- **2026-02-12**: Evolution Report の表示整形契約を更新。`CPCV Stage2` / `A Near-Miss` の `%` が `%%` で出る退行を修正し、A Near-Miss の同名戦略重複表示を抑制する方針を追加。
+- **2026-02-12**: Evolution Report の候補名短縮契約を更新。先頭25文字のみの省略で同名衝突が発生するため、先頭+末尾を保持する短縮表示へ統一する方針を追加。
+- **2026-02-12**: Evolution Report に Validation Coverage（OOS/CPCVのDB累計、全体/Active）を追加する方針を追記。`CPCV Status` の瞬間値だけでは実行実績を誤読しやすい点を補正する。
 - **2026-02-12**: Backtest throttle の診断ログ契約を追加。`pending` 超過と `rate` 未達を原因別にログ表示し、`pending=1/max=3000` のような rate 由来 throttled を誤解しない運用へ更新。
+- **2026-02-12**: Backtest の運用レート上限を段階調整。`SWIMMY_BACKTEST_RATE_LIMIT` を `100→120→140` に更新し、`pending` 低位でも `rate limit` 再キューが発生するボトルネックを緩和する方針を追加。
+- **2026-02-12**: Backtest Service worker 数を運用調整。`SWIMMY_BACKTEST_WORKERS` を `4→6` へ引き上げ、`pending` が低位でも結果反映が断続的に止まる状況のスループット改善を狙う方針を追加。
 - **2026-02-12**: `finalize_rank_report` の運用契約を更新。既定動作を集計専用（rank変更なし）にし、`SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` 指定時のみ rank評価を実行する方針を追加。
 - **2026-02-12**: 最終エントリー前に Signal Confidence Gate を追加。低確度シグナルは見送り、中確度シグナルはロット縮小（0.55x）で実行し、無差別エントリーを抑制する方針を明記。
 - **2026-02-12**: Dashboard の backtest欄に systemd/listener drift 可視化を追加する方針を追記。`inactive + listener` や PID mismatch を画面上で即時判読可能にする。
@@ -124,6 +138,8 @@
 - **2026-02-12**: Telemetry ログ書き込みを耐障害化。主要ログの Permission denied / rotate 競合時に `data/memory/swimmy.telemetry.fallback.jsonl` へ退避するフォールバックを追加し、`run-all-tests` は telemetry 出力先を `data/memory/` 配下へ隔離して運用ログとの競合を避ける方針を明記。
 - **2026-02-12**: `systemd/swimmy-school.service` に `User=swimmy` / `Group=swimmy` を明示し、systemd正本ユニットの実装を STATE の運用方針（非root実行）に再整合。
 - **2026-02-12**: AランクWR下限の実装ドリフトを修正。`school-rank-system` / Evolution Report文言 / 単体テスト / 運用ドキュメントを `WR>=43%` に統一し、`WR>=38%` 例外を撤廃。
+- **2026-02-12**: Evolution Report 保存の実装契約を修正。`write-evolution-report-files` が `*evolution-report-path*` を正本に使用し、テスト実行時の固定パス上書きドリフトを防止する方針を追加。
+- **2026-02-12**: `run-all-tests` のレポート出力隔離を追加。`*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、テストで本番 `evolution_factory_report.txt` が上書きされないように修正。
 - **2026-02-11**: Backtest送信の計上契約を強化。スロットル時は可能な限り再キューし、RR/QUAL/Deferred/OOS の expected/sent は `NIL/:throttled` を除外して計上するよう方針を明文化。
 - **2026-02-11**: AランクのWR下限を正本（SPEC/STATE）へ再整合する方針を確定。`WR>=43%` を単一の運用基準とし、実装側の `38%` 例外を廃止。
 - **2026-02-11**: Dynamic Drawdown Alert の Peak 金額表示を整数表記へ統一し、`¥1000000.` のような末尾小数点が Discord 通知に出ないよう修正（`DYNAMIC DRAWDOWN WARNING` の文面整形）。

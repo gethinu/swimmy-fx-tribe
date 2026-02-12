@@ -6593,11 +6593,13 @@
   (format t "🧪 RUNNING SWIMMY TESTS (V6.18 - Expert Verified)~%")
   (format t "═══════════════════════════════════════~%~%")
   
-  ;; Isolate test telemetry output from live service logs.
+  ;; Isolate test outputs from live service files.
   (let ((swimmy.core::*log-file-path* "data/memory/swimmy-tests-telemetry.jsonl")
-        (swimmy.core::*telemetry-fallback-log-path* "data/memory/swimmy-tests-telemetry-fallback.jsonl"))
+        (swimmy.core::*telemetry-fallback-log-path* "data/memory/swimmy-tests-telemetry-fallback.jsonl")
+        (swimmy.school::*evolution-report-path* "data/memory/swimmy-tests-evolution-report.txt"))
     (ignore-errors (ensure-directories-exist swimmy.core::*log-file-path*))
     (ignore-errors (ensure-directories-exist swimmy.core::*telemetry-fallback-log-path*))
+    (ignore-errors (ensure-directories-exist swimmy.school::*evolution-report-path*))
     ;; Run each test
     (dolist (test '(;; Clan tests
                   test-main-shadows-last-new-day
@@ -6693,11 +6695,12 @@
                   test-2300-trigger-logic
                   test-midnight-reset-logic
                   test-daily-report-no-duplicate-after-flag-reset
-                  test-weekly-summary-dedup
-                  test-periodic-maintenance-flushes-stagnant-c-rank
-                  test-evolution-report-throttle-uses-last-write
-	                  test-evolution-report-staleness-alert-throttles
-	                  test-scheduler-calls-timeout-flushes
+	                  test-weekly-summary-dedup
+	                  test-periodic-maintenance-flushes-stagnant-c-rank
+	                  test-evolution-report-throttle-uses-last-write
+	                  test-write-evolution-report-files-respects-configured-path
+		                  test-evolution-report-staleness-alert-throttles
+		                  test-scheduler-calls-timeout-flushes
 	                  test-periodic-maintenance-sends-brain-heartbeat
 	                  test-stagnant-crank-daily-guard
 	                  test-age-increment-daily-guard
@@ -6846,7 +6849,9 @@
 	                  test-run-qualification-cycle-prioritizes-incubator-candidates
 	                  test-oos-status-updated-on-dispatch
 	                  test-evolution-report-includes-oos-status
+                  test-evolution-report-reflects-evolution-daemon-status
                   test-evolution-report-includes-cpcv-gate-failures
+                  test-display-candidate-name-preserves-suffix-for-long-names
                   test-oos-status-line-no-queue-duplication
                   test-oos-status-line-ignores-queue-error
                   test-evolution-report-excludes-phase2-end-time
@@ -6919,6 +6924,7 @@
 	                  test-pfwr-mutation-bias-applies-pf-recovery-floor-for-moderate-pf-gap
 	                  test-pfwr-mutation-bias-increases-scale-when-pf-gap-dominates
 	                  test-pfwr-mutation-bias-expands-scale-for-opposite-complements
+	                  test-pfwr-mutation-bias-expands-scale-for-wr-only-pairs
 	                  test-strategy-breeding-priority-score-prefers-a-base-near-candidate
 	                  test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-lowers-rr-when-wr-gap-dominates
@@ -6928,6 +6934,7 @@
 	                  test-find-diverse-breeding-partner-prefers-pfwr-complement
 	                  test-find-diverse-breeding-partner-prioritizes-complement-over-base-score
 	                  test-find-diverse-breeding-partner-filters-low-quality-complements
+	                  test-find-diverse-breeding-partner-prefers-near-pf-wr-only-candidate
 	                  test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
 	                  test-select-logic-anchor-parent-prefers-high-pf-under-pf-deficit
 	                  test-breed-strategies-combines-high-wr-entry-and-high-pf-exit

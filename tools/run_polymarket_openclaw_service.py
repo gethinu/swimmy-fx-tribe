@@ -234,6 +234,8 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
     require_fresh = _env_bool(env, "POLYCLAW_REQUIRE_FRESH_SIGNALS", True)
     min_signal_count = _env_int(env, "POLYCLAW_MIN_SIGNAL_COUNT", 1)
     max_age_seconds = _env_int(env, "POLYCLAW_MAX_SIGNAL_AGE_SECONDS", 1800)
+    min_agent_signal_count = _env_int(env, "POLYCLAW_MIN_AGENT_SIGNAL_COUNT", 0)
+    min_agent_signal_ratio = _env_float(env, "POLYCLAW_MIN_AGENT_SIGNAL_RATIO", 0.0)
 
     now = datetime.now(timezone.utc)
     if not signals_file.exists():
@@ -241,11 +243,16 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
             "ok": False,
             "reason": "signals_file_missing",
             "signal_count": 0,
+            "agent_signal_count": 0,
+            "agent_signal_ratio": 0.0,
             "age_seconds": None,
             "signals_file": str(signals_file),
         }
 
     signal_count = _signal_count_from_file(signals_file)
+    source_counts: Dict[str, int] = {}
+    agent_signal_count = 0
+    agent_signal_ratio = 0.0
     updated_at = None
     if meta_file.exists():
         try:
@@ -257,8 +264,44 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
                 meta_updated = payload.get("updated_at")
                 if isinstance(meta_updated, str):
                     updated_at = _parse_iso8601(meta_updated)
+                meta_sources = payload.get("source_counts")
+                if isinstance(meta_sources, dict):
+                    parsed_sources: Dict[str, int] = {}
+                    for key, value in meta_sources.items():
+                        name = str(key).strip()
+                        if not name:
+                            continue
+                        if isinstance(value, int):
+                            parsed_sources[name] = max(0, value)
+                            continue
+                        try:
+                            parsed_sources[name] = max(0, int(value))
+                        except (TypeError, ValueError):
+                            continue
+                    source_counts = parsed_sources
+                meta_agent_count = payload.get("agent_signal_count")
+                if isinstance(meta_agent_count, int):
+                    agent_signal_count = max(0, meta_agent_count)
+                else:
+                    try:
+                        agent_signal_count = max(0, int(meta_agent_count))
+                    except (TypeError, ValueError):
+                        pass
+                meta_agent_ratio = payload.get("agent_signal_ratio")
+                if isinstance(meta_agent_ratio, (int, float)):
+                    agent_signal_ratio = float(meta_agent_ratio)
+                else:
+                    try:
+                        agent_signal_ratio = float(meta_agent_ratio)
+                    except (TypeError, ValueError):
+                        pass
         except Exception:
             pass
+
+    if source_counts and agent_signal_count <= 0:
+        agent_signal_count = int(source_counts.get("openclaw_agent", 0))
+    if signal_count > 0 and agent_signal_ratio <= 0.0:
+        agent_signal_ratio = float(agent_signal_count) / float(signal_count)
 
     if updated_at is None:
         updated_at = datetime.fromtimestamp(signals_file.stat().st_mtime, timezone.utc)
@@ -269,6 +312,8 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
             "ok": False,
             "reason": "low_signal_count",
             "signal_count": signal_count,
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
             "age_seconds": age_seconds,
             "signals_file": str(signals_file),
         }
@@ -277,6 +322,28 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
             "ok": False,
             "reason": "stale_signals",
             "signal_count": signal_count,
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
+            "age_seconds": age_seconds,
+            "signals_file": str(signals_file),
+        }
+    if min_agent_signal_count > 0 and agent_signal_count < min_agent_signal_count:
+        return {
+            "ok": False,
+            "reason": "low_agent_signal_count",
+            "signal_count": signal_count,
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
+            "age_seconds": age_seconds,
+            "signals_file": str(signals_file),
+        }
+    if min_agent_signal_ratio > 0.0 and agent_signal_ratio < min_agent_signal_ratio:
+        return {
+            "ok": False,
+            "reason": "low_agent_signal_ratio",
+            "signal_count": signal_count,
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
             "age_seconds": age_seconds,
             "signals_file": str(signals_file),
         }
@@ -285,6 +352,8 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
         "ok": True,
         "reason": "",
         "signal_count": signal_count,
+        "agent_signal_count": agent_signal_count,
+        "agent_signal_ratio": round(agent_signal_ratio, 6),
         "age_seconds": age_seconds,
         "signals_file": str(signals_file),
     }

@@ -107,10 +107,12 @@
   "Upper RR bound used to stabilize opposite-complement pair offspring.")
 (defparameter *pfwr-pf-recovery-scale-gain* 0.8
   "SL/TP scale gain for PF-dominant deficits (increases absolute move distance).")
-(defparameter *pfwr-pf-recovery-scale-max* 1.35
+(defparameter *pfwr-pf-recovery-scale-max* 1.45
   "Maximum SL/TP scale multiplier from PF recovery expansion.")
-(defparameter *pfwr-complement-scale-floor* 1.25
+(defparameter *pfwr-complement-scale-floor* 1.40
   "Minimum SL/TP scale multiplier for opposite-complement pair stabilization.")
+(defparameter *pfwr-wr-only-scale-floor* 1.22
+  "Minimum SL/TP scale multiplier when WR deficit is already resolved but PF is still below target.")
 (defparameter *breeder-priority-use-a-base-score* t
   "When T, breeder parent ranking uses A-base-aware culling score if available.")
 (defparameter *breeder-priority-generation-weight* 0.01
@@ -251,9 +253,14 @@
   "Return multiplicative SL/TP scale factor for PF recovery (>=1.0)."
   (let* ((pf-delta (max 0.0 (- pf-gap-ratio wr-gap-ratio)))
          (pf-scale (+ 1.0 (* blend pf-delta *pfwr-pf-recovery-scale-gain*)))
+         (wr-ready-pf-deficit-p (and (> pf-gap-ratio 0.0)
+                                     (<= wr-gap-ratio 0.0)))
+         (wr-only-scale (if wr-ready-pf-deficit-p
+                            (max pf-scale *pfwr-wr-only-scale-floor*)
+                            pf-scale))
          (scale (if opposite-complements-p
-                    (max pf-scale *pfwr-complement-scale-floor*)
-                    pf-scale)))
+                    (max wr-only-scale *pfwr-complement-scale-floor*)
+                    wr-only-scale)))
     (clamp-breeder-float scale 1.0 *pfwr-pf-recovery-scale-max*)))
 
 (defun strategy-breeding-priority-score (strategy)

@@ -1,6 +1,12 @@
 {
-  "updated_at": "2026-02-12T14:19:33.533522+00:00",
-  "signal_count": 69,
-  "openclaw_cmd": "/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_signal_heuristic.py --gamma-url https://gamma-api.polymarket.com/markets --limit 250 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa --question-keyword lakers --question-keyword warriors --question-keyword chiefs --question-keyword yankees",
+  "updated_at": "2026-02-12T15:00:48.938134+00:00",
+  "signal_count": 62,
+  "source_counts": {
+    "openclaw_agent": 20,
+    "heuristic_fallback": 42
+  },
+  "agent_signal_count": 20,
+  "agent_signal_ratio": 0.322581,
+  "openclaw_cmd": "/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa --openclaw-cmd /mnt/c/Users/stair/AppData/Roaming/npm/openclaw",
   "signals_file": "/home/swimmy/swimmy/data/openclaw/signals.jsonl"
 }

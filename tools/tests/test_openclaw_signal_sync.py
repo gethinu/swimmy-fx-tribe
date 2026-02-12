@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -60,12 +61,29 @@ class TestOpenclawSignalSync(unittest.TestCase):
         signals = sync.parse_signals_stdout(stdout)
         self.assertEqual(2, len(signals))
 
+    def test_summarize_signal_sources_uses_latest_per_market(self) -> None:
+        rows = [
+            {"market_id": "m1", "p_yes": 0.6, "source": "heuristic_fallback"},
+            {"market_id": "m1", "p_yes": 0.7, "source": "openclaw_agent"},
+            {"market_id": "m2", "p_yes": 0.4, "source": "openclaw_agent"},
+            {"market_id": "m3", "prob_yes": 0.2},
+            {"market_id": "m4", "source": "openclaw_agent"},
+        ]
+        counts = sync.summarize_signal_sources(rows)
+        self.assertEqual(2, counts["openclaw_agent"])
+        self.assertEqual(1, counts["unknown"])
+
     def test_sync_from_command_writes_signals_and_meta(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             signals_file = Path(td) / "signals.jsonl"
             meta_file = Path(td) / "signals.meta.json"
             cp = mock.Mock()
-            cp.stdout = json.dumps([{"market_id": "m1", "p_yes": 0.63, "confidence": 0.9}])
+            cp.stdout = json.dumps(
+                [
+                    {"market_id": "m1", "p_yes": 0.63, "confidence": 0.9, "source": "openclaw_agent"},
+                    {"market_id": "m2", "p_yes": 0.51, "confidence": 0.6, "source": "heuristic_fallback"},
+                ]
+            )
             cp.returncode = 0
 
             with mock.patch.object(sync.subprocess, "run", return_value=cp):
@@ -83,7 +101,10 @@ class TestOpenclawSignalSync(unittest.TestCase):
             saved = signals_file.read_text(encoding="utf-8")
             self.assertIn("\"market_id\": \"m1\"", saved)
             meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            self.assertEqual(1, meta["signal_count"])
+            self.assertEqual(2, meta["signal_count"])
+            self.assertEqual(1, meta["source_counts"]["openclaw_agent"])
+            self.assertEqual(1, meta["source_counts"]["heuristic_fallback"])
+            self.assertAlmostEqual(0.5, meta["agent_signal_ratio"])
 
     def test_sync_from_command_rejects_too_few_signals(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -129,6 +150,26 @@ class TestOpenclawSignalSync(unittest.TestCase):
             base_dir=Path("/repo"),
         )
         self.assertEqual("", cmd)
+
+    def test_write_atomic_is_safe_under_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "signals.jsonl"
+            errors = []
+
+            def worker(idx: int) -> None:
+                try:
+                    sync._write_atomic(path, f"{idx}\n")
+                except Exception as exc:  # pragma: no cover
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(100)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+            self.assertEqual([], errors)
+            self.assertTrue(path.exists())
 
 
 if __name__ == "__main__":

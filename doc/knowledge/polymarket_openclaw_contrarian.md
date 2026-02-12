@@ -38,7 +38,7 @@ python3 tools/polymarket_openclaw_bot.py \
 ```bash
 python3 tools/polymarket_openclaw_bot.py \
   --config-file tools/configs/polymarket_openclaw.contrarian.example.json \
-  --openclaw-cmd "./bin/openclaw signals --format jsonl" \
+  --openclaw-cmd "python3 tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa" \
   --limit 250 \
   --journal-file data/reports/polymarket_openclaw_journal.jsonl \
   --write-plan data/reports/polymarket_openclaw_plan.json
@@ -187,6 +187,8 @@ python3 tools/polymarket_openclaw_autotune.py \
 - `POLYCLAW_MIN_SIGNAL_COUNT`
 - `POLYCLAW_MAX_SIGNAL_AGE_SECONDS`
 - `POLYCLAW_SKIP_ON_BAD_SIGNALS`
+- `POLYCLAW_MIN_AGENT_SIGNAL_COUNT`（`openclaw_agent`由来の最小件数）
+- `POLYCLAW_MIN_AGENT_SIGNAL_RATIO`（`openclaw_agent`由来の最小比率）
 
 重複エントリー制御:
 - `POLYCLAW_ALLOW_DUPLICATE_OPEN_MARKETS`（既定0。1で重複抑止を無効化）
@@ -214,18 +216,22 @@ tools\windows\openclaw_repair.bat -RunOnboard
 疎通だけ先に確認する場合:
 ```powershell
 openclaw doctor
-openclaw signals --format jsonl
+openclaw agent --local --agent main --json -m "reply with JSON"
 ```
 
 Linux側の本番シグナル切替:
-1. `.env` に `POLYCLAW_OPENCLAW_CMD=openclaw signals --format jsonl` を設定
+1. `.env` に bridge コマンドを設定（OpenClaw `signals` サブコマンド未提供版でも可）
+   - `POLYCLAW_OPENCLAW_CMD="/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa"`
 2. `.env` の `POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=0` に変更
-3. 反映
+3. 必要なら品質ガードを有効化
+   - `POLYCLAW_MIN_AGENT_SIGNAL_COUNT=10`
+   - `POLYCLAW_MIN_AGENT_SIGNAL_RATIO=0.2`
+4. 反映
 ```bash
 systemctl --user restart swimmy-openclaw-signal-sync.service
 systemctl --user restart swimmy-polymarket-openclaw.service
 ```
-4. 確認
+5. 確認
 ```bash
 tail -n 80 logs/openclaw_signal_sync.log
 tail -n 80 logs/polymarket_openclaw_cycle.log

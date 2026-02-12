@@ -165,6 +165,22 @@ REVERSION : ~a"
       (rank (symbol-name rank))
       (t "UNRANKED"))))
 
+(defun %display-candidate-name (name &key (max-len 25))
+  "Display-friendly strategy name.
+   Keep both prefix and suffix when truncating to avoid same-prefix collisions."
+  (let* ((safe (or name ""))
+         (n (length safe)))
+    (cond
+      ((<= n max-len) safe)
+      ((<= max-len 10) (subseq safe 0 max-len))
+      (t
+       (let* ((tail-len 3)
+              (hash-suffix (format nil "~3,'0X" (mod (sxhash safe) #x1000)))
+              (head-len (max 1 (- max-len (+ tail-len 2 (length hash-suffix)))))
+              (head (subseq safe 0 head-len))
+              (tail (subseq safe (- n tail-len))))
+         (format nil "~a..~a~a" head tail hash-suffix))))))
+
 (defun build-top-candidates-snippet (strategies)
   "Build top candidates snippet with fault isolation."
   (handler-case
@@ -176,7 +192,7 @@ REVERSION : ~a"
                 for st = (nth i sorted)
                 for label = (candidate-rank-label st)
                 do (format s "- `~a` (S=~,2f, ~a)~%"
-                           (subseq (strategy-name st) 0 (min 25 (length (strategy-name st))))
+                           (%display-candidate-name (strategy-name st))
                            (or (strategy-sharpe st) 0.0)
                            label))))
     (error (e)
@@ -220,7 +236,7 @@ REVERSION : ~a"
                      (let* ((safe-name (or name ""))
                             (label (%format-db-rank-label rank)))
                        (format s "- `~a` (S=~,2f, ~a)~%"
-                               (subseq safe-name 0 (min 25 (length safe-name)))
+                               (%display-candidate-name safe-name)
                                (float (or sharpe 0.0))
                                label))))))
     (error (e)
@@ -250,13 +266,31 @@ REVERSION : ~a"
       (float (or (a-base-deficit-score strategy) 0.0) 1.0)
       999.0))
 
+(defun %dedupe-strategies-by-name (strategies)
+  "Return STRATEGIES with duplicate strategy-name entries removed.
+   Keep the first occurrence, so pre-sorted lists preserve their best candidate."
+  (labels ((normalize (name)
+             (string-upcase
+              (string-trim '(#\Space #\Tab #\Newline #\Return)
+                           (or name "")))))
+    (let ((seen (make-hash-table :test 'equal))
+          (unique '()))
+      (dolist (st strategies (nreverse unique))
+        (let ((name (normalize (and st (strategy-name st)))))
+          (unless (gethash name seen)
+            (setf (gethash name seen) t)
+            (push st unique)))))))
+
 (defun build-a-near-miss-snippet-from-db (&key (limit 5))
   "Build A near-miss snippet from B-rank candidates closest to A Stage1."
   (handler-case
       (let* ((b-candidates (or (ignore-errors (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":B")))
                                '()))
              (sorted (sort (copy-list b-candidates) #'< :key #'%a-base-deficit-safe))
-             (top (subseq sorted 0 (min limit (length sorted)))))
+             (unique (if sorted
+                         (%dedupe-strategies-by-name sorted)
+                         '()))
+             (top (subseq unique 0 (min limit (length unique)))))
         (if (null top)
             "A Near-Miss Candidates (B): none"
             (with-output-to-string (s)
@@ -271,10 +305,11 @@ REVERSION : ~a"
                        (sharpe (float (or (strategy-sharpe st) 0.0) 1.0))
                        (pf (float (or (strategy-profit-factor st) 0.0) 1.0))
                        (wr (* 100.0 (float (or (strategy-win-rate st) 0.0) 1.0)))
+                       (wr-pct (round wr))
                        (dd (* 100.0 (float (or (strategy-max-dd st) 0.0) 1.0))))
-                  (format s "- `~a` deficit=~,3f fails=~a | S=~,2f PF=~,2f WR=~,0f%% DD=~,1f%%~%"
-                          (subseq name 0 (min 25 (length name)))
-                          deficit fail-text sharpe pf wr dd))))))
+                  (format s "- `~a` deficit=~,3f fails=~a | S=~,2f PF=~,2f WR=~d% DD=~,1f%~%"
+                          (%display-candidate-name name)
+                          deficit fail-text sharpe pf wr-pct dd))))))
     (error (e)
       (format nil "A Near-Miss Candidates (B): error: ~a" e))))
 
@@ -317,6 +352,46 @@ REVERSION : ~a"
 
 (defun safe-file-write-date (path)
   (or (ignore-errors (file-write-date path)) 0))
+
+(defun %systemd-service-state (service)
+  "Return normalized systemd is-active state for SERVICE, or \"unknown\"."
+  (let* ((raw (ignore-errors
+                (uiop:run-program (list "systemctl" "is-active" service)
+                                  :output :string
+                                  :ignore-error-status t)))
+         (trimmed (if raw
+                      (string-downcase
+                       (string-trim '(#\Space #\Tab #\Newline #\Return) raw))
+                      "")))
+    (if (> (length trimmed) 0) trimmed "unknown")))
+
+(defun %evolution-heartbeat-age (&key (now (get-universal-time)))
+  "Return age seconds for evolution heartbeat, or NIL when missing."
+  (let ((last (safe-file-write-date *evolution-heartbeat-path*)))
+    (when (> last 0)
+      (max 0 (- now last)))))
+
+(defun evolution-daemon-status-line (&key (now (get-universal-time)))
+  "Human-readable evolution daemon status for reports."
+  (let* ((state (%systemd-service-state "swimmy-evolution.service"))
+         (heartbeat-age (%evolution-heartbeat-age :now now))
+         (heartbeat-fresh-p (and heartbeat-age
+                                 (<= heartbeat-age *evolution-report-stale-threshold*))))
+    (cond
+      ((string= state "active") "✅ Evolution Daemon Active")
+      ((string= state "activating") "🟡 Evolution Daemon Activating")
+      ((string= state "deactivating") "🟡 Evolution Daemon Deactivating")
+      ((string= state "inactive")
+       (if heartbeat-fresh-p
+           (format nil "⚠️ Evolution Daemon Inactive (heartbeat ~ds ago)" heartbeat-age)
+           "⚠️ Evolution Daemon Inactive"))
+      ((string= state "failed")
+       (if heartbeat-fresh-p
+           (format nil "❌ Evolution Daemon Failed (heartbeat ~ds ago)" heartbeat-age)
+           "❌ Evolution Daemon Failed"))
+      (heartbeat-fresh-p
+       (format nil "⚠️ Evolution Daemon Status Unknown (heartbeat ~ds ago)" heartbeat-age))
+      (t "⚠️ Evolution Daemon Status Unknown"))))
 
 (defun maybe-send-evolution-report (&key (now (get-universal-time)) last-write (reason "scheduled"))
   "Send evolution report if the last write exceeds the configured interval."
@@ -403,8 +478,9 @@ REVERSION : ~a"
                                    (getf cpcv-gate-counts :pass 0)
                                    (getf cpcv-gate-counts :total 0)))
            (cpcv-median-counts (cpcv-median-failure-counts a-rank-db))
-           (cpcv-median-line (format nil "CPCV Stage2 Failures: pass_rate<~,0f%%=~d maxdd>=~,2f=~d total=~d"
-                                     (* 100 (getf cpcv-median-counts :pass-min 0.70))
+           (cpcv-pass-min-pct (round (* 100 (getf cpcv-median-counts :pass-min 0.70))))
+           (cpcv-median-line (format nil "CPCV Stage2 Failures: pass_rate<~d%=~d maxdd>=~,2f=~d total=~d"
+                                     cpcv-pass-min-pct
                                      (getf cpcv-median-counts :pass-rate 0)
                                      (getf cpcv-median-counts :maxdd-max 0.12)
                                      (getf cpcv-median-counts :maxdd 0)
@@ -414,6 +490,7 @@ REVERSION : ~a"
                                  cpcv-gate-line
                                  cpcv-median-line))
            (oos-snippet (oos-metrics-summary-line))
+           (validation-coverage-line (validation-coverage-summary-line))
            (a-stage1-counts
              (or (ignore-errors (a-stage1-failure-counts-from-db))
                  (ignore-errors (a-stage1-failure-counts all))))
@@ -424,7 +501,8 @@ REVERSION : ~a"
            (a-near-miss-snippet (build-a-near-miss-snippet-from-db :limit 5))
            (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
                                  (a-candidate-metrics-snippet :limit 6)
-                                 "A Candidate Funnel (latest): unavailable")))
+                                 "A Candidate Funnel (latest): unavailable"))
+           (daemon-status-line (evolution-daemon-status-line)))
       (let* ((graveyard-text (if lib-counts
                                  (format nil "~d (Library ~d)" graveyard lib-graveyard)
                                  (format nil "~d" graveyard)))
@@ -476,8 +554,10 @@ Current status of the autonomous strategy generation pipeline.
 
 	~a
 
+	~a
+
 	⚙️ System Status
-	✅ Evolution Daemon Active
+	~a
 	✅ Native Lisp Orchestration (V28)
 ~a"
             active-count
@@ -490,20 +570,20 @@ Current status of the autonomous strategy generation pipeline.
 	            drift-text
 	            cpcv-snippet
 	            oos-snippet
+	            validation-coverage-line
 	            a-stage1-snippet
 	            a-near-miss-snippet
 	            a-funnel-snippet
 	            top-snippet
+              daemon-status-line
 	            (format-timestamp (get-universal-time)))))))
 
 (defun write-evolution-report-files (report)
   "Persist the Evolution Factory Report to local files."
-  (let ((paths (list (list "data/reports/evolution_factory_report.txt" report))))
-    (dolist (entry paths)
-      (destructuring-bind (path content) entry
-        (ensure-directories-exist path)
-        (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
-          (write-string content stream))))))
+  (let ((path (or *evolution-report-path* "data/reports/evolution_factory_report.txt")))
+    (ensure-directories-exist path)
+    (with-open-file (stream path :direction :output :if-exists :supersede :if-does-not-exist :create)
+      (write-string report stream))))
 
 (defun send-evolution-report (report &optional webhook)
   "Send the Evolution Factory Report to Discord."
@@ -523,6 +603,38 @@ Current status of the autonomous strategy generation pipeline.
     (send-evolution-report report)
     (when (fboundp 'write-oos-status-file)
       (ignore-errors (write-oos-status-file :reason "report")))))
+
+(defun validation-coverage-summary-line ()
+  "Return DB cumulative validation coverage for OOS/CPCV."
+  (handler-case
+      (let* ((all-oos
+               (or (execute-single
+                    "SELECT count(*) FROM strategies
+                      WHERE ABS(COALESCE(oos_sharpe, 0.0)) > 1e-6")
+                   0))
+             (all-cpcv
+               (or (execute-single
+                    "SELECT count(*) FROM strategies
+                      WHERE ABS(COALESCE(cpcv_median, 0.0)) > 1e-6
+                         OR ABS(COALESCE(cpcv_pass_rate, 0.0)) > 1e-6")
+                   0))
+             (active-oos
+               (or (execute-single
+                    "SELECT count(*) FROM strategies
+                      WHERE (rank IS NULL OR UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED'))
+                        AND ABS(COALESCE(oos_sharpe, 0.0)) > 1e-6")
+                   0))
+             (active-cpcv
+               (or (execute-single
+                    "SELECT count(*) FROM strategies
+                      WHERE (rank IS NULL OR UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED'))
+                        AND (ABS(COALESCE(cpcv_median, 0.0)) > 1e-6
+                             OR ABS(COALESCE(cpcv_pass_rate, 0.0)) > 1e-6)")
+                   0)))
+        (format nil "Validation Coverage (DB): OOS done=~d CPCV done=~d | Active OOS=~d CPCV=~d"
+                all-oos all-cpcv active-oos active-cpcv))
+    (error (e)
+      (format nil "Validation Coverage (DB): unavailable (~a)" e))))
 
 (defun oos-metrics-summary-line ()
   "Human-readable summary of OOS pipeline health for reports/Discord."

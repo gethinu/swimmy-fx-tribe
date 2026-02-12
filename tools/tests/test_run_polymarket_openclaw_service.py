@@ -217,6 +217,116 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertFalse(health["ok"])
         self.assertEqual("low_signal_count", health["reason"])
 
+    def test_evaluate_signal_health_low_agent_signal_count(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6}',
+                        '{"market_id":"m2","p_yes":0.4}',
+                        '{"market_id":"m3","p_yes":0.5}',
+                        '{"market_id":"m4","p_yes":0.7}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            meta_file.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":4,"source_counts":{"openclaw_agent":1,"heuristic_fallback":3}}\n'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_SIGNALS_META_FILE": str(meta_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_COUNT": "2",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertFalse(health["ok"])
+        self.assertEqual("low_agent_signal_count", health["reason"])
+        self.assertEqual(1, health["agent_signal_count"])
+
+    def test_evaluate_signal_health_low_agent_signal_ratio(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6}',
+                        '{"market_id":"m2","p_yes":0.4}',
+                        '{"market_id":"m3","p_yes":0.5}',
+                        '{"market_id":"m4","p_yes":0.7}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            meta_file.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":4,"source_counts":{"openclaw_agent":1,"heuristic_fallback":3}}\n'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_SIGNALS_META_FILE": str(meta_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_RATIO": "0.5",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertFalse(health["ok"])
+        self.assertEqual("low_agent_signal_ratio", health["reason"])
+        self.assertAlmostEqual(0.25, health["agent_signal_ratio"])
+
+    def test_evaluate_signal_health_agent_signal_ratio_ok(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6}',
+                        '{"market_id":"m2","p_yes":0.4}',
+                        '{"market_id":"m3","p_yes":0.5}',
+                        '{"market_id":"m4","p_yes":0.7}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            meta_file.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":4,"source_counts":{"openclaw_agent":2,"heuristic_fallback":2}}\n'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_SIGNALS_META_FILE": str(meta_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_RATIO": "0.5",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(health["ok"])
+        self.assertAlmostEqual(0.5, health["agent_signal_ratio"])
+
 
 if __name__ == "__main__":
     unittest.main()

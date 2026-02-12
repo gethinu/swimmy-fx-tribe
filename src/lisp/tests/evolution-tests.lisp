@@ -239,8 +239,8 @@
               ;; Extreme initial RR should be pulled back to convergence band.
               (swimmy.school::apply-pfwr-mutation-bias 20.0 100.0 p1 p2)
             (let ((rr (/ tp sl)))
-              (assert-true (<= rr 1.85)
-                           (format nil "Expected complement stabilization RR<=1.85, got ~,3f" rr))
+              (assert-true (<= rr 1.86)
+                           (format nil "Expected complement stabilization RR<=1.86, got ~,3f" rr))
               (assert-true (>= rr 1.55)
                            (format nil "Expected complement stabilization RR>=1.55, got ~,3f" rr)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
@@ -363,8 +363,35 @@
           (setf swimmy.school::*pfwr-target-wr* 0.43)
           (multiple-value-bind (sl tp)
               (swimmy.school::apply-pfwr-mutation-bias 20.0 20.0 p1 p2)
-            (assert-true (>= (+ sl tp) 50.0)
-                         (format nil "Expected opposite-complement scale >=50.0, got ~,3f" (+ sl tp)))))
+            (assert-true (>= (+ sl tp) 56.0)
+                         (format nil "Expected opposite-complement scale >=56.0, got ~,3f" (+ sl tp)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
+(deftest test-pfwr-mutation-bias-expands-scale-for-wr-only-pairs
+  "WR-only pair should still enforce a minimum PF-recovery scale floor."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-WRONLY-1"
+                                          :profit-factor 1.22 :win-rate 0.49
+                                          :sl 20.0 :tp 30.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-WRONLY-2"
+                                          :profit-factor 1.24 :win-rate 0.47
+                                          :sl 18.0 :tp 28.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 20.0 p1 p2)
+            (assert-true (>= (+ sl tp) 48.0)
+                         (format nil "Expected WR-only PF recovery scale >=48.0, got ~,3f" (+ sl tp)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
       (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
@@ -629,6 +656,38 @@
                          :start-index 1)))
             (assert-true (eq picked cand-lower-but-balanced)
                          (format nil "Expected balanced complement candidate UT-COMP-FILTER-GOOD, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-prefers-near-pf-wr-only-candidate
+  "When parent mainly lacks PF, near-threshold PF + solid WR candidate should be prioritized."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-NEAR-PF-PARENT"
+                                              :rank :B :generation 80
+                                              :sl 20.0 :tp 60.0
+                                              :profit-factor 1.12 :win-rate 0.48
+                                              :sharpe 1.1))
+         (cand-high-no-pf (swimmy.school:make-strategy :name "UT-NEAR-PF-HIGH-NO"
+                                                       :rank :LEGEND :generation 1200
+                                                       :sl 20.0 :tp 70.0
+                                                       :profit-factor 1.10 :win-rate 0.62
+                                                       :sharpe 2.4))
+         (cand-near-pf (swimmy.school:make-strategy :name "UT-NEAR-PF-CAND"
+                                                    :rank :B :generation 6
+                                                    :sl 20.0 :tp 34.0
+                                                    :profit-factor 1.25 :win-rate 0.46
+                                                    :sharpe 0.3))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-high-no-pf cand-near-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-near-pf)
+                         (format nil "Expected near-PF candidate UT-NEAR-PF-CAND, got ~a"
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 

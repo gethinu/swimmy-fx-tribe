@@ -447,6 +447,77 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-evolution-report-includes-validation-coverage
+  "Evolution report should include DB cumulative validation coverage."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-validation-coverage-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      ;; OOS/CPCV coverage fixture:
+                      ;; total   -> OOS=3, CPCV=4
+                      ;; active  -> OOS=2, CPCV=2 (exclude GRAVEYARD/RETIRED)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, oos_sharpe, cpcv_median, cpcv_pass_rate) VALUES (?, ?, ?, ?, ?)"
+                       "COV-ACT-B" ":B" 0.61 0.0 0.0)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, oos_sharpe, cpcv_median, cpcv_pass_rate) VALUES (?, ?, ?, ?, ?)"
+                       "COV-ACT-I" ":INCUBATOR" 0.0 1.20 0.72)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, oos_sharpe, cpcv_median, cpcv_pass_rate) VALUES (?, ?, ?, ?, ?)"
+                       "COV-ACT-A" ":A" 0.53 1.10 0.75)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, oos_sharpe, cpcv_median, cpcv_pass_rate) VALUES (?, ?, ?, ?, ?)"
+                       "COV-GRAVE" ":GRAVEYARD" 0.91 0.95 0.77)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, oos_sharpe, cpcv_median, cpcv_pass_rate) VALUES (?, ?, ?, ?, ?)"
+                       "COV-RET" ":RETIRED" 0.0 1.01 0.71)
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true
+                         (search "Validation Coverage (DB): OOS done=3 CPCV done=4 | Active OOS=2 CPCV=2" report)
+                         "Report should contain cumulative OOS/CPCV coverage line")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-evolution-report-reflects-evolution-daemon-status
+  "Evolution report should reflect evolution daemon service state instead of hardcoded Active."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-daemon-status-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db))
+                   (had-status (fboundp 'swimmy.school::%systemd-service-state))
+                   (orig-status (and (fboundp 'swimmy.school::%systemd-service-state)
+                                     (symbol-function 'swimmy.school::%systemd-service-state))))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (setf (symbol-function 'swimmy.school::%systemd-service-state)
+                            (lambda (&rest _args) (declare (ignore _args)) "inactive"))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "⚠️ Evolution Daemon Inactive" report)
+                                     "Report should show inactive daemon status")
+                        (assert-false (search "✅ Evolution Daemon Active" report)
+                                      "Report should not hardcode active daemon status")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh)
+                 (if had-status
+                     (setf (symbol-function 'swimmy.school::%systemd-service-state) orig-status)
+                     (fmakunbound 'swimmy.school::%systemd-service-state)))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-evolution-report-includes-cpcv-gate-failures
   "Evolution report should include CPCV gate failure summary."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-cpcv-gate-~a.db" (get-universal-time))))
@@ -475,6 +546,10 @@
                       (let ((report (swimmy.school::generate-evolution-report)))
                         (assert-true (search "CPCV Gate Failures:" report)
                                      "Report should include CPCV gate failure line")
+                        (assert-true (search "CPCV Stage2 Failures: pass_rate<70%=0" report)
+                                     "Stage2 line should render single %")
+                        (assert-false (search "%%" report)
+                                      "Report should not contain doubled percent symbols")
                         (assert-true (search "sharpe<0.75=1" report)
                                      "Gate sharpe count should appear")
                         (assert-true (search "pf<1.70=1" report)
@@ -514,6 +589,9 @@
                                (cl-user::make-strategy :name "Near-Best" :symbol "USDJPY" :rank :B
                                                        :sharpe 1.30 :profit-factor 1.29
                                                        :win-rate 0.42 :max-dd 0.10)
+                               (cl-user::make-strategy :name "Near-Best" :symbol "USDJPY" :rank :B
+                                                       :sharpe 1.25 :profit-factor 1.20
+                                                       :win-rate 0.41 :max-dd 0.11)
                                (cl-user::make-strategy :name "Near-Mid" :symbol "USDJPY" :rank :B
                                                        :sharpe 0.95 :profit-factor 1.22
                                                        :win-rate 0.40 :max-dd 0.12)
@@ -521,19 +599,42 @@
                                                        :sharpe 0.30 :profit-factor 1.08
                                                        :win-rate 0.36 :max-dd 0.20))))
                       (let ((report (swimmy.school::generate-evolution-report)))
+                        (labels ((count-substring (needle haystack)
+                                   (loop with count = 0
+                                         with start = 0
+                                         for pos = (search needle haystack :start2 start)
+                                         while pos
+                                         do (incf count)
+                                            (setf start (+ pos (length needle)))
+                                         finally (return count))))
                         (assert-true (search "A Near-Miss Candidates (B):" report)
                                      "Report should include near-miss section")
                         (assert-true (search "Near-Best" report)
                                      "Near-miss section should include closest candidate")
                         (assert-true (search "Near-Far" report)
                                      "Near-miss section should include lower-ranked candidate")
+                        (assert-equal 1 (count-substring "Near-Best" report)
+                                      "Near-miss should dedupe same strategy name")
+                        (assert-false (search "%%" report)
+                                      "Near-miss should render single %")
                         (assert-true (< (search "Near-Best" report)
                                         (search "Near-Far" report))
-                                     "Near-miss candidates should be ordered by deficit asc")))
+                                     "Near-miss candidates should be ordered by deficit asc"))))
                  (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh)
                  (setf (symbol-function 'swimmy.school::fetch-candidate-strategies) orig-fetch))))
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-display-candidate-name-preserves-suffix-for-long-names
+  "Long candidate names should keep a suffix marker to avoid same-prefix collisions."
+  (let* ((a "Bred-Bred--295-Gen1-N3979001")
+         (b "Bred-Bred--295-Gen1-N3979002")
+         (short-a (swimmy.school::%display-candidate-name a))
+         (short-b (swimmy.school::%display-candidate-name b)))
+    (assert-false (string= short-a short-b)
+                  "Long names with same prefix should remain distinguishable")
+    (assert-true (<= (length short-a) 25) "Display name should fit max length")
+    (assert-true (search ".." short-a) "Display name should include truncation marker")))
 
 (deftest test-oos-status-line-uses-db-metrics
   "OOS status line should reflect DB queue and OOS results."

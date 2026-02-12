@@ -212,6 +212,25 @@
       (when orig-write-oos
         (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write-oos)))))
 
+(deftest test-write-evolution-report-files-respects-configured-path
+  "write-evolution-report-files should persist to *evolution-report-path*."
+  (let* ((tmp-path (format nil "/tmp/swimmy-evolution-report-~a.txt" (get-universal-time)))
+         (orig-path swimmy.school::*evolution-report-path*))
+    (unwind-protect
+        (progn
+          (when (probe-file tmp-path)
+            (delete-file tmp-path))
+          (setf swimmy.school::*evolution-report-path* tmp-path)
+          (swimmy.school::write-evolution-report-files "UT-REPORT")
+          (assert-true (probe-file tmp-path)
+                       "Report file should be written to configured path")
+          (with-open-file (in tmp-path :direction :input)
+            (let ((line (read-line in nil "")))
+              (assert-equal "UT-REPORT" line "Report content should be written"))))
+      (setf swimmy.school::*evolution-report-path* orig-path)
+      (when (probe-file tmp-path)
+        (delete-file tmp-path)))))
+
 (deftest test-evolution-report-staleness-alert-throttles
   "Staleness alerts should fire once per cooldown window"
   (let* ((orig-alert (symbol-function 'swimmy.core:notify-discord-alert))
