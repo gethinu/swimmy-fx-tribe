@@ -12,12 +12,6 @@ try:
 except Exception:
     from xau_autobot_data import load_ohlc  # type: ignore
 
-try:
-    import yfinance as yf
-except Exception:
-    yf = None
-
-
 def total_return_from_gross(gross_returns: Sequence[float], cost_per_side: float) -> float:
     equity = 1.0
     for gross in gross_returns:
@@ -59,7 +53,7 @@ def readiness_verdict(*, assumed_cost_side: float, break_even_cost_side: float) 
 
 
 def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
-    return load_ohlc(ticker=ticker, period=period, interval=interval, yf_module=yf)
+    return load_ohlc(ticker=ticker, period=period, interval=interval)
 
 
 def _ema_series(values: Sequence[float], period: int) -> List[float]:

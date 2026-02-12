@@ -13,12 +13,6 @@ try:
 except Exception:
     from xau_autobot_data import load_ohlc  # type: ignore
 
-try:
-    import yfinance as yf
-except Exception:
-    yf = None
-
-
 @dataclass(frozen=True)
 class StrategyPreset:
     name: str
@@ -72,7 +66,7 @@ def _is_session_allowed(hour_utc: int, start: int, end: int) -> bool:
 
 
 def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
-    return load_ohlc(ticker=ticker, period=period, interval=interval, yf_module=yf)
+    return load_ohlc(ticker=ticker, period=period, interval=interval)
 
 
 def _ema_series(values: List[float], period: int) -> List[float]:

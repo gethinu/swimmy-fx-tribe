@@ -14,12 +14,6 @@ try:
 except Exception:
     from xau_autobot_data import load_ohlc  # type: ignore
 
-try:
-    import yfinance as yf
-except Exception:
-    yf = None
-
-
 Candidate = Tuple[int, int, float, float, float, int, int, float, float]
 
 
@@ -140,7 +134,7 @@ def _parse_split_ratios(value: str) -> List[float]:
 
 
 def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
-    return load_ohlc(ticker=ticker, period=period, interval=interval, yf_module=yf)
+    return load_ohlc(ticker=ticker, period=period, interval=interval)
 
 
 def _ema_series(values: Sequence[float], period: int) -> List[float]:
