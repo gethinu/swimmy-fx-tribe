@@ -53,6 +53,35 @@ def main():
     else:
         raise AssertionError("expected parse error")
 
+    # Backward compatibility: JSON envelope should be accepted.
+    msg_json = (
+        '{"type":"NOTIFIER","schema_version":1,"action":"SEND",'
+        '"webhook":"https://discord.com/api/webhooks/dummy",'
+        '"payload":{"embeds":[{"title":"Swimmy JSON"}]}}'
+    )
+    webhook, payload = notifier.parse_notifier_message(msg_json)
+    assert webhook.endswith("/dummy")
+    assert payload["embeds"][0]["title"] == "Swimmy JSON"
+
+    # Legacy compatibility: NOTIFY + data envelope should be accepted.
+    msg_json_legacy = (
+        '{"type":"NOTIFY","schema_version":1,'
+        '"webhook":"https://discord.com/api/webhooks/dummy",'
+        '"data":{"content":"legacy-notify"}}'
+    )
+    webhook, payload = notifier.parse_notifier_message(msg_json_legacy)
+    assert webhook.endswith("/dummy")
+    assert payload["content"] == "legacy-notify"
+
+    # Guardian legacy compatibility: webhook+data without type/action.
+    msg_json_guardian_legacy = (
+        '{"data":{"embeds":[{"title":"🧠 BRAIN REVIVED"}]},'
+        '"webhook":"https://discord.com/api/webhooks/dummy"}'
+    )
+    webhook, payload = notifier.parse_notifier_message(msg_json_guardian_legacy)
+    assert webhook.endswith("/dummy")
+    assert payload["embeds"][0]["title"] == "🧠 BRAIN REVIVED"
+
 
 if __name__ == "__main__":
     main()

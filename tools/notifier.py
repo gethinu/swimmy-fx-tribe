@@ -31,6 +31,7 @@ import os
 import sys
 import threading
 import time
+import hashlib
 from pathlib import Path
 
 import requests
@@ -52,10 +53,15 @@ RETRY_LIMIT = 3
 RATE_LIMIT_DELAY = 1.0  # Seconds between requests to same webhook
 PREVIEW_MAX_LEN = _env_int("SWIMMY_NOTIFIER_PREVIEW_MAX_LEN", 120)
 STATUS_PREVIEW_MAX_LEN = _env_int("SWIMMY_NOTIFIER_STATUS_PREVIEW_MAX_LEN", 360)
+DEDUPE_WINDOW_SEC = _env_int("SWIMMY_NOTIFIER_DEDUPE_WINDOW_SEC", 180)
+_DEDUPE_PRUNE_INTERVAL_SEC = 60
 
 # Queue for outgoing messages
 # (webhook_url, payload)
 message_queue = deque()
+_dedupe_cache = {}
+_dedupe_lock = threading.Lock()
+_dedupe_last_prune = 0.0
 
 
 def resolve_base_dir() -> Path:
@@ -77,24 +83,53 @@ if str(PYTHON_SRC) not in sys.path:
 from aux_sexp import parse_aux_request
 
 
-def parse_notifier_message(message: str):
-    data = parse_aux_request(message)
+def _message_preview(text: str, max_len: int = 120) -> str:
+    """Compact one-line preview for parse error logs."""
+    compact = " ".join(str(text).split())
+    if max_len > 3 and len(compact) > max_len:
+        return compact[: max_len - 1] + "…"
+    return compact
+
+
+def _parse_notifier_fields(data: dict):
+    if not isinstance(data, dict):
+        raise ValueError("message payload must be a map")
+
     msg_type = str(data.get("type", "")).upper()
+    if (
+        not msg_type
+        and data.get("webhook")
+        and (
+            "data" in data
+            or "payload" in data
+            or "payload_json" in data
+        )
+    ):
+        # Legacy Guardian format: {"webhook": "...", "data": {...}}
+        msg_type = "NOTIFIER"
+    if msg_type == "NOTIFY":
+        # Backward compatibility for old notifier envelope type.
+        msg_type = "NOTIFIER"
     if msg_type != "NOTIFIER":
         raise ValueError(f"Invalid type: {msg_type}")
-    schema_version = data.get("schema_version")
+    schema_version = data.get("schema_version", 1)
     if schema_version != 1:
         raise ValueError("Unsupported schema_version")
-    action = str(data.get("action", "")).upper()
+    action = str(data.get("action", "SEND")).upper()
     if action != "SEND":
         raise ValueError(f"Invalid action: {action}")
     webhook = data.get("webhook")
     payload_json_present = "payload_json" in data
     payload_present = "payload" in data
+    payload_legacy_present = "data" in data
     payload_json = data.get("payload_json")
     payload_sexp = data.get("payload")
+    payload_legacy = data.get("data")
     if not webhook:
         raise ValueError("Missing webhook")
+    if payload_legacy_present and not payload_present:
+        payload_sexp = payload_legacy
+        payload_present = True
     if payload_present and payload_json_present:
         raise ValueError("Specify either payload or payload_json")
     if payload_present:
@@ -110,6 +145,18 @@ def parse_notifier_message(message: str):
     else:
         raise ValueError("Missing payload or payload_json")
     return webhook, payload
+
+
+def parse_notifier_message(message: str):
+    try:
+        data = parse_aux_request(message)
+    except Exception as sexp_error:
+        # Compatibility path: accept JSON envelope from older/non-Lisp senders.
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            raise sexp_error
+    return _parse_notifier_fields(data)
 
 
 def format_payload_preview(payload: dict, max_len: int = 120) -> str:
@@ -144,6 +191,53 @@ def select_preview_max_len(title: str) -> int:
     if isinstance(title, str) and "status" in title.casefold():
         return max(PREVIEW_MAX_LEN, STATUS_PREVIEW_MAX_LEN)
     return PREVIEW_MAX_LEN
+
+
+def build_dedupe_key(webhook_url: str, payload: dict) -> str:
+    """Build a stable dedupe key from webhook + canonical payload."""
+    try:
+        canonical_payload = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+    except TypeError:
+        canonical_payload = repr(payload)
+    digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+    return f"{webhook_url}|{digest}"
+
+
+def _prune_dedupe_cache(now: float) -> None:
+    """Prune expired dedupe entries periodically to bound memory usage."""
+    global _dedupe_last_prune
+    if now - _dedupe_last_prune < _DEDUPE_PRUNE_INTERVAL_SEC:
+        return
+
+    if DEDUPE_WINDOW_SEC <= 0:
+        _dedupe_cache.clear()
+        _dedupe_last_prune = now
+        return
+
+    cutoff = now - DEDUPE_WINDOW_SEC
+    stale_keys = [k for k, ts in _dedupe_cache.items() if ts < cutoff]
+    for key in stale_keys:
+        del _dedupe_cache[key]
+    _dedupe_last_prune = now
+
+
+def should_enqueue_message(webhook_url: str, payload: dict, now: float = None) -> bool:
+    """Return True when message should be queued; False when deduped."""
+    if DEDUPE_WINDOW_SEC <= 0:
+        return True
+
+    ts = time.time() if now is None else now
+    key = build_dedupe_key(webhook_url, payload)
+
+    with _dedupe_lock:
+        _prune_dedupe_cache(ts)
+        prev = _dedupe_cache.get(key)
+        if prev is not None and (ts - prev) < DEDUPE_WINDOW_SEC:
+            return False
+        _dedupe_cache[key] = ts
+        return True
 
 
 def process_queue():
@@ -243,20 +337,32 @@ def main():
 
             try:
                 webhook, payload = parse_notifier_message(msg_str)
-                message_queue.append((webhook, payload))
                 title = payload.get("embeds", [{}])[0].get("title", "Message")
                 preview = format_payload_preview(
                     payload, max_len=select_preview_max_len(title)
                 )
-                if preview:
-                    print(f"[NOTIFIER] Queued: {title} | {preview}", flush=True)
+                if should_enqueue_message(webhook, payload):
+                    message_queue.append((webhook, payload))
+                    if preview:
+                        print(f"[NOTIFIER] Queued: {title} | {preview}", flush=True)
+                    else:
+                        print(f"[NOTIFIER] Queued: {title}", flush=True)
                 else:
-                    print(f"[NOTIFIER] Queued: {title}", flush=True)
+                    if preview:
+                        print(
+                            f"[NOTIFIER] Suppressed duplicate: {title} | {preview}",
+                            flush=True,
+                        )
+                    else:
+                        print(f"[NOTIFIER] Suppressed duplicate: {title}", flush=True)
 
             except json.JSONDecodeError:
                 print(f"[NOTIFIER] Invalid payload_json")
             except Exception as e:
-                print(f"[NOTIFIER] Invalid message format: {e}")
+                print(
+                    f"[NOTIFIER] Invalid message format: {e} | raw={_message_preview(msg_str)}",
+                    flush=True,
+                )
 
         except KeyboardInterrupt:
             print("\n[NOTIFIER] Shutting down...")
