@@ -3,6 +3,7 @@ import unittest
 from unittest import mock
 
 from tools.xau_autobot_cycle import (
+    build_discord_headers,
     build_cycle_summary,
     build_optimize_command,
     dispatch_discord_notification,
@@ -14,6 +15,12 @@ from tools.xau_autobot_cycle import (
 
 
 class TestXauAutoBotCycle(unittest.TestCase):
+    def test_build_discord_headers_contains_user_agent(self):
+        headers = build_discord_headers()
+        self.assertIn("Content-Type", headers)
+        self.assertIn("User-Agent", headers)
+        self.assertTrue(headers["User-Agent"])
+
     def test_parse_json_lines_skips_blanks(self):
         payload = '{"a": 1}\n\n{"b": 2}\n'
         rows = parse_json_lines(payload)

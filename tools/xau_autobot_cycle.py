@@ -168,13 +168,21 @@ def _post_discord(webhook_url: str, summary: Dict[str, object]) -> None:
         webhook_url,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers=build_discord_headers(),
     )
     try:
         with urllib.request.urlopen(request, timeout=10):
             return
     except urllib.error.URLError as exc:
         raise RuntimeError(f"failed to post discord webhook: {exc}") from exc
+
+
+def build_discord_headers() -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        # Discord webhook endpoint in this environment rejects default urllib UA (Cloudflare 1010).
+        "User-Agent": "Mozilla/5.0 (compatible; xau-autobot/1.0)",
+    }
 
 
 def dispatch_discord_notification(
