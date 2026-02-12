@@ -208,6 +208,35 @@ tools\windows\xau_autobot_run_all.bat
 補足:
 - 既定で `xau_autobot_cycle.py` 実行後に `xau_autobot_windows_probe.py` まで実行します
 - MT5プローブを飛ばす場合は `-SkipProbe` を付けます
+- Windows Python には `MetaTrader5`, `yfinance`, `pandas` を導入してください
+
+```powershell
+py -3 -m pip install MetaTrader5 yfinance pandas
+```
+
+### Windows常駐化（タスクスケジューラ）
+
+同梱:
+- `tools/windows/xau_autobot_schedule.ps1`
+- `tools/windows/xau_autobot_schedule.bat`
+- `tools/windows/xau_autobot_live_loop.ps1`
+
+登録（安全側: execはdry-run、cycleは15分ごと）:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\xau_autobot_schedule.ps1 -SkipProbe
+```
+
+削除:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\xau_autobot_schedule.ps1 -Remove
+```
+
+注:
+- `Swimmy-XAU-Cycle` は `schtasks` で作成されます。
+- `Swimmy-XAU-Exec` は環境によって `ONLOGON` タスク作成が拒否されるため、その場合は Startup フォルダの `Swimmy-XAU-Exec.cmd` にフォールバックします。
+- live実注文を常駐化したい場合は `-EnableLive` を付けて再登録します。
 
 ## 13. 定期実行（cron / systemd）
 
