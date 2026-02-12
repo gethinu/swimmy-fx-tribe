@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from tools.xau_autobot import (
     BotConfig,
@@ -9,6 +11,7 @@ from tools.xau_autobot import (
     decide_signal,
     ema_last,
     is_session_allowed,
+    resolve_config_path,
     volatility_filter_pass,
 )
 
@@ -145,6 +148,28 @@ class TestXauAutoBotConfig(unittest.TestCase):
         self.assertEqual(cfg.timeframe, "M5")
         self.assertEqual(cfg.max_positions, 1)
         self.assertGreater(cfg.max_spread_points, 0.0)
+
+    def test_resolve_config_path_prefers_explicit(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "explicit.json"
+            p.write_text("{}", encoding="utf-8")
+            resolved = resolve_config_path(str(p), default_candidates=[])
+            self.assertEqual(resolved, str(p))
+
+    def test_resolve_config_path_uses_first_existing_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            p1 = Path(td) / "missing.json"
+            p2 = Path(td) / "active.json"
+            p2.write_text("{}", encoding="utf-8")
+            resolved = resolve_config_path("", default_candidates=[str(p1), str(p2)])
+            self.assertEqual(resolved, str(p2))
+
+    def test_resolve_config_path_returns_empty_when_no_candidates_exist(self):
+        with tempfile.TemporaryDirectory() as td:
+            p1 = Path(td) / "missing-a.json"
+            p2 = Path(td) / "missing-b.json"
+            resolved = resolve_config_path("", default_candidates=[str(p1), str(p2)])
+            self.assertEqual(resolved, "")
 
 
 if __name__ == "__main__":

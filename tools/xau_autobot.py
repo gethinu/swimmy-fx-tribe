@@ -8,12 +8,22 @@ import json
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import MetaTrader5 as mt5  # type: ignore
 except Exception:  # pragma: no cover - optional runtime dependency
     mt5 = None
+
+
+DEFAULT_CONFIG_CANDIDATES: Tuple[str, ...] = (
+    "tools/configs/xau_autobot.tuned_auto_active.json",
+    "tools/configs/xau_autobot.tuned_auto_gc_m5_90d.json",
+    "tools/configs/xau_autobot.tuned_auto_gc_m5.json",
+    "tools/configs/xau_autobot.tuned_gc_m5.json",
+    "tools/configs/xau_autobot.example.json",
+)
 
 
 def ema_last(values: List[float], period: int) -> float:
@@ -412,7 +422,11 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lightweight MT5 XAUUSD auto-trading bot")
-    parser.add_argument("--config", default="", help="Path to JSON config file")
+    parser.add_argument(
+        "--config",
+        default="",
+        help="Path to JSON config file (default: auto-select active/tuned config)",
+    )
     parser.add_argument("--live", action="store_true", help="Enable live order sending")
     parser.add_argument("--loop", action="store_true", help="Run continuously on new bars")
     parser.add_argument("--poll-seconds", type=int, default=0, help="Polling interval in seconds")
@@ -425,6 +439,15 @@ def _load_config(path: str) -> Dict[str, Any]:
         return {}
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def resolve_config_path(path: str, default_candidates: Tuple[str, ...] = DEFAULT_CONFIG_CANDIDATES) -> str:
+    if path:
+        return path
+    for candidate in default_candidates:
+        if Path(candidate).exists():
+            return candidate
+    return ""
 
 
 def run(config: BotConfig) -> None:
@@ -448,7 +471,8 @@ def run(config: BotConfig) -> None:
 
 def main() -> None:
     args = _parse_args()
-    raw = _load_config(args.config)
+    config_path = resolve_config_path(args.config)
+    raw = _load_config(config_path)
     config = BotConfig.from_dict(raw)
     if args.live:
         config.dry_run = False

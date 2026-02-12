@@ -32,8 +32,14 @@ cp tools/configs/xau_autobot.tuned_gc_m5.json tools/configs/xau_autobot.local.js
 
 ## 3. Dry-run 実行（注文送信なし）
 
+`--config` 未指定時は、優先順で自動選択します:
+1. `tools/configs/xau_autobot.tuned_auto_active.json`
+2. `tools/configs/xau_autobot.tuned_auto_gc_m5_90d.json`
+3. `tools/configs/xau_autobot.tuned_auto_gc_m5.json`
+4. `tools/configs/xau_autobot.tuned_gc_m5.json`
+
 ```bash
-python3 tools/xau_autobot.py --config tools/configs/xau_autobot.local.json
+python3 tools/xau_autobot.py
 ```
 
 出力は JSON 1 行で、`HOLD` / `BLOCKED` / `ORDER` を返します。  
@@ -43,7 +49,6 @@ python3 tools/xau_autobot.py --config tools/configs/xau_autobot.local.json
 
 ```bash
 python3 tools/xau_autobot.py \
-  --config tools/configs/xau_autobot.local.json \
   --loop \
   --poll-seconds 10
 ```
@@ -52,7 +57,6 @@ python3 tools/xau_autobot.py \
 
 ```bash
 python3 tools/xau_autobot.py \
-  --config tools/configs/xau_autobot.local.json \
   --live \
   --loop
 ```
@@ -126,6 +130,26 @@ Readiness結果に対して、現在スプレッド/手数料/スリッページ
 - `commission_roundtrip_pct` / `slippage_roundtrip_pct` は `%` 単位です（例: `0.02` = 0.02%）
 - `max_spread_points_safe` 以下なら、設定した safety margin 内で運用可能です
 - `max_spread_points_go` 以下なら、GO 判定域（コスト余裕あり）です
+
+### Active設定での常駐実行（systemd user）
+
+同梱:
+- `tools/xau_autobot_active_runner.sh`
+- `systemd/xau-autobot-exec.service`
+
+導入:
+
+```bash
+cp systemd/xau-autobot-exec.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now xau-autobot-exec.service
+systemctl --user status xau-autobot-exec.service --no-pager
+```
+
+環境変数で制御:
+- `XAU_AUTOBOT_LIVE=1` で実注文ON（既定は `0`）
+- `XAU_AUTOBOT_POLL_SECONDS=10` で監視間隔
+- `XAU_AUTOBOT_CONFIG=/path/to/config.json` で明示設定（未指定は active 自動選択）
 
 ## 10. Windows + MT5 実測プローブ
 

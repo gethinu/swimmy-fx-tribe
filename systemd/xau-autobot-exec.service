@@ -1,0 +1,16 @@
+[Unit]
+Description=XAU AutoBot execution loop (active config)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/swimmy/swimmy
+Environment=XAU_AUTOBOT_POLL_SECONDS=10
+Environment=XAU_AUTOBOT_LIVE=0
+ExecStart=/home/swimmy/swimmy/tools/xau_autobot_active_runner.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
