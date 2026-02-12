@@ -199,6 +199,9 @@
                (values rank t)
                (values nil nil))))))))
 
+(defparameter *allow-rank-regression-write* nil
+  "When T, upsert can persist explicit active-rank regression (e.g., A->B).")
+
 (defun upsert-strategy (strat)
   "Save or update strategy in SQL."
   (unless (strategy-hash strat)
@@ -245,17 +248,50 @@
                  (t (normalize-rank (format nil "~a" rank)))))
              (archive-rank-p (rank)
                (member (normalize-rank rank) '("GRAVEYARD" "RETIRED") :test #'string=))
+             (active-rank-level (rank)
+               (let ((norm (normalize-rank rank)))
+                 (cond
+                   ((string= norm "B") 1)
+                   ((string= norm "A") 2)
+                   ((string= norm "S") 3)
+                   ((or (string= norm "LEGEND")
+                        (string= norm "LEGEND-ARCHIVE")) 4)
+                   (t nil))))
              (rank->db-string (rank)
                (let ((norm (normalize-rank rank)))
                  (if (string= norm "NIL")
                      "NIL"
                      (format nil ":~a" norm)))))
+      ;; Guard against rank drift from stale in-memory objects:
+      ;; if incoming rank is NIL but DB already has a non-NIL rank, keep DB rank.
+      (when (and existing-row
+                 (null incoming-rank)
+                 (not (string= (normalize-rank db-rank-raw) "NIL")))
+        (multiple-value-bind (db-rank db-rank-ok)
+            (%parse-rank-safe (rank->db-string db-rank-raw))
+          (when db-rank-ok
+            (setf incoming-rank db-rank)
+            (setf (strategy-rank strat) incoming-rank))))
       ;; Guard against accidental resurrection: keep archived rank unless an archived rank is explicitly provided.
       (when (and existing-row
                  (archive-rank-p db-rank-raw)
                  (not (archive-rank-p incoming-rank)))
         (setf incoming-rank (swimmy.core:safe-read-sexp (rank->db-string db-rank-raw) :package :swimmy.school))
-        (setf (strategy-rank strat) incoming-rank)))
+        (setf (strategy-rank strat) incoming-rank))
+      ;; Guard against stale active-rank regression from old in-memory objects.
+      ;; Explicit demotions should set *allow-rank-regression-write* while calling upsert.
+      (let ((db-level (and existing-row (active-rank-level db-rank-raw)))
+            (incoming-level (active-rank-level incoming-rank)))
+        (when (and existing-row
+                   (not *allow-rank-regression-write*)
+                   db-level
+                   incoming-level
+                   (< incoming-level db-level))
+          (multiple-value-bind (db-rank db-rank-ok)
+              (%parse-rank-safe (rank->db-string db-rank-raw))
+            (when db-rank-ok
+              (setf incoming-rank db-rank)
+              (setf (strategy-rank strat) incoming-rank))))))
     ;; Preserve non-zero DB metrics if in-memory values are zero.
     (when (and existing-row (zerop cur-sharpe) (not (zerop db-sharpe)))
       (setf cur-sharpe db-sharpe))

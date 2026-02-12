@@ -92,11 +92,11 @@
   "Print 1-line HUD pulse and update status file every 60 ticks"
   (incf *total-ticks-count*)
   (when (or (= (mod *total-ticks-count* 60) 0) (= *total-ticks-count* 1))
-    (format t "~%[💓] ~a | Ticks: ~d | MT5: ~a | Equity: ~,0f~%" 
+    (format t "~%[💓] ~a | Ticks: ~d | MT5: ~a | Equity: ~d~%"
             (swimmy.core:get-jst-str) 
             *total-ticks-count* 
             (if (> (- (get-universal-time) *last-guardian-heartbeat*) 60) "OFFLINE" "ONLINE")
-            *current-equity*)
+            (round *current-equity*))
     (force-output) ; Ensure pulse is visible
     (update-status-file)))
 
@@ -418,16 +418,17 @@
             ;; Alert Logic (20% Threshold)
             (when (and (>= *monitoring-drawdown* 20.0)
                        (not *monitoring-alert-sent-20*))
-              (notify-discord-alert (format nil "⚠️ DYNAMIC DRAWDOWN WARNING: ~,1f% (Peak: ¥~,0f)" 
-                                            *monitoring-drawdown* *monitoring-peak-equity*)
+              (notify-discord-alert (format nil "⚠️ DYNAMIC DRAWDOWN WARNING: ~,1f% (Peak: ¥~d)"
+                                            *monitoring-drawdown* (round *monitoring-peak-equity*))
                                     :color 16776960)
               (setf *monitoring-alert-sent-20* t))
 
             ;; Legacy Stats
             (when (> *peak-equity* 0)
               (setf *current-drawdown* (* 100 (/ (- *peak-equity* *current-equity*) *peak-equity*))))
-            (format t "[L] 💰 MT5 Sync: Equity=¥~,0f DynPK=¥~,0f DynDD=~,1f% (LegacyDD=~,1f%)~%"
-                    *current-equity* *monitoring-peak-equity* *monitoring-drawdown* *current-drawdown*)
+            (format t "[L] 💰 MT5 Sync: Equity=¥~d DynPK=¥~d DynDD=~,1f% (LegacyDD=~,1f%)~%"
+                    (round *current-equity*) (round *monitoring-peak-equity*)
+                    *monitoring-drawdown* *current-drawdown*)
             ;; Persist account metrics periodically so daily report survives restarts
             (let ((now (get-universal-time)))
               (when (> (- now *last-account-save-time*) *account-info-save-interval*)

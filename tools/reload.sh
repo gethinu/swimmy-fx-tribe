@@ -1,54 +1,124 @@
 #!/bin/bash
 # tools/reload.sh - Hot Reload Trigger (Gene Kim's Lever)
-# Sends SIGHUP to the running Swimmy Brain process.
+# Sends SIGHUP to the running Swimmy Brain SBCL process.
+
+set -u
 
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Prefer systemd restart for safety (avoids port rebind conflicts)
-if command -v systemctl >/dev/null 2>&1 && systemctl status swimmy-brain.service >/dev/null 2>&1; then
-  echo -e "${GREEN}[ACTION] Restarting swimmy-brain via systemd (system scope)...${NC}"
-  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-    if systemctl restart swimmy-brain.service; then
-      echo -e "${GREEN}[SUCCESS] swimmy-brain restarted.${NC}"
-      exit 0
-    fi
-    echo -e "${RED}[WARN] Failed to restart swimmy-brain via systemd. Falling back to SIGHUP.${NC}"
-  elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-    if sudo -n systemctl restart swimmy-brain.service; then
-      echo -e "${GREEN}[SUCCESS] swimmy-brain restarted.${NC}"
-      exit 0
-    fi
-    echo -e "${RED}[WARN] Failed to restart swimmy-brain via systemd. Falling back to SIGHUP.${NC}"
-  else
-    echo -e "${RED}[WARN] swimmy-brain is managed by systemd, but restart requires root. Falling back to SIGHUP.${NC}"
+log_info() {
+  echo -e "${GREEN}[INFO] $*${NC}"
+}
+
+log_action() {
+  echo -e "${GREEN}[ACTION] $*${NC}"
+}
+
+log_warn() {
+  echo -e "${RED}[WARN] $*${NC}"
+}
+
+log_error() {
+  echo -e "${RED}[ERROR] $*${NC}"
+}
+
+first_pid() {
+  head -n 1 | tr -d '[:space:]'
+}
+
+is_positive_int() {
+  [[ "${1:-}" =~ ^[0-9]+$ ]] && [ "$1" -gt 0 ]
+}
+
+resolve_brain_pid_from_systemd() {
+  local main_pid cmdline child_pid
+
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 1
   fi
+
+  main_pid=$(systemctl show -p MainPID --value swimmy-brain.service 2>/dev/null | tr -d '[:space:]')
+  if ! is_positive_int "$main_pid"; then
+    return 1
+  fi
+
+  cmdline=$(ps -p "$main_pid" -o args= 2>/dev/null || true)
+  if [[ "$cmdline" == *"sbcl"* ]]; then
+    echo "$main_pid"
+    return 0
+  fi
+
+  child_pid=$(pgrep -P "$main_pid" -f "sbcl.*brain.lisp" 2>/dev/null | first_pid)
+  if is_positive_int "$child_pid"; then
+    echo "$child_pid"
+    return 0
+  fi
+
+  child_pid=$(pgrep -P "$main_pid" -f "sbcl" 2>/dev/null | first_pid)
+  if is_positive_int "$child_pid"; then
+    echo "$child_pid"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_brain_pid_fallback() {
+  local pid
+  pid=$(pgrep -f "sbcl.*brain.lisp" 2>/dev/null | first_pid)
+  if is_positive_int "$pid"; then
+    echo "$pid"
+    return 0
+  fi
+
+  pid=$(pgrep -f "sbcl.*--load brain.lisp" 2>/dev/null | first_pid)
+  if is_positive_int "$pid"; then
+    echo "$pid"
+    return 0
+  fi
+
+  pid=$(pgrep -f "sbcl.*swimmy" 2>/dev/null | first_pid)
+  if is_positive_int "$pid"; then
+    echo "$pid"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_brain_pid() {
+  local pid
+  pid=$(resolve_brain_pid_from_systemd || true)
+  if is_positive_int "$pid"; then
+    echo "$pid"
+    return 0
+  fi
+
+  pid=$(resolve_brain_pid_fallback || true)
+  if is_positive_int "$pid"; then
+    echo "$pid"
+    return 0
+  fi
+
+  return 1
+}
+
+BRAIN_PID=$(resolve_brain_pid || true)
+if ! is_positive_int "$BRAIN_PID"; then
+  log_error "Swimmy Brain SBCL process not found. Is swimmy-brain running?"
+  exit 1
 fi
 
-# Find PID of the Brain (SBCL process running brain.lisp)
-BRAIN_PID=$(pgrep -f "sbcl.*brain.lisp" | head -n 1)
+log_info "Target Brain SBCL PID: ${BRAIN_PID}"
+log_action "Sending SIGHUP for Hot Reload..."
 
-# Fallback for alternate process names
-if [ -z "$BRAIN_PID" ]; then
-  BRAIN_PID=$(pgrep -f "sbcl.*swimmy" | head -n 1)
+if kill -HUP "$BRAIN_PID"; then
+  log_info "Signal sent. Verify with: journalctl -u swimmy-brain -n 50 --no-pager | rg 'Hot Reload|LOADER|ASDF'"
+  exit 0
 fi
 
-if [ -z "$BRAIN_PID" ]; then
-    echo -e "${RED}[ERROR] Swimmy Brain process not found! Is it running?${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}[INFO] Found Swimmy Brain at PID: ${BRAIN_PID}${NC}"
-echo -e "${GREEN}[ACTION] Sending SIGHUP to trigger Hot Reload...${NC}"
-
-kill -1 $BRAIN_PID
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}[SUCCESS] Signal sent. Check logs for 'Hot Reload Complete'.${NC}"
-    echo -e "Command: tail -f logs/system.log | grep 'Hot Reload'"
-else
-    echo -e "${RED}[ERROR] Failed to send signal.${NC}"
-    exit 1
-fi
+log_error "Failed to send SIGHUP to PID ${BRAIN_PID}"
+exit 1

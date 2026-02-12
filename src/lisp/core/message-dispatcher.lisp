@@ -12,10 +12,37 @@
             when cell do (return (cdr cell)))
       default))
 
+(defparameter +unix-to-universal-offset+ 2208988800)
+
+(defun %as-integer (value)
+  "Best-effort integer coercion for timestamp-ish values."
+  (cond
+    ((integerp value) value)
+    ((numberp value) (truncate value))
+    ((stringp value)
+     (or (ignore-errors (parse-integer value :junk-allowed t))
+         (let ((n (ignore-errors (swimmy.core:safe-parse-number value))))
+           (when (numberp n) (truncate n)))))
+    (t nil)))
+
+(defun %normalize-external-timestamp (raw-ts &optional (now (get-universal-time)))
+  "Normalize external timestamp to Lisp universal-time seconds.
+   MT5/Data Keeper often emit Unix epoch seconds."
+  (let* ((ts (%as-integer raw-ts))
+         (now-unix (- now +unix-to-universal-offset+)))
+    (cond
+      ((null ts) nil)
+      ((and (>= ts 500000000)
+            (<= ts (+ now-unix (* 10 365 24 60 60)))
+            (< (abs (- ts now-unix)) (abs (- ts now))))
+       (+ ts +unix-to-universal-offset+))
+      (t ts))))
+
 (defun %sexp-candle->struct (entry)
   "Convert HISTORY entry alist to candle struct."
   (when (listp entry)
-    (let* ((ts (%alist-val entry '(t timestamp) nil))
+    (let* ((ts-raw (%alist-val entry '(t timestamp) nil))
+           (ts (%normalize-external-timestamp ts-raw))
            (open (%alist-val entry '(o open) nil))
            (high (%alist-val entry '(h high) nil))
            (low (%alist-val entry '(l low) nil))
@@ -275,16 +302,40 @@
         (find name swimmy.globals:*evolved-strategies*
               :key #'swimmy.school:strategy-name :test #'string=))))
 
-(defun %strategy-exists-in-db-p (name)
-  "Return T if strategy NAME exists in DB."
+(defun %normalize-rank-token (rank)
+  "Normalize rank value into uppercase token string."
+  (let ((raw (cond
+               ((null rank) nil)
+               ((stringp rank) rank)
+               ((symbolp rank) (symbol-name rank))
+               (t (format nil "~a" rank)))))
+    (when raw
+      (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
+
+(defun %active-rank-token-p (rank)
+  "Return T if rank token is active for CPCV notifications."
+  (let ((token (%normalize-rank-token rank)))
+    (and token
+         (member token '("B" ":B" "A" ":A" "S" ":S" "LEGEND" ":LEGEND")
+                 :test #'string=))))
+
+(defun %strategy-active-in-memory-p (strat)
+  "Return T when strategy object STRAT has an active rank."
+  (and strat
+       (handler-case
+           (%active-rank-token-p (swimmy.school:strategy-rank strat))
+         (error () nil))))
+
+(defun %strategy-active-in-db-p (name)
+  "Return T if strategy NAME exists in DB with an active rank."
   (and (stringp name)
        (not (%invalid-name-p name))
        (handler-case
            (and (fboundp 'swimmy.school::execute-single)
-                (swimmy.school::execute-single
-                 "SELECT 1 FROM strategies WHERE name = ? LIMIT 1"
-                 name)
-                t)
+                (%active-rank-token-p
+                 (swimmy.school::execute-single
+                  "SELECT rank FROM strategies WHERE name = ? ORDER BY updated_at DESC LIMIT 1"
+                  name)))
          (error () nil))))
 
 (defun internal-process-msg (msg)
@@ -452,7 +503,8 @@
                                                  (when empty-result-p
                                                    "empty CPCV result: path_count/passed_count/failed_count are all zero")))
                           (strat (%find-strategy-in-memory name))
-                          (known-strategy-p (or strat (%strategy-exists-in-db-p name))))
+                          (strat-active-p (%strategy-active-in-memory-p strat))
+                          (known-strategy-p (or strat-active-p (%strategy-active-in-db-p name))))
                      (let ((result-plist (list :strategy-name name :median-sharpe median
                                                :median-pf median-pf :median-wr median-wr
                                                :median-maxdd median-maxdd
@@ -484,7 +536,7 @@
                                     (>= count (max 1 (floor (* expected 0.9)))))
                            (swimmy.core:notify-cpcv-summary)))
                        (cond
-                           ((and strat (not runtime-error-msg))
+                           ((and strat strat-active-p (not runtime-error-msg))
                             (setf (swimmy.school:strategy-cpcv-median-sharpe strat) median)
                             (setf (swimmy.school:strategy-cpcv-median-pf strat) median-pf)
                             (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
@@ -525,6 +577,27 @@
                              (swimmy.school:continuous-learning-step))
                          (error () nil))
                        (maybe-alert-backtest-stale))))
+                  ((string= type-str "STATUS_NOW")
+                   (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
+                          (bid (%alist-val sexp '(bid :bid) 0.0))
+                          (bid-num (cond
+                                     ((numberp bid) (float bid))
+                                     ((stringp bid)
+                                      (let ((n (ignore-errors (swimmy.core:safe-parse-number bid))))
+                                        (and (numberp n) (float n))))
+                                     (t nil)))
+                          (symbol-str (if (symbolp symbol) (symbol-name symbol) symbol)))
+                     (when (and symbol-str (fboundp 'swimmy.shell:send-periodic-status-report))
+                       (format t "[DISPATCH] 📥 STATUS_NOW recv: symbol=~a bid=~a~%"
+                               symbol-str (or bid-num bid))
+                       ;; Bypass per-symbol status throttle for explicit immediate status requests.
+                       (when (hash-table-p swimmy.globals:*last-status-notification-time*)
+                         (remhash symbol-str swimmy.globals:*last-status-notification-time*))
+                       ;; Keep status freshness aligned with explicit "now" trigger.
+                       (when (and bid-num (fboundp 'swimmy.main:update-candle))
+                         (swimmy.main:update-candle bid-num symbol-str))
+                       ;; Force immediate status emission even outside regular market hours.
+                       (swimmy.shell:send-periodic-status-report symbol-str (or bid-num 0.0) t))))
                   ((string= type-str swimmy.core:+MSG-ACCOUNT-INFO+)
                    (swimmy.executor:process-account-info sexp))
                   ((string= type-str swimmy.core:+MSG-SWAP-DATA+)

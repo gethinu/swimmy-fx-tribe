@@ -30,11 +30,32 @@
 (defparameter *culling-threshold* 10
   "Number of B-RANK strategies per TF before culling begins. (V50.4 Accelerated)")
 
+(defparameter *culling-bootstrap-when-no-a* t
+  "When T, allow A-promotion bootstrap below threshold if A-rank is empty.")
+
+(defparameter *culling-bootstrap-min-count* 2
+  "Minimum B count required for below-threshold bootstrap promotion.")
+
+(defparameter *culling-bootstrap-max-a-count* 1
+  "Allow below-threshold bootstrap while A-rank count is <= this value.")
+
 (defparameter *a-rank-slots-per-tf* 2
   "Only top 2 strategies per TF can be promoted to A-RANK.")
 
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
+
+(defparameter *a-candidate-category-metrics* (make-hash-table :test 'equal)
+  "Latest A-candidate funnel metrics per category key (timeframe direction symbol).")
+
+(defparameter *s-rank-staged-pf-wr-enabled* t
+  "When T, S-rank PF/WR gates use trade-evidence stages.")
+
+(defparameter *s-rank-staged-pf-wr-spec*
+  '((:min-trades 150 :pf-min 1.30 :wr-min 0.38)
+    (:min-trades 100 :pf-min 1.40 :wr-min 0.42)
+    (:min-trades 30 :pf-min 1.55 :wr-min 0.45))
+  "Descending stage specs for S-rank PF/WR gates keyed by trade evidence.")
 
 ;;; ---------------------------------------------------------------------------
 ;;; COMPOSITE SCORE (Multi-Metric)
@@ -86,11 +107,33 @@
   "Get criteria plist for a given rank."
   (cdr (assoc rank *rank-criteria*)))
 
+(defun strategy-trade-evidence-count (strategy)
+  "Best-effort trade evidence count for staged S-rank gates."
+  (let ((history-count (length (remove-if-not #'numberp (or (strategy-pnl-history strategy) '()))))
+        (trade-count (or (strategy-trades strategy) 0)))
+    (max history-count trade-count)))
+
+(defun effective-s-rank-criteria (strategy)
+  "Return effective S-rank criteria considering staged PF/WR thresholds.
+   Values: criteria-plist, trade-evidence-count, matched-stage-spec-or-nil."
+  (let* ((criteria (copy-list (get-rank-criteria :S)))
+         (trade-evidence (strategy-trade-evidence-count strategy))
+         (stage-spec (and *s-rank-staged-pf-wr-enabled*
+                          (find-if (lambda (spec)
+                                     (>= trade-evidence (getf spec :min-trades 0)))
+                                   *s-rank-staged-pf-wr-spec*))))
+    (when stage-spec
+      (setf (getf criteria :pf-min) (getf stage-spec :pf-min (getf criteria :pf-min 1.70))
+            (getf criteria :wr-min) (getf stage-spec :wr-min (getf criteria :wr-min 0.50))))
+    (values criteria trade-evidence stage-spec)))
+
 (defun check-rank-criteria (strategy target-rank &key (include-oos t) (include-cpcv t))
   "Check if strategy meets all criteria for target-rank.
    Returns T if all conditions pass, NIL otherwise.
    Optional gates: INCLUDE-OOS/INCLUDE-CPCV can be disabled for pre-validation checks."
-  (let* ((criteria (get-rank-criteria target-rank))
+  (let* ((criteria (if (eq target-rank :S)
+                       (nth-value 0 (effective-s-rank-criteria strategy))
+                       (get-rank-criteria target-rank)))
          (sharpe (or (strategy-sharpe strategy) 0.0))
          (pf (or (strategy-profit-factor strategy) 0.0))
          (wr (or (strategy-win-rate strategy) 0.0))
@@ -116,6 +159,123 @@
                (or (not include-oos)
                    (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
               (t t)))))))
+
+(defun %s-gate-label (gate)
+  (case gate
+    (:sharpe "sharpe")
+    (:pf "pf")
+    (:wr "wr")
+    (:maxdd "maxdd")
+    (:cpcv-pass-rate "cpcv-pass-rate")
+    (:cpcv-maxdd "cpcv-maxdd")
+    (:common-stage2 "common-stage2")
+    (t (string-downcase (string gate)))))
+
+(defun s-rank-block-diagnostics (strategy &key (include-common-stage2 t))
+  "Collect S-gate diagnostics for blocked promotions."
+  (multiple-value-bind (criteria trade-evidence stage-spec)
+      (effective-s-rank-criteria strategy)
+    (let* ((sharpe (or (strategy-sharpe strategy) 0.0))
+           (pf (or (strategy-profit-factor strategy) 0.0))
+           (wr (or (strategy-win-rate strategy) 0.0))
+           (maxdd (or (strategy-max-dd strategy) 1.0))
+           (pass-rate (or (strategy-cpcv-pass-rate strategy) 0.0))
+           (cpcv-maxdd (or (strategy-cpcv-median-maxdd strategy) 1.0))
+           (failed '())
+           (common-stage2-message nil))
+      (when (< sharpe (getf criteria :sharpe-min 0.0)) (push :sharpe failed))
+      (when (< pf (getf criteria :pf-min 0.0)) (push :pf failed))
+      (when (< wr (getf criteria :wr-min 0.0)) (push :wr failed))
+      (when (>= maxdd (getf criteria :maxdd-max 1.0)) (push :maxdd failed))
+      (when (< pass-rate (getf criteria :cpcv-pass-min 0.0)) (push :cpcv-pass-rate failed))
+      (when (>= cpcv-maxdd (getf criteria :cpcv-maxdd-max 1.0)) (push :cpcv-maxdd failed))
+      (when (and include-common-stage2 (fboundp 'common-stage2-gates-passed-p))
+        (multiple-value-bind (passed message) (common-stage2-gates-passed-p strategy)
+          (unless passed
+            (push :common-stage2 failed)
+            (setf common-stage2-message message))))
+      (list :failed-gates (nreverse failed)
+            :trade-evidence trade-evidence
+            :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
+            :sharpe sharpe
+            :pf pf
+            :wr wr
+            :maxdd maxdd
+            :pf-min (getf criteria :pf-min)
+            :wr-min (getf criteria :wr-min)
+            :cpcv-pass-rate pass-rate
+            :cpcv-maxdd cpcv-maxdd
+            :common-stage2-message common-stage2-message))))
+
+(defun %format-s-rank-failed-gates (failed-gates)
+  (if failed-gates
+      (format nil "~{~a~^, ~}" (mapcar #'%s-gate-label failed-gates))
+      "unknown"))
+
+(defun %a-candidate-category-key (timeframe direction symbol)
+  (list timeframe direction symbol))
+
+(defun reset-a-candidate-category-metrics ()
+  "Clear in-memory category funnel metrics."
+  (clrhash *a-candidate-category-metrics*))
+
+(defun record-a-candidate-category-metric (timeframe direction symbol
+                                           &key
+                                             (b-count 0)
+                                             (a-base-count 0)
+                                             (a-ready-count 0)
+                                             (queued-count 0)
+                                             (bootstrap-p nil)
+                                             (culling-triggered-p nil))
+  "Record per-category A-candidate funnel metrics."
+  (let* ((snapshot (list :timeframe timeframe
+                         :direction direction
+                         :symbol symbol
+                         :b-count b-count
+                         :a-base-count a-base-count
+                         :a-ready-count a-ready-count
+                         :queued-count queued-count
+                         :bootstrap-p bootstrap-p
+                         :culling-triggered-p culling-triggered-p
+                         :updated-at (get-universal-time)))
+         (key (%a-candidate-category-key timeframe direction symbol)))
+    (setf (gethash key *a-candidate-category-metrics*) snapshot)
+    (when (fboundp 'swimmy.core::emit-telemetry-event)
+      (swimmy.core::emit-telemetry-event "rank.a_candidate_funnel"
+        :service "school"
+        :severity "info"
+        :correlation-id (format nil "~a|~a|M~a" symbol direction timeframe)
+        :data snapshot))
+    snapshot))
+
+(defun lookup-a-candidate-category-metric (timeframe direction symbol)
+  "Lookup latest funnel metric snapshot for a category."
+  (gethash (%a-candidate-category-key timeframe direction symbol)
+           *a-candidate-category-metrics*))
+
+(defun a-candidate-metrics-snippet (&key (limit 5))
+  "Human-readable snippet for category-level A-candidate funnel metrics."
+  (let ((rows '()))
+    (maphash (lambda (_key snapshot)
+               (declare (ignore _key))
+               (push snapshot rows))
+             *a-candidate-category-metrics*)
+    (if (null rows)
+        "A Candidate Funnel (latest): none"
+        (with-output-to-string (s)
+          (format s "A Candidate Funnel (latest):~%")
+          (dolist (m (subseq (sort rows #'> :key (lambda (x) (getf x :a-ready-count 0)))
+                             0
+                             (min limit (length rows))))
+            (format s "- ~a/~a/M~a b=~d base=~d ready=~d queued=~d~@[ bootstrap~]~%"
+                    (or (getf m :symbol) "UNKNOWN")
+                    (or (getf m :direction) :BOTH)
+                    (or (getf m :timeframe) "?")
+                    (or (getf m :b-count) 0)
+                    (or (getf m :a-base-count) 0)
+                    (or (getf m :a-ready-count) 0)
+                    (or (getf m :queued-count) 0)
+                    (and (getf m :bootstrap-p) t)))))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
   "Get all strategies with a specific rank, optionally filtered by TF/Direction/Symbol.
@@ -169,8 +329,17 @@
     (when (and (eq new-rank :S)
                (not (eq old-rank :S))
                (not (check-rank-criteria strategy :S)))
-      (format t "[RANK] 🚫 Blocked S promotion for ~a (CPCV criteria missing).~%"
-              (strategy-name strategy))
+      (let* ((diag (s-rank-block-diagnostics strategy :include-common-stage2 t))
+             (failed-gates (getf diag :failed-gates))
+             (common-msg (getf diag :common-stage2-message))
+             (summary (%format-s-rank-failed-gates failed-gates)))
+        (format t "[RANK] 🚫 Blocked S promotion for ~a (~a) [pf>=~,2f wr>=~,1f%% n=~d]~@[: ~a~].~%"
+                (strategy-name strategy)
+                summary
+                (or (getf diag :pf-min) 0.0)
+                (* 100 (or (getf diag :wr-min) 0.0))
+                (or (getf diag :trade-evidence) 0)
+                common-msg)
       (when (fboundp 'swimmy.core::emit-telemetry-event)
         (swimmy.core::emit-telemetry-event "rank.promotion.blocked"
           :service "school"
@@ -180,7 +349,19 @@
                       :old-rank old-rank
                       :new-rank new-rank
                       :promotion-reason reason
-                      :block "cpcv-missing")))
+                      :block (or (first failed-gates) :unknown)
+                      :failed-gates failed-gates
+                      :trade-evidence (getf diag :trade-evidence)
+                      :s-stage-min-trades (getf diag :stage-min-trades)
+                      :pf-min (getf diag :pf-min)
+                      :wr-min (getf diag :wr-min)
+                      :sharpe (getf diag :sharpe)
+                      :pf (getf diag :pf)
+                      :wr (getf diag :wr)
+                      :maxdd (getf diag :maxdd)
+                      :cpcv-pass-rate (getf diag :cpcv-pass-rate)
+                      :cpcv-maxdd (getf diag :cpcv-maxdd)
+                      :common-stage2-message common-msg))))
       (return-from %ensure-rank-no-lock old-rank))
 
     (when (not (eq old-rank new-rank))
@@ -190,14 +371,20 @@
               (strategy-name strategy) old-rank new-rank reason)
       
       ;; V49.9: Persist to SQL
-      (upsert-strategy strategy)
+      (let ((*allow-rank-regression-write* t))
+        (upsert-strategy strategy))
 
       (let ((promotion-p (%promotion-p old-rank new-rank)))
         (when promotion-p
           (handler-case
               (notify-noncorrelated-promotion strategy new-rank :promotion-reason reason)
             (error (e)
-              (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))))
+              (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))
+          (when (fboundp 'maybe-sync-evolution-report-on-promotion)
+            (handler-case
+                (maybe-sync-evolution-report-on-promotion :rank new-rank :reason reason)
+              (error (e)
+                (format t "[RANK] ⚠️ Promotion report sync failed: ~a~%" e))))))
       
       ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
       (when (eq new-rank :graveyard)
@@ -369,19 +556,58 @@
 (defun run-b-rank-culling-for-category (timeframe direction symbol)
   "Cull B-RANK strategies for a specific TF × Direction × Symbol category."
   (let* ((b-strategies (get-strategies-by-rank :B timeframe direction symbol))
-         (count (length b-strategies)))
+         (count (length b-strategies))
+         (a-count (length (get-strategies-by-rank :A)))
+         (bootstrap-p (and *culling-bootstrap-when-no-a*
+                           (< count *culling-threshold*)
+                           (>= count *culling-bootstrap-min-count*)
+                           (<= a-count *culling-bootstrap-max-a-count*)))
+         (a-base-candidates (remove-if-not
+                             (lambda (s)
+                               (check-rank-criteria s :A :include-oos nil))
+                             b-strategies))
+         (a-ready-candidates (remove-if-not
+                              (lambda (s)
+                                (if (fboundp 'a-expectancy-gate-passed-p)
+                                    (nth-value 0 (a-expectancy-gate-passed-p s))
+                                    t))
+                              a-base-candidates)))
+    (record-a-candidate-category-metric timeframe direction symbol
+                                        :b-count count
+                                        :a-base-count (length a-base-candidates)
+                                        :a-ready-count (length a-ready-candidates)
+                                        :queued-count 0
+                                        :bootstrap-p bootstrap-p
+                                        :culling-triggered-p nil)
     
-    (when (>= count *culling-threshold*)
-      (format t "[RANK] 🗡️ CULLING B-RANK (TF=~a Dir=~a Sym=~a Count=~d)~%" 
-              timeframe direction symbol count)
+    (when (or (>= count *culling-threshold*) bootstrap-p)
+      (format t "[RANK] 🗡️ CULLING B-RANK (TF=~a Dir=~a Sym=~a Count=~d~@[ BOOTSTRAP~])~%" 
+              timeframe direction symbol count (and bootstrap-p t))
+      (when bootstrap-p
+        (format t "[RANK] 🚀 Bootstrap mode: A-rank low (A=~d <= ~d), promoting without graveyard prune.~%"
+                a-count *culling-bootstrap-max-a-count*))
+      (format t "[RANK] 🎯 A-base candidates: ~d/~d (expectancy-pass ~d)~%"
+              (length a-base-candidates) count (length a-ready-candidates))
       
-      ;; Sort by composite score (Sharpe + PF bonus)
-      (let* ((sorted (sort (copy-list b-strategies) #'>
+      ;; Promote only A-base candidates, sorted by multi-metric score.
+      (let* ((sorted (sort (copy-list a-ready-candidates) #'>
                            :key (lambda (s) 
-                                  (+ (or (strategy-sharpe s) 0)
-                                     (* 0.1 (or (strategy-profit-factor s) 0))))))
+                                  (score-from-metrics
+                                   (list :sharpe (or (strategy-sharpe s) 0.0)
+                                         :profit-factor (or (strategy-profit-factor s) 0.0)
+                                         :win-rate (or (strategy-win-rate s) 0.0)
+                                         :max-dd (or (strategy-max-dd s) 1.0))))))
              (to-promote (subseq sorted 0 (min *a-rank-slots-per-tf* (length sorted))))
-             (to-discard (nthcdr *a-rank-slots-per-tf* sorted)))
+             (to-discard (unless bootstrap-p
+                           (remove-if (lambda (s) (member s to-promote :test #'eq))
+                                      b-strategies))))
+        (record-a-candidate-category-metric timeframe direction symbol
+                                            :b-count count
+                                            :a-base-count (length a-base-candidates)
+                                            :a-ready-count (length a-ready-candidates)
+                                            :queued-count (length to-promote)
+                                            :bootstrap-p bootstrap-p
+                                            :culling-triggered-p t)
         
         ;; Instead of direct promotion, we now queue for OOS Validation
         (dolist (s to-promote)
@@ -390,13 +616,19 @@
               (validate-for-a-rank-promotion s)
             (error (e) (format t "[RANK] ⚠️ OOS Failed for ~a: ~a~%" (strategy-name s) e))))
         
-        ;; Discard rest
+        ;; Discard rest only in regular culling mode
         (dolist (s to-discard)
           (send-to-graveyard s "Culling Loser"))))))
 
 (defun collect-active-symbols ()
   "Collect all unique symbols present in the KB."
   (remove-duplicates (mapcar #'strategy-symbol *strategy-knowledge-base*) :test #'string=))
+
+(defun collect-active-timeframes ()
+  "Collect all unique timeframes present in the active KB."
+  (remove nil
+          (remove-duplicates (mapcar #'strategy-timeframe *strategy-knowledge-base*)
+                             :test #'eql)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; A-RANK EVALUATION
@@ -482,19 +714,14 @@
 (defun run-b-rank-culling (&optional single-tf)
   "Run culling for all TF × Direction × Symbol categories.
    V49.3: Dynamic symbol detection to prevent zombie-accumulation in non-major pairs."
-  (let* ((timeframes (if single-tf (list single-tf) *supported-timeframes*))
-        (a-criteria (get-rank-criteria :A))
-        (a-sharpe-min (getf a-criteria :sharpe-min 0.45))
-        (symbols (collect-active-symbols))) ;; Dynamic Symbols
+  (let* ((timeframes (if single-tf
+                         (list single-tf)
+                         (or (collect-active-timeframes) *supported-timeframes*)))
+         (symbols (collect-active-symbols))) ;; Dynamic Symbols
     (dolist (tf timeframes)
       (dolist (dir *supported-directions*)
         (dolist (sym symbols)
-          (run-b-rank-culling-for-category tf dir sym))))
-    
-    ;; V48.7: Meritocratic Promotion (A-Rank) -> Now queues for OOS
-    (dolist (s (get-strategies-by-rank :B))
-      (when (and (strategy-sharpe s) (>= (strategy-sharpe s) a-sharpe-min))
-        (validate-for-a-rank-promotion s)))))
+          (run-b-rank-culling-for-category tf dir sym))))))
 
 (defun run-rank-evaluation ()
   "Main rank evaluation cycle.

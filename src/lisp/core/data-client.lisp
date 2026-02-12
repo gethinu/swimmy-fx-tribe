@@ -36,10 +36,37 @@
             when cell do (return (cdr cell)))
       default))
 
+(defparameter +unix-to-universal-offset+ 2208988800)
+
+(defun %as-integer (value)
+  "Best-effort integer coercion for timestamp-ish values."
+  (cond
+    ((integerp value) value)
+    ((numberp value) (truncate value))
+    ((stringp value)
+     (or (ignore-errors (parse-integer value :junk-allowed t))
+         (let ((n (ignore-errors (safe-parse-number value))))
+           (when (numberp n) (truncate n)))))
+    (t nil)))
+
+(defun %normalize-external-timestamp (raw-ts &optional (now (get-universal-time)))
+  "Normalize external timestamp to Lisp universal-time seconds.
+   Data Keeper can contain Unix epoch candles."
+  (let* ((ts (%as-integer raw-ts))
+         (now-unix (- now +unix-to-universal-offset+)))
+    (cond
+      ((null ts) nil)
+      ((and (>= ts 500000000)
+            (<= ts (+ now-unix (* 10 365 24 60 60)))
+            (< (abs (- ts now-unix)) (abs (- ts now))))
+       (+ ts +unix-to-universal-offset+))
+      (t ts))))
+
 (defun %sexp-candle->struct (entry)
   "Convert DATA_KEEPER candle alist to candle struct."
   (when (listp entry)
-    (let* ((ts (%alist-val entry '(timestamp t) nil))
+    (let* ((ts-raw (%alist-val entry '(timestamp t) nil))
+           (ts (%normalize-external-timestamp ts-raw))
            (open (%alist-val entry '(open o) nil))
            (high (%alist-val entry '(high h) nil))
            (low (%alist-val entry '(low l) nil))
@@ -213,13 +240,10 @@
    V15.6: Added 60s throttle per symbol to prevent request spam."
   (if (and history (> (length history) 0))
       (let* ((last-candle (first history)) ; newest first
-             (last-ts (candle-timestamp last-candle))
+             (last-ts-raw (candle-timestamp last-candle))
+             (last-ts (%normalize-external-timestamp last-ts-raw))
              (now (get-universal-time))
-             ;; V15.5 Fix: MT5 sends Unix Time (1970), Lisp uses Universal (1900).
-             ;; Universal = Unix + 2208988800.
-             ;; So convert Now(Universal) to Unix for comparison.
-             (now-unix (- now 2208988800))
-             (gap (- now-unix last-ts))
+             (gap (if (numberp last-ts) (- now last-ts) 0))
              (threshold 180) ; 3 minutes tolerance for M1 (Relaxed for latency)
              ;; V15.6: Throttle - only request once per 60 seconds per symbol
              (last-request (gethash symbol *last-backfill-time* 0))
@@ -235,13 +259,14 @@
                  (let ((request-bars (if (> missing-min 14400) 14400 (+ missing-min 10))))
                    (format t "[L] 🔄 Requesting backfill from MT5 (~d bars)...~%" request-bars)
                    (when (and (boundp 'swimmy.globals:*cmd-publisher*) swimmy.globals:*cmd-publisher*)
+                     (let ((now-unix (- now +unix-to-universal-offset+)))
                      (let ((cmd (swimmy.core:encode-sexp
                                  `((type . "REQ_HISTORY")
                                    (symbol . ,symbol)
                                    (tf . "M1")
                                    (count . ,request-bars)
                                    (start . ,now-unix))))) ; Force start from NOW to get latest data
-                       (pzmq:send swimmy.globals:*cmd-publisher* cmd))))
+                       (pzmq:send swimmy.globals:*cmd-publisher* cmd)))))
                  t)) ; Return T (Gap detected)
             nil)) ; No gap or throttled
       nil))

@@ -279,13 +279,15 @@
             (when (boundp 'swimmy.school:*volatility-regime*)
               (setf swimmy.school:*volatility-regime* orig-vol)))))))
 
-(defun send-periodic-status-report (symbol bid)
+(defun send-periodic-status-report (symbol bid &optional force-now)
   "V49.0: Redesigned Japanese Status Report.
    Includes Regime (Soros), Volatility (Taleb), and Category-based S-Rank monitoring."
   (let* ((now (get-universal-time))
          (last-time (gethash symbol *last-status-notification-time* 0)))
-    (when (and (> (- now last-time) *status-notification-interval*)
-               (fx-market-open-p now))
+    (when (and (or force-now
+                   (> (- now last-time) *status-notification-interval*))
+               (or force-now
+                   (fx-market-open-p now)))
       (multiple-value-bind (regime vol market-source market-reason history)
           (%status-symbol-market-context symbol)
         (multiple-value-bind (pred conf pred-reason)

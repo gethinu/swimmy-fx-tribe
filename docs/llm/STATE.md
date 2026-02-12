@@ -39,6 +39,7 @@
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
+- **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **昇格ゲート実装値（2026-02-11）**:
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
@@ -68,7 +69,8 @@
 - **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
-- **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過で送信停止。
+- **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
+- **Backtest Dispatch 計上契約**: RR/QUAL/Deferred/OOS の dispatch 計上は「受理された送信状態」のみ対象とする。`NIL` / `:throttled` は非受理として expected/sent に含めない。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
@@ -86,6 +88,11 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-11**: Backtest送信の計上契約を強化。スロットル時は可能な限り再キューし、RR/QUAL/Deferred/OOS の expected/sent は `NIL/:throttled` を除外して計上するよう方針を明文化。
+- **2026-02-11**: AランクのWR下限を正本（SPEC/STATE）へ再整合する方針を確定。`WR>=43%` を単一の運用基準とし、実装側の `38%` 例外を廃止。
+- **2026-02-11**: Dynamic Drawdown Alert の Peak 金額表示を整数表記へ統一し、`¥1000000.` のような末尾小数点が Discord 通知に出ないよう修正（`DYNAMIC DRAWDOWN WARNING` の文面整形）。
+- **2026-02-11**: Executor の heartbeat pulse 表示 `Equity` を整数表記へ統一し、`Equity: 1000000.` のような末尾小数点を解消。
+- **2026-02-11**: Executor/Risk の円建てログ表記を追加整合。`MT5 Sync`、`EQUITY UNKNOWN OR ZERO` fallback、`DAILY LOSS LIMIT HIT` の金額表示を整数表記へ統一し、末尾小数点を除去。
 - **2026-02-11**: School heartbeat 更新をサイクル完了依存から独立tickへ変更。`run-stagnant-flush-tick` で `data/heartbeat/school.tick` を更新し、長時間フェーズ実行中の `Evolution report/heartbeat stale` 誤検知を抑制。
 - **2026-02-11**: Pattern Similarity の Phase 2（ベクトル深層学習）を追加。`tools/pattern_vector_dl.py` と `tools/train_pattern_vector_model.py` を実装し、service側で学習済み Siamese チェックポイントを自動ロードして `model=vector-siamese-v1` を返せるように更新。未配置時は `vector-fallback-v1` へフォールバック。
 - **2026-02-11**: Data Keeper の Tick API（`ADD_TICK` / `GET_TICKS`）を実装。`tools/test_data_keeper_sexp.py` に契約テスト（追加/取得/時間窓）を追加。

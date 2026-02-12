@@ -509,9 +509,14 @@ LIMIT to cap the number of requests in this call to avoid startup storms."
               ;; Skip if it got ranked meanwhile.
               (when (%deferred-rank-p rank)
                 (handler-case
-                    (progn
-                      (request-backtest s)
-                      (incf sent))
+                    (let ((dispatch-state (request-backtest s)))
+                      (if (backtest-dispatch-accepted-p dispatch-state)
+                          (incf sent)
+                          (progn
+                            ;; Allow re-queueing when dispatch is explicitly rejected.
+                            (remhash name *deferred-flush-queued-names*)
+                            (format t "[HEADHUNTER] ⚠️ BT dispatch rejected: ~a (state=~a)~%"
+                                    name dispatch-state))))
                   (error (e)
                     ;; Allow re-queueing on next schedule attempt.
                     (remhash name *deferred-flush-queued-names*)

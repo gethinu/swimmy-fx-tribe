@@ -556,32 +556,39 @@
       (format t "[QUALIFY] ⏳ Skipping (cooldown ~d sec)~%" *qual-cycle-interval*)
       (return-from run-qualification-cycle nil))
     (setf *last-qual-cycle* now))
-  (let ((candidates (remove-if-not 
-                     (lambda (s) 
+  (let ((candidates (remove-if-not
+                     (lambda (s)
                        (and (or (null (strategy-rank s))
                                 (eq (strategy-rank s) :incubator))
                             (= (or (strategy-trades s) 0) 0)
                             (= (or (strategy-sharpe s) 0.0) 0.0)))
                      *strategy-knowledge-base*))
         (limit 50)
-        (count 0))
+        (attempted 0)
+        (accepted 0))
     
     (format t "[QUALIFY] found ~d candidates.~%" (length candidates))
     
-    ;; V49.5 Fix: Set expected count for Discord Summary notification
-    (setf swimmy.globals:*qual-expected-backtest-count* (min limit (length candidates)))
+    ;; Expected count tracks only accepted dispatches.
+    (setf swimmy.globals:*qual-expected-backtest-count* 0)
     (setf swimmy.globals:*qual-backtest-results-buffer* nil)
     (setf swimmy.globals:*qual-backtest-start-time* (get-universal-time))
     
     (dolist (strat candidates)
-      (when (< count limit)
-        (incf count)
+      (when (< attempted limit)
+        (incf attempted)
         ;; Request backtest with -QUAL suffix to route results correctly
-        (request-backtest strat :suffix "-QUAL")
+        (let ((dispatch-state (request-backtest strat :suffix "-QUAL")))
+          (if (backtest-dispatch-accepted-p dispatch-state)
+              (incf accepted)
+              (format t "[QUALIFY] ⚠️ Dispatch rejected: ~a (state=~a)~%"
+                      (strategy-name strat) dispatch-state)))
         ;; Sleep purely to not flood ZMQ buffer instantly
         (sleep 0.01)))
-    
-    (format t "[QUALIFY] 📤 Sent ~d backtest requests.~%" count)))
+
+    (setf swimmy.globals:*qual-expected-backtest-count* accepted)
+    (format t "[QUALIFY] 📤 Accepted ~d backtest requests (attempted ~d).~%"
+            accepted attempted)))
 
 (defun init-backtest-zmq ()
   "Initialize ZMQ connection to backtest service for the school daemon.

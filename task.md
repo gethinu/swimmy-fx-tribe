@@ -118,3 +118,9 @@
 - [ ] ティック欠損/VAP生成の品質保証方針を定義: `docs/llm/INTERFACES.md`, `docs/llm/STATE.md`
 - [ ] 既存NNオンライン学習との責務境界を明確化: `src/lisp/core/executor.lisp`
 - [ ] モデル版管理/ロールバック方針を運用に追記: `docs/llm/STATE.md`
+
+## Expert Panel 2026-02-11 (S-Rank PF/WR Consult)
+- [ ] `:S` 昇格ブロック理由を分解ログ化（`pf/wr/maxdd/cpcv/common-stage2`）し、固定文言 `CPCV criteria missing` を置換する: `src/lisp/school/school-rank-system.lisp`
+- [ ] A母数の安定化（2案）を優先し、カテゴリ別 `a-base/a-ready` 件数を定点観測できるようメトリクス化する: `src/lisp/school/school-rank-system.lisp`, `src/lisp/school/school-narrative.lisp`
+- [ ] PF/WR改善の変異バイアス（3案）を追加し、Sharpe偏重からの脱却をテストで固定する: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-rank-system.lisp`, `src/lisp/tests.lisp`
+- [ ] `:S` 本体の閾値緩和（1案）は不採用方針として文書化し、必要なら `:S-candidate` 等の別ラベル導入を検討する: `doc/owners_guide.md`, `docs/llm/STATE.md`

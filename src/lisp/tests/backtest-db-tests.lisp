@@ -117,6 +117,108 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-upsert-preserves-active-rank-when-incoming-nil
+  "Upsert should keep existing active rank when incoming strategy rank is NIL."
+  (let* ((name "TEST-ACTIVE-RANK-LOCK")
+         (tmp-db (format nil "/tmp/swimmy-active-rank-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; First write active rank.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :A))
+            ;; Later upsert from stale object without rank should not demote to NIL.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank nil))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":A" rank "Active rank must be preserved")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-upsert-preserves-active-rank-when-incoming-lower
+  "Upsert should keep existing active rank when incoming rank regresses (e.g., A -> B)."
+  (let* ((name "TEST-ACTIVE-RANK-REGRESSION-LOCK")
+         (tmp-db (format nil "/tmp/swimmy-active-regression-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; First write active rank A.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :A))
+            ;; Later upsert from stale object with lower rank should not demote DB rank.
+            (let ((stale (make-strategy :name name :symbol "USDJPY" :rank :B)))
+              (upsert-strategy stale)
+              (assert-equal :A (strategy-rank stale)
+                            "In-memory stale object should be corrected to DB rank"))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":A" rank "Active rank must not regress to B on stale upsert")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-upsert-allows-explicit-rank-regression
+  "Upsert should allow explicit rank regression when the guard is intentionally bypassed."
+  (let* ((name "TEST-ACTIVE-RANK-REGRESSION-EXPLICIT")
+         (tmp-db (format nil "/tmp/swimmy-active-regression-explicit-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :A))
+            (let ((regression (make-strategy :name name :symbol "USDJPY" :rank :B)))
+              (let ((swimmy.school::*allow-rank-regression-write* t))
+                (upsert-strategy regression)))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":B" rank "Explicit downgrade path should be honored")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-ensure-rank-triggers-report-sync-on-promotion
+  "ensure-rank should trigger evolution report sync on A/S promotion."
+  (let* ((strat (make-strategy :name "TEST-RANK-SYNC" :symbol "USDJPY" :rank :B))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
+                           (symbol-function 'swimmy.school::notify-noncorrelated-promotion)))
+         (had-sync (fboundp 'swimmy.school::maybe-sync-evolution-report-on-promotion))
+         (orig-sync (and had-sync
+                         (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion)))
+         (sync-calls 0)
+         (last-rank nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion)
+                  (lambda (&rest args) (declare (ignore args)) nil)))
+          (setf (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion)
+                (lambda (&key rank &allow-other-keys)
+                  (incf sync-calls)
+                  (setf last-rank rank)
+                  t))
+          (swimmy.school::ensure-rank strat :A "test promotion")
+          (assert-equal 1 sync-calls "Expected one report sync on promotion")
+          (assert-equal :A last-rank "Expected promotion rank to be forwarded"))
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig-notify))
+      (if had-sync
+          (setf (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion) orig-sync)
+          (fmakunbound 'swimmy.school::maybe-sync-evolution-report-on-promotion)))))
+
 (deftest test-kill-strategy-persists-status
   "Soft kill should persist status to DB to survive restarts."
   (let* ((name "TEST-KILL-PERSIST")

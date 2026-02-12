@@ -246,11 +246,11 @@
 
 (defun get-risk-summary ()
   "Get current risk state summary for monitoring"
-  (format nil "D:~d C:~d V:~a P:~,0f" 
+  (format nil "D:~d C:~d V:~a P:~d"
           (if (boundp '*danger-level*) *danger-level* 0)
           (if (boundp '*consecutive-losses*) *consecutive-losses* 0)
           (if (boundp '*current-volatility-state*) *current-volatility-state* :?)
-          (if (boundp '*daily-pnl*) *daily-pnl* 0)))
+          (round (if (boundp '*daily-pnl*) *daily-pnl* 0))))
 
 ;;; ==========================================
 ;;; MIGRATED FROM engine/risk.lisp (Via Negativa)
@@ -270,7 +270,8 @@
       *current-equity*
       (progn
         (when (boundp '*min-safe-capital*)
-          (format t "[RISK] ⚠️ EQUITY UNKNOWN OR ZERO. Using Conservative Fallback: ¥~,0f~%" *min-safe-capital*)
+          (format t "[RISK] ⚠️ EQUITY UNKNOWN OR ZERO. Using Conservative Fallback: ¥~d~%"
+                  (round *min-safe-capital*))
           *min-safe-capital*))))
 
 (defun trading-allowed-p ()
@@ -312,7 +313,8 @@
         ;; 4. Legacy Daily Fixed Limit (Fallback)
         ((and (boundp '*daily-pnl*) (boundp '*daily-loss-limit*)
               (< *daily-pnl* *daily-loss-limit*))
-         (format t "[RISK] ⛔ DAILY LOSS LIMIT HIT: ¥~,0f < ¥~,0f~%" *daily-pnl* *daily-loss-limit*)
+         (format t "[RISK] ⛔ DAILY LOSS LIMIT HIT: ¥~d < ¥~d~%"
+                 (round *daily-pnl*) (round *daily-loss-limit*))
          nil)
         
         ;; 5. Resignation Logic

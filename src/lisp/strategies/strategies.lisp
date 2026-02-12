@@ -165,8 +165,11 @@
                               (strategy-trades strat) trades)
                         (when (< sharpe 0.1)
                           (prune-to-graveyard strat "Cached Sharpe < 0.1")))))
-                  (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")
-                  (incf requested-count))
+                  (let ((dispatch-state (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))
+                    (if (backtest-dispatch-accepted-p dispatch-state)
+                        (incf requested-count)
+                        (format t "[L] ⚠️ RR dispatch rejected: ~a (state=~a)~%"
+                                (strategy-name strat) dispatch-state))))
                 (progn
                   (incf skipped-count)
                   (format t "[L] ⚠️ Skipping BT (no candles) for ~a (~a)~%"

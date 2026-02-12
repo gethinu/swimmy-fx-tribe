@@ -43,24 +43,39 @@
       nil))
 
 (defun update-candle (bid symbol)
-  "Update candle history - kept here for state locality"
+  "Update per-symbol M1 candle history from live ticks."
   (let* ((now (get-universal-time))
          (current-bucket (floor now 60)))
-    
-    (unless (equal symbol "USDJPY")
-      (return-from update-candle))
 
-    (let ((latest (first *candle-history*)))
+    (unless (and symbol bid)
+      (return-from update-candle nil))
+
+    (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
+           (latest (and history (first history)))
+           (updated-history history))
       (if (and latest (= (floor (candle-timestamp latest) 60) current-bucket))
-          ;; Update current candle
+          ;; Update current candle (same minute bucket).
           (progn
-            (if (> bid (candle-high latest)) (setf (candle-high latest) bid))
-            (if (< bid (candle-low latest)) (setf (candle-low latest) bid))
+            (when (> bid (candle-high latest)) (setf (candle-high latest) bid))
+            (when (< bid (candle-low latest)) (setf (candle-low latest) bid))
             (setf (candle-close latest) bid)
             (incf (candle-volume latest)))
-          ;; New candle
-          (push (make-candle :timestamp now :open bid :high bid :low bid :close bid :volume 1) *candle-history*)))
-    
+          ;; New minute candle.
+          (push (make-candle :timestamp now
+                             :open bid
+                             :high bid
+                             :low bid
+                             :close bid
+                             :volume 1)
+                updated-history))
+
+      (setf (gethash symbol *candle-histories*) updated-history)
+      (unless (gethash symbol *candle-histories-tf*)
+        (setf (gethash symbol *candle-histories-tf*) (make-hash-table :test 'equal)))
+      (setf (gethash "M1" (gethash symbol *candle-histories-tf*)) updated-history)
+      ;; Keep legacy single-history pointer aligned with the latest processed symbol.
+      (setf *candle-history* updated-history))
+
     (setf *last-candle-time* now)))
 
 ;;; ----------------------------------------------------------------------------

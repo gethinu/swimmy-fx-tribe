@@ -24,6 +24,9 @@
 (defparameter *oos-metrics* (make-hash-table :test 'equal)
   "Simple counters and latency stats for OOS. Keys: :sent :success :failure :retry :latency-count :latency-sum :latency-min :latency-max.")
 
+(defparameter *oos-last-dispatch-at* (make-hash-table :test 'equal)
+  "Fallback in-memory dispatch timestamps by strategy name (seconds since epoch).")
+
 (defparameter *oos-failure-stats* (list :data-invalid 0 :send-failure 0 :db-error 0)
   "Per-cycle failure counters for OOS pipeline.")
 
@@ -54,6 +57,18 @@
 
 (defparameter *a-rank-require-dryrun* nil
   "When NIL, A-rank Stage2 can bootstrap without DryRun samples (MC still required).")
+
+(defparameter *a-rank-require-mc* nil
+  "When NIL, A-rank Stage2 can bootstrap without MC history evidence.")
+
+(defparameter *common-stage2-bootstrap-enabled* t
+  "When T, mature CPCV-strong candidates can pass Stage2 with sparse MC/DryRun evidence.")
+
+(defparameter *common-stage2-bootstrap-min-trades* 150
+  "Minimum trade evidence required to allow Stage2 sparse-evidence bootstrap.")
+
+(defparameter *common-stage2-bootstrap-min-cpcv-pass-rate* 0.70
+  "Minimum CPCV pass-rate required for Stage2 sparse-evidence bootstrap.")
 
 (defun %normalize-strategy-name (strategy-name)
   (cond
@@ -127,42 +142,73 @@
             drawdowns
             final-pnls)))))))
 
-(defun common-stage2-gates-passed-p (strategy &key (mc-iterations *mc-validation-iterations*) (require-dryrun t))
+(defun common-stage2-bootstrap-eligibility (strategy)
+  "Return (values eligible-p trade-evidence cpcv-pass-rate)."
+  (let* ((trade-evidence (if (fboundp 'strategy-trade-evidence-count)
+                             (strategy-trade-evidence-count strategy)
+                             (or (strategy-trades strategy) 0)))
+         (cpcv-pass-rate (or (strategy-cpcv-pass-rate strategy) 0.0))
+         (eligible (and *common-stage2-bootstrap-enabled*
+                        (>= trade-evidence *common-stage2-bootstrap-min-trades*)
+                        (>= cpcv-pass-rate *common-stage2-bootstrap-min-cpcv-pass-rate*))))
+    (values eligible trade-evidence cpcv-pass-rate)))
+
+(defun common-stage2-gates-passed-p (strategy
+                                     &key
+                                       (mc-iterations *mc-validation-iterations*)
+                                       (require-dryrun t)
+                                       (require-mc t))
   "A/S shared Stage2 gates:
    - MC prob_ruin <= 2%
    - DryRun p95(abs(slippage_pips)) <= *max-spread-pips*"
-  (let ((prob-ruin (strategy-mc-prob-ruin strategy :iterations mc-iterations)))
-    (cond
-      ((null prob-ruin)
-       (values nil
-               (format nil "MC gate failed: insufficient pnl-history (need >=~d trades)" *mc-min-trades*)))
-      ((> prob-ruin *mc-prob-ruin-threshold*)
-       (values nil
-               (format nil "MC gate failed: prob_ruin=~,3f > ~,3f"
-                       prob-ruin
-                       *mc-prob-ruin-threshold*)))
-      (t
-       (let ((p95 (dryrun-slippage-p95 (strategy-name strategy))))
-         (cond
-           ((null p95)
-            (if require-dryrun
-                (values nil
-                        (format nil "DryRun gate failed: insufficient slippage samples (need >=~d)"
-                                *dryrun-min-slippage-samples*))
-                (values t
-                        (format nil "MC passed: prob_ruin=~,3f (DryRun deferred: need >=~d samples)"
-                                prob-ruin
-                                *dryrun-min-slippage-samples*))))
-           ((> p95 *max-spread-pips*)
-            (values nil
-                    (format nil "DryRun gate failed: p95=~,2f pips > spread cap ~,2f"
-                            p95
-                            *max-spread-pips*)))
-           (t
-            (values t
-                    (format nil "Common Stage2 passed: prob_ruin=~,3f p95=~,2f"
-                            prob-ruin
-                            p95)))))))))
+  (multiple-value-bind (bootstrap-eligible trade-evidence cpcv-pass-rate)
+      (common-stage2-bootstrap-eligibility strategy)
+    (let ((prob-ruin (strategy-mc-prob-ruin strategy :iterations mc-iterations)))
+      (cond
+        ((and (null prob-ruin) require-mc (not bootstrap-eligible))
+         (values nil
+                 (format nil "MC gate failed: insufficient pnl-history (need >=~d trades)" *mc-min-trades*)))
+        ((and prob-ruin (> prob-ruin *mc-prob-ruin-threshold*))
+         (values nil
+                 (format nil "MC gate failed: prob_ruin=~,3f > ~,3f"
+                         prob-ruin
+                         *mc-prob-ruin-threshold*)))
+        (t
+         (let* ((p95 (dryrun-slippage-p95 (strategy-name strategy)))
+                (mc-msg (cond
+                          (prob-ruin (format nil "prob_ruin=~,3f" prob-ruin))
+                          (bootstrap-eligible
+                           (format nil "MC bootstrap deferred (trade-evidence=~d, cpcv-pass=~,2f)"
+                                   trade-evidence
+                                   cpcv-pass-rate))
+                          (t
+                           (format nil "MC deferred (need >=~d trades)" *mc-min-trades*)))))
+           (cond
+             ((null p95)
+              (if require-dryrun
+                  (if bootstrap-eligible
+                      (values t
+                              (format nil "Common Stage2 bootstrap passed: ~a (DryRun deferred: trade-evidence=~d, need >=~d samples)"
+                                      mc-msg
+                                      trade-evidence
+                                      *dryrun-min-slippage-samples*))
+                      (values nil
+                              (format nil "DryRun gate failed: insufficient slippage samples (need >=~d)"
+                                      *dryrun-min-slippage-samples*)))
+                  (values t
+                          (format nil "~a (DryRun deferred: need >=~d samples)"
+                                  mc-msg
+                                  *dryrun-min-slippage-samples*))))
+             ((> p95 *max-spread-pips*)
+              (values nil
+                      (format nil "DryRun gate failed: p95=~,2f pips > spread cap ~,2f"
+                              p95
+                              *max-spread-pips*)))
+             (t
+              (values t
+                      (format nil "Common Stage2 passed: ~a p95=~,2f"
+                              mc-msg
+                              p95))))))))))
 
 ;; CPCV Metrics
 (defparameter *cpcv-metrics* (make-hash-table :test 'equal)
@@ -399,16 +445,27 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
          (last-id (first last-req))
          (last-time (second last-req))
          (last-status (third last-req))
-         (age (and last-time (- now last-time))))
+         (age (and last-time (- now last-time)))
+         (memory-last (gethash name *oos-last-dispatch-at*))
+         (memory-age (and memory-last (- now memory-last)))
+         (throttle-age (cond
+                         ((and age
+                               (<= age *oos-request-interval*)
+                               (not (and (stringp last-status)
+                                         (string= last-status "error"))))
+                          age)
+                         ((and memory-age (<= memory-age *oos-request-interval*))
+                          memory-age)
+                         (t nil))))
     (cond
-      ;; Throttle if a recent non-error request is still pending
-      ((and age (<= age *oos-request-interval*) (not (and (stringp last-status) (string= last-status "error"))))
-      (format t "[OOS] ⏳ Request throttled for ~a (age ~ds)~%" name age)
+      ;; Throttle if a recent request is still pending (DB queue) or if fallback memory says recent dispatch.
+      (throttle-age
+      (format t "[OOS] ⏳ Request throttled for ~a (age ~ds)~%" name throttle-age)
       (let ((data (jsown:new-js
                     ("request_id" last-id)
                     ("oos_kind" "a-rank")
                     ("status" "throttled")
-                    ("age_sec" age))))
+                    ("age_sec" throttle-age))))
         (swimmy.core::emit-telemetry-event "oos.throttled"
           :service "school"
           :severity "info"
@@ -425,8 +482,9 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                  (cond
                    ;; Backward-compatible success contract:
                    ;; accept any non-NIL state except explicit throttle rejection.
-                   ((and dispatch-state (not (eq dispatch-state :throttled)))
+                   ((backtest-dispatch-accepted-p dispatch-state)
                     (%oos-metric-inc (if last-id :retry :sent))
+                    (setf (gethash name *oos-last-dispatch-at*) now)
                     (format t "[OOS] 📤 Dispatched OOS backtest for ~a (~a req ~a, state=~a)~%"
                             name status req-id dispatch-state)
                     (let ((data (jsown:new-js
@@ -602,7 +660,9 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
     (unless passed
       (return-from validate-for-a-rank-promotion nil))
     (multiple-value-bind (common-pass common-msg)
-        (common-stage2-gates-passed-p strat :require-dryrun *a-rank-require-dryrun*)
+        (common-stage2-gates-passed-p strat
+                                      :require-dryrun *a-rank-require-dryrun*
+                                      :require-mc *a-rank-require-mc*)
       (unless common-pass
         (format t "[A-RANK] ❌ ~a: ~a~%" (strategy-name strat) common-msg)
         (return-from validate-for-a-rank-promotion nil)))
@@ -611,15 +671,7 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
 
 (defun meets-a-rank-criteria (strat)
   "Check if strategy meets basic A-RANK criteria (without OOS)."
-  (let* ((criteria (get-rank-criteria :A))
-        (sharpe (or (strategy-sharpe strat) 0.0))
-        (pf (or (strategy-profit-factor strat) 0.0))
-        (wr (or (strategy-win-rate strat) 0.0))
-        (maxdd (or (strategy-max-dd strat) 1.0)))
-    (and (>= sharpe (getf criteria :sharpe-min 0.45))
-         (>= pf (getf criteria :pf-min 1.30))
-         (>= wr (getf criteria :wr-min 0.43))
-         (< maxdd (getf criteria :maxdd-max 0.16)))))
+  (check-rank-criteria strat :A :include-oos nil))
 
 ;;; ============================================================================
 ;;; P12: CPCV LISP-RUST INTEGRATION

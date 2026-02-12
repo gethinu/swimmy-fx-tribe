@@ -30,6 +30,9 @@
 (defparameter *live-audit-interval* 20
   "Number of trades before live audit is triggered.")
 
+(defparameter *sl-tp-price-unit-threshold* 10.0
+  "If both SL/TP are <= this value, treat them as price-units and convert to pips.")
+
 ;;; V47.5: Currency-specific pip values (per 1 standard lot)
 (defparameter *pip-values-by-symbol*
   '(("EURUSD" . 10.0)
@@ -54,11 +57,23 @@
 (defun calculate-avg-pips (strategy)
   "Calculate average profit in pips from strategy SL/TP and win rate.
    V47.4: Core pip design health metric."
-  (let* ((sl (or (strategy-sl strategy) 50))
-         (tp (or (strategy-tp strategy) 50))
-         (wr (or (strategy-win-rate strategy) 0.5)))
-    ;; Expected pips per trade = (WR × TP) - ((1 - WR) × SL)
-    (- (* wr tp) (* (- 1 wr) sl))))
+  (let* ((sl-raw (or (strategy-sl strategy) 50))
+         (tp-raw (or (strategy-tp strategy) 50))
+         (wr (or (strategy-win-rate strategy) 0.5))
+         (symbol (or (strategy-symbol strategy) "USDJPY"))
+         (pip-size (if (fboundp 'get-pip-size) (get-pip-size symbol) 0.01)))
+    (multiple-value-bind (sl tp)
+        (if (and (numberp sl-raw)
+                 (numberp tp-raw)
+                 (numberp pip-size)
+                 (> pip-size 0)
+                 (<= (abs sl-raw) *sl-tp-price-unit-threshold*)
+                 (<= (abs tp-raw) *sl-tp-price-unit-threshold*))
+            ;; Runtime strategies often store SL/TP in price-units (e.g., 0.15 = 15 pips on USDJPY).
+            (values (/ sl-raw pip-size) (/ tp-raw pip-size))
+            (values sl-raw tp-raw))
+      ;; Expected pips per trade = (WR × TP) - ((1 - WR) × SL)
+      (- (* wr tp) (* (- 1 wr) sl)))))
 
 (defun calculate-avg-pips-from-history (pnl-history lot-size symbol)
   "Calculate average pips from actual PNL history.

@@ -59,6 +59,12 @@
     (and (< pending max-pending)
          (or (<= interval 0.0) (>= elapsed interval)))))
 
+(defun backtest-dispatch-accepted-p (dispatch-state)
+  "Return T when a backtest dispatch state means accepted/enqueued.
+`NIL` and `:throttled` are treated as rejected."
+  (and dispatch-state
+       (not (eq dispatch-state :throttled))))
+
 (defun enqueue-backtest-msg (msg)
   "Enqueue a backtest message if queue capacity allows."
   (when (< (length *backtest-send-queue*) *backtest-send-queue-max*)
@@ -115,6 +121,12 @@
     (unless (backtest-send-allowed-p)
       (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
               (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
+      (when (and (or swimmy.core:*backtest-service-enabled*
+                     (and (boundp 'swimmy.globals:*backtest-requester*)
+                          swimmy.globals:*backtest-requester*))
+                 (enqueue-backtest-msg msg))
+        (format t "[BACKTEST] 📥 Queued throttled request for retry.~%")
+        (return-from send-zmq-msg :queued))
       (return-from send-zmq-msg :throttled))
     (when (and swimmy.core:*backtest-service-enabled*
                (or (not (boundp 'swimmy.globals:*backtest-requester*))

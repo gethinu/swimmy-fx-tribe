@@ -259,6 +259,9 @@ REVERSION : ~a"
 (defparameter *evolution-report-stale-threshold* (* 2 60 60))
 (defparameter *evolution-report-alert-interval* (* 60 60))
 (defparameter *last-evolution-report-alert-time* 0)
+(defparameter *promotion-report-sync-interval* 120
+  "Minimum seconds between promotion-triggered evolution report syncs.")
+(defparameter *last-promotion-report-sync-time* 0)
 
 (defun safe-file-write-date (path)
   (or (ignore-errors (file-write-date path)) 0))
@@ -273,6 +276,17 @@ REVERSION : ~a"
       (when (fboundp 'write-oos-status-file)
         (ignore-errors (write-oos-status-file :reason reason)))
       t)))
+
+(defun maybe-sync-evolution-report-on-promotion (&key rank reason (now (get-universal-time)))
+  "Sync evolution report shortly after A/S promotions (throttled)."
+  (declare (ignore reason))
+  (when (and (member rank '(:A :S) :test #'eq)
+             (> (- now *last-promotion-report-sync-time*)
+                *promotion-report-sync-interval*))
+    (setf *last-promotion-report-sync-time* now)
+    (format t "[REPORT] 🔄 Promotion sync triggered (rank=~a)~%" rank)
+    (notify-evolution-report)
+    t))
 
 (defun maybe-alert-evolution-report-staleness
     (&key (now (get-universal-time)) last-report last-heartbeat)
@@ -347,7 +361,10 @@ REVERSION : ~a"
                                  (build-cpcv-status-snippet)
                                  cpcv-gate-line
                                  cpcv-median-line))
-           (oos-snippet (oos-metrics-summary-line)))
+           (oos-snippet (oos-metrics-summary-line))
+           (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
+                                 (a-candidate-metrics-snippet :limit 6)
+                                 "A Candidate Funnel (latest): unavailable")))
       (let* ((graveyard-text (if lib-counts
                                  (format nil "~d (Library ~d)" graveyard lib-graveyard)
                                  (format nil "~d" graveyard)))
@@ -372,7 +389,7 @@ Current status of the autonomous strategy generation pipeline.
 ~d (IS Sharpe≥0.75 PF≥1.70 WR≥50% MaxDD<10% + CPCV pass_rate≥70% & median MaxDD<12% + MC/DryRun)
 
 🎖️ **A-Rank (Pro)**
-~d (Sharpe≥0.45 PF≥1.30 WR≥43% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
+~d (Sharpe≥0.45 PF≥1.30 WR≥38% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
 
 🪜 **B-Rank (Selection)**
 ~d (Sharpe≥0.15 PF≥1.05 WR≥35% MaxDD<25%)
@@ -387,15 +404,17 @@ Current status of the autonomous strategy generation pipeline.
 ~a
 ~a
 
-~a
+	~a
 
-~a
+	~a
 
-~a
+	~a
 
-⚙️ System Status
-✅ Evolution Daemon Active
-✅ Native Lisp Orchestration (V28)
+	~a
+
+	⚙️ System Status
+	✅ Evolution Daemon Active
+	✅ Native Lisp Orchestration (V28)
 ~a"
             active-count
             s-rank
@@ -403,12 +422,13 @@ Current status of the autonomous strategy generation pipeline.
             b-rank
             new-recruits
             graveyard-text
-            retired-text
-            drift-text
-            cpcv-snippet
-            oos-snippet
-            top-snippet
-            (format-timestamp (get-universal-time)))))))
+	            retired-text
+	            drift-text
+	            cpcv-snippet
+	            oos-snippet
+	            a-funnel-snippet
+	            top-snippet
+	            (format-timestamp (get-universal-time)))))))
 
 (defun write-evolution-report-files (report)
   "Persist the Evolution Factory Report to local files."
