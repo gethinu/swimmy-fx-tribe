@@ -109,7 +109,7 @@
   "SL/TP scale gain for PF-dominant deficits (increases absolute move distance).")
 (defparameter *pfwr-pf-recovery-scale-max* 1.35
   "Maximum SL/TP scale multiplier from PF recovery expansion.")
-(defparameter *pfwr-complement-scale-floor* 1.12
+(defparameter *pfwr-complement-scale-floor* 1.25
   "Minimum SL/TP scale multiplier for opposite-complement pair stabilization.")
 (defparameter *breeder-priority-use-a-base-score* t
   "When T, breeder parent ranking uses A-base-aware culling score if available.")

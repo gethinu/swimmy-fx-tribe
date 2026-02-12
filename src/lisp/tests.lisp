@@ -6918,6 +6918,7 @@
 	                  test-pfwr-mutation-bias-applies-pf-recovery-floor-when-pf-gap-dominates
 	                  test-pfwr-mutation-bias-applies-pf-recovery-floor-for-moderate-pf-gap
 	                  test-pfwr-mutation-bias-increases-scale-when-pf-gap-dominates
+	                  test-pfwr-mutation-bias-expands-scale-for-opposite-complements
 	                  test-strategy-breeding-priority-score-prefers-a-base-near-candidate
 	                  test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-lowers-rr-when-wr-gap-dominates

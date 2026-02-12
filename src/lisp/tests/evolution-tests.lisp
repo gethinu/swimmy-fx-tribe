@@ -343,6 +343,33 @@
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
 
+(deftest test-pfwr-mutation-bias-expands-scale-for-opposite-complements
+  "Opposite complement pair should enforce a larger absolute SL/TP scale floor."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-COMP-SCALE-WR"
+                                          :profit-factor 1.22 :win-rate 0.49
+                                          :sl 20.0 :tp 30.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-COMP-SCALE-PF"
+                                          :profit-factor 1.38 :win-rate 0.38
+                                          :sl 20.0 :tp 80.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 20.0 p1 p2)
+            (assert-true (>= (+ sl tp) 50.0)
+                         (format nil "Expected opposite-complement scale >=50.0, got ~,3f" (+ sl tp)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
 (deftest test-strategy-breeding-priority-score-prefers-a-base-near-candidate
   "Breeding priority should prefer candidates closer to A-base gates."
   (let* ((near-a (swimmy.school:make-strategy :name "UT-PRIORITY-NEAR"
