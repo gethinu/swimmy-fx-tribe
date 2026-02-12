@@ -16,6 +16,11 @@ POLL_SECONDS="${XAU_AUTOBOT_POLL_SECONDS:-10}"
 CONFIG_PATH="${XAU_AUTOBOT_CONFIG:-}"
 LIVE_FLAG="${XAU_AUTOBOT_LIVE:-0}"
 
+if ! "$PY" -c "import MetaTrader5" >/dev/null 2>&1; then
+  echo '{"action":"SKIP","reason":"mt5_python_missing","hint":"pip install MetaTrader5"}'
+  exit 0
+fi
+
 CMD=(
   "$PY"
   "$ROOT/tools/xau_autobot.py"

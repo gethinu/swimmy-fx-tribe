@@ -9,7 +9,7 @@ WorkingDirectory=/home/swimmy/swimmy
 Environment=XAU_AUTOBOT_POLL_SECONDS=10
 Environment=XAU_AUTOBOT_LIVE=0
 ExecStart=/home/swimmy/swimmy/tools/xau_autobot_active_runner.sh
-Restart=always
+Restart=on-failure
 RestartSec=10
 
 [Install]
