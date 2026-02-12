@@ -125,6 +125,26 @@
         (return-from is-logic-duplicate-p s)))
     nil))
 
+(defparameter *breeder-variant-min-relative-diff* 0.15
+  "Minimum relative SL/TP delta to treat breeder child as a meaningful logic variant.")
+
+(defun %relative-diff (a b)
+  (let* ((a (float a 1.0))
+         (b (float b 1.0))
+         (den (max 1.0e-6 (abs b))))
+    (/ (abs (- a b)) den)))
+
+(defun breeder-parameter-variant-p (candidate incumbent)
+  "Return T if breeder candidate differs enough in SL/TP from incumbent."
+  (let ((c-sl (strategy-sl candidate))
+        (c-tp (strategy-tp candidate))
+        (i-sl (strategy-sl incumbent))
+        (i-tp (strategy-tp incumbent)))
+    (and (numberp c-sl) (numberp c-tp)
+         (numberp i-sl) (numberp i-tp)
+         (or (>= (%relative-diff c-sl i-sl) *breeder-variant-min-relative-diff*)
+             (>= (%relative-diff c-tp i-tp) *breeder-variant-min-relative-diff*)))))
+
 (defun extract-logic-atoms (sexp)
   "Recursively extract all atoms (indicators, ops, numbers) from logic tree.
    Returns a flat list of symbols/numbers."
@@ -186,7 +206,8 @@
     (return-from add-to-kb nil))
   
   (bt:with-lock-held (*kb-lock*)
-    (let ((name (strategy-name strategy)))
+    (let ((name (strategy-name strategy))
+          (breeder-variant-approved nil))
       
       ;; 1. Name Duplicate Check
       (when (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
@@ -196,9 +217,16 @@
       ;; 1.2 Logic Duplicate Check (Symbolic Hashing)
       (let ((dupe (is-logic-duplicate-p strategy *strategy-knowledge-base*)))
         (when dupe
-          (format t "[KB] ⚠️ Duplicate (Logic): ~a is logically identical to ~a. Rejected.~%" 
-                  name (strategy-name dupe))
-          (return-from add-to-kb nil)))
+          (if (and (eq source :breeder)
+                   (breeder-parameter-variant-p strategy dupe))
+              (progn
+                (setf breeder-variant-approved t)
+                (format t "[KB] ♻️ Breeder logic variant accepted: ~a vs ~a (SL/TP differs).~%"
+                        name (strategy-name dupe)))
+              (progn
+                (format t "[KB] ⚠️ Duplicate (Logic): ~a is logically identical to ~a. Rejected.~%"
+                        name (strategy-name dupe))
+                (return-from add-to-kb nil)))))
       
       ;; 1.3 Logic Correlation Check (Simons Challenge / Musk Highlander Rule)
       (multiple-value-bind (match score) (find-correlated-strategy strategy *strategy-knowledge-base* 0.95)
@@ -206,6 +234,12 @@
            (let ((new-sharpe (or (strategy-sharpe strategy) 0.0))
                  (old-sharpe (or (strategy-sharpe match) 0.0)))
              (cond
+               ;; Case 0: Breeder variant with meaningful SL/TP delta is allowed.
+               ((and (eq source :breeder)
+                     (breeder-parameter-variant-p strategy match))
+                (setf breeder-variant-approved t)
+                (format t "[KB] ♻️ Breeder correlation variant accepted: ~a vs ~a (~d% similar).~%"
+                        name (strategy-name match) (round (* 100 score))))
                ;; Case A: New is significantly better (Highlander Rule)
                ((> new-sharpe (* old-sharpe 1.05))
                 (format t "[KB] ⚔️ HIGHLANDER: ~a (S=~,2f) defeats redundant ~a (S=~,2f). Replacing!~%"
@@ -223,8 +257,11 @@
         
       ;; 1.5 Graveyard Check (V49.0 Taleb)
       (when (and (not *startup-mode*) (is-graveyard-pattern-p strategy))
-        (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
-        (return-from add-to-kb nil))
+        (if (and (eq source :breeder) breeder-variant-approved)
+            (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name)
+            (progn
+              (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
+              (return-from add-to-kb nil))))
       
       ;; 2. BT Validation (Phase 1 Screening Gate)
       (when require-bt

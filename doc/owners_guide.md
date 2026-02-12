@@ -3,7 +3,7 @@
 ### 1. ランク判定の2段階化（Balanced）
 - **Stage 1 固定閾値**
   - B: Sharpe ≥ 0.15 / PF ≥ 1.05 / WR ≥ 35% / MaxDD < 25%
-  - A: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 38% / MaxDD < 16%
+  - A: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%
   - S: Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%
 - **Stage 2 検証ゲート**
   - A昇格: OOS Sharpe ≥ 0.35 かつ `net_expectancy_pips > 0`
@@ -192,7 +192,7 @@
 - 判定: Phase 1 Backtest合格でBへ昇格  
 
 **A-RANK (Pro)**  
-- 条件: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 38% / MaxDD < 16%  
+- 条件: Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%  
 - 判定: OOS Sharpe ≥ 0.35、`net_expectancy_pips > 0`、共通ゲート（MC/DryRun）合格でAへ昇格  
 
 **S-RANK (Verified Elite)**  

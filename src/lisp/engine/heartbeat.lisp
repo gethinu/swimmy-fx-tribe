@@ -62,10 +62,10 @@
                        (format nil "MT5: ~a (~d秒前)" tick-status tick-age))))
     (format nil "📊 **Status**
 ~a
-💼 Equity: ¥~,0f | Today: ~a¥~,0f
+💼 Equity: ¥~d | Today: ~a¥~d
 📈 Strategies: ~d active + ~d KB"
             mt5-line
-            equity (if (>= daily-pnl 0) "+" "") daily-pnl
+            (round equity) (if (>= daily-pnl 0) "+" "") (round daily-pnl)
             active-count kb-count)))
 
 ;; V8.6: Using shared config from core/config.lisp (Environment Variables)

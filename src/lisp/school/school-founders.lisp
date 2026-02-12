@@ -429,15 +429,49 @@
 (defvar *deferred-flush-queue-count* 0)
 (defvar *deferred-flush-queued-names* (make-hash-table :test 'equal)
   "Strategy names already queued for deferred flush (prevents duplicates).")
+(defvar *deferred-db-archive-cache* (make-hash-table :test 'equal)
+  "Memoized flag: strategy name already archived in DB (:RETIRED/:GRAVEYARD).")
 (defvar *deferred-flush-last-run* 0)
 
 (defparameter *deferred-flush-batch* swimmy.core::*deferred-flush-batch*)
 (defparameter *deferred-flush-interval-sec* swimmy.core::*deferred-flush-interval-sec*)
+(defparameter *deferred-flush-queue-hard-cap* 2000
+  "Max deferred queue size. 0 or negative disables cap.")
 
 (defun %deferred-rank-p (rank)
   (or (null rank)
       (and (stringp rank) (string= rank "NIL"))
       (eq rank :nil)))
+
+(defun %normalize-deferred-db-rank-token (rank)
+  "Normalize DB rank token to uppercase without leading colon."
+  (let* ((raw (cond
+                ((null rank) "")
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun %deferred-db-archived-rank-p (rank)
+  "Return T when DB rank is archived."
+  (member (%normalize-deferred-db-rank-token rank)
+          '("RETIRED" "GRAVEYARD")
+          :test #'string=))
+
+(defun %deferred-name-archived-in-db-p (name)
+  "Return T if NAME is archived in DB. Uses memoized cache for throughput."
+  (multiple-value-bind (cached foundp) (gethash name *deferred-db-archive-cache*)
+    (if foundp
+        cached
+        (let* ((db-rank (ignore-errors
+                          (execute-single "SELECT rank FROM strategies WHERE name = ?"
+                                          name)))
+               (archived (%deferred-db-archived-rank-p db-rank)))
+          (setf (gethash name *deferred-db-archive-cache*) archived)
+          archived))))
 
 (defun %env-int-or (key default)
   (let ((val (uiop:getenv key)))
@@ -463,21 +497,58 @@
       *deferred-flush-interval-sec*
       (%env-int-or "SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC" 2)))
 
+(defun deferred-backtest-dispatch-pause-sec ()
+  "Inter-dispatch pause (seconds) derived from backtest rate-limit."
+  (let ((rate (if (boundp 'swimmy.globals::*backtest-rate-limit-per-sec*)
+                  swimmy.globals::*backtest-rate-limit-per-sec*
+                  0)))
+    (if (and (numberp rate) (> rate 0))
+        (/ 1.0d0 rate)
+        0.0d0)))
+
+(defun maybe-pause-after-backtest-dispatch (&optional (pause-sec (deferred-backtest-dispatch-pause-sec)))
+  "Sleep briefly after an accepted deferred dispatch to honor rate limiting."
+  (when (and (numberp pause-sec) (> pause-sec 0.0d0))
+    (sleep pause-sec)))
+
+(defun deferred-flush-queue-hard-cap ()
+  "Maximum queue size for deferred founders. 0 disables cap."
+  (if (and (boundp '*deferred-flush-queue-hard-cap*)
+           (numberp *deferred-flush-queue-hard-cap*))
+      *deferred-flush-queue-hard-cap*
+      (%env-int-or "SWIMMY_DEFERRED_QUEUE_HARD_CAP" 2000)))
+
 (defun schedule-deferred-founders (&key (max-add nil))
   "Populate the deferred flush queue from the knowledge base.
 Returns number of newly queued strategies."
-  (let ((added 0)
-        (new nil))
+  (let* ((cap (deferred-flush-queue-hard-cap))
+         (effective-cap (if (and (numberp cap) (> cap 0))
+                            cap
+                            most-positive-fixnum))
+         (added 0)
+         (new nil))
+    ;; Guard against previously oversized queues.
+    (when (> *deferred-flush-queue-count* effective-cap)
+      (let ((keep (min effective-cap (length *deferred-flush-queue*))))
+        (setf *deferred-flush-queue* (if (> keep 0)
+                                         (subseq *deferred-flush-queue* 0 keep)
+                                         nil))
+        (setf *deferred-flush-queue-count* keep)))
     (dolist (s *strategy-knowledge-base*)
       (let ((rank (strategy-rank s)))
         (when (%deferred-rank-p rank)
           (let ((name (strategy-name s)))
             (unless (gethash name *deferred-flush-queued-names*)
-              (setf (gethash name *deferred-flush-queued-names*) t)
-              (push s new)
-              (incf added)
-              (when (and max-add (>= added max-add))
-                (return)))))))
+              (if (%deferred-name-archived-in-db-p name)
+                  ;; Keep tombstone to avoid re-checking the same archived name each schedule.
+                  (setf (gethash name *deferred-flush-queued-names*) t)
+                  (progn
+                    (setf (gethash name *deferred-flush-queued-names*) t)
+                    (push s new)
+                    (incf added)
+                    (when (or (>= (+ *deferred-flush-queue-count* added) effective-cap)
+                              (and max-add (>= added max-add)))
+                      (return)))))))))
     (when new
       ;; Keep stable KB order: push builds reverse, so nreverse before append.
       (setf *deferred-flush-queue* (nconc *deferred-flush-queue* (nreverse new)))
@@ -508,19 +579,29 @@ LIMIT to cap the number of requests in this call to avoid startup storms."
                   (rank (strategy-rank s)))
               ;; Skip if it got ranked meanwhile.
               (when (%deferred-rank-p rank)
-                (handler-case
-                    (let ((dispatch-state (request-backtest s)))
-                      (if (backtest-dispatch-accepted-p dispatch-state)
-                          (incf sent)
-                          (progn
-                            ;; Allow re-queueing when dispatch is explicitly rejected.
-                            (remhash name *deferred-flush-queued-names*)
-                            (format t "[HEADHUNTER] ⚠️ BT dispatch rejected: ~a (state=~a)~%"
-                                    name dispatch-state))))
-                  (error (e)
-                    ;; Allow re-queueing on next schedule attempt.
-                    (remhash name *deferred-flush-queued-names*)
-                    (format t "[HEADHUNTER] ⚠️ BT Request failed: ~a~%" e))))))))
+                (unless (%deferred-name-archived-in-db-p name)
+                  (handler-case
+                      (let ((dispatch-state (request-backtest s)))
+                        (if (backtest-dispatch-accepted-p dispatch-state)
+                            (progn
+                              (incf sent)
+                              (maybe-pause-after-backtest-dispatch))
+                            (progn
+                              ;; Keep candidate queued and stop this tick on rejection.
+                              ;; In saturated states, repeated retries in one tick only burn cycles.
+                              (setf *deferred-flush-queue*
+                                    (nconc *deferred-flush-queue* (list s)))
+                              (incf *deferred-flush-queue-count*)
+                              (format t "[HEADHUNTER] ⚠️ BT dispatch rejected: ~a (state=~a) → requeued, pause tick~%"
+                                      name dispatch-state)
+                              (return))))
+                    (error (e)
+                      ;; Keep candidate queued and stop this tick to avoid tight retry loops.
+                      (setf *deferred-flush-queue*
+                            (nconc *deferred-flush-queue* (list s)))
+                      (incf *deferred-flush-queue-count*)
+                      (format t "[HEADHUNTER] ⚠️ BT Request failed: ~a → requeued, pause tick~%" e)
+                      (return)))))))))
       (when (> sent 0)
         (format t "[HEADHUNTER] ✅ Deferred BT sent: ~d (pending ~d)~%"
                 sent *deferred-flush-queue-count*))

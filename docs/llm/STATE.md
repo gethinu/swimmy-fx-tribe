@@ -71,11 +71,19 @@
 - **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
+- **Backtest Bool 正規化契約**: Backtest/CPCV の内部S式で `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルが混入する入力は Backtest Service で正規化して Guardian へ中継する。
+- **Backtest Service 運用整合契約**: `swimmy-backtest.service` を正本とし、systemd が inactive の状態で 5580 に手動 `backtest_service.py` が LISTEN している状態をドリフトとして扱う。監査で検知し、運用に修復を促す。
+- **Dashboard Drift 可視化**: `tools/dashboard.py` は `swimmy-backtest` の systemd 状態に加えて 5580 listener と MainPID の整合（drift有無）を表示し、inactive/manual 混在を即時判別できるようにする。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
+- **Backtest Queue 実装契約**: `backtest-send-queue` の enqueue/dequeue は O(1) を維持する（`length`/`nconc` に依存しない）。高頻度スロットル時にキュー操作コストが送信ループの律速にならないことを正本とする。
+- **Backtest Queue 上限設定**: `backtest-send-queue` の容量は `SWIMMY_BACKTEST_SEND_QUEUE_MAX` で調整可能（未指定時は既定値）。運用側で burst 耐性を増やす際はこの値を優先して調整する。
 - **Backtest Service Workers**: `tools/backtest_service.py` は複数 Guardian worker を並列起動できる（`SWIMMY_BACKTEST_WORKERS`、既定はCPU数ベースで自動決定）。受信ループは inflight を管理して非同期に結果を返し、`pending` 張り付き時の処理詰まりを緩和する。
 - **Deferred Flush pacing**: `flush-deferred-founders` は Backtest レート制限時に送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）で dispatch し、同一tick内の即時 `:throttled` 連発による `1件/tick` 近傍への失速を抑制する。
 - **RR Batch pacing**: `batch-backtest-knowledge` も受理済み dispatch ごとに送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）を挿入し、RRバッチ内で即時 `:throttled` が連発して `Queued: 1` 近傍へ失速するのを抑制する。
 - **Backtest Dispatch 計上契約**: RR/QUAL/Deferred/OOS の dispatch 計上は「受理された送信状態」のみ対象とする。`NIL` / `:throttled` は非受理として expected/sent に含めない。
+- **B-Rank Culling 保持契約**: `run-b-rank-culling-for-category` は A候補に選ばれなかった B戦略を全量 `graveyard` に送らない。カテゴリごとに少なくとも `*culling-threshold*` 件（または A候補キュー件数の大きい方）を B基盤として残し、超過分のみ prune する。
+- **B-Rank Culling 既定閾値**: `*culling-threshold*` の既定値は 20 とし、通常運用ではカテゴリごとの B 基盤を 20 件まで維持する。
+- **B-Rank Culling スコア契約**: prune順は Sharpe 偏重にせず、A Stage1 基準（Sharpe/PF/WR/MaxDD）からの欠損度にペナルティを与える。A基準から遠い B を優先的に cull し、A基準に近い B 基盤を残す。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
@@ -93,7 +101,14 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-12**: Dashboard の backtest欄に systemd/listener drift 可視化を追加する方針を追記。`inactive + listener` や PID mismatch を画面上で即時判読可能にする。
+- **2026-02-12**: `swimmy-backtest` の systemd運用ドリフト検知方針を追加。`inactive + manual 5580 LISTEN` を監査FAIL扱いにし、systemd正本への復帰を促す。
+- **2026-02-12**: Backtest Service の S式正規化を強化する方針を追加。`(strategy (k . v) ...)` などの短縮表現を含むBACKTEST要求でも bool を `#t/#f` へ正規化して Guardian へ転送し、`invalid type: symbol, expected boolean` を防止する。
+- **2026-02-12**: B-Rank culling の既定閾値を 20 へ引き上げる方針を追加。カテゴリごとの B 基盤を 20 件まで維持する運用へ変更。
+- **2026-02-12**: B-Rank culling の prune順を A基準欠損ペナルティ込みへ更新する方針を追加。Sharpe偏重で A基準から遠いBが残るドリフトを抑制する。
 - **2026-02-12**: Backtest Service の実行モデルを並列worker対応に拡張する方針を追加。`SWIMMY_BACKTEST_WORKERS` で Guardian `--backtest-only` の並列数を制御し、inflight 非同期処理で `pending` 上限張り付き時のスループット低下を緩和する。
+- **2026-02-12**: B-Rank culling の保持契約を追加。A候補以外を全量 graveyard 化する挙動を廃止し、カテゴリごとのB基盤（`*culling-threshold*` 件以上）を保持したうえで超過分のみ prune する方針を明記。
+- **2026-02-12**: Backtest送信キューの実装契約を更新。`length`/`nconc` 依存を廃止し O(1) キュー運用を正本化、あわせて `SWIMMY_BACKTEST_SEND_QUEUE_MAX` による容量調整方針を追加。
 - **2026-02-12**: Evolution/Backtest系レポートに A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示する方針を追加。
 - **2026-02-12**: RR Backtest Batch の送信をレート制限に同期。受理済み dispatch ごとに `1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒の間隔を挿入し、同一バッチ内 `:throttled` 連発で `Queued: 1` 近傍に張り付く失速を抑制する方針を追加。
 - **2026-02-12**: Deferred Founder Backtest Flush の送信をレート制限に合わせて間隔化（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）。同一tickで `:throttled` が連発して `Deferred BT sent` が実質 `1件/tick` になる失速を抑制する方針を追加。

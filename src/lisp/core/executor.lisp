@@ -17,6 +17,10 @@
 (defvar *current-drawdown* 0.0)
 (defparameter *account-info-save-interval* 60)
 (defparameter *last-account-save-time* 0)
+(defparameter *monitoring-peak-rebase-on-restart* t
+  "When T, stale monitoring peak can be rebased on first ACCOUNT_INFO after restart.")
+(defparameter *monitoring-peak-stale-ratio-threshold* 0.50
+  "If both persisted and incoming equity are <= this ratio of stale monitoring peak, rebase baseline.")
 
 ;;; --------------------------------------
 ;;; PAYLOAD HELPERS
@@ -73,6 +77,33 @@
     (cond ((numberp val) val)
           ((stringp val) (or (ignore-errors (read-from-string val)) default))
           (t default))))
+
+(defun stale-account-info-timestamp-p (timestamp)
+  "True when TIMESTAMP belongs to a previous process/session."
+  (and (numberp timestamp)
+       (> timestamp 0)
+       (boundp 'swimmy.globals::*system-start-time*)
+       (numberp swimmy.globals::*system-start-time*)
+       (< timestamp swimmy.globals::*system-start-time*)))
+
+(defun should-rebase-monitoring-peak-p (prev-account-info-time prev-current incoming-equity prev-monitor-peak)
+  "Return T when stale dynamic-DD baseline should be reset to incoming equity."
+  (let* ((ratio (if (and (numberp *monitoring-peak-stale-ratio-threshold*)
+                         (> *monitoring-peak-stale-ratio-threshold* 0.0)
+                         (< *monitoring-peak-stale-ratio-threshold* 1.0))
+                    *monitoring-peak-stale-ratio-threshold*
+                    0.50))
+         (peak (if (and (numberp prev-monitor-peak) (> prev-monitor-peak 0.0))
+                   prev-monitor-peak
+                   0.0))
+         (cutoff (* peak ratio)))
+    (and *monitoring-peak-rebase-on-restart*
+         (stale-account-info-timestamp-p prev-account-info-time)
+         (> peak 0.0)
+         (numberp prev-current)
+         (numberp incoming-equity)
+         (<= prev-current cutoff)
+         (<= incoming-equity cutoff))))
 
 ;;; --------------------------------------
 ;;; STATUS & MONITORING
@@ -378,9 +409,9 @@
               (format t "[L] Narrative generation error: ~a. Using fallback.~%" e)
               (if is-win
                   (queue-discord-notification (gethash symbol *symbol-webhooks*)
-                                              (format nil "🎉 WIN: ~a ~a +¥~,0f" symbol direction pnl) :color 3066993)
+                                              (format nil "🎉 WIN: ~a ~a +¥~d" symbol direction (round pnl)) :color 3066993)
                   (queue-discord-notification (gethash symbol *symbol-webhooks*)
-                                              (format nil "💀 LOSS: ~a ~a ¥~,0f" symbol direction (abs pnl)) :color 15158332))))
+                                              (format nil "💀 LOSS: ~a ~a ¥~d" symbol direction (round (abs pnl))) :color 15158332))))
 
           ;; Persist state immediately after trade close
           (when (fboundp 'swimmy.engine:save-state)
@@ -393,6 +424,9 @@
       (multiple-value-bind (equity equity-ok) (%payload-val* payload '(equity "equity") nil)
         (multiple-value-bind (balance balance-ok) (%payload-val* payload '(balance "balance") nil)
           (declare (ignore balance balance-ok))
+          (let ((prev-last-account-info *last-account-info-time*)
+                (prev-current-equity *current-equity*)
+                (prev-monitoring-peak *monitoring-peak-equity*))
           ;; V8.5: Track last ACCOUNT_INFO time for monitoring
           (setf *last-account-info-time* (get-universal-time))
           ;; V8.5: Recovery notification
@@ -403,17 +437,28 @@
             (setf *current-equity* (float equity))
             (when (> *current-equity* *peak-equity*)
               (setf *peak-equity* *current-equity*))
-            
-            ;; V44.5: Dynamic (Session) DD Logic
-            (when (zerop *monitoring-peak-equity*)
-              (setf *monitoring-peak-equity* *current-equity*))
-            
-            (when (> *current-equity* *monitoring-peak-equity*)
-              (setf *monitoring-peak-equity* *current-equity*)
-              (setf *monitoring-alert-sent-20* nil))
-            
-            (setf *monitoring-drawdown* 
-                  (* 100 (/ (- *monitoring-peak-equity* *current-equity*) *monitoring-peak-equity*)))
+
+            ;; V44.5+: Dynamic (Session) DD Logic
+            (if (should-rebase-monitoring-peak-p prev-last-account-info
+                                                 prev-current-equity
+                                                 *current-equity*
+                                                 prev-monitoring-peak)
+                (progn
+                  (setf *monitoring-peak-equity* *current-equity*)
+                  (setf *monitoring-drawdown* 0.0)
+                  (setf *monitoring-alert-sent-20* nil)
+                  (format t "[L] ♻️ DynDD baseline reset after restart: Peak=¥~d -> ¥~d~%"
+                          (round prev-monitoring-peak)
+                          (round *monitoring-peak-equity*)))
+                (progn
+                  (when (zerop *monitoring-peak-equity*)
+                    (setf *monitoring-peak-equity* *current-equity*))
+                  (when (> *current-equity* *monitoring-peak-equity*)
+                    (setf *monitoring-peak-equity* *current-equity*)
+                    (setf *monitoring-alert-sent-20* nil))
+                  (setf *monitoring-drawdown*
+                        (* 100 (/ (- *monitoring-peak-equity* *current-equity*)
+                                  *monitoring-peak-equity*)))))
                 
             ;; Alert Logic (20% Threshold)
             (when (and (>= *monitoring-drawdown* 20.0)
@@ -434,7 +479,7 @@
               (when (> (- now *last-account-save-time*) *account-info-save-interval*)
                 (setf *last-account-save-time* now)
                 (when (fboundp 'swimmy.engine:save-state)
-                  (swimmy.engine:save-state)))))))
+                  (swimmy.engine:save-state))))))))
     (error (e) (format t "[L] Account sync error: ~a~%" e))))
 
 ;;; --------------------------------------

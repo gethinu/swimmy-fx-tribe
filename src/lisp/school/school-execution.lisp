@@ -16,6 +16,14 @@
   "Top-k neighbors for Pattern Similarity query.")
 (defparameter *pattern-gate-timeframes* '("H1" "H4" "D1" "W1" "MN1")
   "Timeframes where pattern soft-gate is enabled.")
+(defparameter *signal-confidence-entry-threshold* 0.20
+  "Minimum signal confidence required to allow a new entry.")
+(defparameter *signal-confidence-soft-threshold* 0.35
+  "Confidence threshold to restore full lot size.")
+(defparameter *signal-confidence-soft-lot-multiplier* 0.55
+  "Lot multiplier for medium-confidence entries.")
+(defparameter *min-s-rank-strategies-for-live* 2
+  "Minimum number of S-rank strategies required before live execution starts.")
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -192,6 +200,29 @@
   "Fetch KEY from gate alist."
   (let ((cell (assoc key gate)))
     (if cell (cdr cell) default)))
+
+(defun normalize-signal-confidence (confidence &optional (default 1.0))
+  "Normalize confidence to [0,1]. Missing/invalid values fallback to DEFAULT."
+  (let* ((raw (cond
+                ((numberp confidence) (float confidence))
+                ((stringp confidence)
+                 (handler-case
+                     (let ((*read-eval* nil))
+                       (multiple-value-bind (obj _pos) (read-from-string confidence nil nil)
+                         (declare (ignore _pos))
+                         (if (numberp obj) (float obj) default)))
+                   (error () default)))
+                (t default))))
+    (max 0.0 (min 1.0 raw))))
+
+(defun signal-confidence-lot-multiplier (confidence)
+  "Return lot multiplier by signal confidence. 0.0 means no entry."
+  (let ((conf (normalize-signal-confidence confidence)))
+    (cond
+      ((< conf *signal-confidence-entry-threshold*) 0.0)
+      ((< conf *signal-confidence-soft-threshold*)
+       (max 0.01 (float *signal-confidence-soft-lot-multiplier*)))
+      (t 1.0))))
 
 (defun apply-pattern-soft-gate (category symbol direction timeframe-key history lot lead-name)
   "Apply pattern soft gate. Returns (values adjusted-lot gate-info-alist)."
@@ -391,7 +422,8 @@
             (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
             (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
 
-(defun execute-category-trade (category direction symbol bid ask)
+(defun execute-category-trade (category direction symbol bid ask
+                               &key (lot-multiplier 1.0) signal-confidence)
   (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
   (handler-case
       (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
@@ -419,9 +451,14 @@
                     (lot (calc-execution-lot category symbol history rank base-lot lead-name direction))
                     (overlay (apply-pair-overlay lead-name direction symbol lot))
                     (final-lot (first overlay))
-                    (pair-id (second overlay)))
+                    (pair-id (second overlay))
+                    (confidence (normalize-signal-confidence signal-confidence))
+                    (safe-lot-mult (if (numberp lot-multiplier)
+                                       (max 0.0 (float lot-multiplier))
+                                       (signal-confidence-lot-multiplier confidence)))
+                    (confidence-lot (max 0.01 (* final-lot safe-lot-mult))))
                (multiple-value-bind (gated-lot gate-info)
-                   (apply-pattern-soft-gate category symbol direction timeframe-key history final-lot lead-name)
+                   (apply-pattern-soft-gate category symbol direction timeframe-key history confidence-lot lead-name)
                  (emit-pattern-gate-telemetry symbol timeframe-key gate-info)
                  (when (verify-signal-authority symbol direction category gated-lot rank lead-name)
                     ;; Sleep Randomization (Anti-Gaming)
@@ -480,14 +517,20 @@
 
 
 (defun s-rank-gate-passed-p ()
-  "V49.0: Musk's Iron Gate. Require 5+ S-Rank strategies for Demo Trading."
-  (let ((s-count (count-if (lambda (s) (eq (strategy-rank s) :S)) *strategy-knowledge-base*)))
-    (if (>= s-count 5)
+  "V49.0+: Guard live execution until enough S-rank strategies are available."
+  (let* ((required (if (and (integerp *min-s-rank-strategies-for-live*)
+                            (> *min-s-rank-strategies-for-live* 0))
+                       *min-s-rank-strategies-for-live*
+                       1))
+         (s-count (count-if (lambda (s) (eq (strategy-rank s) :S))
+                            *strategy-knowledge-base*)))
+    (if (>= s-count required)
         t
         (progn
           ;; Throttled logging (every 5 mins)
           (when (= (mod (get-universal-time) 300) 0)
-             (format t "[GATE] 🛑 Demo Trading Blocked: Only ~d/5 S-Rank strategies ready.~%" s-count))
+            (format t "[GATE] 🛑 Live Trading Blocked: Only ~d/~d S-Rank strategies ready.~%"
+                    s-count required))
           nil))))
 
 (defun process-category-trades (symbol bid ask)
@@ -527,16 +570,25 @@
                                   (> sharpe-a sharpe-b)))))
                        (top-sig (first all-sorted))
                        (top-name (when top-sig (getf top-sig :strategy-name)))
-                       (top-cat (when top-sig (getf top-sig :category)))
-                       (top-cache (when top-name (get-cached-backtest top-name)))
-                       (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                   (top-cat (when top-sig (getf top-sig :category)))
+                   (top-cache (when top-name (get-cached-backtest top-name)))
+                   (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
                   (when top-sig
                     (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
                             top-name top-cat top-sharpe (length strat-signals))
                     (let* ((direction (getf top-sig :direction))
+                           (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
+                           (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
                            (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                      (when (can-category-trade-p strat-key)
-                        (let ((trade-executed (execute-category-trade top-cat direction symbol bid ask)))
+                      (when (<= confidence-lot-mult 0.0)
+                        (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
+                                top-name signal-confidence *signal-confidence-entry-threshold*))
+                      (when (and (> confidence-lot-mult 0.0)
+                                 (can-category-trade-p strat-key))
+                        (let ((trade-executed
+                                (execute-category-trade top-cat direction symbol bid ask
+                                                        :lot-multiplier confidence-lot-mult
+                                                        :signal-confidence signal-confidence)))
                           (when trade-executed
                             (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
                             (record-category-trade-time strat-key)
@@ -566,7 +618,26 @@
 
 (defun recruit-special-forces ()
   (force-recruit-strategy "T-Nakane-Gotobi")
-  (maphash (lambda (key val) (declare (ignore val)) (recruit-founder key)) *founder-registry*))
+  (let ((known-names (make-hash-table :test 'equal))
+        (recruited 0))
+    (dolist (s *strategy-knowledge-base*)
+      (let ((name (and s (strategy-name s))))
+        (when (and name (stringp name))
+          (setf (gethash name known-names) t))))
+    (maphash
+     (lambda (key maker-func)
+       (when (functionp maker-func)
+         (let ((proto (handler-case (funcall maker-func)
+                        (error () nil))))
+           (when proto
+             (let ((name (strategy-name proto)))
+               (unless (and name (gethash name known-names))
+                 (when (recruit-founder key)
+                   (incf recruited))
+                 (when name
+                   (setf (gethash name known-names) t))))))))
+     *founder-registry*)
+    (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts~%" recruited)))
 
 (defun safely-load-hunter-strategies ()
   "Load Hunter strategies. P9: Split into core + auto files."

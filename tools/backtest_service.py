@@ -17,6 +17,9 @@ import subprocess
 import time
 import os
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import contextlib
 
 import sys
 from pathlib import Path
@@ -52,6 +55,20 @@ def _env_int(key: str, default: int) -> int:
 BACKTEST_REQ_PORT = _env_int("SWIMMY_PORT_BACKTEST_REQ", 5580)
 BACKTEST_RES_PORT = _env_int("SWIMMY_PORT_BACKTEST_RES", 5581)
 
+
+def _default_worker_count() -> int:
+    cpu = os.cpu_count() or 1
+    return max(1, min(4, cpu))
+
+
+def _resolve_worker_count() -> int:
+    return max(1, _env_int("SWIMMY_BACKTEST_WORKERS", _default_worker_count()))
+
+
+def _resolve_max_inflight(worker_count: int) -> int:
+    baseline = max(1, worker_count * 2)
+    return max(worker_count, _env_int("SWIMMY_BACKTEST_MAX_INFLIGHT", baseline))
+
 # Force unbuffered output for debugging
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -70,6 +87,18 @@ _STRATEGY_FIELDS = {
     "filter_logic",
 }
 _INDICATOR_TYPES = {"sma", "ema", "rsi", "macd", "bb", "stoch"}
+_OPTIONAL_LIST_KEYS = (
+    "data_id",
+    "candles_file",
+    "start_time",
+    "end_time",
+    "timeframe",
+    "phase",
+    "range_id",
+    "aux_candles",
+    "aux_candles_files",
+    "swap_history",
+)
 
 def _post_webhook(url: str, payload: dict) -> bool:
     try:
@@ -134,19 +163,44 @@ def _format_guardian_preview(msg: str, limit: int = 240) -> str:
 
 def _normalize_sexp_key(key):
     if isinstance(key, str):
+        key = key.strip()
+        if "::" in key:
+            key = key.rsplit("::", 1)[-1]
+        elif ":" in key and not key.startswith(":"):
+            key = key.rsplit(":", 1)[-1]
         if key.startswith(":"):
             key = key[1:]
         return key.replace("-", "_").lower()
     return str(key)
 
 
+def _as_pair_like(item):
+    if isinstance(item, tuple) and len(item) == 2:
+        return item[0], item[1]
+    if isinstance(item, list) and len(item) >= 2 and isinstance(item[0], str):
+        if len(item) == 2:
+            return item[0], item[1]
+        # Dotted-pair shorthand like: (strategy (k . v) (k2 . v2) ...)
+        return item[0], item[1:]
+    return None
+
+
 def _sexp_to_python(obj):
     if isinstance(obj, tuple) and len(obj) == 2:
         return (_normalize_sexp_key(obj[0]), _sexp_to_python(obj[1]))
     if isinstance(obj, list):
-        # List of pairs (tuple or 2-item list) -> dict
-        if obj and all(isinstance(x, (tuple, list)) and len(x) == 2 for x in obj):
-            return {_normalize_sexp_key(k): _sexp_to_python(v) for k, v in obj}
+        # List of pairs -> dict.
+        if obj:
+            pairs = []
+            pairish = True
+            for item in obj:
+                pair = _as_pair_like(item)
+                if pair is None:
+                    pairish = False
+                    break
+                pairs.append(pair)
+            if pairish:
+                return {_normalize_sexp_key(k): _sexp_to_python(v) for k, v in pairs}
         # Alternating key/value list -> dict
         if len(obj) % 2 == 0 and all(isinstance(obj[i], str) for i in range(0, len(obj), 2)):
             return {_normalize_sexp_key(obj[i]): _sexp_to_python(obj[i + 1]) for i in range(0, len(obj), 2)}
@@ -159,6 +213,23 @@ def _parse_incoming_message(msg: str):
     if msg.lstrip().startswith("("):
         return "sexpr", msg.strip()
     return None, None
+
+
+def _normalize_backtest_sexpr(msg: str) -> str:
+    """Canonicalize incoming BACKTEST S-expression for guardian compatibility."""
+    text = (msg or "").strip()
+    if not text or not text.startswith("("):
+        return text
+    try:
+        payload = _sexp_to_python(parse_sexp(text))
+    except (SexpParseError, ValueError, TypeError):
+        return text
+    if not isinstance(payload, dict):
+        return text
+    action = str(payload.get("action", "")).strip().upper()
+    if action != "BACKTEST":
+        return text
+    return _sexp_serialize(payload)
 
 
 
@@ -258,13 +329,17 @@ class BacktestService:
     def __init__(self, use_zmq=True):
         self.context = zmq.Context()
         self.data_cache = {}  # Data store: {data_id: candles}
-        self.guardian_process = None  # Persistent process
         self.use_zmq = use_zmq
+        self.worker_count = _resolve_worker_count()
+        self.max_inflight = _resolve_max_inflight(self.worker_count)
         self._error_dumped = 0
         self._guardian_missing_logged_at = 0.0
         self._guardian_missing_log_interval = 60.0
         self._guardian_missing_alert_at = 0.0
         self._guardian_missing_alert_interval = 600.0
+        self._thread_local = threading.local()
+        self._guardian_processes = set()
+        self._guardian_processes_lock = threading.Lock()
 
         if self.use_zmq:
             # Receive backtest requests
@@ -394,7 +469,7 @@ class BacktestService:
                 },
             }
 
-        input_data = msg.strip()
+        input_data = _normalize_backtest_sexpr(msg)
         try:
             proc.stdin.write(input_data + "\n")
             proc.stdin.flush()
@@ -529,13 +604,14 @@ class BacktestService:
                 print(f"[BACKTEST-SVC] ⚠️ Skipping non-result output: {output_line}")
 
     def _get_guardian_process(self):
-        """Lazy initialization of persistent Guardian process"""
+        """Thread-local lazy initialization of persistent Guardian process."""
         if not self._refresh_guardian_bin():
             return None
-        if self.guardian_process is None or self.guardian_process.poll() is not None:
-            self._reset_guardian_process()
+        proc = getattr(self._thread_local, "guardian_process", None)
+        if proc is None or proc.poll() is not None:
+            self._reset_guardian_process(proc=proc)
             print("[BACKTEST-SVC] 🔄 Spawning new Guardian process...")
-            self.guardian_process = subprocess.Popen(
+            proc = subprocess.Popen(
                 [str(self.guardian_bin), "--backtest-only", "--stdin"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -545,11 +621,14 @@ class BacktestService:
                 close_fds=True,
                 start_new_session=True,
             )
-        return self.guardian_process
+            self._thread_local.guardian_process = proc
+            with self._guardian_processes_lock:
+                self._guardian_processes.add(proc)
+        return proc
 
-    def _reset_guardian_process(self):
-        """Close pipes and terminate guardian process to prevent FD leaks."""
-        proc = self.guardian_process
+    @staticmethod
+    def _terminate_guardian_process(proc):
+        """Close pipes and terminate a guardian process to prevent FD leaks."""
         if not proc:
             return
         try:
@@ -571,58 +650,120 @@ class BacktestService:
                 proc.kill()
             except Exception:
                 pass
-        self.guardian_process = None
+        with contextlib.suppress(Exception):
+            proc.wait(timeout=0.5)
+
+    def _reset_guardian_process(self, proc=None):
+        """Reset thread-local guardian process (or explicit process handle)."""
+        target = proc
+        if target is None:
+            target = getattr(self._thread_local, "guardian_process", None)
+        if not target:
+            return
+        self._terminate_guardian_process(target)
+        with self._guardian_processes_lock:
+            self._guardian_processes.discard(target)
+        if getattr(self._thread_local, "guardian_process", None) is target:
+            self._thread_local.guardian_process = None
+
+    def _cleanup_guardian_processes(self):
+        """Terminate all known guardian worker processes."""
+        with self._guardian_processes_lock:
+            procs = list(self._guardian_processes)
+            self._guardian_processes.clear()
+        for proc in procs:
+            self._terminate_guardian_process(proc)
+        self._thread_local.guardian_process = None
 
     def run(self):
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
         print("[BACKTEST-SVC] 🧪 Backtest Service Started (Persistent Mode)")
         print(f"[BACKTEST-SVC] Listening on port {BACKTEST_REQ_PORT}")
         print(f"[BACKTEST-SVC] Guardian binary: {self.guardian_bin}")
+        print(
+            f"[BACKTEST-SVC] Workers: {self.worker_count} | Max inflight: {self.max_inflight}"
+        )
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
 
+        if not self.use_zmq:
+            raise RuntimeError("BacktestService.run requires use_zmq=True")
+
         dump_incoming = _should_dump_incoming()
+        poller = zmq.Poller()
+        poller.register(self.receiver, zmq.POLLIN)
+        inflight = set()
+
+        def _send_result(result):
+            if result is None:
+                return
+            if isinstance(result, str):
+                out = result.strip()
+                if out.startswith("{"):
+                    try:
+                        obj = json.loads(out)
+                    except Exception:
+                        obj = None
+                    if isinstance(obj, dict):
+                        out = _sexp_serialize(obj)
+                self.sender.send_string(out)
+            else:
+                self.sender.send_string(_sexp_serialize(result))
+
+        def _drain_done_futures():
+            done = [f for f in list(inflight) if f.done()]
+            for fut in done:
+                inflight.discard(fut)
+                try:
+                    _send_result(fut.result())
+                except Exception as e:
+                    print(f"[BACKTEST-SVC] ❌ Worker future failed: {e}")
 
         try:
-            while True:
-                try:
-                    msg = self.receiver.recv_string()
-                    kind, payload = _parse_incoming_message(msg)
-
-                    if dump_incoming:
-                        label = "SXP" if kind == "sexpr" else "RAW"
-                        preview_src = payload if payload is not None else msg
-                        print(f"[BACKTEST-SVC] IN {label}: {_format_incoming_preview(preview_src)}")
-
-                    if kind == "sexpr":
-                        result = self._handle_sexpr(payload)
-                        if result is None:
+            with ThreadPoolExecutor(
+                max_workers=self.worker_count, thread_name_prefix="bt-worker"
+            ) as executor:
+                while True:
+                    try:
+                        _drain_done_futures()
+                        timeout_ms = 25 if inflight else 250
+                        events = dict(poller.poll(timeout_ms))
+                        if self.receiver not in events:
                             continue
-                        # Internal ZMQ is S-expression only (JSON is not accepted).
-                        if isinstance(result, str):
-                            out = result.strip()
-                            if out.startswith("{"):
-                                try:
-                                    obj = json.loads(out)
-                                except Exception:
-                                    obj = None
-                                if isinstance(obj, dict):
-                                    out = _sexp_serialize(obj)
-                            self.sender.send_string(out)
-                        else:
-                            self.sender.send_string(_sexp_serialize(result))
-                        continue
 
-                    if msg.strip():
-                        print("[BACKTEST-SVC] ⚠️ Ignoring non-S-expression message")
-                except Exception as e:
-                    print(f"[BACKTEST-SVC] Error in loop: {e}")
-                    # If fatal, maybe break or restart?
-                    # Keep loop alive.
+                        # Bound in-flight tasks to avoid unbounded memory growth.
+                        while len(inflight) < self.max_inflight:
+                            try:
+                                msg = self.receiver.recv_string(flags=zmq.NOBLOCK)
+                            except zmq.Again:
+                                break
+                            kind, payload = _parse_incoming_message(msg)
 
+                            if dump_incoming:
+                                label = "SXP" if kind == "sexpr" else "RAW"
+                                preview_src = payload if payload is not None else msg
+                                print(
+                                    f"[BACKTEST-SVC] IN {label}: {_format_incoming_preview(preview_src)}"
+                                )
+
+                            if kind == "sexpr":
+                                inflight.add(executor.submit(self._handle_sexpr, payload))
+                                continue
+
+                            if msg.strip():
+                                print("[BACKTEST-SVC] ⚠️ Ignoring non-S-expression message")
+                    except Exception as e:
+                        print(f"[BACKTEST-SVC] Error in loop: {e}")
         except KeyboardInterrupt:
             print("\n[BACKTEST-SVC] Stopping...")
-            if self.guardian_process:
-                self._reset_guardian_process()
+        finally:
+            # Flush completed futures before shutdown.
+            for fut in list(inflight):
+                if not fut.done():
+                    continue
+                inflight.discard(fut)
+                with contextlib.suppress(Exception):
+                    _send_result(fut.result())
+            self._cleanup_guardian_processes()
 
     def run_backtest(self, request):
         """Execute backtest via persistent guardian subprocess"""

@@ -77,6 +77,27 @@ def main():
     assert "\n" not in out_preview and "\r" not in out_preview
     assert len(out_preview) <= 35
 
+    # Worker count helpers
+    saved_workers = os.environ.get("SWIMMY_BACKTEST_WORKERS")
+    orig_cpu_count = svc.os.cpu_count
+    try:
+        svc.os.cpu_count = lambda: 8
+        os.environ.pop("SWIMMY_BACKTEST_WORKERS", None)
+        assert svc._default_worker_count() == 4
+        assert svc._resolve_worker_count() == 4
+
+        os.environ["SWIMMY_BACKTEST_WORKERS"] = "3"
+        assert svc._resolve_worker_count() == 3
+
+        os.environ["SWIMMY_BACKTEST_WORKERS"] = "0"
+        assert svc._resolve_worker_count() == 1
+    finally:
+        svc.os.cpu_count = orig_cpu_count
+        if saved_workers is None:
+            os.environ.pop("SWIMMY_BACKTEST_WORKERS", None)
+        else:
+            os.environ["SWIMMY_BACKTEST_WORKERS"] = saved_workers
+
     # Inject request_id into guardian result without dotted (result .) form
     sexp = '((type . "BACKTEST_RESULT") (result ((strategy_name . "UT") (sharpe . 0.1))))'
     injected = svc.BacktestService._inject_request_id_into_sexpr(sexp, "RID-LIST")
@@ -107,6 +128,33 @@ def main():
     _assert_in("swap_history", payload, "swap_history")
     _assert_in("phase", payload, "phase")
     _assert_in("range_id", payload, "range_id")
+
+    # Incoming SEXP should be normalized for bool fields before guardian parse
+    raw = (
+        '((action . "BACKTEST") '
+        '(strategy ((name . "UT") (sma_short . 5) (sma_long . 20) '
+        '(sl . 0.1) (tp . 0.2) (volume . 0.01) (indicator_type . sma) '
+        '(filter_enabled . t) (filter_tf . "") (filter_period . 0) (filter_logic . ""))) '
+        '(request_id . "RID-BOOL") (candles_file . "/tmp/x.csv") (timeframe . 1440))'
+    )
+    normalized = svc._normalize_backtest_sexpr(raw)
+    _assert_in("(filter_enabled . #t)", normalized, "filter_enabled normalized true")
+    if "(filter_enabled . t)" in normalized:
+        raise AssertionError("filter_enabled symbol 't' should not be forwarded to guardian")
+
+    # Incoming SEXP with dotted-pair shorthand should also normalize bools.
+    raw_shorthand = (
+        '((action . "BACKTEST") '
+        '(strategy (name . "UT-SHORT") (sma_short . 5) (sma_long . 20) '
+        '(sl . 0.1) (tp . 0.2) (volume . 0.01) (indicator_type . sma) '
+        '(filter_enabled . t) (filter_tf . "") (filter_period . 0) (filter_logic . "")) '
+        '(request_id . "RID-BOOL-SHORT") (data_id "USDJPY_M1") '
+        '(candles_file "/tmp/x.csv") (symbol . "USDJPY") (timeframe 1440))'
+    )
+    normalized_shorthand = svc._normalize_backtest_sexpr(raw_shorthand)
+    _assert_in("(filter_enabled . #t)", normalized_shorthand, "shorthand filter_enabled normalized true")
+    if "(filter_enabled . t)" in normalized_shorthand:
+        raise AssertionError("shorthand bool symbol 't' should not be forwarded to guardian")
 
     print("ok")
 

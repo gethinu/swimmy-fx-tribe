@@ -52,6 +52,37 @@
         (mut-pos (search "-mut" name)))
     (subseq name 0 (or gen-pos mut-pos (length name)))))
 
+(defun mutate-sltp-with-pfwr-bias (strategy &key (factor 0.15))
+  "Mutate SL/TP and apply PF/WR bias when available."
+  (let* ((base-sl (max 0.0001 (float (or (strategy-sl strategy) 0.01))))
+         (base-tp (max 0.0001 (float (or (strategy-tp strategy) 0.01))))
+         (delta-sl (* base-sl factor (+ -1.0 (* 2.0 (random 1.0)))))
+         (delta-tp (* base-tp factor (+ -1.0 (* 2.0 (random 1.0)))))
+         (mut-sl (max 0.0001 (+ base-sl delta-sl)))
+         (mut-tp (max 0.0001 (+ base-tp delta-tp))))
+    (let ((bias-fn (and (fboundp 'apply-pfwr-mutation-bias)
+                        (symbol-function 'apply-pfwr-mutation-bias))))
+      (when bias-fn
+        (multiple-value-bind (biased-sl biased-tp)
+            (funcall bias-fn mut-sl mut-tp strategy strategy)
+          (setf mut-sl (max 0.0001 (float (or biased-sl mut-sl)))
+                mut-tp (max 0.0001 (float (or biased-tp mut-tp)))))))
+    ;; Evolution path uses one parent, so add a small directional RR nudge.
+    (let ((gap-fn (and (fboundp 'pfwr-gap-profile)
+                       (symbol-function 'pfwr-gap-profile))))
+      (when gap-fn
+        (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
+            (funcall gap-fn strategy strategy)
+          (let* ((rr (/ mut-tp mut-sl))
+                 (delta (- pf-gap-ratio wr-gap-ratio))
+                 (nudged-rr (max 0.4 (min 4.0 (+ rr (* 0.6 delta)))))
+                 (risk-budget (+ mut-sl mut-tp))
+                 (adj-sl (/ risk-budget (+ 1.0 nudged-rr)))
+                 (adj-tp (- risk-budget adj-sl)))
+            (setf mut-sl (max 0.0001 adj-sl)
+                  mut-tp (max 0.0001 adj-tp))))))
+    (values mut-sl mut-tp)))
+
 (defun mutate-strategy-param (strategy param-type old-val new-val)
   "Create a new strategy with a specific parameter mutated"
   (let* ((old-name (strategy-name strategy))
@@ -90,18 +121,20 @@
           (new-exit (rewrite-logic-symbols exit old-val new-val param-type)))
 
       ;; 3. Create New Strategy Object
-      (make-strategy
-       :name new-name
-       :indicators indicators
-       :entry new-entry
-       :exit new-exit
-       :sl (strategy-sl strategy)
-       :tp (strategy-tp strategy)
-       :volume (strategy-volume strategy)
-       :category (strategy-category strategy)
-       :indicator-type (strategy-indicator-type strategy)
-       :timeframe (strategy-timeframe strategy)
-       :generation new-gen))))
+      (multiple-value-bind (new-sl new-tp)
+          (mutate-sltp-with-pfwr-bias strategy)
+        (make-strategy
+         :name new-name
+         :indicators indicators
+         :entry new-entry
+         :exit new-exit
+         :sl new-sl
+         :tp new-tp
+         :volume (strategy-volume strategy)
+         :category (strategy-category strategy)
+         :indicator-type (strategy-indicator-type strategy)
+         :timeframe (strategy-timeframe strategy)
+         :generation new-gen)))))
 
 ;;; ==========================================
 ;;; GLOBAL CONSTANTS (Refactored per Uncle Bob)
@@ -133,18 +166,20 @@
 
          (new-name (format nil "~a-Gen~d-mut-TF~d-~a" root new-gen new-tf ts-str)))
 
-    (make-strategy
-      :name new-name
-      :indicators (copy-tree (strategy-indicators strategy))
-      :entry (copy-tree (strategy-entry strategy))
-      :exit (copy-tree (strategy-exit strategy))
-      :sl (strategy-sl strategy)
-      :tp (strategy-tp strategy)
-      :volume (strategy-volume strategy)
-      :category (strategy-category strategy)
-      :indicator-type (strategy-indicator-type strategy)
-      :timeframe new-tf
-      :generation new-gen)))
+    (multiple-value-bind (new-sl new-tp)
+        (mutate-sltp-with-pfwr-bias strategy)
+      (make-strategy
+        :name new-name
+        :indicators (copy-tree (strategy-indicators strategy))
+        :entry (copy-tree (strategy-entry strategy))
+        :exit (copy-tree (strategy-exit strategy))
+        :sl new-sl
+        :tp new-tp
+        :volume (strategy-volume strategy)
+        :category (strategy-category strategy)
+        :indicator-type (strategy-indicator-type strategy)
+        :timeframe new-tf
+        :generation new-gen))))
 
 (defun evolve-strategy (strategy)
   "Attempt to evolve a strategy by mutating one of its parameters."

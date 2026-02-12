@@ -27,6 +27,57 @@
 (defconstant +color-status+    10070709 "Dark Gray")
 
 ;;; ==========================================
+;;; CPCV ALERT DE-DUPE
+;;; ==========================================
+(defparameter *cpcv-notify-dedupe-window* 600
+  "Seconds to suppress duplicate CPCV per-strategy alert payloads.")
+(defparameter *cpcv-notify-prune-interval* 300
+  "Seconds between CPCV dedupe cache pruning.")
+(defvar *cpcv-notify-cache* (make-hash-table :test 'equal)
+  "Fingerprint -> last notify timestamp for CPCV per-strategy alerts.")
+(defvar *cpcv-notify-last-prune* 0
+  "Last prune timestamp for CPCV dedupe cache.")
+
+(defun cpcv-notify-fingerprint (name status-key median-sharpe paths passed failed pass-rate error-msg)
+  "Build a stable fingerprint for CPCV per-strategy alert de-dupe."
+  (list (or name "Unknown")
+        status-key
+        (round (* 1000 (float (or median-sharpe 0.0))))
+        (max 0 (truncate (or paths 0)))
+        (max 0 (truncate (or passed 0)))
+        (max 0 (truncate (or failed 0)))
+        (round (* 1000 (float (or pass-rate 0.0))))
+        (and error-msg
+             (string-downcase
+              (subseq (format nil "~a" error-msg)
+                      0
+                      (min 96 (length (format nil "~a" error-msg))))))))
+
+(defun maybe-prune-cpcv-notify-cache (&optional (now (get-universal-time)))
+  "Prune stale CPCV alert dedupe entries."
+  (when (> (- now *cpcv-notify-last-prune*) *cpcv-notify-prune-interval*)
+    (setf *cpcv-notify-last-prune* now)
+    (if (<= *cpcv-notify-dedupe-window* 0)
+        (clrhash *cpcv-notify-cache*)
+        (let ((cutoff (- now *cpcv-notify-dedupe-window*)))
+          (maphash (lambda (k ts)
+                     (when (< ts cutoff)
+                       (remhash k *cpcv-notify-cache*)))
+                   *cpcv-notify-cache*)))))
+
+(defun should-send-cpcv-notify-p (fingerprint &optional (now (get-universal-time)))
+  "Return T when CPCV per-strategy alert should be sent; NIL when deduped."
+  (when (<= *cpcv-notify-dedupe-window* 0)
+    (return-from should-send-cpcv-notify-p t))
+  (maybe-prune-cpcv-notify-cache now)
+  (let ((last (gethash fingerprint *cpcv-notify-cache*)))
+    (if (and last (< (- now last) *cpcv-notify-dedupe-window*))
+        nil
+        (progn
+          (setf (gethash fingerprint *cpcv-notify-cache*) now)
+          t))))
+
+;;; ==========================================
 ;;; BATCHED ALERTS (Max Age Retirement)
 ;;; ==========================================
 (defparameter *max-age-retire-batch-interval* 3600 "Seconds to batch Max Age Retirement alerts")
@@ -280,7 +331,31 @@
 
     (let* ((category-map (make-hash-table :test 'equal))
            (title (if (eq type :qual) "📊 **Qualification Batch (Incubator)**" "📊 **Round-Robin KB Batch**"))
-           (report-msg (format nil "~a~%⏰ ~a~%~%Progress: ~d/~d results received.~%~%" 
+           (a-stage1-counts
+             (when (and results (fboundp 'swimmy.school::a-stage1-failure-counts))
+               (let ((synthetic
+                       (mapcar
+                        (lambda (res)
+                          (let* ((name (or (car res) "Unknown"))
+                                 (metrics (cdr res))
+                                 (sharpe (or (getf metrics :sharpe) 0.0))
+                                 (pf (or (getf metrics :profit-factor) (getf metrics :pf) 0.0))
+                                 (wr (or (getf metrics :win-rate) (getf metrics :wr) 0.0))
+                                 (maxdd (or (getf metrics :max-dd) (getf metrics :max_dd) 1.0)))
+                            (swimmy.school:make-strategy
+                             :name name
+                             :sharpe (float sharpe)
+                             :profit-factor (float pf)
+                             :win-rate (float wr)
+                             :max-dd (float maxdd))))
+                        results)))
+                 (funcall (symbol-function 'swimmy.school::a-stage1-failure-counts) synthetic))))
+           (a-stage1-line
+             (when (and a-stage1-counts (fboundp 'swimmy.school::a-stage1-failure-summary-line))
+               (funcall (symbol-function 'swimmy.school::a-stage1-failure-summary-line)
+                        a-stage1-counts
+                        :label "A Stage1 Failures (Batch)")))
+           (report-msg (format nil "~a~%⏰ ~a~%~%Progress: ~d/~d results received.~%~%"
                                title (get-jst-timestamp) (length results) expected)))
     
       ;; 0. Rank Distribution (Only for RR cycles or if KB is relevant)
@@ -293,6 +368,9 @@
           (setf report-msg (concatenate 'string report-msg
                                         (format nil "**Current Rank Distribution:**~%🏆 S-Rank: ~d | 🎯 A-Rank: ~d | 📋 B-Rank: ~d~%⚰️ Graveyard/Pending: ~d~%~%"
                                                 s-count a-count b-count grave-count)))))
+
+      (when a-stage1-line
+        (setf report-msg (concatenate 'string report-msg a-stage1-line "~%~%")))
 
       ;; 1. Group results by category
       (dolist (res results)
@@ -374,6 +452,8 @@
                         (:passed "PASSED")
                         (:error "ERROR")
                         (t "FAILED")))
+         (fingerprint (cpcv-notify-fingerprint
+                       name status-key median-sharpe paths passed failed pass-rate error-msg))
          (outcome-text (case status-key
                          (:passed "PASSED")
                          (:error "ERROR (runtime)")
@@ -381,7 +461,10 @@
          (color (if (eq status-key :passed) +color-success+ +color-alert+)) ; Green if passed, Red if failed
          (msg (format nil "~a **CPCV Validation: ~a**~%Strategy: `~a`~%~%**Metrics:**~%• Median Sharpe: ~,2f~%• Paths: ~d~%• Result: ~d Passed / ~d Failed (~,1f%)~%~%**Outcome:** ~a~%~@[**Error:** ~a~%~]"
                       status-emoji status-text name median-sharpe paths passed failed (* 100 pass-rate) outcome-text error-msg)))
-    (notify-discord-alert msg :color color)
+    (if (should-send-cpcv-notify-p fingerprint)
+        (notify-discord-alert msg :color color)
+        (format t "[CPCV] 🔇 Duplicate per-strategy alert suppressed for ~a (~a).~%"
+                name status-text))
     ;; V48.5: Performance Persistence (Expert Panel P3)
     (log-cpcv-to-file data)))
 

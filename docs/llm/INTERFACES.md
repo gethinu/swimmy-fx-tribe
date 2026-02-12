@@ -233,6 +233,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
  (symbol . "USDJPY")
  (timeframe 1))                   ; Option<i64>
 ```
+**Bool値の表現（内部S式）**: `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルは Guardian `serde_lexpr` の bool デコードと不整合を起こすため、Backtest/CPCV 送信時は `#t/#f` に正規化して送る。
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
 **必須**: `result` 内に `request_id`（相関ID）。
@@ -295,7 +296,7 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
                      ;; optional (strategy-to-alistが持つキー)
                      (indicator_type . rsi)
                      (timeframe . 60)              ; minutes (H1=60)
-                     (filter_enabled . t)
+                     (filter_enabled . #t)
                      (filter_tf . "D1")
                      (filter_period . 200)
                      (filter_logic . "PRICE_ABOVE_SMA"))))) ; 必須(空でも可)

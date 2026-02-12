@@ -547,6 +547,43 @@
 (defparameter *last-qual-cycle* 0)
 (defparameter *qual-cycle-interval* 300
   "Minimum seconds between qualification batches.")
+(defparameter *qualification-rename-seq* 0
+  "Monotonic suffix used when QUAL candidates must be renamed.")
+
+(defun %normalize-db-rank-token (rank)
+  "Normalize DB rank token to uppercase without leading colon."
+  (let* ((raw (cond
+                ((null rank) "")
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun %archived-db-rank-p (rank)
+  "Return T when DB rank is archived and should not be reused for new QUAL candidates."
+  (member (%normalize-db-rank-token rank)
+          '("RETIRED" "GRAVEYARD")
+          :test #'string=))
+
+(defun ensure-qualification-candidate-name-unique (strat)
+  "Rename candidate when its current name collides with archived DB rows."
+  (let* ((current-name (strategy-name strat))
+         (db-rank (ignore-errors
+                    (execute-single "SELECT rank FROM strategies WHERE name = ?"
+                                    current-name))))
+    (when (%archived-db-rank-p db-rank)
+      (incf *qualification-rename-seq*)
+      (let ((new-name (format nil "~a-QUAL-~a-~d"
+                              current-name
+                              (get-universal-time)
+                              *qualification-rename-seq*)))
+        (setf (strategy-name strat) new-name)
+        (format t "[QUALIFY] ♻️ Renamed archived collision: ~a -> ~a (rank=~a)~%"
+                current-name new-name db-rank))))
+  strat)
 
 (defun run-qualification-cycle ()
   "V47.8 Phase 3: Loop through strategies needing backtest."
@@ -556,18 +593,28 @@
       (format t "[QUALIFY] ⏳ Skipping (cooldown ~d sec)~%" *qual-cycle-interval*)
       (return-from run-qualification-cycle nil))
     (setf *last-qual-cycle* now))
-  (let ((candidates (remove-if-not
-                     (lambda (s)
-                       (and (or (null (strategy-rank s))
-                                (eq (strategy-rank s) :incubator))
-                            (= (or (strategy-trades s) 0) 0)
-                            (= (or (strategy-sharpe s) 0.0) 0.0)))
-                     *strategy-knowledge-base*))
-        (limit 50)
-        (attempted 0)
-        (accepted 0))
+  (let* ((all-candidates (remove-if-not
+                          (lambda (s)
+                            (and (or (null (strategy-rank s))
+                                     (eq (strategy-rank s) :incubator))
+                                 (= (or (strategy-trades s) 0) 0)
+                                 (= (or (strategy-sharpe s) 0.0) 0.0)))
+                          *strategy-knowledge-base*))
+         (incubator-candidates (remove-if-not (lambda (s) (eq (strategy-rank s) :incubator))
+                                              all-candidates))
+         (scout-candidates (remove-if (lambda (s) (eq (strategy-rank s) :incubator))
+                                      all-candidates))
+         ;; Prioritize incubator backlog so newborns are not starved by scout candidates.
+         (candidates (append incubator-candidates scout-candidates))
+	        (limit 50)
+	        (attempted 0)
+	        (accepted 0))
     
-    (format t "[QUALIFY] found ~d candidates.~%" (length candidates))
+    (format t "[QUALIFY] found ~d candidates.~%" (length all-candidates))
+    (when (> (length incubator-candidates) 0)
+      (format t "[QUALIFY] 🎯 Prioritizing ~d incubator candidates before scouts (~d).~%"
+              (length incubator-candidates)
+              (length scout-candidates)))
     
     ;; Expected count tracks only accepted dispatches.
     (setf swimmy.globals:*qual-expected-backtest-count* 0)
@@ -577,6 +624,7 @@
     (dolist (strat candidates)
       (when (< attempted limit)
         (incf attempted)
+        (ensure-qualification-candidate-name-unique strat)
         ;; Request backtest with -QUAL suffix to route results correctly
         (let ((dispatch-state (request-backtest strat :suffix "-QUAL")))
           (if (backtest-dispatch-accepted-p dispatch-state)

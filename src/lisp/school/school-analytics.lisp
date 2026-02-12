@@ -240,5 +240,5 @@ CURRENT MARKET: Regime=~a, Volatility=~a
       (setf *accumulated-pnl* total-pnl)
       (setf *all-time-win-rate* (if (> total 0) (* 100.0 (/ wins total)) 50.0))
       
-      (format t "[STATS] 📊 Global Stats Updated: ~d wins / ~d total (~,1f%), PnL: ¥~,0f~%"
-              wins total *all-time-win-rate* total-pnl))))
+      (format t "[STATS] 📊 Global Stats Updated: ~d wins / ~d total (~,1f%), PnL: ¥~d~%"
+              wins total *all-time-win-rate* (round total-pnl)))))

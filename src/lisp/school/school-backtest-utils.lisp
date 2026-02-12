@@ -15,7 +15,23 @@
 (defvar *backtest-send-queue* nil
   "Queue of backtest messages awaiting requester readiness.")
 
-(defvar *backtest-send-queue-max* 5000
+(defvar *backtest-send-queue-tail* nil
+  "Tail cons of backtest send queue for O(1) enqueue.")
+
+(defvar *backtest-send-queue-count* 0
+  "Number of queued backtest messages.")
+
+(defun resolve-backtest-send-queue-max (&optional (fallback 5000))
+  "Resolve queue max from SWIMMY_BACKTEST_SEND_QUEUE_MAX."
+  (let* ((default (if (and (integerp fallback) (> fallback 0)) fallback 5000))
+         (raw (ignore-errors (uiop:getenv "SWIMMY_BACKTEST_SEND_QUEUE_MAX")))
+         (parsed (and (stringp raw)
+                      (ignore-errors (parse-integer raw :junk-allowed nil)))))
+    (if (and (integerp parsed) (> parsed 0))
+        parsed
+        default)))
+
+(defvar *backtest-send-queue-max* (resolve-backtest-send-queue-max 5000)
   "Max queued backtest messages before dropping.")
 
 (defparameter *backtest-queue-last-flush* 0
@@ -65,20 +81,44 @@
   (and dispatch-state
        (not (eq dispatch-state :throttled))))
 
+(defun sync-backtest-send-queue-metadata ()
+  "Repair queue metadata when tests or callers directly mutate the queue list."
+  (cond
+    ((null *backtest-send-queue*)
+     (setf *backtest-send-queue-count* 0
+           *backtest-send-queue-tail* nil))
+    ((or (<= *backtest-send-queue-count* 0)
+         (null *backtest-send-queue-tail*))
+     (setf *backtest-send-queue-count* (length *backtest-send-queue*)
+           *backtest-send-queue-tail* (last *backtest-send-queue*)))))
+
 (defun enqueue-backtest-msg (msg)
   "Enqueue a backtest message if queue capacity allows."
-  (when (< (length *backtest-send-queue*) *backtest-send-queue-max*)
-    (setf *backtest-send-queue* (nconc *backtest-send-queue* (list msg)))
-    t))
+  (sync-backtest-send-queue-metadata)
+  (when (< *backtest-send-queue-count* *backtest-send-queue-max*)
+    (let ((node (list msg)))
+      (if *backtest-send-queue*
+          (setf (cdr *backtest-send-queue-tail*) node
+                *backtest-send-queue-tail* node)
+          (setf *backtest-send-queue* node
+                *backtest-send-queue-tail* node))
+      (incf *backtest-send-queue-count*)
+      t)))
 
 (defun flush-backtest-queue ()
   "Flush queued backtest messages once requester is ready."
+  (sync-backtest-send-queue-metadata)
   (when (and (boundp 'swimmy.globals:*backtest-requester*)
              swimmy.globals:*backtest-requester*)
     (loop while *backtest-send-queue*
           do (when (>= (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
                (return))
              (let ((msg (pop *backtest-send-queue*)))
+               (when (> *backtest-send-queue-count* 0)
+                 (decf *backtest-send-queue-count*))
+               (when (null *backtest-send-queue*)
+                 (setf *backtest-send-queue-tail* nil
+                       *backtest-send-queue-count* 0))
                (incf swimmy.globals::*backtest-submit-count*)
                (setf swimmy.globals::*backtest-last-send-ts* (backtest-now-seconds))
                (pzmq:send swimmy.globals:*backtest-requester* msg)))))
@@ -90,7 +130,7 @@
 (defun maybe-flush-backtest-send-queue (&optional (now (get-universal-time)))
   "Flush queued backtest messages when interval has elapsed."
   (when (and *backtest-send-queue*
-             (> (- now *backtest-queue-last-flush*)
+             (>= (- now *backtest-queue-last-flush*)
                 *backtest-queue-flush-interval-sec*))
     (setf *backtest-queue-last-flush* now)
     (flush-backtest-send-queue)))

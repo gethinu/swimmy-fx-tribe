@@ -362,6 +362,13 @@ REVERSION : ~a"
                                  cpcv-gate-line
                                  cpcv-median-line))
            (oos-snippet (oos-metrics-summary-line))
+           (a-stage1-counts
+             (or (ignore-errors (a-stage1-failure-counts-from-db))
+                 (ignore-errors (a-stage1-failure-counts all))))
+           (a-stage1-snippet
+             (if a-stage1-counts
+                 (a-stage1-failure-summary-line a-stage1-counts :label "A Stage1 Failures (24h DB)")
+                 "A Stage1 Failures (24h DB): unavailable"))
            (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
                                  (a-candidate-metrics-snippet :limit 6)
                                  "A Candidate Funnel (latest): unavailable")))
@@ -389,7 +396,7 @@ Current status of the autonomous strategy generation pipeline.
 ~d (IS Sharpe≥0.75 PF≥1.70 WR≥50% MaxDD<10% + CPCV pass_rate≥70% & median MaxDD<12% + MC/DryRun)
 
 🎖️ **A-Rank (Pro)**
-~d (Sharpe≥0.45 PF≥1.30 WR≥38% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
+~d (Sharpe≥0.45 PF≥1.30 WR≥43% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
 
 🪜 **B-Rank (Selection)**
 ~d (Sharpe≥0.15 PF≥1.05 WR≥35% MaxDD<25%)
@@ -403,6 +410,8 @@ Current status of the autonomous strategy generation pipeline.
 🧊 Retired
 ~a
 ~a
+
+	~a
 
 	~a
 
@@ -426,6 +435,7 @@ Current status of the autonomous strategy generation pipeline.
 	            drift-text
 	            cpcv-snippet
 	            oos-snippet
+	            a-stage1-snippet
 	            a-funnel-snippet
 	            top-snippet
 	            (format-timestamp (get-universal-time)))))))

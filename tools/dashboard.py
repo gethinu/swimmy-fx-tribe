@@ -6,6 +6,11 @@ from datetime import datetime
 import time
 from pathlib import Path
 
+try:
+    import systemd_drift_probe as _drift_probe
+except Exception:
+    _drift_probe = None
+
 
 def resolve_base_dir() -> Path:
     env = os.getenv("SWIMMY_HOME")
@@ -42,6 +47,29 @@ def get_service_status(service_name):
             return f"{RED}● {status}{RESET}"
     except:
         return f"{RED}Unknown{RESET}"
+
+
+def get_backtest_drift_state():
+    if _drift_probe is None:
+        return False, "probe unavailable"
+    try:
+        state = _drift_probe._read_service_state(_drift_probe.SERVICE_NAME) or "unknown"
+        main_pid = _drift_probe._read_service_main_pid(_drift_probe.SERVICE_NAME)
+        listener_pid = _drift_probe._read_listener_pid(_drift_probe.LISTEN_PORT)
+        return _drift_probe.assess_backtest_drift(
+            service_state=state,
+            service_main_pid=main_pid,
+            listener_pid=listener_pid,
+        )
+    except Exception as e:
+        return False, f"probe error: {e}"
+
+
+def get_backtest_status_line():
+    service = get_service_status("swimmy-backtest")
+    ok, reason = get_backtest_drift_state()
+    drift = f"{GREEN}OK{RESET}" if ok else f"{RED}DRIFT{RESET}"
+    return f"{service} | Drift: {drift} ({reason})"
 
 
 def get_log_tail(filepath, lines=10):
@@ -102,6 +130,7 @@ def print_dashboard():
     print(f"{BOLD}CORE SERVICES:{RESET}")
     print(f"  🧠 Brain:      {get_service_status('swimmy-brain')}")
     print(f"  🛡️  Guardian:   {get_service_status('swimmy-guardian')}")
+    print(f"  🧪 Backtest:   {get_backtest_status_line()}")
     print(f"  🔔 Notifier:   {get_service_status('swimmy-notifier')}")
     print(f"  💾 DataKeeper: {get_service_status('swimmy-data-keeper')}")
     print(f"  🧩 PatternSim: {get_service_status('swimmy-pattern-similarity')}")

@@ -113,6 +113,12 @@
    Target: 18,349 → 5,000 strategies"
   (let ((now (get-universal-time)))
     (when (> (- now *last-prune-time*) +prune-interval+)
+      (let ((incubator-count (if (fboundp 'get-strategies-by-rank)
+                                 (length (or (ignore-errors (get-strategies-by-rank :incubator)) '()))
+                                 0)))
+        (when (> incubator-count 0)
+          (format t "[CONNECTOR] ⏸️ Skipping Weekly KB Pruning (incubator backlog: ~d).~%" incubator-count)
+          (return-from phase-8-weekly-prune nil)))
       (setf *last-prune-time* now) ;; Claim execution first
       (format t "[CONNECTOR] 🗑️ Running Weekly KB Pruning...~%")
       (handler-case

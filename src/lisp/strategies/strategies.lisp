@@ -83,16 +83,71 @@
 (defparameter *cycle-start-kb-size* 0 "V48.5: KB size at the start of a BT cycle")
 (defparameter *last-cycle-notify-time* 0 "V48.5: Throttling for Cycle Complete alerts")
 (defconstant +cycle-notify-interval+ (* 6 3600) "6 Hour Alert Interval")
+(defvar *rr-db-archive-cache* (make-hash-table :test 'equal)
+  "Memoized flag: strategy name is archived in DB (:RETIRED/:GRAVEYARD).")
 
 (defun active-strategy-p (strategy)
   (let ((rank (strategy-rank strategy)))
     (member rank '(:B :A :S :LEGEND) :test #'eq)))
+
+(defun %normalize-rr-db-rank-token (rank)
+  "Normalize DB rank token to uppercase without leading colon."
+  (let* ((raw (cond
+                ((null rank) "")
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun %rr-db-archived-rank-p (rank)
+  "Return T when DB rank is archived."
+  (member (%normalize-rr-db-rank-token rank)
+          '("RETIRED" "GRAVEYARD")
+          :test #'string=))
+
+(defun %rr-name-archived-in-db-p (name)
+  "Return T when strategy NAME is archived in DB. Uses memoized cache."
+  (multiple-value-bind (cached foundp) (gethash name *rr-db-archive-cache*)
+    (if foundp
+        cached
+        (let* ((db-rank (ignore-errors
+                          (execute-single "SELECT rank FROM strategies WHERE name = ?"
+                                          name)))
+               (archived (%rr-db-archived-rank-p db-rank)))
+          (setf (gethash name *rr-db-archive-cache*) archived)
+          archived))))
 
 (defun format-phase1-bt-batch-message (requested total cursor &key cycle-completed)
   (format nil "🧪 **Phase 1 BT Batch (RR)**~%- Requested: ~d / ~d~%- Cursor: ~d / ~d~a"
           requested total cursor total
           (if cycle-completed "~%✅ **Phase1 BT Cycle Complete (RR)**" "")))
 
+(defun rr-backtest-pending-count ()
+  "Best-effort pending count for RR batch sizing."
+  (if (fboundp 'backtest-pending-count)
+      (backtest-pending-count)
+      (let ((recv (if (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*
+                      0)))
+        (max 0 (- swimmy.globals::*backtest-submit-count* recv)))))
+
+(defun rr-batch-cap ()
+  "Compute per-run RR dispatch cap from pending headroom and rate limits."
+  (let* ((max-pending (max 1 (if (boundp 'swimmy.globals::*backtest-max-pending*)
+                                 swimmy.globals::*backtest-max-pending*
+                                 1000)))
+         (pending-now (rr-backtest-pending-count))
+         (available-slots (max 0 (- max-pending pending-now)))
+         (rate-limit (if (boundp 'swimmy.globals::*backtest-rate-limit-per-sec*)
+                         swimmy.globals::*backtest-rate-limit-per-sec*
+                         0))
+         (rate-cap (if (and (numberp rate-limit) (> rate-limit 0))
+                       (max 1 (truncate rate-limit))
+                       max-pending)))
+    (max 0 (min max-pending available-slots rate-cap))))
 
 (defun batch-backtest-knowledge ()
   "V48.0: Phase 1 BT with per-strategy symbol support + larger batch size.
@@ -101,14 +156,23 @@
   (setf swimmy.globals:*rr-backtest-results-buffer* nil)
   (setf swimmy.globals:*rr-backtest-start-time* (get-universal-time))
   
-  (let* ((max-batch-size (max 1 (if (boundp 'swimmy.globals::*backtest-max-pending*)
-                                    swimmy.globals::*backtest-max-pending*
-                                    1000)))
+  (let* ((max-batch-size (rr-batch-cap))
          (active-strategies (remove-if-not #'active-strategy-p *strategy-knowledge-base*))
          (total (length active-strategies)))
     (when (zerop total)
       (setf swimmy.globals:*rr-expected-backtest-count* 0)
       (format t "[L] ⚠️ No active strategies for Phase1 BT. Skipping batch.~%")
+      (return-from batch-backtest-knowledge nil))
+    (when (<= max-batch-size 0)
+      (setf swimmy.globals:*rr-expected-backtest-count* 0)
+      (format t "[L] ⏳ RR batch paused (pending=~d max=~d rate=~d/s)~%"
+              (rr-backtest-pending-count)
+              (if (boundp 'swimmy.globals::*backtest-max-pending*)
+                  swimmy.globals::*backtest-max-pending*
+                  0)
+              (if (boundp 'swimmy.globals::*backtest-rate-limit-per-sec*)
+                  swimmy.globals::*backtest-rate-limit-per-sec*
+                  0))
       (return-from batch-backtest-knowledge nil))
     (let* ((old-cursor *backtest-cursor*)
            (start-idx (mod *backtest-cursor* total))
@@ -144,36 +208,42 @@
         
         ;; V48.0: Use strategy's native symbol for candle data
         (dolist (strat final-batch)
-          (let* ((sym (or (strategy-symbol strat) "USDJPY"))
-                 (snapshot (or (gethash sym *candle-histories*)
-                               *candle-history*
-                               (gethash "USDJPY" *candle-histories*))))
-            (if (and snapshot (> (length snapshot) 100))
-                (progn
-                  ;; Apply cached metrics if available, but still request fresh BT
-                  (let ((cached (get-cached-backtest (strategy-name strat))))
-                    (when cached
-                      (incf cached-count)
-                      ;; V48.5: Apply cached metrics to strategy and prune if weak
-                      (let ((sharpe (float (getf cached :sharpe 0.0)))
-                            (pf (float (getf cached :profit-factor 0.0)))
-                            (wr (float (getf cached :win-rate 0.0)))
-                            (trades (getf cached :trades 0)))
-                        (setf (strategy-sharpe strat) sharpe
-                              (strategy-profit-factor strat) pf
-                              (strategy-win-rate strat) wr
-                              (strategy-trades strat) trades)
-                        (when (< sharpe 0.1)
-                          (prune-to-graveyard strat "Cached Sharpe < 0.1")))))
-                  (let ((dispatch-state (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))
-                    (if (backtest-dispatch-accepted-p dispatch-state)
-                        (incf requested-count)
-                        (format t "[L] ⚠️ RR dispatch rejected: ~a (state=~a)~%"
-                                (strategy-name strat) dispatch-state))))
-                (progn
-                  (incf skipped-count)
-                  (format t "[L] ⚠️ Skipping BT (no candles) for ~a (~a)~%"
-                          (strategy-name strat) sym))))))
+          (let ((name (strategy-name strat)))
+            (if (%rr-name-archived-in-db-p name)
+                (incf skipped-count)
+                (let* ((sym (or (strategy-symbol strat) "USDJPY"))
+                       (snapshot (or (gethash sym *candle-histories*)
+                                     *candle-history*
+                                     (gethash "USDJPY" *candle-histories*))))
+                  (if (and snapshot (> (length snapshot) 100))
+                      (progn
+                        ;; Apply cached metrics if available, but still request fresh BT
+                        (let ((cached (get-cached-backtest name)))
+                          (when cached
+                            (incf cached-count)
+                            ;; V48.5: Apply cached metrics to strategy and prune if weak
+                            (let ((sharpe (float (getf cached :sharpe 0.0)))
+                                  (pf (float (getf cached :profit-factor 0.0)))
+                                  (wr (float (getf cached :win-rate 0.0)))
+                                  (trades (getf cached :trades 0)))
+                              (setf (strategy-sharpe strat) sharpe
+                                    (strategy-profit-factor strat) pf
+                                    (strategy-win-rate strat) wr
+                                    (strategy-trades strat) trades)
+                              (when (< sharpe 0.1)
+                                (prune-to-graveyard strat "Cached Sharpe < 0.1")))))
+                        (let ((dispatch-state (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))
+                          (if (backtest-dispatch-accepted-p dispatch-state)
+                              (progn
+                                (incf requested-count)
+                                (when (fboundp 'maybe-pause-after-backtest-dispatch)
+                                  (maybe-pause-after-backtest-dispatch)))
+                              (format t "[L] ⚠️ RR dispatch rejected: ~a (state=~a)~%"
+                                      name dispatch-state))))
+                      (progn
+                        (incf skipped-count)
+                        (format t "[L] ⚠️ Skipping BT (no candles) for ~a (~a)~%"
+                                name sym))))))))
         
         ;; Expected count should reflect actual enqueued requests
         (setf swimmy.globals:*rr-expected-backtest-count* requested-count)

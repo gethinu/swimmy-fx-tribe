@@ -54,6 +54,114 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-apply-backtest-result-evaluates-incubator-strategy
+  "Incubator strategy should trigger phase-1 rank evaluation after backtest."
+  (let* ((name "TEST-INCUBATOR-EVAL")
+         (strat (make-strategy :name name
+                               :symbol "USDJPY"
+                               :timeframe 60
+                               :direction :BOTH
+                               :rank :incubator))
+         (metrics (list :sharpe 0.42
+                        :profit-factor 1.21
+                        :win-rate 0.47
+                        :trades 123
+                        :max-dd 0.11))
+         (orig-evaluate (symbol-function 'swimmy.school:evaluate-new-strategy))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (called nil))
+    (let ((*strategy-knowledge-base* (list strat))
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:evaluate-new-strategy)
+                  (lambda (s)
+                    (when (eq s strat)
+                      (setf called t))
+                    :B))
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    nil))
+            (apply-backtest-result name metrics)
+            (assert-true called
+                         "Expected incubator strategy to be evaluated for B/graveyard"))
+        (setf (symbol-function 'swimmy.school:evaluate-new-strategy) orig-evaluate)
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)))))
+
+(deftest test-apply-backtest-result-evaluates-incubator-string-rank
+  "String rank tokens (e.g. INCUBATOR) should still trigger phase-1 evaluation."
+  (let* ((name "TEST-INCUBATOR-STRING-RANK")
+         (strat (make-strategy :name name
+                               :symbol "USDJPY"
+                               :timeframe 60
+                               :direction :BOTH
+                               :rank :incubator))
+         (metrics (list :sharpe 0.42
+                        :profit-factor 1.21
+                        :win-rate 0.47
+                        :trades 123
+                        :max-dd 0.11))
+         (orig-evaluate (symbol-function 'swimmy.school:evaluate-new-strategy))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (called nil))
+    (setf (strategy-rank strat) "INCUBATOR")
+    (let ((*strategy-knowledge-base* (list strat))
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (setf (symbol-function 'swimmy.school:evaluate-new-strategy)
+                  (lambda (s)
+                    (when (eq s strat)
+                      (setf called t))
+                    :B))
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest args)
+                    (declare (ignore args))
+                    nil))
+            (apply-backtest-result name metrics)
+            (assert-true called
+                         "Expected string INCUBATOR rank to be evaluated for B/graveyard"))
+        (setf (symbol-function 'swimmy.school:evaluate-new-strategy) orig-evaluate)
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)))))
+
+(deftest test-apply-backtest-result-fallback-evaluates-incubator
+  "Fallback path should still trigger phase-1 evaluation for incubator rows."
+  (let* ((name "TEST-APPLY-BT-FALLBACK-EVAL")
+         (tmp-db (format nil "/tmp/swimmy-test-~a.db" (get-universal-time)))
+         (metrics (list :sharpe 0.42
+                        :profit-factor 1.21
+                        :win-rate 0.47
+                        :trades 123
+                        :max-dd 0.11))
+         (orig-evaluate (symbol-function 'swimmy.school:evaluate-new-strategy))
+         (called nil))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (upsert-strategy (make-strategy :name name
+                                            :symbol "USDJPY"
+                                            :timeframe 60
+                                            :direction :BOTH
+                                            :rank :incubator))
+            (let ((*strategy-knowledge-base* nil)
+                  (swimmy.globals:*evolved-strategies* nil))
+              (setf (symbol-function 'swimmy.school:evaluate-new-strategy)
+                    (lambda (s)
+                      (when (string= (strategy-name s) name)
+                        (setf called t))
+                      :B))
+              (apply-backtest-result name metrics)
+              (assert-true called
+                           "Expected fallback path to evaluate incubator strategy")))
+        (setf (symbol-function 'swimmy.school:evaluate-new-strategy) orig-evaluate)
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-upsert-preserves-cpcv-when-missing
   "Upsert should not overwrite existing CPCV metrics with zero defaults."
   (let* ((name "TEST-CPCV-PRESERVE")

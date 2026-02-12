@@ -6,7 +6,7 @@
 ;;;
 ;;; RANKS:
 ;;; 1. :B - Phase 1 Backtest passed (Sharpe>=0.15, PF>=1.05, WR>=35%, MaxDD<25%)
-;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=38%, MaxDD<16%, OOS>=0.35)
+;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=43%, MaxDD<16%, OOS>=0.35)
 ;;; 3. :S - Live trading permitted (Sharpe>=0.75, PF>=1.70, WR>=50%, MaxDD<10%, CPCV pass>=70%, CPCV median MaxDD<12%)
 ;;; 4. :graveyard - Failed strategies (learning data)
 ;;; 5. :retired - Max Age archive (low-weight learning)
@@ -21,14 +21,13 @@
 
 (defparameter *rank-criteria*
   '((:B       :sharpe-min 0.15 :pf-min 1.05 :wr-min 0.35 :maxdd-max 0.25)
-    ;; A-RANK WR floor is tuned for high-RR systems; expectancy/OOS/Stage2 gates stay mandatory.
-    (:A       :sharpe-min 0.45 :pf-min 1.30 :wr-min 0.38 :maxdd-max 0.16 :oos-min 0.35)
+    (:A       :sharpe-min 0.45 :pf-min 1.30 :wr-min 0.43 :maxdd-max 0.16 :oos-min 0.35)
     (:S       :sharpe-min 0.75 :pf-min 1.70 :wr-min 0.50 :maxdd-max 0.10
               :cpcv-pass-min 0.70 :cpcv-maxdd-max 0.12))
   "Rank criteria thresholds. All conditions must be met (AND logic).")
 
-(defparameter *culling-threshold* 10
-  "Number of B-RANK strategies per TF before culling begins. (V50.4 Accelerated)")
+(defparameter *culling-threshold* 20
+  "Number of B-RANK strategies per TF before culling begins.")
 
 (defparameter *culling-bootstrap-when-no-a* t
   "When T, allow A-promotion bootstrap below threshold if A-rank is empty.")
@@ -65,6 +64,10 @@
 (defparameter *score-weight-pf* 0.25)
 (defparameter *score-weight-wr* 0.20)
 (defparameter *score-weight-maxdd* 0.10)
+(defparameter *culling-a-base-deficit-penalty-enabled* t
+  "When T, B-rank culling penalizes candidates farther from A-base thresholds.")
+(defparameter *culling-a-base-deficit-penalty-weight* 1.5
+  "Penalty multiplier for A-base deficit in B-rank culling score.")
 
 (defun %clamp (v lo hi)
   (min hi (max lo v)))
@@ -91,6 +94,46 @@
        (* *score-weight-pf* n-pf)
        (* *score-weight-wr* n-wr)
        (* -1 *score-weight-maxdd* n-dd))))
+
+(defun %safe-deficit-ratio (shortfall threshold)
+  "Normalize metric shortfall by threshold."
+  (if (<= threshold 1.0e-9)
+      0.0
+      (/ shortfall threshold)))
+
+(defun a-base-deficit-score (strategy)
+  "Return aggregate distance from A-base thresholds (0 = passes A-base)."
+  (let* ((criteria (get-rank-criteria :A))
+         (sharpe (float (or (strategy-sharpe strategy) 0.0) 1.0))
+         (pf (float (or (strategy-profit-factor strategy) 0.0) 1.0))
+         (wr (float (or (strategy-win-rate strategy) 0.0) 1.0))
+         (maxdd (float (or (strategy-max-dd strategy) 1.0) 1.0))
+         (sh-min (float (or (getf criteria :sharpe-min) 0.45) 1.0))
+         (pf-min (float (or (getf criteria :pf-min) 1.30) 1.0))
+         (wr-min (float (or (getf criteria :wr-min) 0.43) 1.0))
+         (dd-max (float (or (getf criteria :maxdd-max) 0.16) 1.0))
+         (sh-def (if (>= sharpe sh-min) 0.0
+                     (%safe-deficit-ratio (- sh-min sharpe) sh-min)))
+         (pf-def (if (>= pf pf-min) 0.0
+                     (%safe-deficit-ratio (- pf-min pf) pf-min)))
+         (wr-def (if (>= wr wr-min) 0.0
+                     (%safe-deficit-ratio (- wr-min wr) wr-min)))
+         (dd-def (if (< maxdd dd-max) 0.0
+                     (%safe-deficit-ratio (- maxdd dd-max) dd-max))))
+    (+ sh-def pf-def wr-def dd-def)))
+
+(defun strategy-culling-score (strategy)
+  "Composite culling score with optional A-base deficit penalty."
+  (let* ((base (score-from-metrics
+                (list :sharpe (or (strategy-sharpe strategy) 0.0)
+                      :profit-factor (or (strategy-profit-factor strategy) 0.0)
+                      :win-rate (or (strategy-win-rate strategy) 0.0)
+                      :max-dd (or (strategy-max-dd strategy) 1.0))))
+         (penalty (if *culling-a-base-deficit-penalty-enabled*
+                      (* *culling-a-base-deficit-penalty-weight*
+                         (a-base-deficit-score strategy))
+                      0.0)))
+    (- base penalty)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; RETIRED STORAGE
@@ -589,18 +632,22 @@
       (format t "[RANK] 🎯 A-base candidates: ~d/~d (expectancy-pass ~d)~%"
               (length a-base-candidates) count (length a-ready-candidates))
       
-      ;; Promote only A-base candidates, sorted by multi-metric score.
-      (let* ((sorted (sort (copy-list a-ready-candidates) #'>
-                           :key (lambda (s) 
-                                  (score-from-metrics
-                                   (list :sharpe (or (strategy-sharpe s) 0.0)
-                                         :profit-factor (or (strategy-profit-factor s) 0.0)
-                                         :win-rate (or (strategy-win-rate s) 0.0)
-                                         :max-dd (or (strategy-max-dd s) 1.0))))))
-             (to-promote (subseq sorted 0 (min *a-rank-slots-per-tf* (length sorted))))
+      ;; Promote only A-base candidates, then keep B baseline by deficit-aware score.
+      (let* ((sorted-ready (sort (copy-list a-ready-candidates) #'>
+                                 :key #'strategy-culling-score))
+             (to-promote (subseq sorted-ready 0 (min *a-rank-slots-per-tf* (length sorted-ready))))
              (to-discard (unless bootstrap-p
-                           (remove-if (lambda (s) (member s to-promote :test #'eq))
-                                      b-strategies))))
+                           (let* ((sorted-b (sort (copy-list b-strategies) #'> :key #'strategy-culling-score))
+                                  (keep-target (min count
+                                                    (max *culling-threshold*
+                                                         (length to-promote))))
+                                  (to-keep (copy-list to-promote)))
+                             (dolist (s sorted-b)
+                               (when (and (< (length to-keep) keep-target)
+                                          (not (member s to-keep :test #'eq)))
+                                 (push s to-keep)))
+                             (remove-if (lambda (s) (member s to-keep :test #'eq))
+                                        b-strategies)))))
         (record-a-candidate-category-metric timeframe direction symbol
                                             :b-count count
                                             :a-base-count (length a-base-candidates)
@@ -616,7 +663,7 @@
               (validate-for-a-rank-promotion s)
             (error (e) (format t "[RANK] ⚠️ OOS Failed for ~a: ~a~%" (strategy-name s) e))))
         
-        ;; Discard rest only in regular culling mode
+        ;; In regular mode, prune only surplus above the retained B baseline.
         (dolist (s to-discard)
           (send-to-graveyard s "Culling Loser"))))))
 
@@ -859,6 +906,27 @@
 
 ;;; Note: RL, Graveyard, Q-learning, and File Rotation functions moved to school-learning.lisp (V47.3)
 
+(defun %normalize-rank-token-for-backtest (rank)
+  "Normalize rank token to uppercase without leading colon."
+  (let* ((raw (cond
+                ((null rank) "")
+                ((stringp rank) rank)
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun %phase1-evaluation-needed-p (rank)
+  "Return T when RANK should be treated as unranked/incubator for phase-1 evaluation."
+  (let ((token (%normalize-rank-token-for-backtest rank)))
+    (or (null rank)
+        (string= token "")
+        (string= token "NIL")
+        (string= token "INCUBATOR"))))
+
 (defun apply-backtest-result (name metrics)
   "Apply backtest metrics to a strategy and trigger rank evaluation if necessary."
   (let ((strat (find-strategy name)))
@@ -882,8 +950,9 @@
             (when (zerop s)
                (format t "[DB] ⚠️ Appplying Metrics for ~a: Sharpe is zero! Metrics: ~a~%" name metrics)))
           (upsert-strategy strat)
-          ;; Trigger Phase 1 Evaluation if currently unranked
-          (when (null (strategy-rank strat))
+          ;; Trigger Phase 1 Evaluation for newly screened strategies.
+          ;; :INCUBATOR needs one backtest result to transition to :B or :GRAVEYARD.
+          (when (%phase1-evaluation-needed-p (strategy-rank strat))
             (evaluate-new-strategy strat))
           t)
         ;; Fallback: update DB even if in-memory strategy is missing
@@ -909,6 +978,9 @@
                       (when (fboundp '(setf strategy-revalidation-pending))
                         (setf (strategy-revalidation-pending obj) nil))
                       (upsert-strategy obj)
+                      ;; Keep phase-1 lifecycle active even when strategy is missing in-memory.
+                      (when (%phase1-evaluation-needed-p (strategy-rank obj))
+                        (evaluate-new-strategy obj))
                       (execute-non-query
                        "UPDATE strategies SET last_bt_time=? WHERE name=?"
                        (get-universal-time)

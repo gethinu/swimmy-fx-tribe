@@ -59,7 +59,7 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-services_default=(swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier swimmy-pattern-similarity)
+services_default=(swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier swimmy-pattern-similarity swimmy-backtest)
 if [[ -n "${SWIMMY_AUDIT_SERVICES:-}" ]]; then
   # shellcheck disable=SC2206
   services=($SWIMMY_AUDIT_SERVICES)
@@ -141,6 +141,7 @@ else
 fi
 
 run_warn "Dashboard" python3 "$ROOT/tools/dashboard.py"
+run_fail "Backtest systemd drift" python3 "$ROOT/tools/systemd_drift_probe.py"
 run_warn "Notifier log" tail -n 200 "$ROOT/logs/notifier.log"
 run_warn "Notifier direct test" python3 "$ROOT/tools/test_notifier_direct.py"
 run_warn "Broadcast routing" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/broadcast_test_v2.lisp"

@@ -234,7 +234,7 @@
     ;; Condition 1: Heavy daily loss (> 3000 yen)
     (when (< daily-pnl -3000)
       (setf toxic t)
-      (format t "[L] 🧬 DARWIN: Daily PnL toxic (¥~,0f)~%" daily-pnl))
+      (format t "[L] 🧬 DARWIN: Daily PnL toxic (¥~d)~%" (round daily-pnl)))
     
     ;; Condition 2: 4+ consecutive losses
     (when (>= consecutive-losses 4)

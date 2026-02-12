@@ -1,0 +1,35 @@
+[Unit]
+Description=Swimmy Polymarket OpenClaw Cycle
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/run_polymarket_openclaw_service.py
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+Environment=POLYCLAW_CONFIG_FILE=/home/swimmy/swimmy/tools/configs/polymarket_openclaw.contrarian.example.json
+Environment=POLYCLAW_SIGNALS_FILE=/home/swimmy/swimmy/data/openclaw/signals.jsonl
+Environment=POLYCLAW_OUTPUT_DIR=/home/swimmy/swimmy/data/reports/polymarket_openclaw
+Environment=POLYCLAW_SYNC_SIGNALS_BEFORE_RUN=1
+Environment=POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=1
+Environment=POLYCLAW_HEURISTIC_QUESTION_KEYWORDS=nba,nfl,mlb,nhl,ncaa,lakers,warriors,chiefs,yankees
+Environment=POLYCLAW_ALLOW_DUPLICATE_OPEN_MARKETS=0
+Environment=POLYCLAW_MAX_OPEN_POSITIONS=12
+Environment=POLYCLAW_MAX_DAILY_ENTRIES=12
+Environment=POLYCLAW_MAX_DAILY_LOSS_STREAK=2
+Environment=POLYCLAW_MAX_DAILY_REALIZED_LOSS_USD=5.0
+Environment=POLYCLAW_REQUIRE_FRESH_SIGNALS=1
+Environment=POLYCLAW_MIN_SIGNAL_COUNT=1
+Environment=POLYCLAW_MAX_SIGNAL_AGE_SECONDS=1800
+Environment=POLYCLAW_SKIP_ON_BAD_SIGNALS=1
+Environment=POLYCLAW_AUTO_FETCH_SETTLEMENTS=1
+Environment=POLYCLAW_AUTOTUNE=1
+Environment=POLYCLAW_AUTOTUNE_APPLY_BEST=0
+Environment=POLYCLAW_AUTOTUNE_APPLY_MIN_TRADES=20
+Environment=POLYCLAW_AUTOTUNE_APPLY_MIN_REALIZED_PNL_USD=1.0
+
+StandardOutput=append:/home/swimmy/swimmy/logs/polymarket_openclaw_cycle.log
+StandardError=append:/home/swimmy/swimmy/logs/polymarket_openclaw_cycle.log
