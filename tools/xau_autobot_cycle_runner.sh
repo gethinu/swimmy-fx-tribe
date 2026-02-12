@@ -40,4 +40,10 @@ fi
 
 CMD+=(--market-hours-only)
 
-exec "${CMD[@]}"
+"${CMD[@]}"
+
+"$ROOT/.venv/bin/python" "$ROOT/tools/xau_autobot_promote_best.py" \
+  --comparison "$ROOT/data/reports/xau_autobot_cycle_comparison.json" \
+  --config-dir "$ROOT/tools/configs" \
+  --write-active "$ROOT/tools/configs/xau_autobot.tuned_auto_active.json" \
+  --write-report "$ROOT/data/reports/xau_autobot_promotion.json"

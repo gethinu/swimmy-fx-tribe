@@ -213,3 +213,4 @@ sudo systemctl status xau-autobot-cycle.timer --no-pager
 - `tools/xau_autobot_cycle_runner.sh` が `.env` を読み込み、`SWIMMY_DISCORD_REPORTS` があれば `xau_autobot_cycle.py --discord-webhook` を自動付与します。
 - `SWIMMY_DISCORD_REPORTS` が失敗した場合は `SWIMMY_DISCORD_SYSTEM_LOGS` → `SWIMMY_DISCORD_ALERTS` → `SWIMMY_DISCORD_APEX` の順でフォールバックします。
 - systemd定期実行は `--market-hours-only` を有効化しており、市場クローズ時は `SKIP` で正常終了します。
+- 実行後に `tools/xau_autobot_promote_best.py` が `45d/60d/90d` 比較から最良periodを選び、`tools/configs/xau_autobot.tuned_auto_active.json` を更新します（レポート: `data/reports/xau_autobot_promotion.json`）。
