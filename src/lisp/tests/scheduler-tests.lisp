@@ -180,6 +180,38 @@
           (assert-equal 1 called "Should send when stale"))
       (setf (symbol-function 'swimmy.school::notify-evolution-report) orig))))
 
+(deftest test-notify-evolution-report-writes-oos-status
+  "notify-evolution-report should refresh oos_status snapshot."
+  (let* ((orig-gen (symbol-function 'swimmy.school::generate-evolution-report))
+         (orig-write-report (symbol-function 'swimmy.school::write-evolution-report-files))
+         (orig-send (symbol-function 'swimmy.school::send-evolution-report))
+         (orig-write-oos (and (fboundp 'swimmy.school::write-oos-status-file)
+                              (symbol-function 'swimmy.school::write-oos-status-file)))
+         (oos-write-count 0)
+         (oos-reason nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::generate-evolution-report)
+                (lambda () "UT-REPORT"))
+          (setf (symbol-function 'swimmy.school::write-evolution-report-files)
+                (lambda (_report) t))
+          (setf (symbol-function 'swimmy.school::send-evolution-report)
+                (lambda (_report &optional _webhook) t))
+          (when orig-write-oos
+            (setf (symbol-function 'swimmy.school::write-oos-status-file)
+                  (lambda (&key (reason "event"))
+                    (setf oos-reason reason)
+                    (incf oos-write-count)
+                    t)))
+          (swimmy.school::notify-evolution-report)
+          (assert-equal 1 oos-write-count "Should write oos_status on report notification")
+          (assert-true (stringp oos-reason) "Reason should be passed to oos_status writer"))
+      (setf (symbol-function 'swimmy.school::generate-evolution-report) orig-gen)
+      (setf (symbol-function 'swimmy.school::write-evolution-report-files) orig-write-report)
+      (setf (symbol-function 'swimmy.school::send-evolution-report) orig-send)
+      (when orig-write-oos
+        (setf (symbol-function 'swimmy.school::write-oos-status-file) orig-write-oos)))))
+
 (deftest test-evolution-report-staleness-alert-throttles
   "Staleness alerts should fire once per cooldown window"
   (let* ((orig-alert (symbol-function 'swimmy.core:notify-discord-alert))

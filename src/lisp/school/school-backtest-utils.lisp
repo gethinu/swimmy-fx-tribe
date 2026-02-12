@@ -65,15 +65,31 @@
   "Return current time in seconds with sub-second resolution."
   (/ (float (get-internal-real-time) 1.0d0) internal-time-units-per-second))
 
-(defun backtest-send-allowed-p ()
-  (let* ((now (backtest-now-seconds))
-         (pending (backtest-pending-count))
+(defun backtest-throttle-diagnostics (&optional (now (backtest-now-seconds)))
+  "Return throttle diagnostics for backtest dispatch.
+Prioritize :pending when both pending/rate limits are hit."
+  (let* ((pending (backtest-pending-count))
          (max-pending swimmy.globals::*backtest-max-pending*)
          (rate swimmy.globals::*backtest-rate-limit-per-sec*)
-         (interval (if (and rate (> rate 0)) (/ 1.0d0 rate) 0.0d0))
-         (elapsed (- now swimmy.globals::*backtest-last-send-ts*)))
-    (and (< pending max-pending)
-         (or (<= interval 0.0) (>= elapsed interval)))))
+         (interval (if (and rate (> rate 0))
+                       (/ 1.0d0 rate)
+                       0.0d0))
+         (elapsed (- now swimmy.globals::*backtest-last-send-ts*))
+         (pending-hit (>= pending max-pending))
+         (rate-hit (and (> interval 0.0d0) (< elapsed interval)))
+         (reason (cond
+                   (pending-hit :pending)
+                   (rate-hit :rate)
+                   (t nil))))
+    (list :reason reason
+          :pending pending
+          :max-pending max-pending
+          :rate rate
+          :interval interval
+          :elapsed elapsed)))
+
+(defun backtest-send-allowed-p ()
+  (null (getf (backtest-throttle-diagnostics) :reason)))
 
 (defun backtest-dispatch-accepted-p (dispatch-state)
   "Return T when a backtest dispatch state means accepted/enqueued.
@@ -158,16 +174,31 @@
   "Helper to send ZMQ message with throttling.
    TARGET: :backtest routes to Backtest Service; :cmd routes to main Guardian."
   (when (eq target :backtest)
-    (unless (backtest-send-allowed-p)
-      (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
-              (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
+    (let* ((diag (backtest-throttle-diagnostics))
+           (reason (getf diag :reason)))
+      (when reason
+        (case reason
+          (:pending
+           (format t "[BACKTEST] ⏳ Throttled send: pending limit (pending=~d max=~d)~%"
+                   (getf diag :pending 0)
+                   (getf diag :max-pending 0)))
+          (:rate
+           (format t "[BACKTEST] ⏳ Throttled send: rate limit (elapsed=~,3fs need>=~,3fs pending=~d max=~d)~%"
+                   (coerce (getf diag :elapsed 0.0d0) 'double-float)
+                   (coerce (getf diag :interval 0.0d0) 'double-float)
+                   (getf diag :pending 0)
+                   (getf diag :max-pending 0)))
+          (t
+           (format t "[BACKTEST] ⏳ Throttled send (pending=~d max=~d)~%"
+                   (getf diag :pending 0)
+                   (getf diag :max-pending 0))))
       (when (and (or swimmy.core:*backtest-service-enabled*
                      (and (boundp 'swimmy.globals:*backtest-requester*)
                           swimmy.globals:*backtest-requester*))
                  (enqueue-backtest-msg msg))
         (format t "[BACKTEST] 📥 Queued throttled request for retry.~%")
         (return-from send-zmq-msg :queued))
-      (return-from send-zmq-msg :throttled))
+        (return-from send-zmq-msg :throttled)))
     (when (and swimmy.core:*backtest-service-enabled*
                (or (not (boundp 'swimmy.globals:*backtest-requester*))
                    (null swimmy.globals:*backtest-requester*)))

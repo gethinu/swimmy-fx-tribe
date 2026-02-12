@@ -197,6 +197,40 @@ python3 tools/polymarket_openclaw_autotune.py \
 - `POLYCLAW_MIN_LIQUIDITY_USD`（最低流動性USD。未満市場は除外）
 - `POLYCLAW_MIN_VOLUME_USD`（最低出来高USD。未満市場は除外）
 
+## 9. OpenClaw Windows導入トラブル対応
+`openclaw onboard` 実行時に下記が出る場合:
+- `Config invalid`
+- `agents.defaults.contextPruning.mode: Invalid input`
+
+復旧スクリプト（configバックアップ/削除→doctor fix→任意onboard→signals疎通）:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/openclaw_repair.ps1 -RunOnboard
+```
+または:
+```bat
+tools\windows\openclaw_repair.bat -RunOnboard
+```
+
+疎通だけ先に確認する場合:
+```powershell
+openclaw doctor
+openclaw signals --format jsonl
+```
+
+Linux側の本番シグナル切替:
+1. `.env` に `POLYCLAW_OPENCLAW_CMD=openclaw signals --format jsonl` を設定
+2. `.env` の `POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=0` に変更
+3. 反映
+```bash
+systemctl --user restart swimmy-openclaw-signal-sync.service
+systemctl --user restart swimmy-polymarket-openclaw.service
+```
+4. 確認
+```bash
+tail -n 80 logs/openclaw_signal_sync.log
+tail -n 80 logs/polymarket_openclaw_cycle.log
+```
+
 有効化:
 ```bash
 sudo install -m 0644 systemd/swimmy-polymarket-openclaw.service /etc/systemd/system/

@@ -99,6 +99,18 @@
   "When T, breeder re-applies PF/WR bias after Q-value SL/TP selection.")
 (defparameter *pfwr-post-q-min-strength* 0.9
   "Minimum PF/WR bias strength used in post-Q rebias pass.")
+(defparameter *pfwr-complement-min-pressure* 0.35
+  "Minimum PF/WR pressure applied when parents are opposite complements (PF-only x WR-only).")
+(defparameter *pfwr-complement-stabilize-min-rr* 1.55
+  "Lower RR bound used to stabilize opposite-complement pair offspring.")
+(defparameter *pfwr-complement-stabilize-max-rr* 1.85
+  "Upper RR bound used to stabilize opposite-complement pair offspring.")
+(defparameter *pfwr-pf-recovery-scale-gain* 0.8
+  "SL/TP scale gain for PF-dominant deficits (increases absolute move distance).")
+(defparameter *pfwr-pf-recovery-scale-max* 1.35
+  "Maximum SL/TP scale multiplier from PF recovery expansion.")
+(defparameter *pfwr-complement-scale-floor* 1.12
+  "Minimum SL/TP scale multiplier for opposite-complement pair stabilization.")
 (defparameter *breeder-priority-use-a-base-score* t
   "When T, breeder parent ranking uses A-base-aware culling score if available.")
 (defparameter *breeder-priority-generation-weight* 0.01
@@ -109,8 +121,18 @@
   "Partner score bonus when candidate satisfies PF target that parent is missing.")
 (defparameter *breeder-complement-double-bonus* 0.75
   "Extra bonus when candidate satisfies both missing PF and WR targets.")
+(defparameter *breeder-complement-min-pf-when-needs-wr* 1.20
+  "Minimum PF required for WR-complement candidates to avoid over-fragile pairings.")
+(defparameter *breeder-complement-min-wr-when-needs-pf* 0.38
+  "Minimum WR required for PF-complement candidates to avoid over-fragile pairings.")
 (defparameter *breeder-prioritize-complement-partner* t
   "When T, prioritize partners that satisfy at least one PF/WR deficit of the parent.")
+(defparameter *breeder-min-genetic-distance* 0.15
+  "Minimum genetic distance required for a breeding pair (lower allows more diversity attempts).")
+(defparameter *breeder-min-genetic-distance-complement* 0.08
+  "Relaxed min genetic distance for complement partners to increase viable pair throughput.")
+(defvar *breeder-current-pair-min-distance* nil
+  "Dynamically scoped per-pair min-distance override for correlation gate.")
 (defparameter *breeder-name-seq* 0
   "Monotonic per-process sequence for collision-resistant child naming.")
 
@@ -225,6 +247,15 @@
         (max *pfwr-min-rr* *pfwr-pf-recovery-min-rr*)
         *pfwr-min-rr*)))
 
+(defun pfwr-scale-expansion-factor (pf-gap-ratio wr-gap-ratio blend opposite-complements-p)
+  "Return multiplicative SL/TP scale factor for PF recovery (>=1.0)."
+  (let* ((pf-delta (max 0.0 (- pf-gap-ratio wr-gap-ratio)))
+         (pf-scale (+ 1.0 (* blend pf-delta *pfwr-pf-recovery-scale-gain*)))
+         (scale (if opposite-complements-p
+                    (max pf-scale *pfwr-complement-scale-floor*)
+                    pf-scale)))
+    (clamp-breeder-float scale 1.0 *pfwr-pf-recovery-scale-max*)))
+
 (defun strategy-breeding-priority-score (strategy)
   "Composite parent priority score for breeding partner selection."
   (let* ((rank-bonus (case (strategy-rank strategy)
@@ -252,12 +283,33 @@
   (>= (float (or (strategy-win-rate strategy) 0.0))
       (float target)))
 
+(defun strategy-pfwr-class (strategy)
+  "Classify strategy relative to PF/WR targets."
+  (let ((pf-ok (strategy-meets-target-pf-p strategy))
+        (wr-ok (strategy-meets-target-wr-p strategy)))
+    (cond
+      ((and pf-ok wr-ok) :both)
+      (pf-ok :pf-only)
+      (wr-ok :wr-only)
+      (t :none))))
+
+(defun opposite-pfwr-complements-p (parent1 parent2)
+  "True when parents are opposite complements: PF-only x WR-only."
+  (let ((c1 (strategy-pfwr-class parent1))
+        (c2 (strategy-pfwr-class parent2)))
+    (or (and (eq c1 :pf-only) (eq c2 :wr-only))
+        (and (eq c1 :wr-only) (eq c2 :pf-only)))))
+
 (defun breeding-partner-complement-bonus (parent candidate)
   "Bonus score when candidate complements parent's missing PF/WR side."
   (let* ((parent-needs-pf (not (strategy-meets-target-pf-p parent)))
          (parent-needs-wr (not (strategy-meets-target-wr-p parent)))
-         (cand-has-pf (strategy-meets-target-pf-p candidate))
-         (cand-has-wr (strategy-meets-target-wr-p candidate))
+         (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
+         (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (cand-has-pf (and (strategy-meets-target-pf-p candidate)
+                           (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
+         (cand-has-wr (and (strategy-meets-target-wr-p candidate)
+                           (>= cand-pf *breeder-complement-min-pf-when-needs-wr*)))
          (bonus 0.0))
     (when (and parent-needs-pf cand-has-pf)
       (incf bonus *breeder-complement-pf-bonus*))
@@ -274,10 +326,24 @@
 
 (defun candidate-complements-parent-p (parent candidate)
   "True when candidate satisfies at least one PF/WR side parent is missing."
-  (let ((parent-needs-pf (not (strategy-meets-target-pf-p parent)))
-        (parent-needs-wr (not (strategy-meets-target-wr-p parent))))
-    (or (and parent-needs-pf (strategy-meets-target-pf-p candidate))
-        (and parent-needs-wr (strategy-meets-target-wr-p candidate)))))
+  (let* ((parent-needs-pf (not (strategy-meets-target-pf-p parent)))
+         (parent-needs-wr (not (strategy-meets-target-wr-p parent)))
+         (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
+         (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (cand-pf-complement-p (and (>= cand-pf (float *pfwr-target-pf*))
+                                    (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
+         (cand-wr-complement-p (and (>= cand-wr (float *pfwr-target-wr*))
+                                    (>= cand-pf *breeder-complement-min-pf-when-needs-wr*))))
+    (or (and parent-needs-pf cand-pf-complement-p)
+        (and parent-needs-wr cand-wr-complement-p))))
+
+(defun breeding-min-genetic-distance-for-candidate (parent candidate)
+  "Return per-candidate min-distance, relaxing threshold only for valid complements."
+  (if (and *breeder-prioritize-complement-partner*
+           (candidate-complements-parent-p parent candidate))
+      (min *breeder-min-genetic-distance*
+           *breeder-min-genetic-distance-complement*)
+      *breeder-min-genetic-distance*))
 
 (defun apply-pfwr-mutation-bias (child-sl child-tp parent1 parent2)
   "Bias child SL/TP toward a healthier PF/WR profile while keeping risk budget constant."
@@ -287,8 +353,12 @@
             (<= sl 0.0)
             (<= tp 0.0))
         (values child-sl child-tp)
-        (let* ((pressure (pfwr-underperformance-pressure parent1 parent2))
-               (blend (clamp-breeder-float (* *pfwr-mutation-bias-strength* pressure) 0.0 1.0)))
+        (let* ((opposite-complements-p (opposite-pfwr-complements-p parent1 parent2))
+               (pressure (pfwr-underperformance-pressure parent1 parent2))
+               (effective-pressure (if opposite-complements-p
+                                       (max pressure *pfwr-complement-min-pressure*)
+                                       pressure))
+               (blend (clamp-breeder-float (* *pfwr-mutation-bias-strength* effective-pressure) 0.0 1.0)))
           (if (<= blend 0.0)
               (values sl tp)
               (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
@@ -316,10 +386,24 @@
                      (rr-floor (min rr-cap
                                     (pfwr-effective-rr-floor pf-gap-ratio wr-gap-ratio)))
                      (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
+                     (complement-rr-min (max rr-floor *pfwr-complement-stabilize-min-rr*))
+                     (complement-rr-max (min rr-cap *pfwr-complement-stabilize-max-rr*))
+                     (rr-after-complement (if (and opposite-complements-p
+                                                   (<= complement-rr-min complement-rr-max))
+                                              (clamp-breeder-float final-rr
+                                                                   complement-rr-min
+                                                                   complement-rr-max)
+                                              final-rr))
+                     (scale-factor (pfwr-scale-expansion-factor pf-gap-ratio
+                                                                wr-gap-ratio
+                                                                blend
+                                                                opposite-complements-p))
                      (risk-budget (+ sl tp))
-                     (new-sl (/ risk-budget (+ 1.0 final-rr)))
-                     (new-tp (- risk-budget new-sl)))
-                  (values new-sl new-tp))))))))
+                     (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
+                     (new-tp (- risk-budget new-sl))
+                     (scaled-sl (* new-sl scale-factor))
+                     (scaled-tp (* new-tp scale-factor)))
+                  (values scaled-sl scaled-tp))))))))
 
 (defun apply-pfwr-post-q-bias (child-sl child-tp parent1 parent2)
   "Re-apply PF/WR bias after Q-selection so exploit picks respect WR recovery."
@@ -432,16 +516,18 @@
                     (not (eq candidate parent))
                     (or (null used-names)
                         (null (gethash (strategy-name candidate) used-names)))
-                    (can-breed-p candidate)
-                    (strategies-correlation-ok-p parent candidate))
-            do (let ((score (breeding-partner-score parent candidate))
-                     (complements-p (candidate-complements-parent-p parent candidate)))
-                 (when (> score best-score)
-                   (setf best candidate
-                         best-score score))
-                 (when (and complements-p (> score best-complement-score))
-                   (setf best-complement candidate
-                         best-complement-score score))))
+                    (can-breed-p candidate))
+            do (let* ((min-distance (breeding-min-genetic-distance-for-candidate parent candidate))
+                      (*breeder-current-pair-min-distance* min-distance))
+                 (when (strategies-correlation-ok-p parent candidate)
+                   (let ((score (breeding-partner-score parent candidate))
+                         (complements-p (candidate-complements-parent-p parent candidate)))
+                     (when (> score best-score)
+                       (setf best candidate
+                             best-score score))
+                     (when (and complements-p (> score best-complement-score))
+                       (setf best-complement candidate
+                             best-complement-score score))))))
     (if (and *breeder-prioritize-complement-partner*
              parent-needs-complement
              best-complement)
@@ -608,10 +694,13 @@
 (defun strategies-correlation-ok-p (p1 p2)
   "Check if two parents are too similar (Clone Prevention).
    Returns NIL if genetic distance is too small."
-  (let ((dist (calculate-genetic-distance (extract-genome p1) (extract-genome p2))))
-    (if (< dist 0.2)
+  (let* ((dist (calculate-genetic-distance (extract-genome p1) (extract-genome p2)))
+         (min-distance (or *breeder-current-pair-min-distance*
+                           *breeder-min-genetic-distance*)))
+    (if (< dist min-distance)
         (progn
-          (format t "[BREEDER] 🚫 Pair too similar (Dist: ~,2f). Skipping Jackpotクローン.~%" dist)
+          (format t "[BREEDER] 🚫 Pair too similar (Dist: ~,2f < Min: ~,2f). Skipping Jackpotクローン.~%"
+                  dist min-distance)
           nil)
         t)))
 

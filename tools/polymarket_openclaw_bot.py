@@ -135,7 +135,12 @@ def load_openclaw_signals(path: Path) -> Dict[str, OpenClawSignal]:
 def _parse_openclaw_signal_records(records: Iterable[str]) -> Dict[str, OpenClawSignal]:
     signals: Dict[str, OpenClawSignal] = {}
     for raw in records:
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
         market_id = str(
             payload.get("market_id")
             or payload.get("market")
@@ -164,12 +169,25 @@ def load_openclaw_signals_from_command(command: str) -> Dict[str, OpenClawSignal
     stdout = proc.stdout.strip()
     if not stdout:
         return {}
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
 
-    if len(lines) == 1 and lines[0].startswith("["):
-        payload = json.loads(lines[0])
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, list):
+        records = [json.dumps(item, ensure_ascii=False) for item in payload if isinstance(item, Mapping)]
+        return _parse_openclaw_signal_records(records)
+
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    for line in lines:
+        if not line.startswith("["):
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
         if not isinstance(payload, list):
-            return {}
+            continue
         records = [json.dumps(item, ensure_ascii=False) for item in payload if isinstance(item, Mapping)]
         return _parse_openclaw_signal_records(records)
 

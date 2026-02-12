@@ -226,6 +226,58 @@ REVERSION : ~a"
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 
+(defun %a-stage1-failed-gates (strategy)
+  "Return failing A Stage1 gate labels for STRATEGY."
+  (let* ((criteria (get-rank-criteria :A))
+         (sh-min (getf criteria :sharpe-min 0.45))
+         (pf-min (getf criteria :pf-min 1.30))
+         (wr-min (getf criteria :wr-min 0.43))
+         (dd-max (getf criteria :maxdd-max 0.16))
+         (sharpe (or (strategy-sharpe strategy) 0.0))
+         (pf (or (strategy-profit-factor strategy) 0.0))
+         (wr (or (strategy-win-rate strategy) 0.0))
+         (maxdd (or (strategy-max-dd strategy) 1.0))
+         (failed '()))
+    (when (< sharpe sh-min) (push "SHARPE" failed))
+    (when (< pf pf-min) (push "PF" failed))
+    (when (< wr wr-min) (push "WR" failed))
+    (when (>= maxdd dd-max) (push "MAXDD" failed))
+    (nreverse failed)))
+
+(defun %a-base-deficit-safe (strategy)
+  "Best-effort A-base deficit score. Returns a large value when unavailable."
+  (if (fboundp 'a-base-deficit-score)
+      (float (or (a-base-deficit-score strategy) 0.0) 1.0)
+      999.0))
+
+(defun build-a-near-miss-snippet-from-db (&key (limit 5))
+  "Build A near-miss snippet from B-rank candidates closest to A Stage1."
+  (handler-case
+      (let* ((b-candidates (or (ignore-errors (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":B")))
+                               '()))
+             (sorted (sort (copy-list b-candidates) #'< :key #'%a-base-deficit-safe))
+             (top (subseq sorted 0 (min limit (length sorted)))))
+        (if (null top)
+            "A Near-Miss Candidates (B): none"
+            (with-output-to-string (s)
+              (format s "A Near-Miss Candidates (B):~%")
+              (dolist (st top)
+                (let* ((name (or (strategy-name st) "UNKNOWN"))
+                       (fails (%a-stage1-failed-gates st))
+                       (fail-text (if fails
+                                      (format nil "~{~a~^/~}" fails)
+                                      "NONE"))
+                       (deficit (%a-base-deficit-safe st))
+                       (sharpe (float (or (strategy-sharpe st) 0.0) 1.0))
+                       (pf (float (or (strategy-profit-factor st) 0.0) 1.0))
+                       (wr (* 100.0 (float (or (strategy-win-rate st) 0.0) 1.0)))
+                       (dd (* 100.0 (float (or (strategy-max-dd st) 0.0) 1.0))))
+                  (format s "- `~a` deficit=~,3f fails=~a | S=~,2f PF=~,2f WR=~,0f%% DD=~,1f%%~%"
+                          (subseq name 0 (min 25 (length name)))
+                          deficit fail-text sharpe pf wr dd))))))
+    (error (e)
+      (format nil "A Near-Miss Candidates (B): error: ~a" e))))
+
 (defun build-cpcv-status-snippet ()
   "Build CPCV status snippet for reports."
   ;; CPCV counters and start-time are split across daemons (dispatch vs result recv).
@@ -369,6 +421,7 @@ REVERSION : ~a"
              (if a-stage1-counts
                  (a-stage1-failure-summary-line a-stage1-counts :label "A Stage1 Failures (24h DB)")
                  "A Stage1 Failures (24h DB): unavailable"))
+           (a-near-miss-snippet (build-a-near-miss-snippet-from-db :limit 5))
            (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
                                  (a-candidate-metrics-snippet :limit 6)
                                  "A Candidate Funnel (latest): unavailable")))
@@ -421,6 +474,8 @@ Current status of the autonomous strategy generation pipeline.
 
 	~a
 
+	~a
+
 	⚙️ System Status
 	✅ Evolution Daemon Active
 	✅ Native Lisp Orchestration (V28)
@@ -436,6 +491,7 @@ Current status of the autonomous strategy generation pipeline.
 	            cpcv-snippet
 	            oos-snippet
 	            a-stage1-snippet
+	            a-near-miss-snippet
 	            a-funnel-snippet
 	            top-snippet
 	            (format-timestamp (get-universal-time)))))))
@@ -464,7 +520,9 @@ Current status of the autonomous strategy generation pipeline.
   "Send the Evolution Factory Report to Discord AND save to file."
   (let ((report (generate-evolution-report)))
     (write-evolution-report-files report)
-    (send-evolution-report report)))
+    (send-evolution-report report)
+    (when (fboundp 'write-oos-status-file)
+      (ignore-errors (write-oos-status-file :reason "report")))))
 
 (defun oos-metrics-summary-line ()
   "Human-readable summary of OOS pipeline health for reports/Discord."

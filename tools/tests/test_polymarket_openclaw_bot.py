@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools import polymarket_openclaw_bot as bot
 
@@ -17,6 +18,51 @@ class TestOpenClawSignals(unittest.TestCase):
             path.write_text("\n".join(json.dumps(item) for item in lines), encoding="utf-8")
 
             signals = bot.load_openclaw_signals(path)
+
+        self.assertEqual(2, len(signals))
+        self.assertAlmostEqual(0.63, signals["m1"].p_yes)
+        self.assertAlmostEqual(0.41, signals["m2"].p_yes)
+
+    def test_load_openclaw_signals_skips_non_json_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "signals.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        "OpenClaw 2026.2.9",
+                        json.dumps({"market_id": "m1", "p_yes": 0.63, "confidence": 0.9}),
+                        "warning: config invalid",
+                        json.dumps({"market_id": "m2", "prob_yes": 0.41, "confidence": 0.7}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            signals = bot.load_openclaw_signals(path)
+
+        self.assertEqual(2, len(signals))
+        self.assertAlmostEqual(0.63, signals["m1"].p_yes)
+        self.assertAlmostEqual(0.41, signals["m2"].p_yes)
+
+    def test_load_openclaw_signals_from_command_parses_array_with_noise(self) -> None:
+        cp = mock.Mock()
+        cp.stdout = "\n".join(
+            [
+                "OpenClaw startup",
+                json.dumps(
+                    [
+                        {"market_id": "m1", "p_yes": 0.63, "confidence": 0.9},
+                        {"market_id": "m2", "prob_yes": 0.41, "confidence": 0.7},
+                    ]
+                ),
+                "done",
+            ]
+        )
+        cp.returncode = 0
+
+        with mock.patch.object(bot.subprocess, "run", return_value=cp):
+            signals = bot.load_openclaw_signals_from_command("openclaw signals --format jsonl")
 
         self.assertEqual(2, len(signals))
         self.assertAlmostEqual(0.63, signals["m1"].p_yes)

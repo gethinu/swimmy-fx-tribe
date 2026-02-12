@@ -3282,6 +3282,72 @@
           (setf (symbol-function 'swimmy.school::backtest-now-seconds) orig-now)
           (fmakunbound 'swimmy.school::backtest-now-seconds)))))
 
+(deftest test-backtest-throttle-diagnostics-reason
+  "backtest-throttle-diagnostics should distinguish pending and rate throttles."
+  (let* ((orig-rate swimmy.globals::*backtest-rate-limit-per-sec*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-submit swimmy.globals::*backtest-submit-count*)
+         (orig-last swimmy.globals::*backtest-last-send-ts*)
+         (orig-recv (when (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*)))
+    (unwind-protect
+        (progn
+          ;; pending throttle should take priority over rate throttle
+          (setf swimmy.globals::*backtest-rate-limit-per-sec* 10)
+          (setf swimmy.globals::*backtest-max-pending* 5)
+          (setf swimmy.globals::*backtest-submit-count* 5)
+          (setf swimmy.globals::*backtest-last-send-ts* 100.0d0)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (let ((diag (swimmy.school::backtest-throttle-diagnostics 100.01d0)))
+            (assert-equal :pending (getf diag :reason)
+                          "pending cap should be reported first"))
+          ;; rate throttle when pending is below cap
+          (setf swimmy.globals::*backtest-submit-count* 1)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (let ((diag (swimmy.school::backtest-throttle-diagnostics 100.01d0)))
+            (assert-equal :rate (getf diag :reason)
+                          "rate gate should be reported when pending is under cap")))
+      (setf swimmy.globals::*backtest-rate-limit-per-sec* orig-rate)
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals::*backtest-submit-count* orig-submit)
+      (setf swimmy.globals::*backtest-last-send-ts* orig-last)
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv)))))
+
+(deftest test-backtest-send-allowed-false-on-rate-throttle
+  "backtest-send-allowed-p should be NIL when rate interval has not elapsed."
+  (let* ((orig-now (when (fboundp 'swimmy.school::backtest-now-seconds)
+                     (symbol-function 'swimmy.school::backtest-now-seconds)))
+         (orig-rate swimmy.globals::*backtest-rate-limit-per-sec*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-submit swimmy.globals::*backtest-submit-count*)
+         (orig-last swimmy.globals::*backtest-last-send-ts*)
+         (orig-recv (when (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*backtest-rate-limit-per-sec* 10)
+          (setf swimmy.globals::*backtest-max-pending* 1000)
+          (setf swimmy.globals::*backtest-submit-count* 0)
+          (setf swimmy.globals::*backtest-last-send-ts* 100.0d0)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (setf (symbol-function 'swimmy.school::backtest-now-seconds)
+                (lambda () 100.01d0))
+          (assert-false (swimmy.school::backtest-send-allowed-p)
+                        "should throttle when elapsed < 1/rate"))
+      (setf swimmy.globals::*backtest-rate-limit-per-sec* orig-rate)
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals::*backtest-submit-count* orig-submit)
+      (setf swimmy.globals::*backtest-last-send-ts* orig-last)
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv))
+      (if orig-now
+          (setf (symbol-function 'swimmy.school::backtest-now-seconds) orig-now)
+          (fmakunbound 'swimmy.school::backtest-now-seconds)))))
+
 (deftest test-send-zmq-sleep-suppressed-for-backtest-requester
   "send-zmq-msg should not sleep for backtest requester path"
   (let* ((orig-send (symbol-function 'pzmq:send))
@@ -6847,9 +6913,11 @@
 	                  test-pfwr-mutation-bias-lowers-rr-when-wr-gap-dominates
 	                  test-pfwr-mutation-bias-tightens-rr-cap-for-severe-wr-deficit
 	                  test-pfwr-mutation-bias-tightens-rr-cap-for-moderate-wr-deficit
+	                  test-pfwr-mutation-bias-stabilizes-opposite-complements-near-a-target
 	                  test-select-pfwr-anchor-parent-prefers-higher-wr-parent-when-wr-gap-dominates
 	                  test-pfwr-mutation-bias-applies-pf-recovery-floor-when-pf-gap-dominates
 	                  test-pfwr-mutation-bias-applies-pf-recovery-floor-for-moderate-pf-gap
+	                  test-pfwr-mutation-bias-increases-scale-when-pf-gap-dominates
 	                  test-strategy-breeding-priority-score-prefers-a-base-near-candidate
 	                  test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-lowers-rr-when-wr-gap-dominates
@@ -6858,9 +6926,13 @@
 	                  test-find-diverse-breeding-partner-falls-back-past-similar-neighbor
 	                  test-find-diverse-breeding-partner-prefers-pfwr-complement
 	                  test-find-diverse-breeding-partner-prioritizes-complement-over-base-score
+	                  test-find-diverse-breeding-partner-filters-low-quality-complements
 	                  test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
 	                  test-select-logic-anchor-parent-prefers-high-pf-under-pf-deficit
 	                  test-breed-strategies-combines-high-wr-entry-and-high-pf-exit
+	                  test-strategies-correlation-ok-p-respects-configurable-distance-threshold
+	                  test-strategies-correlation-ok-p-honors-dynamic-min-distance-override
+	                  test-find-diverse-breeding-partner-relaxes-distance-for-complement
                   ;; Expert Panel P1: Symbol Mismatch Tests
                   test-check-symbol-mismatch-blocks-cross-trading
                   test-check-symbol-mismatch-allows-correct-pair

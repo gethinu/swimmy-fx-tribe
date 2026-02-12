@@ -85,14 +85,39 @@ def parse_signals_stdout(stdout: str) -> Dict[str, OpenClawSignal]:
     text = stdout.strip()
     if not text:
         return {}
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) == 1 and lines[0].startswith("["):
-        payload = json.loads(lines[0])
-        if not isinstance(payload, list):
-            return {}
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, list):
         temp = BASE_DIR / "data" / "openclaw" / ".sync_tmp_parse.jsonl"
         temp.parent.mkdir(parents=True, exist_ok=True)
-        temp.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in payload), encoding="utf-8")
+        temp.write_text(
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in payload if isinstance(item, Mapping)),
+            encoding="utf-8",
+        )
+        try:
+            return load_openclaw_signals(temp)
+        finally:
+            temp.unlink(missing_ok=True)
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for line in lines:
+        if not line.startswith("["):
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, list):
+            continue
+        temp = BASE_DIR / "data" / "openclaw" / ".sync_tmp_parse.jsonl"
+        temp.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_text(
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in payload if isinstance(item, Mapping)),
+            encoding="utf-8",
+        )
         try:
             return load_openclaw_signals(temp)
         finally:

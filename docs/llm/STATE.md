@@ -42,6 +42,7 @@
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
 - **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
 - **A基準不合格内訳の可視化**: Evolution/Backtest系レポートには A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示し、昇格停滞の要因を定点観測できるようにする。
+- **A Near-Miss 可視化**: Evolution Report は Bランク候補のうち `a-base-deficit-score` が小さい戦略（A Stage1 に近い候補）を表示し、各候補の不足ゲート（Sharpe/PF/WR/MaxDD）を明示する。ランク閾値や昇格ゲートは変更しない。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **昇格ゲート実装値（2026-02-11）**:
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
@@ -76,6 +77,7 @@
 - **Backtest Service 運用整合契約**: `swimmy-backtest.service` を正本とし、systemd が inactive の状態で 5580 に手動 `backtest_service.py` が LISTEN している状態をドリフトとして扱う。監査で検知し、運用に修復を促す。
 - **Dashboard Drift 可視化**: `tools/dashboard.py` は `swimmy-backtest` の systemd 状態に加えて 5580 listener と MainPID の整合（drift有無）を表示し、inactive/manual 混在を即時判別できるようにする。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
+- **Backtest Throttle 診断ログ**: throttleログは `pending上限超過` と `rate未達` を原因別に表示する。`pending` だけを表示して rate throttle を誤診しないことを正本とする。
 - **Backtest Queue 実装契約**: `backtest-send-queue` の enqueue/dequeue は O(1) を維持する（`length`/`nconc` に依存しない）。高頻度スロットル時にキュー操作コストが送信ループの律速にならないことを正本とする。
 - **Backtest Queue 上限設定**: `backtest-send-queue` の容量は `SWIMMY_BACKTEST_SEND_QUEUE_MAX` で調整可能（未指定時は既定値）。運用側で burst 耐性を増やす際はこの値を優先して調整する。
 - **Backtest Service Workers**: `tools/backtest_service.py` は複数 Guardian worker を並列起動できる（`SWIMMY_BACKTEST_WORKERS`、既定はCPU数ベースで自動決定）。受信ループは inflight を管理して非同期に結果を返し、`pending` 張り付き時の処理詰まりを緩和する。
@@ -100,8 +102,11 @@
 - **再起動耐性**: Guardianのリスク状態 (`risk_state.json`) の永続化は実装済みだが、クラッシュ時の整合性は要監視。
 - **メモリ**: `load-graveyard-cache` はデフォルトのSBCLヒープで枯渇する場合がある（診断時は `--dynamic-space-size 2048` 以上を推奨）。
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
+- **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-12**: Backtest throttle の診断ログ契約を追加。`pending` 超過と `rate` 未達を原因別にログ表示し、`pending=1/max=3000` のような rate 由来 throttled を誤解しない運用へ更新。
+- **2026-02-12**: `finalize_rank_report` の運用契約を更新。既定動作を集計専用（rank変更なし）にし、`SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` 指定時のみ rank評価を実行する方針を追加。
 - **2026-02-12**: 最終エントリー前に Signal Confidence Gate を追加。低確度シグナルは見送り、中確度シグナルはロット縮小（0.55x）で実行し、無差別エントリーを抑制する方針を明記。
 - **2026-02-12**: Dashboard の backtest欄に systemd/listener drift 可視化を追加する方針を追記。`inactive + listener` や PID mismatch を画面上で即時判読可能にする。
 - **2026-02-12**: `swimmy-backtest` の systemd運用ドリフト検知方針を追加。`inactive + manual 5580 LISTEN` を監査FAIL扱いにし、systemd正本への復帰を促す。
@@ -112,6 +117,7 @@
 - **2026-02-12**: B-Rank culling の保持契約を追加。A候補以外を全量 graveyard 化する挙動を廃止し、カテゴリごとのB基盤（`*culling-threshold*` 件以上）を保持したうえで超過分のみ prune する方針を明記。
 - **2026-02-12**: Backtest送信キューの実装契約を更新。`length`/`nconc` 依存を廃止し O(1) キュー運用を正本化、あわせて `SWIMMY_BACKTEST_SEND_QUEUE_MAX` による容量調整方針を追加。
 - **2026-02-12**: Evolution/Backtest系レポートに A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示する方針を追加。
+- **2026-02-12**: Evolution Report に A Near-Miss（Bランク上位）表示を追加する方針を追記。`a-base-deficit-score` が小さい順に候補を提示し、各候補の不足ゲート（Sharpe/PF/WR/MaxDD）を併記して A/S 停滞の原因を即時確認できるようにする。
 - **2026-02-12**: RR Backtest Batch の送信をレート制限に同期。受理済み dispatch ごとに `1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒の間隔を挿入し、同一バッチ内 `:throttled` 連発で `Queued: 1` 近傍に張り付く失速を抑制する方針を追加。
 - **2026-02-12**: Deferred Founder Backtest Flush の送信をレート制限に合わせて間隔化（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）。同一tickで `:throttled` が連発して `Deferred BT sent` が実質 `1件/tick` になる失速を抑制する方針を追加。
 - **2026-02-12**: `request-cpcv-validation` の送信S式キーを正規化（`action/strategy_name/candles_file/request_id/strategy_params` を package 非依存で出力）し、呼び出し元 `*package*` による `swimmy.school::action` 形式のドリフトを防止する方針を追加。

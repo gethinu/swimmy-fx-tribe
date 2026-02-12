@@ -30,6 +30,36 @@ class TestOpenclawSignalSync(unittest.TestCase):
         signals = sync.parse_signals_stdout(stdout)
         self.assertEqual(2, len(signals))
 
+    def test_parse_signals_stdout_jsonl_ignores_non_json_lines(self) -> None:
+        stdout = "\n".join(
+            [
+                "OpenClaw 2026.2.9",
+                json.dumps({"market_id": "m1", "p_yes": 0.61, "confidence": 0.8}),
+                "warning: config invalid",
+                json.dumps({"market_id": "m2", "prob_yes": 0.42, "confidence": 0.7}),
+            ]
+        )
+        signals = sync.parse_signals_stdout(stdout)
+        self.assertEqual(2, len(signals))
+        self.assertAlmostEqual(0.61, signals["m1"].p_yes)
+        self.assertAlmostEqual(0.42, signals["m2"].p_yes)
+
+    def test_parse_signals_stdout_json_array_line_with_noise(self) -> None:
+        stdout = "\n".join(
+            [
+                "OpenClaw startup...",
+                json.dumps(
+                    [
+                        {"market_id": "m1", "p_yes": 0.61, "confidence": 0.8},
+                        {"market_id": "m2", "prob_yes": 0.42, "confidence": 0.7},
+                    ]
+                ),
+                "done",
+            ]
+        )
+        signals = sync.parse_signals_stdout(stdout)
+        self.assertEqual(2, len(signals))
+
     def test_sync_from_command_writes_signals_and_meta(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             signals_file = Path(td) / "signals.jsonl"

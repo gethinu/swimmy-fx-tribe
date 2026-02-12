@@ -492,6 +492,49 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-evolution-report-includes-a-near-miss-candidates
+  "Evolution report should include A near-miss B-rank candidates."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-near-miss-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db))
+                   (orig-fetch (symbol-function 'swimmy.school::fetch-candidate-strategies)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (setf (symbol-function 'swimmy.school::fetch-candidate-strategies)
+                            (lambda (&rest _args)
+                              (declare (ignore _args))
+                              (list
+                               (cl-user::make-strategy :name "Near-Best" :symbol "USDJPY" :rank :B
+                                                       :sharpe 1.30 :profit-factor 1.29
+                                                       :win-rate 0.42 :max-dd 0.10)
+                               (cl-user::make-strategy :name "Near-Mid" :symbol "USDJPY" :rank :B
+                                                       :sharpe 0.95 :profit-factor 1.22
+                                                       :win-rate 0.40 :max-dd 0.12)
+                               (cl-user::make-strategy :name "Near-Far" :symbol "USDJPY" :rank :B
+                                                       :sharpe 0.30 :profit-factor 1.08
+                                                       :win-rate 0.36 :max-dd 0.20))))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "A Near-Miss Candidates (B):" report)
+                                     "Report should include near-miss section")
+                        (assert-true (search "Near-Best" report)
+                                     "Near-miss section should include closest candidate")
+                        (assert-true (search "Near-Far" report)
+                                     "Near-miss section should include lower-ranked candidate")
+                        (assert-true (< (search "Near-Best" report)
+                                        (search "Near-Far" report))
+                                     "Near-miss candidates should be ordered by deficit asc")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh)
+                 (setf (symbol-function 'swimmy.school::fetch-candidate-strategies) orig-fetch))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-oos-status-line-uses-db-metrics
   "OOS status line should reflect DB queue and OOS results."
   (let* ((tmp-db (format nil "/tmp/swimmy-oos-line-~a.db" (get-universal-time))))

@@ -217,6 +217,37 @@
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
 
+(deftest test-pfwr-mutation-bias-stabilizes-opposite-complements-near-a-target
+  "Opposite complement parents should still get RR stabilization even when average meets A-targets."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-COMP-WR"
+                                          :profit-factor 1.22 :win-rate 0.49
+                                          :sl 20.0 :tp 30.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-COMP-PF"
+                                          :profit-factor 1.38 :win-rate 0.38
+                                          :sl 20.0 :tp 80.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (multiple-value-bind (sl tp)
+              ;; Extreme initial RR should be pulled back to convergence band.
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 100.0 p1 p2)
+            (let ((rr (/ tp sl)))
+              (assert-true (<= rr 1.85)
+                           (format nil "Expected complement stabilization RR<=1.85, got ~,3f" rr))
+              (assert-true (>= rr 1.55)
+                           (format nil "Expected complement stabilization RR>=1.55, got ~,3f" rr)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
 (deftest test-select-pfwr-anchor-parent-prefers-higher-wr-parent-when-wr-gap-dominates
   "When WR deficit dominates, anchor parent should prefer higher WR profile."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-ANCHOR-P1"
@@ -280,6 +311,33 @@
             (let ((rr (/ tp sl)))
               (assert-true (>= rr 1.79)
                            (format nil "Expected moderate PF gap to keep RR floor near 1.8, got ~,3f" rr)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
+(deftest test-pfwr-mutation-bias-increases-scale-when-pf-gap-dominates
+  "PF-dominant deficit should allow SL/TP absolute distance expansion (cost dilution)."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-SCALE1"
+                                          :profit-factor 1.00 :win-rate 0.55
+                                          :sl 20.0 :tp 30.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-SCALE2"
+                                          :profit-factor 1.05 :win-rate 0.54
+                                          :sl 22.0 :tp 33.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 20.0 p1 p2)
+            (assert-true (> (+ sl tp) 40.0)
+                         (format nil "Expected scale expansion above 40.0, got ~,3f" (+ sl tp)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
       (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
@@ -468,7 +526,7 @@
                                              :profit-factor 1.45 :win-rate 0.35))
          (cand2 (swimmy.school:make-strategy :name "UT-COMP-CAND2"
                                              :rank :B :sl 20.0 :tp 30.0
-                                             :profit-factor 1.08 :win-rate 0.49))
+                                             :profit-factor 1.22 :win-rate 0.49))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
         (progn
@@ -498,7 +556,7 @@
          (cand-low-complement (swimmy.school:make-strategy :name "UT-COMP-STRICT-LOW"
                                                            :rank :B :generation 5
                                                            :sl 20.0 :tp 30.0
-                                                           :profit-factor 1.10 :win-rate 0.49
+                                                           :profit-factor 1.22 :win-rate 0.49
                                                            :sharpe 0.2))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
@@ -512,6 +570,38 @@
                          :start-index 1)))
             (assert-true (eq picked cand-low-complement)
                          (format nil "Expected complement candidate UT-COMP-STRICT-LOW, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-filters-low-quality-complements
+  "Complement partner should be filtered out when opposite-side metric is too weak."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-COMP-FILTER-PARENT"
+                                              :rank :B :generation 90
+                                              :sl 20.0 :tp 60.0
+                                              :profit-factor 1.45 :win-rate 0.34
+                                              :sharpe 1.2))
+         (cand-high-but-weak-pf (swimmy.school:make-strategy :name "UT-COMP-FILTER-WEAK"
+                                                             :rank :LEGEND :generation 1400
+                                                             :sl 20.0 :tp 30.0
+                                                             :profit-factor 1.05 :win-rate 0.53
+                                                             :sharpe 2.8))
+         (cand-lower-but-balanced (swimmy.school:make-strategy :name "UT-COMP-FILTER-GOOD"
+                                                               :rank :B :generation 8
+                                                               :sl 20.0 :tp 30.0
+                                                               :profit-factor 1.23 :win-rate 0.47
+                                                               :sharpe 0.3))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-high-but-weak-pf cand-lower-but-balanced)
+                         :start-index 1)))
+            (assert-true (eq picked cand-lower-but-balanced)
+                         (format nil "Expected balanced complement candidate UT-COMP-FILTER-GOOD, got ~a"
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
@@ -564,3 +654,109 @@
                   "Expected child entry to inherit from higher-WR parent")
     (assert-equal '(and pf-parent-exit) (swimmy.school:strategy-exit child)
                   "Expected child exit to inherit from higher-PF parent")))
+
+(deftest test-strategies-correlation-ok-p-respects-configurable-distance-threshold
+  "Correlation gate should respect configurable minimum genetic distance."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-CORR-P1"
+                                          :entry '(and a) :exit '(and b)
+                                          :sl 20.0 :tp 40.0))
+         (p2 (swimmy.school:make-strategy :name "UT-CORR-P2"
+                                          :entry '(and c) :exit '(and d)
+                                          :sl 22.0 :tp 44.0))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.16))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (assert-true (swimmy.school::strategies-correlation-ok-p p1 p2)
+                       "Expected pair to pass when distance (0.16) is above threshold (0.15)")
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.17)
+          (assert-false (swimmy.school::strategies-correlation-ok-p p1 p2)
+                        "Expected pair to fail when distance (0.16) is below threshold (0.17)"))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*)))))
+
+(deftest test-strategies-correlation-ok-p-honors-dynamic-min-distance-override
+  "Correlation gate should allow per-pair dynamic min-distance override."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-CORR-DYN-P1"
+                                          :entry '(and a) :exit '(and b)
+                                          :sl 20.0 :tp 40.0))
+         (p2 (swimmy.school:make-strategy :name "UT-CORR-DYN-P2"
+                                          :entry '(and c) :exit '(and d)
+                                          :sl 22.0 :tp 44.0))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.12))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (assert-false (swimmy.school::strategies-correlation-ok-p p1 p2)
+                        "Expected fail with default threshold 0.15 and distance 0.12")
+          (let ((swimmy.school::*breeder-current-pair-min-distance* 0.10))
+            (assert-true (swimmy.school::strategies-correlation-ok-p p1 p2)
+                         "Expected pass with dynamic override threshold 0.10 and distance 0.12")))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*)))))
+
+(deftest test-find-diverse-breeding-partner-relaxes-distance-for-complement
+  "Complement partner should pass correlation gate with relaxed distance threshold."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-COMP-PARENT"
+                                              :rank :B :generation 90
+                                              :sl 20.0 :tp 60.0
+                                              :profit-factor 1.45 :win-rate 0.34
+                                              :sharpe 1.2))
+         (cand-non-complement (swimmy.school:make-strategy :name "UT-CORR-COMP-NON"
+                                                           :rank :LEGEND :generation 1400
+                                                           :sl 20.0 :tp 30.0
+                                                           :profit-factor 1.55 :win-rate 0.35
+                                                           :sharpe 2.8))
+         (cand-complement (swimmy.school:make-strategy :name "UT-CORR-COMP-YES"
+                                                       :rank :B :generation 8
+                                                       :sl 20.0 :tp 30.0
+                                                       :profit-factor 1.22 :win-rate 0.49
+                                                       :sharpe 0.3))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*))
+         (orig-comp-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance-complement*)
+                                   swimmy.school::*breeder-min-genetic-distance-complement*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.12))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* 0.10)
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-non-complement cand-complement)
+                         :start-index 1)))
+            (assert-true (eq picked cand-complement)
+                         (format nil "Expected relaxed-distance complement partner UT-CORR-COMP-YES, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*))
+      (if orig-comp-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*)))))
