@@ -3108,6 +3108,11 @@
   "send-zmq-msg should refuse backtest send when pending exceeds max"
   (let* ((orig-send (symbol-function 'pzmq:send))
          (orig-req swimmy.globals:*backtest-requester*)
+         (orig-max swimmy.globals::*backtest-max-pending*)
+         (orig-submit swimmy.globals::*backtest-submit-count*)
+         (orig-recv (if (boundp 'swimmy.main::*backtest-recv-count*)
+                        swimmy.main::*backtest-recv-count*
+                        0))
          (sent nil))
     (unwind-protect
         (progn
@@ -3122,6 +3127,10 @@
           (swimmy.school::send-zmq-msg "(dummy)" :target :backtest)
           (assert-true (null sent) "send should be blocked"))
       (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf swimmy.globals::*backtest-max-pending* orig-max)
+      (setf swimmy.globals::*backtest-submit-count* orig-submit)
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv))
       (setf (symbol-function 'pzmq:send) orig-send))))
 
 (deftest test-backtest-send-throttle-enqueues-instead-of-drop
