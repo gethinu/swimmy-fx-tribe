@@ -1,0 +1,12 @@
+[Unit]
+Description=XAU AutoBot Full Cycle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/tools/xau_autobot_cycle_runner.sh
+
+[Install]
+WantedBy=multi-user.target

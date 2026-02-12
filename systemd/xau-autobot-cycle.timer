@@ -1,0 +1,10 @@
+[Unit]
+Description=Run XAU AutoBot cycle every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=xau-autobot-cycle.service
+
+[Install]
+WantedBy=timers.target

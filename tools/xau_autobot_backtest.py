@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
 try:
+    from tools.xau_autobot_data import load_ohlc
+except Exception:
+    from xau_autobot_data import load_ohlc  # type: ignore
+
+try:
     import yfinance as yf
 except Exception:
     yf = None
@@ -47,7 +52,7 @@ BASE_PRESET = StrategyPreset(
 TUNED_PRESET = StrategyPreset(
     name="tuned",
     fast_ema=24,
-    slow_ema=120,
+    slow_ema=140,
     pullback_atr=0.2,
     sl_atr=1.5,
     tp_atr=2.5,
@@ -67,18 +72,7 @@ def _is_session_allowed(hour_utc: int, start: int, end: int) -> bool:
 
 
 def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
-    if yf is None:
-        raise RuntimeError("yfinance is required. Use .venv python with yfinance installed.")
-    df = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False, threads=False)
-    if len(df) == 0:
-        raise RuntimeError(f"no data: ticker={ticker} period={period} interval={interval}")
-    cols = {c[0].lower(): c for c in df.columns}
-    times = df.index.to_pydatetime().tolist()
-    opens = df[cols["open"]].astype(float).tolist()
-    highs = df[cols["high"]].astype(float).tolist()
-    lows = df[cols["low"]].astype(float).tolist()
-    closes = df[cols["close"]].astype(float).tolist()
-    return times, opens, highs, lows, closes
+    return load_ohlc(ticker=ticker, period=period, interval=interval, yf_module=yf)
 
 
 def _ema_series(values: List[float], period: int) -> List[float]:

@@ -28,6 +28,8 @@ cp tools/configs/xau_autobot.example.json tools/configs/xau_autobot.local.json
 cp tools/configs/xau_autobot.tuned_gc_m5.json tools/configs/xau_autobot.local.json
 ```
 
+この tuned サンプルは `EMA24/EMA140` + `ATR pullback 0.2` + 時間帯/ボラ帯フィルタを使います。
+
 ## 3. Dry-run 実行（注文送信なし）
 
 ```bash
@@ -80,3 +82,134 @@ pip install MetaTrader5
 ```
 
 出力は JSON Lines で、`segment=all` と `split_*`（IS/OOS）を返します。
+
+## 7. 自動最適化（tuned候補の再探索）
+
+`GC=F` 5分足で候補探索し、最良候補を設定ファイルに出力します。
+
+```bash
+./.venv/bin/python tools/xau_autobot_optimize.py \
+  --top-k 5 \
+  --write-config tools/configs/xau_autobot.tuned_auto_gc_m5.json
+```
+
+出力された `tools/configs/xau_autobot.tuned_auto_gc_m5.json` をそのまま dry-run に使えます。
+
+## 8. 運用可否判定（Readiness）
+
+想定コスト（片道）を与えて、損益分岐コストと GO/CAUTION/NO_GO を出します。
+
+```bash
+./.venv/bin/python tools/xau_autobot_readiness.py \
+  --config tools/configs/xau_autobot.tuned_auto_gc_m5.json \
+  --assumed-cost-side 0.0002 \
+  --write-report data/reports/xau_autobot_readiness.json
+```
+
+`break_even_roundtrip_cost` が実口座の実効往復コストより高いほど有利です。
+
+## 9. コストガード（実スプレッド入力判定）
+
+Readiness結果に対して、現在スプレッド/手数料/スリッページで GO 判定を出します。
+
+```bash
+./.venv/bin/python tools/xau_autobot_cost_guard.py \
+  --readiness-report data/reports/xau_autobot_readiness.json \
+  --spread-points 25 \
+  --spread-grid 10,25,50,75,100,125,140,160,180,200,220,240 \
+  --commission-roundtrip-pct 0.02 \
+  --slippage-roundtrip-pct 0.01 \
+  --write-report data/reports/xau_autobot_cost_guard.json
+```
+
+注:
+- `commission_roundtrip_pct` / `slippage_roundtrip_pct` は `%` 単位です（例: `0.02` = 0.02%）
+- `max_spread_points_safe` 以下なら、設定した safety margin 内で運用可能です
+- `max_spread_points_go` 以下なら、GO 判定域（コスト余裕あり）です
+
+## 10. Windows + MT5 実測プローブ
+
+MT5 接続できる環境では、スプレッドを複数サンプル取得して自動判定できます。
+
+```bash
+python tools/xau_autobot_windows_probe.py \
+  --readiness-report data/reports/xau_autobot_readiness.json \
+  --symbol XAUUSD \
+  --samples 120 \
+  --interval-ms 500 \
+  --commission-roundtrip-pct 0.02 \
+  --slippage-roundtrip-pct 0.01 \
+  --write-report data/reports/xau_autobot_windows_probe.json
+```
+
+Linux 等で MT5 がない場合は `--spread-points --price --point` を指定して同じ形式で判定できます。
+
+## 11. 1コマンド実行（Linux）
+
+90日・5分足でも自動で分割ダウンロードして実行できます（Yahooの60日制限を回避）。
+
+```bash
+./.venv/bin/python tools/xau_autobot_cycle.py \
+  --python-exe ./.venv/bin/python \
+  --period 90d \
+  --interval 5m \
+  --spread-points 80 \
+  --commission-roundtrip-pct 0.02 \
+  --slippage-roundtrip-pct 0.01 \
+  --write-config tools/configs/xau_autobot.tuned_auto_gc_m5_90d.json \
+  --write-summary data/reports/xau_autobot_cycle_summary_90d.json
+```
+
+生成物:
+- `data/reports/xau_autobot_backtest_*_90d.jsonl`
+- `data/reports/xau_autobot_optimize_*_90d.jsonl`
+- `data/reports/xau_autobot_readiness_90d.json`
+- `data/reports/xau_autobot_cost_guard_90d.json`
+- `data/reports/xau_autobot_cycle_summary_90d.json`
+
+## 12. 1コマンド実行（Windows）
+
+PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\xau_autobot_run_all.ps1
+```
+
+Batch:
+
+```bat
+tools\windows\xau_autobot_run_all.bat
+```
+
+補足:
+- 既定で `xau_autobot_cycle.py` 実行後に `xau_autobot_windows_probe.py` まで実行します
+- MT5プローブを飛ばす場合は `-SkipProbe` を付けます
+
+## 13. 定期実行（cron / systemd）
+
+### cron（15分ごと）
+
+```bash
+*/15 * * * * cd /home/swimmy/swimmy && ./.venv/bin/python tools/xau_autobot_cycle.py --python-exe ./.venv/bin/python --period 90d --interval 5m --write-config tools/configs/xau_autobot.tuned_auto_gc_m5_90d.json --write-summary data/reports/xau_autobot_cycle_summary_90d.json >> data/reports/xau_autobot_cycle_cron.log 2>&1
+```
+
+### systemd（例）
+
+同梱済み:
+- `systemd/xau-autobot-cycle.service`
+- `systemd/xau-autobot-cycle.timer`
+
+導入:
+
+```bash
+sudo cp systemd/xau-autobot-cycle.service /etc/systemd/system/
+sudo cp systemd/xau-autobot-cycle.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now xau-autobot-cycle.timer
+sudo systemctl status xau-autobot-cycle.timer --no-pager
+```
+
+通知:
+- `tools/xau_autobot_cycle_runner.sh` が `.env` を読み込み、`SWIMMY_DISCORD_REPORTS` があれば `xau_autobot_cycle.py --discord-webhook` を自動付与します。
+- `SWIMMY_DISCORD_REPORTS` が失敗した場合は `SWIMMY_DISCORD_SYSTEM_LOGS` → `SWIMMY_DISCORD_ALERTS` → `SWIMMY_DISCORD_APEX` の順でフォールバックします。
+- systemd定期実行は `--market-hours-only` を有効化しており、市場クローズ時は `SKIP` で正常終了します。
