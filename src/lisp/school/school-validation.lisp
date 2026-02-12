@@ -298,6 +298,82 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
          (s-sharpe (or (strategy-sharpe strategy) 0.0)))
     (>= s-sharpe min-sharpe)))
 
+(defparameter *a-stage1-failure-window-seconds* (* 24 60 60)
+  "Window for DB-based A Stage1 failure breakdown in reports.")
+
+(defun a-stage1-failure-counts (strategies)
+  "Count A Stage1 gate failures by criterion for STRATEGIES."
+  (let* ((criteria (get-rank-criteria :A))
+         (sh-min (getf criteria :sharpe-min 0.45))
+         (pf-min (getf criteria :pf-min 1.30))
+         (wr-min (getf criteria :wr-min 0.43))
+         (dd-max (getf criteria :maxdd-max 0.16))
+         (total 0) (pass 0) (sharpe 0) (pf 0) (wr 0) (maxdd 0))
+    (dolist (s (or strategies '()))
+      (incf total)
+      (let* ((s-sharpe (or (strategy-sharpe s) 0.0))
+             (s-pf (or (strategy-profit-factor s) 0.0))
+             (s-wr (or (strategy-win-rate s) 0.0))
+             (s-maxdd (or (strategy-max-dd s) 1.0))
+             (base-pass (and (>= s-sharpe sh-min)
+                             (>= s-pf pf-min)
+                             (>= s-wr wr-min)
+                             (< s-maxdd dd-max))))
+        (unless (>= s-sharpe sh-min) (incf sharpe))
+        (unless (>= s-pf pf-min) (incf pf))
+        (unless (>= s-wr wr-min) (incf wr))
+        (unless (< s-maxdd dd-max) (incf maxdd))
+        (when base-pass (incf pass))))
+    (list :total total :pass pass :sharpe sharpe :pf pf :wr wr :maxdd maxdd
+          :sharpe-min sh-min :pf-min pf-min :wr-min wr-min :maxdd-max dd-max)))
+
+(defun a-stage1-failure-counts-from-db (&key (window-seconds *a-stage1-failure-window-seconds*))
+  "Count A Stage1 gate failures from DB rows updated in WINDOW-SECONDS."
+  (let* ((criteria (get-rank-criteria :A))
+         (sh-min (getf criteria :sharpe-min 0.45))
+         (pf-min (getf criteria :pf-min 1.30))
+         (wr-min (getf criteria :wr-min 0.43))
+         (dd-max (getf criteria :maxdd-max 0.16))
+         (cutoff (- (get-universal-time) (max 0 (or window-seconds 0))))
+         (rows (execute-to-list
+                "SELECT count(*) AS total,
+                        sum(CASE WHEN sharpe>=? AND profit_factor>=? AND win_rate>=? AND max_dd<? THEN 1 ELSE 0 END) AS pass_count,
+                        sum(CASE WHEN sharpe<? THEN 1 ELSE 0 END) AS fail_sharpe,
+                        sum(CASE WHEN profit_factor<? THEN 1 ELSE 0 END) AS fail_pf,
+                        sum(CASE WHEN win_rate<? THEN 1 ELSE 0 END) AS fail_wr,
+                        sum(CASE WHEN max_dd>=? THEN 1 ELSE 0 END) AS fail_maxdd
+                   FROM strategies
+                  WHERE updated_at>=?"
+                sh-min pf-min wr-min dd-max
+                sh-min pf-min wr-min dd-max
+                cutoff))
+         (row (car rows))
+         (total (or (first row) 0))
+         (pass (or (second row) 0))
+         (sharpe (or (third row) 0))
+         (pf (or (fourth row) 0))
+         (wr (or (fifth row) 0))
+         (maxdd (or (sixth row) 0)))
+    (list :total total :pass pass :sharpe sharpe :pf pf :wr wr :maxdd maxdd
+          :sharpe-min sh-min :pf-min pf-min :wr-min wr-min :maxdd-max dd-max
+          :window-seconds (max 0 (or window-seconds 0)))))
+
+(defun a-stage1-failure-summary-line (counts &key (label "A Stage1 Failures"))
+  "Format A Stage1 failure counts for report lines."
+  (let ((wr-min (round (* 100 (getf counts :wr-min 0.43)))))
+    (format nil "~a: sharpe<~,2f=~d pf<~,2f=~d wr<~d%=~d maxdd>=~,2f=~d pass=~d total=~d"
+            label
+            (getf counts :sharpe-min 0.45)
+            (getf counts :sharpe 0)
+            (getf counts :pf-min 1.30)
+            (getf counts :pf 0)
+            wr-min
+            (getf counts :wr 0)
+            (getf counts :maxdd-max 0.16)
+            (getf counts :maxdd 0)
+            (getf counts :pass 0)
+            (getf counts :total 0))))
+
 (defun cpcv-gate-failure-counts (strategies)
   "Count CPCV elite-gate failures and S-base criteria distribution for A-rank strategies."
   (let* ((criteria (get-rank-criteria :S))
@@ -691,7 +767,7 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                      (request_id . ,req-id)
                      (strategy_params . ,strat-params))))
      (format t "[CPCV] 📤 Sent CPCV request for ~a (Async, req ~a)...~%" (strategy-name strat) req-id)
-     (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
+     (send-zmq-msg (swimmy.core::sexp->string payload :package :swimmy.school) :target :cmd)
      ;; Return T to indicate request sent successfully
      (values t nil nil)))
 
@@ -767,6 +843,42 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
 (defparameter *cpcv-cycle-interval* 60
   "V49.6: High-Velocity Validation (300s -> 60s) for rapid S-Rank creation")
 
+(defparameter *cpcv-strategy-retry-interval* 1800
+  "Minimum seconds before re-dispatching CPCV for the same unchanged strategy.")
+
+(defvar *cpcv-last-dispatch-times* (make-hash-table :test 'equal)
+  "Strategy name -> last CPCV dispatch timestamp.")
+
+(defvar *cpcv-last-dispatch-signatures* (make-hash-table :test 'equal)
+  "Strategy name -> signature of metrics used to detect meaningful changes.")
+
+(defun cpcv-dispatch-signature (strategy)
+  "Build dispatch signature from S-gate relevant metrics."
+  (list (round (* 1000 (float (or (strategy-sharpe strategy) 0.0))))
+        (round (* 1000 (float (or (strategy-profit-factor strategy) 0.0))))
+        (round (* 1000 (float (or (strategy-win-rate strategy) 0.0))))
+        (round (* 1000 (float (or (strategy-max-dd strategy) 0.0))))
+        (strategy-rank strategy)))
+
+(defun cpcv-dispatch-eligible-p (strategy &key (now (get-universal-time)))
+  "Return T when STRATEGY should be dispatched for CPCV this cycle."
+  (let* ((name (strategy-name strategy))
+         (sig (cpcv-dispatch-signature strategy))
+         (last-time (and name (gethash name *cpcv-last-dispatch-times*)))
+         (last-sig (and name (gethash name *cpcv-last-dispatch-signatures*))))
+    (or (null name)
+        (null last-time)
+        (not (equal sig last-sig))
+        (>= (- now last-time) *cpcv-strategy-retry-interval*))))
+
+(defun mark-cpcv-dispatched (strategy &key (now (get-universal-time)))
+  "Record strategy dispatch timestamp/signature for CPCV cooldown."
+  (let ((name (strategy-name strategy)))
+    (when name
+      (setf (gethash name *cpcv-last-dispatch-times*) now)
+      (setf (gethash name *cpcv-last-dispatch-signatures*)
+            (cpcv-dispatch-signature strategy)))))
+
 (defun fetch-cpcv-candidates (&optional strategies)
   "Fetch CPCV candidates from DB (A-rank, elite by Sharpe threshold)."
   (let* ((source (or strategies
@@ -791,11 +903,17 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
            ;; Shuffle to avoid getting stuck on the same failing strategies if pool is large
            (shuffled (sort (copy-list a-rank-strategies)
                            (lambda (a b) (declare (ignore a b)) (< (random 100) 50))))
-           (batch (if (> (length shuffled) *cpcv-batch-size*)
-                      (subseq shuffled 0 *cpcv-batch-size*)
-                      shuffled)))
+           (eligible (remove-if-not (lambda (s) (cpcv-dispatch-eligible-p s :now now))
+                                    shuffled))
+           (batch (if (> (length eligible) *cpcv-batch-size*)
+                      (subseq eligible 0 *cpcv-batch-size*)
+                      eligible)))
       (when (null batch)
         (reset-cpcv-metrics :queued 0)
+        (when (and (plusp (length shuffled))
+                   (zerop (length eligible)))
+          (format t "[CPCV] ⏱️ Skipped ~d candidate(s) due to dispatch cooldown (~ds).~%"
+                  (length shuffled) *cpcv-strategy-retry-interval*))
         (let ((counts (cpcv-gate-failure-counts a-rank-db)))
           (format t "~a~%" (cpcv-gate-failure-summary counts)))
         (ignore-errors (write-cpcv-status-file :reason "no-candidates"))
@@ -815,7 +933,9 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
             (multiple-value-bind (sent _res _err) (request-cpcv-validation strat)
               (declare (ignore _res _err))
               (if sent
-                  (%cpcv-metric-inc :sent)
+                  (progn
+                    (%cpcv-metric-inc :sent)
+                    (mark-cpcv-dispatched strat :now now))
                   (%cpcv-metric-inc :send_failed)))
           (error (e)
             (%cpcv-metric-inc :send_failed)

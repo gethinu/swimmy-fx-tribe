@@ -5,6 +5,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=swimmy
+Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
 ExecStartPre=/usr/bin/sbcl --disable-debugger --script /home/swimmy/swimmy/tools/restore_legend_61.lisp
 ExecStart=/usr/bin/sbcl --dynamic-space-size ${SWIMMY_SBCL_DYNAMIC_SPACE_MB} --noinform --load /home/swimmy/swimmy/src/lisp/school/school-daemon.lisp

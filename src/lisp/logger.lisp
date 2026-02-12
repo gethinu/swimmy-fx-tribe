@@ -5,6 +5,7 @@
 (in-package :swimmy.core)
 
 (defparameter *log-file-path* (merge-pathnames "swimmy/logs/swimmy.json.log" (user-homedir-pathname)))
+(defparameter *telemetry-fallback-log-path* "data/memory/swimmy.telemetry.fallback.jsonl")
 (defparameter *enable-json-log* t)
 (defparameter *log-level* :info) ; :debug, :info, :warn, :error
 
@@ -60,30 +61,46 @@
 (defun log-telemetry (event-type &key service severity correlation-id data)
   "Append telemetry entry to JSON log file. Returns T on success, NIL on failure."
   (when *enable-json-log*
-    (multiple-value-bind (value err)
-        (ignore-errors
-          (maybe-rotate-telemetry-log *log-file-path*)
-          (with-open-file (out *log-file-path*
-                               :direction :output
-                               :if-exists :append
-                               :if-does-not-exist :create)
-            (let ((entry (jsown:new-js
-                           ("schema_version" (or (and (boundp '*telemetry-schema-version*)
-                                                      *telemetry-schema-version*)
-                                                 1))
-                           ("timestamp" (get-iso-8601-time))
-                           ("log_type" "telemetry")
-                           ("event_type" (or event-type "unknown"))
-                           ("service" (%stringify-log-field service "unknown"))
-                           ("severity" (%stringify-log-field severity "info"))
-                           ("correlation_id" (or correlation-id "unknown"))
-                           ("data" (or data (jsown:new-js))))))
-              (write-line (jsown:to-json entry) out)))
-          (maybe-rotate-telemetry-log *log-file-path*)
-          t)
-      (when err
-        (format t "[LOG_ERROR] Failed to write telemetry: ~a~%" err))
-      (and value (null err)))))
+    (flet ((write-entry (path entry)
+             (let ((target (merge-pathnames path)))
+               (ensure-directories-exist target)
+               (maybe-rotate-telemetry-log target)
+               (with-open-file (out target
+                                    :direction :output
+                                    :if-exists :append
+                                    :if-does-not-exist :create)
+                 (write-line (jsown:to-json entry) out))
+               (maybe-rotate-telemetry-log target)
+               t)))
+      (let* ((entry (jsown:new-js
+                     ("schema_version" (or (and (boundp '*telemetry-schema-version*)
+                                                *telemetry-schema-version*)
+                                           1))
+                     ("timestamp" (get-iso-8601-time))
+                     ("log_type" "telemetry")
+                     ("event_type" (or event-type "unknown"))
+                     ("service" (%stringify-log-field service "unknown"))
+                     ("severity" (%stringify-log-field severity "info"))
+                     ("correlation_id" (or correlation-id "unknown"))
+                     ("data" (or data (jsown:new-js)))))
+             (primary-path (merge-pathnames *log-file-path*))
+             (fallback-path (and (boundp '*telemetry-fallback-log-path*)
+                                 *telemetry-fallback-log-path*
+                                 (merge-pathnames *telemetry-fallback-log-path*))))
+        (multiple-value-bind (value err)
+            (ignore-errors (write-entry primary-path entry))
+          (if (and err fallback-path
+                   (not (equal (namestring primary-path) (namestring fallback-path))))
+              (multiple-value-bind (fallback-value fallback-err)
+                  (ignore-errors (write-entry fallback-path entry))
+                (when fallback-err
+                  (safe-format-t "[LOG_ERROR] Failed to write telemetry: ~a (primary=~a fallback=~a)~%"
+                                 fallback-err primary-path fallback-path))
+                (and fallback-value (null fallback-err)))
+              (progn
+                (when err
+                  (safe-format-t "[LOG_ERROR] Failed to write telemetry: ~a~%" err))
+                (and value (null err)))))))))
 
 (defun safe-format-t (control-string &rest args)
   "Safely write to *standard-output*, ignoring broken pipe errors"

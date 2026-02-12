@@ -211,3 +211,25 @@
           (assert-true (probe-file (format nil "~a.1" path))))
       (setf swimmy.core::*log-file-path* orig)
       (setf swimmy.core::*telemetry-max-bytes* orig-max))))
+
+(deftest test-telemetry-fallback-when-primary-unwritable
+  (let* ((primary "/proc/swimmy-telemetry-test.jsonl")
+         (fallback "data/memory/telemetry-fallback-test.jsonl")
+         (orig-log swimmy.core::*log-file-path*)
+         (orig-fallback (and (boundp 'swimmy.core::*telemetry-fallback-log-path*)
+                             swimmy.core::*telemetry-fallback-log-path*)))
+    (unwind-protect
+        (progn
+          (ignore-errors (delete-file fallback))
+          (setf swimmy.core::*log-file-path* primary)
+          (setf swimmy.core::*telemetry-fallback-log-path* fallback)
+          (assert-true
+           (swimmy.core::log-telemetry "fallback.test"
+             :service "core" :severity "warn" :correlation-id "CID-FB"
+             :data (list :x 1))
+           "Expected telemetry write to succeed via fallback path")
+          (assert-true (probe-file fallback)
+                       "Expected fallback telemetry file to be created"))
+      (setf swimmy.core::*log-file-path* orig-log)
+      (setf swimmy.core::*telemetry-fallback-log-path* orig-fallback)
+      (ignore-errors (delete-file fallback)))))

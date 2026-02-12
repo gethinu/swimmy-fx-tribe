@@ -10,6 +10,7 @@
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
 - **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
+- **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
@@ -40,6 +41,7 @@
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
 - **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
+- **A基準不合格内訳の可視化**: Evolution/Backtest系レポートには A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示し、昇格停滞の要因を定点観測できるようにする。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **昇格ゲート実装値（2026-02-11）**:
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
@@ -70,6 +72,9 @@
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
+- **Backtest Service Workers**: `tools/backtest_service.py` は複数 Guardian worker を並列起動できる（`SWIMMY_BACKTEST_WORKERS`、既定はCPU数ベースで自動決定）。受信ループは inflight を管理して非同期に結果を返し、`pending` 張り付き時の処理詰まりを緩和する。
+- **Deferred Flush pacing**: `flush-deferred-founders` は Backtest レート制限時に送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）で dispatch し、同一tick内の即時 `:throttled` 連発による `1件/tick` 近傍への失速を抑制する。
+- **RR Batch pacing**: `batch-backtest-knowledge` も受理済み dispatch ごとに送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）を挿入し、RRバッチ内で即時 `:throttled` が連発して `Queued: 1` 近傍へ失速するのを抑制する。
 - **Backtest Dispatch 計上契約**: RR/QUAL/Deferred/OOS の dispatch 計上は「受理された送信状態」のみ対象とする。`NIL` / `:throttled` は非受理として expected/sent に含めない。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
@@ -88,11 +93,20 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-12**: Backtest Service の実行モデルを並列worker対応に拡張する方針を追加。`SWIMMY_BACKTEST_WORKERS` で Guardian `--backtest-only` の並列数を制御し、inflight 非同期処理で `pending` 上限張り付き時のスループット低下を緩和する。
+- **2026-02-12**: Evolution/Backtest系レポートに A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示する方針を追加。
+- **2026-02-12**: RR Backtest Batch の送信をレート制限に同期。受理済み dispatch ごとに `1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒の間隔を挿入し、同一バッチ内 `:throttled` 連発で `Queued: 1` 近傍に張り付く失速を抑制する方針を追加。
+- **2026-02-12**: Deferred Founder Backtest Flush の送信をレート制限に合わせて間隔化（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）。同一tickで `:throttled` が連発して `Deferred BT sent` が実質 `1件/tick` になる失速を抑制する方針を追加。
+- **2026-02-12**: `request-cpcv-validation` の送信S式キーを正規化（`action/strategy_name/candles_file/request_id/strategy_params` を package 非依存で出力）し、呼び出し元 `*package*` による `swimmy.school::action` 形式のドリフトを防止する方針を追加。
+- **2026-02-12**: Telemetry ログ書き込みを耐障害化。主要ログの Permission denied / rotate 競合時に `data/memory/swimmy.telemetry.fallback.jsonl` へ退避するフォールバックを追加し、`run-all-tests` は telemetry 出力先を `data/memory/` 配下へ隔離して運用ログとの競合を避ける方針を明記。
+- **2026-02-12**: `systemd/swimmy-school.service` に `User=swimmy` / `Group=swimmy` を明示し、systemd正本ユニットの実装を STATE の運用方針（非root実行）に再整合。
+- **2026-02-12**: AランクWR下限の実装ドリフトを修正。`school-rank-system` / Evolution Report文言 / 単体テスト / 運用ドキュメントを `WR>=43%` に統一し、`WR>=38%` 例外を撤廃。
 - **2026-02-11**: Backtest送信の計上契約を強化。スロットル時は可能な限り再キューし、RR/QUAL/Deferred/OOS の expected/sent は `NIL/:throttled` を除外して計上するよう方針を明文化。
 - **2026-02-11**: AランクのWR下限を正本（SPEC/STATE）へ再整合する方針を確定。`WR>=43%` を単一の運用基準とし、実装側の `38%` 例外を廃止。
 - **2026-02-11**: Dynamic Drawdown Alert の Peak 金額表示を整数表記へ統一し、`¥1000000.` のような末尾小数点が Discord 通知に出ないよう修正（`DYNAMIC DRAWDOWN WARNING` の文面整形）。
 - **2026-02-11**: Executor の heartbeat pulse 表示 `Equity` を整数表記へ統一し、`Equity: 1000000.` のような末尾小数点を解消。
 - **2026-02-11**: Executor/Risk の円建てログ表記を追加整合。`MT5 Sync`、`EQUITY UNKNOWN OR ZERO` fallback、`DAILY LOSS LIMIT HIT` の金額表示を整数表記へ統一し、末尾小数点を除去。
+- **2026-02-11**: 円建て表示の追加整合を拡張。Heartbeat summary、Trade close fallback通知、Global Stats PnL、Darwin daily toxic ログの金額表示も整数表記へ統一し、末尾小数点を除去。
 - **2026-02-11**: School heartbeat 更新をサイクル完了依存から独立tickへ変更。`run-stagnant-flush-tick` で `data/heartbeat/school.tick` を更新し、長時間フェーズ実行中の `Evolution report/heartbeat stale` 誤検知を抑制。
 - **2026-02-11**: Pattern Similarity の Phase 2（ベクトル深層学習）を追加。`tools/pattern_vector_dl.py` と `tools/train_pattern_vector_model.py` を実装し、service側で学習済み Siamese チェックポイントを自動ロードして `model=vector-siamese-v1` を返せるように更新。未配置時は `vector-fallback-v1` へフォールバック。
 - **2026-02-11**: Data Keeper の Tick API（`ADD_TICK` / `GET_TICKS`）を実装。`tools/test_data_keeper_sexp.py` に契約テスト（追加/取得/時間窓）を追加。
