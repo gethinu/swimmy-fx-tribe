@@ -20,10 +20,11 @@
 ;;; STATE
 ;;; ----------------------------------------------------------------------------
 
-(defparameter *last-candle-time* 0)
-(defparameter *candle-history* nil) 
-(defparameter *candle-histories* (make-hash-table :test 'equal)) 
-(defparameter *candle-histories-tf* (make-hash-table :test 'equal)) 
+(defvar *last-candle-time* 0)
+;; Preserve history state across hot reloads.
+(defvar *candle-history* nil)
+(defvar *candle-histories* (make-hash-table :test 'equal))
+(defvar *candle-histories-tf* (make-hash-table :test 'equal))
 (defvar *processed-candle-time* (make-hash-table :test 'equal))
 (defvar *history-process-cache* (make-hash-table :test 'equal))
 (defvar *last-guardian-heartbeat* 0)
@@ -42,15 +43,28 @@
       (gethash tf (gethash symbol *candle-histories-tf*))
       nil))
 
+(defun %normalize-symbol-key (symbol)
+  "Normalize symbol-like key into canonical uppercase string."
+  (cond
+    ((null symbol) nil)
+    ((stringp symbol) (string-upcase symbol))
+    ((symbolp symbol) (string-upcase (symbol-name symbol)))
+    (t (string-upcase (format nil "~a" symbol)))))
+
 (defun update-candle (bid symbol)
   "Update per-symbol M1 candle history from live ticks."
-  (let* ((now (get-universal-time))
+  (let* ((symbol-key (%normalize-symbol-key symbol))
+         (legacy-key (and (stringp symbol-key)
+                          (find-symbol symbol-key :swimmy.main)))
+         (now (get-universal-time))
          (current-bucket (floor now 60)))
 
-    (unless (and symbol bid)
+    (unless (and symbol-key bid)
       (return-from update-candle nil))
 
-    (let* ((history (or (gethash symbol *candle-histories*) *candle-history*))
+    (let* ((history (or (gethash symbol-key *candle-histories*)
+                        (and legacy-key (gethash legacy-key *candle-histories*))
+                        *candle-history*))
            (latest (and history (first history)))
            (updated-history history))
       (if (and latest (= (floor (candle-timestamp latest) 60) current-bucket))
@@ -69,10 +83,19 @@
                              :volume 1)
                 updated-history))
 
-      (setf (gethash symbol *candle-histories*) updated-history)
-      (unless (gethash symbol *candle-histories-tf*)
-        (setf (gethash symbol *candle-histories-tf*) (make-hash-table :test 'equal)))
-      (setf (gethash "M1" (gethash symbol *candle-histories-tf*)) updated-history)
+      (setf (gethash symbol-key *candle-histories*) updated-history)
+      ;; Migrate old symbol-keyed entries to canonical string keys.
+      (when legacy-key
+        (remhash legacy-key *candle-histories*))
+
+      (let ((tf-map (or (gethash symbol-key *candle-histories-tf*)
+                        (and legacy-key (gethash legacy-key *candle-histories-tf*)))))
+        (unless tf-map
+          (setf tf-map (make-hash-table :test 'equal)))
+        (setf (gethash symbol-key *candle-histories-tf*) tf-map)
+        (when legacy-key
+          (remhash legacy-key *candle-histories-tf*))
+        (setf (gethash "M1" tf-map) updated-history))
       ;; Keep legacy single-history pointer aligned with the latest processed symbol.
       (setf *candle-history* updated-history))
 

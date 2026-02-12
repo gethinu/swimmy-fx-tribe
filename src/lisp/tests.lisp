@@ -2074,6 +2074,25 @@
           (assert-true (null (search "部族" captured))))
       (setf (symbol-function 'swimmy.shell::notify-discord-daily) orig))))
 
+(deftest test-notify-discord-daily-accepts-custom-title
+  "notify-discord-daily should accept :title without signaling unknown keyword"
+  (let* ((orig-daily swimmy.core:*discord-daily-webhook*)
+         (orig-queue (symbol-function 'swimmy.core:queue-discord-notification))
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.core:*discord-daily-webhook* "https://example.invalid/daily")
+          (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                (lambda (webhook msg &key color title)
+                  (setf captured (list webhook msg color title))))
+          (swimmy.core:notify-discord-daily "hello" :title "🧐 Advisor Council Report")
+          (assert-not-nil captured "Expected queue-discord-notification call")
+          (assert-equal "https://example.invalid/daily" (first captured))
+          (assert-equal "hello" (second captured))
+          (assert-equal "🧐 Advisor Council Report" (fourth captured)))
+      (setf swimmy.core:*discord-daily-webhook* orig-daily)
+      (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))))
+
 (deftest test-recruit-notification-uses-category
   "recruit notification should say Category and omit Clan/tribe"
   (let ((captured nil)
@@ -5031,6 +5050,7 @@
                   test-live-status-schema-v2-no-tribe
                   test-live-status-includes-heartbeat-metrics
                   test-daily-report-omits-tribe
+                  test-notify-discord-daily-accepts-custom-title
                   test-recruit-notification-uses-category
                   test-category-vocabulary-omits-clan-terms-in-sources
                   test-founder-template-uses-category-placeholder

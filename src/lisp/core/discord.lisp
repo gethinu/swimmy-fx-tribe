@@ -193,11 +193,11 @@
   (when *status-webhook-url*
     (queue-discord-notification *status-webhook-url* msg :color color :title "📊 Status")))
 
-(defun notify-discord-daily (msg &key (color +color-backtest+))
+(defun notify-discord-daily (msg &key (color +color-backtest+) (title "📊 Daily Report"))
   "Daily report channel"
   (let ((webhook (or *discord-daily-webhook* *discord-webhook-url*)))
     (when webhook
-      (queue-discord-notification webhook msg :color color :title "📊 Daily Report"))))
+      (queue-discord-notification webhook msg :color color :title title))))
 
 (defun notify-discord-weekly (msg)
   "Weekly summary channel"

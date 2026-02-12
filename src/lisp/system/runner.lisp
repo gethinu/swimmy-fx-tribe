@@ -124,20 +124,25 @@
            ;; V9.7: Gene Kim - Latency Monitoring
            (loop
              (let ((loop-start-time (get-internal-real-time)))
-               (flet ((recv-nonblock (sock label)
-                        (handler-case
-                            (let ((msg (pzmq:recv-string sock :dontwait t)))
-                              (when msg
-                                (process-msg msg)))
-                          (error (e)
-                            (let ((err-str (format nil "~a" e)))
-                              (unless (search "Resource temporarily unavailable" err-str)
-                                (format t "[L] 🚨 ~a Error: ~a~%" label e)
-                                (sleep 0.1)))))))
-                 ;; Backtest results (non-blocking to avoid tick starvation)
-                 (recv-nonblock pull-bt "Backtest Loop")
-                 ;; Main guardian stream (non-blocking)
-                 (recv-nonblock pull "Main Loop"))
+               (flet ((recv-burst (sock label limit)
+                        ;; Drain up to LIMIT messages per loop to prevent backlog starvation.
+                        (loop for i from 1 to limit
+                              do (handler-case
+                                     (let ((msg (pzmq:recv-string sock :dontwait t)))
+                                       (if msg
+                                           (process-msg msg)
+                                           (return)))
+                                   (error (e)
+                                     (let ((err-str (format nil "~a" e)))
+                                       (if (search "Resource temporarily unavailable" err-str)
+                                           (return)
+                                           (progn
+                                             (format t "[L] 🚨 ~a Error: ~a~%" label e)
+                                             (sleep 0.05)
+                                             (return)))))))))
+                 ;; Backtest results queue first, then main guardian stream.
+                 (recv-burst pull-bt "Backtest Loop" 200)
+                 (recv-burst pull "Main Loop" 500))
 
                ;; Periodic Maintenance
                (handler-case
