@@ -13,12 +13,13 @@ fi
 
 CMD=(
   "$ROOT/.venv/bin/python"
-  "$ROOT/tools/xau_autobot_cycle.py"
+  "$ROOT/tools/xau_autobot_cycle_compare.py"
   --python-exe "$ROOT/.venv/bin/python"
-  --period 90d
+  --periods "${XAU_AUTOBOT_PERIODS:-45d,60d,90d}"
   --interval 5m
-  --write-config tools/configs/xau_autobot.tuned_auto_gc_m5_90d.json
-  --write-summary data/reports/xau_autobot_cycle_summary_90d.json
+  --reports-dir data/reports
+  --config-dir tools/configs
+  --write-comparison data/reports/xau_autobot_cycle_comparison.json
 )
 
 if [ -n "${SWIMMY_DISCORD_REPORTS:-}" ]; then
