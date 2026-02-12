@@ -1076,16 +1076,20 @@ fn main() {
                 // V15.3: ACTION 1 - Notify Discord (via Notifier Service)
                 let webhook_url = std::env::var("SWIMMY_DISCORD_ALERTS").unwrap_or_default();
                 if !webhook_url.is_empty() {
+                    let payload = serde_json::json!({
+                        "content": "@here",
+                        "embeds": [{
+                            "title": "💀 BRAIN DEAD DETECTED 💀",
+                            "description": format!("Brain silence > {}s. Engaging Emergency Protocols.", BRAIN_TIMEOUT_SECS),
+                            "color": 16711680 // Red
+                        }]
+                    });
                     let alert_msg = serde_json::json!({
+                        "type": "NOTIFIER",
+                        "schema_version": 1,
+                        "action": "SEND",
                         "webhook": webhook_url,
-                        "data": {
-                            "content": "@here", 
-                            "embeds": [{
-                                "title": "💀 BRAIN DEAD DETECTED 💀",
-                                "description": format!("Brain silence > {}s. Engaging Emergency Protocols.", BRAIN_TIMEOUT_SECS),
-                                "color": 16711680 // Red
-                            }]
-                        }
+                        "payload": payload
                     });
                     let _ = push_to_notifier.send(&alert_msg.to_string(), 0);
                     println!("📢 Alert sent to Discord: BRAIN DEAD");
@@ -1113,17 +1117,21 @@ fn main() {
                         
                         // Send critical alert
                         if !webhook_url.is_empty() {
+                            let payload = serde_json::json!({
+                                "content": "@here ⚠️ MANUAL INTERVENTION REQUIRED",
+                                "embeds": [{
+                                    "title": "🛑 AUTO-REVIVAL HALTED",
+                                    "description": format!("Brain died {} times in {} seconds. Auto-revival disabled to prevent loop. Please check manually.",
+                                        revival_tracker.death_count, REVIVAL_WINDOW_SECS),
+                                    "color": 16711680 // Red
+                                }]
+                            });
                             let halt_msg = serde_json::json!({
+                                "type": "NOTIFIER",
+                                "schema_version": 1,
+                                "action": "SEND",
                                 "webhook": webhook_url,
-                                "data": {
-                                    "content": "@here ⚠️ MANUAL INTERVENTION REQUIRED",
-                                    "embeds": [{
-                                        "title": "🛑 AUTO-REVIVAL HALTED",
-                                        "description": format!("Brain died {} times in {} seconds. Auto-revival disabled to prevent loop. Please check manually.", 
-                                            revival_tracker.death_count, REVIVAL_WINDOW_SECS),
-                                        "color": 16711680 // Red
-                                    }]
-                                }
+                                "payload": payload
                             });
                             let _ = push_to_notifier.send(&halt_msg.to_string(), 0);
                         }
@@ -1237,15 +1245,19 @@ fn main() {
             // Notify recovery
             let webhook_url = std::env::var("SWIMMY_DISCORD_ALERTS").unwrap_or_default();
             if !webhook_url.is_empty() {
+                let payload = serde_json::json!({
+                    "embeds": [{
+                        "title": "🧠 BRAIN REVIVED",
+                        "description": "Signal restored. Resume normal operation.",
+                        "color": 65280 // Green
+                    }]
+                });
                 let alert_msg = serde_json::json!({
+                    "type": "NOTIFIER",
+                    "schema_version": 1,
+                    "action": "SEND",
                     "webhook": webhook_url,
-                    "data": {
-                        "embeds": [{
-                            "title": "🧠 BRAIN REVIVED",
-                            "description": "Signal restored. Resume normal operation.",
-                            "color": 65280 // Green
-                        }]
-                    }
+                    "payload": payload
                 });
                 let _ = push_to_notifier.send(&alert_msg.to_string(), 0);
             }
