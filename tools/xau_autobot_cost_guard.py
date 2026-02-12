@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional, Tuple
 
 try:
-    import yfinance as yf
+    from tools.xau_autobot_data import load_ohlc
 except Exception:
-    yf = None
+    from xau_autobot_data import load_ohlc  # type: ignore
 
 
 def effective_roundtrip_cost(
@@ -113,22 +113,25 @@ def _load_readiness_report(path: str) -> Dict[str, object]:
         return json.load(f)
 
 
-def _fetch_latest_price(ticker: str) -> float:
-    if yf is None:
-        raise RuntimeError("yfinance is unavailable; pass --price explicitly.")
-    df = yf.download(ticker, period="1d", interval="1m", auto_adjust=False, progress=False, threads=False)
-    if len(df) == 0:
-        df = yf.download(ticker, period="5d", interval="5m", auto_adjust=False, progress=False, threads=False)
-    if len(df) == 0:
-        raise RuntimeError(f"could not fetch price for {ticker}")
-    close_col = None
-    for col in df.columns:
-        if isinstance(col, tuple) and col[0] == "Close":
-            close_col = col
-            break
-    if close_col is None:
-        close_col = df.columns[0]
-    return float(df[close_col].dropna().iloc[-1])
+def _fetch_latest_price(
+    ticker: str,
+    *,
+    load_ohlc_fn: Optional[Callable[..., Tuple[List, List[float], List[float], List[float], List[float]]]] = None,
+) -> float:
+    fn = load_ohlc if load_ohlc_fn is None else load_ohlc_fn
+    attempts = [("1d", "1m"), ("5d", "5m")]
+    errors: List[str] = []
+    for period, interval in attempts:
+        try:
+            _, _, _, _, closes = fn(ticker=ticker, period=period, interval=interval)
+        except Exception as exc:
+            errors.append(f"{period}/{interval}:{exc}")
+            continue
+        if closes:
+            return float(closes[-1])
+        errors.append(f"{period}/{interval}:empty")
+    detail = "; ".join(errors)
+    raise RuntimeError(f"could not fetch price for {ticker} ({detail})")
 
 
 def _parse_spread_grid(value: str) -> List[float]:

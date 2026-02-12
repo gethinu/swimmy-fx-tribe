@@ -1,6 +1,8 @@
 import unittest
+from datetime import datetime, timezone
 
 from tools.xau_autobot_cost_guard import (
+    _fetch_latest_price,
     build_spread_scenarios,
     effective_roundtrip_cost,
     required_max_spread_points,
@@ -63,6 +65,35 @@ class TestXauAutoBotCostGuard(unittest.TestCase):
         self.assertEqual(scenarios[0]["verdict"], "GO")
         self.assertEqual(scenarios[1]["verdict"], "CAUTION")
         self.assertEqual(scenarios[2]["verdict"], "NO_GO")
+
+    def test_fetch_latest_price_falls_back_intervals(self):
+        calls = []
+
+        def fake_load_ohlc(*, ticker: str, period: str, interval: str):
+            calls.append((ticker, period, interval))
+            if period == "1d":
+                raise RuntimeError("no data yet")
+            return (
+                [datetime(2026, 2, 12, tzinfo=timezone.utc)],
+                [0.0],
+                [0.0],
+                [0.0],
+                [2860.25],
+            )
+
+        price = _fetch_latest_price("GC=F", load_ohlc_fn=fake_load_ohlc)
+        self.assertEqual(price, 2860.25)
+        self.assertEqual(
+            calls,
+            [("GC=F", "1d", "1m"), ("GC=F", "5d", "5m")],
+        )
+
+    def test_fetch_latest_price_raises_when_all_attempts_fail(self):
+        def always_fail(*, ticker: str, period: str, interval: str):
+            raise RuntimeError(f"missing {ticker} {period} {interval}")
+
+        with self.assertRaisesRegex(RuntimeError, "could not fetch price for GC=F"):
+            _fetch_latest_price("GC=F", load_ohlc_fn=always_fail)
 
 
 if __name__ == "__main__":
