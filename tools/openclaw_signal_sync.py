@@ -229,7 +229,15 @@ def sync_from_command(
         "signals_file": str(signals_file),
     }
     _write_atomic(meta_file, json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
-    return {"ok": True, "signal_count": count, "signals_file": str(signals_file), "meta_file": str(meta_file)}
+    return {
+        "ok": True,
+        "signal_count": count,
+        "source_counts": dict(source_counts),
+        "agent_signal_count": int(meta["agent_signal_count"]),
+        "agent_signal_ratio": float(meta["agent_signal_ratio"]),
+        "signals_file": str(signals_file),
+        "meta_file": str(meta_file),
+    }
 
 
 def main() -> None:
