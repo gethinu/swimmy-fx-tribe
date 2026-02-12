@@ -60,6 +60,7 @@
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
+- **Signal Confidence Gate**: `process-category-trades` の最終候補シグナルに確度ゲートを適用する。`confidence < 0.20` はエントリー見送り、`0.20 <= confidence < 0.35` はロット `0.55x`、`>= 0.35` は通常ロット。confidence欠落時は後方互換として `1.0` 扱い。
 - **ラベル評価幅**: M5/M15=4時間、H1/H4=1日、D1=1週間、W1/MN1=1か月（ATR基準のUp/Down/Flat）。
 - **サンプルストライド**: M5=30分(6本)、M15=1時間(4本)、H1/H4/D1/W1/MN1=1本。
 - **画像ウィンドウ本数**: M5=120、M15=120、H1=120、H4=120、D1=120、W1=104、MN1=120。
@@ -101,6 +102,7 @@
 - **レポート手動更新**: `tools/ops/finalize_rank_report.sh` は `tools/sbcl_env.sh` を読み込み、`SWIMMY_SBCL_DYNAMIC_SPACE_MB`（未指定時 4096MB）で `finalize_rank_report.lisp` を実行する。
 
 ## 直近の変更履歴
+- **2026-02-12**: 最終エントリー前に Signal Confidence Gate を追加。低確度シグナルは見送り、中確度シグナルはロット縮小（0.55x）で実行し、無差別エントリーを抑制する方針を明記。
 - **2026-02-12**: Dashboard の backtest欄に systemd/listener drift 可視化を追加する方針を追記。`inactive + listener` や PID mismatch を画面上で即時判読可能にする。
 - **2026-02-12**: `swimmy-backtest` の systemd運用ドリフト検知方針を追加。`inactive + manual 5580 LISTEN` を監査FAIL扱いにし、systemd正本への復帰を促す。
 - **2026-02-12**: Backtest Service の S式正規化を強化する方針を追加。`(strategy (k . v) ...)` などの短縮表現を含むBACKTEST要求でも bool を `#t/#f` へ正規化して Guardian へ転送し、`invalid type: symbol, expected boolean` を防止する。

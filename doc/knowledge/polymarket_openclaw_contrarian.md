@@ -18,6 +18,8 @@
 - `fee_bps_per_side` / `slippage_bps_per_side`: コスト控除
 - `min_price_sum` / `max_price_sum`: `yes+no`価格帯フィルタ
 - `min_market_price` / `max_market_price`: 極端価格の市場除外
+- `min_liquidity_usd`: 最低流動性（USD）未満を除外
+- `min_volume_usd`: 最低出来高（USD）未満を除外
 - `enable_contrarian_fade`: 人気側逆張り
 - `contrarian_favorite_threshold`: 人気側判定価格
 - `question_keywords`: 市場質問フィルタ（例: リーグ名、チーム名）
@@ -192,6 +194,8 @@ python3 tools/polymarket_openclaw_autotune.py \
 - `POLYCLAW_MAX_DAILY_ENTRIES`（1日の新規エントリー上限。到達時は当日分を停止）
 - `POLYCLAW_MAX_DAILY_LOSS_STREAK`（当日の決着ベース連敗数上限。到達時はクールダウン停止）
 - `POLYCLAW_MAX_DAILY_REALIZED_LOSS_USD`（当日の実現PnLが`-X USD`を下回ったら停止）
+- `POLYCLAW_MIN_LIQUIDITY_USD`（最低流動性USD。未満市場は除外）
+- `POLYCLAW_MIN_VOLUME_USD`（最低出来高USD。未満市場は除外）
 
 有効化:
 ```bash

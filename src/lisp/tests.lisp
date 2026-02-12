@@ -6851,6 +6851,7 @@
 	                  test-find-diverse-breeding-partner-prioritizes-complement-over-base-score
 	                  test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
 	                  test-select-logic-anchor-parent-prefers-high-pf-under-pf-deficit
+	                  test-breed-strategies-combines-high-wr-entry-and-high-pf-exit
                   ;; Expert Panel P1: Symbol Mismatch Tests
                   test-check-symbol-mismatch-blocks-cross-trading
                   test-check-symbol-mismatch-allows-correct-pair

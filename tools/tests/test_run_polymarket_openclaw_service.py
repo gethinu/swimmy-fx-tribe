@@ -95,6 +95,18 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         text = " ".join(argv)
         self.assertIn("--max-daily-realized-loss-usd 7.5", text)
 
+    def test_build_cycle_args_with_min_liquidity_and_volume(self) -> None:
+        env = {
+            "POLYCLAW_CONFIG_FILE": "/cfg.json",
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_MIN_LIQUIDITY_USD": "10000",
+            "POLYCLAW_MIN_VOLUME_USD": "5000",
+        }
+        argv = svc.build_cycle_args(env=env, base_dir=Path("/repo"))
+        text = " ".join(argv)
+        self.assertIn("--min-liquidity-usd 10000.0", text)
+        self.assertIn("--min-volume-usd 5000.0", text)
+
     def test_build_cycle_args_requires_signal_source(self) -> None:
         env = {"POLYCLAW_CONFIG_FILE": "/cfg.json"}
         with self.assertRaises(ValueError):

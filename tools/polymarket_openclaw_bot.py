@@ -71,6 +71,8 @@ class BotConfig:
     max_price_sum: float = 1.10
     min_market_price: float = 0.03
     max_market_price: float = 0.97
+    min_liquidity_usd: float = 0.0
+    min_volume_usd: float = 0.0
     min_edge: float = 0.02
     min_confidence: float = 0.0
     min_stake_usd: float = 1.0
@@ -96,6 +98,8 @@ class MarketSnapshot:
     no_token_id: str
     yes_price: float
     no_price: float
+    liquidity_usd: float = 0.0
+    volume_usd: float = 0.0
 
 
 @dataclass
@@ -224,6 +228,9 @@ def parse_gamma_market(payload: Mapping[str, Any]) -> Optional[MarketSnapshot]:
     if no_price <= 0.0 or no_price >= 1.0:
         return None
 
+    liquidity = _to_float(payload.get("liquidity"))
+    volume = _to_float(payload.get("volume"))
+
     return MarketSnapshot(
         market_id=market_id,
         question=question,
@@ -231,6 +238,8 @@ def parse_gamma_market(payload: Mapping[str, Any]) -> Optional[MarketSnapshot]:
         no_token_id=no_token_id or f"{market_id}:NO",
         yes_price=float(yes_price),
         no_price=float(no_price),
+        liquidity_usd=float(liquidity) if liquidity is not None else 0.0,
+        volume_usd=float(volume) if volume is not None else 0.0,
     )
 
 
@@ -439,6 +448,8 @@ def build_trade_plan(
     side_max = min(1.0, max(float(config.min_market_price), float(config.max_market_price)))
     sum_min = min(float(config.min_price_sum), float(config.max_price_sum))
     sum_max = max(float(config.min_price_sum), float(config.max_price_sum))
+    min_liquidity = max(0.0, float(config.min_liquidity_usd))
+    min_volume = max(0.0, float(config.min_volume_usd))
     blocked = {str(item).strip() for item in blocked_market_ids if str(item).strip()}
     quality_filtered = 0
     candidates: List[TradePlanEntry] = []
@@ -451,6 +462,12 @@ def build_trade_plan(
             and side_min <= market.no_price <= side_max
             and sum_min <= total_price <= sum_max
         ):
+            quality_filtered += 1
+            continue
+        if market.liquidity_usd < min_liquidity:
+            quality_filtered += 1
+            continue
+        if market.volume_usd < min_volume:
             quality_filtered += 1
             continue
         signal = signals.get(market.market_id)
@@ -692,6 +709,8 @@ def main() -> None:
     parser.add_argument("--max-price-sum", type=float, default=1.10)
     parser.add_argument("--min-market-price", type=float, default=0.03)
     parser.add_argument("--max-market-price", type=float, default=0.97)
+    parser.add_argument("--min-liquidity-usd", type=float, default=0.0)
+    parser.add_argument("--min-volume-usd", type=float, default=0.0)
     parser.add_argument("--min-edge", type=float, default=0.02)
     parser.add_argument("--min-confidence", type=float, default=0.0)
     parser.add_argument("--min-stake-usd", type=float, default=1.0)
@@ -734,6 +753,8 @@ def main() -> None:
         "max_price_sum",
         "min_market_price",
         "max_market_price",
+        "min_liquidity_usd",
+        "min_volume_usd",
         "min_edge",
         "min_confidence",
         "min_stake_usd",
@@ -778,6 +799,8 @@ def main() -> None:
         max_price_sum=float(merged["max_price_sum"]),
         min_market_price=float(merged["min_market_price"]),
         max_market_price=float(merged["max_market_price"]),
+        min_liquidity_usd=float(merged["min_liquidity_usd"]),
+        min_volume_usd=float(merged["min_volume_usd"]),
         min_edge=float(merged["min_edge"]),
         min_confidence=float(merged["min_confidence"]),
         min_stake_usd=float(merged["min_stake_usd"]),

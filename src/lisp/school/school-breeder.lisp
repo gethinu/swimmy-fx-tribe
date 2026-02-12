@@ -184,6 +184,20 @@
         (t
          (select-pfwr-anchor-parent parent1 parent2))))))
 
+(defun higher-wr-parent (parent1 parent2)
+  "Return parent with higher WR (ties -> parent1)."
+  (if (>= (float (or (strategy-win-rate parent1) 0.0))
+          (float (or (strategy-win-rate parent2) 0.0)))
+      parent1
+      parent2))
+
+(defun higher-pf-parent (parent1 parent2)
+  "Return parent with higher PF (ties -> parent1)."
+  (if (>= (float (or (strategy-profit-factor parent1) 0.0))
+          (float (or (strategy-profit-factor parent2) 0.0)))
+      parent1
+      parent2))
+
 (defun pfwr-underperformance-pressure (parent1 parent2)
   "Return 0..1 pressure for PF/WR mutation bias."
   (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
@@ -330,11 +344,15 @@
          (tf (strategy-timeframe parent1))
          (dir (or (strategy-direction parent1) :BOTH))
          (sym (or (strategy-symbol parent1) "USDJPY"))
-         (logic-parent (select-logic-anchor-parent parent1 parent2))
-         (logic-entry (or (strategy-entry logic-parent)
+         (logic-anchor-parent (select-logic-anchor-parent parent1 parent2))
+         (logic-entry-parent (or (higher-wr-parent parent1 parent2) logic-anchor-parent))
+         (logic-exit-parent (or (higher-pf-parent parent1 parent2) logic-anchor-parent))
+         (logic-entry (or (strategy-entry logic-entry-parent)
+                          (strategy-entry logic-anchor-parent)
                           (strategy-entry parent1)
                           (strategy-entry parent2)))
-         (logic-exit (or (strategy-exit logic-parent)
+         (logic-exit (or (strategy-exit logic-exit-parent)
+                         (strategy-exit logic-anchor-parent)
                          (strategy-exit parent1)
                          (strategy-exit parent2)))
          ;; V49.0: Aggressive Mutation (0.1 -> 0.3)

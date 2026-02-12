@@ -25,6 +25,8 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
             max_daily_entries=11,
             max_daily_loss_streak=3,
             max_daily_realized_loss_usd=4.5,
+            min_liquidity_usd=10000.0,
+            min_volume_usd=5000.0,
             limit=123,
             run_id="r1",
             plan_file=Path("/tmp/plan.json"),
@@ -40,6 +42,8 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         self.assertIn("--max-daily-entries 11", text)
         self.assertIn("--max-daily-loss-streak 3", text)
         self.assertIn("--max-daily-realized-loss-usd 4.5", text)
+        self.assertIn("--min-liquidity-usd 10000.0", text)
+        self.assertIn("--min-volume-usd 5000.0", text)
         self.assertIn("--limit 123", text)
         self.assertIn("--run-id r1", text)
 
@@ -56,6 +60,8 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
             max_daily_entries=0,
             max_daily_loss_streak=0,
             max_daily_realized_loss_usd=0.0,
+            min_liquidity_usd=0.0,
+            min_volume_usd=0.0,
             limit=50,
             run_id="r2",
             plan_file=Path("/tmp/plan2.json"),

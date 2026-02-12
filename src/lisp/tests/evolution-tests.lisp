@@ -540,3 +540,27 @@
     (assert-true (eq picked p2)
                  (format nil "Expected higher-PF logic parent p2, got ~a"
                          (if picked (swimmy.school:strategy-name picked) :none)))))
+
+(deftest test-breed-strategies-combines-high-wr-entry-and-high-pf-exit
+  "Breeder should combine entry from higher-WR parent and exit from higher-PF parent."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-LOGIC-COMB-P1"
+                                          :category :trend :timeframe 3600 :direction :BOTH :symbol "USDJPY"
+                                          :generation 10 :rank :B
+                                          :profit-factor 1.08 :win-rate 0.49
+                                          :sl 20.0 :tp 36.0
+                                          :entry '(and wr-parent-entry)
+                                          :exit '(and wr-parent-exit)
+                                          :indicators '((sma 20))))
+         (p2 (swimmy.school:make-strategy :name "UT-LOGIC-COMB-P2"
+                                          :category :trend :timeframe 3600 :direction :BOTH :symbol "USDJPY"
+                                          :generation 11 :rank :B
+                                          :profit-factor 1.46 :win-rate 0.35
+                                          :sl 24.0 :tp 44.0
+                                          :entry '(and pf-parent-entry)
+                                          :exit '(and pf-parent-exit)
+                                          :indicators '((sma 50))))
+         (child (swimmy.school::breed-strategies p1 p2)))
+    (assert-equal '(and wr-parent-entry) (swimmy.school:strategy-entry child)
+                  "Expected child entry to inherit from higher-WR parent")
+    (assert-equal '(and pf-parent-exit) (swimmy.school:strategy-exit child)
+                  "Expected child exit to inherit from higher-PF parent")))

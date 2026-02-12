@@ -11,6 +11,8 @@
   "max_price_sum": 1.1,
   "min_market_price": 0.03,
   "max_market_price": 0.97,
+  "min_liquidity_usd": 10000.0,
+  "min_volume_usd": 5000.0,
   "min_edge": 0.02,
   "min_confidence": 0.65,
   "min_stake_usd": 1.0,

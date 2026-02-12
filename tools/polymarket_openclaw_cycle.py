@@ -45,6 +45,8 @@ def build_bot_command(
     max_daily_entries: int,
     max_daily_loss_streak: int,
     max_daily_realized_loss_usd: float,
+    min_liquidity_usd: float,
+    min_volume_usd: float,
     limit: int,
     run_id: str,
     plan_file: Path,
@@ -82,6 +84,10 @@ def build_bot_command(
         cmd.extend(["--max-daily-loss-streak", str(max_daily_loss_streak)])
     if max_daily_realized_loss_usd > 0.0:
         cmd.extend(["--max-daily-realized-loss-usd", str(max_daily_realized_loss_usd)])
+    if min_liquidity_usd > 0.0:
+        cmd.extend(["--min-liquidity-usd", str(min_liquidity_usd)])
+    if min_volume_usd > 0.0:
+        cmd.extend(["--min-volume-usd", str(min_volume_usd)])
     return cmd
 
 
@@ -244,6 +250,8 @@ def main() -> None:
     parser.add_argument("--max-daily-entries", type=int, default=0)
     parser.add_argument("--max-daily-loss-streak", type=int, default=0)
     parser.add_argument("--max-daily-realized-loss-usd", type=float, default=0.0)
+    parser.add_argument("--min-liquidity-usd", type=float, default=0.0)
+    parser.add_argument("--min-volume-usd", type=float, default=0.0)
     parser.add_argument("--limit", type=int, default=250)
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--run-id", default="")
@@ -291,6 +299,8 @@ def main() -> None:
         max_daily_entries=max(0, args.max_daily_entries),
         max_daily_loss_streak=max(0, args.max_daily_loss_streak),
         max_daily_realized_loss_usd=max(0.0, args.max_daily_realized_loss_usd),
+        min_liquidity_usd=max(0.0, args.min_liquidity_usd),
+        min_volume_usd=max(0.0, args.min_volume_usd),
         limit=max(1, args.limit),
         run_id=run_id,
         plan_file=paths["plan_file"],

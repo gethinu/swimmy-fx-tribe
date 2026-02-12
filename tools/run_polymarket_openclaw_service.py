@@ -106,6 +106,8 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
     max_daily_entries = _env_int(env, "POLYCLAW_MAX_DAILY_ENTRIES", 0)
     max_daily_loss_streak = _env_int(env, "POLYCLAW_MAX_DAILY_LOSS_STREAK", 0)
     max_daily_realized_loss_usd = _env_float(env, "POLYCLAW_MAX_DAILY_REALIZED_LOSS_USD", 0.0)
+    min_liquidity_usd = _env_float(env, "POLYCLAW_MIN_LIQUIDITY_USD", 0.0)
+    min_volume_usd = _env_float(env, "POLYCLAW_MIN_VOLUME_USD", 0.0)
     autotune_min_trades = _env_int(env, "POLYCLAW_AUTOTUNE_MIN_TRADES", 10)
     autotune_apply_best = _env_bool(env, "POLYCLAW_AUTOTUNE_APPLY_BEST", False)
     autotune_apply_min_trades = _env_int(env, "POLYCLAW_AUTOTUNE_APPLY_MIN_TRADES", 20)
@@ -151,6 +153,10 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
         args.extend(["--max-daily-loss-streak", str(max_daily_loss_streak)])
     if max_daily_realized_loss_usd > 0.0:
         args.extend(["--max-daily-realized-loss-usd", str(max_daily_realized_loss_usd)])
+    if min_liquidity_usd > 0.0:
+        args.extend(["--min-liquidity-usd", str(min_liquidity_usd)])
+    if min_volume_usd > 0.0:
+        args.extend(["--min-volume-usd", str(min_volume_usd)])
     if autotune_apply_best:
         args.append("--autotune-apply-best")
         args.extend(["--autotune-apply-min-trades", str(max(1, autotune_apply_min_trades))])
