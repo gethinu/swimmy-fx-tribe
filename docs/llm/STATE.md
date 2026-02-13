@@ -154,7 +154,8 @@
 
 ## 直近の変更履歴
 - **2026-02-13**: BACKTEST_RESULT 適用の数値メトリクス耐性を追加。`metrics` がキー存在でも値が `NIL` の場合は `0.0/0` として正規化し、`The value NIL is not of type REAL` で受信ループが落ちないことを正本化。
-- **2026-02-13**: `Msg Error` 可観測性を強化。message-dispatcher の例外ログに `head`（先頭プレビュー）を付与し、原因メッセージ種別を同定できるように更新。
+- **2026-02-13**: `Msg Error` 可観測性を強化。message-dispatcher の例外ログに `head`（先頭プレビュー）と `step`（ブレッドクラム）を付与し、原因メッセージ/経路を同定できるように更新。
+- **2026-02-13**: Allocation の pending 管理を修正。executor の `swimmy.globals:*pending-orders*`（UUID→(ts,retry,msg)）と School の warrior slot 用 pending を分離し、`check-pending-timeouts` が誤って retry table を走査して `NIL is not of type REAL` を起こす不具合を解消（`*allocation-pending-orders*` 導入）。
 - **2026-02-13**: PF/WR mutation bias の S-target を追加。両親が A-rank 以上のときは S基準（PF=1.70/WR=0.50）を mutation bias のターゲットとして扱い、A基準達成後も S readiness を探索圧として維持する。
 - **2026-02-13**: Graveyard Avoidance の運用契約を更新。`analyze-graveyard-for-avoidance` は graveyard.sexp の破損フォームで中断せずスキップ継続し、`SWIMMY_GRAVEYARD_AVOID_CACHE_SEC` によるTTLキャッシュで child 生成ごとの全走査を防ぐ方針を追加。
 - **2026-02-13**: `migrate-existing-data` の graveyard 読み込み契約を更新。`read` 一括読込で破損行に遭遇すると migration 全体が停止するため、行単位 `safe-read-sexp` に変更し、破損行をスキップして継続する方針を追加。

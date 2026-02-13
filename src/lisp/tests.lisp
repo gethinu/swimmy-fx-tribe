@@ -2023,6 +2023,90 @@
         (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn))
       (setf swimmy.globals::*last-guardian-heartbeat* orig-last))))
 
+(deftest test-internal-process-msg-tick-json
+  "internal-process-msg should process TICK JSON payloads (legacy MT5 bridge compatibility)."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-update (symbol-function 'swimmy.main:update-candle))
+         (orig-process (and (fboundp 'swimmy.school:process-category-trades)
+                            (symbol-function 'swimmy.school:process-category-trades)))
+         (orig-save (and (fboundp 'swimmy.shell:save-live-status)
+                         (symbol-function 'swimmy.shell:save-live-status)))
+         (orig-status (and (fboundp 'swimmy.shell:send-periodic-status-report)
+                           (symbol-function 'swimmy.shell:send-periodic-status-report)))
+         (orig-learn (and (fboundp 'swimmy.school:continuous-learning-step)
+                          (symbol-function 'swimmy.school:continuous-learning-step)))
+         (orig-last swimmy.globals::*last-guardian-heartbeat*)
+         (called nil))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*last-guardian-heartbeat* 0)
+          (setf (symbol-function 'swimmy.main:update-candle)
+                (lambda (bid symbol) (setf called (list bid symbol))))
+          (when orig-process
+            (setf (symbol-function 'swimmy.school:process-category-trades)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-save
+            (setf (symbol-function 'swimmy.shell:save-live-status)
+                  (lambda () nil)))
+          (when orig-status
+            (setf (symbol-function 'swimmy.shell:send-periodic-status-report)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-learn
+            (setf (symbol-function 'swimmy.school:continuous-learning-step)
+                  (lambda () nil)))
+          (funcall fn "{\"type\":\"TICK\",\"symbol\":\"USDJPY\",\"bid\":1.23,\"ask\":1.24}")
+          (assert-true (and called (numberp (first called)) (< (abs (- (first called) 1.23)) 1.0e-6))
+                       (format nil "Expected JSON TICK to call update-candle with bid close to 1.23; got ~a" called))
+          (assert-equal "USDJPY" (second called))
+          (assert-true (> swimmy.globals::*last-guardian-heartbeat* 0)
+                       "JSON TICK should update last guardian heartbeat"))
+      (setf (symbol-function 'swimmy.main:update-candle) orig-update)
+      (when orig-process
+        (setf (symbol-function 'swimmy.school:process-category-trades) orig-process))
+      (when orig-save
+        (setf (symbol-function 'swimmy.shell:save-live-status) orig-save))
+      (when orig-status
+        (setf (symbol-function 'swimmy.shell:send-periodic-status-report) orig-status))
+      (when orig-learn
+        (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn))
+      (setf swimmy.globals::*last-guardian-heartbeat* orig-last))))
+
+(deftest test-allocation-pending-timeouts-ignores-executor-pending-orders
+  "School allocation pending cleanup should not scan executor retry pending orders (UUID table)."
+  (let ((orig-globals swimmy.globals:*pending-orders*)
+        (orig-alloc swimmy.school::*allocation-pending-orders*)
+        (orig-ttl swimmy.school::*pending-ttl*))
+    (unwind-protect
+        (progn
+          ;; Seed executor retry table with non-plist payload.
+          (setf swimmy.globals:*pending-orders* (make-hash-table :test 'equal))
+          (setf (gethash "UUID1" swimmy.globals:*pending-orders*)
+                (list (get-universal-time) 0 '((type . "ORDER_OPEN") (symbol . "USDJPY"))))
+
+          ;; Seed allocation pending table with a stale entry (plist), then run cleanup.
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*pending-ttl* 0)
+          (setf (gethash 123 swimmy.school::*allocation-pending-orders*)
+                (list :timestamp 0 :strategy "UT-ALLOC" :symbol "USDJPY"))
+
+          (let ((ok (handler-case (progn (swimmy.school::check-pending-timeouts) t)
+                      (error (e)
+                        (format t "[TEST] Unexpected error: ~a~%" e)
+                        nil))))
+            (assert-true ok "check-pending-timeouts should not error")
+            (multiple-value-bind (_val presentp)
+                (gethash 123 swimmy.school::*allocation-pending-orders*)
+              (declare (ignore _val))
+              (assert-false presentp "Expected allocation pending entry to be cleaned up"))
+            (multiple-value-bind (_val presentp)
+                (gethash "UUID1" swimmy.globals:*pending-orders*)
+              (declare (ignore _val))
+              (assert-true presentp "Expected executor pending order to remain intact"))))
+      (setf swimmy.globals:*pending-orders* orig-globals)
+      (setf swimmy.school::*allocation-pending-orders* orig-alloc)
+      (setf swimmy.school::*pending-ttl* orig-ttl))))
+
 (deftest test-internal-process-msg-status-now-sexp
   "internal-process-msg should force periodic status dispatch for STATUS_NOW S-expression"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -7668,11 +7752,13 @@
 			                  test-heartbeat-throttle-allows-10s
 			                  test-pulse-check-equity-format-no-trailing-dot
 		                  test-executor-pending-orders-sends-sexp
-		                  test-internal-cmd-json-disallowed
-                  test-internal-process-msg-tick-sexp
-                  test-internal-process-msg-status-now-sexp
-                  test-internal-process-msg-history-sexp
-                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp
+	                  test-internal-cmd-json-disallowed
+	                  test-internal-process-msg-tick-sexp
+	                  test-internal-process-msg-tick-json
+	                  test-allocation-pending-timeouts-ignores-executor-pending-orders
+	                  test-internal-process-msg-status-now-sexp
+	                  test-internal-process-msg-history-sexp
+	                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp
                   test-internal-process-msg-history-sexp-normalizes-symbol-key
                   test-data-client-sexp-candle-normalizes-unix-timestamp
                   test-update-candle-updates-symbol-history-all-symbols

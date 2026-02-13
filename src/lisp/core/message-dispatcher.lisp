@@ -88,6 +88,22 @@
     (when result
       `((type . "BACKTEST_RESULT") (result . ,(%json->alist result))))))
 
+(defun %json->sexp-tick (json)
+  "Convert legacy TICK JSON payload into the equivalent S-expression."
+  (let* ((symbol (%json-val json '("symbol" "SYMBOL") nil))
+         ;; Some bridges emit close/price; treat it as bid if bid is missing.
+         (bid (%json-val json '("bid" "BID" "close" "CLOSE" "price" "PRICE") nil))
+         (ask (%json-val json '("ask" "ASK") nil))
+         (symbol-str (cond
+                       ((stringp symbol) symbol)
+                       ((symbolp symbol) (symbol-name symbol))
+                       (t nil))))
+    (when (and symbol-str bid)
+      (append `((type . "TICK")
+                (symbol . ,symbol-str)
+                (bid . ,bid))
+              (when ask `((ask . ,ask)))))))
+
 (defun %normalize-strategy-name (value)
   "Normalize strategy name to string or NIL."
   (cond
@@ -185,6 +201,9 @@
   (let* ((raw (if (and msg (> (length msg) limit)) (subseq msg 0 limit) msg))
          (clean (if raw (substitute #\Space #\Newline (substitute #\Space #\Return raw)) "")))
     clean))
+
+(defvar *dispatch-step* nil
+  "Best-effort breadcrumb for diagnosing Msg Error bursts (e.g., :tick/update-candle).")
 
 (defparameter *missing-strategy-name-log-limit* 3)
 (defparameter *missing-strategy-name-log-count* 0)
@@ -356,6 +375,8 @@
          (error () nil))))
 
 (defun internal-process-msg (msg)
+  ;; Clear stale breadcrumb so errors don't inherit previous message's step.
+  (setf *dispatch-step* nil)
   (multiple-value-bind (result err)
       (ignore-errors
         (if (and (> (length msg) 0) (char= (char msg 0) #\())
@@ -587,17 +608,23 @@
                           (symbol-str (if (symbolp symbol) (symbol-name symbol) symbol)))
                      (when bid
                        (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
+                       (setf *dispatch-step* :tick/update-candle)
                        (swimmy.main:update-candle bid symbol-str)
                        (when (fboundp 'swimmy.school:process-category-trades)
+                         (setf *dispatch-step* :tick/process-category-trades)
                          (swimmy.school:process-category-trades symbol-str bid ask))
                        (when (fboundp 'swimmy.shell:save-live-status)
+                         (setf *dispatch-step* :tick/save-live-status)
                          (swimmy.shell:save-live-status))
                        (when (fboundp 'swimmy.shell:send-periodic-status-report)
+                         (setf *dispatch-step* :tick/send-periodic-status-report)
                          (swimmy.shell:send-periodic-status-report symbol-str bid))
                        (handler-case
                            (when (fboundp 'swimmy.school:continuous-learning-step)
+                             (setf *dispatch-step* :tick/continuous-learning-step)
                              (swimmy.school:continuous-learning-step))
                          (error () nil))
+                       (setf *dispatch-step* :tick/maybe-alert-backtest-stale)
                        (maybe-alert-backtest-stale))))
                   ((string= type-str "STATUS_NOW")
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
@@ -694,6 +721,14 @@
                              (progn
                                (format t "[DISPATCH] ⚠️ JSON BACKTEST_RESULT missing result~%")
                                nil))))
+                      ((string-equal type-str swimmy.core:+MSG-TICK+)
+                       (let ((sexp (%json->sexp-tick json)))
+                         (if sexp
+                             (return-from internal-process-msg
+                               (internal-process-msg (swimmy.core:encode-sexp sexp)))
+                             (progn
+                               (format t "[DISPATCH] ⚠️ JSON TICK missing symbol/bid~%")
+                               nil))))
                       (t
                        (let ((detail-p (< *json-ignored-log-count* *json-ignored-log-limit*)))
                          (when detail-p (incf *json-ignored-log-count*))
@@ -711,7 +746,7 @@
                     nil)))))
     (when err
       ;; Add newline and a small preview so we can pinpoint which message triggers the error.
-      (format t "[L] Msg Error: ~a head=~a~%" err (%preview-msg msg))
+      (format t "[L] Msg Error: ~a step=~a head=~a~%" err *dispatch-step* (%preview-msg msg))
       nil)
     result))
 (defun process-msg (msg) (internal-process-msg msg))

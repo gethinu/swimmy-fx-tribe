@@ -14,10 +14,12 @@
 ;; Key: "Category-Slot" (e.g., "trend-0")
 ;; Value: Property List (:strategy "Name" :symbol "USDJPY" :magic 12345 ...)
 
-;; Pending Orders (SENT to Guardian, Awaiting MT5)
-(defparameter *pending-orders* (make-hash-table :test 'eql)) 
+;; Pending Allocation Orders (SENT to Guardian, Awaiting MT5)
+(defparameter *allocation-pending-orders* (make-hash-table :test 'eql))
 ;; Key: Magic Number (Integer)
 ;; Value: Property List (:timestamp 1234567890 :strategy "Name" :symbol "USDJPY" ...)
+;; NOTE: Executor retry pending orders are tracked separately in swimmy.globals:*pending-orders*
+;;       (UUID -> (timestamp retry-count message)).
 
 (defparameter *pending-ttl* 60) ; Seconds to wait for MT5 confirmation before giving up
 
@@ -120,7 +122,7 @@
            ;; we risk multiple strategies claiming same slot if we don't check slot usage carefully.
            ;; However, active checked by KEY (cat-slot), so that is safe.
            ;; We just need to ensure we don't overwrite a pending order (unlikely with unique magic).
-           (pending (gethash magic *pending-orders*)))
+           (pending (gethash magic *allocation-pending-orders*)))
       (unless (or active pending)
         ;; ATOMIC RESERVATION: Immediately register pending order
         (register-pending-order magic strategy-name symbol category direction
@@ -141,7 +143,7 @@
 (defun register-pending-order (magic strategy-name symbol category direction
                                  &key pair-id lot entry-bid entry-ask entry-spread-pips entry-cost-pips)
   "Register a trade as PENDING. Do not allocate warrior slot yet."
-  (setf (gethash magic *pending-orders*)
+  (setf (gethash magic *allocation-pending-orders*)
         (list :timestamp (get-universal-time)
               :strategy strategy-name
               :symbol symbol
@@ -163,9 +165,9 @@
     (maphash (lambda (magic info)
                (when (> (- now (getf info :timestamp)) *pending-ttl*)
                  (push magic dead-magic)))
-             *pending-orders*)
+             *allocation-pending-orders*)
     (dolist (m dead-magic)
-      (remhash m *pending-orders*)
+      (remhash m *allocation-pending-orders*)
       (format t "[ALLOC] ❌ Pending Order TIMEOUT: Magic ~d~%" m))))
 
 ;;; ==========================================
@@ -199,7 +201,7 @@
         (setf (gethash magic active-magics) t)
         
         ;; Check if this magic is in PENDING -> Promote
-        (let ((pending (gethash magic *pending-orders*)))
+        (let ((pending (gethash magic *allocation-pending-orders*)))
           (when pending
             (let* ((cat (getf pending :category))
                    (slot (second (multiple-value-list (decode-warrior-magic magic)))) ;; Get slot from Magic
@@ -211,7 +213,7 @@
                       (append pending 
                               (list :ticket ticket 
                                     :start-time (get-universal-time))))
-                (remhash magic *pending-orders*)
+                (remhash magic *allocation-pending-orders*)
                 (incf promoted-count)
                 (format t "[ALLOC] ✅ TRADE CONFIRMED: ~a (Magic ~d) Promoted to Warrior! Strategy: ~a~%" key magic strat-name)))))
         
@@ -268,11 +270,15 @@
    Called by periodic scheduler.
    1. Check pending timeouts.
    2. Request active sync with MT5 periodically."
+  (when (boundp 'swimmy.main::*dispatch-step*)
+    (setf swimmy.main::*dispatch-step* :alloc/check-pending-timeouts))
   (check-pending-timeouts)
   
   ;; V19.6: Active Ghost Prevention
   ;; Force sync every 15 seconds
   (when (= (mod (get-universal-time) 15) 0)
+    (when (boundp 'swimmy.main::*dispatch-step*)
+      (setf swimmy.main::*dispatch-step* :alloc/request-mt5-positions))
     (request-mt5-positions)))
 
 (defun report-active-positions ()
@@ -316,7 +322,7 @@
   "Find strategy name from magic number (checking Pending and Active Warriors)"
   (when magic
     ;; 1. Check Pending
-    (let ((pending (gethash magic *pending-orders*)))
+    (let ((pending (gethash magic *allocation-pending-orders*)))
       (when pending (return-from lookup-strategy-by-magic (getf pending :strategy))))
     
     ;; 2. Check Active Warriors
@@ -330,7 +336,7 @@
 (defun lookup-pair-id-by-magic (magic)
   "Find pair-id from magic number (checking Pending and Active Warriors)"
   (when magic
-    (let ((pending (gethash magic *pending-orders*)))
+    (let ((pending (gethash magic *allocation-pending-orders*)))
       (when pending (return-from lookup-pair-id-by-magic (getf pending :pair-id))))
     (maphash (lambda (key warrior)
                (declare (ignore key))
@@ -342,7 +348,7 @@
 (defun lookup-entry-context-by-magic (magic)
   "Find entry context from magic number (checking Pending and Active Warriors)."
   (when magic
-    (let ((pending (gethash magic *pending-orders*)))
+    (let ((pending (gethash magic *allocation-pending-orders*)))
       (when pending (return-from lookup-entry-context-by-magic pending)))
     (maphash (lambda (key warrior)
                (declare (ignore key))

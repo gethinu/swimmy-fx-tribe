@@ -418,7 +418,7 @@
                 t))
           ;; Cleanup
           (unless committed
-            (remhash magic *pending-orders*)
+            (remhash magic *allocation-pending-orders*)
             (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
             (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
 
@@ -535,6 +535,8 @@
 
 (defun process-category-trades (symbol bid ask)
   ;; V19: Periodic stale allocation cleanup
+  (when (boundp 'swimmy.main::*dispatch-step*)
+    (setf swimmy.main::*dispatch-step* :tick/cleanup-stale-allocations))
   (cleanup-stale-allocations)
   ;; V45: Use per-symbol history for regime detection (Fix: Opus 2026-01-20)
   (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))

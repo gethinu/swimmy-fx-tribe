@@ -2,7 +2,8 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSON維持。
+- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist）を正本（送信側はS式のみ）。外部API境界（Discord/HTTP/MCP stdio）はJSON維持。
+- **Legacy互換**: Brain の message-dispatcher は `BACKTEST_RESULT` と `TICK` の JSON payload を受け取った場合に限り S式へ変換して処理する（ただし運用/契約はS式のみ）。
 - **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
