@@ -9,6 +9,9 @@ param(
     [int]$ReportDays = 30,
     [switch]$ReportIncludeDetails,
     [switch]$ReportDiagnostics,
+    [int]$ReportNotifyThresholdClosed = 0,
+    [string]$ReportNotifyWebhook = "",
+    [string]$ReportNotifyStatePath = "",
     [switch]$SkipProbe,
     [switch]$RunNow,
     [switch]$Remove,
@@ -54,6 +57,15 @@ if ($ReportIncludeDetails) {
 }
 if ($ReportDiagnostics) {
     $reportCmd += " -Diagnostics"
+}
+if ($ReportNotifyThresholdClosed -gt 0) {
+    $reportCmd += " -NotifyThresholdClosed $ReportNotifyThresholdClosed"
+}
+if (-not [string]::IsNullOrWhiteSpace($ReportNotifyWebhook)) {
+    $reportCmd += " -NotifyWebhook `"$ReportNotifyWebhook`""
+}
+if (-not [string]::IsNullOrWhiteSpace($ReportNotifyStatePath)) {
+    $reportCmd += " -NotifyStatePath `"$ReportNotifyStatePath`""
 }
 
 function Invoke-Schtasks {

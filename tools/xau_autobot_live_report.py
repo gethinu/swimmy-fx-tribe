@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -269,6 +272,110 @@ def summarize_closed_positions(closed_positions: Sequence[Dict[str, Any]]) -> Di
     }
 
 
+def build_discord_headers() -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; xau-autobot-live-report/1.0)",
+    }
+
+
+def should_notify_threshold(*, closed_positions: float, threshold: int, state: Dict[str, Any]) -> bool:
+    if threshold <= 0:
+        return False
+    if float(closed_positions) < float(threshold):
+        return False
+    thresholds = state.get("threshold_notified", {})
+    if not isinstance(thresholds, dict):
+        return True
+    return str(threshold) not in thresholds
+
+
+def update_notify_state(
+    *,
+    state: Dict[str, Any],
+    threshold: int,
+    closed_positions: float,
+    now_utc: str,
+) -> Dict[str, Any]:
+    out = dict(state)
+    thresholds = out.get("threshold_notified", {})
+    if not isinstance(thresholds, dict):
+        thresholds = {}
+    thresholds[str(threshold)] = {
+        "closed_positions": float(closed_positions),
+        "notified_at": now_utc,
+    }
+    out["threshold_notified"] = thresholds
+    return out
+
+
+def _load_notify_state(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_notify_state(path: Path, state: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=True, indent=2)
+        f.write("\n")
+
+
+def _post_discord_webhook(webhook_url: str, payload: Dict[str, Any]) -> None:
+    body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+    req = urllib.request.Request(
+        webhook_url,
+        data=body,
+        method="POST",
+        headers=build_discord_headers(),
+    )
+    with urllib.request.urlopen(req, timeout=10):
+        return
+
+
+def _build_threshold_payload(
+    *,
+    threshold: int,
+    output: Dict[str, Any],
+) -> Dict[str, Any]:
+    summary = output.get("summary", {}) if isinstance(output.get("summary"), dict) else {}
+    closed = summary.get("closed_positions", 0.0)
+    net_profit = summary.get("net_profit", 0.0)
+    win_rate = summary.get("win_rate", 0.0)
+    pf = summary.get("profit_factor", 0.0)
+    period = f"{output.get('start_utc')} -> {output.get('end_utc')}"
+    lines = [
+        f"threshold={threshold} closed_positions={closed}",
+        f"net_profit={net_profit} win_rate={win_rate} pf={pf}",
+        f"window={period}",
+    ]
+    return {
+        "embeds": [
+            {
+                "title": "XAU AutoBot Threshold Reached",
+                "description": "\n".join(lines),
+                "color": 3066993,
+            }
+        ]
+    }
+
+
+def _resolve_notify_webhook(cli_value: str) -> str:
+    if cli_value.strip():
+        return cli_value.strip()
+    for key in ("SWIMMY_XAU_NOTIFY_WEBHOOK", "SWIMMY_DISCORD_REPORTS"):
+        value = os.getenv(key, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _parse_utc(value: str) -> datetime:
     text = value.strip()
     if not text:
@@ -343,6 +450,9 @@ def main() -> None:
     parser.add_argument("--end-utc", default="")
     parser.add_argument("--include-details", action="store_true")
     parser.add_argument("--diagnostics", action="store_true")
+    parser.add_argument("--notify-threshold-closed", type=int, default=0)
+    parser.add_argument("--notify-webhook", default="")
+    parser.add_argument("--notify-state-path", default="data/reports/xau_autobot_live_notify_state.json")
     parser.add_argument("--write-report", default="")
     args = parser.parse_args()
 
@@ -388,6 +498,70 @@ def main() -> None:
         )
     if args.include_details:
         output["closed_positions_detail"] = closed_positions
+
+    notify_result: Dict[str, Any] = {"enabled": bool(args.notify_threshold_closed > 0), "notified": False}
+    if args.notify_threshold_closed > 0:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        webhook_url = _resolve_notify_webhook(args.notify_webhook)
+        state_path = Path(args.notify_state_path)
+        state = _load_notify_state(state_path)
+        closed_value = float(summary.get("closed_positions", 0.0))
+        if should_notify_threshold(
+            closed_positions=closed_value,
+            threshold=int(args.notify_threshold_closed),
+            state=state,
+        ):
+            if webhook_url:
+                payload = _build_threshold_payload(
+                    threshold=int(args.notify_threshold_closed),
+                    output=output,
+                )
+                try:
+                    _post_discord_webhook(webhook_url, payload)
+                    state = update_notify_state(
+                        state=state,
+                        threshold=int(args.notify_threshold_closed),
+                        closed_positions=closed_value,
+                        now_utc=now_iso,
+                    )
+                    _write_notify_state(state_path, state)
+                    notify_result.update(
+                        {
+                            "notified": True,
+                            "threshold": int(args.notify_threshold_closed),
+                            "closed_positions": closed_value,
+                            "state_path": str(state_path),
+                        }
+                    )
+                except (urllib.error.URLError, RuntimeError, OSError) as exc:
+                    notify_result.update(
+                        {
+                            "notified": False,
+                            "threshold": int(args.notify_threshold_closed),
+                            "closed_positions": closed_value,
+                            "error": str(exc),
+                        }
+                    )
+            else:
+                notify_result.update(
+                    {
+                        "notified": False,
+                        "threshold": int(args.notify_threshold_closed),
+                        "closed_positions": closed_value,
+                        "error": "webhook_missing",
+                    }
+                )
+        else:
+            notify_result.update(
+                {
+                    "notified": False,
+                    "threshold": int(args.notify_threshold_closed),
+                    "closed_positions": closed_value,
+                    "reason": "threshold_not_reached_or_already_notified",
+                }
+            )
+    if notify_result.get("enabled"):
+        output["notification"] = notify_result
 
     print(json.dumps(output, ensure_ascii=True))
 

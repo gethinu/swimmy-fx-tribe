@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from tools.xau_autobot_live_report import (
     aggregate_closed_positions,
     build_filter_diagnostics,
+    should_notify_threshold,
     summarize_closed_positions,
+    update_notify_state,
 )
 
 
@@ -145,6 +147,28 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertEqual(diagnostics["after_symbol_filter"], 3.0)
         self.assertEqual(diagnostics["after_magic_filter"], 2.0)
         self.assertEqual(diagnostics["after_comment_prefix_filter"], 1.0)
+
+    def test_should_notify_threshold_when_first_reach(self):
+        state = {}
+        self.assertTrue(should_notify_threshold(closed_positions=30.0, threshold=30, state=state))
+
+    def test_should_not_notify_threshold_when_already_notified(self):
+        state = {"threshold_notified": {"30": {"closed_positions": 30.0}}}
+        self.assertFalse(should_notify_threshold(closed_positions=32.0, threshold=30, state=state))
+
+    def test_should_not_notify_threshold_when_below_threshold(self):
+        state = {}
+        self.assertFalse(should_notify_threshold(closed_positions=29.0, threshold=30, state=state))
+
+    def test_update_notify_state_records_threshold(self):
+        updated = update_notify_state(
+            state={},
+            threshold=30,
+            closed_positions=31.0,
+            now_utc="2026-02-13T00:00:00+00:00",
+        )
+        self.assertIn("threshold_notified", updated)
+        self.assertIn("30", updated["threshold_notified"])
 
 
 if __name__ == "__main__":

@@ -7,6 +7,9 @@ param(
     [int]$Days = 30,
     [switch]$IncludeDetails,
     [switch]$Diagnostics,
+    [int]$NotifyThresholdClosed = 0,
+    [string]$NotifyWebhook = "",
+    [string]$NotifyStatePath = "",
     [string]$WriteReport = ""
 )
 
@@ -35,6 +38,15 @@ if ($IncludeDetails) {
 }
 if ($Diagnostics) {
     $args += "--diagnostics"
+}
+if ($NotifyThresholdClosed -gt 0) {
+    $args += @("--notify-threshold-closed", $NotifyThresholdClosed.ToString())
+}
+if (-not [string]::IsNullOrWhiteSpace($NotifyWebhook)) {
+    $args += @("--notify-webhook", $NotifyWebhook)
+}
+if (-not [string]::IsNullOrWhiteSpace($NotifyStatePath)) {
+    $args += @("--notify-state-path", $NotifyStatePath)
 }
 
 & $PythonExe @args
