@@ -157,6 +157,25 @@ service_fallback_health() {
   esac
 }
 
+stop_pattern_similarity_fallback() {
+  local pids
+  pids="$(pgrep -f "$ROOT/tools/pattern_similarity_service.py" 2>/dev/null || true)"
+  [[ -n "$pids" ]] || return 0
+  log "[REPAIR] stopping Pattern Similarity fallback process(es): $(printf '%s' "$pids" | tr '\n' ' ')"
+  # TERM first, then escalate if port remains busy.
+  kill $pids 2>/dev/null || true
+  for _ in {1..20}; do
+    if ! ss -tulnp 2>/dev/null | rg -q ":5565\\b"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  log "[WARN] Pattern Similarity fallback still listening on :5565; escalating to SIGKILL"
+  mark_warn
+  kill -9 $pids 2>/dev/null || true
+  return 0
+}
+
 run_systemctl_repair_step() {
   local desc="$1"
   shift
@@ -201,9 +220,27 @@ else
 
     for svc in "${services[@]}"; do
       if fallback="$(service_fallback_health "$svc" 2>/dev/null)"; then
-        log "[WARN] skip systemctl repair for $svc; fallback process healthy ($fallback)"
-        mark_warn
-        continue
+        if [[ "$svc" == "swimmy-pattern-similarity" ]]; then
+          unit_state="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" is-active "$svc" 2>/dev/null || true)"
+          if [[ "$unit_state" == "active" ]]; then
+            # No drift: systemd unit is already managing it.
+            continue
+          fi
+          # Drift: fallback is running but systemd unit is inactive.
+          if [[ "$SYSTEMCTL_REPAIR_MODE" == "sudo" ]]; then
+            log "[WARN] $svc drift: unit=$unit_state but fallback is healthy ($fallback) → migrating to systemd"
+            mark_warn
+            stop_pattern_similarity_fallback
+          else
+            log "[WARN] skip systemctl repair for $svc; fallback process healthy ($fallback)"
+            mark_warn
+            continue
+          fi
+        else
+          log "[WARN] skip systemctl repair for $svc; fallback process healthy ($fallback)"
+          mark_warn
+          continue
+        fi
       fi
       log "[REPAIR] enable $svc"
       run_systemctl_repair_step "enable $svc" enable "$svc"

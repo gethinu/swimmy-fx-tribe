@@ -83,6 +83,55 @@
     (assert-false (swimmy.school::active-strategy-p (mk :graveyard)) "GRAVEYARD should be inactive")))
 
 ;;; ─────────────────────────────────────────
+;;; GRAVEYARD AVOIDANCE (P3) TESTS
+;;; ─────────────────────────────────────────
+
+(deftest test-analyze-graveyard-for-avoidance-skips-corrupt-form
+  "analyze-graveyard-for-avoidance should skip malformed forms and still compute avoid regions"
+  (let* ((tmp-dir (uiop:temporary-directory))
+         (gy-path (merge-pathnames
+                   (format nil "swimmy_graveyard_avoid_test_~a.sexp" (get-universal-time))
+                   tmp-dir))
+         (retired-path (merge-pathnames
+                        (format nil "swimmy_retired_avoid_test_~a.sexp" (get-universal-time))
+                        tmp-dir))
+         (now (get-universal-time)))
+    (unwind-protect
+        (progn
+          (with-open-file (out gy-path :direction :output :if-exists :supersede :if-does-not-exist :create)
+            ;; Force a reader error: unmatched close paren at top-level.
+            (format out ")~%")
+            ;; Then include valid patterns that should still be processed.
+            (dolist (sl '(1 2 3 4 5))
+              (format out "(:name \"UT\" :timeframe 5 :direction :buy :symbol \"USDJPY\" :sl ~a :tp ~a :timestamp ~d)~%"
+                      sl (* sl 10) now)))
+          (when (probe-file retired-path)
+            (ignore-errors (delete-file retired-path)))
+          (let ((swimmy.school::*graveyard-file* (namestring gy-path))
+                (swimmy.school::*retired-file* (namestring retired-path)))
+            (let* ((out-stream (make-string-output-stream))
+                   (*standard-output* out-stream)
+                   (regions (swimmy.school::analyze-graveyard-for-avoidance))
+                   (output (get-output-stream-string out-stream)))
+              ;; Avoid logging full reader conditions which may include stream/position info and
+              ;; can cause huge allocations on large/corrupt files.
+              (assert-false (search "File-Position" output)
+                            "Read error logs should not include File-Position details")
+              (assert-false (search "Stream:" output)
+                            "Read error logs should not include Stream object details")
+              (assert-true (and (listp regions) (= (length regions) 1))
+                           "Expected one avoid region")
+              (let ((r (first regions)))
+                (assert-equal 1 (getf r :sl-min) "sl-min should be min SL")
+                (assert-equal 5 (getf r :sl-max) "sl-max should be max SL")
+                (assert-equal 10 (getf r :tp-min) "tp-min should be min TP")
+                (assert-equal 50 (getf r :tp-max) "tp-max should be max TP")))))
+      (when (probe-file gy-path)
+        (ignore-errors (delete-file gy-path)))
+      (when (probe-file retired-path)
+        (ignore-errors (delete-file retired-path))))))
+
+;;; ─────────────────────────────────────────
 ;;; SAFE READ TESTS
 ;;; ─────────────────────────────────────────
 
@@ -1131,6 +1180,44 @@
       (when orig-notify
         (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify)))))
 
+(deftest test-notify-cpcv-result-tolerates-nil-metrics-in-log
+  "notify-cpcv-result should not crash when CPCV metrics are present-but-NIL (log persistence)."
+  (let* ((orig-notify (and (fboundp 'swimmy.core:notify-discord-alert)
+                           (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-default *default-pathname-defaults*)
+         (tmp-dir (merge-pathnames
+                   (format nil "swimmy_ut_cpcv_nil_~a/" (get-universal-time))
+                   (uiop:temporary-directory))))
+    (unwind-protect
+        (progn
+          ;; Isolate CPCV CSV writes away from the repo tree.
+          (ensure-directories-exist (merge-pathnames "x" tmp-dir))
+          (setf *default-pathname-defaults* (uiop:ensure-directory-pathname tmp-dir))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          ;; Key point: keys exist, but values are NIL.
+          (swimmy.core:notify-cpcv-result
+           (list :strategy-name "UT-CPCV-NIL"
+                 :median-sharpe nil
+                 :path-count 1
+                 :passed-count 1
+                 :failed-count 0
+                 :pass-rate nil
+                 :is-passed t))
+          (let* ((csv (merge-pathnames "data/logs/cpcv_history.csv"
+                                       (uiop:ensure-directory-pathname tmp-dir))))
+            (assert-true (probe-file csv) "Expected cpcv_history.csv to be created")
+            (let ((text (uiop:read-file-string csv)))
+              ;; NIL metrics must be recorded as 0.0 (not literal \"NIL\") to keep the CSV numeric.
+              (assert-true (search ",UT-CPCV-NIL,0.0000,1,0.0000,PASS" text)
+                           "Expected NIL metrics to persist as 0.0000 in CSV"))))
+      (setf *default-pathname-defaults* orig-default)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify))
+      ;; Best-effort cleanup.
+      (ignore-errors (uiop:delete-directory-tree tmp-dir :validate t)))))
+
 (deftest test-backtest-debug-log-records-apply
   "BACKTEST_RESULT should write debug log around apply when debug enabled"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -1561,11 +1648,19 @@
 
 (deftest test-message-dispatcher-compiles-without-warnings
   "message-dispatcher should compile without warnings"
-  (let ((warnings '()))
-    (handler-bind ((warning (lambda (w)
-                              (push w warnings)
-                              (muffle-warning w))))
-      (compile-file "src/lisp/core/message-dispatcher.lisp"))
+  (let* ((warnings '())
+         (tmp-path (merge-pathnames
+                    (format nil "swimmy-tests-message-dispatcher-~a.fasl" (get-universal-time))
+                    (uiop:temporary-directory))))
+    (unwind-protect
+        (handler-bind ((warning (lambda (w)
+                                  (push w warnings)
+                                  (muffle-warning w))))
+          ;; Avoid mutating the repo-tracked .fasl during tests.
+          (compile-file "src/lisp/core/message-dispatcher.lisp"
+                        :output-file (namestring tmp-path)))
+      (when (probe-file tmp-path)
+        (ignore-errors (delete-file tmp-path))))
     (assert-true (null warnings)
                  (format nil "Expected no warnings, got: ~a" warnings))))
 
@@ -7434,6 +7529,7 @@
     (dolist (test '(;; Clan tests
                   test-main-shadows-last-new-day
                   test-active-strategy-p-bas-legend
+                  test-analyze-graveyard-for-avoidance-skips-corrupt-form
                   test-safe-read-rejects-read-eval
                   test-safe-read-allows-simple-alist
                   test-internal-process-msg-rejects-read-eval
@@ -7465,6 +7561,7 @@
                   test-cpcv-metrics-summary-line-breakdown
                   test-notify-cpcv-result-distinguishes-error
                   test-notify-cpcv-result-dedupes-identical
+                  test-notify-cpcv-result-tolerates-nil-metrics-in-log
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id

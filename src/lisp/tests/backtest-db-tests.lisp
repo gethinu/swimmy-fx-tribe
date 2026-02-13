@@ -845,6 +845,34 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-backtest-trade-logs-insert-accepts-alist-symbol-keys
+  "record-backtest-trades should accept alist trade_list keys even when read in another package (e.g., swimmy.main)."
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-alist-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let* ((ts-key (intern "TIMESTAMP" :swimmy.main))
+                   (pnl-key (intern "PNL" :swimmy.main))
+                   (trade (list (cons ts-key 1) (cons pnl-key 1.0))))
+              (swimmy.school:record-backtest-trades
+               "RID-ALIST" "STRAT-ALIST" "BACKTEST"
+               (list trade)))
+            (let* ((row (first (swimmy.school::execute-to-list
+                                "SELECT timestamp, pnl FROM backtest_trade_logs WHERE request_id = ?"
+                                "RID-ALIST"))))
+              (assert-true row "Expected one inserted row")
+              (assert-equal 1 (first row) "timestamp should persist from alist keys")
+              (let ((pnl (second row)))
+                ;; SQLite drivers may round-trip REAL as double-float.
+                (assert-true (and (numberp pnl)
+                                  (< (abs (- (float pnl 0.0) 1.0)) 1e-6))
+                             "pnl should persist from alist keys"))))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-fetch-backtest-trades
   "fetch-backtest-trades should return rows with optional oos_kind filter"
   (let* ((tmp-db (format nil "/tmp/swimmy-bt-fetch-~a.db" (get-universal-time))))

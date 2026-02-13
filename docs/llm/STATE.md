@@ -24,12 +24,14 @@
     - **権限差分耐性**: strategyファイルの `:RANK/:STATUS` 書換は in-place ではなく `tmp書込 -> os.replace` の原子置換で行い、root所有ファイル混在時でもディレクトリ書込権限があれば再シードを継続できる。
     - **重複名競合の解決規約**: 同名ファイルが `B/` と archive (`GRAVEYARD/RETIRED`) の両方に存在する場合は `B/` 側を正とし、reseed 時に `:B` への DB昇格を継続する（conflictで丸ごとスキップしない）。
   - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
+- **Graveyard Avoidance (P3)**: `analyze-graveyard-for-avoidance` は巨大な `data/memory/graveyard.sexp` をストリーム処理し、途中の破損フォーム（例: `unmatched close parenthesis`）で全体を中断せずにスキップして継続する。結果は `SWIMMY_GRAVEYARD_AVOID_CACHE_SEC`（既定300秒）でキャッシュし、Breeder が child 生成ごとにファイル全走査しないことを正本とする。**Read error のログは条件オブジェクトを丸ごと print せず**、`File-Position/Stream` 等の詳細を出さない（巨大ファイルの破損位置でログ出力自体が大規模割り当てになり OOM するのを防ぐ）。
 - **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
 - **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
   - **reason伝播**: `cpcv_status.txt` の `updated: ... reason: <reason>` が存在する場合、Evolution Report の `CPCV Status` 行にも reason を表示する（`no-candidates` と runtime/criteria 失敗を誤読しないため）。
   - **failed内訳**: `failed` は `send_failed + result_failed` の合算で、`result_failed` は `runtime` と `criteria` の内訳を表示する。
   - **結果分類**: `CPCV_RESULT` は `error` がある場合に `runtime` 失敗として扱う。加えて `path_count/passed_count/failed_count` がすべて 0 の結果は `error` 未付与でも **無効結果** とみなし、`criteria` ではなく `runtime` 失敗として扱う。
   - **通知対象**: CPCV個別通知は既知戦略（KBまたはDBに存在する `strategy_name`）のみ送信し、未知戦略名の結果はメトリクス/履歴には残しても Discord alert は送信しない。
+  - **履歴CSV耐性**: CPCV個別通知は `data/logs/cpcv_history.csv` にも記録するが、`median_sharpe/pass_rate` などの数値が欠落・`NIL` の場合でも 0.0 として記録し、通知/受信ループを `Msg Error` で落とさない。
 - **CPCV Validate (評価条件)**: Guardian の `CPCV_VALIDATE` は `strategy_params` の `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する（timeframe>1はResample、filter有効時は同一データからauxを生成してMTF filter適用）。
 - **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
@@ -51,6 +53,7 @@
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
+  - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
   - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
   - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
   - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する。
@@ -149,6 +152,7 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-13**: Graveyard Avoidance の運用契約を更新。`analyze-graveyard-for-avoidance` は graveyard.sexp の破損フォームで中断せずスキップ継続し、`SWIMMY_GRAVEYARD_AVOID_CACHE_SEC` によるTTLキャッシュで child 生成ごとの全走査を防ぐ方針を追加。
 - **2026-02-13**: `migrate-existing-data` の graveyard 読み込み契約を更新。`read` 一括読込で破損行に遭遇すると migration 全体が停止するため、行単位 `safe-read-sexp` に変更し、破損行をスキップして継続する方針を追加。
 - **2026-02-13**: `collect-all-strategies-unpruned` の計算量契約を更新。DB+Library の重複除外を線形探索から `strategy_name` ハッシュ集合へ変更し、O(n) で統合する方針を追加。
 - **2026-02-13**: OOS結果適用のフォールバック契約を追加。`handle-oos-backtest-result` は in-memory miss でも DB（`strategies.data_sexp`）復元を試み、両方不在時のみ `Strategy not found for OOS result` を記録する方針を明記。

@@ -569,7 +569,7 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
          (handler-case
              (progn
                (enqueue-oos-request name req-id :status status :requested-at now)
-               (let ((dispatch-state (request-backtest strat :suffix "-OOS" :request-id req-id)))
+               (let ((dispatch-state (request-backtest strat :suffix "-OOS" :request-id req-id :include-trades t)))
                  (cond
                    ;; Backward-compatible success contract:
                    ;; accept any non-NIL state except explicit throttle rejection.

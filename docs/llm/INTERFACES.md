@@ -220,8 +220,9 @@ Brainのバックテスト要求を専用サービスへオフロードする。
               (sma_long . 20)
               (sl . 0.0010)
               (tp . 0.0015)
-              (volume . 0.02)))
+ (volume . 0.02)))
  (request_id . "RID-123")         ; 必須: 相関ID
+ (include_trades . #t)            ; optional: trade_list を返す（巨大時は省略されうる）
  (phase . "phase1")               ; optional
  (range_id . "P1")                ; optional
  (start_time 1293840000)          ; optional (Unix seconds) - Option<i64>
@@ -235,7 +236,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
  (timeframe 1))                   ; Option<i64>
 ```
 **Required keys**: `action`, `strategy`, `request_id`  
-**Optional keys**: `phase`, `range_id`, `start_time`, `end_time`, `data_id`, `candles_file`, `aux_candles`, `aux_candles_files`, `swap_history`, `symbol`, `timeframe`  
+**Optional keys**: `include_trades`, `phase`, `range_id`, `start_time`, `end_time`, `data_id`, `candles_file`, `aux_candles`, `aux_candles_files`, `swap_history`, `symbol`, `timeframe`  
 **Bool値の表現（内部S式）**: `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルは Guardian `serde_lexpr` の bool デコードと不整合を起こすため、Backtest/CPCV 送信時は `#t/#f` に正規化して送る。
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:

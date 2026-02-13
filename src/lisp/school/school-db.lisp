@@ -446,9 +446,33 @@
            for val = (and kw (getf entry kw :missing))
            unless (eq val :missing) do (return val)))
     (t
-     (loop for k in keys
-           for cell = (assoc k entry)
-           when cell do (return (cdr cell))))))
+     (or
+      ;; Fast path: exact key match for alists in the current package.
+      (loop for k in keys
+            for cell = (and (listp entry) (assoc k entry))
+            when cell do (return (cdr cell)))
+      ;; Fallback: match by key name (package-insensitive), to accept trade_list output
+      ;; read in a different package (e.g., swimmy.main via safe-read-sexp).
+      (when (listp entry)
+        (let ((wanted (remove nil (mapcar (lambda (k)
+                                            (cond
+                                              ((keywordp k) (string-upcase (symbol-name k)))
+                                              ((symbolp k) (string-upcase (symbol-name k)))
+                                              ((stringp k) (string-upcase k))
+                                              (t nil)))
+                                          keys))))
+          (block found
+            (dolist (cell entry)
+              (when (consp cell)
+                (let* ((ck (car cell))
+                       (ck-name (cond
+                                  ((keywordp ck) (string-upcase (symbol-name ck)))
+                                  ((symbolp ck) (string-upcase (symbol-name ck)))
+                                  ((stringp ck) (string-upcase ck))
+                                  (t nil))))
+                  (when (and ck-name (member ck-name wanted :test #'string=))
+                    (return-from found (cdr cell))))))
+            nil)))))))
 
 (defun record-backtest-trades (request-id strategy-name oos-kind trade-list)
   "Persist trade_list entries for backtest/OOS/CPCV."

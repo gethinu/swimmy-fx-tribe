@@ -71,13 +71,29 @@
               :exit '(< close sma-50)))
          (seed (make-random-state t))
          (name-a nil)
-         (name-b nil))
-    (let ((*random-state* (make-random-state seed)))
-      (setf name-a (swimmy.school:strategy-name (swimmy.school::breed-strategies p1 p2))))
-    (let ((*random-state* (make-random-state seed)))
-      (setf name-b (swimmy.school:strategy-name (swimmy.school::breed-strategies p1 p2))))
-    (assert-true (string/= name-a name-b)
-                 (format nil "Expected unique names, got ~a and ~a" name-a name-b))))
+         (name-b nil)
+         ;; Isolate this test from production graveyard/retired files (can be huge/corrupt).
+         (tmp-dir (uiop:temporary-directory))
+         (gy-path (merge-pathnames
+                   (format nil "swimmy_breed_graveyard_~a.sexp" (get-universal-time))
+                   tmp-dir))
+         (retired-path (merge-pathnames
+                        (format nil "swimmy_breed_retired_~a.sexp" (get-universal-time))
+                        tmp-dir)))
+    (unwind-protect
+        (progn
+          (when (probe-file gy-path) (ignore-errors (delete-file gy-path)))
+          (when (probe-file retired-path) (ignore-errors (delete-file retired-path)))
+          (let ((swimmy.school::*graveyard-file* (namestring gy-path))
+                (swimmy.school::*retired-file* (namestring retired-path)))
+            (let ((*random-state* (make-random-state seed)))
+              (setf name-a (swimmy.school:strategy-name (swimmy.school::breed-strategies p1 p2))))
+            (let ((*random-state* (make-random-state seed)))
+              (setf name-b (swimmy.school:strategy-name (swimmy.school::breed-strategies p1 p2))))
+            (assert-true (string/= name-a name-b)
+                         (format nil "Expected unique names, got ~a and ~a" name-a name-b))))
+      (when (probe-file gy-path) (ignore-errors (delete-file gy-path)))
+      (when (probe-file retired-path) (ignore-errors (delete-file retired-path))))))
 
 (deftest test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
   "PF/WR mutation bias should adjust RR toward better parent profile when parents underperform."

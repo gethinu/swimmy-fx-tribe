@@ -193,9 +193,10 @@
 
 
 ;; Request backtest from Rust
-(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil))
+(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil) include-trades)
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
-   Uses strategy's native symbol if not overridden."
+   Uses strategy's native symbol if not overridden.
+   When INCLUDE-TRADES is true, requests per-trade pnl `trade_list` in the result."
   (let* ((req-id (or request-id (swimmy.core::generate-uuid)))
          (actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
   
@@ -252,7 +253,8 @@
 	                                  (data_id ,(format nil "~a_M1" actual-symbol))
 	                                  (candles_file ,data-file)
 	                                  (symbol . ,actual-symbol)
-	                                  (timeframe ,timeframe))))
+	                                  (timeframe ,timeframe)
+	                                  ,@(when include-trades '((include_trades . t))))))
 	            (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
 	            (let ((*print-case* :downcase)
 	                  (*print-pretty* nil)
@@ -271,7 +273,8 @@
 	                                  (candles . ,(candles-to-sexp target-candles))
 	                                  (aux_candles . ,aux-candles)
 	                                  (symbol . ,actual-symbol)
-	                                  (timeframe ,timeframe))))
+	                                  (timeframe ,timeframe)
+	                                  ,@(when include-trades '((include_trades . t))))))
 	            (let ((*print-case* :downcase)
 	                  (*print-pretty* nil)
 	                  (*print-right-margin* most-positive-fixnum)

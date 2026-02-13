@@ -55,11 +55,14 @@ echo ""
 
 # Run tests and capture output
 START_TIME=$(date +%s)
+set +e
 TEST_OUTPUT=$(sbcl --non-interactive \
   --eval '(require :asdf)' \
   --eval '(load "swimmy.asd")' \
   --eval '(ql:quickload :swimmy :silent t)' \
-  --eval '(swimmy.tests:run-all-tests)' 2>&1) || true
+  --eval '(swimmy.tests:run-all-tests)' 2>&1)
+SBCL_EXIT=$?
+set -e
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
@@ -71,7 +74,11 @@ echo ""
 echo "════════════════════════════════════════════════════"
 
 # Determine result
-if [ "$FAIL_COUNT" -gt 0 ]; then
+if [ "${SBCL_EXIT:-0}" -ne 0 ]; then
+    RESULT="FAIL"
+    echo -e "${RED}❌ SBCL exited non-zero: ${SBCL_EXIT}${NC}"
+    EXIT_CODE=1
+elif [ "$FAIL_COUNT" -gt 0 ]; then
     RESULT="FAIL"
     echo -e "${RED}❌ TESTS FAILED: $FAIL_COUNT failures${NC}"
     EXIT_CODE=1

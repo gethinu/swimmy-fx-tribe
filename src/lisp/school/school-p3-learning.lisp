@@ -75,6 +75,20 @@
 (defparameter *retired-file* "data/memory/retired.sexp")
 (defparameter *retired-weight* 0.25)
 
+(defvar *graveyard-avoid-cache* nil)
+(defvar *graveyard-avoid-cache-time* 0)
+(defvar *graveyard-avoid-cache-key* nil)
+(defparameter *graveyard-avoid-cache-default-ttl-sec* 300)
+
+(defun graveyard-avoid-cache-ttl-sec ()
+  "Return TTL (seconds) for graveyard avoidance cache."
+  (let ((raw (ignore-errors (uiop:getenv "SWIMMY_GRAVEYARD_AVOID_CACHE_SEC"))))
+    (if (and raw (stringp raw) (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) raw)) 0))
+        (handler-case
+            (max 0 (parse-integer raw :junk-allowed t))
+          (error () *graveyard-avoid-cache-default-ttl-sec*))
+        *graveyard-avoid-cache-default-ttl-sec*)))
+
 (defun load-graveyard-patterns ()
   "Load all failure patterns from graveyard.sexp."
   (handler-case
@@ -120,8 +134,15 @@
   "Analyze graveyard.sexp for SL/TP regions to avoid.
    Stream patterns to avoid loading huge files into memory."
   (let* ((now (get-universal-time))
-         (month-seconds (* 30 24 60 60))
-         (clusters (make-hash-table :test 'equal)))
+         (ttl (graveyard-avoid-cache-ttl-sec))
+         (cache-key (list *graveyard-file* *retired-file*)))
+    (when (and *graveyard-avoid-cache*
+               (equal cache-key *graveyard-avoid-cache-key*)
+               (> ttl 0)
+               (< (- now *graveyard-avoid-cache-time*) ttl))
+      (return-from analyze-graveyard-for-avoidance *graveyard-avoid-cache*))
+    (let* ((month-seconds (* 30 24 60 60))
+           (clusters (make-hash-table :test 'equal)))
     (labels ((ensure-cluster (key)
                (or (gethash key clusters)
                    (setf (gethash key clusters)
@@ -152,16 +173,39 @@
                  (incf (getf entry :count))
                  (update-min-max entry (getf pattern :sl) (getf pattern :tp))))
              (scan-pattern-file (path weight-multiplier label)
-               (handler-case
-                   (when (probe-file path)
-                     (with-open-file (stream path :direction :input)
-                       (loop for pattern = (read stream nil :eof)
-                             until (eq pattern :eof)
-                             do (when (listp pattern)
-                                  (process-pattern pattern weight-multiplier)))))
-                 (error (e)
-                   (format t "[~a] ⚠️ Failed: ~a~%" label e)
-                   nil))))
+               (when (probe-file path)
+                 (with-open-file (stream path :direction :input)
+                   (let ((*read-eval* nil)
+                         (*package* (find-package :swimmy.school))
+                         (read-errors 0))
+                     (loop
+                       (handler-case
+                           (let ((pattern (read stream nil :eof)))
+                             (when (eq pattern :eof)
+                               (return))
+                             (when (listp pattern)
+                               (process-pattern pattern weight-multiplier)))
+                         (end-of-file ()
+                           (return))
+	                         (error (e)
+	                           (incf read-errors)
+	                           ;; Advance the stream to avoid looping on the same bad char.
+	                           (when (null (read-char stream nil nil))
+	                             (return))
+	                           (when (<= read-errors 3)
+	                             ;; Do NOT print the condition object directly: SBCL may try to
+	                             ;; compute line/column/file-position info by allocating a huge
+	                             ;; string on large/corrupt files (can OOM the process).
+	                             (let ((msg (or (and (typep e 'simple-condition)
+	                                                 (ignore-errors
+	                                                   (let ((ctl (simple-condition-format-control e))
+	                                                         (args (simple-condition-format-arguments e)))
+	                                                     (and ctl (apply #'format nil ctl args)))))
+	                                            (format nil "~a" (type-of e)))))
+	                               (format t "[~a] ⚠️ Read error (skipping): ~a~%" label msg)))
+	                           (when (>= read-errors 1000)
+	                             (format t "[~a] ❌ Too many read errors (~d); abort scan~%" label read-errors)
+	                             (return))))))))))
       (scan-pattern-file *graveyard-file* 1.0 "GRAVEYARD")
       (scan-pattern-file *retired-file* *retired-weight* "RETIRED")
       (let ((avoid-regions nil))
@@ -181,7 +225,10 @@
                              avoid-regions))))
                  clusters)
         (format t "[GRAVEYARD] 📊 Found ~d avoid regions~%" (length avoid-regions))
-        avoid-regions))))
+        (setf *graveyard-avoid-cache* avoid-regions
+              *graveyard-avoid-cache-time* now
+              *graveyard-avoid-cache-key* cache-key)
+        avoid-regions)))))
 
 (defun should-avoid-params-p (sl tp avoid-regions)
   "Check if SL/TP falls in an avoid region."

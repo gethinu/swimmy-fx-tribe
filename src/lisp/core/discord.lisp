@@ -535,9 +535,9 @@
       (format s "~d,~a,~,4f,~d,~,4f,~a~%"
               (get-universal-time)
               (or (getf data :strategy-name) "unknown")
-              (getf data :median-sharpe 0.0)
-              (getf data :path-count 0)
-              (getf data :pass-rate 0.0)
+              (float (or (getf data :median-sharpe) 0.0) 0.0)
+              (max 0 (truncate (or (getf data :path-count) 0)))
+              (float (or (getf data :pass-rate) 0.0) 0.0)
               (if (getf data :is-passed) "PASS" "FAIL")))))
 
 (defun notify-cpcv-summary (&key (preserve-state nil))
