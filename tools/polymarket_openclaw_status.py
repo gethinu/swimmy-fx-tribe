@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
@@ -421,8 +422,11 @@ def queue_discord_notification_via_notifier(
     ctx = zmq.Context()
     try:
         sock = ctx.socket(zmq.PUSH)
-        sock.setsockopt(zmq.LINGER, 0)
+        # This is a one-shot sender. Give ZMQ a short window to establish the
+        # connection and flush the message so we don't silently drop alerts.
+        sock.setsockopt(zmq.LINGER, 1000)
         sock.connect(f"tcp://{zmq_host}:{int(zmq_port)}")
+        time.sleep(0.05)
         sock.send_string(message)
         sock.close()
     finally:
