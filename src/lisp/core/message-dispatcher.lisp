@@ -197,6 +197,8 @@
 (defparameter *backtest-recv-last-trades* 0)
 (defparameter *backtest-recv-last-id* nil)
 (defparameter *backtest-recv-last-ts* (get-universal-time))
+(defparameter *backtest-status-path* "data/reports/backtest_status.txt"
+  "Path for backtest status file. Bind in tests to avoid polluting production reports.")
 (defparameter *backtest-stale-threshold* 900)
 (defparameter *backtest-stale-alert-interval* 1800)
 (defparameter *backtest-stale-last-alert* 0)
@@ -264,8 +266,8 @@
                                          swimmy.globals::*backtest-submit-count*
                                          0)
                                      *backtest-recv-count*))))
-            (ensure-directories-exist "data/reports/")
-            (with-open-file (s "data/reports/backtest_status.txt"
+            (ensure-directories-exist *backtest-status-path*)
+            (with-open-file (s *backtest-status-path*
                                :direction :output
                                :if-exists :supersede
                                :if-does-not-exist :create)

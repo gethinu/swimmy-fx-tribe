@@ -43,6 +43,7 @@
 - **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
 - **Evolution Report 保存先**: レポート保存は `*evolution-report-path*` を正本とし、`write-evolution-report-files` は固定パスを直接書かない。テスト/運用で保存先をバインド可能にして本番 `data/reports/evolution_factory_report.txt` の意図しない上書きを防ぐ。
   - **テスト隔離**: `run-all-tests` は `*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、本番レポートを汚染しない。
+- **Backtest Status 保存先**: `maybe-log-backtest-recv` の backtest status 書き込み先は `swimmy.main::*backtest-status-path*` を正本とし、固定パス `data/reports/backtest_status.txt` を直接書かない（テスト/監査で保存先をバインド可能にして本番 status を汚染しない）。
 
 ## 決定事項
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
@@ -52,6 +53,7 @@
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
   - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
+  - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
@@ -164,6 +166,8 @@
 - **2026-02-13**: `tools/system_audit.sh` の systemd監査を強化。`sudo -n` が使えない環境でも `systemctl` 直実行へフォールバックして状態確認を継続し、監査自体を `skipping systemctl status` で欠落させない方針を追加。
 - **2026-02-13**: `tools/system_audit.sh` の監査契約を更新。`swimmy-pattern-similarity` は unit 未登録でも実プロセス + `:5565` LISTEN を fallback 健全判定として扱い、`Interactive authentication required` 発生時の auto-repair は WARN スキップで監査継続する方針を追加。
 - **2026-02-13**: Dashboard のサービス表示契約を更新。`PatternSim` は systemd unit 未登録時でも fallback 健全判定（実プロセス + `:5565` LISTEN）を表示に反映し、運用者が実稼働を誤認しない方針を追加。
+- **2026-02-13**: `tools/deep_audit.lisp` をストリーミング監査へ更新。archive-heavy DB でも `init-knowledge-base` を呼ばず、DB/Library のランク集計と `data_sexp` のサンプル復元で健全性を確認する方針へ変更。
+- **2026-02-13**: `backtest_status.txt` の保存先を `swimmy.main::*backtest-status-path*` へ抽象化。テストは一時ファイルへバインドし、本番 `data/reports/backtest_status.txt` を汚染しない方針へ更新。
 - **2026-02-12**: Evolution Report の `System Status` 契約を更新。`Evolution Daemon Active` を固定表示せず、systemd実状態（`swimmy-evolution.service`）を反映し、`systemctl` 取得不能時のみ heartbeat 補助判定へ切替える方針を追加。
 - **2026-02-12**: Evolution Report の表示整形契約を更新。`CPCV Stage2` / `A Near-Miss` の `%` が `%%` で出る退行を修正し、A Near-Miss の同名戦略重複表示を抑制する方針を追加。
 - **2026-02-12**: Evolution Report の候補名短縮契約を更新。先頭25文字のみの省略で同名衝突が発生するため、先頭+末尾を保持する短縮表示へ統一する方針を追加。

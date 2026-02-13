@@ -129,9 +129,24 @@
         (values (> net 0.0) net)
         (values nil nil))))
 
+(defun %backtest-rows->pnl-history (rows &key (cap 500))
+  "Extract numeric PnL list from backtest_trade_logs ROWS.
+If CAP is positive and exceeded, keep the most recent CAP trades (rows are timestamp-ordered)."
+  (let* ((pnls (remove-if-not #'numberp (mapcar (lambda (row) (nth 3 row)) rows))))
+    (when (and (integerp cap) (> cap 0) (> (length pnls) cap))
+      (setf pnls (subseq pnls (- (length pnls) cap))))
+    pnls))
+
 (defun strategy-mc-prob-ruin (strategy &key (iterations *mc-validation-iterations*))
   "Compute MC prob_ruin from strategy pnl-history, or NIL if insufficient evidence."
   (let* ((history (remove-if-not #'numberp (copy-list (or (strategy-pnl-history strategy) '())))))
+    ;; If in-memory history is sparse, fall back to persisted backtest_trade_logs.
+    (when (< (length history) *mc-min-trades*)
+      (let* ((name (%normalize-strategy-name (strategy-name strategy)))
+             (rows (and name (ignore-errors (fetch-backtest-trades name))))
+             (db-history (and rows (%backtest-rows->pnl-history rows))))
+        (when (and db-history (>= (length db-history) *mc-min-trades*))
+          (setf history db-history))))
     (when (>= (length history) *mc-min-trades*)
       (multiple-value-bind (drawdowns final-pnls)
           (run-monte-carlo-simulation history :iterations iterations)

@@ -1182,7 +1182,10 @@
   "backtest_status.txt should include last_request_id only"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
     (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
-    (let* ((status-path "data/reports/backtest_status.txt")
+    (let* ((tmp-path (merge-pathnames
+                      (format nil "backtest_status_test_~a.txt" (get-universal-time))
+                      (uiop:temporary-directory)))
+           (status-path (namestring tmp-path))
            (msg "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-REQ-STATUS\") (sharpe . 0.2) (trades . 1) (pnl . 0.1) (request_id . \"RID-123\"))))")
            (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
            (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
@@ -1206,11 +1209,14 @@
             (setf swimmy.main::*backtest-recv-last-log* 0)
             (setf swimmy.globals::*backtest-submit-count* 5)
             (setf swimmy.main::*backtest-recv-count* 1)
-            (funcall fn msg)
-            (let ((content (with-open-file (s status-path :direction :input)
-                             (let ((text (make-string (file-length s))))
-                               (read-sequence text s)
-                               text))))
+
+            ;; Ensure we never overwrite production status reports.
+            (when (probe-file tmp-path)
+              (ignore-errors (delete-file tmp-path)))
+            (let ((swimmy.main::*backtest-status-path* status-path))
+              (funcall fn msg))
+
+            (let ((content (uiop:read-file-string status-path)))
               (assert-true (search "last_request_id: RID-123" content))
               (assert-true (search "pending: 3" content))
               (assert-true (null (search "last_submit_id" content))
@@ -1223,7 +1229,9 @@
         (setf swimmy.globals::*backtest-submit-count* orig-submit-count)
         (setf swimmy.main::*backtest-recv-count* orig-recv-count)
         (when orig-v2
-          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
+          (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))
+        (when (probe-file tmp-path)
+          (ignore-errors (delete-file tmp-path)))))))
 
 (deftest test-request-backtest-sets-submit-id
   "request-backtest should set submit request_id when none provided"
@@ -6583,6 +6591,45 @@
       (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin) orig-mc)
       (setf (symbol-function 'swimmy.school::dryrun-slippage-p95) orig-dryrun))))
 
+(deftest test-strategy-mc-prob-ruin-falls-back-to-db-trade-history
+  "strategy-mc-prob-ruin should use persisted backtest trade PnL when in-memory pnl-history is sparse."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-MC-DB-FALLBACK"
+                                             :rank :A
+                                             :trades 60
+                                             :pnl-history '(1.0 2.0)))
+         (orig-min swimmy.school::*mc-min-trades*)
+         (orig-fetch (symbol-function 'swimmy.school:fetch-backtest-trades))
+         (orig-run (symbol-function 'swimmy.school::run-monte-carlo-simulation))
+         (orig-analyze (symbol-function 'swimmy.school::analyze-monte-carlo-results))
+         (captured-history nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*mc-min-trades* 30)
+          (setf (symbol-function 'swimmy.school:fetch-backtest-trades)
+                (lambda (strategy-name &key oos-kind)
+                  (declare (ignore strategy-name oos-kind))
+                  (loop for i from 1 to 40
+                        collect (list "RID" "UT-MC-DB-FALLBACK" i (float i) "USDJPY"
+                                      nil nil nil nil nil nil nil nil nil nil nil "BACKTEST"))))
+          (setf (symbol-function 'swimmy.school::run-monte-carlo-simulation)
+                (lambda (trades &key iterations starting-equity)
+                  (declare (ignore iterations starting-equity))
+                  (setf captured-history (copy-list trades))
+                  (values #(0.01 0.02 0.03) #(100.0 120.0 80.0))))
+          (setf (symbol-function 'swimmy.school::analyze-monte-carlo-results)
+                (lambda (strategy-name drawdowns final-pnls)
+                  (declare (ignore strategy-name drawdowns final-pnls))
+                  (swimmy.school::make-mc-result :prob-ruin 0.01)))
+          (let ((prob-ruin (swimmy.school::strategy-mc-prob-ruin strat :iterations 50)))
+            (assert-true (numberp prob-ruin)
+                         "Expected MC prob_ruin to be computed from DB fallback history")
+            (assert-true (>= (length captured-history) 30)
+                         "Expected DB fallback to supply >= min trades to MC simulation")))
+      (setf swimmy.school::*mc-min-trades* orig-min)
+      (setf (symbol-function 'swimmy.school:fetch-backtest-trades) orig-fetch)
+      (setf (symbol-function 'swimmy.school::run-monte-carlo-simulation) orig-run)
+      (setf (symbol-function 'swimmy.school::analyze-monte-carlo-results) orig-analyze))))
+
 (deftest test-dryrun-slippage-persists-across-memory-reset
   "DryRun slippage p95 should be recoverable from DB after in-memory reset."
   (let* ((tmp-db (format nil "/tmp/swimmy-dryrun-persist-~a.db" (get-universal-time)))
@@ -7524,11 +7571,12 @@
 	                  test-b-rank-culling-penalizes-a-base-deficit-when-pruning
 	                  test-validate-a-rank-requires-positive-net-expectancy
 		                  test-validate-a-rank-allows-dryrun-bootstrap-when-mc-passes
-		                  test-validate-a-rank-allows-mc-bootstrap-when-disabled
+                  test-validate-a-rank-allows-mc-bootstrap-when-disabled
 		                  test-validate-a-rank-requires-mc-when-enabled
 		                  test-evaluate-a-rank-requires-common-stage2-gates
 		                  test-common-stage2-bootstrap-passes-for-mature-cpcv-candidate
 		                  test-common-stage2-bootstrap-does-not-bypass-with-low-trades
+		                  test-strategy-mc-prob-ruin-falls-back-to-db-trade-history
 		                  test-dryrun-slippage-persists-across-memory-reset
 		                  test-dryrun-slippage-db-cap-prunes-old-samples
 		                  test-dryrun-slippage-db-period-prunes-old-samples
