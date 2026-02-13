@@ -232,6 +232,7 @@ fn combine_results(results: &[BacktestResult]) -> BacktestResult {
         profit_factor: weighted_pf / weight,
         adjusted_sharpe: weighted_adj_sharpe / weight,
         sharpe_ci_lower: weighted_ci_lower / weight,
+        trade_list: None,
     }
 }
 

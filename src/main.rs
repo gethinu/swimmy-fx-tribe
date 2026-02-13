@@ -72,6 +72,9 @@ struct BacktestRequest {
     // V31.0: Swap History
     #[serde(default)]
     pub swap_history: Vec<backtester::SwapRecord>,
+    // When true, return per-trade PnL logs as `trade_list` in the backtest result.
+    #[serde(default)]
+    include_trades: bool,
 }
 
 // V11.0: P7 Load CSV Command
@@ -1627,7 +1630,11 @@ fn main() {
                             (final_candles, final_aux)
                         };
 
-                        let result = backtester::run_backtest(&req.strategy, &working_candles, &working_aux, &req.swap_history);
+                        let result = if req.include_trades {
+                            backtester::run_backtest_with_trade_list(&req.strategy, &working_candles, &working_aux, &req.swap_history)
+                        } else {
+                            backtester::run_backtest(&req.strategy, &working_candles, &working_aux, &req.swap_history)
+                        };
                         
                         // Response is ALWAYS SXP
                         let response_str = format!("((type . backtest-result) (result . {}))", 
@@ -1857,7 +1864,11 @@ fn main() {
                                    &[]
                                };
 
-                               let result = backtester::run_backtest(&req.strategy, slice, working_aux, &req.swap_history);
+                               let result = if req.include_trades {
+                                   backtester::run_backtest_with_trade_list(&req.strategy, slice, working_aux, &req.swap_history)
+                               } else {
+                                   backtester::run_backtest(&req.strategy, slice, working_aux, &req.swap_history)
+                               };
                                let response_str = if is_sexp {
                                    format!("((type . backtest-result) (result . {}))", 
                                        serde_lexpr::to_string(&result).unwrap())
@@ -2595,7 +2606,11 @@ fn run_backtest_only_mode() {
         let aux_candles = request.aux_candles.clone();
 
         // Run Backtest
-        let result = backtester::run_backtest(&request.strategy, &working_candles, &aux_candles, &request.swap_history);
+        let result = if request.include_trades {
+            backtester::run_backtest_with_trade_list(&request.strategy, &working_candles, &aux_candles, &request.swap_history)
+        } else {
+            backtester::run_backtest(&request.strategy, &working_candles, &aux_candles, &request.swap_history)
+        };
 
         // Output Result as S-Exp
         let output = BacktestResponse {

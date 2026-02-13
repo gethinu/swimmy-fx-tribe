@@ -140,6 +140,12 @@ pub struct Strategy {
     pub exit_short_ast: Option<StrategyNode>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BacktestTrade {
+    pub timestamp: i64,
+    pub pnl: f64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BacktestResult {
     pub strategy_name: String,
@@ -154,6 +160,8 @@ pub struct BacktestResult {
     pub profit_factor: f64, // Kodoku Rule 2 & 3
     pub adjusted_sharpe: f64, // V8.1: Penalized Sharpe (Taleb Haircut)
     pub sharpe_ci_lower: f64, // V8.7: Bootstrap CI lower bound (Taleb)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trade_list: Option<Vec<BacktestTrade>>,
 }
 
 /// V8.1: Taleb's "Haircut" - Penalize suspicious performance
@@ -566,6 +574,7 @@ fn run_backtest_internal(
     swap_history: &[SwapRecord],
     slippage: f64,
     gate: Option<&[GateDecision]>,
+    include_trades: bool,
 ) -> BacktestResult {
     let gate = match gate {
         Some(g) if g.len() == candles.len() => Some(g),
@@ -589,6 +598,7 @@ fn run_backtest_internal(
             profit_factor: 0.0,
             adjusted_sharpe: 0.0,
             sharpe_ci_lower: f64::NEG_INFINITY,
+            trade_list: None,
         };
     }
 
@@ -603,6 +613,7 @@ fn run_backtest_internal(
     let mut pnl = 0.0;
     let mut gross_profit = 0.0;
     let mut gross_loss = 0.0;
+    let mut trade_list: Option<Vec<BacktestTrade>> = if include_trades { Some(Vec::new()) } else { None };
     // Keep 'returns' for existing logic (Sortino etc) but use daily_returns for Sharpe
 	    let mut returns: Vec<f64> = Vec::new();
 	    let mut equity_curve: Vec<f64> = vec![10000.0]; // Starting capital
@@ -706,6 +717,10 @@ fn run_backtest_internal(
 	                    let swap_points = calculate_swap(entry_time, timestamp, true, swap_history);
 	                    trade_pnl += swap_points;
 
+                        if let Some(tl) = trade_list.as_mut() {
+                            tl.push(BacktestTrade { timestamp, pnl: trade_pnl });
+                        }
+
                     pnl += trade_pnl;
                     trades += 1;
                     if trade_pnl > 0.0 { 
@@ -737,6 +752,10 @@ fn run_backtest_internal(
 	                    // V31.0: Apply Swap (Short)
 	                    let swap_points = calculate_swap(entry_time, timestamp, false, swap_history);
 	                    trade_pnl += swap_points;
+
+                        if let Some(tl) = trade_list.as_mut() {
+                            tl.push(BacktestTrade { timestamp, pnl: trade_pnl });
+                        }
 
                     pnl += trade_pnl;
                     trades += 1;
@@ -862,6 +881,14 @@ fn run_backtest_internal(
     // Sortino on Daily or Per-Trade? Standard is Time-Based (Daily).
     let sortino = sortino_ratio(&daily_returns_vec);
 
+    if let Some(ref mut tl) = trade_list {
+        const TRADE_LIST_CAP: usize = 500;
+        if tl.len() > TRADE_LIST_CAP {
+            let start = tl.len() - TRADE_LIST_CAP;
+            *tl = tl.split_off(start);
+        }
+    }
+
     BacktestResult {
         strategy_name: strategy.name.clone(),
         trades, wins, losses, pnl,
@@ -872,6 +899,7 @@ fn run_backtest_internal(
         profit_factor: if gross_loss != 0.0 { gross_profit / gross_loss } else { 0.0 },
         adjusted_sharpe: calculate_penalized_sharpe(sharpe, trades),
 	        sharpe_ci_lower: ci_lower,
+            trade_list,
 	    }
 	}
 
@@ -885,7 +913,16 @@ pub fn run_backtest(
     aux_candles: &HashMap<String, Vec<Candle>>,
     swap_history: &[SwapRecord],
 ) -> BacktestResult {
-    run_backtest_internal(strategy, candles, aux_candles, swap_history, DEFAULT_SLIPPAGE, None)
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, DEFAULT_SLIPPAGE, None, false)
+}
+
+pub fn run_backtest_with_trade_list(
+    strategy: &Strategy,
+    candles: &[Candle],
+    aux_candles: &HashMap<String, Vec<Candle>>,
+    swap_history: &[SwapRecord],
+) -> BacktestResult {
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, DEFAULT_SLIPPAGE, None, true)
 }
 
 pub fn run_backtest_with_slippage(
@@ -895,7 +932,7 @@ pub fn run_backtest_with_slippage(
     swap_history: &[SwapRecord],
     slippage: f64,
 ) -> BacktestResult {
-    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, None)
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, None, false)
 }
 
 pub fn run_backtest_with_gate_and_slippage(
@@ -906,7 +943,7 @@ pub fn run_backtest_with_gate_and_slippage(
     gate: &[GateDecision],
     slippage: f64,
 ) -> BacktestResult {
-    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, Some(gate))
+    run_backtest_internal(strategy, candles, aux_candles, swap_history, slippage, Some(gate), false)
 }
 
 // V6.11: Signal generators per indicator type
@@ -1285,6 +1322,50 @@ mod tests {
         let expected_pnl = (90.0 - 0.005) - (100.0 + 0.005); // -10.01
         assert!((result.pnl - expected_pnl).abs() < 0.0001, 
             "PnL mismatch. Got: {}, Expected: {}", result.pnl, expected_pnl);
+    }
+
+    #[test]
+    fn test_run_backtest_with_trade_list_populates_trade_list() {
+        let mut candles = Vec::new();
+        for i in 0..6 {
+            candles.push(Candle { timestamp: i as i64, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 });
+        }
+        for i in 6..9 {
+            candles.push(Candle { timestamp: i as i64, open: 90.0, high: 90.0, low: 90.0, close: 90.0, volume: 100.0 });
+        }
+        candles.push(Candle { timestamp: 9, open: 110.0, high: 110.0, low: 110.0, close: 110.0, volume: 100.0 });
+        candles.push(Candle { timestamp: 10, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 });
+        candles.push(Candle { timestamp: 11, open: 90.0, high: 90.0, low: 90.0, close: 90.0, volume: 100.0 });
+
+        let strategy = Strategy {
+            name: "TestTrades".to_string(),
+            sma_short: 2,
+            sma_long: 5,
+            sl: 5.0,
+            tp: 5.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+
+        let plain = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
+        assert!(plain.trade_list.is_none(), "trade_list should default to None");
+
+        let with_trades = run_backtest_with_trade_list(&strategy, &candles, &std::collections::HashMap::new(), &[]);
+        assert_eq!(with_trades.trades, 1, "Should have executed 1 trade");
+        assert!(with_trades.trade_list.is_some(), "trade_list should be present when requested");
+
+        let tl = with_trades.trade_list.unwrap();
+        assert_eq!(tl.len() as i32, with_trades.trades, "trade_list length should match trades");
+        assert_eq!(tl[0].timestamp, 11, "Expected trade timestamp to be exit candle timestamp");
+        assert!((tl[0].pnl - with_trades.pnl).abs() < 1e-6, "Single trade pnl should match aggregate pnl");
     }
 
     #[test]
