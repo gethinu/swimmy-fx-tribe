@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from tools.xau_autobot_live_report import (
     aggregate_closed_positions,
+    build_filter_diagnostics,
     summarize_closed_positions,
 )
 
@@ -107,6 +108,26 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertAlmostEqual(summary["win_rate"], 2.0 / 3.0, places=8)
         self.assertAlmostEqual(summary["profit_factor"], 13.0 / 4.0, places=8)
         self.assertAlmostEqual(summary["max_drawdown_abs"], 4.0, places=6)
+
+    def test_build_filter_diagnostics_counts_stages(self):
+        deals = [
+            self._deal(symbol="XAUUSD", magic=560070, comment="xau_autobot_tuned_auto", deal_type=0),
+            self._deal(symbol="XAUUSD", magic=560070, comment="[tp]", deal_type=1),
+            self._deal(symbol="XAUUSD", magic=999, comment="xau_autobot_tuned_auto", deal_type=0),
+            self._deal(symbol="EURUSD", magic=560070, comment="xau_autobot_tuned_auto", deal_type=0),
+        ]
+
+        diagnostics = build_filter_diagnostics(
+            deals=deals,
+            symbol="XAUUSD",
+            magic=560070,
+            comment_prefix="xau_autobot_tuned_auto",
+        )
+
+        self.assertEqual(diagnostics["tradable_deals"], 4.0)
+        self.assertEqual(diagnostics["after_symbol_filter"], 3.0)
+        self.assertEqual(diagnostics["after_magic_filter"], 2.0)
+        self.assertEqual(diagnostics["after_comment_prefix_filter"], 1.0)
 
 
 if __name__ == "__main__":

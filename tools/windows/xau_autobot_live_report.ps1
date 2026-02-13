@@ -6,6 +6,7 @@ param(
     [string]$CommentPrefix = "xau_autobot_tuned_auto",
     [int]$Days = 30,
     [switch]$IncludeDetails,
+    [switch]$Diagnostics,
     [string]$WriteReport = ""
 )
 
@@ -31,6 +32,9 @@ $args = @(
 )
 if ($IncludeDetails) {
     $args += "--include-details"
+}
+if ($Diagnostics) {
+    $args += "--diagnostics"
 }
 
 & $PythonExe @args

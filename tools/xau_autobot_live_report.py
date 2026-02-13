@@ -61,13 +61,15 @@ def _is_strategy_deal(
     symbol: str,
     magic: int,
 ) -> bool:
+    symbol_filter = (symbol or "").strip()
     deal_symbol = str(_deal_value(deal, "symbol", "")).upper()
-    if deal_symbol != symbol.upper():
+    if symbol_filter and symbol_filter != "*" and deal_symbol != symbol_filter.upper():
         return False
 
-    deal_magic = _to_int(_deal_value(deal, "magic", 0), default=-1)
-    if deal_magic != int(magic):
-        return False
+    if int(magic) >= 0:
+        deal_magic = _to_int(_deal_value(deal, "magic", 0), default=-1)
+        if deal_magic != int(magic):
+            return False
 
     deal_type = _to_int(_deal_value(deal, "type", -1), default=-1)
     if deal_type not in (BUY_DEAL_TYPE, SELL_DEAL_TYPE):
@@ -150,6 +152,62 @@ def aggregate_closed_positions(
     return out
 
 
+def build_filter_diagnostics(
+    *,
+    deals: Sequence[Any],
+    symbol: str,
+    magic: int,
+    comment_prefix: str,
+) -> Dict[str, Any]:
+    tradable: List[Any] = []
+    for deal in deals:
+        deal_type = _to_int(_deal_value(deal, "type", -1), default=-1)
+        if deal_type in (BUY_DEAL_TYPE, SELL_DEAL_TYPE):
+            tradable.append(deal)
+
+    symbol_filter = (symbol or "").strip()
+    symbol_matched = []
+    for deal in tradable:
+        ds = str(_deal_value(deal, "symbol", "")).upper()
+        if not symbol_filter or symbol_filter == "*" or ds == symbol_filter.upper():
+            symbol_matched.append(deal)
+
+    magic_matched = []
+    for deal in symbol_matched:
+        if int(magic) < 0:
+            magic_matched.append(deal)
+            continue
+        dm = _to_int(_deal_value(deal, "magic", 0), default=-1)
+        if dm == int(magic):
+            magic_matched.append(deal)
+
+    comment_matched = []
+    for deal in magic_matched:
+        if _comment_matches(deal, comment_prefix):
+            comment_matched.append(deal)
+
+    symbol_counts: Dict[str, int] = {}
+    magic_counts: Dict[str, int] = {}
+    for deal in tradable:
+        ds = str(_deal_value(deal, "symbol", "")).upper()
+        symbol_counts[ds] = symbol_counts.get(ds, 0) + 1
+        dm = str(_to_int(_deal_value(deal, "magic", 0), default=0))
+        magic_counts[dm] = magic_counts.get(dm, 0) + 1
+
+    top_symbols = sorted(symbol_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
+    top_magics = sorted(magic_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
+
+    return {
+        "total_deals": float(len(deals)),
+        "tradable_deals": float(len(tradable)),
+        "after_symbol_filter": float(len(symbol_matched)),
+        "after_magic_filter": float(len(magic_matched)),
+        "after_comment_prefix_filter": float(len(comment_matched)),
+        "top_symbols": [{"symbol": k, "count": float(v)} for k, v in top_symbols],
+        "top_magics": [{"magic": k, "count": float(v)} for k, v in top_magics],
+    }
+
+
 def _max_drawdown_abs(pnls: Iterable[float]) -> float:
     equity = 0.0
     peak = 0.0
@@ -223,7 +281,11 @@ def _fetch_open_positions_snapshot(*, symbol: str, magic: int, comment_prefix: s
     if not mt5.initialize():
         raise RuntimeError(f"mt5.initialize() failed: {mt5.last_error()}")
     try:
-        positions = mt5.positions_get(symbol=symbol)
+        symbol_filter = (symbol or "").strip()
+        if symbol_filter and symbol_filter != "*":
+            positions = mt5.positions_get(symbol=symbol_filter)
+        else:
+            positions = mt5.positions_get()
         if not positions:
             return {"open_positions": 0.0, "open_volume": 0.0, "open_floating_profit": 0.0}
 
@@ -231,9 +293,10 @@ def _fetch_open_positions_snapshot(*, symbol: str, magic: int, comment_prefix: s
         volume = 0.0
         floating = 0.0
         for position in positions:
-            pos_magic = _to_int(getattr(position, "magic", 0), default=-1)
-            if pos_magic != int(magic):
-                continue
+            if int(magic) >= 0:
+                pos_magic = _to_int(getattr(position, "magic", 0), default=-1)
+                if pos_magic != int(magic):
+                    continue
             if comment_prefix:
                 comment = str(getattr(position, "comment", ""))
                 if not comment.startswith(comment_prefix):
@@ -259,6 +322,7 @@ def main() -> None:
     parser.add_argument("--start-utc", default="")
     parser.add_argument("--end-utc", default="")
     parser.add_argument("--include-details", action="store_true")
+    parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--write-report", default="")
     args = parser.parse_args()
 
@@ -295,6 +359,13 @@ def main() -> None:
         "summary": summary,
         "open_snapshot": open_snapshot,
     }
+    if args.diagnostics:
+        output["diagnostics"] = build_filter_diagnostics(
+            deals=deals,
+            symbol=args.symbol,
+            magic=args.magic,
+            comment_prefix=args.comment_prefix,
+        )
     if args.include_details:
         output["closed_positions_detail"] = closed_positions
 
