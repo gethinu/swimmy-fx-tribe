@@ -1,6 +1,7 @@
 import unittest
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from tools import polymarket_openclaw_status as status
 
@@ -15,6 +16,10 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
         health = status.build_health(
             payload={"updated_at": "2026-02-13T00:00:00+00:00"},
             max_age_seconds=60,
+            window_summary={},
+            min_runs_in_window=0,
+            min_sent_in_window=0,
+            min_entries_in_window=0,
             now_iso="2026-02-13T01:10:00+00:00",
         )
         self.assertEqual("stale", health["status"])
@@ -31,6 +36,7 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
             window_summary={},
             min_runs_in_window=0,
             min_sent_in_window=0,
+            min_entries_in_window=0,
             now_iso="2026-02-13T01:01:00+00:00",
         )
         self.assertEqual("error", health["status"])
@@ -43,6 +49,7 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
             window_summary={"window_minutes": 60, "runs": 0, "execution_sent": 0},
             min_runs_in_window=1,
             min_sent_in_window=0,
+            min_entries_in_window=0,
             now_iso="2026-02-13T01:01:00+00:00",
         )
         self.assertEqual("warn", health["status"])
@@ -55,10 +62,24 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
             window_summary={"window_minutes": 60, "runs": 3, "execution_sent": 0},
             min_runs_in_window=0,
             min_sent_in_window=1,
+            min_entries_in_window=0,
             now_iso="2026-02-13T01:01:00+00:00",
         )
         self.assertEqual("warn", health["status"])
         self.assertIn("sent below threshold", health["reason"])
+
+    def test_build_health_marks_warn_when_entries_below_threshold(self) -> None:
+        health = status.build_health(
+            payload={"updated_at": "2026-02-13T01:00:00+00:00"},
+            max_age_seconds=0,
+            window_summary={"window_minutes": 60, "runs": 3, "entries": 0, "execution_sent": 0},
+            min_runs_in_window=0,
+            min_sent_in_window=0,
+            min_entries_in_window=1,
+            now_iso="2026-02-13T01:01:00+00:00",
+        )
+        self.assertEqual("warn", health["status"])
+        self.assertIn("entries below threshold", health["reason"])
 
     def test_render_text_summary(self) -> None:
         text = status.render_text_summary(
@@ -70,6 +91,9 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
                 "signal_count": 30,
                 "agent_signal_count": 10,
                 "agent_signal_ratio": 0.333333,
+                "open_markets": 4,
+                "blocked_open_markets": 1,
+                "quality_filtered_markets": 2,
                 "live_execution_enabled": True,
                 "execution_sent": 2,
                 "execution_failed": 0,
@@ -83,6 +107,7 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
         self.assertIn("Run: r1", text)
         self.assertIn("Entries: 2", text)
         self.assertIn("Signals: total=30", text)
+        self.assertIn("Markets: open=4 blocked=1 quality_filtered=2", text)
 
     def test_load_status_history(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -168,6 +193,14 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
         self.assertIn("WindowSummary:", text)
         self.assertIn("window=30m", text)
         self.assertIn("runs=3", text)
+
+    def test_env_int(self) -> None:
+        with mock.patch.dict(status.os.environ, {}, clear=True):
+            self.assertEqual(7, status._env_int("POLYCLAW_DUMMY", 7))
+        with mock.patch.dict(status.os.environ, {"POLYCLAW_DUMMY": "12"}, clear=True):
+            self.assertEqual(12, status._env_int("POLYCLAW_DUMMY", 7))
+        with mock.patch.dict(status.os.environ, {"POLYCLAW_DUMMY": "bad"}, clear=True):
+            self.assertEqual(7, status._env_int("POLYCLAW_DUMMY", 7))
 
 
 if __name__ == "__main__":

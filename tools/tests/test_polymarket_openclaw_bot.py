@@ -153,6 +153,62 @@ class TestPolymarketParsing(unittest.TestCase):
         self.assertEqual(1, len(filtered))
         self.assertEqual("m1", filtered[0].market_id)
 
+    def test_hydrate_markets_for_signals_uses_existing_overlap(self) -> None:
+        signals = {"m1": bot.OpenClawSignal(market_id="m1", p_yes=0.6, confidence=0.8)}
+        raw_markets = [
+            {
+                "id": "m1",
+                "question": "Will Lakers win?",
+                "tokens": [
+                    {"token_id": "y1", "outcome": "Yes", "price": "0.55"},
+                    {"token_id": "n1", "outcome": "No", "price": "0.45"},
+                ],
+            }
+        ]
+        with mock.patch.object(bot, "fetch_gamma_markets_for_signal_ids") as mocked:
+            hydrated = bot.hydrate_markets_for_signals(
+                raw_markets=raw_markets,
+                signals=signals,
+                gamma_url="https://gamma-api.polymarket.com/markets",
+                limit=100,
+            )
+        self.assertEqual(1, len(hydrated))
+        self.assertEqual("m1", hydrated[0].market_id)
+        mocked.assert_not_called()
+
+    def test_hydrate_markets_for_signals_fallback_by_market_id(self) -> None:
+        signals = {"m2": bot.OpenClawSignal(market_id="m2", p_yes=0.6, confidence=0.8)}
+        raw_markets = [
+            {
+                "id": "m1",
+                "question": "Will Lakers win?",
+                "tokens": [
+                    {"token_id": "y1", "outcome": "Yes", "price": "0.55"},
+                    {"token_id": "n1", "outcome": "No", "price": "0.45"},
+                ],
+            }
+        ]
+        fallback_raw = [
+            {
+                "id": "m2",
+                "question": "Will Yankees win?",
+                "tokens": [
+                    {"token_id": "y2", "outcome": "Yes", "price": "0.52"},
+                    {"token_id": "n2", "outcome": "No", "price": "0.48"},
+                ],
+            }
+        ]
+        with mock.patch.object(bot, "fetch_gamma_markets_for_signal_ids", return_value=fallback_raw) as mocked:
+            hydrated = bot.hydrate_markets_for_signals(
+                raw_markets=raw_markets,
+                signals=signals,
+                gamma_url="https://gamma-api.polymarket.com/markets",
+                limit=100,
+            )
+        self.assertEqual(1, len(hydrated))
+        self.assertEqual("m2", hydrated[0].market_id)
+        mocked.assert_called_once()
+
 
 class TestTradePlanning(unittest.TestCase):
     def test_build_trade_plan_enforces_risk_budget(self) -> None:

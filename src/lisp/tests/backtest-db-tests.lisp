@@ -520,7 +520,8 @@
   "Ensure init-db sets SQLite to WAL mode for concurrency."
   (let ((tmp-db (format nil "/tmp/swimmy-wal-~a.db" (get-universal-time))))
     (let ((swimmy.core::*db-path-default* tmp-db)
-          (swimmy.core::*sqlite-conn* nil))
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
       (unwind-protect
            (progn
              (swimmy.school::init-db)
@@ -529,6 +530,59 @@
                             "journal_mode should be WAL")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-init-db-creates-strategy-lookup-indexes
+  "Ensure init-db creates rank/category lookup indexes for strategies."
+  (let ((tmp-db (format nil "/tmp/swimmy-index-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let* ((rows (execute-to-list "PRAGMA index_list('strategies')"))
+                    (names (mapcar (lambda (r) (string-upcase (or (second r) ""))) rows)))
+               (assert-true (find "IDX_STRATEGIES_RANK_SHARPE" names :test #'string=)
+                            "rank+sharpe index should exist")
+               (assert-true (find "IDX_STRATEGIES_CATEGORY_RANK" names :test #'string=)
+                            "category+rank index should exist")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-migrate-existing-data-skips-corrupted-graveyard-lines
+  "migrate-existing-data should skip malformed graveyard lines and continue with valid entries."
+  (let* ((tmp-db (format nil "/tmp/swimmy-migrate-~a.db" (get-universal-time)))
+         (tmp-root (format nil "/tmp/swimmy-migrate-root-~a/" (get-universal-time)))
+         (graveyard-dir (merge-pathnames "data/memory/" tmp-root))
+         (graveyard-file (merge-pathnames "graveyard.sexp" graveyard-dir)))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil)
+          (*default-pathname-defaults* (uiop:ensure-directory-pathname tmp-root)))
+      (unwind-protect
+          (progn
+            (ensure-directories-exist graveyard-dir)
+            (with-open-file (out graveyard-file
+                                 :direction :output
+                                 :if-exists :supersede
+                                 :if-does-not-exist :create)
+              ;; Broken line first: old code would stop here and skip the valid line below.
+              (write-line ")" out)
+              (write-line "(:name \"VALID-1\" :indicators ((:SMA 20)) :entry (> close 0) :exit (< close 0))" out))
+            (swimmy.school::init-db)
+            (swimmy.school::%migrate-graveyard-patterns graveyard-file)
+            (let* ((gy-count (execute-single
+                              "SELECT count(*) FROM strategies WHERE rank = ':GRAVEYARD'"))
+                   (row (first (execute-to-list
+                                "SELECT name FROM strategies WHERE rank = ':GRAVEYARD'"))))
+              (assert-equal 1 gy-count "Expected one valid graveyard entry to be migrated")
+              (assert-equal "GY-VALID-1" (first row)
+                            "Expected valid graveyard entry name to be migrated")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))
+        (ignore-errors (delete-file graveyard-file))))))
 
 (deftest test-refresh-strategy-metrics-incremental
   "Incremental refresh should update only rows changed since timestamp."
@@ -1028,10 +1082,12 @@
           (with-open-file (out tmp-status :direction :output :if-exists :supersede :if-does-not-exist :create)
             (write-line "1 queued | 1 sent | 1 received | 1 failed (send 0 / result 1) | inflight 0" out)
             (write-line "last_start_unix: 1" out)
-            (write-line "updated: 01/01 00:00 JST / 00:00 UTC reason: test" out))
+            (write-line "updated: 01/01 00:00 JST / 00:00 UTC reason: no-candidates" out))
           (let ((snippet (swimmy.school::build-cpcv-status-snippet)))
             (assert-true (search "1 queued" snippet) "Should include summary from file")
-            (assert-false (search "last start: N/A" snippet) "Should not be N/A when last_start_unix exists")))
+            (assert-false (search "last start: N/A" snippet) "Should not be N/A when last_start_unix exists")
+            (assert-true (search "reason: no-candidates" snippet)
+                         "Should include updated reason from status file")))
       (setf swimmy.school::*cpcv-status-path* orig)
       (setf swimmy.globals:*cpcv-start-time* orig-start)
       (ignore-errors (delete-file tmp-status)))))

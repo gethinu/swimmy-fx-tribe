@@ -274,6 +274,7 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
 **Notes**:
 - Phase1（`phase="phase1"` / `range_id="P1"`）の結果では `strategy_name` が `<base>_P1` で返る場合がある。受信側は `"_P1"` を除去した基底名でライフサイクル更新（rank判定/DB更新）を行う。
 - `_P1` 結果は Phase1 screening 専用であり、RR/QUAL バッチ進捗カウントには加算しない。
+- `strategy_name` のサフィックス正規化は **末尾一致のみ**で行う（`-RR` / `-QUAL` / `-OOS` / `_P1`）。基底名中に含まれる同一トークンは削除しない（例: `foo-QUAL-123-QUAL` は `foo-QUAL-123` に正規化）。
 
 **BACKTEST_RESULT (Error, S-Expression only / JSON禁止)**:
 ```

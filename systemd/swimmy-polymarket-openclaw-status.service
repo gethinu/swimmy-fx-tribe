@@ -1,0 +1,22 @@
+[Unit]
+Description=Swimmy Polymarket OpenClaw Status Monitor
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/polymarket_openclaw_status.py --fail-on-problem
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+Environment=POLYCLAW_OUTPUT_DIR=/home/swimmy/swimmy/data/reports/polymarket_openclaw
+Environment=POLYCLAW_STATUS_MAX_AGE_SECONDS=1800
+Environment=POLYCLAW_STATUS_LAST_RUNS=10
+Environment=POLYCLAW_STATUS_WINDOW_MINUTES=120
+Environment=POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW=1
+Environment=POLYCLAW_STATUS_MIN_SENT_IN_WINDOW=0
+Environment=POLYCLAW_STATUS_MIN_ENTRIES_IN_WINDOW=0
+
+StandardOutput=append:/home/swimmy/swimmy/logs/polymarket_openclaw_status.log
+StandardError=append:/home/swimmy/swimmy/logs/polymarket_openclaw_status.log

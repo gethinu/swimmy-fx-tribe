@@ -63,7 +63,7 @@
 
 (defparameter *pfwr-mutation-bias-enabled* t
   "When T, breeding SL/TP mutation is softly biased toward better parent PF/WR profile.")
-(defparameter *pfwr-mutation-bias-strength* 0.5
+(defparameter *pfwr-mutation-bias-strength* 0.7
   "Blend strength (0..1) for PF/WR mutation bias.")
 (defparameter *pfwr-target-pf* 1.30
   "Target PF used to determine if parents are underperforming.")
@@ -73,7 +73,7 @@
   "Lower bound for TP/SL ratio after PF/WR bias.")
 (defparameter *pfwr-max-rr* 4.0
   "Upper bound for TP/SL ratio after PF/WR bias.")
-(defparameter *pfwr-wr-recovery-max-rr* 2.8
+(defparameter *pfwr-wr-recovery-max-rr* 2.2
   "RR cap used when WR deficit dominates PF deficit.")
 (defparameter *pfwr-wr-recovery-gap-min* 0.02
   "Minimum WR-vs-PF gap delta before WR-recovery RR cap engages.")
@@ -81,9 +81,9 @@
   "WR gap ratio threshold for moderate RR cap tightening.")
 (defparameter *pfwr-wr-recovery-severe-gap* 0.12
   "WR gap ratio threshold for aggressive RR cap tightening.")
-(defparameter *pfwr-wr-recovery-moderate-cap-rr* 2.1
+(defparameter *pfwr-wr-recovery-moderate-cap-rr* 1.8
   "RR cap when WR gap is moderately above target.")
-(defparameter *pfwr-wr-recovery-severe-cap-rr* 1.8
+(defparameter *pfwr-wr-recovery-severe-cap-rr* 1.6
   "RR cap when WR gap is severely above target.")
 (defparameter *pfwr-pf-recovery-gap-min* 0.02
   "PF-vs-WR gap delta required before PF recovery RR floor engages.")
@@ -105,10 +105,24 @@
   "Lower RR bound used to stabilize opposite-complement pair offspring.")
 (defparameter *pfwr-complement-stabilize-max-rr* 1.70
   "Upper RR bound used to stabilize opposite-complement pair offspring.")
+(defparameter *pfwr-complement-pf-recovery-min-rr* 1.75
+  "Lower RR bound for opposite-complements when WR is already ready but PF still lags.")
+(defparameter *pfwr-complement-pf-recovery-max-rr* 2.05
+  "Upper RR bound for opposite-complements when WR is already ready but PF still lags.")
 (defparameter *pfwr-pf-recovery-scale-gain* 1.1
   "SL/TP scale gain for PF-dominant deficits (increases absolute move distance).")
 (defparameter *pfwr-pf-recovery-scale-max* 1.70
   "Maximum SL/TP scale multiplier from PF recovery expansion.")
+(defparameter *pfwr-upside-scale-enabled* t
+  "When T, WR-ready parents with PF below S-like target get additional scale boost.")
+(defparameter *pfwr-upside-target-pf* 1.70
+  "Secondary PF target used to push S-gate readiness without touching rank thresholds.")
+(defparameter *pfwr-upside-min-wr* 0.47
+  "Minimum average parent WR required before upside PF scale boost can activate.")
+(defparameter *pfwr-upside-scale-gain* 0.30
+  "Maximum additive scale boost (over 1.0) for upside PF recovery mode.")
+(defparameter *pfwr-upside-scale-max* 1.40
+  "Upper bound of upside PF recovery scale floor.")
 (defparameter *pfwr-severe-low-pf-threshold* 1.15
   "Average parent PF threshold that triggers severe PF recovery mode.")
 (defparameter *pfwr-severe-wr-ready-threshold* 0.43
@@ -131,8 +145,14 @@
   "Partner score bonus when candidate satisfies PF target that parent is missing.")
 (defparameter *breeder-complement-double-bonus* 0.75
   "Extra bonus when candidate satisfies both missing PF and WR targets.")
-(defparameter *breeder-complement-min-pf-when-needs-wr* 1.09
-  "Minimum PF required for WR-complement candidates to avoid over-fragile pairings.")
+(defparameter *breeder-complement-min-pf-when-needs-wr* 1.18
+  "Minimum PF required for WR-complement candidates to avoid PF collapse pairings.")
+(defparameter *breeder-complement-min-pf-floor* 1.08
+  "Hard lower bound for WR-complement PF threshold after dynamic relaxation.")
+(defparameter *breeder-complement-parent-pf-relax-gain* 0.60
+  "How much parent PF surplus relaxes WR-complement minimum PF threshold.")
+(defparameter *breeder-complement-cand-wr-relax-gain* 0.50
+  "How much candidate WR surplus relaxes WR-complement minimum PF threshold.")
 (defparameter *breeder-complement-min-wr-when-needs-pf* 0.38
   "Minimum WR required for PF-complement candidates to avoid over-fragile pairings.")
 (defparameter *breeder-near-pf-threshold* 1.18
@@ -147,18 +167,26 @@
   "Extra score bonus for WR-only x WR-only PF-recovery pairings.")
 (defparameter *breeder-prioritize-complement-partner* t
   "When T, prioritize partners that satisfy at least one PF/WR deficit of the parent.")
-(defparameter *breeder-min-genetic-distance* 0.03
+(defparameter *breeder-min-genetic-distance* 0.02
   "Minimum genetic distance required for a breeding pair (lower allows more diversity attempts).")
-(defparameter *breeder-min-genetic-distance-complement* 0.08
-  "Relaxed min genetic distance for complement partners to increase viable pair throughput.")
-(defparameter *breeder-min-genetic-distance-partial-recovery* 0.11
-  "Relaxed min distance for candidates that improve parent's missing PF/WR side but do not fully satisfy complement gates.")
+(defparameter *breeder-min-genetic-distance-complement* 0.01
+  "Relaxed min distance for complement partners (PF/WR opposite-side recovery).")
+(defparameter *breeder-min-genetic-distance-partial-recovery* 0.015
+  "Relaxed min distance for partial PF/WR recovery candidates.")
 (defparameter *breeder-partial-recovery-min-pf-delta* 0.01
   "Minimum PF improvement required to treat a candidate as partial PF recovery.")
 (defparameter *breeder-partial-recovery-min-wr-delta* 0.02
   "Minimum WR improvement required to treat a candidate as partial WR recovery.")
 (defparameter *breeder-sltp-parent-multiplier-cap* 2.0
   "Maximum multiplier for child SL/TP relative to the stronger parent envelope.")
+(defparameter *breeder-pair-blacklist-enabled* t
+  "When T, temporarily blacklist parent pairs that repeatedly fail breeder admission.")
+(defparameter *breeder-pair-failure-threshold* 1
+  "Consecutive add-to-kb failures required before a parent pair is blacklisted.")
+(defparameter *breeder-pair-blacklist-cooldown-seconds* 1800
+  "Blacklist cooldown duration in seconds before blocked parent pair can be retried.")
+(defvar *breeder-pair-failure-stats* (make-hash-table :test 'equal)
+  "Pair failure telemetry keyed by canonical parent-name pair.")
 (defvar *breeder-current-pair-min-distance* nil
   "Dynamically scoped per-pair min-distance override for correlation gate.")
 (defparameter *breeder-name-seq* 0
@@ -170,6 +198,61 @@
 
 (defun clamp-breeder-float (value low high)
   (max low (min high value)))
+
+(defun breeding-pair-key (parent1 parent2)
+  "Canonical key for a parent pair independent of ordering."
+  (let* ((name1 (or (and parent1 (strategy-name parent1)) ""))
+         (name2 (or (and parent2 (strategy-name parent2)) ""))
+         (left-first (or (string< name1 name2) (string= name1 name2))))
+    (if left-first
+        (format nil "~a||~a" name1 name2)
+        (format nil "~a||~a" name2 name1))))
+
+(defun breeding-pair-blacklisted-p (parent1 parent2 &optional (now (get-universal-time)))
+  "Return T when parent pair is in active cooldown blacklist window."
+  (if (not *breeder-pair-blacklist-enabled*)
+      nil
+      (let* ((threshold (max 1 (or *breeder-pair-failure-threshold* 1)))
+             (cooldown (max 1 (or *breeder-pair-blacklist-cooldown-seconds* 1)))
+             (key (breeding-pair-key parent1 parent2))
+             (entry (gethash key *breeder-pair-failure-stats*))
+             (fails (or (and entry (getf entry :fails)) 0))
+             (last-fail (or (and entry (getf entry :last-fail)) 0))
+             (age (if (> last-fail 0) (- now last-fail) cooldown)))
+        (if (and (>= fails threshold) (< age cooldown))
+            t
+            (progn
+              ;; Drop stale blacklist entry so old failures do not bias future pairing.
+              (when (and entry (>= age cooldown))
+                (remhash key *breeder-pair-failure-stats*))
+              nil)))))
+
+(defun note-breeding-pair-failure (parent1 parent2 &optional (reason "add-to-kb rejected"))
+  "Record a breeder admission failure for a parent pair."
+  (let* ((key (breeding-pair-key parent1 parent2))
+         (entry (gethash key *breeder-pair-failure-stats*))
+         (prev-fails (or (and entry (getf entry :fails)) 0))
+         (fails (1+ prev-fails))
+         (now (get-universal-time))
+         (threshold (max 1 (or *breeder-pair-failure-threshold* 1))))
+    (setf (gethash key *breeder-pair-failure-stats*)
+          (list :fails fails :last-fail now :last-reason reason))
+    (when (and *breeder-pair-blacklist-enabled*
+               (>= fails threshold)
+               (< prev-fails threshold))
+      (format t "[BREEDER] ⛔ Pair blacklist armed: ~a + ~a (fails=~d, cooldown=~ds, reason=~a)~%"
+              (strategy-name parent1)
+              (strategy-name parent2)
+              fails
+              (max 1 (or *breeder-pair-blacklist-cooldown-seconds* 1))
+              reason))
+    fails))
+
+(defun note-breeding-pair-success (parent1 parent2)
+  "Reset failure history for a parent pair after successful breeder admission."
+  (let ((key (breeding-pair-key parent1 parent2)))
+    (remhash key *breeder-pair-failure-stats*)
+    t))
 
 (defun safe-breeder-ratio (num den default)
   (if (and den (> den 0.0))
@@ -289,6 +372,19 @@
                     wr-only-scale)))
     (clamp-breeder-float scale 1.0 *pfwr-pf-recovery-scale-max*)))
 
+(defun pfwr-upside-scale-floor (avg-pf avg-wr)
+  "Return additional scale floor for WR-ready pairs still below upside PF target."
+  (if (or (not *pfwr-upside-scale-enabled*)
+          (< avg-wr (float *pfwr-upside-min-wr*))
+          (>= avg-pf (float *pfwr-upside-target-pf*)))
+      1.0
+      (let* ((span (max 0.0001 (- (float *pfwr-upside-target-pf*)
+                                  (float *pfwr-target-pf*))))
+             (pf-gap (max 0.0 (- (float *pfwr-upside-target-pf*) avg-pf)))
+             (gap-ratio (clamp-breeder-float (/ pf-gap span) 0.0 1.0))
+             (boost (+ 1.0 (* gap-ratio *pfwr-upside-scale-gain*))))
+        (clamp-breeder-float boost 1.0 *pfwr-upside-scale-max*))))
+
 (defun strategy-breeding-priority-score (strategy)
   "Composite parent priority score for breeding partner selection."
   (let* ((rank-bonus (case (strategy-rank strategy)
@@ -326,6 +422,19 @@
       (wr-ok :wr-only)
       (t :none))))
 
+(defun wr-complement-min-pf-threshold (parent candidate)
+  "Return dynamic PF floor for WR-complement candidates.
+Relaxes when parent PF surplus and candidate WR surplus are strong, but never below floor."
+  (let* ((base (float *breeder-complement-min-pf-when-needs-wr*))
+         (floor (float *breeder-complement-min-pf-floor*))
+         (parent-pf (float (or (strategy-profit-factor parent) 0.0)))
+         (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (pf-surplus (max 0.0 (- parent-pf (float *pfwr-target-pf*))))
+         (wr-surplus (max 0.0 (- cand-wr (float *pfwr-target-wr*))))
+         (relax (+ (* pf-surplus *breeder-complement-parent-pf-relax-gain*)
+                   (* wr-surplus *breeder-complement-cand-wr-relax-gain*))))
+    (clamp-breeder-float (- base relax) floor base)))
+
 (defun candidate-near-pf-recovery-p (candidate)
   "True when candidate is close to PF target and already meets WR target."
   (let ((cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
@@ -358,12 +467,13 @@
          (parent-needs-wr (not (strategy-meets-target-wr-p parent)))
          (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
          (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (wr-complement-min-pf (wr-complement-min-pf-threshold parent candidate))
          (cand-has-pf (and (strategy-meets-target-pf-p candidate)
                            (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
          (cand-near-pf (candidate-near-pf-recovery-p candidate))
          (cand-wr-only-recovery (candidate-wr-only-pf-recovery-p parent candidate))
          (cand-has-wr (and (strategy-meets-target-wr-p candidate)
-                           (>= cand-pf *breeder-complement-min-pf-when-needs-wr*)))
+                           (>= cand-pf wr-complement-min-pf)))
          (bonus 0.0))
     (when (and parent-needs-pf cand-has-pf)
       (incf bonus *breeder-complement-pf-bonus*))
@@ -388,10 +498,11 @@
          (parent-needs-wr (not (strategy-meets-target-wr-p parent)))
          (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
          (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (wr-complement-min-pf (wr-complement-min-pf-threshold parent candidate))
          (cand-pf-complement-p (and (>= cand-pf (float *pfwr-target-pf*))
                                     (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
          (cand-wr-complement-p (and (>= cand-wr (float *pfwr-target-wr*))
-                                    (>= cand-pf *breeder-complement-min-pf-when-needs-wr*))))
+                                    (>= cand-pf wr-complement-min-pf))))
     (or (and parent-needs-pf
              (or cand-pf-complement-p
                  (candidate-near-pf-recovery-p candidate)))
@@ -405,10 +516,11 @@
          (parent-wr (float (or (strategy-win-rate parent) 0.0)))
          (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
          (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (wr-complement-min-pf (wr-complement-min-pf-threshold parent candidate))
          (pf-improves-p (and (>= cand-pf (+ parent-pf *breeder-partial-recovery-min-pf-delta*))
                              (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
          (wr-improves-p (and (>= cand-wr (+ parent-wr *breeder-partial-recovery-min-wr-delta*))
-                             (>= cand-pf *breeder-complement-min-pf-when-needs-wr*))))
+                             (>= cand-pf wr-complement-min-pf))))
     (or (and parent-needs-pf pf-improves-p)
         (and parent-needs-wr wr-improves-p))))
 
@@ -441,7 +553,17 @@
                                        pressure))
                (blend (clamp-breeder-float (* *pfwr-mutation-bias-strength* effective-pressure) 0.0 1.0)))
           (if (<= blend 0.0)
-              (values sl tp)
+              (let* ((avg-pf (/ (+ (float (or (strategy-profit-factor parent1) 0.0))
+                                   (float (or (strategy-profit-factor parent2) 0.0)))
+                                2.0))
+                     (avg-wr (/ (+ (float (or (strategy-win-rate parent1) 0.0))
+                                   (float (or (strategy-win-rate parent2) 0.0)))
+                                2.0))
+                     (upside-scale-floor (pfwr-upside-scale-floor avg-pf avg-wr)))
+                (if (> upside-scale-floor 1.0)
+                    (values (* sl upside-scale-floor)
+                            (* tp upside-scale-floor))
+                    (values sl tp)))
 	              (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
 	                  (pfwr-gap-profile parent1 parent2)
 	                (let* ((anchor (select-pfwr-anchor-parent parent1 parent2))
@@ -478,8 +600,17 @@
 	                                        (max base-rr-floor *pfwr-severe-min-rr*)
 	                                        base-rr-floor)))
 	                     (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
-	                     (complement-rr-min (max rr-floor *pfwr-complement-stabilize-min-rr*))
-	                     (complement-rr-max (min rr-cap *pfwr-complement-stabilize-max-rr*))
+	                     (pf-recovery-complement-p (and opposite-complements-p
+	                                                    (> pf-gap-ratio 0.0)
+	                                                    (<= wr-gap-ratio 0.0)))
+	                     (complement-rr-min (max rr-floor
+	                                             (if pf-recovery-complement-p
+	                                                 *pfwr-complement-pf-recovery-min-rr*
+	                                                 *pfwr-complement-stabilize-min-rr*)))
+	                     (complement-rr-max (min rr-cap
+	                                             (if pf-recovery-complement-p
+	                                                 *pfwr-complement-pf-recovery-max-rr*
+	                                                 *pfwr-complement-stabilize-max-rr*)))
 	                     (rr-after-complement (if (and (not severe-low-pf-p)
 	                                                   opposite-complements-p
 	                                                   (<= complement-rr-min complement-rr-max))
@@ -491,9 +622,11 @@
 	                                                                    wr-gap-ratio
 	                                                                    blend
 	                                                                    opposite-complements-p))
-	                     (scale-factor (if severe-low-pf-p
-	                                       (max raw-scale-factor *pfwr-severe-scale-floor*)
-	                                       raw-scale-factor))
+	                     (base-scale-factor (if severe-low-pf-p
+	                                            (max raw-scale-factor *pfwr-severe-scale-floor*)
+	                                            raw-scale-factor))
+	                     (upside-scale-floor (pfwr-upside-scale-floor avg-pf avg-wr))
+	                     (scale-factor (max base-scale-factor upside-scale-floor))
 	                     (risk-budget (+ sl tp))
 	                     (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
 	                     (new-tp (- risk-budget new-sl))
@@ -716,6 +849,8 @@
         (best-score most-negative-double-float)
         (best-complement nil)
         (best-complement-score most-negative-double-float)
+        (best-partial-recovery nil)
+        (best-partial-recovery-score most-negative-double-float)
         (best-wr-only-recovery nil)
         (best-wr-only-recovery-score most-negative-double-float)
         (parent-wr-only-p (eq (strategy-pfwr-class parent) :wr-only))
@@ -727,12 +862,14 @@
                     (not (eq candidate parent))
                     (or (null used-names)
                         (null (gethash (strategy-name candidate) used-names)))
-                    (can-breed-p candidate))
+                    (can-breed-p candidate)
+                    (not (breeding-pair-blacklisted-p parent candidate)))
             do (let* ((min-distance (breeding-min-genetic-distance-for-candidate parent candidate))
                       (*breeder-current-pair-min-distance* min-distance))
                  (when (strategies-correlation-ok-p parent candidate)
                    (let ((score (breeding-partner-score parent candidate))
                         (complements-p (candidate-complements-parent-p parent candidate))
+                        (partial-recovery-p (candidate-partial-recovery-p parent candidate))
                         (wr-only-recovery-p (candidate-wr-only-pf-recovery-p parent candidate)))
                      (when (> score best-score)
                        (setf best candidate
@@ -740,6 +877,9 @@
                      (when (and complements-p (> score best-complement-score))
                        (setf best-complement candidate
                              best-complement-score score))
+                     (when (and partial-recovery-p (> score best-partial-recovery-score))
+                       (setf best-partial-recovery candidate
+                             best-partial-recovery-score score))
                      (when (and wr-only-recovery-p (> score best-wr-only-recovery-score))
                        (setf best-wr-only-recovery candidate
                              best-wr-only-recovery-score score))))))
@@ -752,6 +892,10 @@
             parent-needs-complement
             best-complement)
        best-complement)
+      ((and *breeder-prioritize-complement-partner*
+            parent-needs-complement
+            best-partial-recovery)
+       best-partial-recovery)
       (t
        best))))
 
@@ -780,41 +924,47 @@
         ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
         (cull-pool-overflow cat)
 
-	        (let ((used-names (make-hash-table :test 'equal))
-	              (pair-index 0))
-	          (loop for i from 0 below (length sorted)
-	                while (< pair-index max-pairs-per-category)
-	                for p1 = (nth i sorted)
-	                do (when (and p1
-	                              (null (gethash (strategy-name p1) used-names))
-	                              (can-breed-p p1))
-	                     (let ((p2 (find-diverse-breeding-partner
-	                                p1 sorted
-	                                :start-index (1+ i)
-	                                :used-names used-names)))
-	                       (when p2
-	                         (incf pair-index)
-	                         (setf (gethash (strategy-name p1) used-names) t
-	                               (gethash (strategy-name p2) used-names) t)
-	                         (format t "[BREEDER] 💕 Breeding Pair ~d (~a): Gen~d ~a (S=~,2f) + Gen~d ~a (S=~,2f)~%"
-	                                 pair-index cat
-	                                 (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
-	                                 (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
-	                         (let ((child (breed-strategies p1 p2)))
-	                           (increment-breeding-count p1)
-	                           (increment-breeding-count p2)
-	                           
-	                           ;; V49.2: Inherit Regime Intent
-	                           (setf (strategy-regime-intent child) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
-	                           
-	                           ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
-	                           (when (add-to-kb child :breeder :require-bt t :notify nil)
-	                             (save-recruit-to-lisp child)
-	                             (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%" (strategy-name child) (strategy-generation child))
-	                             
-	                             ;; V50.2: Immediate Culling (Survival of the Fittest)
-	                             ;; If pool > 20, kill the weakest B-Rank to make room
-	                             (cull-pool-overflow cat))))))))))))
+        (let ((used-names (make-hash-table :test 'equal))
+              (pair-index 0))
+          (loop for i from 0 below (length sorted)
+                while (< pair-index max-pairs-per-category)
+                for p1 = (nth i sorted)
+                do (when (and p1
+                              (null (gethash (strategy-name p1) used-names))
+                              (can-breed-p p1))
+                     (let ((p2 (find-diverse-breeding-partner
+                                p1 sorted
+                                :start-index (1+ i)
+                                :used-names used-names)))
+                       (when p2
+                         (incf pair-index)
+                         (setf (gethash (strategy-name p1) used-names) t
+                               (gethash (strategy-name p2) used-names) t)
+                         (format t "[BREEDER] 💕 Breeding Pair ~d (~a): Gen~d ~a (S=~,2f) + Gen~d ~a (S=~,2f)~%"
+                                 pair-index cat
+                                 (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
+                                 (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
+                         (let ((child (breed-strategies p1 p2)))
+                           (increment-breeding-count p1)
+                           (increment-breeding-count p2)
+
+                           ;; V49.2: Inherit Regime Intent
+                           (setf (strategy-regime-intent child)
+                                 (or (when (boundp '*current-regime*) *current-regime*)
+                                     :unknown))
+
+                           ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
+                           (if (add-to-kb child :breeder :require-bt t :notify nil)
+                               (progn
+                                 (note-breeding-pair-success p1 p2)
+                                 (save-recruit-to-lisp child)
+                                 (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
+                                         (strategy-name child) (strategy-generation child))
+
+                                 ;; V50.2: Immediate Culling (Survival of the Fittest)
+                                 ;; If pool > 20, kill the weakest B-Rank to make room
+                                 (cull-pool-overflow cat))
+                               (note-breeding-pair-failure p1 p2 "add-to-kb rejected"))))))))))))
 
 (defun cull-pool-overflow (category)
   "Enforce Musk's '20 or Die' rule. 

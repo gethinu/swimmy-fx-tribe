@@ -81,6 +81,16 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _env_int(key: str, default: int) -> int:
+    raw = str(os.getenv(key, "")).strip()
+    if not raw:
+        return int(default)
+    try:
+        return int(raw)
+    except ValueError:
+        return int(default)
+
+
 def summarize_recent_runs(
     *,
     recent_runs: Sequence[Mapping[str, Any]],
@@ -123,7 +133,16 @@ def summarize_recent_runs(
     }
 
 
-def build_health(*, payload: Mapping[str, Any], max_age_seconds: int, now_iso: str = "") -> Dict[str, Any]:
+def build_health(
+    *,
+    payload: Mapping[str, Any],
+    max_age_seconds: int,
+    window_summary: Mapping[str, Any],
+    min_runs_in_window: int,
+    min_sent_in_window: int,
+    min_entries_in_window: int,
+    now_iso: str = "",
+) -> Dict[str, Any]:
     now = parse_iso_datetime(now_iso) if now_iso.strip() else datetime.now(timezone.utc)
     updated_at_raw = str(payload.get("updated_at") or "").strip()
     updated_at = parse_iso_datetime(updated_at_raw)
@@ -138,6 +157,23 @@ def build_health(*, payload: Mapping[str, Any], max_age_seconds: int, now_iso: s
         if max_age_seconds > 0 and age_seconds > float(max_age_seconds):
             status = "stale"
             reason = f"status age exceeded threshold: {age_seconds:.1f}s > {int(max_age_seconds)}s"
+
+    runs = max(0, _to_int(window_summary.get("runs"), 0))
+    entries = max(0, _to_int(window_summary.get("entries"), 0))
+    sent = max(0, _to_int(window_summary.get("execution_sent"), 0))
+    min_runs = max(0, int(min_runs_in_window))
+    min_sent = max(0, int(min_sent_in_window))
+    min_entries = max(0, int(min_entries_in_window))
+    window_minutes = max(0, _to_int(window_summary.get("window_minutes"), 0))
+    if status == "ok" and min_runs > 0 and runs < min_runs:
+        status = "warn"
+        reason = f"runs below threshold: {runs} < {min_runs} (window={window_minutes}m)"
+    if status == "ok" and min_entries > 0 and entries < min_entries:
+        status = "warn"
+        reason = f"entries below threshold: {entries} < {min_entries} (window={window_minutes}m)"
+    if status == "ok" and min_sent > 0 and sent < min_sent:
+        status = "warn"
+        reason = f"sent below threshold: {sent} < {min_sent} (window={window_minutes}m)"
 
     live_enabled = bool(payload.get("live_execution_enabled", False))
     failed_orders = int(payload.get("execution_failed", 0) or 0)
@@ -173,6 +209,11 @@ def render_text_summary(
             f"Signals: total={int(payload.get('signal_count', 0) or 0)} "
             f"agent={int(payload.get('agent_signal_count', 0) or 0)} "
             f"ratio={float(payload.get('agent_signal_ratio', 0.0) or 0.0):.6f}"
+        ),
+        (
+            f"Markets: open={int(payload.get('open_markets', 0) or 0)} "
+            f"blocked={int(payload.get('blocked_open_markets', 0) or 0)} "
+            f"quality_filtered={int(payload.get('quality_filtered_markets', 0) or 0)}"
         ),
         (
             f"Execution: enabled={bool(payload.get('live_execution_enabled', False))} "
@@ -218,9 +259,24 @@ def main() -> None:
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--status-file", default="")
     parser.add_argument("--history-file", default="")
-    parser.add_argument("--last-runs", type=int, default=5)
-    parser.add_argument("--window-minutes", type=int, default=120)
-    parser.add_argument("--max-age-seconds", type=int, default=3600)
+    parser.add_argument("--last-runs", type=int, default=_env_int("POLYCLAW_STATUS_LAST_RUNS", 5))
+    parser.add_argument("--window-minutes", type=int, default=_env_int("POLYCLAW_STATUS_WINDOW_MINUTES", 120))
+    parser.add_argument(
+        "--min-runs-in-window",
+        type=int,
+        default=_env_int("POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW", 0),
+    )
+    parser.add_argument(
+        "--min-sent-in-window",
+        type=int,
+        default=_env_int("POLYCLAW_STATUS_MIN_SENT_IN_WINDOW", 0),
+    )
+    parser.add_argument(
+        "--min-entries-in-window",
+        type=int,
+        default=_env_int("POLYCLAW_STATUS_MIN_ENTRIES_IN_WINDOW", 0),
+    )
+    parser.add_argument("--max-age-seconds", type=int, default=_env_int("POLYCLAW_STATUS_MAX_AGE_SECONDS", 3600))
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--fail-on-problem", action="store_true")
     args = parser.parse_args()
@@ -239,7 +295,14 @@ def main() -> None:
         recent_runs=recent_runs,
         window_minutes=max(0, int(args.window_minutes)),
     )
-    health = build_health(payload=payload, max_age_seconds=max(0, int(args.max_age_seconds)))
+    health = build_health(
+        payload=payload,
+        max_age_seconds=max(0, int(args.max_age_seconds)),
+        window_summary=window_summary,
+        min_runs_in_window=max(0, int(args.min_runs_in_window)),
+        min_sent_in_window=max(0, int(args.min_sent_in_window)),
+        min_entries_in_window=max(0, int(args.min_entries_in_window)),
+    )
     out = dict(payload)
     out["health"] = health
     out["status_file"] = str(status_file)

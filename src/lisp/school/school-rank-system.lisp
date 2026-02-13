@@ -41,8 +41,8 @@
 (defparameter *a-rank-slots-per-tf* 2
   "Only top 2 strategies per TF can be promoted to A-RANK.")
 
-(defparameter *max-breeding-uses* 3
-  "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
+(defparameter *max-breeding-uses* 30
+  "Maximum breeding reuse count for non-Legend parents.")
 (defparameter *breeder-min-parent-trades* 30
   "Minimum trade evidence required for non-Legend breeding parents.")
 
@@ -790,10 +790,7 @@
 (defun increment-breeding-count (strategy)
   "Increment breeding use count."
   (let ((count (1+ (or (strategy-breeding-count strategy) 0))))
-    (setf (strategy-breeding-count strategy) count)
-    (when (and (>= count *max-breeding-uses*)
-               (not (eq (strategy-rank strategy) :legend)))
-      (send-to-graveyard strategy (format nil "Breeding limit reached (~d uses)" count)))))
+    (setf (strategy-breeding-count strategy) count)))
 
 (defun run-b-rank-culling (&optional single-tf)
   "Run culling for all TF × Direction × Symbol categories.

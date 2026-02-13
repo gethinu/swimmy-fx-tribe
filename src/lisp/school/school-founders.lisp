@@ -18,6 +18,17 @@
 (defparameter *founder-registry* (make-hash-table :test #'equal)
   "Registry of all available Founder Strategies (Blueprints).
    Key: Keyword (e.g., :volvo), Value: Function that returns a strategy instance.")
+(defparameter *founder-registry-meta* (make-hash-table :test #'equal)
+  "Metadata for founder registry entries keyed by founder keyword.")
+
+(defparameter *founder-preflight-screen-enabled* t
+  "When T, founder candidates are pre-screened for duplicate/correlation before add-to-kb.")
+(defparameter *founder-preflight-correlation-threshold* 0.95
+  "Correlation threshold used by founder preflight duplicate screening.")
+(defparameter *founder-preflight-reject-cooldown-seconds* 1800
+  "Cooldown seconds after founder preflight/add-to-kb rejection.")
+(defvar *founder-preflight-reject-cache* (make-hash-table :test 'equal)
+  "Cooldown cache for rejected founder fingerprints.")
 
 (defmacro def-founder (key name doc-string &body body)
   "Defines a Founder Strategy and registers it in the Immigration Bureau."
@@ -27,6 +38,9 @@
          ,doc-string
          ,@body)
        (setf (gethash ,key *founder-registry*) #',func-name)
+       (setf (gethash ,key *founder-registry-meta*)
+             (list :name ,name
+                   :source-file (and *load-pathname* (namestring *load-pathname*))))
        (format t "[REGISTRY] 📝 Registered Founder: ~a (~a)~%" ,key ,name))))
 
 ;;; ----------------------------------------------------------------------------
@@ -264,6 +278,65 @@
         (format t "[SAFETY] 🔍 Verifying candidate ~a... OK.~%" (strategy-name strategy))
         t)))
 
+(defun founder-preflight-fingerprint (strategy)
+  "Return stable fingerprint for founder cooldown screening."
+  (let* ((sym (or (strategy-symbol strategy) "USDJPY"))
+         (tf (or (strategy-timeframe strategy) 0))
+         (cat (or (strategy-category strategy) :unknown))
+         (logic-hash (if (fboundp 'compute-strategy-hash)
+                         (compute-strategy-hash strategy)
+                         (sxhash (list (strategy-name strategy)
+                                       (strategy-entry strategy)
+                                       (strategy-exit strategy)
+                                       (strategy-indicators strategy))))))
+    (format nil "~a|~a|~a|~a" sym tf cat logic-hash)))
+
+(defun founder-preflight-reject-active-p (strategy &optional (now (get-universal-time)))
+  "Return T when founder fingerprint is still in rejection cooldown."
+  (let* ((cooldown (max 1 (or *founder-preflight-reject-cooldown-seconds* 1)))
+         (key (founder-preflight-fingerprint strategy))
+         (entry (gethash key *founder-preflight-reject-cache*))
+         (last-reject (or (and entry (getf entry :last-reject)) 0))
+         (age (if (> last-reject 0) (- now last-reject) cooldown)))
+    (if (< age cooldown)
+        t
+        (progn
+          (when entry
+            (remhash key *founder-preflight-reject-cache*))
+          nil))))
+
+(defun note-founder-preflight-reject (strategy reason)
+  "Record founder rejection to activate retry cooldown."
+  (let* ((key (founder-preflight-fingerprint strategy))
+         (entry (gethash key *founder-preflight-reject-cache*))
+         (count (1+ (or (and entry (getf entry :count)) 0)))
+         (now (get-universal-time)))
+    (setf (gethash key *founder-preflight-reject-cache*)
+          (list :last-reject now :count count :reason reason))
+    count))
+
+(defun note-founder-preflight-success (strategy)
+  "Clear founder rejection cooldown on successful admission."
+  (let ((key (founder-preflight-fingerprint strategy)))
+    (remhash key *founder-preflight-reject-cache*)
+    t))
+
+(defun founder-preflight-duplicate-or-correlated-p (strategy)
+  "Return (values blocked-p reason match score) for founder preflight."
+  (let ((dupe (and (fboundp 'is-logic-duplicate-p)
+                   (is-logic-duplicate-p strategy *strategy-knowledge-base*))))
+    (if dupe
+        (values t :duplicate dupe 1.0)
+        (if (fboundp 'find-correlated-strategy)
+            (multiple-value-bind (match score)
+                (find-correlated-strategy strategy
+                                          *strategy-knowledge-base*
+                                          *founder-preflight-correlation-threshold*)
+              (if match
+                  (values t :correlation match score)
+                  (values nil nil nil 0.0)))
+            (values nil nil nil 0.0)))))
+
 (defun recruit-founder (founder-type)
   "P8: Injects a Founder Strategy via add-to-kb (single entry point).
    Now includes BT validation (Sharpe >= 0.1) per Expert Panel conditions."
@@ -276,9 +349,27 @@
               ;; V50.5: Provisional Entry (Async Validation)
               ;; Allow entry with Rank=NIL, then trigger backtest.
               (progn
+                (when (and *founder-preflight-screen-enabled*
+                           (founder-preflight-reject-active-p founder))
+                  (format t "[HEADHUNTER] ⏱️ Founder ~a cooldown active. Skipping retry.~%"
+                          (strategy-name founder))
+                  (return-from recruit-founder nil))
+                (when *founder-preflight-screen-enabled*
+                  (multiple-value-bind (blocked reason match score)
+                      (founder-preflight-duplicate-or-correlated-p founder)
+                    (declare (ignore score))
+                    (when blocked
+                      (note-founder-preflight-reject founder reason)
+                      (format t "[HEADHUNTER] 🚫 Founder ~a preflight blocked (~a vs ~a).~%"
+                              (strategy-name founder)
+                              reason
+                              (if match (strategy-name match) "n/a"))
+                      (return-from recruit-founder nil))))
                 (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
                 (if (add-to-kb founder :founder :require-bt nil) ; Disable gate for entry
                     (progn
+                      (when *founder-preflight-screen-enabled*
+                        (note-founder-preflight-success founder))
                       ;; V50.5: Trigger Validation (only if system is running)
                       (if (and (boundp '*startup-mode*) *startup-mode*)
                           (format t "[HEADHUNTER] ⏳ Founder ~a added. BT Deferred (Startup Mode).~%" (strategy-name founder))
@@ -292,8 +383,12 @@
                                 (pzmq:send swimmy.globals::*cmd-publisher*
                                            (swimmy.core::sexp->string payload :package *package*))))))
                       t)
-                    (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%" 
-                            (strategy-name founder))))))
+                    (progn
+                      (when *founder-preflight-screen-enabled*
+                        (note-founder-preflight-reject founder :add-to-kb-rejected))
+                      (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%" 
+                              (strategy-name founder))
+                      nil)))))
         (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
 ;;; ----------------------------------------------------------------------------

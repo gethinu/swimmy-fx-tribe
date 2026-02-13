@@ -43,8 +43,19 @@ def get_service_status(service_name):
         status = result.stdout.strip()
         if status == "active":
             return f"{GREEN}● Active{RESET}"
-        else:
-            return f"{RED}● {status}{RESET}"
+        if service_name == "swimmy-pattern-similarity":
+            # Fallback: unit未登録でも実プロセス + 5565 LISTENなら稼働扱いにする
+            fallback = subprocess.run(
+                ["pgrep", "-f", "tools/pattern_similarity_service.py"],
+                capture_output=True,
+                text=True,
+            )
+            has_process = bool(fallback.stdout.strip())
+            listener = subprocess.run(["ss", "-tulnp"], capture_output=True, text=True)
+            has_port = ":5565" in listener.stdout
+            if has_process and has_port:
+                return f"{YELLOW}● Active (fallback){RESET}"
+        return f"{RED}● {status}{RESET}"
     except:
         return f"{RED}Unknown{RESET}"
 

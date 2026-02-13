@@ -616,10 +616,23 @@
           t)
         (format t "[L] ⚠️ Special Force NOT FOUND: ~a~%" name))))
 
+(defparameter *special-force-skip-hunter-auto-founders* t
+  "When T, recruit-special-forces skips founders sourced from school-hunter-auto.lisp.")
+
+(defun hunter-auto-founder-key-p (key)
+  "True when founder key metadata indicates school-hunter-auto source."
+  (let* ((meta (and (boundp '*founder-registry-meta*)
+                    *founder-registry-meta*
+                    (gethash key *founder-registry-meta*)))
+         (src (and (listp meta) (getf meta :source-file))))
+    (and (stringp src)
+         (search "school-hunter-auto.lisp" src :test #'char-equal))))
+
 (defun recruit-special-forces ()
   (force-recruit-strategy "T-Nakane-Gotobi")
   (let ((known-names (make-hash-table :test 'equal))
-        (recruited 0))
+        (recruited 0)
+        (auto-skipped 0))
     (dolist (s *strategy-knowledge-base*)
       (let ((name (and s (strategy-name s))))
         (when (and name (stringp name))
@@ -627,17 +640,21 @@
     (maphash
      (lambda (key maker-func)
        (when (functionp maker-func)
-         (let ((proto (handler-case (funcall maker-func)
-                        (error () nil))))
-           (when proto
-             (let ((name (strategy-name proto)))
-               (unless (and name (gethash name known-names))
-                 (when (recruit-founder key)
-                   (incf recruited))
-                 (when name
-                   (setf (gethash name known-names) t))))))))
+         (if (and *special-force-skip-hunter-auto-founders*
+                  (hunter-auto-founder-key-p key))
+             (incf auto-skipped)
+             (let ((proto (handler-case (funcall maker-func)
+                            (error () nil))))
+               (when proto
+                 (let ((name (strategy-name proto)))
+                   (unless (and name (gethash name known-names))
+                     (when (recruit-founder key)
+                       (incf recruited))
+                     (when name
+                       (setf (gethash name known-names) t)))))))))
      *founder-registry*)
-    (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts~%" recruited)))
+    (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts (auto-skipped ~d)~%"
+            recruited auto-skipped)))
 
 (defun safely-load-hunter-strategies ()
   "Load Hunter strategies. P9: Split into core + auto files."

@@ -11,6 +11,7 @@ This directory contains operator-facing scripts for backtest, reporting, and mai
 | `finalize_rank_report.lisp` | Refresh metrics and generate evolution report (rank eval is opt-in). |
 | `finalize_rank_report.sh` | Wrapper for `finalize_rank_report.lisp` with SBCL env setup. |
 | `reconcile_archive_db.py` | Reconcile archive folders and DB rank/state mismatches. |
+| `reseed_active_b.py` | Reseed `:B` from archive (`:GRAVEYARD/:RETIRED`) by top-N per category. |
 | `cpcv_smoke.py` | Send one-off CPCV smoke messages (`runtime` / `criteria`). |
 
 ## CPCV smoke checks
@@ -61,4 +62,23 @@ Run rank evaluation only when explicitly requested:
 
 ```bash
 tools/ops/finalize_rank_report.sh --with-rank-eval
+```
+
+## Reseed active B from archive
+
+Use when `B/A/S` are starved after archive-heavy reconciliation.
+The script applies Stage1 B thresholds, picks top-N per category
+(`timeframe x direction x symbol`), moves files into `data/library/B/`,
+and updates DB rank to `:B`.
+File metadata rewrite uses atomic replace (`tmp -> os.replace`) so root-owned
+archive artifacts can be normalized when directory write permission exists.
+If the same strategy exists in both `B/` and archive, reseed keeps `B/` as the
+source of truth and still promotes DB rank to `:B`.
+
+```bash
+# preview only
+python3 tools/ops/reseed_active_b.py --dry-run --per-category 20
+
+# apply (creates DB backup under data/memory/backup by default)
+python3 tools/ops/reseed_active_b.py --per-category 20
 ```

@@ -7,6 +7,7 @@
 
 ## 1. サンプル設定
 - `tools/configs/polymarket_openclaw.contrarian.example.json`
+- `tools/configs/polymarket_openclaw.contrarian.runtime.json`（現行運用向け。entriesが出やすい閾値）
 
 主要パラメータ:
 - `max_daily_loss_pct`: 1日の最大損失上限（資金比率）
@@ -115,6 +116,22 @@ python3 tools/polymarket_openclaw_status.py --last-runs 200 --window-minutes 144
 python3 tools/polymarket_openclaw_status.py --fail-on-problem --max-age-seconds 1800
 ```
 
+稼働有無も閾値監視する例（直近2時間で最低1回は実行）:
+```bash
+python3 tools/polymarket_openclaw_status.py \
+  --fail-on-problem \
+  --window-minutes 120 \
+  --min-runs-in-window 1
+```
+
+機会枯れも検知したい場合（直近2時間で最低1件エントリー）:
+```bash
+python3 tools/polymarket_openclaw_status.py \
+  --fail-on-problem \
+  --window-minutes 120 \
+  --min-entries-in-window 1
+```
+
 ## 6. 日次サマリー
 ```bash
 python3 tools/polymarket_openclaw_report.py \
@@ -186,6 +203,8 @@ python3 tools/polymarket_openclaw_autotune.py \
 追加済みユニット:
 - `systemd/swimmy-polymarket-openclaw.service`
 - `systemd/swimmy-polymarket-openclaw.timer`
+- `systemd/swimmy-polymarket-openclaw-status.service`
+- `systemd/swimmy-polymarket-openclaw-status.timer`
 - `systemd/swimmy-openclaw-signal-sync.service`
 - `systemd/swimmy-openclaw-signal-sync.timer`
 
@@ -246,6 +265,10 @@ POLYCLAW_LIVE_DRY_RUN=1
 POLYCLAW_LIVE_MAX_ORDERS_PER_RUN=2
 POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD=0.2
 ```
+
+補足:
+- `run_polymarket_openclaw_service.py` は live プリフライトを実施する。
+- `POLYCLAW_LIVE_EXECUTION=1` かつ `POLYCLAW_LIVE_DRY_RUN!=1` の場合、`POLYCLAW_LIVE_PRIVATE_KEY` 未設定だと実行前にエラー終了する。
 
 確認ポイント:
 - cycle結果JSONに `live_execution_enabled: true`
@@ -329,17 +352,22 @@ tail -n 80 logs/polymarket_openclaw_cycle.log
 ```bash
 sudo install -m 0644 systemd/swimmy-polymarket-openclaw.service /etc/systemd/system/
 sudo install -m 0644 systemd/swimmy-polymarket-openclaw.timer /etc/systemd/system/
+sudo install -m 0644 systemd/swimmy-polymarket-openclaw-status.service /etc/systemd/system/
+sudo install -m 0644 systemd/swimmy-polymarket-openclaw-status.timer /etc/systemd/system/
 sudo install -m 0644 systemd/swimmy-openclaw-signal-sync.service /etc/systemd/system/
 sudo install -m 0644 systemd/swimmy-openclaw-signal-sync.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now swimmy-openclaw-signal-sync.timer
 sudo systemctl enable --now swimmy-polymarket-openclaw.timer
+sudo systemctl enable --now swimmy-polymarket-openclaw-status.timer
 ```
 
 確認:
 ```bash
 systemctl status swimmy-openclaw-signal-sync.timer --no-pager
 systemctl status swimmy-polymarket-openclaw.timer --no-pager
+systemctl status swimmy-polymarket-openclaw-status.timer --no-pager
 journalctl -u swimmy-openclaw-signal-sync.service -n 100 --no-pager
 journalctl -u swimmy-polymarket-openclaw.service -n 100 --no-pager
+journalctl -u swimmy-polymarket-openclaw-status.service -n 100 --no-pager
 ```

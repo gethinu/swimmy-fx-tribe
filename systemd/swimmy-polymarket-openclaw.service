@@ -10,7 +10,7 @@ WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/run_polymarket_openclaw_service.py
 Environment=HOME=/home/swimmy
 EnvironmentFile=/home/swimmy/swimmy/.env
-Environment=POLYCLAW_CONFIG_FILE=/home/swimmy/swimmy/tools/configs/polymarket_openclaw.contrarian.example.json
+Environment=POLYCLAW_CONFIG_FILE=/home/swimmy/swimmy/tools/configs/polymarket_openclaw.contrarian.runtime.json
 Environment=POLYCLAW_SIGNALS_FILE=/home/swimmy/swimmy/data/openclaw/signals.jsonl
 Environment=POLYCLAW_OUTPUT_DIR=/home/swimmy/swimmy/data/reports/polymarket_openclaw
 Environment=POLYCLAW_SYNC_SIGNALS_BEFORE_RUN=1

@@ -609,6 +609,20 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                  :data data))
              nil)))))))
 
+(defun %load-strategy-from-db-for-oos (name)
+  "Best-effort fallback: load strategy object from strategies.data_sexp by NAME."
+  (handler-case
+      (let ((sexp-str (ignore-errors
+                        (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))))
+        (when (and (stringp sexp-str) (> (length sexp-str) 0))
+          (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+            (when (strategy-p obj)
+              obj))))
+    (error (e)
+      (%oos-failure-inc :db-error)
+      (format t "[OOS] ⚠️ Failed DB fallback load for ~a (~a)~%" name e)
+      nil)))
+
 (defun handle-oos-backtest-result (name metrics)
   "Apply OOS backtest result to strategy and attempt promotion."
   (let* ((req-id (getf metrics :request-id))
@@ -624,7 +638,8 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
       (format t "[OOS] ⚠️ Stale OOS result ignored for ~a (req ~a, latest ~a)~%"
               name req-id queued-id)
       (return-from handle-oos-backtest-result nil)))
-  (let ((strat (find-strategy name)))
+  (let ((strat (or (find-strategy name)
+                   (%load-strategy-from-db-for-oos name))))
     (unless strat
       (%oos-metric-inc :failure)
       (record-oos-error name (getf metrics :request-id) "Strategy not found for OOS result")

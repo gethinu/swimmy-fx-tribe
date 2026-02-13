@@ -294,7 +294,9 @@
   "Queue entry should persist and clear when result arrives."
   (let* ((tmp-db (format nil "data/memory/test-oos-~a.db" (get-universal-time))))
     (unwind-protect
-         (let ((swimmy.core::*db-path-default* tmp-db))
+         (let ((swimmy.core::*db-path-default* tmp-db)
+               (swimmy.core::*sqlite-conn* nil)
+               (swimmy.school::*disable-auto-migration* t))
            (swimmy.core:close-db-connection)
            (swimmy.school::init-db)
            (let ((dispatch-count 0)
@@ -309,6 +311,9 @@
                             (incf dispatch-count)
                             t))
                     (let ((strat (cl-user::make-strategy :name "QueueTest" :symbol "USDJPY" :oos-sharpe nil)))
+                      ;; Persist strategy to DB so OOS result handling remains deterministic
+                      ;; even when in-memory KB is empty.
+                      (swimmy.school::upsert-strategy strat)
                       (swimmy.school::run-oos-validation strat)
                       (assert-equal 1 dispatch-count)
                       (multiple-value-bind (rid rat status) (swimmy.school::lookup-oos-request "QueueTest")
@@ -355,6 +360,48 @@
                (declare (ignore _time _status))
                (assert-equal "RID-NEW" rid
                              "stale result should not clear queue"))))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
+(deftest test-oos-result-falls-back-to-db-when-strategy-missing-in-memory
+  "OOS result should update strategy from DB even when in-memory lookup misses."
+  (let* ((tmp-db (format nil "data/memory/test-oos-db-fallback-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+         (let ((swimmy.core::*db-path-default* tmp-db)
+               (swimmy.core::*sqlite-conn* nil)
+               (swimmy.school::*disable-auto-migration* t))
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (let* ((name "UT-OOS-DB-FALLBACK")
+                  (rid "RID-OOS-DB-FALLBACK")
+                  (strat (cl-user::make-strategy :name name
+                                                 :rank :B
+                                                 :symbol "USDJPY"
+                                                 :sharpe 0.20
+                                                 :profit-factor 1.05
+                                                 :win-rate 0.30
+                                                 :max-dd 0.20
+                                                 :oos-sharpe nil)))
+             ;; Persist strategy only in DB (simulate daemon restart / memory miss).
+             (swimmy.school::upsert-strategy strat)
+             (swimmy.school::enqueue-oos-request name rid :status "sent")
+             (let ((*strategy-knowledge-base* nil)
+                   (*evolved-strategies* nil))
+               (swimmy.school::handle-oos-backtest-result
+                name
+                (list :sharpe 0.88 :request-id rid)))
+             (multiple-value-bind (queued _at _status)
+                 (swimmy.school::lookup-oos-request name)
+               (declare (ignore _at _status))
+               (assert-true (null queued)
+                            "handled OOS result should clear oos_queue row"))
+             (let ((oos (swimmy.school::execute-single
+                         "SELECT oos_sharpe FROM strategies WHERE name=?"
+                         name)))
+               (assert-true (and (numberp oos) (> (float oos 0.0) 0.87))
+                            "DB row should store OOS sharpe from result"))))
       (setf swimmy.core::*db-path-default* orig-db)
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))

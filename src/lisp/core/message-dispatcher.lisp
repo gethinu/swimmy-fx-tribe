@@ -95,6 +95,21 @@
     ((symbolp value) (symbol-name value))
     (t nil)))
 
+(defun %string-suffix-p (suffix value)
+  "Return T when VALUE ends with SUFFIX (case-sensitive)."
+  (and (stringp suffix)
+       (stringp value)
+       (let ((suffix-len (length suffix))
+             (value-len (length value)))
+         (and (>= value-len suffix-len)
+              (string= suffix value :start2 (- value-len suffix-len))))))
+
+(defun %strip-terminal-suffix (value suffix)
+  "Strip SUFFIX from VALUE only when it appears at the very end."
+  (if (%string-suffix-p suffix value)
+      (subseq value 0 (- (length value) (length suffix)))
+      value))
+
 (defun %plist-p (lst)
   "Return T if LST looks like a keyword plist."
   (and (listp lst) (keywordp (first lst))))
@@ -366,17 +381,18 @@
                           (win-rate (%normalize-rate (%alist-val result '(win_rate winrate win-rate) 0.0)))
                           (profit-factor (float (%alist-val result '(profit_factor profit-factor pf) 0.0)))
                           (max-dd (%normalize-rate (%alist-val result '(max_dd max-drawdown max_drawdown max-dd) 1.0)))
-                          (is-rr (and full-name (search "-RR" full-name)))
-                          (is-qual (and full-name (search "-QUAL" full-name)))
-                          (is-oos (and full-name (search "-OOS" full-name)))
-                          (is-phase1 (and full-name (search "_P1" full-name :from-end t)))
-                          (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
-                                                     (search "_OOS" full-name :from-end t))))
+                          (is-rr (and full-name (%string-suffix-p "-RR" full-name)))
+                          (is-qual (and full-name (%string-suffix-p "-QUAL" full-name)))
+                          (is-oos (and full-name (%string-suffix-p "-OOS" full-name)))
+                          (is-phase1 (and full-name (%string-suffix-p "_P1" full-name)))
+                          (is-wfv (and full-name
+                                       (or (%string-suffix-p "_IS" full-name)
+                                           (%string-suffix-p "_OOS" full-name))))
                           (name (when full-name
-                                  (cond (is-rr (subseq full-name 0 is-rr))
-                                        (is-qual (subseq full-name 0 is-qual))
-                                        (is-oos (subseq full-name 0 is-oos))
-                                        (is-phase1 (subseq full-name 0 is-phase1))
+                                  (cond (is-rr (%strip-terminal-suffix full-name "-RR"))
+                                        (is-qual (%strip-terminal-suffix full-name "-QUAL"))
+                                        (is-oos (%strip-terminal-suffix full-name "-OOS"))
+                                        (is-phase1 (%strip-terminal-suffix full-name "_P1"))
                                         (t full-name))))
                           (request-id (%alist-val result '(request_id request-id) nil))
                           (metrics (list :sharpe sharpe :trades trades :pnl pnl

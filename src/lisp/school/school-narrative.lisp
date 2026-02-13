@@ -333,12 +333,23 @@ REVERSION : ~a"
                      do (let* ((tail (string-trim '(#\Space #\Tab) (subseq l (length prefix))))
                                (n (ignore-errors (parse-integer tail))))
                           (when (and n (> n 0)) (return n))))))
+         (updated-reason
+           (when lines
+             (loop for l in lines
+                   for marker = "reason:"
+                   for pos = (search marker l :test #'char-equal)
+                   when pos
+                     do (let ((tail (string-trim '(#\Space #\Tab)
+                                                 (subseq l (+ pos (length marker))))))
+                          (when (> (length tail) 0)
+                            (return tail))))))
          (start-time (or last-start-unix (and (boundp 'swimmy.globals:*cpcv-start-time*)
                                               swimmy.globals:*cpcv-start-time*) 0))
          (start-text (if (and start-time (> start-time 0))
                          (format-timestamp start-time)
                          "N/A")))
-    (format nil "🔬 CPCV Status~%~a | last start: ~a" summary start-text)))
+    (format nil "🔬 CPCV Status~%~a | last start: ~a~@[ | reason: ~a~]"
+            summary start-text updated-reason)))
 
 (defparameter *evolution-report-path* "data/reports/evolution_factory_report.txt")
 (defparameter *evolution-heartbeat-path* "data/heartbeat/school.tick")

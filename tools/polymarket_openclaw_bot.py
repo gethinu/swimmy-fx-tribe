@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Set
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
@@ -370,6 +370,76 @@ def fetch_gamma_markets(*, limit: int = 200, gamma_url: str = "https://gamma-api
     if isinstance(payload, MutableMapping) and isinstance(payload.get("markets"), list):
         return payload["markets"]
     raise RuntimeError("unexpected gamma payload shape")
+
+
+def fetch_gamma_market_by_id(*, market_id: str, gamma_url: str = "https://gamma-api.polymarket.com/markets") -> Optional[Dict[str, Any]]:
+    market_text = str(market_id or "").strip()
+    if not market_text:
+        return None
+    base = str(gamma_url or "").split("?", 1)[0].rstrip("/")
+    if not base:
+        return None
+    url = f"{base}/{quote(market_text, safe='')}"
+    req = Request(url, headers={"Accept": "application/json", "User-Agent": "swimmy-openclaw-polymarket-bot/1.0"})
+    try:
+        with urlopen(req, timeout=15) as resp:
+            body = resp.read().decode("utf-8")
+    except Exception:
+        return None
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, MutableMapping):
+        return dict(payload)
+    return None
+
+
+def fetch_gamma_markets_for_signal_ids(
+    *,
+    signal_ids: Sequence[str],
+    gamma_url: str = "https://gamma-api.polymarket.com/markets",
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    cap = max(1, int(limit))
+    for item in signal_ids:
+        market_id = str(item or "").strip()
+        if not market_id or market_id in seen:
+            continue
+        seen.add(market_id)
+        if len(out) >= cap:
+            break
+        market = fetch_gamma_market_by_id(market_id=market_id, gamma_url=gamma_url)
+        if isinstance(market, MutableMapping):
+            out.append(dict(market))
+    return out
+
+
+def hydrate_markets_for_signals(
+    *,
+    raw_markets: Sequence[Mapping[str, Any]],
+    signals: Mapping[str, OpenClawSignal],
+    gamma_url: str,
+    limit: int,
+) -> List[MarketSnapshot]:
+    parsed = parse_gamma_markets(raw_markets)
+    if not signals:
+        return parsed
+    signal_ids = {str(item).strip() for item in signals.keys() if str(item).strip()}
+    if not signal_ids:
+        return parsed
+    if any(item.market_id in signal_ids for item in parsed):
+        return parsed
+
+    fallback_raw = fetch_gamma_markets_for_signal_ids(
+        signal_ids=sorted(signal_ids),
+        gamma_url=gamma_url,
+        limit=max(1, int(limit)),
+    )
+    fallback = parse_gamma_markets(fallback_raw)
+    return fallback if fallback else parsed
 
 
 def full_kelly_fraction(*, win_prob: float, price: float) -> float:
@@ -802,7 +872,12 @@ def main() -> None:
     else:
         raw_markets = fetch_gamma_markets(limit=max(1, args.limit), gamma_url=args.gamma_url)
 
-    markets = parse_gamma_markets(raw_markets)
+    markets = hydrate_markets_for_signals(
+        raw_markets=raw_markets,
+        signals=signals,
+        gamma_url=args.gamma_url,
+        limit=max(1, args.limit),
+    )
     markets = filter_markets_by_keywords(markets, merged["question_keyword"])
     config = BotConfig(
         bankroll_usd=float(merged["bankroll_usd"]),

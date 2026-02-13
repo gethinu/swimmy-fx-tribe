@@ -139,12 +139,51 @@ run_systemctl() {
   esac
 }
 
+service_fallback_health() {
+  local svc="$1"
+  case "$svc" in
+    swimmy-pattern-similarity)
+      local pid
+      pid="$(pgrep -f "$ROOT/tools/pattern_similarity_service.py" | head -n 1 || true)"
+      if [[ -n "$pid" ]] && ss -tulnp 2>/dev/null | rg -q ":5565\\b"; then
+        printf 'pid=%s listener=:5565' "$pid"
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+run_systemctl_repair_step() {
+  local desc="$1"
+  shift
+  local output
+  if output="$(run_systemctl "$SYSTEMCTL_REPAIR_MODE" "$@" 2>&1)"; then
+    return 0
+  fi
+  if printf '%s' "$output" | rg -qi "interactive authentication required|authentication is required"; then
+    log "[WARN] repair skipped ($desc): $(printf '%s' "$output" | head -n 1)"
+    mark_warn
+    return 2
+  fi
+  printf '%s\n' "$output" >&2
+  return 1
+}
+
 # systemctl status (best effort)
 if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
   for svc in "${services[@]}"; do
     if ! run_systemctl "$SYSTEMCTL_STATUS_MODE" status "$svc" >/dev/null 2>&1; then
-      log "[WARN] service not healthy: $svc"
-      mark_warn
+      if fallback="$(service_fallback_health "$svc" 2>/dev/null)"; then
+        log "[WARN] service unit unhealthy but fallback process is healthy: $svc ($fallback)"
+        mark_warn
+      else
+        log "[WARN] service not healthy: $svc"
+        mark_warn
+      fi
     fi
   done
 fi
@@ -154,14 +193,26 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   log "[AUDIT] DRY_RUN=1; skipping auto-repair"
 else
   if [[ -n "$SYSTEMCTL_REPAIR_MODE" ]]; then
+    local_rc=0
     log "[REPAIR] daemon-reload"
-    run_systemctl "$SYSTEMCTL_REPAIR_MODE" daemon-reload || mark_fail
+    run_systemctl_repair_step "daemon-reload" daemon-reload
+    local_rc=$?
+    [[ $local_rc -eq 1 ]] && mark_fail
 
     for svc in "${services[@]}"; do
+      if fallback="$(service_fallback_health "$svc" 2>/dev/null)"; then
+        log "[WARN] skip systemctl repair for $svc; fallback process healthy ($fallback)"
+        mark_warn
+        continue
+      fi
       log "[REPAIR] enable $svc"
-      run_systemctl "$SYSTEMCTL_REPAIR_MODE" enable "$svc" || mark_fail
+      run_systemctl_repair_step "enable $svc" enable "$svc"
+      local_rc=$?
+      [[ $local_rc -eq 1 ]] && mark_fail
       log "[REPAIR] restart $svc"
-      run_systemctl "$SYSTEMCTL_REPAIR_MODE" restart "$svc" || mark_fail
+      run_systemctl_repair_step "restart $svc" restart "$svc"
+      local_rc=$?
+      [[ $local_rc -eq 1 ]] && mark_fail
     done
   else
     log "[FAIL] systemctl not available for auto-repair"
@@ -179,6 +230,10 @@ if [[ -f "$ROOT/tools/polymarket_openclaw_status.py" ]]; then
   polyclaw_status_args=(
     --max-age-seconds "${POLYCLAW_STATUS_MAX_AGE_SECONDS:-1800}"
     --last-runs "${POLYCLAW_STATUS_LAST_RUNS:-5}"
+    --window-minutes "${POLYCLAW_STATUS_WINDOW_MINUTES:-120}"
+    --min-runs-in-window "${POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW:-0}"
+    --min-sent-in-window "${POLYCLAW_STATUS_MIN_SENT_IN_WINDOW:-0}"
+    --min-entries-in-window "${POLYCLAW_STATUS_MIN_ENTRIES_IN_WINDOW:-0}"
     --fail-on-problem
   )
   if [[ -n "${POLYCLAW_OUTPUT_DIR:-}" ]]; then

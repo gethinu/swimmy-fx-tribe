@@ -15,6 +15,9 @@
   "When T, suppress Discord notifications for strategy additions.
    Set to NIL after initial load completes.")
 
+(defparameter *breeder-graveyard-bypass-for-phase1-enabled* t
+  "When T, breeder entries requiring Phase1 can bypass graveyard pattern rejection once.")
+
 ;; *kb-lock* moved to school-state.lisp for early initialization
 
 ;;; ============================================================================
@@ -257,11 +260,16 @@
         
       ;; 1.5 Graveyard Check (V49.0 Taleb)
       (when (and (not *startup-mode*) (is-graveyard-pattern-p strategy))
-        (if (and (eq source :breeder) breeder-variant-approved)
-            (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name)
-            (progn
-              (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
-              (return-from add-to-kb nil))))
+        (cond
+          ((and (eq source :breeder) breeder-variant-approved)
+           (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name))
+          ((and (eq source :breeder)
+                require-bt
+                *breeder-graveyard-bypass-for-phase1-enabled*)
+           (format t "[KB] ♻️ Breeder Phase1 bypassed graveyard pattern once: ~a~%" name))
+          (t
+           (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
+           (return-from add-to-kb nil))))
       
       ;; 2. BT Validation (Phase 1 Screening Gate)
       (when require-bt

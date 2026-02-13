@@ -19,9 +19,14 @@
   - **Drift内訳表示**: `Source Drift` の Graveyard/Retired mismatch は `delta(DB-Library)` を明示し、DB側余剰かLibrary側不足かを一目で判別できる文言を正本とする。
   - **ドリフト修復**: `tools/ops/reconcile_archive_db.py` で `data/library/GRAVEYARD/`・`data/library/RETIRED/` をスキャンし、DBへ backfill / rank補正できる（非破壊、ただし大量更新のため運用タイミングに注意）。
   - **ドリフト修復の実行安定化**: 稼働中に archive ファイルが増減する環境では、`reconcile_archive_db.py` の `--grace-sec` で直近更新ファイルを保留してから補正する。`--grace-sec` の既定は `0`（無効）で、指定時は `mtime > (scan_start - grace_sec)` の archive を今回スキャン対象から除外する。これにより実行中レースで `wrong_rank` が再発し続ける現象を抑制する。
+  - **Archive Migration 読み込み耐性**: `migrate-existing-data` の graveyard 読み込みは行単位 `safe-read-sexp` で実行し、壊れた行をスキップして継続する。先頭5件まで `Skip malformed graveyard line` を記録し、1行の破損で全体 migration が停止しないことを正本とする。
+  - **B再シード運用**: Active母集団が archive 偏重で枯渇した場合、`tools/ops/reseed_active_b.py` で `:GRAVEYARD/:RETIRED` から Stage1 B 基準通過戦略をカテゴリ（TF×Direction×Symbol）ごとに上位N抽出し、`:B` へ復元する。復元時は DB ランク更新と Library ファイル移動（`GRAVEYARD/RETIRED -> B`）を同時適用する。
+    - **権限差分耐性**: strategyファイルの `:RANK/:STATUS` 書換は in-place ではなく `tmp書込 -> os.replace` の原子置換で行い、root所有ファイル混在時でもディレクトリ書込権限があれば再シードを継続できる。
+    - **重複名競合の解決規約**: 同名ファイルが `B/` と archive (`GRAVEYARD/RETIRED`) の両方に存在する場合は `B/` 側を正とし、reseed 時に `:B` への DB昇格を継続する（conflictで丸ごとスキップしない）。
   - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
 - **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
 - **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
+  - **reason伝播**: `cpcv_status.txt` の `updated: ... reason: <reason>` が存在する場合、Evolution Report の `CPCV Status` 行にも reason を表示する（`no-candidates` と runtime/criteria 失敗を誤読しないため）。
   - **failed内訳**: `failed` は `send_failed + result_failed` の合算で、`result_failed` は `runtime` と `criteria` の内訳を表示する。
   - **結果分類**: `CPCV_RESULT` は `error` がある場合に `runtime` 失敗として扱う。加えて `path_count/passed_count/failed_count` がすべて 0 の結果は `error` 未付与でも **無効結果** とみなし、`criteria` ではなく `runtime` 失敗として扱う。
   - **通知対象**: CPCV個別通知は既知戦略（KBまたはDBに存在する `strategy_name`）のみ送信し、未知戦略名の結果はメトリクス/履歴には残しても Discord alert は送信しない。
@@ -33,6 +38,8 @@
 - **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
 - **School Wisdom Cadence**: `phase-7-wisdom-update` は毎サイクル実行しない。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）で間隔制御し、重い `analyze-veterans` を常時経路から外す。
 - **School Wisdom メモリ契約**: `analyze-veterans` は `unique-strats/candidates/copy-list+sort` の大規模中間リストを作らず、単一パス（de-dup + filter）で `Top-N`（既定50）だけを保持する。大量KB時の一時メモリ膨張を抑える。
+- **KB統合収集の計算量契約**: `collect-all-strategies-unpruned` は DB + Library の重複統合を `strategy_name` ハッシュ集合で処理し、重複除外を O(n) で維持する。重複名がある場合は DB 側を正として保持する。
+- **Strategy Lookup Index 契約**: `init-db` は `strategies` に `idx_strategies_rank_sharpe (rank, sharpe)` と `idx_strategies_category_rank (timeframe, direction, symbol, rank)` を必須作成し、ランク検索とカテゴリ別選抜の全表走査を回避する。
 - **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
 - **Evolution Report 保存先**: レポート保存は `*evolution-report-path*` を正本とし、`write-evolution-report-files` は固定パスを直接書かない。テスト/運用で保存先をバインド可能にして本番 `data/reports/evolution_factory_report.txt` の意図しない上書きを防ぐ。
   - **テスト隔離**: `run-all-tests` は `*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、本番レポートを汚染しない。
@@ -42,6 +49,9 @@
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
+  - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
+  - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
+  - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
@@ -86,13 +96,16 @@
 - **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
+- **OOS Result Apply Fallback 契約**: `BACKTEST_RESULT` の `-OOS` 結果適用時、受信側は in-memory `find-strategy` 失敗だけで `Strategy not found` としない。`strategies.data_sexp`（DB）から当該戦略を復元できる場合は OOS 指標更新/queue完了/昇格判定を継続し、in-memory と DB の双方で不在のときのみ `oos_queue=error` とする。
 - **Backtest Request Contract**: `BACKTEST` 要求は `request_id` を必須とする。`request-backtest-v2`（Phase1 Screening）を含むすべての送信経路で相関IDを付与し、欠落時の `request_id="MISSING"` error結果を通常評価メトリクスとして扱わない。
 - **Phase1 Result 名正規化契約**: `BACKTEST_RESULT.result.strategy_name` が `*_P1` の場合、受信側は `"_P1"` を除去した基底名で `apply-backtest-result` / DB更新を行う。`_P1` 結果は RR/QUAL の進捗バッファに加算しない。
+- **Backtest Result 末尾サフィックス正規化契約**: `BACKTEST_RESULT.result.strategy_name` の `-RR/-QUAL/-OOS/_P1` 正規化は末尾一致のみで実施する。基底名中の `-QUAL-...` などは削除せず、`<base-with-QUAL-token>-QUAL` のような名称でも基底名を破壊しない。
 - **Backtest Bool 正規化契約**: Backtest/CPCV の内部S式で `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルが混入する入力は Backtest Service で正規化して Guardian へ中継する。S式の構文正規化に失敗した場合でも、既知 bool キー（例: `filter_enabled`）はフォールバックで `t/nil`→`#t/#f` へ置換して Guardian へ渡す。
 - **Backtest Service 運用整合契約**: `swimmy-backtest.service` を正本とし、systemd が inactive の状態で 5580 に手動 `backtest_service.py` が LISTEN している状態をドリフトとして扱う。監査で検知し、運用に修復を促す。
 - **Dashboard Drift 可視化**: `tools/dashboard.py` は `swimmy-backtest` の systemd 状態に加えて 5580 listener と MainPID の整合（drift有無）を表示し、inactive/manual 混在を即時判別できるようにする。
 - **Backtest Knob 役割契約**: `SWIMMY_BACKTEST_MAX_PENDING` / `SWIMMY_BACKTEST_RATE_LIMIT` は **Lisp送信側**（`school-backtest-utils.lisp`）のスロットル設定。`SWIMMY_BACKTEST_MAX_INFLIGHT` は **Backtest Service側**（`tools/backtest_service.py`）の並列inflight上限であり、`MAX_PENDING` は service inflight を直接制御しない。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
+- **Backtest Pending Rebase 契約**: `pending = submit - recv` が長時間の部分欠落で過大ドリフトした場合、送信側は `submit` を安全側へリベースして `pending` を上限近傍へ戻す。これにより `pending` が `MAX_PENDING` を恒久的に超え続けて RR/QUAL dispatch が永久停止する状態を防ぐ（結果処理自体は継続）。
 - **Backtest Throttle 診断ログ**: throttleログは `pending上限超過` と `rate未達` を原因別に表示する。`pending` だけを表示して rate throttle を誤診しないことを正本とする。
 - **Backtest Rate Limit 運用値**: `SWIMMY_BACKTEST_RATE_LIMIT` は運用チューニング対象とし、2026-02-12 時点の適用値は `140`（従来 `100`）。`pending` が低いのに `rate limit` 再キューが連発する場合は段階的に見直す（例: 100→120→140）。
 - **Backtest Queue 実装契約**: `backtest-send-queue` の enqueue/dequeue は O(1) を維持する（`length`/`nconc` に依存しない）。高頻度スロットル時にキュー操作コストが送信ループの律速にならないことを正本とする。
@@ -109,6 +122,7 @@
 - **Breeder 呼び出し契約**: `run-breeding-cycle` は Breeder生成物投入時に `add-to-kb(... :source :breeder :require-bt t)` を使用し、運用経路で上記 Phase1 必須化を常時有効にする。
 - **Legend交配統合契約**: `run-legend-breeding` の子戦略投入は直接 `push` を禁止し、`add-to-kb(... :source :breeder :require-bt t)` 経由に統一する。Legend由来の子も通常Breeder childと同じ検証フロー（Phase1）を通す。
 - **Breeder PF回復圧契約**: 低PF・WR充足ペア（`avg_pf <= 1.15` かつ `avg_wr >= 0.43`）では PF回復モードを強制し、通常の PF bias より高い RR floor と scale floor を適用する。PF不足が主因のカテゴリで Sharpe偏重交配を抑え、PF改善方向を優先する。
+- **Breeder 補完ペア距離ゲート契約**: 遺伝距離ゲートは通常ペアを `>=0.03` で維持しつつ、PF/WR 補完ペアは `>=0.01`、partial recovery ペアは `>=0.02` まで緩和する。`indicators=nil` 個体が多い局面で補完交配が `too similar` で飢餓化しないことを正本とする。
 - **Scout語彙廃止契約**: 新規作成/デフォルト/フォールバックで `:scout` を生成しない。未移行データ互換として `:scout` は `:incubator` と同等に扱うが、遷移先・表示・保存は `:incubator` を正本とする。
 - **B-Rank Culling 保持契約**: `run-b-rank-culling-for-category` は A候補に選ばれなかった B戦略を全量 `graveyard` に送らない。カテゴリごとに少なくとも `*culling-threshold*` 件（または A候補キュー件数の大きい方）を B基盤として残し、超過分のみ prune する。
 - **B-Rank Culling 既定閾値**: `*culling-threshold*` の既定値は 20 とし、通常運用ではカテゴリごとの B 基盤を 20 件まで維持する。
@@ -133,12 +147,23 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-13**: `migrate-existing-data` の graveyard 読み込み契約を更新。`read` 一括読込で破損行に遭遇すると migration 全体が停止するため、行単位 `safe-read-sexp` に変更し、破損行をスキップして継続する方針を追加。
+- **2026-02-13**: `collect-all-strategies-unpruned` の計算量契約を更新。DB+Library の重複除外を線形探索から `strategy_name` ハッシュ集合へ変更し、O(n) で統合する方針を追加。
+- **2026-02-13**: OOS結果適用のフォールバック契約を追加。`handle-oos-backtest-result` は in-memory miss でも DB（`strategies.data_sexp`）復元を試み、両方不在時のみ `Strategy not found for OOS result` を記録する方針を明記。
+- **2026-02-13**: `strategies` テーブルの検索最適化契約を追加。`idx_strategies_rank_sharpe` と `idx_strategies_category_rank` を `init-db` で必須作成し、ランク/カテゴリ条件の抽出を高速化する方針を明記。
+- **2026-02-13**: Backtest pending カウンタの運用契約を更新。`submit-recv` の過大ドリフト時に送信側で安全リベースして `MAX_PENDING` 張り付きによる永続停止を回避する方針を追加。
+- **2026-02-13**: BACKTEST_RESULT 名正規化契約を強化。`-RR/-QUAL/-OOS/_P1` は末尾一致のみで除去し、基底名中の `-QUAL-...` を誤って切り落とさない方針を追加。
 - **2026-02-13**: `tools/evolution_daemon.py` の排他運用契約を更新。起動後に `swimmy-school` が立ち上がった場合でも evolution 子SBCLを停止して待機へ戻し、二重の `start-evolution-service` ループを継続しない方針を追加。
 - **2026-02-13**: School Connector の Wisdom 実行を間隔制御へ変更。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）を導入し、`phase-7-wisdom-update` が毎サイクルで `analyze-veterans` を実行しない方針を追加。
 - **2026-02-13**: `analyze-veterans` の処理契約を更新。de-dup/filter/sort を単一パス化し、`Top-N`（50件）のみ保持する実装へ変更して Wisdom 抽出時のピークメモリを削減。
+- **2026-02-13**: Breeder の補完ペア距離ゲートを調整。`*breeder-min-genetic-distance-complement*=0.01`、`*breeder-min-genetic-distance-partial-recovery*=0.02` を正本化し、`Dist 0.01-0.02` 帯で補完交配が継続的に reject される停滞を緩和する方針を追加。
 - **2026-02-13**: Breeder の低PF回復圧を強化する方針を追加。`avg_pf<=1.15 && avg_wr>=0.43` のペアで PF回復モード（RR floor/scale floor 強化）を適用し、PF不足停滞の打破を優先する契約を追記。
+- **2026-02-13**: Breeder の WR補完判定を動的化。親PF余剰と候補WR余剰に応じて `WR-complement` の最低PF閾値を `1.18 -> max(1.08, 動的閾値)` へ緩和し、`PF-only x 高WR` の有効ペアを取りこぼさない方針を追加。
+- **2026-02-13**: PF回復の上位ターゲット圧を追加。`avg_wr>=0.47` かつ `avg_pf<1.70` の WR-ready ペアに `upside scale floor` を適用し、A基準達成済みでも S基準PFへ寄せる探索圧を維持する方針を追記。
 - **2026-02-13**: B-Rank culling の保持順を PF帯優先へ更新。`PF>=A基準` → `PF near` → `others` の順に保持候補を選び、同帯内のみ culling score で並べる方針を追加。
 - **2026-02-13**: `tools/system_audit.sh` の systemd監査を強化。`sudo -n` が使えない環境でも `systemctl` 直実行へフォールバックして状態確認を継続し、監査自体を `skipping systemctl status` で欠落させない方針を追加。
+- **2026-02-13**: `tools/system_audit.sh` の監査契約を更新。`swimmy-pattern-similarity` は unit 未登録でも実プロセス + `:5565` LISTEN を fallback 健全判定として扱い、`Interactive authentication required` 発生時の auto-repair は WARN スキップで監査継続する方針を追加。
+- **2026-02-13**: Dashboard のサービス表示契約を更新。`PatternSim` は systemd unit 未登録時でも fallback 健全判定（実プロセス + `:5565` LISTEN）を表示に反映し、運用者が実稼働を誤認しない方針を追加。
 - **2026-02-12**: Evolution Report の `System Status` 契約を更新。`Evolution Daemon Active` を固定表示せず、systemd実状態（`swimmy-evolution.service`）を反映し、`systemctl` 取得不能時のみ heartbeat 補助判定へ切替える方針を追加。
 - **2026-02-12**: Evolution Report の表示整形契約を更新。`CPCV Stage2` / `A Near-Miss` の `%` が `%%` で出る退行を修正し、A Near-Miss の同名戦略重複表示を抑制する方針を追加。
 - **2026-02-12**: Evolution Report の候補名短縮契約を更新。先頭25文字のみの省略で同名衝突が発生するため、先頭+末尾を保持する短縮表示へ統一する方針を追加。

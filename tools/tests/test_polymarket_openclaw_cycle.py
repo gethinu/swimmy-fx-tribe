@@ -262,7 +262,13 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
             result={
                 "run_id": "r1",
                 "run_date": "2026-02-13",
-                "plan_summary": {"entries": 2, "total_stake_usd": 3.5},
+                "plan_summary": {
+                    "entries": 2,
+                    "total_stake_usd": 3.5,
+                    "open_markets": 5,
+                    "blocked_open_markets": 2,
+                    "quality_filtered_markets": 1,
+                },
                 "signal_summary": {"signal_count": 20, "agent_signal_count": 4, "agent_signal_ratio": 0.2},
                 "live_execution_enabled": True,
                 "execution": {"ok": True, "skipped": False, "attempted": 2, "sent": 2, "failed": 0},
@@ -282,6 +288,9 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         self.assertTrue(snapshot["execution_ok"])
         self.assertEqual(2, snapshot["execution_sent"])
         self.assertEqual(20, snapshot["signal_count"])
+        self.assertEqual(5, snapshot["open_markets"])
+        self.assertEqual(2, snapshot["blocked_open_markets"])
+        self.assertEqual(1, snapshot["quality_filtered_markets"])
         self.assertEqual("/tmp/report.json", snapshot["report_file"])
 
     def test_build_latest_status_snapshot_when_live_disabled(self) -> None:

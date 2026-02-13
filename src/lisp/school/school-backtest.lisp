@@ -545,7 +545,7 @@
     (format t "[PRUNER] 🗑️ DELETED: ~a | Reason: ~a~%" name reason)))
 
 (defparameter *last-qual-cycle* 0)
-(defparameter *qual-cycle-interval* 300
+(defparameter *qual-cycle-interval* 60
   "Minimum seconds between qualification batches.")
 (defparameter *qualification-rename-seq* 0
   "Monotonic suffix used when QUAL candidates must be renamed.")

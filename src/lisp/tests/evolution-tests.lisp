@@ -116,11 +116,15 @@
                                           :profit-factor 1.55 :win-rate 0.50
                                           :sl 22.0 :tp 34.0))
          (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-upside-enabled (and (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+                                   swimmy.school::*pfwr-upside-scale-enabled*))
          (orig-target-pf swimmy.school::*pfwr-target-pf*)
          (orig-target-wr swimmy.school::*pfwr-target-wr*))
     (unwind-protect
         (progn
           (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (when (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+            (setf swimmy.school::*pfwr-upside-scale-enabled* nil))
           (setf swimmy.school::*pfwr-target-pf* 1.30)
           (setf swimmy.school::*pfwr-target-wr* 0.43)
           (multiple-value-bind (sl tp)
@@ -130,6 +134,8 @@
             (assert-true (< (abs (- tp 60.0)) 1.0e-6)
                          "Expected TP unchanged when parents are already healthy")))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (when (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+        (setf swimmy.school::*pfwr-upside-scale-enabled* orig-upside-enabled))
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
 
@@ -247,6 +253,88 @@
       (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
+(deftest test-pfwr-mutation-bias-opposite-complements-shifts-to-pf-recovery-band-when-wr-ready
+  "Opposite complements with WR ready but slight PF gap should use a higher RR PF-recovery band."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-COMP-PFREC-WR"
+                                          :profit-factor 1.20 :win-rate 0.52
+                                          :sl 20.0 :tp 30.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-COMP-PFREC-PF"
+                                          :profit-factor 1.38 :win-rate 0.36
+                                          :sl 20.0 :tp 80.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*)
+         (orig-comp-pf-min swimmy.school::*pfwr-complement-pf-recovery-min-rr*)
+         (orig-comp-pf-max swimmy.school::*pfwr-complement-pf-recovery-max-rr*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (setf swimmy.school::*pfwr-complement-pf-recovery-min-rr* 1.75)
+          (setf swimmy.school::*pfwr-complement-pf-recovery-max-rr* 2.05)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 100.0 p1 p2)
+            (let ((rr (/ tp sl)))
+              (assert-true (>= rr 1.75)
+                           (format nil "Expected PF-recovery complement RR>=1.75, got ~,3f" rr))
+              (assert-true (<= rr 2.05)
+                           (format nil "Expected PF-recovery complement RR<=2.05, got ~,3f" rr)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr)
+      (setf swimmy.school::*pfwr-complement-pf-recovery-min-rr* orig-comp-pf-min)
+      (setf swimmy.school::*pfwr-complement-pf-recovery-max-rr* orig-comp-pf-max))))
+
+(deftest test-pfwr-mutation-bias-upside-scale-boosts-wr-ready-pf-gap-to-s-target
+  "WR-ready parents below S-like PF target should get extra scale boost even when A-target gaps are zero."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-UPSIDE-P1"
+                                          :profit-factor 1.48 :win-rate 0.52
+                                          :sl 20.0 :tp 40.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-UPSIDE-P2"
+                                          :profit-factor 1.52 :win-rate 0.50
+                                          :sl 22.0 :tp 44.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*)
+         (orig-upside-enabled (and (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+                                   swimmy.school::*pfwr-upside-scale-enabled*))
+         (orig-upside-target (and (boundp 'swimmy.school::*pfwr-upside-target-pf*)
+                                  swimmy.school::*pfwr-upside-target-pf*))
+         (orig-upside-min-wr (and (boundp 'swimmy.school::*pfwr-upside-min-wr*)
+                                  swimmy.school::*pfwr-upside-min-wr*))
+         (orig-upside-gain (and (boundp 'swimmy.school::*pfwr-upside-scale-gain*)
+                                swimmy.school::*pfwr-upside-scale-gain*))
+         (orig-upside-max (and (boundp 'swimmy.school::*pfwr-upside-scale-max*)
+                               swimmy.school::*pfwr-upside-scale-max*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (setf swimmy.school::*pfwr-upside-scale-enabled* t)
+          (setf swimmy.school::*pfwr-upside-target-pf* 1.70)
+          (setf swimmy.school::*pfwr-upside-min-wr* 0.47)
+          (setf swimmy.school::*pfwr-upside-scale-gain* 0.30)
+          (setf swimmy.school::*pfwr-upside-scale-max* 1.40)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 20.0 40.0 p1 p2)
+            (assert-true (> sl 20.5)
+                         (format nil "Expected upside mode to scale SL above baseline, got ~,3f" sl))
+            (assert-true (> tp 40.5)
+                         (format nil "Expected upside mode to scale TP above baseline, got ~,3f" tp))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr)
+      (setf swimmy.school::*pfwr-upside-scale-enabled* orig-upside-enabled)
+      (setf swimmy.school::*pfwr-upside-target-pf* orig-upside-target)
+      (setf swimmy.school::*pfwr-upside-min-wr* orig-upside-min-wr)
+      (setf swimmy.school::*pfwr-upside-scale-gain* orig-upside-gain)
+      (setf swimmy.school::*pfwr-upside-scale-max* orig-upside-max))))
 
 (deftest test-select-pfwr-anchor-parent-prefers-higher-wr-parent-when-wr-gap-dominates
   "When WR deficit dominates, anchor parent should prefer higher WR profile."
@@ -937,7 +1025,7 @@
                                                            :rank :B :generation 9
                                                            :sl 20.0 :tp 33.0
                                                            :trades 50
-                                                           :profit-factor 1.10 :win-rate 0.49
+                                                           :profit-factor 1.18 :win-rate 0.49
                                                            :sharpe 0.5))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
@@ -952,6 +1040,185 @@
             (assert-true (eq picked cand-wr-moderate-pf)
                          (format nil "Expected WR complement UT-PFONLY-WR-MIDPF, got ~a"
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-allows-low-pf-high-wr-when-parent-has-pf-surplus
+  "When parent PF is far above target, low-PF high-WR partner should still be accepted for WR recovery."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-PF-SURPLUS-PARENT"
+                                              :rank :B :generation 60
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.56 :win-rate 0.34
+                                              :sharpe 1.3))
+         (cand-high-no-wr (swimmy.school:make-strategy :name "UT-PF-SURPLUS-NONCOMP"
+                                                       :rank :LEGEND :generation 1800
+                                                       :sl 20.0 :tp 80.0
+                                                       :trades 50
+                                                       :profit-factor 1.65 :win-rate 0.35
+                                                       :sharpe 2.9))
+         (cand-low-pf-high-wr (swimmy.school:make-strategy :name "UT-PF-SURPLUS-WR"
+                                                           :rank :B :generation 8
+                                                           :sl 20.0 :tp 32.0
+                                                           :trades 50
+                                                           :profit-factor 1.08 :win-rate 0.50
+                                                           :sharpe 0.3))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-high-no-wr cand-low-pf-high-wr)
+                         :start-index 1)))
+            (assert-true (eq picked cand-low-pf-high-wr)
+                         (format nil "Expected PF-surplus WR complement UT-PF-SURPLUS-WR, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-prefers-partial-wr-recovery-when-no-full-complement
+  "When no full WR complement exists, breeder should prefer best partial WR-recovery candidate."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-PARTIAL-WR-PARENT"
+                                              :rank :B :generation 65
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.42 :win-rate 0.35
+                                              :sharpe 1.2))
+         (cand-high-no-recovery (swimmy.school:make-strategy :name "UT-PARTIAL-WR-HIGH"
+                                                             :rank :LEGEND :generation 1400
+                                                             :sl 20.0 :tp 72.0
+                                                             :trades 50
+                                                             :profit-factor 1.62 :win-rate 0.36
+                                                             :sharpe 2.7))
+         (cand-partial-wr (swimmy.school:make-strategy :name "UT-PARTIAL-WR-CAND"
+                                                       :rank :B :generation 10
+                                                       :sl 20.0 :tp 34.0
+                                                       :trades 50
+                                                       :profit-factor 1.20 :win-rate 0.41
+                                                       :sharpe 0.4))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-high-no-recovery cand-partial-wr)
+                         :start-index 1)))
+            (assert-true (eq picked cand-partial-wr)
+                         (format nil "Expected partial WR-recovery candidate UT-PARTIAL-WR-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-breeding-pair-blacklist-blocks-candidate-before-cooldown
+  "Pair blacklist should block candidates after reaching failure threshold within cooldown."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-BLACKLIST-PARENT"
+                                              :rank :B :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.28 :win-rate 0.42))
+         (cand (swimmy.school:make-strategy :name "UT-BLACKLIST-CAND"
+                                            :rank :B :sl 20.0 :tp 34.0
+                                            :trades 50
+                                            :profit-factor 1.20 :win-rate 0.45))
+         (orig-enabled swimmy.school::*breeder-pair-blacklist-enabled*)
+         (orig-threshold swimmy.school::*breeder-pair-failure-threshold*)
+         (orig-cooldown swimmy.school::*breeder-pair-blacklist-cooldown-seconds*)
+         (orig-stats swimmy.school::*breeder-pair-failure-stats*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*breeder-pair-blacklist-enabled* t)
+          (setf swimmy.school::*breeder-pair-failure-threshold* 2)
+          (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* 600)
+          (setf swimmy.school::*breeder-pair-failure-stats* (make-hash-table :test 'equal))
+          (swimmy.school::note-breeding-pair-failure parent cand "ut-1")
+          (assert-false (swimmy.school::breeding-pair-blacklisted-p parent cand)
+                        "Expected pair to remain unblocked before threshold")
+          (swimmy.school::note-breeding-pair-failure parent cand "ut-2")
+          (assert-true (swimmy.school::breeding-pair-blacklisted-p parent cand)
+                       "Expected pair to be blacklisted after threshold"))
+      (setf swimmy.school::*breeder-pair-blacklist-enabled* orig-enabled)
+      (setf swimmy.school::*breeder-pair-failure-threshold* orig-threshold)
+      (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* orig-cooldown)
+      (setf swimmy.school::*breeder-pair-failure-stats* orig-stats))))
+
+(deftest test-breeding-pair-blacklist-expires-after-cooldown
+  "Pair blacklist should expire after cooldown window."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-BLACKLIST-EXP-PARENT"
+                                              :rank :B :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.28 :win-rate 0.42))
+         (cand (swimmy.school:make-strategy :name "UT-BLACKLIST-EXP-CAND"
+                                            :rank :B :sl 20.0 :tp 34.0
+                                            :trades 50
+                                            :profit-factor 1.20 :win-rate 0.45))
+         (orig-enabled swimmy.school::*breeder-pair-blacklist-enabled*)
+         (orig-threshold swimmy.school::*breeder-pair-failure-threshold*)
+         (orig-cooldown swimmy.school::*breeder-pair-blacklist-cooldown-seconds*)
+         (orig-stats swimmy.school::*breeder-pair-failure-stats*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*breeder-pair-blacklist-enabled* t)
+          (setf swimmy.school::*breeder-pair-failure-threshold* 1)
+          (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* 10)
+          (setf swimmy.school::*breeder-pair-failure-stats* (make-hash-table :test 'equal))
+          (let ((key (swimmy.school::breeding-pair-key parent cand)))
+            (setf (gethash key swimmy.school::*breeder-pair-failure-stats*)
+                  (list :fails 2 :last-fail (- (get-universal-time) 20))))
+          (assert-false (swimmy.school::breeding-pair-blacklisted-p parent cand)
+                        "Expected blacklist to expire past cooldown"))
+      (setf swimmy.school::*breeder-pair-blacklist-enabled* orig-enabled)
+      (setf swimmy.school::*breeder-pair-failure-threshold* orig-threshold)
+      (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* orig-cooldown)
+      (setf swimmy.school::*breeder-pair-failure-stats* orig-stats))))
+
+(deftest test-find-diverse-breeding-partner-skips-blacklisted-pair
+  "Partner search should skip pair-blacklisted candidate and pick next viable candidate."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-BLACKLIST-PICK-PARENT"
+                                              :rank :B :generation 70
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.45 :win-rate 0.34
+                                              :sharpe 1.2))
+         (cand-blocked (swimmy.school:make-strategy :name "UT-BLACKLIST-PICK-BLOCKED"
+                                                    :rank :B :generation 9
+                                                    :sl 20.0 :tp 33.0
+                                                    :trades 50
+                                                    :profit-factor 1.20 :win-rate 0.49
+                                                    :sharpe 0.8))
+         (cand-fallback (swimmy.school:make-strategy :name "UT-BLACKLIST-PICK-FALLBACK"
+                                                     :rank :B :generation 10
+                                                     :sl 20.0 :tp 34.0
+                                                     :trades 50
+                                                     :profit-factor 1.19 :win-rate 0.46
+                                                     :sharpe 0.4))
+         (orig-enabled swimmy.school::*breeder-pair-blacklist-enabled*)
+         (orig-threshold swimmy.school::*breeder-pair-failure-threshold*)
+         (orig-cooldown swimmy.school::*breeder-pair-blacklist-cooldown-seconds*)
+         (orig-stats swimmy.school::*breeder-pair-failure-stats*)
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*breeder-pair-blacklist-enabled* t)
+          (setf swimmy.school::*breeder-pair-failure-threshold* 1)
+          (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* 600)
+          (setf swimmy.school::*breeder-pair-failure-stats* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (swimmy.school::note-breeding-pair-failure parent cand-blocked "ut-block")
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-blocked cand-fallback)
+                         :start-index 1)))
+            (assert-true (eq picked cand-fallback)
+                         (format nil "Expected fallback candidate UT-BLACKLIST-PICK-FALLBACK, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf swimmy.school::*breeder-pair-blacklist-enabled* orig-enabled)
+      (setf swimmy.school::*breeder-pair-failure-threshold* orig-threshold)
+      (setf swimmy.school::*breeder-pair-blacklist-cooldown-seconds* orig-cooldown)
+      (setf swimmy.school::*breeder-pair-failure-stats* orig-stats)
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
 (deftest test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
@@ -1063,6 +1330,18 @@
       (if orig-threshold
           (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
           (makunbound 'swimmy.school::*breeder-min-genetic-distance*)))))
+
+(deftest test-breeder-relaxed-distance-defaults-are-stricter-ordering-safe
+  "Default relaxed distances should be <= base threshold and complement <= partial."
+  (let ((base swimmy.school::*breeder-min-genetic-distance*)
+        (complement swimmy.school::*breeder-min-genetic-distance-complement*)
+        (partial swimmy.school::*breeder-min-genetic-distance-partial-recovery*))
+    (assert-true (<= complement base)
+                 "Complement threshold should not exceed base threshold")
+    (assert-true (<= partial base)
+                 "Partial-recovery threshold should not exceed base threshold")
+    (assert-true (<= complement partial)
+                 "Complement threshold should be <= partial-recovery threshold")))
 
 (deftest test-find-diverse-breeding-partner-relaxes-distance-for-complement
   "Complement partner should pass correlation gate with relaxed distance threshold."

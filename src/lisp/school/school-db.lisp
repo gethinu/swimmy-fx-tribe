@@ -170,6 +170,12 @@
     )")
 
   ;; Indices for fast draft/selection
+  (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_strategies_rank_sharpe
+      ON strategies(rank, sharpe)")
+  (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_strategies_category_rank
+      ON strategies(timeframe, direction, symbol, rank)")
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
@@ -771,6 +777,42 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
               (when (> updated 0)
                 (format t "[DB] 🔄 Synced metrics for ~d strategies (full scan fallback)~%" updated)))))))))
 
+(defun %migrate-graveyard-patterns (graveyard-path)
+  "Migrate graveyard.sexp patterns into SQL and continue on malformed lines."
+  (let ((g-count 0)
+        (g-skipped 0)
+        (line-no 0))
+    (when (probe-file graveyard-path)
+      (with-open-file (in graveyard-path :direction :input :if-does-not-exist nil)
+        (with-transaction
+          (loop for line = (read-line in nil nil)
+                while line
+                do
+                   (incf line-no)
+                   (let ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) line)))
+                     (unless (string= trimmed "")
+                       (let ((p (swimmy.core:safe-read-sexp trimmed :package :swimmy.school)))
+                         (cond
+                           ((and p (listp p) (getf p :name))
+                            (handler-case
+                                (let* ((g-name (format nil "GY-~a" (getf p :name)))
+                                       (fake-strat (make-strategy :indicators (getf p :indicators)
+                                                                  :entry (getf p :entry)
+                                                                  :exit (getf p :exit)))
+                                       (hash (calculate-strategy-hash fake-strat)))
+                                  (execute-non-query
+                                   "INSERT OR REPLACE INTO strategies (name, rank, hash, data_sexp) VALUES (?, ?, ?, ?)"
+                                   g-name ":GRAVEYARD" hash (format nil "~s" p))
+                                  (incf g-count))
+                              (error ()
+                                (incf g-skipped))))
+                           (t
+                            (incf g-skipped)
+                            (when (<= g-skipped 5)
+                              (format t "[DB] ⚠️ Skip malformed graveyard line ~d~%" line-no)))))))))
+      (format t "[DB] 🪦 Migrated ~d graveyard patterns to SQL (~d skipped).~%" g-count g-skipped))
+    (values g-count g-skipped))))
+
 (defun migrate-existing-data ()
   "Migrate existing flat-files (ranks, graveyard, legacy KB) to SQLite."
   (let ((count 0)
@@ -811,30 +853,7 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
           (incf count))))
 
     (format t "[DB] 🚜 Migrated ~d strategies to SQL.~%" count)
-
-    (let ((graveyard-path "data/memory/graveyard.sexp"))
-      (when (probe-file graveyard-path)
-        (with-open-file (in graveyard-path :direction :input :if-does-not-exist nil)
-          (let ((g-count 0))
-            (with-transaction
-              (loop for p = (handler-case
-                                (let ((*package* (find-package :swimmy.school)))
-                                  (read in nil :eof))
-                              (error (e)
-                                (format t "[DB] 💥 Corrupted Graveyard SEXP: ~a~%" e)
-                                :eof))
-                    until (eq p :eof)
-                    do (when (and p (listp p) (getf p :name))
-                         (let ((g-name (format nil "GY-~a" (getf p :name))))
-                           (let* ((fake-strat (make-strategy :indicators (getf p :indicators)
-                                                            :entry (getf p :entry)
-                                                            :exit (getf p :exit)))
-                                  (hash (calculate-strategy-hash fake-strat)))
-                             (execute-non-query
-                              "INSERT OR REPLACE INTO strategies (name, rank, hash, data_sexp) VALUES (?, ?, ?, ?)"
-                              g-name ":GRAVEYARD" hash (format nil "~s" p))
-                             (incf g-count))))))
-            (format t "[DB] 🪦 Migrated ~d graveyard patterns to SQL.~%" g-count)))))
+    (%migrate-graveyard-patterns "data/memory/graveyard.sexp")
     count)))
 
 ;; Graceful shutdown hook

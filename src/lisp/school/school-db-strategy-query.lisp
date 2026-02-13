@@ -40,10 +40,19 @@
   "Return all strategies from DB + Library without pruning."
   (let* ((db-strats (fetch-all-strategies-from-db))
          (file-strats (ignore-errors (swimmy.persistence:load-all-strategies)))
-         (all (copy-list db-strats)))
+         (all (copy-list db-strats))
+         (seen (make-hash-table :test #'equal)))
+    (dolist (dbs db-strats)
+      (let ((name (and dbs (strategy-name dbs))))
+        (when name
+          (setf (gethash name seen) t))))
     (dolist (fs (or file-strats '()))
-      (unless (find (strategy-name fs) all :key #'strategy-name :test #'string=)
-        (push fs all)))
+      (let ((name (and fs (strategy-name fs))))
+        (if name
+            (unless (gethash name seen)
+              (setf (gethash name seen) t)
+              (push fs all))
+            (push fs all))))
     all))
 
 (defun map-strategies-from-db (fn &key (batch-size 1000) limit)

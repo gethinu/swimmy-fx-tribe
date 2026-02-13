@@ -118,6 +118,43 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertIn("--live-min-stake-usd 1.5", text)
         self.assertIn("--live-fail-on-error", text)
 
+    def test_validate_live_runtime_configuration_disabled(self) -> None:
+        status = svc.validate_live_runtime_configuration(env={})
+        self.assertFalse(status["enabled"])
+        self.assertTrue(status["ok"])
+        self.assertEqual("disabled", status["reason"])
+
+    def test_validate_live_runtime_configuration_enabled_requires_private_key(self) -> None:
+        env = {
+            "POLYCLAW_LIVE_EXECUTION": "1",
+        }
+        status = svc.validate_live_runtime_configuration(env=env)
+        self.assertTrue(status["enabled"])
+        self.assertFalse(status["ok"])
+        self.assertEqual("missing_private_key", status["reason"])
+
+    def test_validate_live_runtime_configuration_enabled_dry_run(self) -> None:
+        env = {
+            "POLYCLAW_LIVE_EXECUTION": "1",
+            "POLYCLAW_LIVE_DRY_RUN": "1",
+        }
+        status = svc.validate_live_runtime_configuration(env=env)
+        self.assertTrue(status["enabled"])
+        self.assertTrue(status["dry_run"])
+        self.assertTrue(status["ok"])
+        self.assertEqual("dry_run", status["reason"])
+
+    def test_validate_live_runtime_configuration_enabled_with_private_key(self) -> None:
+        env = {
+            "POLYCLAW_LIVE_EXECUTION": "1",
+            "POLYCLAW_LIVE_PRIVATE_KEY": "0xabc123",
+        }
+        status = svc.validate_live_runtime_configuration(env=env)
+        self.assertTrue(status["enabled"])
+        self.assertFalse(status["dry_run"])
+        self.assertTrue(status["ok"])
+        self.assertEqual("ready", status["reason"])
+
     def test_build_cycle_args_with_min_liquidity_and_volume(self) -> None:
         env = {
             "POLYCLAW_CONFIG_FILE": "/cfg.json",

@@ -598,6 +598,38 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
     }
 
 
+def validate_live_runtime_configuration(*, env: Mapping[str, str]) -> Dict[str, object]:
+    live_execution = _env_bool(env, "POLYCLAW_LIVE_EXECUTION", False)
+    live_dry_run = _env_bool(env, "POLYCLAW_LIVE_DRY_RUN", False)
+    private_key = str(env.get("POLYCLAW_LIVE_PRIVATE_KEY", "")).strip()
+
+    result: Dict[str, object] = {
+        "enabled": bool(live_execution),
+        "dry_run": bool(live_dry_run),
+        "ok": True,
+        "reason": "disabled",
+    }
+    if not live_execution:
+        return result
+
+    if live_dry_run:
+        result["reason"] = "dry_run"
+        return result
+
+    if not private_key:
+        result["ok"] = False
+        result["reason"] = "missing_private_key"
+        return result
+
+    if private_key.lower() in {"0x...", "changeme", "change_me", "your_private_key"}:
+        result["ok"] = False
+        result["reason"] = "placeholder_private_key"
+        return result
+
+    result["reason"] = "ready"
+    return result
+
+
 def main() -> None:
     base_dir = resolve_base_dir()
     env: Dict[str, str] = dict(os.environ)
@@ -645,6 +677,20 @@ def main() -> None:
             )
             return
         raise RuntimeError(f"Bad signals: {signal_health}")
+    live_runtime = validate_live_runtime_configuration(env=selected_env)
+    if bool(live_runtime.get("enabled")):
+        print(
+            json.dumps(
+                {
+                    "status": "live_runtime",
+                    "live_runtime": live_runtime,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    if not bool(live_runtime.get("ok")):
+        raise RuntimeError(f"Live execution misconfigured: {live_runtime}")
     args = build_cycle_args(env=selected_env, base_dir=base_dir)
     subprocess.run(args, check=True)
 

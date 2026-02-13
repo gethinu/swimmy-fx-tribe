@@ -40,6 +40,21 @@
 (defparameter *backtest-queue-flush-interval-sec* 1
   "Minimum seconds between periodic flush checks for backtest send queue.")
 
+(defparameter *backtest-pending-rebase-threshold-factor* 3.0d0
+  "Rebase submit/recv drift when pending exceeds this multiple of max pending.")
+
+(defparameter *backtest-pending-rebase-target-ratio* 0.5d0
+  "Pending target ratio (against max pending) after submit counter rebase.")
+
+(defparameter *backtest-pending-rebase-min-max-pending* 1000
+  "Minimum max-pending value where automatic pending rebase is allowed.")
+
+(defparameter *backtest-pending-rebase-cooldown-sec* 120
+  "Minimum seconds between automatic pending rebases.")
+
+(defparameter *backtest-pending-last-rebase* 0
+  "Unix timestamp of the last automatic pending counter rebase.")
+
 (defun normalize-json-key (key)
   "Normalize a symbol/string key into a JSON object key string."
   (cond
@@ -55,11 +70,34 @@
             (val (cdr pair)))
         (setf (jsown:val obj key-str) val)))))
 
+(defun maybe-rebase-backtest-pending (submit recv pending max-pending)
+  "Rebase submit counter when submit/recv drift is far beyond practical pending."
+  (let* ((now (get-universal-time))
+         (safe-max (max 1 max-pending))
+         (threshold (truncate (* safe-max *backtest-pending-rebase-threshold-factor*)))
+         (cooldown-ok-p (>= (- now *backtest-pending-last-rebase*)
+                            *backtest-pending-rebase-cooldown-sec*)))
+    (if (and (>= safe-max *backtest-pending-rebase-min-max-pending*)
+             (> pending safe-max)
+             (> pending threshold)
+             cooldown-ok-p)
+        (let* ((target (max 0 (truncate (* safe-max *backtest-pending-rebase-target-ratio*))))
+               (new-submit (+ recv target)))
+          (setf swimmy.globals::*backtest-submit-count* new-submit
+                *backtest-pending-last-rebase* now)
+          (format t "[BACKTEST] ♻️ Rebased pending counter: pending=~d -> ~d (submit=~d recv=~d max=~d)~%"
+                  pending target new-submit recv safe-max)
+          target)
+        pending)))
+
 (defun backtest-pending-count ()
-  (let ((recv (if (boundp 'swimmy.main::*backtest-recv-count*)
-                  swimmy.main::*backtest-recv-count*
-                  0)))
-    (max 0 (- swimmy.globals::*backtest-submit-count* recv))))
+  (let* ((recv (if (boundp 'swimmy.main::*backtest-recv-count*)
+                   swimmy.main::*backtest-recv-count*
+                   0))
+         (submit swimmy.globals::*backtest-submit-count*)
+         (max-pending swimmy.globals::*backtest-max-pending*)
+         (pending (max 0 (- submit recv))))
+    (maybe-rebase-backtest-pending submit recv pending max-pending)))
 
 (defun backtest-now-seconds ()
   "Return current time in seconds with sub-second resolution."
