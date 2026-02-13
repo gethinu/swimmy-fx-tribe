@@ -1,0 +1,21 @@
+[Unit]
+Description=Swimmy Discord Notifier Service (User)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/swimmy
+ExecStart=%h/swimmy/.venv/bin/python3 %h/swimmy/tools/notifier.py
+Restart=always
+RestartSec=5
+Environment=HOME=%h
+Environment=PYTHONUNBUFFERED=1
+# Notifier does not need .env (which contains secrets). Optionally load
+# a systemd-only env file to override SWIMMY_PORT_NOTIFIER, etc.
+EnvironmentFile=-%h/swimmy/config/.env.systemd
+StandardOutput=append:%h/swimmy/logs/notifier.log
+StandardError=append:%h/swimmy/logs/notifier.log
+
+[Install]
+WantedBy=default.target
+
