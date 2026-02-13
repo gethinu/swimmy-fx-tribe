@@ -93,6 +93,23 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertEqual(closed[0]["position_id"], 500)
         self.assertAlmostEqual(closed[0]["net_profit"], 3.0, places=6)
 
+    def test_aggregate_closed_positions_accepts_exit_magic_mismatch(self):
+        deals = [
+            self._deal(position_id=700, entry=0, time=10, commission=-1.0, magic=560070, comment="xau_autobot"),
+            self._deal(position_id=700, entry=1, time=20, profit=8.0, commission=-1.0, magic=0, comment=""),
+        ]
+
+        closed = aggregate_closed_positions(
+            deals=deals,
+            symbol="XAUUSD",
+            magic=560070,
+            comment_prefix="xau_autobot",
+        )
+
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0]["position_id"], 700)
+        self.assertAlmostEqual(closed[0]["net_profit"], 6.0, places=6)
+
     def test_summarize_closed_positions_builds_kpis(self):
         closed = [
             {"position_id": 1, "close_time": 1, "net_profit": 10.0},

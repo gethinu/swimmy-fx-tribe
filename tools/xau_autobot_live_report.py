@@ -28,7 +28,6 @@ class PositionAggregate:
     close_time: int = 0
     deal_count: int = 0
     exit_deals: int = 0
-    has_comment_match: bool = False
 
 
 def _deal_value(deal: Any, key: str, default: Any = None) -> Any:
@@ -55,26 +54,36 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _is_strategy_deal(
+def _is_tradable_deal_for_symbol(
     deal: Any,
     *,
     symbol: str,
-    magic: int,
 ) -> bool:
     symbol_filter = (symbol or "").strip()
     deal_symbol = str(_deal_value(deal, "symbol", "")).upper()
     if symbol_filter and symbol_filter != "*" and deal_symbol != symbol_filter.upper():
         return False
 
-    if int(magic) >= 0:
-        deal_magic = _to_int(_deal_value(deal, "magic", 0), default=-1)
-        if deal_magic != int(magic):
-            return False
-
     deal_type = _to_int(_deal_value(deal, "type", -1), default=-1)
     if deal_type not in (BUY_DEAL_TYPE, SELL_DEAL_TYPE):
         return False
     return True
+
+
+def _is_seed_deal_for_strategy(
+    deal: Any,
+    *,
+    symbol: str,
+    magic: int,
+    comment_prefix: str,
+) -> bool:
+    if not _is_tradable_deal_for_symbol(deal, symbol=symbol):
+        return False
+    if int(magic) >= 0:
+        deal_magic = _to_int(_deal_value(deal, "magic", 0), default=-1)
+        if deal_magic != int(magic):
+            return False
+    return _comment_matches(deal, comment_prefix)
 
 
 def _comment_matches(deal: Any, comment_prefix: str) -> bool:
@@ -102,22 +111,33 @@ def aggregate_closed_positions(
     comment_prefix: str,
 ) -> List[Dict[str, Any]]:
     by_position: Dict[int, PositionAggregate] = {}
+    target_positions: set[int] = set()
 
     for deal in deals:
-        if not _is_strategy_deal(deal, symbol=symbol, magic=magic):
+        if not _is_seed_deal_for_strategy(
+            deal,
+            symbol=symbol,
+            magic=magic,
+            comment_prefix=comment_prefix,
+        ):
             continue
 
         position_id = _position_id_for_deal(deal)
         if position_id <= 0:
+            continue
+        target_positions.add(position_id)
+
+    for deal in deals:
+        if not _is_tradable_deal_for_symbol(deal, symbol=symbol):
+            continue
+        position_id = _position_id_for_deal(deal)
+        if position_id <= 0 or position_id not in target_positions:
             continue
 
         agg = by_position.get(position_id)
         if agg is None:
             agg = PositionAggregate(position_id=position_id)
             by_position[position_id] = agg
-
-        if _comment_matches(deal, comment_prefix):
-            agg.has_comment_match = True
 
         profit = _to_float(_deal_value(deal, "profit", 0.0))
         swap = _to_float(_deal_value(deal, "swap", 0.0))
@@ -135,7 +155,7 @@ def aggregate_closed_positions(
             if t > agg.close_time:
                 agg.close_time = t
 
-    closed = [item for item in by_position.values() if item.exit_deals > 0 and item.has_comment_match]
+    closed = [item for item in by_position.values() if item.exit_deals > 0]
     closed.sort(key=lambda x: x.close_time)
 
     out: List[Dict[str, Any]] = []
