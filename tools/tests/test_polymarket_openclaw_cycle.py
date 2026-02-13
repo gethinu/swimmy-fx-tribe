@@ -1,6 +1,10 @@
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools import polymarket_openclaw_cycle as cycle
 
@@ -345,6 +349,46 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         self.assertIn("\"run_id\": \"r2\"", lines[0])
         self.assertIn("\"run_id\": \"r1\"", lines[1])
         self.assertIn("\"entries\": 3", lines[1])
+
+    def test_main_writes_latest_status_even_when_execute_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out"
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            argv = [
+                "polymarket_openclaw_cycle.py",
+                "--config-file",
+                "cfg.json",
+                "--signals-file",
+                "signals.jsonl",
+                "--output-dir",
+                str(out_dir),
+                "--live-execution",
+                "--live-fail-on-error",
+            ]
+
+            def fake_run_json(cmd):
+                joined = " ".join(cmd)
+                if "tools/polymarket_openclaw_bot.py" in joined:
+                    return {"summary": {"entries": 1, "total_stake_usd": 1.0}}
+                if "tools/polymarket_openclaw_execute.py" in joined:
+                    raise subprocess.CalledProcessError(1, cmd, output="", stderr="boom")
+                if "tools/polymarket_openclaw_report.py" in joined:
+                    return {"total_expected_value_usd": 0.0, "expected_return_on_stake": 0.0}
+                return {}
+
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch.object(cycle, "_run_json_command", side_effect=fake_run_json):
+                    try:
+                        cycle.main()
+                    except BaseException:
+                        pass
+
+            status_file = out_dir / "latest_status.json"
+            self.assertTrue(status_file.exists())
+            payload = json.loads(status_file.read_text(encoding="utf-8"))
+            self.assertTrue(payload.get("live_execution_enabled", False))
+            self.assertFalse(payload.get("execution_ok", True))
 
 
 if __name__ == "__main__":

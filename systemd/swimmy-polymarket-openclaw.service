@@ -12,7 +12,7 @@ Environment=HOME=/home/swimmy
 EnvironmentFile=/home/swimmy/swimmy/.env
 Environment=POLYCLAW_CONFIG_FILE=/home/swimmy/swimmy/tools/configs/polymarket_openclaw.contrarian.runtime.json
 Environment=POLYCLAW_SIGNALS_FILE=/home/swimmy/swimmy/data/openclaw/signals.jsonl
-Environment=POLYCLAW_OUTPUT_DIR=/home/swimmy/swimmy/data/reports/polymarket_openclaw
+Environment=POLYCLAW_OUTPUT_DIR=/home/swimmy/swimmy/data/reports/polymarket_openclaw_live
 Environment=POLYCLAW_SYNC_SIGNALS_BEFORE_RUN=1
 Environment=POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=1
 Environment=POLYCLAW_HEURISTIC_QUESTION_KEYWORDS=nba,nfl,mlb,nhl,ncaa,lakers,warriors,chiefs,yankees

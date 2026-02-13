@@ -42,6 +42,22 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
         self.assertEqual("error", health["status"])
         self.assertIn("failed orders", health["reason"])
 
+    def test_build_health_marks_error_when_cycle_failed(self) -> None:
+        health = status.build_health(
+            payload={
+                "updated_at": "2026-02-13T01:00:00+00:00",
+                "cycle_ok": False,
+                "cycle_error": "boom",
+            },
+            max_age_seconds=0,
+            window_summary={},
+            min_runs_in_window=0,
+            min_sent_in_window=0,
+            min_entries_in_window=0,
+            now_iso="2026-02-13T01:01:00+00:00",
+        )
+        self.assertEqual("error", health["status"])
+
     def test_build_health_marks_warn_when_runs_below_threshold(self) -> None:
         health = status.build_health(
             payload={"updated_at": "2026-02-13T01:00:00+00:00"},
@@ -201,6 +217,52 @@ class TestPolymarketOpenclawStatus(unittest.TestCase):
             self.assertEqual(12, status._env_int("POLYCLAW_DUMMY", 7))
         with mock.patch.dict(status.os.environ, {"POLYCLAW_DUMMY": "bad"}, clear=True):
             self.assertEqual(7, status._env_int("POLYCLAW_DUMMY", 7))
+
+    def test_should_discord_notify(self) -> None:
+        self.assertFalse(status.should_discord_notify(when="never", health_status="error"))
+        self.assertFalse(status.should_discord_notify(when="problem", health_status="ok"))
+        self.assertTrue(status.should_discord_notify(when="problem", health_status="warn"))
+        self.assertTrue(status.should_discord_notify(when="always", health_status="ok"))
+
+    def test_resolve_discord_webhook_prefers_explicit(self) -> None:
+        with mock.patch.dict(status.os.environ, {"SWIMMY_DISCORD_ALERTS": "https://discord.com/api/webhooks/1/dummy"}, clear=True):
+            got = status.resolve_discord_webhook(webhook="https://discord.com/api/webhooks/2/dummy", webhook_env="SWIMMY_DISCORD_ALERTS")
+        self.assertEqual("https://discord.com/api/webhooks/2/dummy", got)
+
+    def test_resolve_discord_webhook_uses_env(self) -> None:
+        with mock.patch.dict(status.os.environ, {"SWIMMY_DISCORD_ALERTS": "https://discord.com/api/webhooks/1/dummy"}, clear=True):
+            got = status.resolve_discord_webhook(webhook="", webhook_env="SWIMMY_DISCORD_ALERTS")
+        self.assertEqual("https://discord.com/api/webhooks/1/dummy", got)
+
+    def test_maybe_queue_discord_status_notification_skips_when_ok(self) -> None:
+        with mock.patch.object(status, "queue_discord_notification_via_notifier") as sender:
+            sent = status.maybe_queue_discord_status_notification(
+                when="problem",
+                webhook="https://discord.com/api/webhooks/1/dummy",
+                webhook_env="",
+                status_payload={"run_id": "r1", "updated_at": "2026-02-13T00:00:00+00:00"},
+                health={"status": "ok", "reason": "", "age_seconds": 1.0},
+                window_summary={"window_minutes": 120, "runs": 1, "execution_sent": 0, "execution_failed": 0, "total_stake_usd": 0.0},
+                zmq_host="localhost",
+                zmq_port=5562,
+            )
+        self.assertFalse(sent)
+        sender.assert_not_called()
+
+    def test_maybe_queue_discord_status_notification_calls_sender(self) -> None:
+        with mock.patch.object(status, "queue_discord_notification_via_notifier") as sender:
+            sent = status.maybe_queue_discord_status_notification(
+                when="problem",
+                webhook="https://discord.com/api/webhooks/1/dummy",
+                webhook_env="",
+                status_payload={"run_id": "r1", "updated_at": "2026-02-13T00:00:00+00:00"},
+                health={"status": "warn", "reason": "x", "age_seconds": 1.0},
+                window_summary={"window_minutes": 120, "runs": 1, "execution_sent": 0, "execution_failed": 0, "total_stake_usd": 0.0},
+                zmq_host="localhost",
+                zmq_port=5562,
+            )
+        self.assertTrue(sent)
+        sender.assert_called_once()
 
 
 if __name__ == "__main__":

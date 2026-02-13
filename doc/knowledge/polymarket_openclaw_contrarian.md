@@ -93,7 +93,7 @@ python3 tools/polymarket_openclaw_cycle.py \
 
 `latest_status.json` の確認例:
 ```bash
-cat data/reports/polymarket_openclaw/latest_status.json
+cat "${POLYCLAW_OUTPUT_DIR:-data/reports/polymarket_openclaw_live}/latest_status.json"
 ```
 
 監視CLI（推奨）:
@@ -131,6 +131,22 @@ python3 tools/polymarket_openclaw_status.py \
   --window-minutes 120 \
   --min-entries-in-window 1
 ```
+
+### Discord 通知（任意）
+`tools/polymarket_openclaw_status.py` は、health が `ok` 以外のときに Discord へ通知できます（Notifier/ZMQ 経由）。
+
+前提:
+- `tools/notifier.py` が稼働している（`SWIMMY_PORT_NOTIFIER` 既定 5562）
+- status monitor は `.env` を読み込まないため、Webhook は `config/.env.systemd`（gitignore）に置く
+
+最小例（CLI 実行）:
+```bash
+POLYCLAW_STATUS_DISCORD_WHEN=problem \
+POLYCLAW_STATUS_DISCORD_WEBHOOK_ENV=SWIMMY_DISCORD_ALERTS \
+python3 tools/polymarket_openclaw_status.py --fail-on-problem
+```
+
+systemd（`swimmy-polymarket-openclaw-status.service`）でも同じ変数を設定可能です。
 
 ## 6. 日次サマリー
 ```bash
@@ -254,7 +270,7 @@ python3 tools/polymarket_openclaw_autotune.py \
 
 ## 9. Live Execution（実注文）手順
 前提:
-- 実注文にはウォレット紐付けが必須（`POLYCLAW_LIVE_PRIVATE_KEY`）。
+- 実注文にはウォレット紐付けが必須（`POLYCLAW_LIVE_PRIVATE_KEY` または `POLYCLAW_LIVE_PRIVATE_KEY_FILE`）。
 - OpenClawの実行場所は必ずしもWindowsである必要はない。Linux側で `signals.jsonl` が生成できるなら稼働可能。
 
 ### Step 1: 実行経路だけ先に確認（ウォレット未設定で可）
@@ -268,7 +284,7 @@ POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD=0.2
 
 補足:
 - `run_polymarket_openclaw_service.py` は live プリフライトを実施する。
-- `POLYCLAW_LIVE_EXECUTION=1` かつ `POLYCLAW_LIVE_DRY_RUN!=1` の場合、`POLYCLAW_LIVE_PRIVATE_KEY` 未設定だと実行前にエラー終了する。
+- `POLYCLAW_LIVE_EXECUTION=1` かつ `POLYCLAW_LIVE_DRY_RUN!=1` の場合、秘密鍵未設定（`POLYCLAW_LIVE_PRIVATE_KEY` と `POLYCLAW_LIVE_PRIVATE_KEY_FILE` の両方が空）だと実行前にエラー終了する。
 
 確認ポイント:
 - cycle結果JSONに `live_execution_enabled: true`
@@ -279,7 +295,10 @@ POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD=0.2
 ### Step 2: ウォレット紐付け
 `.env`:
 ```bash
-POLYCLAW_LIVE_PRIVATE_KEY=0x...
+# 推奨: 秘密鍵は .env に置かず、600権限のファイルから読む
+POLYCLAW_LIVE_PRIVATE_KEY_FILE=/home/swimmy/.secrets/polyclaw_live.key
+# 互換: 直接 .env に置く場合
+# POLYCLAW_LIVE_PRIVATE_KEY=0x...
 POLYCLAW_LIVE_CHAIN_ID=137
 POLYCLAW_LIVE_HOST=https://clob.polymarket.com
 ```

@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from tools import polymarket_openclaw_execute as live
 
@@ -184,6 +186,22 @@ class TestPolymarketOpenClawExecute(unittest.TestCase):
     def test_load_runtime_config_requires_private_key(self) -> None:
         with self.assertRaises(ValueError):
             live.load_runtime_config({})
+
+    def test_load_runtime_config_accepts_private_key_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            key_file = Path(td) / "key.txt"
+            key_file.write_text("0xabc123", encoding="utf-8")
+            cfg = live.load_runtime_config({"POLYCLAW_LIVE_PRIVATE_KEY_FILE": str(key_file)})
+        self.assertEqual("0xabc123", cfg.private_key)
+
+    def test_load_runtime_config_prefixes_0x_for_64hex_private_key_file(self) -> None:
+        raw = "a" * 64
+        with tempfile.TemporaryDirectory() as td:
+            key_file = Path(td) / "key.txt"
+            key_file.write_text(raw, encoding="utf-8")
+            cfg = live.load_runtime_config({"POLYCLAW_LIVE_PRIVATE_KEY_FILE": str(key_file)})
+        self.assertTrue(cfg.private_key.startswith("0x"))
+        self.assertEqual(66, len(cfg.private_key))
 
 
 if __name__ == "__main__":

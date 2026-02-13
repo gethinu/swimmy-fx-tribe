@@ -155,6 +155,20 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertEqual("ready", status["reason"])
 
+    def test_validate_live_runtime_configuration_enabled_with_private_key_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            key_file = Path(td) / "key.txt"
+            key_file.write_text("0xabc123", encoding="utf-8")
+            env = {
+                "POLYCLAW_LIVE_EXECUTION": "1",
+                "POLYCLAW_LIVE_PRIVATE_KEY_FILE": str(key_file),
+            }
+            status = svc.validate_live_runtime_configuration(env=env)
+        self.assertTrue(status["enabled"])
+        self.assertFalse(status["dry_run"])
+        self.assertTrue(status["ok"])
+        self.assertEqual("ready", status["reason"])
+
     def test_build_cycle_args_with_min_liquidity_and_volume(self) -> None:
         env = {
             "POLYCLAW_CONFIG_FILE": "/cfg.json",

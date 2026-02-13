@@ -368,6 +368,9 @@ def build_latest_status_snapshot(*, result: Dict[str, Any], updated_at: str) -> 
         "updated_at": str(updated_at),
         "run_id": str(result.get("run_id", "")),
         "run_date": str(result.get("run_date", "")),
+        "cycle_ok": bool(result.get("cycle_ok", True)),
+        "cycle_error_step": str(result.get("cycle_error_step", "")),
+        "cycle_error": str(result.get("cycle_error", "")),
         "entries": max(0, _to_int(plan_summary.get("entries"), 0)),
         "total_stake_usd": round(max(0.0, _to_float(plan_summary.get("total_stake_usd"), 0.0)), 8),
         "open_markets": max(0, _to_int(plan_summary.get("open_markets"), 0)),
@@ -496,119 +499,150 @@ def main() -> None:
     if not bot_settlement_source and daily_settlement_file.exists():
         bot_settlement_source = str(daily_settlement_file)
 
-    bot_cmd = build_bot_command(
-        base_dir=base_dir,
-        config_file=args.config_file,
-        signals_file=args.signals_file,
-        openclaw_cmd=args.openclaw_cmd,
-        markets_file=args.markets_file,
-        settlements_file=bot_settlement_source,
-        allow_duplicate_open_markets=args.allow_duplicate_open_markets,
-        max_open_positions=max(0, args.max_open_positions),
-        max_daily_entries=max(0, args.max_daily_entries),
-        max_daily_loss_streak=max(0, args.max_daily_loss_streak),
-        max_daily_realized_loss_usd=max(0.0, args.max_daily_realized_loss_usd),
-        min_liquidity_usd=max(0.0, args.min_liquidity_usd),
-        min_volume_usd=max(0.0, args.min_volume_usd),
-        limit=max(1, args.limit),
-        run_id=run_id,
-        plan_file=paths["plan_file"],
-        journal_file=paths["journal_file"],
-    )
-    bot_output = _run_json_command(bot_cmd)
-    plan_summary = bot_output.get("summary", {})
-    run_posttrade = should_run_posttrade_steps(plan_summary)
-    execution_result: Dict[str, Any] = {}
-    if args.live_execution:
-        if run_posttrade:
-            execution_report = output_dir / f"execution_{run_date}_{run_id}.json"
-            execute_cmd = build_execute_command(
-                base_dir=base_dir,
-                plan_file=paths["plan_file"],
-                run_id=run_id,
-                run_date=run_date,
-                order_type=args.live_order_type,
-                max_orders=max(0, args.live_max_orders),
-                min_expected_value_usd=max(0.0, args.live_min_expected_value_usd),
-                min_stake_usd=max(0.0, args.live_min_stake_usd),
-                fail_on_error=args.live_fail_on_error,
-                write_report=execution_report,
-            )
-            execution_result = _run_json_command(execute_cmd)
-        else:
-            execution_result = {
-                "ok": True,
-                "skipped": True,
-                "reason": "no_entries",
-            }
+    cycle_ok = True
+    cycle_error_step = ""
+    cycle_error = ""
+    cycle_exit_code = 0
 
+    plan_summary: Dict[str, Any] = {}
+    run_posttrade = False
+    execution_result: Dict[str, Any] = {}
     settlement_source = args.settlements_file.strip()
     settlement_fetch_result: Dict[str, Any] = {}
-    if run_posttrade and args.auto_fetch_settlements and not settlement_source:
-        settlement_out = daily_settlement_file
-        fetch_cmd = build_fetch_settlements_command(
-            base_dir=base_dir,
-            journal_file=paths["journal_file"],
-            date_filter=run_date,
-            existing_settlements=settlement_out if settlement_out.exists() else Path(""),
-            out_settlements=settlement_out,
-            min_price_for_win=args.settlement_min_price_for_win,
-            min_gap=args.settlement_min_gap,
-            sleep_ms=args.settlement_sleep_ms,
-        )
-        settlement_fetch_result = _run_json_command(fetch_cmd)
-        settlement_source = str(settlement_out)
-
-    report_cmd = build_report_command(
-        base_dir=base_dir,
-        journal_file=paths["journal_file"],
-        run_date=run_date,
-        report_file=paths["report_file"],
-        settlements_file=settlement_source,
-        fee_bps_per_side=args.fee_bps_per_side,
-        slippage_bps_per_side=args.slippage_bps_per_side,
-    )
-    report_output = _run_json_command(report_cmd)
-
+    report_output: Dict[str, Any] = {}
     autotune_result: Dict[str, Any] = {}
     autotune_candidate_path = ""
     config_apply_result: Dict[str, str] = {}
-    if run_posttrade and args.autotune and settlement_source:
-        tune_report = output_dir / f"autotune_report_{run_date}_{run_id}.json"
-        tune_candidate = output_dir / f"autotune_candidate_{run_date}_{run_id}.json"
-        autotune_cmd = build_autotune_command(
+
+    try:
+        cycle_error_step = "bot"
+        bot_cmd = build_bot_command(
+            base_dir=base_dir,
+            config_file=args.config_file,
+            signals_file=args.signals_file,
+            openclaw_cmd=args.openclaw_cmd,
+            markets_file=args.markets_file,
+            settlements_file=bot_settlement_source,
+            allow_duplicate_open_markets=args.allow_duplicate_open_markets,
+            max_open_positions=max(0, args.max_open_positions),
+            max_daily_entries=max(0, args.max_daily_entries),
+            max_daily_loss_streak=max(0, args.max_daily_loss_streak),
+            max_daily_realized_loss_usd=max(0.0, args.max_daily_realized_loss_usd),
+            min_liquidity_usd=max(0.0, args.min_liquidity_usd),
+            min_volume_usd=max(0.0, args.min_volume_usd),
+            limit=max(1, args.limit),
+            run_id=run_id,
+            plan_file=paths["plan_file"],
+            journal_file=paths["journal_file"],
+        )
+        bot_output = _run_json_command(bot_cmd)
+        plan_summary = bot_output.get("summary", {})
+        run_posttrade = should_run_posttrade_steps(plan_summary)
+
+        if args.live_execution:
+            if run_posttrade:
+                cycle_error_step = "execute"
+                execution_report = output_dir / f"execution_{run_date}_{run_id}.json"
+                execute_cmd = build_execute_command(
+                    base_dir=base_dir,
+                    plan_file=paths["plan_file"],
+                    run_id=run_id,
+                    run_date=run_date,
+                    order_type=args.live_order_type,
+                    max_orders=max(0, args.live_max_orders),
+                    min_expected_value_usd=max(0.0, args.live_min_expected_value_usd),
+                    min_stake_usd=max(0.0, args.live_min_stake_usd),
+                    fail_on_error=args.live_fail_on_error,
+                    write_report=execution_report,
+                )
+                execution_result = _run_json_command(execute_cmd)
+            else:
+                execution_result = {
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "no_entries",
+                }
+
+        if run_posttrade and args.auto_fetch_settlements and not settlement_source:
+            cycle_error_step = "settlements"
+            settlement_out = daily_settlement_file
+            fetch_cmd = build_fetch_settlements_command(
+                base_dir=base_dir,
+                journal_file=paths["journal_file"],
+                date_filter=run_date,
+                existing_settlements=settlement_out if settlement_out.exists() else Path(""),
+                out_settlements=settlement_out,
+                min_price_for_win=args.settlement_min_price_for_win,
+                min_gap=args.settlement_min_gap,
+                sleep_ms=args.settlement_sleep_ms,
+            )
+            settlement_fetch_result = _run_json_command(fetch_cmd)
+            settlement_source = str(settlement_out)
+
+        cycle_error_step = "report"
+        report_cmd = build_report_command(
             base_dir=base_dir,
             journal_file=paths["journal_file"],
-            settlements_file=Path(settlement_source),
-            base_config_file=args.config_file,
-            date_filter=run_date,
-            out_report=tune_report,
-            out_candidate_config=tune_candidate,
-            min_trades=args.autotune_min_trades,
+            run_date=run_date,
+            report_file=paths["report_file"],
+            settlements_file=settlement_source,
             fee_bps_per_side=args.fee_bps_per_side,
             slippage_bps_per_side=args.slippage_bps_per_side,
         )
-        autotune_result = _run_json_command(autotune_cmd)
-        if autotune_result.get("best") is not None and tune_candidate.exists():
-            autotune_candidate_path = str(tune_candidate)
-        if args.autotune_apply_best and autotune_result.get("candidate_config"):
-            best = autotune_result.get("best") or {}
-            if should_apply_autotune_candidate(
-                best=best,
-                min_trades=args.autotune_apply_min_trades,
-                min_realized_pnl_usd=args.autotune_apply_min_realized_pnl_usd,
-            ):
-                target = Path(args.autotune_apply_target_config.strip() or args.config_file)
-                config_apply_result = apply_candidate_config_with_backup(
-                    candidate_config=autotune_result["candidate_config"],
-                    target_config_path=target,
-                    backup_dir=output_dir / "config_backups",
-                    run_id=run_id,
-                )
+        report_output = _run_json_command(report_cmd)
+
+        if run_posttrade and args.autotune and settlement_source:
+            cycle_error_step = "autotune"
+            tune_report = output_dir / f"autotune_report_{run_date}_{run_id}.json"
+            tune_candidate = output_dir / f"autotune_candidate_{run_date}_{run_id}.json"
+            autotune_cmd = build_autotune_command(
+                base_dir=base_dir,
+                journal_file=paths["journal_file"],
+                settlements_file=Path(settlement_source),
+                base_config_file=args.config_file,
+                date_filter=run_date,
+                out_report=tune_report,
+                out_candidate_config=tune_candidate,
+                min_trades=args.autotune_min_trades,
+                fee_bps_per_side=args.fee_bps_per_side,
+                slippage_bps_per_side=args.slippage_bps_per_side,
+            )
+            autotune_result = _run_json_command(autotune_cmd)
+            if autotune_result.get("best") is not None and tune_candidate.exists():
+                autotune_candidate_path = str(tune_candidate)
+            if args.autotune_apply_best and autotune_result.get("candidate_config"):
+                best = autotune_result.get("best") or {}
+                if should_apply_autotune_candidate(
+                    best=best,
+                    min_trades=args.autotune_apply_min_trades,
+                    min_realized_pnl_usd=args.autotune_apply_min_realized_pnl_usd,
+                ):
+                    target = Path(args.autotune_apply_target_config.strip() or args.config_file)
+                    config_apply_result = apply_candidate_config_with_backup(
+                        candidate_config=autotune_result["candidate_config"],
+                        target_config_path=target,
+                        backup_dir=output_dir / "config_backups",
+                        run_id=run_id,
+                    )
+    except subprocess.CalledProcessError as exc:
+        cycle_ok = False
+        cycle_exit_code = int(getattr(exc, "returncode", 1) or 1)
+        stderr = (getattr(exc, "stderr", "") or "").strip()
+        cycle_error = f"{cycle_error_step or 'cycle'} failed (exit={cycle_exit_code})"
+        if stderr:
+            cycle_error = f"{cycle_error}: {stderr[:200]}"
+    except Exception as exc:  # pragma: no cover - defensive
+        cycle_ok = False
+        cycle_exit_code = 1
+        cycle_error = f"{cycle_error_step or 'cycle'} failed: {exc}"
 
     result = {
         "run_id": run_id,
         "run_date": run_date,
+        "cycle_ok": cycle_ok,
+        "cycle_error_step": cycle_error_step,
+        "cycle_error": cycle_error,
+        "cycle_exit_code": cycle_exit_code,
         "paths": {k: str(v) for k, v in paths.items()},
         "plan_summary": plan_summary,
         "signal_summary": load_signal_summary(
@@ -636,6 +670,8 @@ def main() -> None:
     result["latest_status_file"] = str(latest_status_file)
     result["status_history_file"] = str(status_history_file)
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    if cycle_exit_code:
+        raise SystemExit(cycle_exit_code)
 
 
 if __name__ == "__main__":

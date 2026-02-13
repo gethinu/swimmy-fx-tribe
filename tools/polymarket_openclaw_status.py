@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
@@ -89,6 +90,11 @@ def _env_int(key: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return int(default)
+
+
+def _env_str(key: str, default: str = "") -> str:
+    raw = str(os.getenv(key, "")).strip()
+    return raw if raw else str(default)
 
 
 def summarize_recent_runs(
@@ -181,6 +187,11 @@ def build_health(
         status = "error"
         reason = f"failed orders detected: {failed_orders}"
 
+    if payload.get("cycle_ok", True) is False:
+        status = "error"
+        error_text = str(payload.get("cycle_error", "") or "").strip()
+        reason = f"cycle failed: {error_text}" if error_text else "cycle failed"
+
     return {
         "status": status,
         "reason": reason,
@@ -254,6 +265,212 @@ def render_text_summary(
     return "\n".join(lines)
 
 
+def should_discord_notify(*, when: str, health_status: str) -> bool:
+    mode = str(when or "").strip().lower()
+    status = str(health_status or "").strip().lower()
+    if mode in {"", "never", "off", "0", "false", "no"}:
+        return False
+    if mode in {"always", "on", "1", "true", "yes"}:
+        return True
+    if mode in {"problem", "issues", "not_ok"}:
+        return status != "ok"
+    return False
+
+
+def resolve_discord_webhook(*, webhook: str, webhook_env: str) -> str:
+    explicit = str(webhook or "").strip()
+    if explicit:
+        return explicit
+    key = str(webhook_env or "").strip()
+    if not key:
+        return ""
+    return str(os.getenv(key, "")).strip()
+
+
+def discord_color_for_status(status: str) -> int:
+    value = str(status or "").strip().lower()
+    if value == "ok":
+        return 3066993  # green
+    if value in {"warn", "stale"}:
+        return 16705372  # yellow
+    if value == "error":
+        return 15158332  # red
+    return 10070709  # gray
+
+
+def build_discord_status_payload(
+    *,
+    status_payload: Mapping[str, Any],
+    health: Mapping[str, Any],
+    window_summary: Mapping[str, Any],
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    ts = now or datetime.now(timezone.utc)
+    health_status = str(health.get("status", "unknown"))
+    title = f"Polymarket OpenClaw Status: {health_status.upper()}"
+    reason = str(health.get("reason") or "-")
+
+    def fmt_bool(key: str) -> str:
+        return "true" if bool(status_payload.get(key, False)) else "false"
+
+    def fmt_int(key: str) -> str:
+        try:
+            return str(int(status_payload.get(key, 0) or 0))
+        except Exception:
+            return "0"
+
+    def fmt_float(key: str) -> str:
+        try:
+            return f"{float(status_payload.get(key, 0.0) or 0.0):.4f}"
+        except Exception:
+            return "0.0000"
+
+    updated_at = str(status_payload.get("updated_at", "") or "").strip()
+    run_id = str(status_payload.get("run_id", "") or "").strip()
+    run_date = str(status_payload.get("run_date", "") or "").strip()
+    age_seconds = health.get("age_seconds", 0)
+    try:
+        age_text = f"{float(age_seconds):.1f}s"
+    except Exception:
+        age_text = str(age_seconds)
+
+    entries = fmt_int("entries")
+    stake = fmt_float("total_stake_usd")
+    execution_sent = fmt_int("execution_sent")
+    execution_failed = fmt_int("execution_failed")
+    open_markets = fmt_int("open_markets")
+    blocked_markets = fmt_int("blocked_open_markets")
+    quality_filtered = fmt_int("quality_filtered_markets")
+    signal_total = fmt_int("signal_count")
+    signal_agent = fmt_int("agent_signal_count")
+    try:
+        signal_ratio = f"{float(status_payload.get('agent_signal_ratio', 0.0) or 0.0):.6f}"
+    except Exception:
+        signal_ratio = str(status_payload.get("agent_signal_ratio", 0.0) or 0.0)
+
+    window_minutes = int(window_summary.get("window_minutes", 0) or 0)
+    window_runs = int(window_summary.get("runs", 0) or 0)
+    window_sent = int(window_summary.get("execution_sent", 0) or 0)
+    window_failed = int(window_summary.get("execution_failed", 0) or 0)
+    try:
+        window_stake = float(window_summary.get("total_stake_usd", 0.0) or 0.0)
+    except Exception:
+        window_stake = 0.0
+
+    fields = [
+        {"name": "Health", "value": f"{health_status} ({reason})", "inline": False},
+        {"name": "Updated", "value": f"{updated_at or '-'} (age {age_text})", "inline": False},
+        {"name": "Run", "value": f"{run_id or '-'} ({run_date or '-'})", "inline": False},
+        {"name": "Entries", "value": f"{entries} | stake ${stake}", "inline": True},
+        {
+            "name": "Execution",
+            "value": f"sent={execution_sent} failed={execution_failed} enabled={fmt_bool('live_execution_enabled')}",
+            "inline": True,
+        },
+        {"name": "Signals", "value": f"total={signal_total} agent={signal_agent} ratio={signal_ratio}", "inline": True},
+        {"name": "Markets", "value": f"open={open_markets} blocked={blocked_markets} qf={quality_filtered}", "inline": True},
+        {
+            "name": "Window",
+            "value": (
+                f"{window_minutes}m runs={window_runs} sent={window_sent} "
+                f"failed={window_failed} stake=${window_stake:.4f}"
+            ),
+            "inline": False,
+        },
+    ]
+
+    return {
+        "embeds": [
+            {
+                "title": title,
+                "description": "",
+                "color": discord_color_for_status(health_status),
+                "timestamp": ts.isoformat(),
+                "fields": fields,
+            }
+        ]
+    }
+
+
+def queue_discord_notification_via_notifier(
+    *,
+    webhook_url: str,
+    payload: Mapping[str, Any],
+    zmq_host: str,
+    zmq_port: int,
+) -> None:
+    # Import locally so status checks still work in environments without notifier deps.
+    import zmq  # type: ignore
+
+    base_dir = resolve_base_dir()
+    python_src = base_dir / "src" / "python"
+    if str(python_src) not in sys.path:
+        sys.path.insert(0, str(python_src))
+
+    from aux_sexp import sexp_request  # type: ignore
+
+    message = sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook_url,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
+
+    ctx = zmq.Context()
+    try:
+        sock = ctx.socket(zmq.PUSH)
+        sock.setsockopt(zmq.LINGER, 0)
+        sock.connect(f"tcp://{zmq_host}:{int(zmq_port)}")
+        sock.send_string(message)
+        sock.close()
+    finally:
+        ctx.term()
+
+
+def maybe_queue_discord_status_notification(
+    *,
+    when: str,
+    webhook: str,
+    webhook_env: str,
+    status_payload: Mapping[str, Any],
+    health: Mapping[str, Any],
+    window_summary: Mapping[str, Any],
+    zmq_host: str,
+    zmq_port: int,
+) -> bool:
+    if not should_discord_notify(when=when, health_status=str(health.get("status", ""))):
+        return False
+
+    webhook_url = resolve_discord_webhook(webhook=webhook, webhook_env=webhook_env)
+    if not webhook_url:
+        return False
+
+    discord_payload = build_discord_status_payload(
+        status_payload=status_payload,
+        health=health,
+        window_summary=window_summary,
+    )
+    try:
+        queue_discord_notification_via_notifier(
+            webhook_url=webhook_url,
+            payload=discord_payload,
+            zmq_host=zmq_host,
+            zmq_port=zmq_port,
+        )
+    except Exception as exc:
+        # Never log webhook URLs (tokens are embedded).
+        msg = str(exc)
+        msg = msg if len(msg) <= 200 else msg[:197] + "..."
+        print(
+            f"[WARN] Discord notify failed: {type(exc).__name__}: {msg}",
+            file=sys.stderr,
+            flush=True,
+        )
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Show latest Polymarket OpenClaw status")
     parser.add_argument("--output-dir", default="")
@@ -279,6 +496,15 @@ def main() -> None:
     parser.add_argument("--max-age-seconds", type=int, default=_env_int("POLYCLAW_STATUS_MAX_AGE_SECONDS", 3600))
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--fail-on-problem", action="store_true")
+    parser.add_argument(
+        "--discord-when",
+        choices=["never", "problem", "always"],
+        default=_env_str("POLYCLAW_STATUS_DISCORD_WHEN", "never"),
+    )
+    parser.add_argument("--discord-webhook", default=_env_str("POLYCLAW_STATUS_DISCORD_WEBHOOK", ""))
+    parser.add_argument("--discord-webhook-env", default=_env_str("POLYCLAW_STATUS_DISCORD_WEBHOOK_ENV", ""))
+    parser.add_argument("--discord-zmq-host", default=_env_str("POLYCLAW_STATUS_DISCORD_ZMQ_HOST", "localhost"))
+    parser.add_argument("--discord-zmq-port", type=int, default=_env_int("SWIMMY_PORT_NOTIFIER", 5562))
     args = parser.parse_args()
 
     base_dir = resolve_base_dir()
@@ -289,26 +515,81 @@ def main() -> None:
     history_file = (
         Path(args.history_file).expanduser() if args.history_file.strip() else output_dir / "status_history.jsonl"
     )
-    payload = load_status_payload(status_file)
-    recent_runs = load_status_history(history_file=history_file, last_runs=max(0, int(args.last_runs)))
-    window_summary = summarize_recent_runs(
-        recent_runs=recent_runs,
-        window_minutes=max(0, int(args.window_minutes)),
-    )
-    health = build_health(
-        payload=payload,
-        max_age_seconds=max(0, int(args.max_age_seconds)),
-        window_summary=window_summary,
-        min_runs_in_window=max(0, int(args.min_runs_in_window)),
-        min_sent_in_window=max(0, int(args.min_sent_in_window)),
-        min_entries_in_window=max(0, int(args.min_entries_in_window)),
-    )
+    status_load_ok = True
+    try:
+        payload = load_status_payload(status_file)
+        recent_runs = load_status_history(history_file=history_file, last_runs=max(0, int(args.last_runs)))
+        window_summary = summarize_recent_runs(
+            recent_runs=recent_runs,
+            window_minutes=max(0, int(args.window_minutes)),
+        )
+        health = build_health(
+            payload=payload,
+            max_age_seconds=max(0, int(args.max_age_seconds)),
+            window_summary=window_summary,
+            min_runs_in_window=max(0, int(args.min_runs_in_window)),
+            min_sent_in_window=max(0, int(args.min_sent_in_window)),
+            min_entries_in_window=max(0, int(args.min_entries_in_window)),
+        )
+    except Exception as exc:
+        status_load_ok = False
+        err_text = f"{type(exc).__name__}: {exc}".strip()
+        err_text = err_text if len(err_text) <= 240 else err_text[:237] + "..."
+        payload = {
+            "updated_at": "",
+            "run_id": "",
+            "run_date": "",
+            "entries": 0,
+            "total_stake_usd": 0.0,
+            "signal_count": 0,
+            "agent_signal_count": 0,
+            "agent_signal_ratio": 0.0,
+            "open_markets": 0,
+            "blocked_open_markets": 0,
+            "quality_filtered_markets": 0,
+            "live_execution_enabled": False,
+            "execution_ok": False,
+            "execution_skipped": True,
+            "execution_attempted": 0,
+            "execution_sent": 0,
+            "execution_failed": 0,
+            "plan_file": "",
+            "report_file": "",
+            "journal_file": "",
+            "cycle_ok": False,
+            "cycle_error": err_text,
+        }
+        recent_runs = []
+        window_summary = {
+            "window_minutes": max(0, int(args.window_minutes)),
+            "runs": 0,
+            "entries": 0,
+            "execution_sent": 0,
+            "execution_failed": 0,
+            "total_stake_usd": 0.0,
+        }
+        health = {
+            "status": "error",
+            "reason": f"status read failed: {err_text}",
+            "age_seconds": 0.0,
+        }
     out = dict(payload)
     out["health"] = health
     out["status_file"] = str(status_file)
     out["history_file"] = str(history_file)
     out["recent_runs"] = recent_runs
     out["window_summary"] = window_summary
+
+    maybe_queue_discord_status_notification(
+        when=str(args.discord_when),
+        webhook=str(args.discord_webhook),
+        webhook_env=str(args.discord_webhook_env),
+        status_payload=payload,
+        health=health,
+        window_summary=window_summary,
+        zmq_host=str(args.discord_zmq_host),
+        zmq_port=int(args.discord_zmq_port),
+    )
 
     if args.json:
         print(json.dumps(out, ensure_ascii=False, indent=2))
@@ -323,6 +604,8 @@ def main() -> None:
         )
 
     if args.fail_on_problem and str(health.get("status", "ok")).lower() != "ok":
+        raise SystemExit(1)
+    if not status_load_ok:
         raise SystemExit(1)
 
 

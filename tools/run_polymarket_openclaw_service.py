@@ -602,6 +602,15 @@ def validate_live_runtime_configuration(*, env: Mapping[str, str]) -> Dict[str, 
     live_execution = _env_bool(env, "POLYCLAW_LIVE_EXECUTION", False)
     live_dry_run = _env_bool(env, "POLYCLAW_LIVE_DRY_RUN", False)
     private_key = str(env.get("POLYCLAW_LIVE_PRIVATE_KEY", "")).strip()
+    if not private_key:
+        key_file = str(env.get("POLYCLAW_LIVE_PRIVATE_KEY_FILE", "")).strip()
+        if key_file:
+            path = Path(key_file).expanduser()
+            try:
+                if path.exists() and path.is_file():
+                    private_key = path.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
 
     result: Dict[str, object] = {
         "enabled": bool(live_execution),

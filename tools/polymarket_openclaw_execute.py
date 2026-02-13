@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
@@ -45,6 +46,32 @@ def _env_bool(env: Mapping[str, str], key: str, default: bool = False) -> bool:
     if not text:
         return default
     return text in {"1", "true", "yes", "on"}
+
+
+def _normalize_private_key(private_key: str) -> str:
+    text = str(private_key or "").strip()
+    if not text:
+        return ""
+    if text.lower() in {"0x...", "changeme", "change_me", "your_private_key"}:
+        return ""
+    if re.fullmatch(r"[0-9a-fA-F]{64}", text):
+        return "0x" + text
+    return text
+
+
+def load_private_key(env: Mapping[str, str]) -> str:
+    key_file = str(env.get("POLYCLAW_LIVE_PRIVATE_KEY_FILE", "")).strip()
+    if key_file:
+        path = Path(key_file).expanduser()
+        try:
+            if path.exists() and path.is_file():
+                candidate = _normalize_private_key(path.read_text(encoding="utf-8").strip())
+                if candidate:
+                    return candidate
+        except Exception:
+            pass
+
+    return _normalize_private_key(str(env.get("POLYCLAW_LIVE_PRIVATE_KEY", "")).strip())
 
 
 def parse_plan_entries(plan_payload: Mapping[str, Any]) -> List[PlanEntry]:
@@ -120,14 +147,14 @@ def build_limit_order_specs(
 def load_runtime_config(env: Mapping[str, str]) -> LiveRuntimeConfig:
     host = str(env.get("POLYCLAW_LIVE_HOST", "https://clob.polymarket.com")).strip()
     chain_id = int(str(env.get("POLYCLAW_LIVE_CHAIN_ID", "137")).strip() or "137")
-    private_key = str(env.get("POLYCLAW_LIVE_PRIVATE_KEY", "")).strip()
+    private_key = load_private_key(env)
     signature_type = int(str(env.get("POLYCLAW_LIVE_SIGNATURE_TYPE", "0")).strip() or "0")
     funder = str(env.get("POLYCLAW_LIVE_FUNDER", "")).strip()
     api_key = str(env.get("POLYCLAW_LIVE_API_KEY", "")).strip()
     api_secret = str(env.get("POLYCLAW_LIVE_API_SECRET", "")).strip()
     api_passphrase = str(env.get("POLYCLAW_LIVE_API_PASSPHRASE", "")).strip()
     if not private_key:
-        raise ValueError("POLYCLAW_LIVE_PRIVATE_KEY is required for live execution")
+        raise ValueError("POLYCLAW_LIVE_PRIVATE_KEY (or POLYCLAW_LIVE_PRIVATE_KEY_FILE) is required for live execution")
     return LiveRuntimeConfig(
         host=host,
         chain_id=chain_id,
