@@ -155,6 +155,42 @@
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
 
+(deftest test-pfwr-mutation-bias-uses-s-target-when-parents-a-or-above
+  "PF/WR mutation bias should treat S PF/WR gates as targets when parents are A-rank or above."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-S-TARGET-A1"
+                                          :rank :A
+                                          :profit-factor 1.40 :win-rate 0.45
+                                          :sl 30.0 :tp 60.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-S-TARGET-A2"
+                                          :rank :A
+                                          :profit-factor 1.40 :win-rate 0.45
+                                          :sl 30.0 :tp 60.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*)
+         (orig-upside-enabled (and (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+                                   swimmy.school::*pfwr-upside-scale-enabled*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (when (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+            (setf swimmy.school::*pfwr-upside-scale-enabled* nil))
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 40.0 20.0 p1 p2)
+            (let ((rr (/ tp sl)))
+              (assert-true (>= rr (float swimmy.school::*pfwr-pf-recovery-min-rr*))
+                           (format nil "Expected A-rank parents to use S-target PF/WR and enforce PF-recovery RR floor; got rr=~,3f" rr)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr)
+      (when (boundp 'swimmy.school::*pfwr-upside-scale-enabled*)
+        (setf swimmy.school::*pfwr-upside-scale-enabled* orig-upside-enabled)))))
+
 (deftest test-pfwr-mutation-bias-lowers-rr-when-wr-gap-dominates
   "PF/WR mutation bias should lower RR when WR deficit dominates."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-WR1"

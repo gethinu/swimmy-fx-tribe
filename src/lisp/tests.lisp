@@ -191,6 +191,82 @@
         (when orig-v2
           (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2))))))
 
+(deftest test-apply-backtest-result-tolerates-nil-metrics
+  "apply-backtest-result should not type-error when metrics are present-but-NIL."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-upsert (and (fboundp 'swimmy.school:upsert-strategy)
+                           (symbol-function 'swimmy.school:upsert-strategy)))
+         (strat (swimmy.school:make-strategy :name "UT-NIL-METRICS" :rank :B))
+         (failed nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list strat))
+          (when orig-upsert
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (handler-case
+              (swimmy.school:apply-backtest-result
+               "UT-NIL-METRICS"
+               (list :sharpe nil
+                     :profit-factor nil
+                     :win-rate nil
+                     :trades nil
+                     :max-dd nil))
+            (error () (setf failed t)))
+          (assert-false failed "Expected apply-backtest-result not to crash on NIL metrics")
+          (assert-equal 0.0 (swimmy.school:strategy-sharpe strat)
+                        "sharpe should default to 0.0")
+          (assert-equal 0.0 (swimmy.school:strategy-profit-factor strat)
+                        "profit-factor should default to 0.0"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when orig-upsert
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)))))
+
+(deftest test-handle-v2-result-tolerates-nil-metrics
+  "handle-v2-result should not type-error when metrics are present-but-NIL."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-upsert (and (fboundp 'swimmy.school:upsert-strategy)
+                           (symbol-function 'swimmy.school:upsert-strategy)))
+         (orig-ensure (and (fboundp 'swimmy.school:ensure-rank)
+                           (symbol-function 'swimmy.school:ensure-rank)))
+         (orig-grave (and (fboundp 'swimmy.school:send-to-graveyard)
+                          (symbol-function 'swimmy.school:send-to-graveyard)))
+         (strat (swimmy.school:make-strategy :name "UT-V2-NIL" :rank :incubator))
+         (grave-called nil)
+         (failed nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list strat))
+          (when orig-upsert
+            (setf (symbol-function 'swimmy.school:upsert-strategy)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-ensure
+            (setf (symbol-function 'swimmy.school:ensure-rank)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-grave
+            (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                  (lambda (&rest _args) (declare (ignore _args))
+                    (setf grave-called t)
+                    nil)))
+          (handler-case
+              (swimmy.school::handle-v2-result
+               "UT-V2-NIL_P1"
+               (list :sharpe nil
+                     :profit-factor nil
+                     :win-rate nil
+                     :trades nil
+                     :max-dd nil))
+            (error () (setf failed t)))
+          (assert-false failed "Expected handle-v2-result not to crash on NIL metrics")
+          (assert-true grave-called "Expected NIL metrics to fail Phase1 and route to graveyard"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when orig-upsert
+        (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert))
+      (when orig-ensure
+        (setf (symbol-function 'swimmy.school:ensure-rank) orig-ensure))
+      (when orig-grave
+        (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-grave)))))
+
 (deftest test-internal-process-msg-backtest-json-applies
   "JSON BACKTEST_RESULT should call apply-backtest-result"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -7535,6 +7611,8 @@
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
                   test-internal-process-msg-backtest-json-applies
+                  test-apply-backtest-result-tolerates-nil-metrics
+                  test-handle-v2-result-tolerates-nil-metrics
                   test-backtest-result-phase1-normalizes-base-name
                   test-backtest-result-qual-normalizes-trailing-suffix-only
                   test-backtest-result-phase1-excluded-from-rr-buffer
@@ -7866,6 +7944,7 @@
 	                  test-breed-strategies-name-is-unique-with-same-random-state
 	                  test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
                   test-pfwr-mutation-bias-noop-when-parents-already-healthy
+                  test-pfwr-mutation-bias-uses-s-target-when-parents-a-or-above
 	                  test-pfwr-mutation-bias-lowers-rr-when-wr-gap-dominates
 	                  test-pfwr-mutation-bias-tightens-rr-cap-for-severe-wr-deficit
 	                  test-pfwr-mutation-bias-tightens-rr-cap-for-moderate-wr-deficit

@@ -69,6 +69,13 @@
   "Target PF used to determine if parents are underperforming.")
 (defparameter *pfwr-target-wr* 0.43
   "Target WR used to determine if parents are underperforming.")
+(defparameter *pfwr-s-target-bias-enabled* t
+  "When T, PF/WR mutation bias uses S-rank PF/WR gates as targets when BOTH parents are A-rank or above.
+Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S readiness.")
+(defparameter *pfwr-s-target-pf* 1.70
+  "Target PF used for S-target PF/WR mutation bias (A+ parents only).")
+(defparameter *pfwr-s-target-wr* 0.50
+  "Target WR used for S-target PF/WR mutation bias (A+ parents only).")
 (defparameter *pfwr-min-rr* 0.4
   "Lower bound for TP/SL ratio after PF/WR bias.")
 (defparameter *pfwr-max-rr* 4.0
@@ -198,6 +205,17 @@
 
 (defun clamp-breeder-float (value low high)
   (max low (min high value)))
+
+(defun strategy-a-or-above-p (strategy)
+  "Return T when STRATEGY is rank A/S/LEGEND (or higher)."
+  (let ((rank (and strategy (strategy-rank strategy))))
+    (member rank '(:A :S :LEGEND) :test #'eq)))
+
+(defun pfwr-use-s-targets-p (parent1 parent2)
+  "Return T when PF/WR mutation bias should target S gates for this parent pair."
+  (and *pfwr-s-target-bias-enabled*
+       (strategy-a-or-above-p parent1)
+       (strategy-a-or-above-p parent2)))
 
 (defun breeding-pair-key (parent1 parent2)
   "Canonical key for a parent pair independent of ordering."
@@ -540,8 +558,11 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 
 (defun apply-pfwr-mutation-bias (child-sl child-tp parent1 parent2)
   "Bias child SL/TP toward a healthier PF/WR profile while keeping risk budget constant."
-  (let ((sl (float (or child-sl 0.0)))
-        (tp (float (or child-tp 0.0))))
+  (let* ((use-s (pfwr-use-s-targets-p parent1 parent2))
+         (*pfwr-target-pf* (if use-s *pfwr-s-target-pf* *pfwr-target-pf*))
+         (*pfwr-target-wr* (if use-s *pfwr-s-target-wr* *pfwr-target-wr*))
+         (sl (float (or child-sl 0.0)))
+         (tp (float (or child-tp 0.0))))
     (if (or (not *pfwr-mutation-bias-enabled*)
             (<= sl 0.0)
             (<= tp 0.0))
@@ -564,74 +585,74 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                     (values (* sl upside-scale-floor)
                             (* tp upside-scale-floor))
                     (values sl tp)))
-	              (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
-	                  (pfwr-gap-profile parent1 parent2)
-	                (let* ((anchor (select-pfwr-anchor-parent parent1 parent2))
-	                     (anchor-sl (max 0.0001 (float (or (strategy-sl anchor) sl))))
-	                     (anchor-tp (max 0.0001 (float (or (strategy-tp anchor) tp))))
-	                     (avg-pf (/ (+ (float (or (strategy-profit-factor parent1) 0.0))
-	                                   (float (or (strategy-profit-factor parent2) 0.0)))
-	                                2.0))
-	                     (avg-wr (/ (+ (float (or (strategy-win-rate parent1) 0.0))
-	                                   (float (or (strategy-win-rate parent2) 0.0)))
-	                                2.0))
-	                     (severe-low-pf-p (and (<= avg-pf *pfwr-severe-low-pf-threshold*)
-	                                           (>= avg-wr *pfwr-severe-wr-ready-threshold*)))
-	                     (current-rr (/ tp (max 0.0001 sl)))
-	                     (anchor-rr (/ anchor-tp anchor-sl))
-	                     (anchor-weight (clamp-breeder-float *pfwr-anchor-weight* 0.0 1.0))
-	                     (gap-delta (- pf-gap-ratio wr-gap-ratio))
-	                     (tilt-rr (clamp-breeder-float (+ *pfwr-neutral-rr*
-                                                      (* gap-delta *pfwr-neutral-rr-span*))
-                                                   *pfwr-min-rr* *pfwr-max-rr*))
-                     (target-rr (clamp-breeder-float
-                                 (+ (* anchor-weight anchor-rr)
-                                    (* (- 1.0 anchor-weight) tilt-rr))
-                                 *pfwr-min-rr* *pfwr-max-rr*))
-                     (blended-rr (+ (* (- 1.0 blend) current-rr)
-                                    (* blend target-rr)))
-	                     ;; Extra directional push: PF deficit => higher RR, WR deficit => lower RR.
-	                     (directional-rr (+ blended-rr
-	                                        (* blend gap-delta *pfwr-neutral-rr-span*)))
-	                     (rr-cap (pfwr-effective-rr-cap pf-gap-ratio wr-gap-ratio))
-	                     (base-rr-floor (pfwr-effective-rr-floor pf-gap-ratio wr-gap-ratio))
-	                     (rr-floor (min rr-cap
-	                                    (if severe-low-pf-p
-	                                        (max base-rr-floor *pfwr-severe-min-rr*)
-	                                        base-rr-floor)))
-	                     (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
-	                     (pf-recovery-complement-p (and opposite-complements-p
-	                                                    (> pf-gap-ratio 0.0)
-	                                                    (<= wr-gap-ratio 0.0)))
-	                     (complement-rr-min (max rr-floor
-	                                             (if pf-recovery-complement-p
-	                                                 *pfwr-complement-pf-recovery-min-rr*
-	                                                 *pfwr-complement-stabilize-min-rr*)))
-	                     (complement-rr-max (min rr-cap
-	                                             (if pf-recovery-complement-p
-	                                                 *pfwr-complement-pf-recovery-max-rr*
-	                                                 *pfwr-complement-stabilize-max-rr*)))
-	                     (rr-after-complement (if (and (not severe-low-pf-p)
-	                                                   opposite-complements-p
-	                                                   (<= complement-rr-min complement-rr-max))
-	                                              (clamp-breeder-float final-rr
-	                                                                   complement-rr-min
-	                                                                   complement-rr-max)
-	                                              final-rr))
-	                     (raw-scale-factor (pfwr-scale-expansion-factor pf-gap-ratio
-	                                                                    wr-gap-ratio
-	                                                                    blend
-	                                                                    opposite-complements-p))
-	                     (base-scale-factor (if severe-low-pf-p
-	                                            (max raw-scale-factor *pfwr-severe-scale-floor*)
-	                                            raw-scale-factor))
-	                     (upside-scale-floor (pfwr-upside-scale-floor avg-pf avg-wr))
-	                     (scale-factor (max base-scale-factor upside-scale-floor))
-	                     (risk-budget (+ sl tp))
-	                     (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
-	                     (new-tp (- risk-budget new-sl))
-	                     (scaled-sl (* new-sl scale-factor))
-	                     (scaled-tp (* new-tp scale-factor)))
+              (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
+                  (pfwr-gap-profile parent1 parent2)
+                (let* ((anchor (select-pfwr-anchor-parent parent1 parent2))
+                       (anchor-sl (max 0.0001 (float (or (strategy-sl anchor) sl))))
+                       (anchor-tp (max 0.0001 (float (or (strategy-tp anchor) tp))))
+                       (avg-pf (/ (+ (float (or (strategy-profit-factor parent1) 0.0))
+                                     (float (or (strategy-profit-factor parent2) 0.0)))
+                                  2.0))
+                       (avg-wr (/ (+ (float (or (strategy-win-rate parent1) 0.0))
+                                     (float (or (strategy-win-rate parent2) 0.0)))
+                                  2.0))
+                       (severe-low-pf-p (and (<= avg-pf *pfwr-severe-low-pf-threshold*)
+                                             (>= avg-wr *pfwr-severe-wr-ready-threshold*)))
+                       (current-rr (/ tp (max 0.0001 sl)))
+                       (anchor-rr (/ anchor-tp anchor-sl))
+                       (anchor-weight (clamp-breeder-float *pfwr-anchor-weight* 0.0 1.0))
+                       (gap-delta (- pf-gap-ratio wr-gap-ratio))
+                       (tilt-rr (clamp-breeder-float (+ *pfwr-neutral-rr*
+                                                        (* gap-delta *pfwr-neutral-rr-span*))
+                                                     *pfwr-min-rr* *pfwr-max-rr*))
+                       (target-rr (clamp-breeder-float
+                                   (+ (* anchor-weight anchor-rr)
+                                      (* (- 1.0 anchor-weight) tilt-rr))
+                                   *pfwr-min-rr* *pfwr-max-rr*))
+                       (blended-rr (+ (* (- 1.0 blend) current-rr)
+                                      (* blend target-rr)))
+                       ;; Extra directional push: PF deficit => higher RR, WR deficit => lower RR.
+                       (directional-rr (+ blended-rr
+                                          (* blend gap-delta *pfwr-neutral-rr-span*)))
+                       (rr-cap (pfwr-effective-rr-cap pf-gap-ratio wr-gap-ratio))
+                       (base-rr-floor (pfwr-effective-rr-floor pf-gap-ratio wr-gap-ratio))
+                       (rr-floor (min rr-cap
+                                      (if severe-low-pf-p
+                                          (max base-rr-floor *pfwr-severe-min-rr*)
+                                          base-rr-floor)))
+                       (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
+                       (pf-recovery-complement-p (and opposite-complements-p
+                                                      (> pf-gap-ratio 0.0)
+                                                      (<= wr-gap-ratio 0.0)))
+                       (complement-rr-min (max rr-floor
+                                               (if pf-recovery-complement-p
+                                                   *pfwr-complement-pf-recovery-min-rr*
+                                                   *pfwr-complement-stabilize-min-rr*)))
+                       (complement-rr-max (min rr-cap
+                                               (if pf-recovery-complement-p
+                                                   *pfwr-complement-pf-recovery-max-rr*
+                                                   *pfwr-complement-stabilize-max-rr*)))
+                       (rr-after-complement (if (and (not severe-low-pf-p)
+                                                     opposite-complements-p
+                                                     (<= complement-rr-min complement-rr-max))
+                                                (clamp-breeder-float final-rr
+                                                                     complement-rr-min
+                                                                     complement-rr-max)
+                                                final-rr))
+                       (raw-scale-factor (pfwr-scale-expansion-factor pf-gap-ratio
+                                                                      wr-gap-ratio
+                                                                      blend
+                                                                      opposite-complements-p))
+                       (base-scale-factor (if severe-low-pf-p
+                                              (max raw-scale-factor *pfwr-severe-scale-floor*)
+                                              raw-scale-factor))
+                       (upside-scale-floor (pfwr-upside-scale-floor avg-pf avg-wr))
+                       (scale-factor (max base-scale-factor upside-scale-floor))
+                       (risk-budget (+ sl tp))
+                       (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
+                       (new-tp (- risk-budget new-sl))
+                       (scaled-sl (* new-sl scale-factor))
+                       (scaled-tp (* new-tp scale-factor)))
                   (values scaled-sl scaled-tp))))))))
 
 (defun apply-pfwr-post-q-bias (child-sl child-tp parent1 parent2)

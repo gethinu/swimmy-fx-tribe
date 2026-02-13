@@ -54,6 +54,7 @@
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
+    - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5565 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
   - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
   - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
   - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する。
@@ -152,6 +153,9 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-13**: BACKTEST_RESULT 適用の数値メトリクス耐性を追加。`metrics` がキー存在でも値が `NIL` の場合は `0.0/0` として正規化し、`The value NIL is not of type REAL` で受信ループが落ちないことを正本化。
+- **2026-02-13**: `Msg Error` 可観測性を強化。message-dispatcher の例外ログに `head`（先頭プレビュー）を付与し、原因メッセージ種別を同定できるように更新。
+- **2026-02-13**: PF/WR mutation bias の S-target を追加。両親が A-rank 以上のときは S基準（PF=1.70/WR=0.50）を mutation bias のターゲットとして扱い、A基準達成後も S readiness を探索圧として維持する。
 - **2026-02-13**: Graveyard Avoidance の運用契約を更新。`analyze-graveyard-for-avoidance` は graveyard.sexp の破損フォームで中断せずスキップ継続し、`SWIMMY_GRAVEYARD_AVOID_CACHE_SEC` によるTTLキャッシュで child 生成ごとの全走査を防ぐ方針を追加。
 - **2026-02-13**: `migrate-existing-data` の graveyard 読み込み契約を更新。`read` 一括読込で破損行に遭遇すると migration 全体が停止するため、行単位 `safe-read-sexp` に変更し、破損行をスキップして継続する方針を追加。
 - **2026-02-13**: `collect-all-strategies-unpruned` の計算量契約を更新。DB+Library の重複除外を線形探索から `strategy_name` ハッシュ集合へ変更し、O(n) で統合する方針を追加。

@@ -176,6 +176,12 @@ stop_pattern_similarity_fallback() {
   return 0
 }
 
+systemd_unit_load_state() {
+  # Return LoadState (e.g., loaded / not-found). Empty on error.
+  local svc="$1"
+  run_systemctl "$SYSTEMCTL_STATUS_MODE" show -p LoadState --value "$svc" 2>/dev/null || true
+}
+
 run_systemctl_repair_step() {
   local desc="$1"
   shift
@@ -228,7 +234,13 @@ else
           fi
           # Drift: fallback is running but systemd unit is inactive.
           if [[ "$SYSTEMCTL_REPAIR_MODE" == "sudo" ]]; then
-            log "[WARN] $svc drift: unit=$unit_state but fallback is healthy ($fallback) → migrating to systemd"
+            load_state="$(systemd_unit_load_state "$svc")"
+            if [[ -z "$load_state" || "$load_state" == "not-found" ]]; then
+              log "[WARN] $svc drift: unit LoadState=${load_state:-unknown} but fallback is healthy ($fallback) → keep fallback; install unit via: sudo bash $ROOT/tools/install_services.sh"
+              mark_warn
+              continue
+            fi
+            log "[WARN] $svc drift: unit=$unit_state (LoadState=$load_state) but fallback is healthy ($fallback) → migrating to systemd"
             mark_warn
             stop_pattern_similarity_fallback
           else

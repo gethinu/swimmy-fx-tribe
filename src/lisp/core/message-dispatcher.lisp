@@ -710,7 +710,8 @@
                         (format t "[DISPATCH] ⚠️ JSON payload ignored (parse failed)~%"))
                     nil)))))
     (when err
-      (format t "[L] Msg Error: ~a" err)
+      ;; Add newline and a small preview so we can pinpoint which message triggers the error.
+      (format t "[L] Msg Error: ~a head=~a~%" err (%preview-msg msg))
       nil)
     result))
 (defun process-msg (msg) (internal-process-msg msg))

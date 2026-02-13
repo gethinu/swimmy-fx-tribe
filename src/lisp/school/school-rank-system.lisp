@@ -970,18 +970,20 @@
 (defun apply-backtest-result (name metrics)
   "Apply backtest metrics to a strategy and trigger rank evaluation if necessary."
   (let ((strat (find-strategy name)))
-    (if strat
-        (progn
-          (setf (strategy-sharpe strat) (float (getf metrics :sharpe 0.0))
-                (strategy-profit-factor strat) (float (getf metrics :profit-factor 0.0))
-                (strategy-win-rate strat) (float (getf metrics :win-rate 0.0))
-                (strategy-trades strat) (getf metrics :trades 0)
-                (strategy-max-dd strat) (float (getf metrics :max-dd 0.0))
-                (strategy-cpcv-median-sharpe strat) (float (getf metrics :cpcv-median 0.0))
-                (strategy-cpcv-median-pf strat) (float (getf metrics :cpcv-median-pf 0.0))
-                (strategy-cpcv-median-wr strat) (float (getf metrics :cpcv-median-wr 0.0))
-                (strategy-cpcv-median-maxdd strat) (float (getf metrics :cpcv-median-maxdd 0.0))
-                (strategy-cpcv-pass-rate strat) (float (getf metrics :cpcv-pass-rate 0.0)))
+	(if strat
+	    (progn
+	      ;; NOTE: (getf ... default) does not treat explicit NIL as missing. Coerce NIL to 0.0 here
+	      ;; to avoid type errors in FLOAT/comparisons when upstream metrics are present-but-NIL.
+	      (setf (strategy-sharpe strat) (float (or (getf metrics :sharpe) 0.0) 0.0)
+		    (strategy-profit-factor strat) (float (or (getf metrics :profit-factor) 0.0) 0.0)
+		    (strategy-win-rate strat) (float (or (getf metrics :win-rate) 0.0) 0.0)
+		    (strategy-trades strat) (or (getf metrics :trades) 0)
+		    (strategy-max-dd strat) (float (or (getf metrics :max-dd) 0.0) 0.0)
+		    (strategy-cpcv-median-sharpe strat) (float (or (getf metrics :cpcv-median) 0.0) 0.0)
+		    (strategy-cpcv-median-pf strat) (float (or (getf metrics :cpcv-median-pf) 0.0) 0.0)
+		    (strategy-cpcv-median-wr strat) (float (or (getf metrics :cpcv-median-wr) 0.0) 0.0)
+		    (strategy-cpcv-median-maxdd strat) (float (or (getf metrics :cpcv-median-maxdd) 0.0) 0.0)
+		    (strategy-cpcv-pass-rate strat) (float (or (getf metrics :cpcv-pass-rate) 0.0) 0.0))
           (when (and (slot-exists-p strat 'revalidation-pending)
                      (strategy-revalidation-pending strat))
             (setf (strategy-revalidation-pending strat) nil))
@@ -1000,21 +1002,21 @@
           (let ((updated nil)
                 (sexp-str (ignore-errors
                            (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))))
-            (when (and sexp-str (stringp sexp-str))
-              (handler-case
-                  (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
-                    (when (strategy-p obj)
-                      (setf (strategy-sharpe obj) (float (getf metrics :sharpe 0.0))
-                            (strategy-profit-factor obj) (float (getf metrics :profit-factor 0.0))
-                            (strategy-win-rate obj) (float (getf metrics :win-rate 0.0))
-                            (strategy-trades obj) (getf metrics :trades 0)
-                            (strategy-max-dd obj) (float (getf metrics :max-dd 0.0))
-                            (strategy-oos-sharpe obj) (float (getf metrics :oos-sharpe 0.0))
-                            (strategy-cpcv-median-sharpe obj) (float (getf metrics :cpcv-median 0.0))
-                            (strategy-cpcv-median-pf obj) (float (getf metrics :cpcv-median-pf 0.0))
-                            (strategy-cpcv-median-wr obj) (float (getf metrics :cpcv-median-wr 0.0))
-                            (strategy-cpcv-median-maxdd obj) (float (getf metrics :cpcv-median-maxdd 0.0))
-                            (strategy-cpcv-pass-rate obj) (float (getf metrics :cpcv-pass-rate 0.0)))
+		(when (and sexp-str (stringp sexp-str))
+		  (handler-case
+		      (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+			(when (strategy-p obj)
+			  (setf (strategy-sharpe obj) (float (or (getf metrics :sharpe) 0.0) 0.0)
+				(strategy-profit-factor obj) (float (or (getf metrics :profit-factor) 0.0) 0.0)
+				(strategy-win-rate obj) (float (or (getf metrics :win-rate) 0.0) 0.0)
+				(strategy-trades obj) (or (getf metrics :trades) 0)
+				(strategy-max-dd obj) (float (or (getf metrics :max-dd) 0.0) 0.0)
+				(strategy-oos-sharpe obj) (float (or (getf metrics :oos-sharpe) 0.0) 0.0)
+				(strategy-cpcv-median-sharpe obj) (float (or (getf metrics :cpcv-median) 0.0) 0.0)
+				(strategy-cpcv-median-pf obj) (float (or (getf metrics :cpcv-median-pf) 0.0) 0.0)
+				(strategy-cpcv-median-wr obj) (float (or (getf metrics :cpcv-median-wr) 0.0) 0.0)
+				(strategy-cpcv-median-maxdd obj) (float (or (getf metrics :cpcv-median-maxdd) 0.0) 0.0)
+				(strategy-cpcv-pass-rate obj) (float (or (getf metrics :cpcv-pass-rate) 0.0) 0.0))
                       (when (fboundp '(setf strategy-revalidation-pending))
                         (setf (strategy-revalidation-pending obj) nil))
                       (upsert-strategy obj)
@@ -1028,14 +1030,14 @@
                       (setf updated t)))
                 (error (e)
                   (format t "[DB] ⚠️ Failed to parse data_sexp for ~a: ~a~%" name e))))
-            (unless updated
-              (execute-non-query
-               "UPDATE strategies SET sharpe=?, profit_factor=?, win_rate=?, trades=?, max_dd=?, last_bt_time=? WHERE name=?"
-               (float (getf metrics :sharpe 0.0))
-               (float (getf metrics :profit-factor 0.0))
-               (float (getf metrics :win-rate 0.0))
-               (getf metrics :trades 0)
-               (float (getf metrics :max-dd 0.0))
-               (get-universal-time)
-               name)))
-          nil))))
+		    (unless updated
+		      (execute-non-query
+		       "UPDATE strategies SET sharpe=?, profit_factor=?, win_rate=?, trades=?, max_dd=?, last_bt_time=? WHERE name=?"
+		       (float (or (getf metrics :sharpe) 0.0) 0.0)
+		       (float (or (getf metrics :profit-factor) 0.0) 0.0)
+		       (float (or (getf metrics :win-rate) 0.0) 0.0)
+		       (or (getf metrics :trades) 0)
+		       (float (or (getf metrics :max-dd) 0.0) 0.0)
+		       (get-universal-time)
+		       name)))
+		  nil))))

@@ -113,18 +113,22 @@
     ((search "_P1" strat-name)
      (let* ((base-name (subseq strat-name 0 (search "_P1" strat-name)))
             (strat (find-strategy base-name))
-            (sharpe (getf result :sharpe))
-            (pf (getf result :profit-factor)))
+            ;; Normalize nil metrics to 0.0 to avoid type errors in comparisons/float coercions.
+            (sharpe (float (or (getf result :sharpe) 0.0) 0.0))
+            (pf (float (or (getf result :profit-factor) 0.0) 0.0))
+            (wr (float (or (getf result :win-rate) 0.0) 0.0))
+            (trades (max 0 (truncate (or (getf result :trades) 0))))
+            (max-dd (float (or (getf result :max-dd) 0.0) 0.0)))
        (format t "[BT-V2] 📊 Phase 1 Result for ~a: Sharpe=~,2f PF=~,2f~%" strat-name sharpe pf)
        (if (null strat)
            (format t "[BT-V2] ⚠️ Strategy not found for Phase 1 result: ~a~%" base-name)
            (progn
              ;; Sync metrics to the actual strategy object
-             (setf (strategy-sharpe strat) (float (getf result :sharpe 0.0))
-                   (strategy-profit-factor strat) (float (getf result :profit-factor 0.0))
-                   (strategy-win-rate strat) (float (getf result :win-rate 0.0))
-                   (strategy-trades strat) (getf result :trades 0)
-                   (strategy-max-dd strat) (float (getf result :max-dd 0.0)))
+             (setf (strategy-sharpe strat) sharpe
+                   (strategy-profit-factor strat) pf
+                   (strategy-win-rate strat) wr
+                   (strategy-trades strat) trades
+                   (strategy-max-dd strat) max-dd)
              (when (slot-exists-p strat 'status-reason)
                (setf (strategy-status-reason strat) "Phase1 Screening Result"))
              (upsert-strategy strat)
