@@ -28,6 +28,7 @@ class PositionAggregate:
     close_time: int = 0
     deal_count: int = 0
     exit_deals: int = 0
+    has_comment_match: bool = False
 
 
 def _deal_value(deal: Any, key: str, default: Any = None) -> Any:
@@ -59,7 +60,6 @@ def _is_strategy_deal(
     *,
     symbol: str,
     magic: int,
-    comment_prefix: str,
 ) -> bool:
     deal_symbol = str(_deal_value(deal, "symbol", "")).upper()
     if deal_symbol != symbol.upper():
@@ -69,15 +69,17 @@ def _is_strategy_deal(
     if deal_magic != int(magic):
         return False
 
-    if comment_prefix:
-        comment = str(_deal_value(deal, "comment", ""))
-        if not comment.startswith(comment_prefix):
-            return False
-
     deal_type = _to_int(_deal_value(deal, "type", -1), default=-1)
     if deal_type not in (BUY_DEAL_TYPE, SELL_DEAL_TYPE):
         return False
     return True
+
+
+def _comment_matches(deal: Any, comment_prefix: str) -> bool:
+    if not comment_prefix:
+        return True
+    comment = str(_deal_value(deal, "comment", ""))
+    return comment.startswith(comment_prefix)
 
 
 def _position_id_for_deal(deal: Any) -> int:
@@ -100,7 +102,7 @@ def aggregate_closed_positions(
     by_position: Dict[int, PositionAggregate] = {}
 
     for deal in deals:
-        if not _is_strategy_deal(deal, symbol=symbol, magic=magic, comment_prefix=comment_prefix):
+        if not _is_strategy_deal(deal, symbol=symbol, magic=magic):
             continue
 
         position_id = _position_id_for_deal(deal)
@@ -111,6 +113,9 @@ def aggregate_closed_positions(
         if agg is None:
             agg = PositionAggregate(position_id=position_id)
             by_position[position_id] = agg
+
+        if _comment_matches(deal, comment_prefix):
+            agg.has_comment_match = True
 
         profit = _to_float(_deal_value(deal, "profit", 0.0))
         swap = _to_float(_deal_value(deal, "swap", 0.0))
@@ -128,7 +133,7 @@ def aggregate_closed_positions(
             if t > agg.close_time:
                 agg.close_time = t
 
-    closed = [item for item in by_position.values() if item.exit_deals > 0]
+    closed = [item for item in by_position.values() if item.exit_deals > 0 and item.has_comment_match]
     closed.sort(key=lambda x: x.close_time)
 
     out: List[Dict[str, Any]] = []
