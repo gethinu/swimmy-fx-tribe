@@ -3,7 +3,7 @@ param(
     [string]$RepoRoot = "",
     [string]$Symbol = "XAUUSD",
     [int]$Magic = 560070,
-    [string]$CommentPrefix = "xau_autobot_tuned_auto",
+    [string]$CommentPrefix = "xau_autobot",
     [int]$Days = 30,
     [switch]$IncludeDetails,
     [switch]$Diagnostics,

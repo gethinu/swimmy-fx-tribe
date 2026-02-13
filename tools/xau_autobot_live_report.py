@@ -317,7 +317,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate xau_autobot live performance report from MT5 history")
     parser.add_argument("--symbol", default="XAUUSD")
     parser.add_argument("--magic", type=int, default=560070)
-    parser.add_argument("--comment-prefix", default="xau_autobot_tuned_auto")
+    parser.add_argument("--comment-prefix", default="xau_autobot")
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--start-utc", default="")
     parser.add_argument("--end-utc", default="")
