@@ -869,7 +869,94 @@
             (setf *strategy-knowledge-base* nil)
             ;; Library: no graveyard files
             (let ((warnings (swimmy.school::report-source-drift)))
-              (assert-true (> (length warnings) 0) "Drift warnings should be reported")))
+              (assert-true (> (length warnings) 0) "Drift warnings should be reported")
+              (assert-true
+               (find-if (lambda (w) (search "delta(DB-Library)=" w)) warnings)
+               "Drift warnings should include delta(DB-Library) direction")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-report-source-drift-detects-canonical-archive-mismatch
+  "Drift check should include canonical archive mismatch for DB/LIB unique-name delta."
+  (let* ((tmp-db (format nil "/tmp/swimmy-drift-canon-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-drift-canon-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; DB archive has 1 unique name.
+            (swimmy.school::upsert-strategy (make-strategy :name "CAN-DB-G" :sharpe -0.2 :symbol "USDJPY" :rank :graveyard))
+            ;; Library archive has 2 unique names (one overlaps DB, one extra).
+            (let* ((gy-dir (merge-pathnames "GRAVEYARD/" swimmy.persistence::*library-path*))
+                   (rt-dir (merge-pathnames "RETIRED/" swimmy.persistence::*library-path*))
+                   (gy-file (merge-pathnames "CAN-DB-G.lisp" gy-dir))
+                   (rt-file (merge-pathnames "CAN-LIB-R.lisp" rt-dir)))
+              (ensure-directories-exist gy-file)
+              (ensure-directories-exist rt-file)
+              (with-open-file (s gy-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+                (write-line "(dummy)" s))
+              (with-open-file (s rt-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+                (write-line "(dummy)" s)))
+            (let ((warnings (swimmy.school::report-source-drift)))
+              (assert-true
+               (find-if (lambda (w) (search "Archive canonical mismatch" w)) warnings)
+               "Drift warnings should include canonical archive mismatch")
+              (assert-true
+               (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=" w)) warnings)
+               "Canonical archive warning should include delta(DB-LibraryCanonical)")
+              (assert-true
+               (find-if (lambda (w) (search "Library canonical=2" w)) warnings)
+               "Canonical archive warning should include expected library canonical count")
+              (assert-true
+               (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=-1" w)) warnings)
+               "Canonical archive warning should include expected canonical delta")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-report-source-drift-includes-canonical-line-even-when-delta-zero
+  "Canonical archive line should appear for archive drift even when DB/LIB canonical counts match."
+  (let* ((tmp-db (format nil "/tmp/swimmy-drift-canon-zero-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-drift-canon-zero-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; DB archive unique count = 2
+            (swimmy.school::upsert-strategy (make-strategy :name "CAN-ZERO-A" :sharpe -0.2 :symbol "USDJPY" :rank :graveyard))
+            (swimmy.school::upsert-strategy (make-strategy :name "CAN-ZERO-B" :sharpe -0.2 :symbol "USDJPY" :rank :retired))
+            ;; Library per-dir counts differ, but canonical unique count still = 2.
+            (let* ((gy-dir (merge-pathnames "GRAVEYARD/" swimmy.persistence::*library-path*))
+                   (rt-dir (merge-pathnames "RETIRED/" swimmy.persistence::*library-path*)))
+              (flet ((write-dummy (path)
+                       (ensure-directories-exist path)
+                       (with-open-file (s path :direction :output :if-exists :supersede :if-does-not-exist :create)
+                         (write-line "(dummy)" s))))
+                (write-dummy (merge-pathnames "CAN-ZERO-A.lisp" gy-dir))
+                (write-dummy (merge-pathnames "CAN-ZERO-A.lisp" rt-dir))
+                (write-dummy (merge-pathnames "CAN-ZERO-B.lisp" rt-dir))))
+            (let ((warnings (swimmy.school::report-source-drift)))
+              (assert-true
+               (find-if (lambda (w) (search "Archive canonical mismatch" w)) warnings)
+               "Drift warnings should include canonical archive line")
+              (assert-true
+               (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=" w)) warnings)
+               "Canonical archive line should include delta(DB-LibraryCanonical)")
+              (assert-true
+               (find-if (lambda (w) (search "Library canonical=2" w)) warnings)
+               "Canonical archive line should include expected library canonical count")
+              (assert-true
+               (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=+0" w)) warnings)
+               "Canonical archive line should include +0 canonical delta")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 

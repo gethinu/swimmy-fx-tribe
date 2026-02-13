@@ -69,6 +69,38 @@ def _resolve_max_inflight(worker_count: int) -> int:
     baseline = max(1, worker_count * 2)
     return max(worker_count, _env_int("SWIMMY_BACKTEST_MAX_INFLIGHT", baseline))
 
+
+def _resolve_runtime_knobs(worker_count=None) -> dict:
+    """Resolve backtest knobs from env and normalize operational defaults."""
+    workers = worker_count if isinstance(worker_count, int) and worker_count > 0 else _resolve_worker_count()
+    max_inflight = _resolve_max_inflight(workers)
+    max_pending = max(1, _env_int("SWIMMY_BACKTEST_MAX_PENDING", 500))
+    rate_limit = max(1, _env_int("SWIMMY_BACKTEST_RATE_LIMIT", 5))
+    inflight_explicit = bool(os.getenv("SWIMMY_BACKTEST_MAX_INFLIGHT", "").strip())
+    return {
+        "worker_count": workers,
+        "max_inflight": max_inflight,
+        "max_pending": max_pending,
+        "rate_limit": rate_limit,
+        "inflight_explicit": inflight_explicit,
+    }
+
+
+def _knob_alignment_warnings(knobs: dict):
+    """Return operator-facing warnings when backtest knobs are likely misconfigured."""
+    warnings = []
+    if not knobs.get("inflight_explicit"):
+        warnings.append(
+            "[BACKTEST-SVC] ⚠️ SWIMMY_BACKTEST_MAX_INFLIGHT is unset; "
+            "MAX_PENDING does not cap service inflight. Set it explicitly."
+        )
+    if int(knobs.get("max_pending", 0)) < int(knobs.get("max_inflight", 0)):
+        warnings.append(
+            "[BACKTEST-SVC] ⚠️ SWIMMY_BACKTEST_MAX_PENDING is smaller than "
+            "SWIMMY_BACKTEST_MAX_INFLIGHT; sender throttling may underutilize workers."
+        )
+    return warnings
+
 # Force unbuffered output for debugging
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -98,6 +130,10 @@ _OPTIONAL_LIST_KEYS = (
     "aux_candles",
     "aux_candles_files",
     "swap_history",
+)
+_FALLBACK_BOOL_PAIR_RE = re.compile(
+    r"\((?P<key>[A-Za-z0-9_:\-]+)\s+\.\s+(?P<val>t|nil|true|false)\)",
+    flags=re.IGNORECASE,
 )
 
 def _post_webhook(url: str, payload: dict) -> bool:
@@ -215,6 +251,29 @@ def _parse_incoming_message(msg: str):
     return None, None
 
 
+def _is_fallback_bool_key(key_token: str) -> bool:
+    key_norm = _normalize_sexp_key(key_token or "")
+    return (
+        key_norm == "filter_enabled"
+        or key_norm.endswith("enabled")
+        or key_norm.startswith("is_")
+        or key_norm.startswith("has_")
+    )
+
+
+def _fallback_normalize_bool_pairs(text: str) -> str:
+    """Best-effort bool normalization for known dotted pairs when parse fails."""
+
+    def _replace(match: re.Match) -> str:
+        key = match.group("key")
+        val = match.group("val")
+        if not _is_fallback_bool_key(key):
+            return match.group(0)
+        return f"({key} . {'#t' if _coerce_bool(val) else '#f'})"
+
+    return _FALLBACK_BOOL_PAIR_RE.sub(_replace, text)
+
+
 def _normalize_backtest_sexpr(msg: str) -> str:
     """Canonicalize incoming BACKTEST S-expression for guardian compatibility."""
     text = (msg or "").strip()
@@ -223,9 +282,9 @@ def _normalize_backtest_sexpr(msg: str) -> str:
     try:
         payload = _sexp_to_python(parse_sexp(text))
     except (SexpParseError, ValueError, TypeError):
-        return text
+        return _fallback_normalize_bool_pairs(text)
     if not isinstance(payload, dict):
-        return text
+        return _fallback_normalize_bool_pairs(text)
     action = str(payload.get("action", "")).strip().upper()
     if action != "BACKTEST":
         return text
@@ -331,7 +390,8 @@ class BacktestService:
         self.data_cache = {}  # Data store: {data_id: candles}
         self.use_zmq = use_zmq
         self.worker_count = _resolve_worker_count()
-        self.max_inflight = _resolve_max_inflight(self.worker_count)
+        self.runtime_knobs = _resolve_runtime_knobs(worker_count=self.worker_count)
+        self.max_inflight = int(self.runtime_knobs["max_inflight"])
         self._error_dumped = 0
         self._guardian_missing_logged_at = 0.0
         self._guardian_missing_log_interval = 60.0
@@ -683,6 +743,13 @@ class BacktestService:
         print(
             f"[BACKTEST-SVC] Workers: {self.worker_count} | Max inflight: {self.max_inflight}"
         )
+        print(
+            "[BACKTEST-SVC] Lisp sender knobs: "
+            f"MAX_PENDING={self.runtime_knobs['max_pending']} "
+            f"| RATE_LIMIT={self.runtime_knobs['rate_limit']}/s"
+        )
+        for warning in _knob_alignment_warnings(self.runtime_knobs):
+            print(warning)
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
 
         if not self.use_zmq:

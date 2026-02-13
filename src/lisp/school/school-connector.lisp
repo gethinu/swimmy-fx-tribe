@@ -22,7 +22,7 @@
 
 (defun phase-1-validation ()
   "Phase 1: Validation Batch (Formerly RR/Optimize)
-   Running native Lisp qualification cycle for scout/incubator strategies."
+   Running native Lisp qualification cycle for incubator candidates."
   (format t "[CONNECTOR] [Phase 1] Validation Batch (Lisp Native)...~%")
   (when (fboundp 'run-qualification-cycle)
     (run-qualification-cycle)))
@@ -74,7 +74,7 @@
   (when (fboundp 'run-rank-evaluation)
     (run-rank-evaluation)))
 
-;; P8: phase-5-recruit (Scout) DELETED
+;; P8: phase-5-recruit DELETED
 
 (defun phase-6-breeding ()
   "Evolution (Breeding & Selection)"
@@ -93,11 +93,37 @@
     (error (e)
       (format t "[CONNECTOR] ⚠️ CPCV error: ~a~%" e))))
 
-(defun phase-7-wisdom-update ()
+(defun %connector-env-int-or (key default)
+  "Resolve integer env var with DEFAULT fallback."
+  (let ((raw (ignore-errors (uiop:getenv key))))
+    (if (and (stringp raw) (> (length raw) 0))
+        (let ((parsed (ignore-errors (parse-integer raw :junk-allowed nil))))
+          (if (and (integerp parsed) (> parsed 0))
+              parsed
+              default))
+        default)))
+
+(defparameter *wisdom-update-interval-sec*
+  (%connector-env-int-or "SWIMMY_WISDOM_UPDATE_INTERVAL_SEC" 1800)
+  "Minimum seconds between heavy wisdom updates.")
+
+(defvar *last-wisdom-update-time* 0
+  "Unix timestamp of the last wisdom update.")
+
+(defun should-run-wisdom-update-p (&optional (now (get-universal-time)))
+  "Return T when wisdom update interval has elapsed."
+  (let ((interval (max 1 (or *wisdom-update-interval-sec* 1800))))
+    (or (<= *last-wisdom-update-time* 0)
+        (>= (- now *last-wisdom-update-time*) interval))))
+
+(defun phase-7-wisdom-update (&key (now (get-universal-time)))
   "Wisdom Update (Civilization Handover)"
-  ;; V24: Native Lisp Wisdom Extraction
-  (format t "~%[CONNECTOR] [Phase 7] Wisdom Update (Native)...~%")
-  (analyze-veterans))
+  (when (should-run-wisdom-update-p now)
+    ;; V24: Native Lisp Wisdom Extraction (interval-gated for memory safety)
+    (setf *last-wisdom-update-time* now)
+    (format t "~%[CONNECTOR] [Phase 7] Wisdom Update (Native, interval=~ds)...~%"
+            *wisdom-update-interval-sec*)
+    (analyze-veterans)))
 
 (defun phase-7-report ()
   "Send report if interval passed"

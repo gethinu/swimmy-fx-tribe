@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 
 def resolve_base_dir() -> Path:
@@ -33,6 +35,13 @@ from tools.openclaw_signal_heuristic import (
     build_signals_from_markets,
     fetch_markets,
     render_jsonl,
+)
+
+FATAL_AGENT_TEXT_PATTERNS = (
+    "api error (429)",
+    "rate limit",
+    "exhausted your capacity",
+    "quota will reset",
 )
 
 
@@ -132,6 +141,171 @@ def parse_signal_payload(payload_text: str) -> Dict[str, Dict[str, float]]:
     return out
 
 
+def extract_agent_signals(agent_json: Mapping[str, Any]) -> Dict[str, Dict[str, float]]:
+    payloads = agent_json.get("payloads", []) if isinstance(agent_json, Mapping) else []
+    if not isinstance(payloads, list):
+        return {}
+    texts: List[str] = []
+    for item in payloads:
+        if not isinstance(item, Mapping):
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text.strip():
+            texts.append(text.strip())
+    if not texts:
+        return {}
+    return parse_signal_payload("\n".join(texts))
+
+
+def extract_agent_fatal_error(agent_json: Mapping[str, Any]) -> str:
+    payloads = agent_json.get("payloads", []) if isinstance(agent_json, Mapping) else []
+    if not isinstance(payloads, list):
+        return ""
+    for item in payloads:
+        if not isinstance(item, Mapping):
+            continue
+        text = item.get("text")
+        if not isinstance(text, str):
+            continue
+        lowered = text.lower()
+        if any(pattern in lowered for pattern in FATAL_AGENT_TEXT_PATTERNS):
+            return text.strip()
+    return ""
+
+
+def collect_agent_signals_with_status(
+    *,
+    fetch_fn: Callable[[], Mapping[str, Any]],
+    retries: int,
+    retry_sleep_ms: int,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Tuple[Dict[str, Dict[str, float]], str]:
+    attempts = max(1, int(retries) + 1)
+    sleep_seconds = max(0, int(retry_sleep_ms)) / 1000.0
+    for attempt in range(attempts):
+        try:
+            payload = fetch_fn()
+        except subprocess.TimeoutExpired as exc:
+            return {}, f"timeout: {exc}"
+        except Exception:
+            payload = {}
+        fatal_error = extract_agent_fatal_error(payload)
+        if fatal_error:
+            return {}, fatal_error
+        rows = extract_agent_signals(payload)
+        if rows:
+            return rows, ""
+        if attempt < attempts - 1 and sleep_seconds > 0.0:
+            sleep_fn(sleep_seconds)
+    return {}, ""
+
+
+def collect_agent_signals(
+    *,
+    fetch_fn: Callable[[], Mapping[str, Any]],
+    retries: int,
+    retry_sleep_ms: int,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Dict[str, Dict[str, float]]:
+    rows, _fatal_error = collect_agent_signals_with_status(
+        fetch_fn=fetch_fn,
+        retries=retries,
+        retry_sleep_ms=retry_sleep_ms,
+        sleep_fn=sleep_fn,
+    )
+    return rows
+
+
+def _parse_positive_int_csv(text: str) -> List[int]:
+    out: List[int] = []
+    for raw in str(text or "").split(","):
+        token = raw.strip()
+        if not token:
+            continue
+        try:
+            value = int(token)
+        except ValueError:
+            continue
+        if value > 0:
+            out.append(value)
+    return out
+
+
+def build_agent_cap_attempts(*, primary_cap: int, fallback_caps: Sequence[int]) -> List[int]:
+    cap = max(1, int(primary_cap))
+    attempts: List[int] = [cap]
+    seen = {cap}
+    for raw in fallback_caps:
+        try:
+            candidate = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if candidate < 1 or candidate >= cap or candidate in seen:
+            continue
+        attempts.append(candidate)
+        seen.add(candidate)
+    return attempts
+
+
+def collect_agent_signals_for_caps_with_status(
+    *,
+    fallback_signals: Sequence[Mapping[str, Any]],
+    cap_attempts: Sequence[int],
+    fetch_for_prompt: Callable[[str, int], Mapping[str, Any]],
+    primary_retries: int,
+    fallback_retries: int,
+    retry_sleep_ms: int,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Tuple[Dict[str, Dict[str, float]], int, str]:
+    selected_cap = int(cap_attempts[0]) if cap_attempts else 0
+    for idx, cap in enumerate(cap_attempts):
+        cap_value = max(1, int(cap))
+        prompt_rows = list(fallback_signals[:cap_value])
+        if not prompt_rows:
+            selected_cap = cap_value
+            continue
+        prompt = _build_agent_prompt(prompt_rows)
+        retries = max(0, primary_retries) if idx == 0 else max(0, fallback_retries)
+        rows, fatal_error = collect_agent_signals_with_status(
+            fetch_fn=lambda cap_arg=cap_value, prompt_arg=prompt: fetch_for_prompt(prompt_arg, cap_arg),
+            retries=retries,
+            retry_sleep_ms=max(0, retry_sleep_ms),
+            sleep_fn=sleep_fn,
+        )
+        if rows:
+            return rows, cap_value, ""
+        if fatal_error:
+            lowered = fatal_error.lower()
+            if "timeout" in lowered or "timed out" in lowered:
+                selected_cap = cap_value
+                continue
+            return {}, cap_value, fatal_error
+        selected_cap = cap_value
+    return {}, selected_cap, ""
+
+
+def collect_agent_signals_for_caps(
+    *,
+    fallback_signals: Sequence[Mapping[str, Any]],
+    cap_attempts: Sequence[int],
+    fetch_for_prompt: Callable[[str, int], Mapping[str, Any]],
+    primary_retries: int,
+    fallback_retries: int,
+    retry_sleep_ms: int,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> Tuple[Dict[str, Dict[str, float]], int]:
+    rows, selected_cap, _fatal_error = collect_agent_signals_for_caps_with_status(
+        fallback_signals=fallback_signals,
+        cap_attempts=cap_attempts,
+        fetch_for_prompt=fetch_for_prompt,
+        primary_retries=primary_retries,
+        fallback_retries=fallback_retries,
+        retry_sleep_ms=retry_sleep_ms,
+        sleep_fn=sleep_fn,
+    )
+    return rows, selected_cap
+
+
 def merge_agent_signals(
     fallback_signals: Sequence[Mapping[str, Any]],
     agent_signals: Mapping[str, Mapping[str, float]],
@@ -188,6 +362,61 @@ def _to_windows_path(path: str) -> str:
     return text
 
 
+def _resolve_windows_cmd_token(token: str, exists_fn: Optional[Callable[[Path], bool]] = None) -> str:
+    text = str(token or "").strip()
+    if not text:
+        return text
+    if not text.startswith("/mnt/"):
+        return text
+    path_exists = exists_fn or (lambda path: path.exists())
+    base = Path(text)
+    if base.suffix:
+        return _to_windows_path(str(base))
+    cmd_candidate = Path(str(base) + ".cmd")
+    if path_exists(cmd_candidate):
+        return _to_windows_path(str(cmd_candidate))
+    return _to_windows_path(str(base))
+
+
+def _split_openclaw_cmd_tokens(cmd_text: str) -> List[str]:
+    text = str(cmd_text or "").strip()
+    if not text:
+        return []
+    try:
+        tokens = shlex.split(text)
+    except ValueError:
+        return [text]
+    # Windows paths like C:\foo\bar are mangled by POSIX parsing. Retry with non-POSIX when detected.
+    if "\\" in text and tokens:
+        head = tokens[0]
+        if ":" in head and "\\" not in head:
+            try:
+                win_tokens = shlex.split(text, posix=False)
+            except ValueError:
+                return tokens
+            cleaned: List[str] = []
+            for token in win_tokens:
+                if len(token) >= 2 and token[0] == token[-1] and token[0] in {"'", '"'}:
+                    cleaned.append(token[1:-1])
+                else:
+                    cleaned.append(token)
+            return cleaned
+    return tokens
+
+
+def _build_powershell_agent_command(*, openclaw_cmd: str, agent: str, prompt: str) -> str:
+    cmd_text = str(openclaw_cmd or "").strip()
+    if cmd_text:
+        base_tokens = _split_openclaw_cmd_tokens(cmd_text)
+    else:
+        base_tokens = ["openclaw"]
+    if not base_tokens:
+        base_tokens = ["openclaw"]
+    base_tokens[0] = _resolve_windows_cmd_token(base_tokens[0])
+    tokens = base_tokens + ["agent", "--local", "--agent", str(agent), "--json", "-m", str(prompt)]
+    return "& " + " ".join(_ps_quote_single(token) for token in tokens)
+
+
 def _build_agent_prompt(rows: Sequence[Mapping[str, Any]]) -> str:
     lines = [
         "Return ONLY valid minified JSON array.",
@@ -237,7 +466,7 @@ def run_openclaw_agent(
         if proc.returncode == 0:
             return extract_agent_json_from_stdout(proc.stdout)
 
-    command = f"{openclaw_cmd} agent --local --agent {agent} --json -m {_ps_quote_single(prompt)}"
+    command = _build_powershell_agent_command(openclaw_cmd=openclaw_cmd, agent=agent, prompt=prompt)
     proc2 = subprocess.run(
         [powershell_exe, "-NoProfile", "-Command", command],
         capture_output=True,
@@ -277,7 +506,15 @@ def main() -> None:
     parser.add_argument("--openclaw-cmd", default="openclaw")
     parser.add_argument("--agent", default="main")
     parser.add_argument("--agent-market-cap", type=int, default=20)
-    parser.add_argument("--timeout-seconds", type=int, default=90)
+    parser.add_argument(
+        "--agent-market-cap-fallbacks",
+        default="12,8,5",
+        help="Comma-separated fallback caps when primary cap yields no agent rows",
+    )
+    parser.add_argument("--agent-retries", type=int, default=2)
+    parser.add_argument("--agent-fallback-retries", type=int, default=0)
+    parser.add_argument("--agent-retry-sleep-ms", type=int, default=300)
+    parser.add_argument("--timeout-seconds", type=int, default=12)
     parser.add_argument("--write-jsonl", default="")
     args = parser.parse_args()
 
@@ -291,30 +528,30 @@ def main() -> None:
         question_keywords=args.question_keyword,
     )
 
-    cap = max(1, int(args.agent_market_cap))
-    prompt_rows = fallback[:cap]
     agent_rows: Dict[str, Dict[str, float]] = {}
-    if prompt_rows:
-        prompt = _build_agent_prompt(prompt_rows)
+    primary_cap = max(1, int(args.agent_market_cap))
+    cap_fallbacks = _parse_positive_int_csv(args.agent_market_cap_fallbacks)
+    cap_attempts = build_agent_cap_attempts(primary_cap=primary_cap, fallback_caps=cap_fallbacks)
+    if fallback:
         openclaw_entry = args.openclaw_entry.strip() or _find_openclaw_entry(args.openclaw_cmd.strip() or "openclaw")
-        agent_json = run_openclaw_agent(
-            node_exe=args.node_exe,
-            openclaw_entry=openclaw_entry,
-            powershell_exe=args.powershell_exe,
-            openclaw_cmd=args.openclaw_cmd,
-            agent=args.agent,
-            prompt=prompt,
-            timeout_seconds=max(1, args.timeout_seconds),
+        agent_rows, _selected_cap, fatal_error = collect_agent_signals_for_caps_with_status(
+            fallback_signals=fallback,
+            cap_attempts=cap_attempts,
+            fetch_for_prompt=lambda prompt_arg, _cap_arg: run_openclaw_agent(
+                node_exe=args.node_exe,
+                openclaw_entry=openclaw_entry,
+                powershell_exe=args.powershell_exe,
+                openclaw_cmd=args.openclaw_cmd,
+                agent=args.agent,
+                prompt=prompt_arg,
+                timeout_seconds=max(1, args.timeout_seconds),
+            ),
+            primary_retries=max(0, args.agent_retries),
+            fallback_retries=max(0, args.agent_fallback_retries),
+            retry_sleep_ms=max(0, args.agent_retry_sleep_ms),
         )
-        payloads = agent_json.get("payloads", []) if isinstance(agent_json, Mapping) else []
-        if isinstance(payloads, list):
-            texts = []
-            for item in payloads:
-                if isinstance(item, Mapping):
-                    text = item.get("text")
-                    if isinstance(text, str) and text.strip():
-                        texts.append(text.strip())
-            agent_rows = parse_signal_payload("\n".join(texts))
+        if fatal_error:
+            print(f"[openclaw_agent_signal_bridge] fatal agent response: {fatal_error}", file=sys.stderr)
 
     merged = merge_agent_signals(fallback, agent_rows)
     text = render_jsonl(merged)

@@ -107,35 +107,64 @@ run_fail() {
 
 log "[AUDIT] Starting system audit (system scope)"
 
-# systemctl status (best effort)
+SYSTEMCTL_STATUS_MODE=""
+SYSTEMCTL_REPAIR_MODE=""
+
 if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
+  SYSTEMCTL_STATUS_MODE="sudo"
+  SYSTEMCTL_REPAIR_MODE="sudo"
+elif command -v systemctl >/dev/null 2>&1; then
+  SYSTEMCTL_STATUS_MODE="direct"
+  SYSTEMCTL_REPAIR_MODE="direct"
+  log "[WARN] sudo -n unavailable; using direct systemctl"
+  mark_warn
+else
+  log "[WARN] systemctl command not found; skipping systemd checks"
+  mark_warn
+fi
+
+run_systemctl() {
+  local mode="$1"
+  shift
+  case "$mode" in
+    sudo)
+      "${SUDO_CMD_ARR[@]}" systemctl "$@"
+      ;;
+    direct)
+      systemctl "$@"
+      ;;
+    *)
+      return 127
+      ;;
+  esac
+}
+
+# systemctl status (best effort)
+if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
   for svc in "${services[@]}"; do
-    if ! "${SUDO_CMD_ARR[@]}" systemctl status "$svc" >/dev/null 2>&1; then
+    if ! run_systemctl "$SYSTEMCTL_STATUS_MODE" status "$svc" >/dev/null 2>&1; then
       log "[WARN] service not healthy: $svc"
       mark_warn
     fi
   done
-else
-  log "[WARN] sudo not available; skipping systemctl status"
-  mark_warn
 fi
 
 # auto-repair
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
   log "[AUDIT] DRY_RUN=1; skipping auto-repair"
 else
-  if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
+  if [[ -n "$SYSTEMCTL_REPAIR_MODE" ]]; then
     log "[REPAIR] daemon-reload"
-    "${SUDO_CMD_ARR[@]}" systemctl daemon-reload || mark_fail
+    run_systemctl "$SYSTEMCTL_REPAIR_MODE" daemon-reload || mark_fail
 
     for svc in "${services[@]}"; do
       log "[REPAIR] enable $svc"
-      "${SUDO_CMD_ARR[@]}" systemctl enable "$svc" || mark_fail
+      run_systemctl "$SYSTEMCTL_REPAIR_MODE" enable "$svc" || mark_fail
       log "[REPAIR] restart $svc"
-      "${SUDO_CMD_ARR[@]}" systemctl restart "$svc" || mark_fail
+      run_systemctl "$SYSTEMCTL_REPAIR_MODE" restart "$svc" || mark_fail
     done
   else
-    log "[FAIL] sudo not available for auto-repair"
+    log "[FAIL] systemctl not available for auto-repair"
     mark_fail
   fi
 fi
@@ -146,6 +175,17 @@ run_warn "Notifier log" tail -n 200 "$ROOT/logs/notifier.log"
 run_warn "Notifier direct test" python3 "$ROOT/tools/test_notifier_direct.py"
 run_warn "Broadcast routing" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/broadcast_test_v2.lisp"
 run_warn "Evolution report" tail -n 120 "$ROOT/data/reports/evolution_factory_report.txt"
+if [[ -f "$ROOT/tools/polymarket_openclaw_status.py" ]]; then
+  polyclaw_status_args=(
+    --max-age-seconds "${POLYCLAW_STATUS_MAX_AGE_SECONDS:-1800}"
+    --last-runs "${POLYCLAW_STATUS_LAST_RUNS:-5}"
+    --fail-on-problem
+  )
+  if [[ -n "${POLYCLAW_OUTPUT_DIR:-}" ]]; then
+    polyclaw_status_args+=(--output-dir "$POLYCLAW_OUTPUT_DIR")
+  fi
+  run_warn "Polymarket OpenClaw status" python3 "$ROOT/tools/polymarket_openclaw_status.py" "${polyclaw_status_args[@]}"
+fi
 run_fail "Integrity audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/integrity_audit.lisp"
 run_fail "Deep audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/deep_audit.lisp"
 

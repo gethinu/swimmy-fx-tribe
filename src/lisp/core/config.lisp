@@ -115,9 +115,11 @@
   "Enable dedicated backtest service (5580/5581) when true.")
 
 (defparameter *backtest-max-pending* (env-int-or "SWIMMY_BACKTEST_MAX_PENDING" 500)
-  "Max pending backtest requests before throttling.")
+  "Lisp sender-side max pending requests before throttling.")
+(defparameter *backtest-max-inflight* (env-int-or "SWIMMY_BACKTEST_MAX_INFLIGHT" 0)
+  "Backtest service-side inflight cap hint. Consumed by tools/backtest_service.py.")
 (defparameter *backtest-rate-limit-per-sec* (env-int-or "SWIMMY_BACKTEST_RATE_LIMIT" 5)
-  "Max backtest sends per second.")
+  "Lisp sender-side max backtest sends per second.")
 
 (when (boundp 'swimmy.globals::*backtest-max-pending*)
   (setf swimmy.globals::*backtest-max-pending* *backtest-max-pending*))

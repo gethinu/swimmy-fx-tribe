@@ -82,21 +82,59 @@
           :graveyard (count-dir "GRAVEYARD")
           :retired (count-dir "RETIRED"))))
 
+(defun %shell-quote-single (s)
+  "Return shell-safe single-quoted string."
+  (format nil "'~a'"
+          (with-output-to-string (out)
+            (loop for ch across (or s "")
+                  do (if (char= ch #\')
+                         (write-string "'\"'\"'" out)
+                         (write-char ch out))))))
+
+(defun get-library-archive-canonical-count (&optional (root swimmy.persistence:*library-path*))
+  "Return unique strategy-name count across Library GRAVEYARD+RETIRED dirs."
+  (labels ((path-str (dir)
+             (namestring (merge-pathnames (format nil "~a/" dir) root))))
+    (let* ((grave (%shell-quote-single (path-str "GRAVEYARD")))
+           (retired (%shell-quote-single (path-str "RETIRED")))
+           (cmd (format nil
+                        "{ find ~a -maxdepth 1 -type f -name '*.lisp' -printf '%f\\n' 2>/dev/null; find ~a -maxdepth 1 -type f -name '*.lisp' -printf '%f\\n' 2>/dev/null; } | sed 's/\\.lisp$//' | LC_ALL=C sort -u | wc -l"
+                        grave retired))
+           (raw (ignore-errors (uiop:run-program cmd :output :string :ignore-error-status t :force-shell t)))
+           (trimmed (and raw (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))
+           (n (and trimmed (> (length trimmed) 0) (parse-integer trimmed :junk-allowed t))))
+      (or n 0))))
+
 (defun report-source-drift ()
   "Return list of warning strings when DB/KB/Library counts drift."
   (let* ((db (get-db-rank-counts))
          (lib (get-library-rank-counts))
+         (lib-canonical (get-library-archive-canonical-count))
          (kb-active (length *strategy-knowledge-base*))
          (db-active (getf db :active 0))
          (db-grave (getf db :graveyard 0))
          (lib-grave (getf lib :graveyard 0))
+         (delta-grave (- db-grave lib-grave))
          (db-retired (getf db :retired 0))
          (lib-retired (getf lib :retired 0))
+         (delta-retired (- db-retired lib-retired))
+         (db-archive-total (+ db-grave db-retired))
+         (delta-archive (- db-archive-total lib-canonical))
          (warnings nil))
     (when (/= db-active kb-active)
       (push (format nil "KB active mismatch (DB=~d KB=~d)" db-active kb-active) warnings))
     (when (/= db-grave lib-grave)
-      (push (format nil "Graveyard mismatch (DB=~d Library=~d)" db-grave lib-grave) warnings))
+      (push (format nil "Graveyard mismatch (DB=~d Library=~d delta(DB-Library)=~@d)"
+                    db-grave lib-grave delta-grave)
+            warnings))
     (when (/= db-retired lib-retired)
-      (push (format nil "Retired mismatch (DB=~d Library=~d)" db-retired lib-retired) warnings))
+      (push (format nil "Retired mismatch (DB=~d Library=~d delta(DB-Library)=~@d)"
+                    db-retired lib-retired delta-retired)
+            warnings))
+    (when (or (/= db-grave lib-grave)
+              (/= db-retired lib-retired)
+              (/= db-archive-total lib-canonical))
+      (push (format nil "Archive canonical mismatch (DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d)"
+                    db-archive-total lib-canonical delta-archive)
+            warnings))
     (nreverse warnings)))

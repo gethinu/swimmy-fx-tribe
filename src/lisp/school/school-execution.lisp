@@ -446,7 +446,7 @@
         (multiple-value-bind (lead-name timeframe-key history) (prepare-trade-context category symbol)
           (when (validate-trade-opportunity category symbol timeframe-key history)
              (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))
-                    (rank (if rank-data (strategy-rank-rank rank-data) :scout))
+                    (rank (if rank-data (strategy-rank-rank rank-data) :incubator))
                     (base-lot (get-category-lot category))
                     (lot (calc-execution-lot category symbol history rank base-lot lead-name direction))
                     (overlay (apply-pair-overlay lead-name direction symbol lot))

@@ -26,7 +26,7 @@
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  HIERARCHY SYSTEM (階級制度)
 ;;; ══════════════════════════════════════════════════════════════════
-;;; Warriors (戦士) vs Scouts (斥候) - 実弾 vs テスト
+;;; Warriors (戦士) vs Incubators (育成) - 実弾 vs テスト
 ;;; *strategy-ranks* defined in school-state.lisp (V41.4: removed duplicate)
 
 (defun get-strategy-rank (name)
@@ -35,27 +35,27 @@
       (setf (gethash name *strategy-ranks*)
             (make-strategy-rank
              :name name
-             :rank :scout  ; All start as Scouts
+             :rank :incubator  ; All start as Incubators
              :trades 0 :wins 0 :total-pnl 0
              :promotion-date nil :last-trade nil))))
 
 (defun calculate-rank-multiplier (rank)
   "Get lot multiplier based on rank"
   (case rank
-    (:scout    0.25)   ; 25% - Learning
+    ((:incubator :scout) 0.25)   ; 25% - Learning (legacy :scout alias)
     (:warrior  1.00)   ; 100% - Full combat
     (:veteran  1.25)   ; 125% - Proven
     (:legend   1.50)   ; 150% - Hall of Fame material
     (otherwise 0.50)))
 
 (defparameter *score-min-warrior* 0.20
-  "Minimum composite score for Scout -> Warrior promotion.")
+  "Minimum composite score for Incubator -> Warrior promotion.")
 (defparameter *score-min-veteran* 0.25
   "Minimum composite score for Warrior -> Veteran promotion.")
 (defparameter *score-min-legend* 0.30
   "Minimum composite score for Veteran -> Legend promotion.")
 (defparameter *score-demote-threshold* 0.05
-  "Composite score threshold for demotion back to Scout.")
+  "Composite score threshold for demotion back to Incubator.")
 
 (defun check-promotion (strategy-name)
   "Check if strategy deserves promotion (Composite Score)"
@@ -79,8 +79,8 @@
       
       ;; Promotion criteria (Composite score to reduce Sharpe bias)
       (cond
-        ;; Scout → Warrior: 10+ trades, 40%+ win rate, positive PnL, composite score
-        ((and (eq current-rank :scout)
+        ;; Incubator → Warrior: 10+ trades, 40%+ win rate, positive PnL, composite score
+        ((and (member current-rank '(:scout :incubator))
               (>= trades 10)
               (>= win-rate 0.40)
               (> pnl 0)
@@ -88,7 +88,7 @@
          (setf (strategy-rank-rank rank-data) :warrior)
          (setf (strategy-rank-promotion-date rank-data) (get-universal-time))
          ;; Coming of Age ceremony
-         (coming-of-age strategy-name "Scout" "Warrior")
+         (coming-of-age strategy-name "Incubator" "Warrior")
          :warrior)
         
         ;; Warrior → Veteran: 50+ trades, 50%+ win rate, 500+ PnL, composite score
@@ -120,9 +120,9 @@
         ((and (member current-rank '(:warrior :veteran))
               (or (< pnl -300)
                   (and (> trades 20) (< score *score-demote-threshold*))))  ; Significant degradation
-         (setf (strategy-rank-rank rank-data) :scout)
-         (format t "[L] ⚠️ ~a demoted to Scout due to poor performance (Score: ~,2f)~%" strategy-name score)
-         :scout)
+         (setf (strategy-rank-rank rank-data) :incubator)
+         (format t "[L] ⚠️ ~a demoted to Incubator due to poor performance (Score: ~,2f)~%" strategy-name score)
+         :incubator)
         
         (t current-rank)))))
 

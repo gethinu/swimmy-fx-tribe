@@ -27,16 +27,19 @@
       (list key)
       (list key value)))
 
-(defun request-backtest-v2 (strat &key start-date end-date start-ts end-ts phase range-id (symbol nil))
+(defun request-backtest-v2 (strat &key start-date end-date start-ts end-ts phase range-id (symbol nil) (request-id nil))
   "Request backtest with specific date range.
    start-date/end-date: 'YYYY.MM.DD' strings."
-  (let* ((actual-symbol (or symbol (strategy-symbol strat) "USDJPY"))
+  (let* ((req-id (or request-id (swimmy.core::generate-uuid)))
+         (actual-symbol (or symbol (strategy-symbol strat) "USDJPY"))
          (tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
          (timeframe (get-tf-minutes tf-slot))
          (start-ts (or start-ts
                        (and start-date (- (parse-date-to-timestamp start-date) 2208988800)))) ; Lisp Time -> Unix
          (end-ts (or end-ts
                      (and end-date (- (parse-date-to-timestamp end-date) 2208988800)))))      ; 2208988800 = 1970 offset
+
+    (setf swimmy.globals:*backtest-submit-last-id* req-id)
 
     (format t "[BT-V2] 🚀 Requesting ~a Range: ~a - ~a (~a)~%" 
             (strategy-name strat) (or start-date "ALL") (or end-date "ALL") actual-symbol)
@@ -57,6 +60,7 @@
       (let* ((payload (list
                        (cons 'action "BACKTEST")
                        (cons 'strategy strategy-alist)
+                       (cons 'request_id req-id)
                        (option-field 'start_time start-ts)
                        (option-field 'end_time end-ts)
                        (option-field 'data_id (format nil "~a_M1" actual-symbol))

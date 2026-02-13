@@ -232,6 +232,39 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
       (assert-true (numberp (option-some 'start_time payload)) "Expected start_time Option<i64>")
       (assert-true (numberp (option-some 'end_time payload)) "Expected end_time Option<i64>"))))
 
+(deftest test-request-backtest-v2-includes-request-id
+  "request-backtest-v2 should include request_id for BACKTEST correlation."
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+        (orig-fetch (symbol-function 'swimmy.school::fetch-swap-history)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (setf (symbol-function 'swimmy.school::fetch-swap-history)
+                (lambda (symbol &key start-ts end-ts)
+                  (declare (ignore symbol start-ts end-ts))
+                  nil))
+          (let ((strat (swimmy.school:make-strategy
+                        :name "Test-BT-V2-REQ"
+                        :indicators '((sma 5) (sma 20))
+                        :sl 0.001
+                        :tp 0.002
+                        :volume 0.01
+                        :indicator-type "sma"
+                        :timeframe 60
+                        :symbol "USDJPY")))
+            (swimmy.school::request-backtest-v2 strat :start-date "2020.01.01" :end-date "2020.12.31")))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send)
+      (setf (symbol-function 'swimmy.school::fetch-swap-history) orig-fetch))
+    (assert-not-nil captured "Expected V2 backtest payload to be sent")
+    (let* ((payload (parse-sexpr-payload captured))
+           (request-id (field 'request_id payload)))
+      (assert-true (and (stringp request-id) (> (length request-id) 0))
+                   "Expected non-empty request_id in V2 payload"))))
+
 (deftest test-request-backtest-v2-emits-none-optionals
   "request-backtest-v2 should emit Option fields as empty lists when nil"
   (let ((captured nil)

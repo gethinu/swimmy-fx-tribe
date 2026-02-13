@@ -487,6 +487,52 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-evolution-report-includes-a-gate-pressure-active-b
+  "Evolution report should include A Stage1 gate pressure for active B candidates."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-a-gate-pressure-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      ;; Active B fixture:
+                      ;; total=5, pass_all=1
+                      ;; pass sharpe/pf/wr/maxdd = 4/4/4/4
+                      ;; pf_near[1.24,1.30)=1
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-ALL-PASS" ":B" 0.60 1.32 0.45 0.10)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-PF-NEAR" ":B" 0.70 1.28 0.46 0.10)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-WR-FAIL" ":B" 0.80 1.40 0.40 0.10)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-SHARPE-FAIL" ":B" 0.44 1.50 0.50 0.10)
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-DD-FAIL" ":B" 0.90 1.35 0.50 0.20)
+                      ;; Non-B should not be counted
+                      (swimmy.school::execute-non-query
+                       "INSERT OR REPLACE INTO strategies (name, rank, sharpe, profit_factor, win_rate, max_dd) VALUES (?, ?, ?, ?, ?, ?)"
+                       "AGP-INCUBATOR" ":INCUBATOR" 0.90 1.40 0.50 0.10)
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true
+                         (search "A Gate Pressure (Active B): total=5 pass_all=1 | pass sharpe=4 pf=4 wr=4 maxdd=4 | pf_near[1.24,1.30)=1"
+                                 report)
+                         "Report should include Active B gate pressure summary line")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-evolution-report-reflects-evolution-daemon-status
   "Evolution report should reflect evolution daemon service state instead of hardcoded Active."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-daemon-status-~a.db" (get-universal-time))))
@@ -635,6 +681,53 @@
                   "Long names with same prefix should remain distinguishable")
     (assert-true (<= (length short-a) 25) "Display name should fit max length")
     (assert-true (search ".." short-a) "Display name should include truncation marker")))
+
+(deftest test-a-base-deficit-score-prioritizes-pf-shortfall
+  "A-base deficit score should penalize PF shortfall more than equivalent WR shortfall."
+  (let* ((pf-short (cl-user::make-strategy :name "PF-SHORT"
+                                           :symbol "USDJPY"
+                                           :rank :B
+                                           :sharpe 0.60
+                                           :profit-factor 1.17
+                                           :win-rate 0.50
+                                           :max-dd 0.10))
+         (wr-short (cl-user::make-strategy :name "WR-SHORT"
+                                           :symbol "USDJPY"
+                                           :rank :B
+                                           :sharpe 0.60
+                                           :profit-factor 1.35
+                                           :win-rate 0.387
+                                           :max-dd 0.10))
+         (pf-deficit (swimmy.school::a-base-deficit-score pf-short))
+         (wr-deficit (swimmy.school::a-base-deficit-score wr-short)))
+    ;; Both are ~10% short on one A gate each; PF should be treated as more severe.
+    (assert-true (> pf-deficit wr-deficit)
+                 "PF deficit should be weighted heavier than WR deficit in culling penalty")))
+
+(deftest test-strategy-culling-priority-score-prefers-pf-near-band
+  "Culling keep order should prioritize PF-near candidate over PF-far high-sharpe candidate."
+  (let* ((pf-near (cl-user::make-strategy :name "PF-NEAR"
+                                          :symbol "USDJPY"
+                                          :rank :B
+                                          :sharpe 0.75
+                                          :profit-factor 1.28
+                                          :win-rate 0.45
+                                          :max-dd 0.10))
+         (pf-far-high-sharpe (cl-user::make-strategy :name "PF-FAR-HIGH-SH"
+                                                     :symbol "USDJPY"
+                                                     :rank :B
+                                                     :sharpe 1.80
+                                                     :profit-factor 1.10
+                                                     :win-rate 0.55
+                                                     :max-dd 0.06))
+         (near-band (swimmy.school::strategy-culling-pf-priority-band pf-near))
+         (far-band (swimmy.school::strategy-culling-pf-priority-band pf-far-high-sharpe))
+         (near-score (swimmy.school::strategy-culling-priority-score pf-near))
+         (far-score (swimmy.school::strategy-culling-priority-score pf-far-high-sharpe)))
+    (assert-equal 1 near-band "PF near candidate should be classified as near band")
+    (assert-equal 0 far-band "PF-far candidate should be classified as non-near band")
+    (assert-true (> near-score far-score)
+                 "PF near band should outrank PF-far candidate even when Sharpe is lower")))
 
 (deftest test-oos-status-line-uses-db-metrics
   "OOS status line should reflect DB queue and OOS results."

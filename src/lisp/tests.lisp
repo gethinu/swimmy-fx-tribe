@@ -174,6 +174,74 @@
       (when orig-v2
         (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2)))))
 
+(deftest test-backtest-result-phase1-normalizes-base-name
+  "BACKTEST_RESULT with _P1 suffix should apply metrics to base strategy name."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (called nil)
+         (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+         (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+         (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+         (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                       (symbol-function 'swimmy.school::handle-v2-result))))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                (lambda (name metrics) (setf called (list name metrics))))
+          (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                (lambda (&rest _args) (declare (ignore _args)) (values nil nil nil)))
+          (when (fboundp 'swimmy.school::handle-v2-result)
+            (setf (symbol-function 'swimmy.school::handle-v2-result)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (funcall fn "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-P1-NAME_P1\") (sharpe . 0.8) (trades . 5) (request_id . \"RID-P1\"))))")
+          (assert-not-nil called "Expected apply-backtest-result to be called")
+          (assert-equal "UT-P1-NAME" (first called)
+                        "Expected _P1 suffix to be stripped before apply-backtest-result")
+          (assert-equal "RID-P1" (getf (second called) :request-id)
+                        "Expected request-id in metrics"))
+      (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+      (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+      (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+      (when orig-v2
+        (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2)))))
+
+(deftest test-backtest-result-phase1-excluded-from-rr-buffer
+  "Phase1 BACKTEST_RESULT (_P1) should not be counted in RR batch buffer."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-apply (symbol-function 'swimmy.school:apply-backtest-result))
+         (orig-cache (symbol-function 'swimmy.school:cache-backtest-result))
+         (orig-lookup (symbol-function 'swimmy.school:lookup-oos-request))
+         (orig-v2 (and (fboundp 'swimmy.school::handle-v2-result)
+                       (symbol-function 'swimmy.school::handle-v2-result)))
+         (orig-rr swimmy.globals:*rr-backtest-results-buffer*)
+         (orig-rr-exp swimmy.globals:*rr-expected-backtest-count*))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*rr-backtest-results-buffer* nil)
+          (setf swimmy.globals:*rr-expected-backtest-count* 20)
+          (setf (symbol-function 'swimmy.school:apply-backtest-result)
+                (lambda (&rest _args) (declare (ignore _args)) t))
+          (setf (symbol-function 'swimmy.school:cache-backtest-result)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school:lookup-oos-request)
+                (lambda (&rest _args) (declare (ignore _args)) (values nil nil nil)))
+          (when (fboundp 'swimmy.school::handle-v2-result)
+            (setf (symbol-function 'swimmy.school::handle-v2-result)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (funcall fn "((type . \"BACKTEST_RESULT\") (result . ((strategy_name . \"UT-RR-MIX_P1\") (sharpe . 0.4) (trades . 3) (request_id . \"RID-RR-P1\"))))")
+          (assert-true (null swimmy.globals:*rr-backtest-results-buffer*)
+                       "Phase1 result should not be pushed into RR results buffer"))
+      (setf swimmy.globals:*rr-backtest-results-buffer* orig-rr)
+      (setf swimmy.globals:*rr-expected-backtest-count* orig-rr-exp)
+      (setf (symbol-function 'swimmy.school:apply-backtest-result) orig-apply)
+      (setf (symbol-function 'swimmy.school:cache-backtest-result) orig-cache)
+      (setf (symbol-function 'swimmy.school:lookup-oos-request) orig-lookup)
+      (when orig-v2
+        (setf (symbol-function 'swimmy.school::handle-v2-result) orig-v2)))))
+
 (deftest test-backtest-queue-enqueues-when-requester-missing
   "Backtest sends should enqueue before requester is ready"
   (let* ((orig-enabled swimmy.core:*backtest-service-enabled*)
@@ -1289,7 +1357,7 @@
       (setf (symbol-function fn) orig-exec))))
 
 (deftest test-run-qualification-cycle-prioritizes-incubator-candidates
-  "Qualification should include incubator backlog even when many nil-rank scouts exist."
+  "Qualification should include incubator backlog even when many nil-rank candidates exist."
   (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
          (orig-last swimmy.school::*last-qual-cycle*)
          (orig-interval swimmy.school::*qual-cycle-interval*)
@@ -1297,18 +1365,18 @@
          (orig-accepted (symbol-function 'swimmy.school::backtest-dispatch-accepted-p))
          (orig-rename (symbol-function 'swimmy.school::ensure-qualification-candidate-name-unique))
          (requested nil)
-         (scouts (loop for i from 1 to 60
-                       collect (swimmy.school:make-strategy
-                                :name (format nil "UT-SCOUT-~d" i)
-                                :rank nil
-                                :sharpe 0.0
-                                :trades 0
-                                :symbol "USDJPY")))
+         (unranked (loop for i from 1 to 60
+                         collect (swimmy.school:make-strategy
+                                  :name (format nil "UT-NIL-~d" i)
+                                  :rank nil
+                                  :sharpe 0.0
+                                  :trades 0
+                                  :symbol "USDJPY")))
          (inc1 (swimmy.school:make-strategy :name "UT-INC-1" :rank :incubator :sharpe 0.0 :trades 0 :symbol "USDJPY"))
          (inc2 (swimmy.school:make-strategy :name "UT-INC-2" :rank :incubator :sharpe 0.0 :trades 0 :symbol "USDJPY")))
     (unwind-protect
         (progn
-          (setf swimmy.school::*strategy-knowledge-base* (append scouts (list inc1 inc2)))
+          (setf swimmy.school::*strategy-knowledge-base* (append unranked (list inc1 inc2)))
           (setf swimmy.school::*last-qual-cycle* 0)
           (setf swimmy.school::*qual-cycle-interval* 0)
           (setf (symbol-function 'swimmy.school::ensure-qualification-candidate-name-unique)
@@ -1331,6 +1399,77 @@
       (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
       (setf (symbol-function 'swimmy.school::backtest-dispatch-accepted-p) orig-accepted)
       (setf (symbol-function 'swimmy.school::ensure-qualification-candidate-name-unique) orig-rename))))
+
+(deftest test-run-qualification-cycle-reconciles-scored-incubator-backlog
+  "Qualification should evaluate scored incubators immediately instead of re-dispatching them."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-last swimmy.school::*last-qual-cycle*)
+         (orig-interval swimmy.school::*qual-cycle-interval*)
+         (orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-accepted (symbol-function 'swimmy.school::backtest-dispatch-accepted-p))
+         (orig-eval (symbol-function 'swimmy.school::evaluate-new-strategy))
+         (requested nil)
+         (evaluated nil)
+         (inc-scored-pass (swimmy.school:make-strategy
+                           :name "UT-INC-SCORED-PASS"
+                           :rank :incubator
+                           :symbol "USDJPY"
+                           :sharpe 0.80
+                           :profit-factor 1.20
+                           :win-rate 0.45
+                           :max-dd 0.12
+                           :trades 120))
+         (inc-scored-fail (swimmy.school:make-strategy
+                           :name "UT-INC-SCORED-FAIL"
+                           :rank :incubator
+                           :symbol "USDJPY"
+                           :sharpe 0.05
+                           :profit-factor 0.95
+                           :win-rate 0.20
+                           :max-dd 0.45
+                           :trades 120))
+         (inc-needs-bt (swimmy.school:make-strategy
+                        :name "UT-INC-NEEDS-BT"
+                        :rank :incubator
+                        :symbol "USDJPY"
+                        :sharpe 0.0
+                        :trades 0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list inc-scored-pass inc-scored-fail inc-needs-bt))
+          (setf swimmy.school::*last-qual-cycle* 0)
+          (setf swimmy.school::*qual-cycle-interval* 0)
+          (setf (symbol-function 'swimmy.school::evaluate-new-strategy)
+                (lambda (s)
+                  (push (swimmy.school:strategy-name s) evaluated)
+                  :B))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (strat &key suffix)
+                  (declare (ignore suffix))
+                  (push (swimmy.school:strategy-name strat) requested)
+                  :accepted))
+          (setf (symbol-function 'swimmy.school::backtest-dispatch-accepted-p)
+                (lambda (state) (eq state :accepted)))
+
+          (swimmy.school::run-qualification-cycle)
+
+          (assert-true (member "UT-INC-SCORED-PASS" evaluated :test #'string=)
+                       "Scored incubator should be evaluated immediately")
+          (assert-true (member "UT-INC-SCORED-FAIL" evaluated :test #'string=)
+                       "Scored incubator should be evaluated immediately")
+          (assert-false (member "UT-INC-SCORED-PASS" requested :test #'string=)
+                        "Scored incubator should not be re-dispatched")
+          (assert-false (member "UT-INC-SCORED-FAIL" requested :test #'string=)
+                        "Scored incubator should not be re-dispatched")
+          (assert-true (member "UT-INC-NEEDS-BT" requested :test #'string=)
+                       "Unscored incubator should still be dispatched"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*last-qual-cycle* orig-last)
+      (setf swimmy.school::*qual-cycle-interval* orig-interval)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (setf (symbol-function 'swimmy.school::backtest-dispatch-accepted-p) orig-accepted)
+      (setf (symbol-function 'swimmy.school::evaluate-new-strategy) orig-eval))))
 
 (deftest test-strategy-to-alist-omits-filter-enabled-when-false
   "strategy-to-alist should omit filter_enabled when filter is disabled (Rust expects bool default false)"
@@ -4019,6 +4158,79 @@
       (setf swimmy.globals:*rr-backtest-results-buffer* orig-buf)
       (setf swimmy.globals:*rr-expected-backtest-count* orig-exp))))
 
+(deftest test-notify-backtest-summary-preserves-state-for-timeout-progress
+  "Timeout progress report should not clear RR buffer/expected state."
+  (let* ((orig-notify (symbol-function 'swimmy.core:notify-discord-backtest))
+         (orig-ranks (symbol-function 'swimmy.school:get-db-rank-counts))
+         (orig-buf swimmy.globals:*rr-backtest-results-buffer*)
+         (orig-exp swimmy.globals:*rr-expected-backtest-count*)
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*rr-backtest-results-buffer*
+                (list (cons "UT-RR-PROGRESS"
+                            (list :sharpe 0.55 :profit-factor 1.22 :win-rate 0.41 :max-dd 0.11 :trades 120))))
+          (setf swimmy.globals:*rr-expected-backtest-count* 10)
+          (setf (symbol-function 'swimmy.school:get-db-rank-counts)
+                (lambda ()
+                  (list :s 0 :a 0 :b 0 :graveyard 0)))
+          (setf (symbol-function 'swimmy.core:notify-discord-backtest)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)
+                  t))
+          (swimmy.core:notify-backtest-summary :rr :preserve-state t)
+          (assert-true (search "Progress: 1/10" captured)
+                       "Expected timeout progress snapshot in report")
+          (assert-equal 10 swimmy.globals:*rr-expected-backtest-count*
+                        "Expected RR expected count to remain for ongoing batch")
+          (assert-equal 1 (length swimmy.globals:*rr-backtest-results-buffer*)
+                        "Expected RR result buffer to remain for ongoing batch"))
+      (setf (symbol-function 'swimmy.core:notify-discord-backtest) orig-notify)
+      (setf (symbol-function 'swimmy.school:get-db-rank-counts) orig-ranks)
+      (setf swimmy.globals:*rr-backtest-results-buffer* orig-buf)
+      (setf swimmy.globals:*rr-expected-backtest-count* orig-exp))))
+
+(deftest test-notify-backtest-summary-includes-throughput-and-stage1-metrics
+  "RR summary should include throughput/ETA and PF/WR/DD to avoid Sharpe-only misread."
+  (let* ((orig-notify (symbol-function 'swimmy.core:notify-discord-backtest))
+         (orig-ranks (symbol-function 'swimmy.school:get-db-rank-counts))
+         (orig-buf swimmy.globals:*rr-backtest-results-buffer*)
+         (orig-exp swimmy.globals:*rr-expected-backtest-count*)
+         (orig-start swimmy.globals:*rr-backtest-start-time*)
+         (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*rr-backtest-results-buffer*
+                (list (cons "UT-RR-METRICS"
+                            (list :sharpe 1.30 :profit-factor 1.22 :win-rate 0.45 :max-dd 0.01 :trades 194))))
+          (setf swimmy.globals:*rr-expected-backtest-count* 10)
+          (setf swimmy.globals:*rr-backtest-start-time* (- (get-universal-time) 20))
+          (setf (symbol-function 'swimmy.school:get-db-rank-counts)
+                (lambda ()
+                  (list :s 0 :a 0 :b 0 :graveyard 0)))
+          (setf (symbol-function 'swimmy.core:notify-discord-backtest)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf captured msg)
+                  t))
+          (swimmy.core:notify-backtest-summary :rr :preserve-state t)
+          (assert-true (search "Throughput:" captured)
+                       "Expected throughput line in progress summary")
+          (assert-true (search "ETA:" captured)
+                       "Expected ETA line in progress summary")
+          (assert-true (search "PF=" captured)
+                       "Expected PF in top strategy line")
+          (assert-true (search "WR=" captured)
+                       "Expected WR in top strategy line")
+          (assert-true (search "DD=" captured)
+                       "Expected DD in top strategy line"))
+      (setf (symbol-function 'swimmy.core:notify-discord-backtest) orig-notify)
+      (setf (symbol-function 'swimmy.school:get-db-rank-counts) orig-ranks)
+      (setf swimmy.globals:*rr-backtest-results-buffer* orig-buf)
+      (setf swimmy.globals:*rr-expected-backtest-count* orig-exp)
+      (setf swimmy.globals:*rr-backtest-start-time* orig-start))))
+
 (deftest test-format-percent-no-double
   "format-percent should return a single percent sign"
   (let ((fn (find-symbol "FORMAT-PERCENT" :swimmy.main)))
@@ -4809,6 +5021,108 @@
       (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify)
       (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p) orig-graveyard))))
 
+(deftest test-add-to-kb-breeder-requires-phase1-screening-when-require-bt
+  "Breeder entry with require-bt should always queue Phase1 screening and remain incubator."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-startup swimmy.school::*startup-mode*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (symbol-function 'swimmy.school::notify-recruit-unified))
+         (orig-graveyard (symbol-function 'swimmy.school::is-graveyard-pattern-p))
+         (orig-phase1 (symbol-function 'swimmy.school::run-phase-1-screening))
+         (phase1-called 0)
+         (child (swimmy.school:make-strategy :name "UT-BREEDER-PHASE1"
+                                             :symbol "USDJPY"
+                                             :timeframe 300
+                                             :direction :BOTH
+                                             :rank nil
+                                             :sl 10.0
+                                             :tp 20.0
+                                             :sharpe 1.8
+                                             :profit-factor 1.6
+                                             :win-rate 0.55
+                                             :max-dd 0.10
+                                             :indicators '((ema 20))
+                                             :entry '(> close ema-20)
+                                             :exit '(< close ema-20))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*category-pools* (make-hash-table))
+          (setf swimmy.school::*startup-mode* nil)
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::notify-recruit-unified)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::run-phase-1-screening)
+                (lambda (&rest args)
+                  (declare (ignore args))
+                  (incf phase1-called)
+                  t))
+          (assert-true (swimmy.school:add-to-kb child :breeder :notify nil :require-bt t)
+                       "Expected breeder child to be admitted as incubator pending Phase1")
+          (assert-equal 1 phase1-called "Expected Phase1 screening to be queued once")
+          (assert-equal :incubator (swimmy.school:strategy-rank child)
+                        "Breeder child should remain incubator until Phase1 result"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*startup-mode* orig-startup)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify)
+      (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p) orig-graveyard)
+      (setf (symbol-function 'swimmy.school::run-phase-1-screening) orig-phase1))))
+
+(deftest test-run-legend-breeding-routes-child-through-add-to-kb
+  "Legend breeding should route child admission through add-to-kb with breeder BT requirements."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-get (symbol-function 'swimmy.school::get-strategies-by-rank))
+         (orig-breed (symbol-function 'swimmy.school::breed-strategies))
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-inc (symbol-function 'swimmy.school::increment-breeding-count))
+         (legend (swimmy.school:make-strategy :name "UT-LEGEND-PARENT" :rank :legend :generation 10))
+         (b-rank (swimmy.school:make-strategy :name "UT-B-PARENT" :rank :B :generation 3))
+         (child (swimmy.school:make-strategy :name "UT-LEGEND-CHILD" :rank nil :generation 11))
+         (add-called 0)
+         (captured-source nil)
+         (captured-require-bt nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf (symbol-function 'swimmy.school::get-strategies-by-rank)
+                (lambda (rank)
+                  (case rank
+                    (:legend (list legend))
+                    (:B (list b-rank))
+                    (otherwise nil))))
+          (setf (symbol-function 'swimmy.school::breed-strategies)
+                (lambda (&rest args)
+                  (declare (ignore args))
+                  child))
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (strategy source &key notify require-bt)
+                  (declare (ignore notify))
+                  (incf add-called)
+                  (setf captured-source source
+                        captured-require-bt require-bt)
+                  (assert-true (eq strategy child) "Legend breeder should pass child to add-to-kb")
+                  t))
+          (setf (symbol-function 'swimmy.school::increment-breeding-count)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (assert-equal 1 (swimmy.school::run-legend-breeding)
+                        "Expected one legend child admitted via add-to-kb")
+          (assert-equal 1 add-called "Expected add-to-kb to be called exactly once")
+          (assert-equal :breeder captured-source "Legend child should use breeder source")
+          (assert-equal t captured-require-bt "Legend child should require BT/Phase1 via add-to-kb")
+          (assert-equal 0 (length swimmy.school::*strategy-knowledge-base*)
+                        "run-legend-breeding should not directly push to KB"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get)
+      (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf (symbol-function 'swimmy.school::increment-breeding-count) orig-inc))))
+
 (deftest test-promotion-triggers-noncorrelation-notification
   "Ensure A/S promotions fire noncorrelation notification once"
   (let* ((tmp-db (format nil "/tmp/swimmy-promo-~a.db" (get-universal-time)))
@@ -4954,7 +5268,7 @@
             (setf (swimmy.school::strategy-rank-trades rank-data) 10)
             (setf (swimmy.school::strategy-rank-wins rank-data) 6)
             (setf (swimmy.school::strategy-rank-total-pnl rank-data) 1000)
-            (setf (swimmy.school::strategy-rank-rank rank-data) :scout))
+            (setf (swimmy.school::strategy-rank-rank rank-data) :incubator))
           (assert-equal :warrior (swimmy.school:check-promotion "UT-PROMO")
                         "should promote based on composite score"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
@@ -6376,6 +6690,37 @@
       (setf (symbol-function 'swimmy.school::run-kb-pruning) orig-run)
       (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get))))
 
+(deftest test-phase-7-wisdom-update-respects-interval
+  "Connector should run heavy wisdom update only when interval elapsed."
+  (let* ((orig-last swimmy.school::*last-wisdom-update-time*)
+         (orig-interval swimmy.school::*wisdom-update-interval-sec*)
+         (orig-analyze (symbol-function 'swimmy.school::analyze-veterans))
+         (called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*last-wisdom-update-time* 0)
+          (setf swimmy.school::*wisdom-update-interval-sec* 300)
+          (setf (symbol-function 'swimmy.school::analyze-veterans)
+                (lambda () (incf called) :ok))
+
+          (swimmy.school::phase-7-wisdom-update :now 1000)
+          (assert-equal 1 called "Expected first wisdom run")
+          (assert-equal 1000 swimmy.school::*last-wisdom-update-time*
+                        "Expected wisdom timestamp update on first run")
+
+          (swimmy.school::phase-7-wisdom-update :now 1200)
+          (assert-equal 1 called "Expected no wisdom run before interval")
+          (assert-equal 1000 swimmy.school::*last-wisdom-update-time*
+                        "Timestamp should remain unchanged before interval")
+
+          (swimmy.school::phase-7-wisdom-update :now 1301)
+          (assert-equal 2 called "Expected wisdom run after interval")
+          (assert-equal 1301 swimmy.school::*last-wisdom-update-time*
+                        "Expected timestamp update after interval"))
+      (setf swimmy.school::*last-wisdom-update-time* orig-last
+            swimmy.school::*wisdom-update-interval-sec* orig-interval
+            (symbol-function 'swimmy.school::analyze-veterans) orig-analyze))))
+
 (deftest test-retired-patterns-weighted-in-avoidance
   "Retired patterns should contribute with lower weight to avoidance analysis."
   (let* ((tmp-gy (format nil "/tmp/swimmy-gy-~a.sexp" (get-universal-time)))
@@ -6448,6 +6793,24 @@
                          "Expected sort progress log")))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb
             (symbol-function 'swimmy.school::save-optimized-params-to-file) orig-save))))
+
+(deftest test-wisdom-push-elite-candidate-keeps-top-n
+  "Wisdom helper should keep descending Top-N candidates only."
+  (let* ((elite nil)
+         (s1 (swimmy.school:make-strategy :name "UT-E1" :sharpe 0.20))
+         (s2 (swimmy.school:make-strategy :name "UT-E2" :sharpe 0.40))
+         (s3 (swimmy.school:make-strategy :name "UT-E3" :sharpe 0.30))
+         (s4 (swimmy.school:make-strategy :name "UT-E4" :sharpe 0.50))
+         (s5 (swimmy.school:make-strategy :name "UT-E5" :sharpe 0.10)))
+    (setf elite (swimmy.school::%wisdom-push-elite-candidate s1 elite 3))
+    (setf elite (swimmy.school::%wisdom-push-elite-candidate s2 elite 3))
+    (setf elite (swimmy.school::%wisdom-push-elite-candidate s3 elite 3))
+    (setf elite (swimmy.school::%wisdom-push-elite-candidate s4 elite 3))
+    (setf elite (swimmy.school::%wisdom-push-elite-candidate s5 elite 3))
+    (assert-equal 3 (length elite) "Expected bounded Top-N size")
+    (assert-equal '("UT-E4" "UT-E2" "UT-E3")
+                  (mapcar #'swimmy.school:strategy-name elite)
+                  "Expected descending top-3 candidates only")))
 
 (deftest test-mutate-indicators-with-library-empty-safe
   "mutate-indicators-with-library should not error on empty indicators."
@@ -6609,6 +6972,8 @@
                   test-internal-process-msg-rejects-read-eval
                   test-internal-process-msg-backtest-request-id-bound
                   test-internal-process-msg-backtest-json-applies
+                  test-backtest-result-phase1-normalizes-base-name
+                  test-backtest-result-phase1-excluded-from-rr-buffer
                   test-backtest-queue-enqueues-when-requester-missing
                   test-backtest-queue-flushes-after-requester
                   test-init-backtest-zmq-fails-when-requester-missing
@@ -6687,10 +7052,12 @@
                   test-backtest-cache-sexp
                   test-trade-logs-supports-pair-id
                   test-strategy-daily-pnl-aggregation
-                  test-add-to-kb-allows-breeder-logic-variant-when-sltp-differs
-                  test-add-to-kb-rejects-breeder-logic-duplicate-when-sltp-too-close
-                  test-add-to-kb-allows-breeder-variant-even-if-graveyard-pattern
-                  test-daily-pnl-correlation
+	                  test-add-to-kb-allows-breeder-logic-variant-when-sltp-differs
+	                  test-add-to-kb-rejects-breeder-logic-duplicate-when-sltp-too-close
+	                  test-add-to-kb-allows-breeder-variant-even-if-graveyard-pattern
+	                  test-add-to-kb-breeder-requires-phase1-screening-when-require-bt
+	                  test-run-legend-breeding-routes-child-through-add-to-kb
+	                  test-daily-pnl-correlation
                   test-daily-pnl-aggregation-scheduler
                   test-2300-trigger-logic
                   test-midnight-reset-logic
@@ -6813,9 +7180,12 @@
                   test-pair-strategy-upsert-fetch
                   test-db-rank-counts
                   test-report-source-drift-detects-mismatch
+                  test-report-source-drift-detects-canonical-archive-mismatch
+                  test-report-source-drift-includes-canonical-line-even-when-delta-zero
                   test-evolution-report-uses-db-counts
                   ;; Backtest payload S-expression tests
                   test-request-backtest-indicator-type-symbol
+                  test-request-backtest-v2-includes-request-id
                   ;; V6.18: Dynamic TP/SL tests
                   test-volatility-multiplier
                   test-atr-empty-candles
@@ -6847,6 +7217,7 @@
 	                  test-qualification-candidate-renames-when-db-rank-archived
 	                  test-qualification-candidate-keeps-name-when-db-rank-active
 	                  test-run-qualification-cycle-prioritizes-incubator-candidates
+	                  test-run-qualification-cycle-reconciles-scored-incubator-backlog
 	                  test-oos-status-updated-on-dispatch
 	                  test-evolution-report-includes-oos-status
                   test-evolution-report-reflects-evolution-daemon-status
@@ -6882,6 +7253,8 @@
                   test-recruit-special-forces-skips-existing-founder-names
                   test-format-phase1-bt-batch-message
                   test-notify-backtest-summary-includes-a-stage1-failure-breakdown
+                  test-notify-backtest-summary-preserves-state-for-timeout-progress
+                  test-notify-backtest-summary-includes-throughput-and-stage1-metrics
                   test-format-percent-no-double
                   test-format-value-rounds-int
                   test-ledger-persists-equity
@@ -6905,11 +7278,13 @@
                   test-move-strategy-from-rank
                   test-ensure-rank-graveyard-deletes-old-rank-file
                   test-evaluate-strategy-performance-sends-to-graveyard
-                  test-ensure-rank-retired-saves-pattern
-                  test-lifecycle-retire-on-max-losses
-	                  test-phase-8-weekly-prune-skips-when-incubator-pending
+	                  test-ensure-rank-retired-saves-pattern
+	                  test-lifecycle-retire-on-max-losses
+		                  test-phase-8-weekly-prune-skips-when-incubator-pending
+	                  test-phase-7-wisdom-update-respects-interval
+                  test-wisdom-push-elite-candidate-keeps-top-n
                   ;; V8.5: Evolution Tests (Genetic Mutation)
-	                  test-rewrite-logic-symbols-sma
+		                  test-rewrite-logic-symbols-sma
 	                  test-mutate-strategy-structure
 	                  test-mutate-param-sl-tp
 	                  test-breed-strategies-name-is-unique-with-same-random-state
@@ -6930,17 +7305,29 @@
                   test-mutate-sltp-with-pfwr-bias-lowers-rr-when-wr-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-raises-rr-when-pf-gap-dominates
 	                  test-breed-strategies-reapplies-pfwr-bias-after-q-selection
+	                  test-clamp-child-sltp-to-parent-envelope-limits-explosive-values
+	                  test-breed-strategies-borrows-logic-when-parents-are-empty
+	                  test-breed-strategies-uses-default-logic-when-no-donor
 	                  test-find-diverse-breeding-partner-falls-back-past-similar-neighbor
+	                  test-can-breed-p-rejects-retired-rank
+	                  test-can-breed-p-rejects-incubator-rank
+	                  test-can-breed-p-rejects-low-trade-parent
 	                  test-find-diverse-breeding-partner-prefers-pfwr-complement
 	                  test-find-diverse-breeding-partner-prioritizes-complement-over-base-score
 	                  test-find-diverse-breeding-partner-filters-low-quality-complements
 	                  test-find-diverse-breeding-partner-prefers-near-pf-wr-only-candidate
+	                  test-find-diverse-breeding-partner-prefers-wr-only-recovery-over-pf-only
+	                  test-find-diverse-breeding-partner-allows-wr-complement-with-moderate-pf
 	                  test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
 	                  test-select-logic-anchor-parent-prefers-high-pf-under-pf-deficit
 	                  test-breed-strategies-combines-high-wr-entry-and-high-pf-exit
 	                  test-strategies-correlation-ok-p-respects-configurable-distance-threshold
 	                  test-strategies-correlation-ok-p-honors-dynamic-min-distance-override
 	                  test-find-diverse-breeding-partner-relaxes-distance-for-complement
+	                  test-find-diverse-breeding-partner-relaxes-distance-for-partial-pf-recovery
+	                  test-find-diverse-breeding-partner-relaxes-distance-for-modest-partial-pf-recovery
+	                  test-find-diverse-breeding-partner-relaxes-distance-to-0p11-for-partial-pf-recovery
+	                  test-find-diverse-breeding-partner-relaxes-distance-for-tiny-partial-pf-recovery
                   ;; Expert Panel P1: Symbol Mismatch Tests
                   test-check-symbol-mismatch-blocks-cross-trading
                   test-check-symbol-mismatch-allows-correct-pair

@@ -265,15 +265,23 @@
       
       ;; 2. BT Validation (Phase 1 Screening Gate)
       (when require-bt
-        (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
-          (when (< sharpe *phase1-min-sharpe*)
-             ;; V50.2: Automatic Screening Injection
-             (format t "[KB] 🐣 Newborn: ~a (Sharpe ~a). Queueing for Phase 1 Screening...~%" name sharpe)
-             (setf (strategy-rank strategy) :incubator)
-             (run-phase-1-screening strategy)
-             ;; We continue to add it as :incubator.
-             ;; NOTE: It will fall through to Step 3.
-             )))
+        (cond
+          ;; V50.6: Breeder products must always pass Phase 1 before B-rank.
+          ;; During startup we skip mandatory queueing to avoid replay storms.
+          ((and (eq source :breeder) (not *startup-mode*))
+           (format t "[KB] 🧪 Breeder candidate: ~a. Queueing mandatory Phase 1 Screening...~%" name)
+           (setf (strategy-rank strategy) :incubator)
+           (run-phase-1-screening strategy))
+          (t
+           (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
+             (when (< sharpe *phase1-min-sharpe*)
+               ;; V50.2: Automatic Screening Injection
+               (format t "[KB] 🐣 Newborn: ~a (Sharpe ~a). Queueing for Phase 1 Screening...~%" name sharpe)
+               (setf (strategy-rank strategy) :incubator)
+               (run-phase-1-screening strategy)
+               ;; We continue to add it as :incubator.
+               ;; NOTE: It will fall through to Step 3.
+               )))))
       
       ;; 3. Add to KB
       (push strategy *strategy-knowledge-base*)

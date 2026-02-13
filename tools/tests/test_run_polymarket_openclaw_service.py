@@ -2,6 +2,7 @@ import unittest
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from unittest import mock
 
 from tools import run_polymarket_openclaw_service as svc
 
@@ -97,6 +98,26 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         text = " ".join(argv)
         self.assertIn("--max-daily-realized-loss-usd 7.5", text)
 
+    def test_build_cycle_args_with_live_execution_flags(self) -> None:
+        env = {
+            "POLYCLAW_CONFIG_FILE": "/cfg.json",
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_LIVE_EXECUTION": "1",
+            "POLYCLAW_LIVE_ORDER_TYPE": "fok",
+            "POLYCLAW_LIVE_MAX_ORDERS_PER_RUN": "2",
+            "POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD": "0.25",
+            "POLYCLAW_LIVE_MIN_STAKE_USD": "1.5",
+            "POLYCLAW_LIVE_FAIL_ON_ERROR": "1",
+        }
+        argv = svc.build_cycle_args(env=env, base_dir=Path("/repo"))
+        text = " ".join(argv)
+        self.assertIn("--live-execution", text)
+        self.assertIn("--live-order-type FOK", text)
+        self.assertIn("--live-max-orders 2", text)
+        self.assertIn("--live-min-expected-value-usd 0.25", text)
+        self.assertIn("--live-min-stake-usd 1.5", text)
+        self.assertIn("--live-fail-on-error", text)
+
     def test_build_cycle_args_with_min_liquidity_and_volume(self) -> None:
         env = {
             "POLYCLAW_CONFIG_FILE": "/cfg.json",
@@ -118,7 +139,11 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         env = {
             "POLYCLAW_OPENCLAW_CMD": "openclaw signals --format jsonl",
             "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_LAST_GOOD_SIGNALS_FILE": "/signals.last_good.jsonl",
+            "POLYCLAW_LAST_GOOD_SIGNALS_META_FILE": "/signals.last_good.meta.json",
             "POLYCLAW_SIGNAL_SYNC_MIN_SIGNALS": "3",
+            "POLYCLAW_SIGNAL_SYNC_MIN_AGENT_SIGNALS": "2",
+            "POLYCLAW_SIGNAL_SYNC_MIN_AGENT_RATIO": "0.4",
             "POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS": "15",
         }
         argv = svc.build_signal_sync_args(env=env, base_dir=Path("/repo"))
@@ -126,8 +151,52 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertIn("tools/openclaw_signal_sync.py", text)
         self.assertIn("--openclaw-cmd openclaw signals --format jsonl", text)
         self.assertIn("--signals-file /signals.jsonl", text)
+        self.assertIn("--last-good-signals-file /signals.last_good.jsonl", text)
+        self.assertIn("--last-good-meta-file /signals.last_good.meta.json", text)
         self.assertIn("--min-signals 3", text)
+        self.assertIn("--min-agent-signals 2", text)
+        self.assertIn("--min-agent-ratio 0.4", text)
         self.assertIn("--timeout-seconds 15", text)
+
+    def test_build_signal_sync_args_auto_expands_timeout_for_bridge(self) -> None:
+        env = {
+            "POLYCLAW_OPENCLAW_CMD": (
+                "python3 /repo/tools/openclaw_agent_signal_bridge.py "
+                "--timeout-seconds 12 --agent-retries 2 --agent-retry-sleep-ms 500"
+            ),
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS": "30",
+        }
+        argv = svc.build_signal_sync_args(env=env, base_dir=Path("/repo"))
+        text = " ".join(argv)
+        self.assertIn("--timeout-seconds 78", text)
+
+    def test_build_signal_sync_args_keeps_larger_timeout(self) -> None:
+        env = {
+            "POLYCLAW_OPENCLAW_CMD": (
+                "python3 /repo/tools/openclaw_agent_signal_bridge.py "
+                "--timeout-seconds 12 --agent-retries 2 --agent-retry-sleep-ms 500"
+            ),
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS": "120",
+        }
+        argv = svc.build_signal_sync_args(env=env, base_dir=Path("/repo"))
+        text = " ".join(argv)
+        self.assertIn("--timeout-seconds 120", text)
+
+    def test_build_signal_sync_args_auto_expands_timeout_for_bridge_with_cap_fallbacks(self) -> None:
+        env = {
+            "POLYCLAW_OPENCLAW_CMD": (
+                "python3 /repo/tools/openclaw_agent_signal_bridge.py "
+                "--timeout-seconds 12 --agent-retries 2 --agent-fallback-retries 0 "
+                "--agent-retry-sleep-ms 500 --agent-market-cap-fallbacks 12,8,5"
+            ),
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS": "30",
+        }
+        argv = svc.build_signal_sync_args(env=env, base_dir=Path("/repo"))
+        text = " ".join(argv)
+        self.assertIn("--timeout-seconds 78", text)
 
     def test_build_signal_sync_args_uses_heuristic_fallback(self) -> None:
         env = {
@@ -151,6 +220,55 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         }
         with self.assertRaises(ValueError):
             svc.build_signal_sync_args(env=env, base_dir=Path("/repo"))
+
+    def test_run_signal_sync_disabled(self) -> None:
+        result = svc.run_signal_sync(env={}, base_dir=Path("/repo"))
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["ran"])
+
+    def test_run_signal_sync_success(self) -> None:
+        env = {
+            "POLYCLAW_SYNC_SIGNALS_BEFORE_RUN": "1",
+            "POLYCLAW_OPENCLAW_CMD": "openclaw signals --format jsonl",
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+        }
+        proc = mock.Mock(returncode=0, stdout='{"ok": true, "signal_count": 10}', stderr="")
+        with mock.patch.object(svc.subprocess, "run", return_value=proc):
+            result = svc.run_signal_sync(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(result["ran"])
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["soft_failed"])
+        self.assertEqual(0, result["exit_code"])
+        self.assertEqual(10, result["result"]["signal_count"])
+
+    def test_run_signal_sync_soft_fail(self) -> None:
+        env = {
+            "POLYCLAW_SYNC_SIGNALS_BEFORE_RUN": "1",
+            "POLYCLAW_SYNC_SOFT_FAIL": "1",
+            "POLYCLAW_OPENCLAW_CMD": "openclaw signals --format jsonl",
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+        }
+        proc = mock.Mock(returncode=1, stdout='{"ok": false, "error": "boom"}', stderr="boom")
+        with mock.patch.object(svc.subprocess, "run", return_value=proc):
+            result = svc.run_signal_sync(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(result["ran"])
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["soft_failed"])
+        self.assertEqual(1, result["exit_code"])
+
+    def test_run_signal_sync_hard_fail_raises(self) -> None:
+        env = {
+            "POLYCLAW_SYNC_SIGNALS_BEFORE_RUN": "1",
+            "POLYCLAW_SYNC_SOFT_FAIL": "0",
+            "POLYCLAW_OPENCLAW_CMD": "openclaw signals --format jsonl",
+            "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+        }
+        proc = mock.Mock(returncode=1, stdout='{"ok": false, "error": "boom"}', stderr="boom")
+        with mock.patch.object(svc.subprocess, "run", return_value=proc):
+            with self.assertRaises(svc.subprocess.CalledProcessError):
+                svc.run_signal_sync(env=env, base_dir=Path("/repo"))
 
     def test_evaluate_signal_health_ok_from_meta(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -384,6 +502,89 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertFalse(health["ok"])
         self.assertEqual("low_agent_signal_ratio", health["reason"])
         self.assertEqual(0, health["agent_signal_count"])
+
+    def test_select_effective_signal_source_uses_last_good(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            primary_signals = Path(td) / "signals.jsonl"
+            primary_meta = Path(td) / "signals.meta.json"
+            last_good_signals = Path(td) / "signals.last_good.jsonl"
+            last_good_meta = Path(td) / "signals.last_good.meta.json"
+
+            primary_signals.write_text('{"market_id":"m1","p_yes":0.6,"source":"heuristic_fallback"}\n', encoding="utf-8")
+            primary_meta.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":1,"source_counts":{"heuristic_fallback":1}}'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+            last_good_signals.write_text('{"market_id":"m1","p_yes":0.6,"source":"openclaw_agent"}\n', encoding="utf-8")
+            last_good_meta.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":1,"source_counts":{"openclaw_agent":1}}'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(primary_signals),
+                "POLYCLAW_SIGNALS_META_FILE": str(primary_meta),
+                "POLYCLAW_LAST_GOOD_SIGNALS_FILE": str(last_good_signals),
+                "POLYCLAW_LAST_GOOD_SIGNALS_META_FILE": str(last_good_meta),
+                "POLYCLAW_USE_LAST_GOOD_SIGNALS_ON_BAD": "1",
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_COUNT": "1",
+            }
+            selected = svc.select_effective_signal_source(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(selected["used_last_good_signals"])
+        self.assertTrue(selected["signal_health"]["ok"])
+        self.assertEqual(str(last_good_signals), selected["selected_env"]["POLYCLAW_SIGNALS_FILE"])
+
+    def test_select_effective_signal_source_without_last_good_keeps_primary(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            primary_signals = Path(td) / "signals.jsonl"
+            primary_meta = Path(td) / "signals.meta.json"
+            primary_signals.write_text('{"market_id":"m1","p_yes":0.6,"source":"heuristic_fallback"}\n', encoding="utf-8")
+            primary_meta.write_text(
+                (
+                    '{"updated_at":"%s","signal_count":1,"source_counts":{"heuristic_fallback":1}}'
+                    % datetime.now(timezone.utc).isoformat()
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(primary_signals),
+                "POLYCLAW_SIGNALS_META_FILE": str(primary_meta),
+                "POLYCLAW_USE_LAST_GOOD_SIGNALS_ON_BAD": "1",
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_COUNT": "1",
+            }
+            selected = svc.select_effective_signal_source(env=env, base_dir=Path("/repo"))
+
+        self.assertFalse(selected["used_last_good_signals"])
+        self.assertFalse(selected["signal_health"]["ok"])
+
+    def test_format_signal_source_for_log_hides_full_env(self) -> None:
+        payload = {
+            "used_last_good_signals": False,
+            "selected_env": {
+                "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+                "POLYCLAW_SIGNALS_META_FILE": "/signals.meta.json",
+                "SWIMMY_DISCORD_BOT_TOKEN": "secret",
+            },
+            "signal_health": {"ok": False, "reason": "low_agent_signal_count"},
+            "last_good_signal_health": {"ok": True},
+        }
+        formatted = svc.format_signal_source_for_log(payload)
+        self.assertEqual("/signals.jsonl", formatted["selected_signals_file"])
+        self.assertEqual("/signals.meta.json", formatted["selected_signals_meta_file"])
+        self.assertNotIn("selected_env", formatted)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ Environment=POLYCLAW_HEURISTIC_QUESTION_KEYWORDS=nba,nfl,mlb,nhl,ncaa,lakers,war
 Environment=POLYCLAW_SIGNALS_FILE=/home/swimmy/swimmy/data/openclaw/signals.jsonl
 Environment=POLYCLAW_SIGNALS_META_FILE=/home/swimmy/swimmy/data/openclaw/signals.meta.json
 Environment=POLYCLAW_SIGNAL_SYNC_MIN_SIGNALS=1
-Environment=POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS=30
+Environment=POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS=120
 
 StandardOutput=append:/home/swimmy/swimmy/logs/openclaw_signal_sync.log
 StandardError=append:/home/swimmy/swimmy/logs/openclaw_signal_sync.log

@@ -221,6 +221,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
               (sl . 0.0010)
               (tp . 0.0015)
               (volume . 0.02)))
+ (request_id . "RID-123")         ; 必須: 相関ID
  (phase . "phase1")               ; optional
  (range_id . "P1")                ; optional
  (start_time 1293840000)          ; optional (Unix seconds) - Option<i64>
@@ -233,6 +234,8 @@ Brainのバックテスト要求を専用サービスへオフロードする。
  (symbol . "USDJPY")
  (timeframe 1))                   ; Option<i64>
 ```
+**Required keys**: `action`, `strategy`, `request_id`  
+**Optional keys**: `phase`, `range_id`, `start_time`, `end_time`, `data_id`, `candles_file`, `aux_candles`, `aux_candles_files`, `swap_history`, `symbol`, `timeframe`  
 **Bool値の表現（内部S式）**: `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルは Guardian `serde_lexpr` の bool デコードと不整合を起こすため、Backtest/CPCV 送信時は `#t/#f` に正規化して送る。
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
@@ -268,6 +271,9 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (trades_truncated . false)
             (trades_ref . "RID-123"))))
 ```
+**Notes**:
+- Phase1（`phase="phase1"` / `range_id="P1"`）の結果では `strategy_name` が `<base>_P1` で返る場合がある。受信側は `"_P1"` を除去した基底名でライフサイクル更新（rank判定/DB更新）を行う。
+- `_P1` 結果は Phase1 screening 専用であり、RR/QUAL バッチ進捗カウントには加算しない。
 
 **BACKTEST_RESULT (Error, S-Expression only / JSON禁止)**:
 ```

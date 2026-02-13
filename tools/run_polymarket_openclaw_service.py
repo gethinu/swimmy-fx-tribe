@@ -8,6 +8,7 @@ import subprocess
 import sys
 import json
 import shlex
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping
@@ -119,6 +120,12 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
     autotune_apply_target_config = env.get("POLYCLAW_AUTOTUNE_APPLY_TARGET_CONFIG", "").strip()
     fee = _env_float(env, "POLYCLAW_FEE_BPS_PER_SIDE", 20.0)
     slippage = _env_float(env, "POLYCLAW_SLIPPAGE_BPS_PER_SIDE", 30.0)
+    live_execution = _env_bool(env, "POLYCLAW_LIVE_EXECUTION", False)
+    live_order_type = (env.get("POLYCLAW_LIVE_ORDER_TYPE", "GTC").strip().upper() or "GTC")
+    live_max_orders = _env_int(env, "POLYCLAW_LIVE_MAX_ORDERS_PER_RUN", 0)
+    live_min_expected_value_usd = _env_float(env, "POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD", 0.0)
+    live_min_stake_usd = _env_float(env, "POLYCLAW_LIVE_MIN_STAKE_USD", 1.0)
+    live_fail_on_error = _env_bool(env, "POLYCLAW_LIVE_FAIL_ON_ERROR", False)
 
     args = [
         sys.executable,
@@ -172,6 +179,17 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
     settlements_file = env.get("POLYCLAW_SETTLEMENTS_FILE", "").strip()
     if settlements_file:
         args.extend(["--settlements-file", settlements_file])
+    if live_execution:
+        args.append("--live-execution")
+        args.extend(["--live-order-type", live_order_type])
+        if live_max_orders > 0:
+            args.extend(["--live-max-orders", str(max(0, live_max_orders))])
+        if live_min_expected_value_usd > 0.0:
+            args.extend(["--live-min-expected-value-usd", str(max(0.0, live_min_expected_value_usd))])
+        if live_min_stake_usd > 0.0:
+            args.extend(["--live-min-stake-usd", str(max(0.0, live_min_stake_usd))])
+        if live_fail_on_error:
+            args.append("--live-fail-on-error")
     return args
 
 
@@ -187,11 +205,22 @@ def build_signal_sync_args(*, env: Mapping[str, str], base_dir: Path) -> List[st
         "POLYCLAW_SIGNALS_META_FILE",
         str(base_dir / "data" / "openclaw" / "signals.meta.json"),
     ).strip()
+    last_good_signals_file = env.get(
+        "POLYCLAW_LAST_GOOD_SIGNALS_FILE",
+        str(base_dir / "data" / "openclaw" / "signals.last_good.jsonl"),
+    ).strip()
+    last_good_meta_file = env.get(
+        "POLYCLAW_LAST_GOOD_SIGNALS_META_FILE",
+        str(base_dir / "data" / "openclaw" / "signals.last_good.meta.json"),
+    ).strip()
     min_signals = _env_int(env, "POLYCLAW_SIGNAL_SYNC_MIN_SIGNALS", 1)
+    min_agent_signals = _env_int(env, "POLYCLAW_SIGNAL_SYNC_MIN_AGENT_SIGNALS", 0)
+    min_agent_ratio = _env_float(env, "POLYCLAW_SIGNAL_SYNC_MIN_AGENT_RATIO", 0.0)
     timeout_seconds = _env_int(env, "POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS", 30)
+    timeout_seconds = max(timeout_seconds, _estimate_openclaw_cmd_timeout_seconds(openclaw_cmd))
     if not openclaw_cmd:
         raise ValueError("POLYCLAW_OPENCLAW_CMD is required for signal sync")
-    return [
+    args = [
         sys.executable,
         str(base_dir / "tools" / "openclaw_signal_sync.py"),
         "--openclaw-cmd",
@@ -200,11 +229,180 @@ def build_signal_sync_args(*, env: Mapping[str, str], base_dir: Path) -> List[st
         signals_file,
         "--meta-file",
         meta_file,
+        "--last-good-signals-file",
+        last_good_signals_file,
+        "--last-good-meta-file",
+        last_good_meta_file,
         "--min-signals",
         str(max(0, min_signals)),
+    ]
+    if min_agent_signals > 0:
+        args.extend(["--min-agent-signals", str(max(0, min_agent_signals))])
+    if min_agent_ratio > 0.0:
+        args.extend(["--min-agent-ratio", str(max(0.0, min(1.0, min_agent_ratio)))])
+    args.extend([
         "--timeout-seconds",
         str(max(1, timeout_seconds)),
-    ]
+    ])
+    return args
+
+
+def run_signal_sync(*, env: Mapping[str, str], base_dir: Path) -> Dict[str, object]:
+    if not _env_bool(env, "POLYCLAW_SYNC_SIGNALS_BEFORE_RUN", False):
+        return {"ran": False, "ok": True, "soft_failed": False}
+    args = build_signal_sync_args(env=env, base_dir=base_dir)
+    proc = subprocess.run(args, capture_output=True, text=True, check=False)
+    result: Dict[str, object] = {
+        "ran": True,
+        "ok": proc.returncode == 0,
+        "exit_code": int(proc.returncode),
+        "args": args,
+    }
+    stdout = (proc.stdout or "").strip()
+    if stdout:
+        try:
+            payload = json.loads(stdout)
+            if isinstance(payload, dict):
+                result["result"] = payload
+        except json.JSONDecodeError:
+            result["stdout"] = stdout
+    stderr = (proc.stderr or "").strip()
+    if stderr:
+        result["stderr"] = stderr
+    if proc.returncode == 0:
+        result["soft_failed"] = False
+        return result
+
+    soft_fail = _env_bool(env, "POLYCLAW_SYNC_SOFT_FAIL", True)
+    result["soft_failed"] = bool(soft_fail)
+    if soft_fail:
+        return result
+    raise subprocess.CalledProcessError(proc.returncode, args, output=proc.stdout, stderr=proc.stderr)
+
+
+def select_effective_signal_source(*, env: Mapping[str, str], base_dir: Path) -> Dict[str, object]:
+    primary_health = evaluate_signal_health(env=env, base_dir=base_dir)
+    selected_env: Dict[str, str] = dict(env)
+    result: Dict[str, object] = {
+        "signal_health": primary_health,
+        "used_last_good_signals": False,
+        "selected_env": selected_env,
+        "last_good_signal_health": {},
+    }
+    if bool(primary_health.get("ok")):
+        return result
+    if not _env_bool(env, "POLYCLAW_USE_LAST_GOOD_SIGNALS_ON_BAD", True):
+        return result
+
+    last_good_signals = env.get(
+        "POLYCLAW_LAST_GOOD_SIGNALS_FILE",
+        str(base_dir / "data" / "openclaw" / "signals.last_good.jsonl"),
+    ).strip()
+    last_good_meta = env.get(
+        "POLYCLAW_LAST_GOOD_SIGNALS_META_FILE",
+        str(base_dir / "data" / "openclaw" / "signals.last_good.meta.json"),
+    ).strip()
+    if not last_good_signals:
+        return result
+
+    fallback_env: Dict[str, str] = dict(env)
+    fallback_env["POLYCLAW_SIGNALS_FILE"] = last_good_signals
+    if last_good_meta:
+        fallback_env["POLYCLAW_SIGNALS_META_FILE"] = last_good_meta
+    fallback_health = evaluate_signal_health(env=fallback_env, base_dir=base_dir)
+    result["last_good_signal_health"] = fallback_health
+    if bool(fallback_health.get("ok")):
+        result["signal_health"] = fallback_health
+        result["used_last_good_signals"] = True
+        result["selected_env"] = fallback_env
+    return result
+
+
+def format_signal_source_for_log(signal_source: Mapping[str, object]) -> Dict[str, object]:
+    selected_env = signal_source.get("selected_env", {})
+    if not isinstance(selected_env, Mapping):
+        selected_env = {}
+    return {
+        "used_last_good_signals": bool(signal_source.get("used_last_good_signals")),
+        "selected_signals_file": str(selected_env.get("POLYCLAW_SIGNALS_FILE", "")),
+        "selected_signals_meta_file": str(selected_env.get("POLYCLAW_SIGNALS_META_FILE", "")),
+        "signal_health": signal_source.get("signal_health", {}),
+        "last_good_signal_health": signal_source.get("last_good_signal_health", {}),
+    }
+
+
+def _arg_value(tokens: List[str], key: str, default: int) -> int:
+    for idx, token in enumerate(tokens):
+        if token == key and idx + 1 < len(tokens):
+            try:
+                return int(tokens[idx + 1])
+            except (TypeError, ValueError):
+                return default
+    return default
+
+
+def _arg_csv_positive_ints(tokens: List[str], key: str, default: str = "") -> List[int]:
+    raw = ""
+    for idx, token in enumerate(tokens):
+        if token == key and idx + 1 < len(tokens):
+            raw = tokens[idx + 1]
+            break
+    if not raw:
+        raw = default
+    out: List[int] = []
+    for part in str(raw).split(","):
+        text = part.strip()
+        if not text:
+            continue
+        try:
+            value = int(text)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            out.append(value)
+    return out
+
+
+def _build_cap_attempts_for_timeout(*, primary_cap: int, fallback_caps: List[int]) -> List[int]:
+    cap = max(1, int(primary_cap))
+    attempts: List[int] = [cap]
+    seen = {cap}
+    for raw in fallback_caps:
+        try:
+            candidate = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if candidate < 1 or candidate >= cap or candidate in seen:
+            continue
+        attempts.append(candidate)
+        seen.add(candidate)
+    return attempts
+
+
+def _estimate_openclaw_cmd_timeout_seconds(openclaw_cmd: str) -> int:
+    cmd = str(openclaw_cmd or "").strip()
+    if not cmd or "openclaw_agent_signal_bridge.py" not in cmd:
+        return 0
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return 0
+    bridge_timeout = max(1, _arg_value(tokens, "--timeout-seconds", 12))
+    primary_retries = max(0, _arg_value(tokens, "--agent-retries", 2))
+    fallback_retries = max(0, _arg_value(tokens, "--agent-fallback-retries", 0))
+    retry_sleep_ms = max(0, _arg_value(tokens, "--agent-retry-sleep-ms", 300))
+    primary_cap = max(1, _arg_value(tokens, "--agent-market-cap", 20))
+    fallback_caps = _arg_csv_positive_ints(
+        tokens,
+        "--agent-market-cap-fallbacks",
+        default="12,8,5",
+    )
+    cap_attempts = _build_cap_attempts_for_timeout(primary_cap=primary_cap, fallback_caps=fallback_caps)
+
+    primary_seconds = ((primary_retries + 1) * bridge_timeout) + ((primary_retries * retry_sleep_ms) / 1000.0)
+    fallback_seconds = ((fallback_retries + 1) * bridge_timeout) + ((fallback_retries * retry_sleep_ms) / 1000.0)
+    estimated = primary_seconds + max(0, len(cap_attempts) - 1) * fallback_seconds + 5.0
+    return max(1, int(math.ceil(estimated)))
 
 
 def _parse_iso8601(value: str):
@@ -403,10 +601,33 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
 def main() -> None:
     base_dir = resolve_base_dir()
     env: Dict[str, str] = dict(os.environ)
-    if _env_bool(env, "POLYCLAW_SYNC_SIGNALS_BEFORE_RUN", False):
-        sync_args = build_signal_sync_args(env=env, base_dir=base_dir)
-        subprocess.run(sync_args, check=True)
-    signal_health = evaluate_signal_health(env=env, base_dir=base_dir)
+    sync_result = run_signal_sync(env=env, base_dir=base_dir)
+    if bool(sync_result.get("ran")) and not bool(sync_result.get("ok")) and bool(sync_result.get("soft_failed")):
+        print(
+            json.dumps(
+                {
+                    "status": "sync_soft_failed",
+                    "sync": sync_result,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    source_selection = select_effective_signal_source(env=env, base_dir=base_dir)
+    signal_health = source_selection.get("signal_health", {})
+    selected_env_raw = source_selection.get("selected_env", dict(env))
+    selected_env: Dict[str, str] = selected_env_raw if isinstance(selected_env_raw, dict) else dict(env)
+    if bool(source_selection.get("used_last_good_signals")):
+        print(
+            json.dumps(
+                {
+                    "status": "using_last_good_signals",
+                    "signal_source": format_signal_source_for_log(source_selection),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     if not bool(signal_health.get("ok")):
         if _env_bool(env, "POLYCLAW_SKIP_ON_BAD_SIGNALS", True):
             print(
@@ -414,6 +635,8 @@ def main() -> None:
                     {
                         "status": "skipped",
                         "reason": str(signal_health.get("reason", "bad_signals")),
+                        "signal_sync": sync_result,
+                        "signal_source": format_signal_source_for_log(source_selection),
                         "signal_health": signal_health,
                     },
                     ensure_ascii=False,
@@ -422,7 +645,7 @@ def main() -> None:
             )
             return
         raise RuntimeError(f"Bad signals: {signal_health}")
-    args = build_cycle_args(env=env, base_dir=base_dir)
+    args = build_cycle_args(env=selected_env, base_dir=base_dir)
     subprocess.run(args, check=True)
 
 

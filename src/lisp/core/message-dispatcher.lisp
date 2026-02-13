@@ -369,12 +369,14 @@
                           (is-rr (and full-name (search "-RR" full-name)))
                           (is-qual (and full-name (search "-QUAL" full-name)))
                           (is-oos (and full-name (search "-OOS" full-name)))
+                          (is-phase1 (and full-name (search "_P1" full-name :from-end t)))
                           (is-wfv (and full-name (or (search "_IS" full-name :from-end t)
                                                      (search "_OOS" full-name :from-end t))))
                           (name (when full-name
                                   (cond (is-rr (subseq full-name 0 is-rr))
                                         (is-qual (subseq full-name 0 is-qual))
                                         (is-oos (subseq full-name 0 is-oos))
+                                        (is-phase1 (subseq full-name 0 is-phase1))
                                         (t full-name))))
                           (request-id (%alist-val result '(request_id request-id) nil))
                           (metrics (list :sharpe sharpe :trades trades :pnl pnl
@@ -454,6 +456,8 @@
                              (when (and (> expected 0)
                                         (>= count (max 1 (floor (* expected 0.9)))))
                                (swimmy.core:notify-backtest-summary :qual))))
+                          (is-phase1
+                           nil)
                           (t
                            (push (cons name metrics) swimmy.globals:*rr-backtest-results-buffer*)
                            (let ((count (length swimmy.globals:*rr-backtest-results-buffer*))

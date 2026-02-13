@@ -16,7 +16,9 @@
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
 - **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。
   - **Report表示**: Graveyard/Retired は DB値を表示しつつ、Libraryとの差分（ドリフト）も併記する（「数がリセット」誤解を防ぐ）。
+  - **Drift内訳表示**: `Source Drift` の Graveyard/Retired mismatch は `delta(DB-Library)` を明示し、DB側余剰かLibrary側不足かを一目で判別できる文言を正本とする。
   - **ドリフト修復**: `tools/ops/reconcile_archive_db.py` で `data/library/GRAVEYARD/`・`data/library/RETIRED/` をスキャンし、DBへ backfill / rank補正できる（非破壊、ただし大量更新のため運用タイミングに注意）。
+  - **ドリフト修復の実行安定化**: 稼働中に archive ファイルが増減する環境では、`reconcile_archive_db.py` の `--grace-sec` で直近更新ファイルを保留してから補正する。`--grace-sec` の既定は `0`（無効）で、指定時は `mtime > (scan_start - grace_sec)` の archive を今回スキャン対象から除外する。これにより実行中レースで `wrong_rank` が再発し続ける現象を抑制する。
   - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
 - **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
 - **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
@@ -29,6 +31,8 @@
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 - **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
+- **School Wisdom Cadence**: `phase-7-wisdom-update` は毎サイクル実行しない。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）で間隔制御し、重い `analyze-veterans` を常時経路から外す。
+- **School Wisdom メモリ契約**: `analyze-veterans` は `unique-strats/candidates/copy-list+sort` の大規模中間リストを作らず、単一パス（de-dup + filter）で `Top-N`（既定50）だけを保持する。大量KB時の一時メモリ膨張を抑える。
 - **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
 - **Evolution Report 保存先**: レポート保存は `*evolution-report-path*` を正本とし、`write-evolution-report-files` は固定パスを直接書かない。テスト/運用で保存先をバインド可能にして本番 `data/reports/evolution_factory_report.txt` の意図しない上書きを防ぐ。
   - **テスト隔離**: `run-all-tests` は `*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、本番レポートを汚染しない。
@@ -37,10 +41,11 @@
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
-- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`.env` を自動読み込みして Discord 設定を拾う。
+- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
+- **Evolution Loop 排他契約**: `tools/evolution_daemon.py` は `school-daemon.lisp` の稼働を監視し、後発で school が起動した場合は自身の SBCL 子プロセス（`run_lisp_evolution.lisp`）を停止して待機へ戻る。`SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` 指定時のみ並列実行を許可する。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
 - **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
@@ -49,6 +54,7 @@
 - **レポート表示整形**: Evolution Report の `%` 表記は単一 `%` を正本とする（`%%` 表示を出さない）。A Near-Miss 候補は `strategy_name` 単位で重複を除外して表示する。
 - **候補名短縮表示**: Evolution Report の候補名は先頭のみの切り詰めを禁止し、必要時は「先頭 + 末尾」を保持した短縮表示にする（同一prefixで別戦略が同名に見える衝突を防止）。
 - **Validation Coverage 表示**: Evolution Report に OOS/CPCV の DB累計カバレッジ（全体/Active）を表示し、`CPCV Status` の瞬間値が 0 のときでも「未実行」か「過去実行済みで現行バッチ対象なし」かを判別できるようにする。
+- **A Gate Pressure 表示**: Evolution Report に `Active B` 母集団の A Stage1 圧力（`pass_all` と Sharpe/PF/WR/MaxDD 各ゲート通過件数、および PF 近傍帯）を表示し、Sharpe上位でも A/S が 0 の主因が OOS/CPCV 以前の Stage1 かどうかを即時判別できるようにする。
 - **昇格ゲート（vNext）**: Stage 2 を `A: OOS Sharpe>=0.35 かつ コスト控除後Expectancy>0`、`S: CPCV pass_rate>=70% かつ median MaxDD<12%` とし、A/S共通で `MC prob_ruin<=2%` と `DryRun実測スリッページ上限` を満たすことを必須にする。
 - **昇格ゲート実装値（2026-02-11）**:
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
@@ -60,6 +66,7 @@
     - 削除ポリシー: `*dryrun-slippage-max-age-seconds*` が正の値のとき、`dryrun_slippage_samples` の古い行（`observed_at` が保持期間外）を戦略単位で削除する。`NIL` は期間削除を無効化。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
+- **Archive Drift Reconcile 契約**: `tools/ops/reconcile_archive_db.py` は Library→DB 補完だけでなく、DB側余剰アーカイブ名（DB-only）件数を可視化する。必要時はオプションで DB-only 行をバックアップテーブルへ退避してから prune できる（既定は非破壊）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Pattern Similarity Service**: 5565(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
@@ -79,22 +86,35 @@
 - **Brain Bootstrap**: `run.sh` は `brain.lisp` を優先し、欠落時はASDF直起動へフォールバックする。
 - **Backtest Option表現**: `Option<T>` は空/1要素リストを正本（例: `(timeframe 1)` / `(timeframe)`）。
 - **Backtest Result Contract**: `BACKTEST_RESULT` は常に `request_id` を含める（相関/キュー整合のため必須）。
-- **Backtest Bool 正規化契約**: Backtest/CPCV の内部S式で `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルが混入する入力は Backtest Service で正規化して Guardian へ中継する。
+- **Backtest Request Contract**: `BACKTEST` 要求は `request_id` を必須とする。`request-backtest-v2`（Phase1 Screening）を含むすべての送信経路で相関IDを付与し、欠落時の `request_id="MISSING"` error結果を通常評価メトリクスとして扱わない。
+- **Phase1 Result 名正規化契約**: `BACKTEST_RESULT.result.strategy_name` が `*_P1` の場合、受信側は `"_P1"` を除去した基底名で `apply-backtest-result` / DB更新を行う。`_P1` 結果は RR/QUAL の進捗バッファに加算しない。
+- **Backtest Bool 正規化契約**: Backtest/CPCV の内部S式で `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルが混入する入力は Backtest Service で正規化して Guardian へ中継する。S式の構文正規化に失敗した場合でも、既知 bool キー（例: `filter_enabled`）はフォールバックで `t/nil`→`#t/#f` へ置換して Guardian へ渡す。
 - **Backtest Service 運用整合契約**: `swimmy-backtest.service` を正本とし、systemd が inactive の状態で 5580 に手動 `backtest_service.py` が LISTEN している状態をドリフトとして扱う。監査で検知し、運用に修復を促す。
 - **Dashboard Drift 可視化**: `tools/dashboard.py` は `swimmy-backtest` の systemd 状態に加えて 5580 listener と MainPID の整合（drift有無）を表示し、inactive/manual 混在を即時判別できるようにする。
+- **Backtest Knob 役割契約**: `SWIMMY_BACKTEST_MAX_PENDING` / `SWIMMY_BACKTEST_RATE_LIMIT` は **Lisp送信側**（`school-backtest-utils.lisp`）のスロットル設定。`SWIMMY_BACKTEST_MAX_INFLIGHT` は **Backtest Service側**（`tools/backtest_service.py`）の並列inflight上限であり、`MAX_PENDING` は service inflight を直接制御しない。
 - **Backtest Throttle**: `SWIMMY_BACKTEST_MAX_PENDING` と `SWIMMY_BACKTEST_RATE_LIMIT` で送信抑制。`pending = submit - recv` が上限超過またはレート未達のときは即時送信せず、`backtest-send-queue` に再キューする（キュー容量不足時のみ `:throttled` で拒否）。
 - **Backtest Throttle 診断ログ**: throttleログは `pending上限超過` と `rate未達` を原因別に表示する。`pending` だけを表示して rate throttle を誤診しないことを正本とする。
 - **Backtest Rate Limit 運用値**: `SWIMMY_BACKTEST_RATE_LIMIT` は運用チューニング対象とし、2026-02-12 時点の適用値は `140`（従来 `100`）。`pending` が低いのに `rate limit` 再キューが連発する場合は段階的に見直す（例: 100→120→140）。
 - **Backtest Queue 実装契約**: `backtest-send-queue` の enqueue/dequeue は O(1) を維持する（`length`/`nconc` に依存しない）。高頻度スロットル時にキュー操作コストが送信ループの律速にならないことを正本とする。
 - **Backtest Queue 上限設定**: `backtest-send-queue` の容量は `SWIMMY_BACKTEST_SEND_QUEUE_MAX` で調整可能（未指定時は既定値）。運用側で burst 耐性を増やす際はこの値を優先して調整する。
 - **Backtest Service Workers**: `tools/backtest_service.py` は複数 Guardian worker を並列起動できる（`SWIMMY_BACKTEST_WORKERS`、既定はCPU数ベースで自動決定）。受信ループは inflight を管理して非同期に結果を返し、`pending` 張り付き時の処理詰まりを緩和する。
-- **Backtest Worker 運用値**: `SWIMMY_BACKTEST_WORKERS` は運用チューニング対象とし、2026-02-12 時点の適用値は `6`（既定 `4`）。CPU余力がある場合は段階的に増やし、メモリ圧迫や Guardian worker の失敗率を監視しながら調整する。
+- **Backtest Worker/Inflight 運用値**: `SWIMMY_BACKTEST_WORKERS` と `SWIMMY_BACKTEST_MAX_INFLIGHT` は運用チューニング対象。2026-02-13 時点の適用値は `WORKERS=3`, `MAX_INFLIGHT=6`（既定 `4` / `2*workers`）。メモリ圧迫時は worker を先に下げ、throughput低下が許容できない場合のみ段階的に戻す。
 - **Deferred Flush pacing**: `flush-deferred-founders` は Backtest レート制限時に送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）で dispatch し、同一tick内の即時 `:throttled` 連発による `1件/tick` 近傍への失速を抑制する。
 - **RR Batch pacing**: `batch-backtest-knowledge` も受理済み dispatch ごとに送信間隔（`1 / SWIMMY_BACKTEST_RATE_LIMIT` 秒）を挿入し、RRバッチ内で即時 `:throttled` が連発して `Queued: 1` 近傍へ失速するのを抑制する。
 - **Backtest Dispatch 計上契約**: RR/QUAL/Deferred/OOS の dispatch 計上は「受理された送信状態」のみ対象とする。`NIL` / `:throttled` は非受理として expected/sent に含めない。
+- **Backtest Progress Timeout 契約**: `check-timeout-flushes` による進捗通知は「途中経過」として扱い、RR/QUAL/CPCV の `*_results_buffer` と `*_expected_*` をクリアしない。進捗通知後は `*_start_time*` を更新して、同一進捗の連投スパムを防ぐ。
+- **Backtest Progress 可観測性契約**: RR/QUAL の進捗通知は `Progress` 件数だけでなく `Throughput (results/sec)` と `ETA` を併記し、単発スナップショットを「停止/失速」と誤読しないようにする。
+- **Backtest Top Results 表示契約**: Discord の `Top Strategy Results` は Sharpe 単独表示にしない。`PF/WR/MaxDD` を同時表示し、A/S未到達の主要因（PF/WR不足）をメッセージ内で即時判読できる形を正本とする。
+- **Breeder Phase1 必須化**: `add-to-kb` は `source=:breeder` かつ `require-bt=T` の場合、（startup除く）Sharpe値に関わらず `run-phase-1-screening` を必ず要求し、初期ランクを `:incubator` に固定する。Phase1結果でのみ `:B/:graveyard` へ遷移させる。
+- **Breeder 呼び出し契約**: `run-breeding-cycle` は Breeder生成物投入時に `add-to-kb(... :source :breeder :require-bt t)` を使用し、運用経路で上記 Phase1 必須化を常時有効にする。
+- **Legend交配統合契約**: `run-legend-breeding` の子戦略投入は直接 `push` を禁止し、`add-to-kb(... :source :breeder :require-bt t)` 経由に統一する。Legend由来の子も通常Breeder childと同じ検証フロー（Phase1）を通す。
+- **Breeder PF回復圧契約**: 低PF・WR充足ペア（`avg_pf <= 1.15` かつ `avg_wr >= 0.43`）では PF回復モードを強制し、通常の PF bias より高い RR floor と scale floor を適用する。PF不足が主因のカテゴリで Sharpe偏重交配を抑え、PF改善方向を優先する。
+- **Scout語彙廃止契約**: 新規作成/デフォルト/フォールバックで `:scout` を生成しない。未移行データ互換として `:scout` は `:incubator` と同等に扱うが、遷移先・表示・保存は `:incubator` を正本とする。
 - **B-Rank Culling 保持契約**: `run-b-rank-culling-for-category` は A候補に選ばれなかった B戦略を全量 `graveyard` に送らない。カテゴリごとに少なくとも `*culling-threshold*` 件（または A候補キュー件数の大きい方）を B基盤として残し、超過分のみ prune する。
 - **B-Rank Culling 既定閾値**: `*culling-threshold*` の既定値は 20 とし、通常運用ではカテゴリごとの B 基盤を 20 件まで維持する。
 - **B-Rank Culling スコア契約**: prune順は Sharpe 偏重にせず、A Stage1 基準（Sharpe/PF/WR/MaxDD）からの欠損度にペナルティを与える。A基準から遠い B を優先的に cull し、A基準に近い B 基盤を残す。
+- **B-Rank Culling PF優先契約**: A基準欠損ペナルティは PF不足を最優先で重く扱う（PF欠損 > WR/Sharpe/MaxDD）。Sharpe高値でも PF未達のBが残留し続けるドリフトを抑え、A Stage1 `PF>=1.30` 通過候補の比率改善を優先する。
+- **B-Rank Culling PF帯優先契約**: B基盤の保持順は `A PF pass (PF>=1.30)` → `PF near [1.24,1.30)` → `others` を優先し、同一帯内で culling score を比較する。PF帯をまたいで Sharpe 単独で逆転させない。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
@@ -113,18 +133,40 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-13**: `tools/evolution_daemon.py` の排他運用契約を更新。起動後に `swimmy-school` が立ち上がった場合でも evolution 子SBCLを停止して待機へ戻し、二重の `start-evolution-service` ループを継続しない方針を追加。
+- **2026-02-13**: School Connector の Wisdom 実行を間隔制御へ変更。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）を導入し、`phase-7-wisdom-update` が毎サイクルで `analyze-veterans` を実行しない方針を追加。
+- **2026-02-13**: `analyze-veterans` の処理契約を更新。de-dup/filter/sort を単一パス化し、`Top-N`（50件）のみ保持する実装へ変更して Wisdom 抽出時のピークメモリを削減。
+- **2026-02-13**: Breeder の低PF回復圧を強化する方針を追加。`avg_pf<=1.15 && avg_wr>=0.43` のペアで PF回復モード（RR floor/scale floor 強化）を適用し、PF不足停滞の打破を優先する契約を追記。
+- **2026-02-13**: B-Rank culling の保持順を PF帯優先へ更新。`PF>=A基準` → `PF near` → `others` の順に保持候補を選び、同帯内のみ culling score で並べる方針を追加。
+- **2026-02-13**: `tools/system_audit.sh` の systemd監査を強化。`sudo -n` が使えない環境でも `systemctl` 直実行へフォールバックして状態確認を継続し、監査自体を `skipping systemctl status` で欠落させない方針を追加。
 - **2026-02-12**: Evolution Report の `System Status` 契約を更新。`Evolution Daemon Active` を固定表示せず、systemd実状態（`swimmy-evolution.service`）を反映し、`systemctl` 取得不能時のみ heartbeat 補助判定へ切替える方針を追加。
 - **2026-02-12**: Evolution Report の表示整形契約を更新。`CPCV Stage2` / `A Near-Miss` の `%` が `%%` で出る退行を修正し、A Near-Miss の同名戦略重複表示を抑制する方針を追加。
 - **2026-02-12**: Evolution Report の候補名短縮契約を更新。先頭25文字のみの省略で同名衝突が発生するため、先頭+末尾を保持する短縮表示へ統一する方針を追加。
 - **2026-02-12**: Evolution Report に Validation Coverage（OOS/CPCVのDB累計、全体/Active）を追加する方針を追記。`CPCV Status` の瞬間値だけでは実行実績を誤読しやすい点を補正する。
+- **2026-02-13**: Evolution Report に A Gate Pressure（Active B の A Stage1 ゲート通過件数/PF近傍帯）を追加する方針を追記。Sharpe高値でも A/S が 0 のとき、Stage1（特に PF）詰まりを即時判読できるようにする。
+- **2026-02-13**: B-Rank culling の A基準欠損ペナルティを PF優先へ調整する方針を追記。PF不足を WR/Sharpe/MaxDD より重く扱い、`pass_all=0` 停滞時の PF ボトルネック解消を優先する。
 - **2026-02-12**: Backtest throttle の診断ログ契約を追加。`pending` 超過と `rate` 未達を原因別にログ表示し、`pending=1/max=3000` のような rate 由来 throttled を誤解しない運用へ更新。
 - **2026-02-12**: Backtest の運用レート上限を段階調整。`SWIMMY_BACKTEST_RATE_LIMIT` を `100→120→140` に更新し、`pending` 低位でも `rate limit` 再キューが発生するボトルネックを緩和する方針を追加。
 - **2026-02-12**: Backtest Service worker 数を運用調整。`SWIMMY_BACKTEST_WORKERS` を `4→6` へ引き上げ、`pending` が低位でも結果反映が断続的に止まる状況のスループット改善を狙う方針を追加。
+- **2026-02-13**: Backtest Service worker 数を追加調整。`SWIMMY_BACKTEST_WORKERS` を `6→8` へ引き上げ、CPU/メモリ余力を使って RR バッチの処理密度を高める運用へ更新。
+- **2026-02-13**: メモリ圧迫対応として Backtest knobs を再調整。`SWIMMY_BACKTEST_WORKERS` を `8→3`、`SWIMMY_BACKTEST_MAX_INFLIGHT=6` を明示し、`MAX_PENDING`（Lisp送信側）と `MAX_INFLIGHT`（Service側）の役割を分離して運用する方針を追加。
+- **2026-02-13**: Breeder生成物のPhase1スクリーニング契約を強化。`add-to-kb(source=:breeder, require-bt=T)` は Sharpe値に依存せず `run-phase-1-screening` を必須化し、初期ランクを `:incubator` として非検証の即時B昇格を抑止する方針を追加。
+- **2026-02-13**: Breeder運用経路を契約に再整合。`run-breeding-cycle` から `add-to-kb` 呼び出しは `:require-bt t` を正本とし、実運用で Breeder child が必ず Phase1 screening を経由する方針を追加。
+- **2026-02-13**: Legend交配統合契約を追加。`run-legend-breeding` で生成される子戦略も `add-to-kb(:breeder :require-bt t)` に統一し、直接KB投入による検証スキップを禁止する方針を明記。
+- **2026-02-13**: Scout語彙廃止契約を追加。新規ランク生成/フォールバックを `:incubator` へ統一し、旧 `:scout` は後方互換としてのみ受理する方針を明記。
+- **2026-02-13**: BACKTEST_RESULT の `_P1` サフィックス正規化契約を追加。Phase1結果を基底戦略名へ正規化してDB反映し、RR/QUAL進捗集計への混入を防止する方針を追記。
+- **2026-02-13**: Backtest Request の `request_id` 必須契約を更新。`request-backtest-v2`（Phase1）が `request_id` なしで送信されると Backtest Service で `request_id="MISSING"` error結果となるため、送信時に相関IDを必須付与する方針を明記。
+- **2026-02-13**: Backtest/CPCV の timeout 進捗通知契約を更新。途中経過通知ではバッファ/expectedを破棄せず保持し、進捗スナップショット後に start時刻だけ更新して重複通知スパムを抑制する方針を追加。
+- **2026-02-13**: Backtest進捗通知の可観測性契約を拡張。RR/QUAL通知に Throughput/ETA を追加し、Top Strategy Results へ PF/WR/MaxDD を併記して Sharpe単独誤読を抑止する方針を追記。
+- **2026-02-13**: Evolution Report の `Source Drift` 表示を補強。Graveyard/Retired mismatch に `delta(DB-Library)` を付与し、ドリフト方向（DB余剰/Library余剰）を明示する方針を追加。
+- **2026-02-13**: `reconcile_archive_db.py` に `--grace-sec` を実装。`mtime > (scan_start - grace_sec)` の archive ファイルを当該実行から除外し、稼働中レースで `wrong_rank` が揺れ続ける問題を抑制する（既定 `0` は無効）。
 - **2026-02-12**: `finalize_rank_report` の運用契約を更新。既定動作を集計専用（rank変更なし）にし、`SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` 指定時のみ rank評価を実行する方針を追加。
 - **2026-02-12**: 最終エントリー前に Signal Confidence Gate を追加。低確度シグナルは見送り、中確度シグナルはロット縮小（0.55x）で実行し、無差別エントリーを抑制する方針を明記。
 - **2026-02-12**: Dashboard の backtest欄に systemd/listener drift 可視化を追加する方針を追記。`inactive + listener` や PID mismatch を画面上で即時判読可能にする。
 - **2026-02-12**: `swimmy-backtest` の systemd運用ドリフト検知方針を追加。`inactive + manual 5580 LISTEN` を監査FAIL扱いにし、systemd正本への復帰を促す。
 - **2026-02-12**: Backtest Service の S式正規化を強化する方針を追加。`(strategy (k . v) ...)` などの短縮表現を含むBACKTEST要求でも bool を `#t/#f` へ正規化して Guardian へ転送し、`invalid type: symbol, expected boolean` を防止する。
+- **2026-02-13**: Backtest Service の bool 正規化フォールバックを追加する方針を追記。S式 parse 正規化が失敗するケースでも、既知 bool キーの `t/nil` を `#t/#f` へ保守的に置換して Guardian parse error を抑止する。
+- **2026-02-13**: `reconcile_archive_db.py` の運用を拡張。DB-only archive drift の件数を常時表示し、`--prune-db-only` 指定時はバックアップテーブル退避後に prune 可能とする方針を追記。
 - **2026-02-12**: B-Rank culling の既定閾値を 20 へ引き上げる方針を追加。カテゴリごとの B 基盤を 20 件まで維持する運用へ変更。
 - **2026-02-12**: B-Rank culling の prune順を A基準欠損ペナルティ込みへ更新する方針を追加。Sharpe偏重で A基準から遠いBが残るドリフトを抑制する。
 - **2026-02-12**: Backtest Service の実行モデルを並列worker対応に拡張する方針を追加。`SWIMMY_BACKTEST_WORKERS` で Guardian `--backtest-only` の並列数を制御し、inflight 非同期処理で `pending` 上限張り付き時のスループット低下を緩和する。

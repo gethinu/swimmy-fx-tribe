@@ -85,9 +85,9 @@
   "RR cap when WR gap is moderately above target.")
 (defparameter *pfwr-wr-recovery-severe-cap-rr* 1.8
   "RR cap when WR gap is severely above target.")
-(defparameter *pfwr-pf-recovery-gap-min* 0.04
+(defparameter *pfwr-pf-recovery-gap-min* 0.02
   "PF-vs-WR gap delta required before PF recovery RR floor engages.")
-(defparameter *pfwr-pf-recovery-min-rr* 1.8
+(defparameter *pfwr-pf-recovery-min-rr* 2.1
   "Minimum RR enforced when PF deficit dominates WR deficit.")
 (defparameter *pfwr-neutral-rr* 1.4
   "Balanced RR target used when PF/WR deficits are similar.")
@@ -103,15 +103,23 @@
   "Minimum PF/WR pressure applied when parents are opposite complements (PF-only x WR-only).")
 (defparameter *pfwr-complement-stabilize-min-rr* 1.55
   "Lower RR bound used to stabilize opposite-complement pair offspring.")
-(defparameter *pfwr-complement-stabilize-max-rr* 1.85
+(defparameter *pfwr-complement-stabilize-max-rr* 1.70
   "Upper RR bound used to stabilize opposite-complement pair offspring.")
-(defparameter *pfwr-pf-recovery-scale-gain* 0.8
+(defparameter *pfwr-pf-recovery-scale-gain* 1.1
   "SL/TP scale gain for PF-dominant deficits (increases absolute move distance).")
-(defparameter *pfwr-pf-recovery-scale-max* 1.45
+(defparameter *pfwr-pf-recovery-scale-max* 1.70
   "Maximum SL/TP scale multiplier from PF recovery expansion.")
+(defparameter *pfwr-severe-low-pf-threshold* 1.15
+  "Average parent PF threshold that triggers severe PF recovery mode.")
+(defparameter *pfwr-severe-wr-ready-threshold* 0.43
+  "Average parent WR threshold required to trigger severe PF recovery mode.")
+(defparameter *pfwr-severe-min-rr* 2.25
+  "RR floor enforced in severe PF recovery mode.")
+(defparameter *pfwr-severe-scale-floor* 1.30
+  "Minimum SL/TP scale multiplier enforced in severe PF recovery mode.")
 (defparameter *pfwr-complement-scale-floor* 1.40
   "Minimum SL/TP scale multiplier for opposite-complement pair stabilization.")
-(defparameter *pfwr-wr-only-scale-floor* 1.30
+(defparameter *pfwr-wr-only-scale-floor* 1.40
   "Minimum SL/TP scale multiplier when WR deficit is already resolved but PF is still below target.")
 (defparameter *breeder-priority-use-a-base-score* t
   "When T, breeder parent ranking uses A-base-aware culling score if available.")
@@ -123,15 +131,15 @@
   "Partner score bonus when candidate satisfies PF target that parent is missing.")
 (defparameter *breeder-complement-double-bonus* 0.75
   "Extra bonus when candidate satisfies both missing PF and WR targets.")
-(defparameter *breeder-complement-min-pf-when-needs-wr* 1.20
+(defparameter *breeder-complement-min-pf-when-needs-wr* 1.09
   "Minimum PF required for WR-complement candidates to avoid over-fragile pairings.")
 (defparameter *breeder-complement-min-wr-when-needs-pf* 0.38
   "Minimum WR required for PF-complement candidates to avoid over-fragile pairings.")
-(defparameter *breeder-near-pf-threshold* 1.24
+(defparameter *breeder-near-pf-threshold* 1.18
   "PF threshold treated as near-target when parent mainly needs PF recovery.")
 (defparameter *breeder-near-pf-min-wr* 0.43
   "Minimum WR required for near-PF candidates to be considered PF-recovery partners.")
-(defparameter *breeder-near-pf-bonus* 1.0
+(defparameter *breeder-near-pf-bonus* 1.6
   "Partner score bonus for near-target PF candidates when parent needs PF.")
 (defparameter *breeder-wr-only-recovery-min-pf-delta* 0.02
   "Minimum PF improvement required to treat WR-only partner as PF-recovery upgrade.")
@@ -139,10 +147,18 @@
   "Extra score bonus for WR-only x WR-only PF-recovery pairings.")
 (defparameter *breeder-prioritize-complement-partner* t
   "When T, prioritize partners that satisfy at least one PF/WR deficit of the parent.")
-(defparameter *breeder-min-genetic-distance* 0.15
+(defparameter *breeder-min-genetic-distance* 0.03
   "Minimum genetic distance required for a breeding pair (lower allows more diversity attempts).")
 (defparameter *breeder-min-genetic-distance-complement* 0.08
   "Relaxed min genetic distance for complement partners to increase viable pair throughput.")
+(defparameter *breeder-min-genetic-distance-partial-recovery* 0.11
+  "Relaxed min distance for candidates that improve parent's missing PF/WR side but do not fully satisfy complement gates.")
+(defparameter *breeder-partial-recovery-min-pf-delta* 0.01
+  "Minimum PF improvement required to treat a candidate as partial PF recovery.")
+(defparameter *breeder-partial-recovery-min-wr-delta* 0.02
+  "Minimum WR improvement required to treat a candidate as partial WR recovery.")
+(defparameter *breeder-sltp-parent-multiplier-cap* 2.0
+  "Maximum multiplier for child SL/TP relative to the stronger parent envelope.")
 (defvar *breeder-current-pair-min-distance* nil
   "Dynamically scoped per-pair min-distance override for correlation gate.")
 (defparameter *breeder-name-seq* 0
@@ -381,13 +397,34 @@
                  (candidate-near-pf-recovery-p candidate)))
         (and parent-needs-wr cand-wr-complement-p))))
 
+(defun candidate-partial-recovery-p (parent candidate)
+  "True when candidate materially improves parent's missing PF/WR side with acceptable opposite-side floor."
+  (let* ((parent-needs-pf (not (strategy-meets-target-pf-p parent)))
+         (parent-needs-wr (not (strategy-meets-target-wr-p parent)))
+         (parent-pf (float (or (strategy-profit-factor parent) 0.0)))
+         (parent-wr (float (or (strategy-win-rate parent) 0.0)))
+         (cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
+         (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
+         (pf-improves-p (and (>= cand-pf (+ parent-pf *breeder-partial-recovery-min-pf-delta*))
+                             (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
+         (wr-improves-p (and (>= cand-wr (+ parent-wr *breeder-partial-recovery-min-wr-delta*))
+                             (>= cand-pf *breeder-complement-min-pf-when-needs-wr*))))
+    (or (and parent-needs-pf pf-improves-p)
+        (and parent-needs-wr wr-improves-p))))
+
 (defun breeding-min-genetic-distance-for-candidate (parent candidate)
   "Return per-candidate min-distance, relaxing threshold only for valid complements."
-  (if (and *breeder-prioritize-complement-partner*
-           (candidate-complements-parent-p parent candidate))
-      (min *breeder-min-genetic-distance*
-           *breeder-min-genetic-distance-complement*)
-      *breeder-min-genetic-distance*))
+  (cond
+    ((not *breeder-prioritize-complement-partner*)
+     *breeder-min-genetic-distance*)
+    ((candidate-complements-parent-p parent candidate)
+     (min *breeder-min-genetic-distance*
+          *breeder-min-genetic-distance-complement*))
+    ((candidate-partial-recovery-p parent candidate)
+     (min *breeder-min-genetic-distance*
+          *breeder-min-genetic-distance-partial-recovery*))
+    (t
+     *breeder-min-genetic-distance*)))
 
 (defun apply-pfwr-mutation-bias (child-sl child-tp parent1 parent2)
   "Bias child SL/TP toward a healthier PF/WR profile while keeping risk budget constant."
@@ -405,16 +442,24 @@
                (blend (clamp-breeder-float (* *pfwr-mutation-bias-strength* effective-pressure) 0.0 1.0)))
           (if (<= blend 0.0)
               (values sl tp)
-              (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
-                  (pfwr-gap-profile parent1 parent2)
-                (let* ((anchor (select-pfwr-anchor-parent parent1 parent2))
-                     (anchor-sl (max 0.0001 (float (or (strategy-sl anchor) sl))))
-                     (anchor-tp (max 0.0001 (float (or (strategy-tp anchor) tp))))
-                     (current-rr (/ tp (max 0.0001 sl)))
-                     (anchor-rr (/ anchor-tp anchor-sl))
-                     (anchor-weight (clamp-breeder-float *pfwr-anchor-weight* 0.0 1.0))
-                     (gap-delta (- pf-gap-ratio wr-gap-ratio))
-                     (tilt-rr (clamp-breeder-float (+ *pfwr-neutral-rr*
+	              (multiple-value-bind (pf-gap-ratio wr-gap-ratio)
+	                  (pfwr-gap-profile parent1 parent2)
+	                (let* ((anchor (select-pfwr-anchor-parent parent1 parent2))
+	                     (anchor-sl (max 0.0001 (float (or (strategy-sl anchor) sl))))
+	                     (anchor-tp (max 0.0001 (float (or (strategy-tp anchor) tp))))
+	                     (avg-pf (/ (+ (float (or (strategy-profit-factor parent1) 0.0))
+	                                   (float (or (strategy-profit-factor parent2) 0.0)))
+	                                2.0))
+	                     (avg-wr (/ (+ (float (or (strategy-win-rate parent1) 0.0))
+	                                   (float (or (strategy-win-rate parent2) 0.0)))
+	                                2.0))
+	                     (severe-low-pf-p (and (<= avg-pf *pfwr-severe-low-pf-threshold*)
+	                                           (>= avg-wr *pfwr-severe-wr-ready-threshold*)))
+	                     (current-rr (/ tp (max 0.0001 sl)))
+	                     (anchor-rr (/ anchor-tp anchor-sl))
+	                     (anchor-weight (clamp-breeder-float *pfwr-anchor-weight* 0.0 1.0))
+	                     (gap-delta (- pf-gap-ratio wr-gap-ratio))
+	                     (tilt-rr (clamp-breeder-float (+ *pfwr-neutral-rr*
                                                       (* gap-delta *pfwr-neutral-rr-span*))
                                                    *pfwr-min-rr* *pfwr-max-rr*))
                      (target-rr (clamp-breeder-float
@@ -423,30 +468,37 @@
                                  *pfwr-min-rr* *pfwr-max-rr*))
                      (blended-rr (+ (* (- 1.0 blend) current-rr)
                                     (* blend target-rr)))
-                     ;; Extra directional push: PF deficit => higher RR, WR deficit => lower RR.
-                     (directional-rr (+ blended-rr
-                                        (* blend gap-delta *pfwr-neutral-rr-span*)))
-                     (rr-cap (pfwr-effective-rr-cap pf-gap-ratio wr-gap-ratio))
-                     (rr-floor (min rr-cap
-                                    (pfwr-effective-rr-floor pf-gap-ratio wr-gap-ratio)))
-                     (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
-                     (complement-rr-min (max rr-floor *pfwr-complement-stabilize-min-rr*))
-                     (complement-rr-max (min rr-cap *pfwr-complement-stabilize-max-rr*))
-                     (rr-after-complement (if (and opposite-complements-p
-                                                   (<= complement-rr-min complement-rr-max))
-                                              (clamp-breeder-float final-rr
-                                                                   complement-rr-min
-                                                                   complement-rr-max)
-                                              final-rr))
-                     (scale-factor (pfwr-scale-expansion-factor pf-gap-ratio
-                                                                wr-gap-ratio
-                                                                blend
-                                                                opposite-complements-p))
-                     (risk-budget (+ sl tp))
-                     (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
-                     (new-tp (- risk-budget new-sl))
-                     (scaled-sl (* new-sl scale-factor))
-                     (scaled-tp (* new-tp scale-factor)))
+	                     ;; Extra directional push: PF deficit => higher RR, WR deficit => lower RR.
+	                     (directional-rr (+ blended-rr
+	                                        (* blend gap-delta *pfwr-neutral-rr-span*)))
+	                     (rr-cap (pfwr-effective-rr-cap pf-gap-ratio wr-gap-ratio))
+	                     (base-rr-floor (pfwr-effective-rr-floor pf-gap-ratio wr-gap-ratio))
+	                     (rr-floor (min rr-cap
+	                                    (if severe-low-pf-p
+	                                        (max base-rr-floor *pfwr-severe-min-rr*)
+	                                        base-rr-floor)))
+	                     (final-rr (clamp-breeder-float directional-rr rr-floor rr-cap))
+	                     (complement-rr-min (max rr-floor *pfwr-complement-stabilize-min-rr*))
+	                     (complement-rr-max (min rr-cap *pfwr-complement-stabilize-max-rr*))
+	                     (rr-after-complement (if (and (not severe-low-pf-p)
+	                                                   opposite-complements-p
+	                                                   (<= complement-rr-min complement-rr-max))
+	                                              (clamp-breeder-float final-rr
+	                                                                   complement-rr-min
+	                                                                   complement-rr-max)
+	                                              final-rr))
+	                     (raw-scale-factor (pfwr-scale-expansion-factor pf-gap-ratio
+	                                                                    wr-gap-ratio
+	                                                                    blend
+	                                                                    opposite-complements-p))
+	                     (scale-factor (if severe-low-pf-p
+	                                       (max raw-scale-factor *pfwr-severe-scale-floor*)
+	                                       raw-scale-factor))
+	                     (risk-budget (+ sl tp))
+	                     (new-sl (/ risk-budget (+ 1.0 rr-after-complement)))
+	                     (new-tp (- risk-budget new-sl))
+	                     (scaled-sl (* new-sl scale-factor))
+	                     (scaled-tp (* new-tp scale-factor)))
                   (values scaled-sl scaled-tp))))))))
 
 (defun apply-pfwr-post-q-bias (child-sl child-tp parent1 parent2)
@@ -457,6 +509,100 @@
       (let ((*pfwr-mutation-bias-strength*
               (max *pfwr-mutation-bias-strength* *pfwr-post-q-min-strength*)))
         (apply-pfwr-mutation-bias child-sl child-tp parent1 parent2))))
+
+(defun clamp-child-sltp-to-parent-envelope (child-sl child-tp parent1 parent2)
+  "Clamp child SL/TP to a parent-relative envelope to avoid no-trade parameter explosions."
+  (let* ((sl (max 0.1 (float (or child-sl 0.1))))
+         (tp (max 0.1 (float (or child-tp 0.1))))
+         (cap-mult (max 1.0 (float (or *breeder-sltp-parent-multiplier-cap* 2.0))))
+         (p1-sl (max 0.1 (float (or (strategy-sl parent1) 0.1))))
+         (p2-sl (max 0.1 (float (or (strategy-sl parent2) 0.1))))
+         (p1-tp (max 0.1 (float (or (strategy-tp parent1) 0.1))))
+         (p2-tp (max 0.1 (float (or (strategy-tp parent2) 0.1))))
+         (sl-cap (* (max p1-sl p2-sl) cap-mult))
+         (tp-cap (* (max p1-tp p2-tp) cap-mult))
+         (clamped-sl (clamp-breeder-float sl 0.1 sl-cap))
+         (clamped-tp (clamp-breeder-float tp 0.1 tp-cap)))
+    (values clamped-sl clamped-tp)))
+
+(defun strategy-has-usable-breeder-logic-p (strategy)
+  "True when strategy has non-empty indicators and entry/exit logic usable for breeding."
+  (let ((inds (and strategy (strategy-indicators strategy))))
+    (and strategy
+         (not (null inds))
+         (strategy-entry strategy)
+         (strategy-exit strategy))))
+
+(defun find-breeder-logic-donor (category timeframe symbol)
+  "Find a same-category donor with usable logic, preferring exact timeframe+symbol match."
+  (labels ((usable-p (s)
+             (and (strategy-has-usable-breeder-logic-p s)
+                  (if (fboundp 'can-breed-p)
+                      (can-breed-p s)
+                      t)))
+           (match-exact-p (s)
+             (and (eq (strategy-category s) category)
+                  (equal (or (strategy-timeframe s) timeframe) timeframe)
+                  (string= (or (strategy-symbol s) symbol) symbol)))
+           (match-symbol-p (s)
+             (and (eq (strategy-category s) category)
+                  (string= (or (strategy-symbol s) symbol) symbol)))
+           (match-category-p (s)
+             (eq (strategy-category s) category)))
+    (or (find-if (lambda (s) (and (usable-p s) (match-exact-p s))) *strategy-knowledge-base*)
+        (find-if (lambda (s) (and (usable-p s) (match-symbol-p s))) *strategy-knowledge-base*)
+        (find-if (lambda (s) (and (usable-p s) (match-category-p s))) *strategy-knowledge-base*))))
+
+(defun default-breeder-logic-genes (category)
+  "Return fallback indicators/entry/exit genes for each regime category."
+  (case category
+    (:breakout
+     (values '((sma 20) (atr 14))
+             '(or (and (> close sma-20) (> atr 0.0001))
+                  (and (< close sma-20) (> atr 0.0001)))
+             '(or (> pnl tp)
+                  (< pnl (- sl)))))
+    (:reversion
+     (values '((sma 20) (rsi 14))
+             '(or (and (< close sma-20) (< rsi 35))
+                  (and (> close sma-20) (> rsi 65)))
+             '(or (and (> pnl 0) (>= rsi 50))
+                  (> pnl tp)
+                  (< pnl (- sl)))))
+    (:scalp
+     (values '((ema 9) (ema 21) (rsi 4))
+             '(or (and (> ema-9 ema-21) (< rsi 35))
+                  (and (< ema-9 ema-21) (> rsi 65)))
+             '(or (> pnl tp)
+                  (< pnl (- sl)))))
+    (t
+     (values '((sma 20) (sma 50) (rsi 14))
+             '(or (and (> close sma-20) (> sma-20 sma-50) (> rsi 55))
+                  (and (< close sma-20) (< sma-20 sma-50) (< rsi 45)))
+             '(or (> pnl tp)
+                  (< pnl (- sl)))))))
+
+(defun ensure-breeder-logic-availability (entry exit indicators category timeframe symbol)
+  "Backfill missing entry/exit/indicator genes from a compatible donor strategy."
+  (let ((needs-entry (null entry))
+        (needs-exit (null exit))
+        (needs-indicators (or (null indicators)
+                              (and (listp indicators) (null indicators)))))
+    (if (not (or needs-entry needs-exit needs-indicators))
+        (values entry exit indicators)
+        (let ((donor (find-breeder-logic-donor category timeframe symbol)))
+          (multiple-value-bind (default-indicators default-entry default-exit)
+              (default-breeder-logic-genes category)
+            (values (if needs-entry
+                        (or (and donor (strategy-entry donor)) default-entry)
+                        entry)
+                    (if needs-exit
+                        (or (and donor (strategy-exit donor)) default-exit)
+                        exit)
+                  (if needs-indicators
+                      (copy-tree (or (and donor (strategy-indicators donor))
+                                     default-indicators))
+                      indicators)))))))
 
 (defun breed-strategies (parent1 parent2)
   "Create a child strategy from two parents.
@@ -497,6 +643,18 @@
          (child-sl initial-sl)
          (child-tp initial-tp))
 
+    ;; Recover missing logic genes from a compatible donor when both parents are empty.
+    (multiple-value-bind (resolved-entry resolved-exit resolved-indicators)
+        (ensure-breeder-logic-availability logic-entry
+                                           logic-exit
+                                           child-is
+                                           (strategy-category parent1)
+                                           tf
+                                           sym)
+      (setf logic-entry resolved-entry
+            logic-exit resolved-exit
+            child-is resolved-indicators))
+
     ;; PF/WR-aware mutation bias: nudge child RR toward better parent profile.
     (multiple-value-bind (biased-sl biased-tp)
         (apply-pfwr-mutation-bias child-sl child-tp parent1 parent2)
@@ -513,7 +671,7 @@
           (setf child-tp (mutate-value initial-tp 0.2)))))
     
     ;; V47.7: Q-value guided selection (20% exploit, 80% explore)
-    ;; Musk Condition: Only apply to breeding, not Scout
+    ;; Musk Condition: Only apply to breeding path.
     (when (fboundp 'select-sltp-with-q)
       (multiple-value-bind (q-sl q-tp) 
           (select-sltp-with-q tf dir sym child-sl child-tp)
@@ -525,6 +683,12 @@
         (apply-pfwr-post-q-bias child-sl child-tp parent1 parent2)
       (setf child-sl post-q-sl
             child-tp post-q-tp))
+
+    ;; Keep child SL/TP inside a parent-relative envelope to avoid zero-trade blowups.
+    (multiple-value-bind (capped-sl capped-tp)
+        (clamp-child-sltp-to-parent-envelope child-sl child-tp parent1 parent2)
+      (setf child-sl capped-sl
+            child-tp capped-tp))
     
     (make-strategy
       :name child-name
@@ -643,8 +807,8 @@
 	                           ;; V49.2: Inherit Regime Intent
 	                           (setf (strategy-regime-intent child) (or (when (boundp '*current-regime*) *current-regime*) :unknown))
 	                           
-	                           ;; Add to KB (No Backtest req for Incubator -> will be screened in Phase 1)
-	                           (when (add-to-kb child :breeder :require-bt nil :notify nil)
+	                           ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
+	                           (when (add-to-kb child :breeder :require-bt t :notify nil)
 	                             (save-recruit-to-lisp child)
 	                             (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%" (strategy-name child) (strategy-generation child))
 	                             
@@ -711,7 +875,7 @@
   (format t "[PERSIST] 💾 Saved recruited strategy ~a to Library~%" (strategy-name strat)))
 
 ;;; ----------------------------------------------------------------------------
-;; P8: recruit-elite-strategy (Scout) DELETED
+;; P8: recruit-elite-strategy DELETED
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 13: Wisdom Native (Civilization Handover)
@@ -761,42 +925,54 @@
           nil)
         t)))
 
+(defun %wisdom-push-elite-candidate (candidate elites limit)
+  "Insert CANDIDATE into descending SHARPE-sorted ELITES capped by LIMIT."
+  (let* ((cap (max 1 (or limit 50)))
+         (sorted (sort (cons candidate elites) #'>
+                       :key (lambda (s)
+                              (or (strategy-sharpe s)
+                                  most-negative-double-float)))))
+    (if (> (length sorted) cap)
+        (nbutlast sorted (- (length sorted) cap))
+        sorted)))
+
 (defun analyze-veterans ()
   "Analyze the Knowledge Base and extract 'Wisdom' (Best Genes).
    Replaces extract_wisdom.py."
   (format t "[WISDOM] 🧠 Analyzing Veterans for Gene Extraction...~%")
-  (let* ((total (length *strategy-knowledge-base*)))
+  (let* ((total (length *strategy-knowledge-base*))
+         (elite-limit 50))
     (format t "[WISDOM] 🔍 De-duplication starting: ~d strategies...~%" total)
+    (format t "[WISDOM] 🔍 Filtering candidates (Sharpe > 0.1) and streaming Top-~d...~%"
+            elite-limit)
     (let* ((t0 (get-internal-real-time))
-           (unique-strats (remove-duplicates *strategy-knowledge-base* :key #'strategy-name :test #'string=))
-           (dedup-secs (/ (- (get-internal-real-time) t0)
-                          internal-time-units-per-second)))
-      (format t "[WISDOM] ✅ De-dup complete: ~d unique (~,2fs)~%" (length unique-strats) dedup-secs)
-      ;; Filter: Positive Sharpe only, or just take top N?
-      ;; For now, let's take anyone with Sharpe > 0.1 to allow early evolution.
-      (format t "[WISDOM] 🔍 Filtering candidates (Sharpe > 0.1) from ~d...~%" (length unique-strats))
-      (let* ((t1 (get-internal-real-time))
-             (candidates (remove-if-not (lambda (s) (and (strategy-sharpe s) (> (strategy-sharpe s) 0.1)))
-                                        unique-strats))
-             (filter-secs (/ (- (get-internal-real-time) t1)
-                             internal-time-units-per-second)))
-        (format t "[WISDOM] ✅ Filter complete: ~d candidates (~,2fs)~%" (length candidates) filter-secs)
-        ;; Sort by Sharpe
-        (format t "[WISDOM] 🔍 Sorting candidates by Sharpe...~%")
-        (let* ((t2 (get-internal-real-time))
-               (best (sort (copy-list candidates) #'> :key #'strategy-sharpe))
-               (sort-secs (/ (- (get-internal-real-time) t2)
-                             internal-time-units-per-second)))
-          (format t "[WISDOM] ✅ Sort complete (~,2fs)~%" sort-secs)
-          ;; Take Top 50
-          (let* ((elite (subseq best 0 (min (length best) 50)))
-                 (genes (mapcar #'extract-params-from-strategy elite)))
-            (format t "[WISDOM] Found ~d candidates (Sharpe > 0.1). Extracting ~d Elite Genes.~%"
-                    (length candidates) (length elite))
-            (if genes
-                (save-optimized-params-to-file genes)
-                (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
-            (length genes)))))))
+           (seen (make-hash-table :test 'equal))
+           (unique-count 0)
+           (candidate-count 0)
+           (elite nil))
+      ;; Single pass: de-dup + filter + bounded ranking to avoid large transient lists.
+      (dolist (s *strategy-knowledge-base*)
+        (when s
+          (let ((name (strategy-name s)))
+            (unless (gethash name seen)
+              (setf (gethash name seen) t)
+              (incf unique-count)
+              (let ((sharpe (strategy-sharpe s)))
+                (when (and (numberp sharpe) (> sharpe 0.1))
+                  (incf candidate-count)
+                  (setf elite (%wisdom-push-elite-candidate s elite elite-limit))))))))
+      (let* ((elapsed (/ (- (get-internal-real-time) t0)
+                         internal-time-units-per-second))
+             (genes (mapcar #'extract-params-from-strategy elite)))
+        (format t "[WISDOM] ✅ De-dup complete: ~d unique (~,2fs)~%" unique-count elapsed)
+        (format t "[WISDOM] ✅ Filter complete: ~d candidates (~,2fs)~%" candidate-count elapsed)
+        (format t "[WISDOM] ✅ Sort complete (~,2fs)~%" elapsed)
+        (format t "[WISDOM] Found ~d candidates (Sharpe > 0.1). Extracting ~d Elite Genes.~%"
+                candidate-count (length elite))
+        (if genes
+            (save-optimized-params-to-file genes)
+            (format t "[WISDOM] ⚠️ No eligible veterans found. Keeping existing genes.~%"))
+        (length genes)))))
 
 ;;; ============================================================================
 ;;; DEATHMATCH ARENA (Phase 21)

@@ -436,7 +436,7 @@ Sharpe < 0.3 → 違反
 **🏁 V47.7 完全完成**
 
 ---
-## P8: Strategy Pipeline Redesign [ ] 計画中 (Expert Panel GO承認済)
+## P8: Strategy Pipeline Redesign [x] 完了
 
 ### 📋 用語定義
 
@@ -511,23 +511,29 @@ graph TD
 ### 実装順序
 
 #### Phase 1: 基盤整備
-- [ ] add-to-kb 関数作成 (school-kb.lisp 新規)
-- [ ] add-to-kb テスト作成 (**テストファースト**)
-- [ ] `*startup-mode*` フラグ追加
+- [x] add-to-kb 関数作成 (school-kb.lisp 新規)
+- [x] add-to-kb テスト作成 (**テストファースト**)
+- [x] `*startup-mode*` フラグ追加
 
 #### Phase 2: 削除 (バックアップ後)
-- [ ] 旧school-scout.lisp バックアップ
-- [ ] Scout 完全削除
-- [ ] recruit-from-evolution 削除
-- [ ] school-execution:402 削除  
-- [ ] strategies.lisp:23 削除
+- [x] 旧school-scout.lisp バックアップ（N/A: 現ツリーに対象ファイルなし）
+- [x] Scout 完全削除
+- [x] recruit-from-evolution 削除
+- [x] school-execution:402 削除  
+- [x] strategies.lisp:23 削除
 
 #### Phase 3: 統合
-- [ ] Legend交配をBreederに統合
-- [ ] Founder → add-to-kb 経由に変更
-- [ ] Breeder → add-to-kb 経由に変更
-- [ ] **Breeder生成物 → 必ずBT通過確認**
-- [ ] **Founder → 最低限BT検証追加**
+- [x] Legend交配をBreederに統合
+- [x] Founder → add-to-kb 経由に変更
+- [x] Breeder → add-to-kb 経由に変更
+- [x] **Breeder生成物 → 必ずBT通過確認**
+- [x] **Founder → 最低限BT検証追加**
+
+> [!NOTE]
+> 2026-02-13 照合時点: `add-to-kb` 入口統合は実装済み（`school-kb.lisp` / `school-founders.lisp` / `school-breeder.lisp`）。
+> Breeder生成物のBT必須化は `run-breeding-cycle -> add-to-kb(:require-bt t)` と `add-to-kb` 側の `source=:breeder` 強制Phase1で実装済み。
+> Legend交配も `run-legend-breeding -> add-to-kb(:source :breeder :require-bt t)` へ統合済み。
+> Scout語彙は新規生成・フォールバックから撤去済み（`rank=:incubator` を正本化）。旧 `:scout` は既存データ互換のため読取のみ許容。
 
 #### Phase 4: 通知統一 ✅
 - [x] 統一通知フォーマット実装

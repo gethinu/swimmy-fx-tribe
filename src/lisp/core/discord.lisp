@@ -292,6 +292,21 @@
     (declare (ignore sec))
     (format nil "~2,'0d/~2,'0d ~2,'0d:~2,'0d JST" month date hour min)))
 
+(defun format-duration-compact (seconds)
+  "Return compact human-readable duration for progress ETA."
+  (let* ((total (max 0 (truncate (or seconds 0))))
+         (days (floor total 86400))
+         (rem-day (mod total 86400))
+         (hours (floor rem-day 3600))
+         (rem-hour (mod rem-day 3600))
+         (mins (floor rem-hour 60))
+         (secs (mod rem-hour 60)))
+    (cond
+      ((> days 0) (format nil "~dd ~dh ~dm" days hours mins))
+      ((> hours 0) (format nil "~dh ~dm" hours mins))
+      ((> mins 0) (format nil "~dm ~ds" mins secs))
+      (t (format nil "~ds" secs)))))
+
 ;;; ==========================================
 ;;; LOGIC FUNCTIONS
 ;;; ==========================================
@@ -308,7 +323,7 @@
        :scalp)
       (t :trend))))
 
-(defun notify-backtest-summary (&optional (type :rr))
+(defun notify-backtest-summary (&optional (type :rr) &key (preserve-state nil))
    "V49.6: Enhanced summary. Restores Rank Distribution and ensures content visibility."
   (let* ((buffer-sym (case type
                        (:qual 'swimmy.globals:*qual-backtest-results-buffer*)
@@ -318,16 +333,35 @@
                          (:qual 'swimmy.globals:*qual-expected-backtest-count*)
                          (:rr 'swimmy.globals:*rr-expected-backtest-count*)
                          (t 'swimmy.globals:*expected-backtest-count*)))
+         (start-sym (case type
+                      (:qual 'swimmy.globals:*qual-backtest-start-time*)
+                      (:rr 'swimmy.globals:*rr-backtest-start-time*)
+                      (t nil)))
          ;; 1. Capture current state
          (results (copy-list (symbol-value buffer-sym)))
-         (expected (symbol-value expected-sym)))
+         (expected (symbol-value expected-sym))
+         (now (get-universal-time))
+         (start-time (if start-sym (symbol-value start-sym) 0))
+         (elapsed (if (and (numberp start-time) (> start-time 0) (> now start-time))
+                      (- now start-time)
+                      0))
+         (completed (length results))
+         (remaining (max 0 (- expected completed)))
+         (throughput (if (and (> elapsed 0) (> completed 0))
+                         (/ (float completed) elapsed)
+                         0.0))
+         (eta-seconds (if (and (> throughput 0.0) (> remaining 0))
+                          (truncate (/ remaining throughput))
+                          nil)))
     
     (unless (or results (> expected 0))
       (return-from notify-backtest-summary nil))
 
-    ;; 2. CLEAR IMMEDIATELY to prevent double-processing (Race Condition Fix)
-    (setf (symbol-value buffer-sym) nil)
-    (setf (symbol-value expected-sym) 0)
+    ;; 2. Clear only for final summary.
+    ;; Timeout progress snapshots keep buffer/expected intact.
+    (unless preserve-state
+      (setf (symbol-value buffer-sym) nil)
+      (setf (symbol-value expected-sym) 0))
 
     (let* ((category-map (make-hash-table :test 'equal))
            (title (if (eq type :qual) "📊 **Qualification Batch (Incubator)**" "📊 **Round-Robin KB Batch**"))
@@ -356,7 +390,16 @@
                         a-stage1-counts
                         :label "A Stage1 Failures (Batch)")))
            (report-msg (format nil "~a~%⏰ ~a~%~%Progress: ~d/~d results received.~%~%"
-                               title (get-jst-timestamp) (length results) expected)))
+                               title (get-jst-timestamp) completed expected)))
+
+      (when (> expected 0)
+        (setf report-msg
+              (concatenate 'string report-msg
+                           (format nil "Throughput: ~,2f results/sec | ETA: ~a~%~%"
+                                   throughput
+                                   (if eta-seconds
+                                       (format-duration-compact eta-seconds)
+                                       "N/A")))))
     
       ;; 0. Rank Distribution (Only for RR cycles or if KB is relevant)
       (when (or (eq type :rr) (null type))
@@ -420,9 +463,21 @@
             (setf report-msg (concatenate 'string report-msg "~%🌟 **Top Strategy Results (Latest):**~%"))
             (loop for i from 0 below top-count
                   for s = (nth i sorted)
-                  do (setf report-msg (concatenate 'string report-msg 
-                                                  (format nil "  • `~a`: ~,2f Sharpe (~d trades)~%" 
-                                                          (car s) (getf (cdr s) :sharpe) (getf (cdr s) :trades 0)))))))
+                  for metrics = (cdr s)
+                  for sharpe = (or (getf metrics :sharpe) 0.0)
+                  for pf = (or (getf metrics :profit-factor) (getf metrics :pf) 0.0)
+                  for wr = (or (getf metrics :win-rate) (getf metrics :wr) 0.0)
+                  for maxdd = (or (getf metrics :max-dd) (getf metrics :max_dd) 0.0)
+                  for trades = (or (getf metrics :trades) 0)
+                  do (setf report-msg (concatenate 'string report-msg
+                                                   (format nil
+                                                           "  • `~a`: S=~,2f PF=~,2f WR=~,1f% DD=~,2f% (~d trades)~%"
+                                                           (car s)
+                                                           sharpe
+                                                           pf
+                                                           (* 100.0 wr)
+                                                           (* 100.0 maxdd)
+                                                           trades))))))
 
         (notify-discord-backtest report-msg :color (if (eq type :qual) 3447003 5763719))))))
 
@@ -485,7 +540,7 @@
               (getf data :pass-rate 0.0)
               (if (getf data :is-passed) "PASS" "FAIL")))))
 
-(defun notify-cpcv-summary ()
+(defun notify-cpcv-summary (&key (preserve-state nil))
   "V49.5: Send a summary of the CPCV batch to Discord."
   (let* ((results (copy-list *cpcv-results-buffer*))
          (expected *expected-cpcv-count*))
@@ -493,9 +548,11 @@
     (unless (or results (> expected 0))
       (return-from notify-cpcv-summary nil))
 
-    ;; CLEAR IMMEDIATELY (Race Condition Fix)
-    (setf *cpcv-results-buffer* nil)
-    (setf *expected-cpcv-count* 0)
+    ;; Clear only for final summary.
+    ;; Timeout progress snapshots keep buffer/expected intact.
+    (unless preserve-state
+      (setf *cpcv-results-buffer* nil)
+      (setf *expected-cpcv-count* 0))
 
     (let* ((promoted 0)
            (failed 0)
@@ -531,21 +588,24 @@
                (> (length *rr-backtest-results-buffer*) 0)
                (> (- now *rr-backtest-start-time*) timeout))
       (format t "[DISCORD] ⏳ Flushing RR-Batch due to timeout.~%")
-      (notify-backtest-summary :rr))
+      (when (notify-backtest-summary :rr :preserve-state t)
+        (setf *rr-backtest-start-time* now)))
     
     ;; 2. Qualification
     (when (and (> *qual-expected-backtest-count* 0)
                (> (length *qual-backtest-results-buffer*) 0)
                (> (- now *qual-backtest-start-time*) timeout))
       (format t "[DISCORD] ⏳ Flushing Qual-Batch due to timeout.~%")
-      (notify-backtest-summary :qual))
+      (when (notify-backtest-summary :qual :preserve-state t)
+        (setf *qual-backtest-start-time* now)))
       
     ;; 3. CPCV
     (when (and (> *expected-cpcv-count* 0)
                (> (length *cpcv-results-buffer*) 0)
                (> (- now *cpcv-start-time*) timeout))
       (format t "[DISCORD] ⏳ Flushing CPCV-Batch due to timeout.~%")
-      (notify-cpcv-summary))
+      (when (notify-cpcv-summary :preserve-state t)
+        (setf *cpcv-start-time* now)))
 
     ;; 4. Max Age Retirement (Hourly batch)
     (maybe-flush-max-age-retire now)

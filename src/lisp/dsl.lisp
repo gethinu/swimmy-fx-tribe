@@ -191,7 +191,7 @@
             ;; Phase 21: Breeding & Competition DNA (Survival of the Fittest)
             (age 0) (immortal nil) (parents nil))
 
-(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :scout) (symbol "USDJPY") (direction :BOTH)
+(defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :incubator) (symbol "USDJPY") (direction :BOTH)
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
                          (oos-sharpe 0.0) (cpcv-median-sharpe 0.0) (cpcv-median-pf 0.0)
                          (cpcv-median-wr 0.0) (cpcv-median-maxdd 0.0) (cpcv-pass-rate 0.0)

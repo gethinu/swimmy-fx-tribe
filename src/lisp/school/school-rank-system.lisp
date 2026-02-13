@@ -43,6 +43,8 @@
 
 (defparameter *max-breeding-uses* 3
   "Strategies are discarded after being used 3 times for breeding (Legend exempt).")
+(defparameter *breeder-min-parent-trades* 30
+  "Minimum trade evidence required for non-Legend breeding parents.")
 
 (defparameter *a-candidate-category-metrics* (make-hash-table :test 'equal)
   "Latest A-candidate funnel metrics per category key (timeframe direction symbol).")
@@ -68,6 +70,16 @@
   "When T, B-rank culling penalizes candidates farther from A-base thresholds.")
 (defparameter *culling-a-base-deficit-penalty-weight* 1.5
   "Penalty multiplier for A-base deficit in B-rank culling score.")
+(defparameter *a-base-deficit-weight-sharpe* 1.0
+  "Weight for sharpe shortfall in A-base deficit score.")
+(defparameter *a-base-deficit-weight-pf* 1.7
+  "Weight for PF shortfall in A-base deficit score (PF-priority).")
+(defparameter *a-base-deficit-weight-wr* 1.0
+  "Weight for WR shortfall in A-base deficit score.")
+(defparameter *a-base-deficit-weight-maxdd* 1.0
+  "Weight for maxdd excess in A-base deficit score.")
+(defparameter *culling-pf-near-offset* 0.06
+  "Width of PF near band below A-gate PF for B-rank culling priority.")
 
 (defun %clamp (v lo hi)
   (min hi (max lo v)))
@@ -120,7 +132,10 @@
                      (%safe-deficit-ratio (- wr-min wr) wr-min)))
          (dd-def (if (< maxdd dd-max) 0.0
                      (%safe-deficit-ratio (- maxdd dd-max) dd-max))))
-    (+ sh-def pf-def wr-def dd-def)))
+    (+ (* *a-base-deficit-weight-sharpe* sh-def)
+       (* *a-base-deficit-weight-pf* pf-def)
+       (* *a-base-deficit-weight-wr* wr-def)
+       (* *a-base-deficit-weight-maxdd* dd-def))))
 
 (defun strategy-culling-score (strategy)
   "Composite culling score with optional A-base deficit penalty."
@@ -134,6 +149,28 @@
                          (a-base-deficit-score strategy))
                       0.0)))
     (- base penalty)))
+
+(defun strategy-culling-pf-priority-band (strategy)
+  "Return PF priority band for B-rank culling keep order.
+   2 = PF passes A-gate, 1 = PF near A-gate, 0 = others."
+  (let* ((criteria (get-rank-criteria :A))
+         (pf-min (float (or (getf criteria :pf-min) 1.30) 1.0))
+         (pf-near-min (max 0.0 (- pf-min *culling-pf-near-offset*)))
+         (pf (float (or (strategy-profit-factor strategy) 0.0) 1.0)))
+    (cond
+      ((>= pf pf-min) 2)
+      ((>= pf pf-near-min) 1)
+      (t 0))))
+
+(defun strategy-culling-priority-score (strategy)
+  "PF-prioritized keep score for B-rank culling.
+   PF band precedence is hard (A-pass > near > others), then culling score."
+  (let* ((band (strategy-culling-pf-priority-band strategy))
+         (pf (float (or (strategy-profit-factor strategy) 0.0) 1.0))
+         (base (strategy-culling-score strategy)))
+    (+ (* 1000.0 (float band 1.0))
+       (* 10.0 pf)
+       base)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; RETIRED STORAGE
@@ -634,10 +671,10 @@
       
       ;; Promote only A-base candidates, then keep B baseline by deficit-aware score.
       (let* ((sorted-ready (sort (copy-list a-ready-candidates) #'>
-                                 :key #'strategy-culling-score))
+                                 :key #'strategy-culling-priority-score))
              (to-promote (subseq sorted-ready 0 (min *a-rank-slots-per-tf* (length sorted-ready))))
              (to-discard (unless bootstrap-p
-                           (let* ((sorted-b (sort (copy-list b-strategies) #'> :key #'strategy-culling-score))
+                           (let* ((sorted-b (sort (copy-list b-strategies) #'> :key #'strategy-culling-priority-score))
                                   (keep-target (min count
                                                     (max *culling-threshold*
                                                          (length to-promote))))
@@ -850,18 +887,20 @@
 (defun can-breed-p (strategy)
   "Check if strategy can be used for breeding.
    Returns T if under breeding limit or is Legend."
-  (and strategy
-       (not (and (slot-exists-p strategy 'revalidation-pending)
-                 (strategy-revalidation-pending strategy)))
-       (not (eq (strategy-status strategy) :killed))
-       (not (eq (strategy-rank strategy) :legend-archive))
-       ;; Sanity checks to avoid pathological SL/TP values
-       (numberp (strategy-sl strategy))
-       (< (abs (strategy-sl strategy)) 1000.0)
-       (numberp (strategy-tp strategy))
-       (< (abs (strategy-tp strategy)) 1000.0)
-       (or (eq (strategy-rank strategy) :legend)
-           (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*))))
+  (let ((rank (and strategy (strategy-rank strategy))))
+    (and strategy
+         (not (and (slot-exists-p strategy 'revalidation-pending)
+                   (strategy-revalidation-pending strategy)))
+         (not (eq (strategy-status strategy) :killed))
+         (not (member rank '(:legend-archive :retired :graveyard :archived :archive :incubator) :test #'eq))
+         ;; Sanity checks to avoid pathological SL/TP values
+         (numberp (strategy-sl strategy))
+         (< (abs (strategy-sl strategy)) 1000.0)
+         (numberp (strategy-tp strategy))
+         (< (abs (strategy-tp strategy)) 1000.0)
+         (or (eq rank :legend)
+             (and (>= (or (strategy-trades strategy) 0) *breeder-min-parent-trades*)
+                  (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*))))))
 
 (defun run-legend-breeding ()
   "Breed Legend strategies with random B-rank strategies.
@@ -888,7 +927,8 @@
                   (strategy-name legend) (strategy-name b-rank))
           
           ;; Create child using breed-strategies from school-breeder
-          (when (fboundp 'breed-strategies)
+          (when (and (fboundp 'breed-strategies)
+                     (fboundp 'add-to-kb))
             (let ((child (breed-strategies legend b-rank)))
               ;; Mark child as having legendary heritage
               (setf (strategy-generation child) 
@@ -896,10 +936,13 @@
                              (strategy-generation b-rank))))
               ;; Increment B-rank's breeding count (Legend exempt)
               (increment-breeding-count b-rank)
-              
-              (push child *strategy-knowledge-base*)
-              (incf bred-count)
-              (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child)))))))
+
+              ;; Route through unified breeder intake (Phase1 mandatory via add-to-kb).
+              (when (add-to-kb child :breeder :require-bt t :notify nil)
+                (when (fboundp 'save-recruit-to-lisp)
+                  (save-recruit-to-lisp child))
+                (incf bred-count)
+                (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child))))))))
     
     (format t "[LEGEND] 👑 Legend Breeding Complete: ~d children~%" bred-count)
     bred-count))

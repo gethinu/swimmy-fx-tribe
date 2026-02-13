@@ -124,3 +124,12 @@
 - [ ] A母数の安定化（2案）を優先し、カテゴリ別 `a-base/a-ready` 件数を定点観測できるようメトリクス化する: `src/lisp/school/school-rank-system.lisp`, `src/lisp/school/school-narrative.lisp`
 - [ ] PF/WR改善の変異バイアス（3案）を追加し、Sharpe偏重からの脱却をテストで固定する: `src/lisp/school/school-voting.lisp`, `src/lisp/school/school-rank-system.lisp`, `src/lisp/tests.lisp`
 - [ ] `:S` 本体の閾値緩和（1案）は不採用方針として文書化し、必要なら `:S-candidate` 等の別ラベル導入を検討する: `doc/owners_guide.md`, `docs/llm/STATE.md`
+
+## Expert Panel 2026-02-13 (Memory Pressure / Non-Stop)
+- [x] Backtest worker と inflight ノブを統一運用にする（`SWIMMY_BACKTEST_WORKERS`/`SWIMMY_BACKTEST_MAX_INFLIGHT` 明示、既存 `MAX_PENDING` との役割整理）: `.env`, `tools/backtest_service.py`, `src/lisp/core/config.lisp`, `docs/llm/STATE.md`
+- [x] School の Wisdom 実行を毎サイクルから間隔実行へ分離し、重いループを常時経路から外す: `src/lisp/school/school-connector.lisp`, `src/lisp/school/school-breeder.lisp`
+- [ ] Prune skip 条件（incubator backlog）を見直し、`*kb-hard-cap*` が実効するようにする: `src/lisp/school/school-connector.lisp`, `src/lisp/school/school-pruning.lisp`
+- [ ] Data Keeper の保持上限を env 化し、M1 lazy-load を導入する: `tools/data_keeper.py`, `docs/llm/INTERFACES.md`, `docs/llm/STATE.md`
+- [ ] Brain の SBCLヒープ設定を unit/run.sh で一本化する（固定4096の撤廃）: `systemd/swimmy-brain.service`, `run.sh`
+- [ ] systemd unit 妥当性チェックをCI/監査へ追加（StartLimit セクション誤配置検出）: `systemd/swimmy-data-keeper.service`, `tools/system_audit.sh`
+- [ ] docs正本の実値ドリフト修正（Data Keeper M1上限、prune頻度）: `docs/llm/ARCHITECTURE.md`, `docs/llm/STATE.md`, `doc/owners_guide.md`

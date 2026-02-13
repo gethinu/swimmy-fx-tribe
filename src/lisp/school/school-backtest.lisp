@@ -585,6 +585,14 @@
                 current-name new-name db-rank))))
   strat)
 
+(defun incubator-has-phase1-metrics-p (strategy)
+  "Return T when incubator already has Phase1 metrics and can be evaluated immediately."
+  (and (eq (strategy-rank strategy) :incubator)
+       (or (> (or (strategy-trades strategy) 0) 0)
+           (not (zerop (float (or (strategy-sharpe strategy) 0.0))))
+           (> (float (or (strategy-profit-factor strategy) 0.0)) 0.0)
+           (> (float (or (strategy-win-rate strategy) 0.0)) 0.0))))
+
 (defun run-qualification-cycle ()
   "V47.8 Phase 3: Loop through strategies needing backtest."
   (format t "[QUALIFY] 🏁 Starting Qualification Cycle...~%")
@@ -593,28 +601,43 @@
       (format t "[QUALIFY] ⏳ Skipping (cooldown ~d sec)~%" *qual-cycle-interval*)
       (return-from run-qualification-cycle nil))
     (setf *last-qual-cycle* now))
-  (let* ((all-candidates (remove-if-not
-                          (lambda (s)
-                            (and (or (null (strategy-rank s))
-                                     (eq (strategy-rank s) :incubator))
-                                 (= (or (strategy-trades s) 0) 0)
-                                 (= (or (strategy-sharpe s) 0.0) 0.0)))
-                          *strategy-knowledge-base*))
-         (incubator-candidates (remove-if-not (lambda (s) (eq (strategy-rank s) :incubator))
-                                              all-candidates))
-         (scout-candidates (remove-if (lambda (s) (eq (strategy-rank s) :incubator))
-                                      all-candidates))
-         ;; Prioritize incubator backlog so newborns are not starved by scout candidates.
-         (candidates (append incubator-candidates scout-candidates))
+  (let* ((incubator-strategies (remove-if-not (lambda (s) (eq (strategy-rank s) :incubator))
+                                               *strategy-knowledge-base*))
+         (scored-incubators (remove-if-not #'incubator-has-phase1-metrics-p
+                                           incubator-strategies))
+         (incubator-candidates (remove-if #'incubator-has-phase1-metrics-p
+                                          incubator-strategies))
+         (unranked-candidates (remove-if-not
+                               (lambda (s)
+                                 (and (null (strategy-rank s))
+                                      (= (or (strategy-trades s) 0) 0)
+                                      (= (or (strategy-sharpe s) 0.0) 0.0)))
+                               *strategy-knowledge-base*))
+         (all-candidates (append incubator-candidates unranked-candidates))
+         ;; Prioritize incubator backlog so newborns are not starved by unranked candidates.
+         (candidates all-candidates)
 	        (limit 50)
 	        (attempted 0)
-	        (accepted 0))
+	        (accepted 0)
+         (reconciled 0))
     
-    (format t "[QUALIFY] found ~d candidates.~%" (length all-candidates))
+    ;; Incubators with already available metrics should not wait for redispatch.
+    (dolist (strat scored-incubators)
+      (handler-case
+          (when (fboundp 'evaluate-new-strategy)
+            (evaluate-new-strategy strat)
+            (incf reconciled))
+        (error (e)
+          (format t "[QUALIFY] ⚠️ Failed to reconcile scored incubator ~a: ~a~%"
+                  (strategy-name strat) e))))
+
+    (format t "[QUALIFY] found ~d candidates (reconciled ~d scored incubators).~%"
+            (length all-candidates)
+            reconciled)
     (when (> (length incubator-candidates) 0)
-      (format t "[QUALIFY] 🎯 Prioritizing ~d incubator candidates before scouts (~d).~%"
+      (format t "[QUALIFY] 🎯 Prioritizing ~d incubator candidates before unranked (~d).~%"
               (length incubator-candidates)
-              (length scout-candidates)))
+              (length unranked-candidates)))
     
     ;; Expected count tracks only accepted dispatches.
     (setf swimmy.globals:*qual-expected-backtest-count* 0)

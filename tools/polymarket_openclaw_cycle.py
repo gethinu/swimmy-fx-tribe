@@ -10,7 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping
 
 
 def resolve_base_dir() -> Path:
@@ -125,6 +125,44 @@ def build_report_command(
     return cmd
 
 
+def build_execute_command(
+    *,
+    base_dir: Path,
+    plan_file: Path,
+    run_id: str,
+    run_date: str,
+    order_type: str,
+    max_orders: int,
+    min_expected_value_usd: float,
+    min_stake_usd: float,
+    fail_on_error: bool,
+    write_report: Path,
+) -> List[str]:
+    cmd = [
+        sys.executable,
+        str(base_dir / "tools" / "polymarket_openclaw_execute.py"),
+        "--plan-file",
+        str(plan_file),
+        "--run-id",
+        run_id,
+        "--run-date",
+        run_date,
+        "--order-type",
+        (str(order_type).strip().upper() or "GTC"),
+        "--max-orders",
+        str(max(0, int(max_orders))),
+        "--min-expected-value-usd",
+        str(max(0.0, float(min_expected_value_usd))),
+        "--min-stake-usd",
+        str(max(0.0, float(min_stake_usd))),
+        "--write-report",
+        str(write_report),
+    ]
+    if fail_on_error:
+        cmd.append("--fail-on-error")
+    return cmd
+
+
 def build_fetch_settlements_command(
     *,
     base_dir: Path,
@@ -223,6 +261,65 @@ def should_apply_autotune_candidate(
     return trades >= max(1, min_trades) and pnl >= float(min_realized_pnl_usd)
 
 
+def load_signal_summary(*, signals_meta_file: str, signals_file: str) -> Dict[str, Any]:
+    meta_path: Path | None = None
+    if signals_meta_file.strip():
+        meta_path = Path(signals_meta_file).expanduser()
+    if meta_path is None and signals_file.strip():
+        signal_path = Path(signals_file).expanduser()
+        if signal_path.suffix:
+            meta_path = signal_path.with_suffix(".meta.json")
+    if meta_path is None or not meta_path.exists() or not meta_path.is_file():
+        return {}
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    source_counts_raw = payload.get("source_counts")
+    source_counts: Dict[str, int] = {}
+    if isinstance(source_counts_raw, dict):
+        for key, value in source_counts_raw.items():
+            name = str(key).strip()
+            if not name:
+                continue
+            try:
+                source_counts[name] = max(0, int(value))
+            except (TypeError, ValueError):
+                continue
+
+    signal_count = payload.get("signal_count")
+    agent_signal_count = payload.get("agent_signal_count", source_counts.get("openclaw_agent", 0))
+    agent_signal_ratio = payload.get("agent_signal_ratio")
+    if not isinstance(signal_count, int):
+        try:
+            signal_count = int(signal_count)
+        except (TypeError, ValueError):
+            signal_count = 0
+    if not isinstance(agent_signal_count, int):
+        try:
+            agent_signal_count = int(agent_signal_count)
+        except (TypeError, ValueError):
+            agent_signal_count = int(source_counts.get("openclaw_agent", 0))
+    if not isinstance(agent_signal_ratio, (int, float)):
+        if signal_count > 0:
+            agent_signal_ratio = float(agent_signal_count) / float(signal_count)
+        else:
+            agent_signal_ratio = 0.0
+
+    updated_at = payload.get("updated_at")
+    return {
+        "signal_count": max(0, int(signal_count)),
+        "source_counts": source_counts,
+        "agent_signal_count": max(0, int(agent_signal_count)),
+        "agent_signal_ratio": round(float(agent_signal_ratio), 6),
+        "updated_at": str(updated_at) if updated_at else "",
+        "signals_meta_file": str(meta_path),
+    }
+
+
 def apply_candidate_config_with_backup(
     *,
     candidate_config: Dict[str, Any],
@@ -240,10 +337,113 @@ def apply_candidate_config_with_backup(
     return {"applied_file": str(target_config_path), "backup_file": str(backup_file)}
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def build_latest_status_snapshot(*, result: Dict[str, Any], updated_at: str) -> Dict[str, Any]:
+    plan_summary = result.get("plan_summary", {})
+    signal_summary = result.get("signal_summary", {})
+    execution = result.get("execution", {})
+    report_summary = result.get("report_summary", {})
+    paths = result.get("paths", {})
+    live_execution_enabled = bool(result.get("live_execution_enabled", False))
+    if live_execution_enabled:
+        execution_ok = bool(execution.get("ok", False)) if isinstance(execution, dict) else False
+        execution_skipped = bool(execution.get("skipped", False)) if isinstance(execution, dict) else False
+    else:
+        execution_ok = True
+        execution_skipped = True
+    return {
+        "updated_at": str(updated_at),
+        "run_id": str(result.get("run_id", "")),
+        "run_date": str(result.get("run_date", "")),
+        "entries": max(0, _to_int(plan_summary.get("entries"), 0)),
+        "total_stake_usd": round(max(0.0, _to_float(plan_summary.get("total_stake_usd"), 0.0)), 8),
+        "live_execution_enabled": live_execution_enabled,
+        "execution_ok": execution_ok,
+        "execution_skipped": execution_skipped,
+        "execution_attempted": max(0, _to_int(execution.get("attempted"), 0))
+        if isinstance(execution, dict)
+        else 0,
+        "execution_sent": max(0, _to_int(execution.get("sent"), 0)) if isinstance(execution, dict) else 0,
+        "execution_failed": max(0, _to_int(execution.get("failed"), 0))
+        if isinstance(execution, dict)
+        else 0,
+        "signal_count": max(0, _to_int(signal_summary.get("signal_count"), 0))
+        if isinstance(signal_summary, dict)
+        else 0,
+        "agent_signal_count": max(0, _to_int(signal_summary.get("agent_signal_count"), 0))
+        if isinstance(signal_summary, dict)
+        else 0,
+        "agent_signal_ratio": round(max(0.0, _to_float(signal_summary.get("agent_signal_ratio"), 0.0)), 6)
+        if isinstance(signal_summary, dict)
+        else 0.0,
+        "expected_value_usd": round(_to_float(report_summary.get("total_expected_value_usd"), 0.0), 8)
+        if isinstance(report_summary, dict)
+        else 0.0,
+        "expected_return_on_stake": round(_to_float(report_summary.get("expected_return_on_stake"), 0.0), 8)
+        if isinstance(report_summary, dict)
+        else 0.0,
+        "plan_file": str(paths.get("plan_file", "")) if isinstance(paths, dict) else "",
+        "report_file": str(paths.get("report_file", "")) if isinstance(paths, dict) else "",
+        "journal_file": str(paths.get("journal_file", "")) if isinstance(paths, dict) else "",
+    }
+
+
+def write_latest_status_snapshot(*, status_file: Path, snapshot: Dict[str, Any]) -> None:
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = status_file.with_suffix(status_file.suffix + ".tmp")
+    text = json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n"
+    tmp_file.write_text(text, encoding="utf-8")
+    tmp_file.replace(status_file)
+
+
+def append_status_history(*, history_file: Path, snapshot: Mapping[str, Any], max_entries: int = 1000) -> None:
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    rows: List[Dict[str, Any]] = []
+    if history_file.exists() and history_file.is_file():
+        for line in history_file.read_text(encoding="utf-8").splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, Mapping):
+                rows.append(dict(payload))
+
+    run_id = str(snapshot.get("run_id", "")).strip()
+    if run_id:
+        rows = [row for row in rows if str(row.get("run_id", "")).strip() != run_id]
+    rows.append(dict(snapshot))
+
+    limit = max(0, int(max_entries))
+    if limit > 0 and len(rows) > limit:
+        rows = rows[-limit:]
+
+    tmp_file = history_file.with_suffix(history_file.suffix + ".tmp")
+    text = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+    tmp_file.write_text(text, encoding="utf-8")
+    tmp_file.replace(history_file)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run bot+report cycle in one command")
     parser.add_argument("--config-file", required=True)
     parser.add_argument("--signals-file", default="")
+    parser.add_argument("--signals-meta-file", default="")
     parser.add_argument("--openclaw-cmd", default="")
     parser.add_argument("--markets-file", default="")
     parser.add_argument("--max-open-positions", type=int, default=0)
@@ -267,6 +467,12 @@ def main() -> None:
     parser.add_argument("--autotune-apply-min-trades", type=int, default=20)
     parser.add_argument("--autotune-apply-min-realized-pnl-usd", type=float, default=1.0)
     parser.add_argument("--autotune-apply-target-config", default="")
+    parser.add_argument("--live-execution", action="store_true")
+    parser.add_argument("--live-order-type", default="GTC")
+    parser.add_argument("--live-max-orders", type=int, default=0)
+    parser.add_argument("--live-min-expected-value-usd", type=float, default=0.0)
+    parser.add_argument("--live-min-stake-usd", type=float, default=1.0)
+    parser.add_argument("--live-fail-on-error", action="store_true")
     parser.add_argument("--fee-bps-per-side", type=float, default=0.0)
     parser.add_argument("--slippage-bps-per-side", type=float, default=0.0)
     args = parser.parse_args()
@@ -309,6 +515,29 @@ def main() -> None:
     bot_output = _run_json_command(bot_cmd)
     plan_summary = bot_output.get("summary", {})
     run_posttrade = should_run_posttrade_steps(plan_summary)
+    execution_result: Dict[str, Any] = {}
+    if args.live_execution:
+        if run_posttrade:
+            execution_report = output_dir / f"execution_{run_date}_{run_id}.json"
+            execute_cmd = build_execute_command(
+                base_dir=base_dir,
+                plan_file=paths["plan_file"],
+                run_id=run_id,
+                run_date=run_date,
+                order_type=args.live_order_type,
+                max_orders=max(0, args.live_max_orders),
+                min_expected_value_usd=max(0.0, args.live_min_expected_value_usd),
+                min_stake_usd=max(0.0, args.live_min_stake_usd),
+                fail_on_error=args.live_fail_on_error,
+                write_report=execution_report,
+            )
+            execution_result = _run_json_command(execute_cmd)
+        else:
+            execution_result = {
+                "ok": True,
+                "skipped": True,
+                "reason": "no_entries",
+            }
 
     settlement_source = args.settlements_file.strip()
     settlement_fetch_result: Dict[str, Any] = {}
@@ -379,6 +608,12 @@ def main() -> None:
         "run_date": run_date,
         "paths": {k: str(v) for k, v in paths.items()},
         "plan_summary": plan_summary,
+        "signal_summary": load_signal_summary(
+            signals_meta_file=args.signals_meta_file,
+            signals_file=args.signals_file,
+        ),
+        "live_execution_enabled": bool(args.live_execution),
+        "execution": execution_result,
         "posttrade_enabled": run_posttrade,
         "settlement_source": settlement_source,
         "settlement_fetch": settlement_fetch_result,
@@ -387,6 +622,16 @@ def main() -> None:
         "autotune_summary": autotune_result.get("best", {}),
         "config_apply_result": config_apply_result,
     }
+    latest_status_file = output_dir / "latest_status.json"
+    latest_snapshot = build_latest_status_snapshot(
+        result=result,
+        updated_at=datetime.now(timezone.utc).isoformat(),
+    )
+    write_latest_status_snapshot(status_file=latest_status_file, snapshot=latest_snapshot)
+    status_history_file = output_dir / "status_history.jsonl"
+    append_status_history(history_file=status_history_file, snapshot=latest_snapshot, max_entries=2000)
+    result["latest_status_file"] = str(latest_status_file)
+    result["status_history_file"] = str(status_history_file)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

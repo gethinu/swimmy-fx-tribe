@@ -79,6 +79,9 @@ def main():
 
     # Worker count helpers
     saved_workers = os.environ.get("SWIMMY_BACKTEST_WORKERS")
+    saved_max_inflight = os.environ.get("SWIMMY_BACKTEST_MAX_INFLIGHT")
+    saved_max_pending = os.environ.get("SWIMMY_BACKTEST_MAX_PENDING")
+    saved_rate_limit = os.environ.get("SWIMMY_BACKTEST_RATE_LIMIT")
     orig_cpu_count = svc.os.cpu_count
     try:
         svc.os.cpu_count = lambda: 8
@@ -91,12 +94,52 @@ def main():
 
         os.environ["SWIMMY_BACKTEST_WORKERS"] = "0"
         assert svc._resolve_worker_count() == 1
+
+        # Runtime knob alignment helpers
+        os.environ["SWIMMY_BACKTEST_WORKERS"] = "3"
+        os.environ["SWIMMY_BACKTEST_MAX_PENDING"] = "1200"
+        os.environ["SWIMMY_BACKTEST_RATE_LIMIT"] = "140"
+        os.environ.pop("SWIMMY_BACKTEST_MAX_INFLIGHT", None)
+        knobs = svc._resolve_runtime_knobs()
+        assert knobs["worker_count"] == 3
+        assert knobs["max_inflight"] == 6
+        assert knobs["max_pending"] == 1200
+        assert knobs["rate_limit"] == 140
+        assert knobs["inflight_explicit"] is False
+
+        warns = svc._knob_alignment_warnings(knobs)
+        assert any("MAX_INFLIGHT" in w for w in warns)
+
+        os.environ["SWIMMY_BACKTEST_MAX_INFLIGHT"] = "7"
+        knobs = svc._resolve_runtime_knobs()
+        assert knobs["max_inflight"] == 7
+        assert knobs["inflight_explicit"] is True
+        warns = svc._knob_alignment_warnings(knobs)
+        assert not any("MAX_INFLIGHT" in w for w in warns)
+
+        os.environ["SWIMMY_BACKTEST_MAX_INFLIGHT"] = "9"
+        os.environ["SWIMMY_BACKTEST_MAX_PENDING"] = "4"
+        knobs = svc._resolve_runtime_knobs()
+        warns = svc._knob_alignment_warnings(knobs)
+        assert any("MAX_PENDING" in w for w in warns)
     finally:
         svc.os.cpu_count = orig_cpu_count
         if saved_workers is None:
             os.environ.pop("SWIMMY_BACKTEST_WORKERS", None)
         else:
             os.environ["SWIMMY_BACKTEST_WORKERS"] = saved_workers
+        if saved_max_inflight is None:
+            os.environ.pop("SWIMMY_BACKTEST_MAX_INFLIGHT", None)
+        else:
+            os.environ["SWIMMY_BACKTEST_MAX_INFLIGHT"] = saved_max_inflight
+        if saved_max_pending is None:
+            os.environ.pop("SWIMMY_BACKTEST_MAX_PENDING", None)
+        else:
+            os.environ["SWIMMY_BACKTEST_MAX_PENDING"] = saved_max_pending
+        if saved_rate_limit is None:
+            os.environ.pop("SWIMMY_BACKTEST_RATE_LIMIT", None)
+        else:
+            os.environ["SWIMMY_BACKTEST_RATE_LIMIT"] = saved_rate_limit
 
     # Inject request_id into guardian result without dotted (result .) form
     sexp = '((type . "BACKTEST_RESULT") (result ((strategy_name . "UT") (sharpe . 0.1))))'
@@ -155,6 +198,20 @@ def main():
     _assert_in("(filter_enabled . #t)", normalized_shorthand, "shorthand filter_enabled normalized true")
     if "(filter_enabled . t)" in normalized_shorthand:
         raise AssertionError("shorthand bool symbol 't' should not be forwarded to guardian")
+
+    # Fallback path: even if parse fails, known bool keys should be normalized.
+    orig_parse_sexp = svc.parse_sexp
+    try:
+        def _fail_parse(_text):
+            raise svc.SexpParseError("forced")
+
+        svc.parse_sexp = _fail_parse
+        fallback = svc._normalize_backtest_sexpr(raw_shorthand)
+        _assert_in("(filter_enabled . #t)", fallback, "fallback bool normalization true")
+        if "(filter_enabled . t)" in fallback:
+            raise AssertionError("fallback path must not keep symbol 't'")
+    finally:
+        svc.parse_sexp = orig_parse_sexp
 
     print("ok")
 

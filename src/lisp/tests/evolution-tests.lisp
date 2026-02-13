@@ -239,8 +239,8 @@
               ;; Extreme initial RR should be pulled back to convergence band.
               (swimmy.school::apply-pfwr-mutation-bias 20.0 100.0 p1 p2)
             (let ((rr (/ tp sl)))
-              (assert-true (<= rr 1.86)
-                           (format nil "Expected complement stabilization RR<=1.86, got ~,3f" rr))
+              (assert-true (<= rr 1.72)
+                           (format nil "Expected complement stabilization RR<=1.72, got ~,3f" rr))
               (assert-true (>= rr 1.55)
                            (format nil "Expected complement stabilization RR>=1.55, got ~,3f" rr)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
@@ -309,12 +309,55 @@
           (multiple-value-bind (sl tp)
               (swimmy.school::apply-pfwr-mutation-bias 40.0 20.0 p1 p2)
             (let ((rr (/ tp sl)))
-              (assert-true (>= rr 1.79)
-                           (format nil "Expected moderate PF gap to keep RR floor near 1.8, got ~,3f" rr)))))
+              (assert-true (>= rr 1.89)
+                           (format nil "Expected moderate PF gap to keep RR floor near 1.9, got ~,3f" rr)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
       (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
       (setf swimmy.school::*pfwr-target-wr* orig-target-wr))))
+
+(deftest test-pfwr-mutation-bias-severe-low-pf-enforces-stronger-floor
+  "Severe low-PF with WR-ready parents should trigger stronger RR and scale floors."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-SEVERE1"
+                                          :profit-factor 1.02 :win-rate 0.55
+                                          :sl 40.0 :tp 28.0))
+         (p2 (swimmy.school:make-strategy :name "UT-PFWR-SEVERE2"
+                                          :profit-factor 1.08 :win-rate 0.54
+                                          :sl 38.0 :tp 26.0))
+         (orig-enabled swimmy.school::*pfwr-mutation-bias-enabled*)
+         (orig-strength swimmy.school::*pfwr-mutation-bias-strength*)
+         (orig-target-pf swimmy.school::*pfwr-target-pf*)
+         (orig-target-wr swimmy.school::*pfwr-target-wr*)
+         (orig-severe-pf swimmy.school::*pfwr-severe-low-pf-threshold*)
+         (orig-severe-wr swimmy.school::*pfwr-severe-wr-ready-threshold*)
+         (orig-severe-rr swimmy.school::*pfwr-severe-min-rr*)
+         (orig-severe-scale swimmy.school::*pfwr-severe-scale-floor*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*pfwr-mutation-bias-enabled* t)
+          (setf swimmy.school::*pfwr-mutation-bias-strength* 1.0)
+          (setf swimmy.school::*pfwr-target-pf* 1.30)
+          (setf swimmy.school::*pfwr-target-wr* 0.43)
+          (setf swimmy.school::*pfwr-severe-low-pf-threshold* 1.15)
+          (setf swimmy.school::*pfwr-severe-wr-ready-threshold* 0.43)
+          (setf swimmy.school::*pfwr-severe-min-rr* 2.25)
+          (setf swimmy.school::*pfwr-severe-scale-floor* 1.30)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::apply-pfwr-mutation-bias 40.0 20.0 p1 p2)
+            (let ((rr (/ tp sl))
+                  (total (+ sl tp)))
+              (assert-true (>= rr 2.24)
+                           (format nil "Expected severe PF mode RR>=2.25, got ~,3f" rr))
+              (assert-true (>= total 77.9)
+                           (format nil "Expected severe PF mode scaled risk budget >=78.0, got ~,3f" total)))))
+      (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
+      (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
+      (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
+      (setf swimmy.school::*pfwr-target-wr* orig-target-wr)
+      (setf swimmy.school::*pfwr-severe-low-pf-threshold* orig-severe-pf)
+      (setf swimmy.school::*pfwr-severe-wr-ready-threshold* orig-severe-wr)
+      (setf swimmy.school::*pfwr-severe-min-rr* orig-severe-rr)
+      (setf swimmy.school::*pfwr-severe-scale-floor* orig-severe-scale))))
 
 (deftest test-pfwr-mutation-bias-increases-scale-when-pf-gap-dominates
   "PF-dominant deficit should allow SL/TP absolute distance expansion (cost dilution)."
@@ -390,8 +433,8 @@
           (setf swimmy.school::*pfwr-target-wr* 0.43)
           (multiple-value-bind (sl tp)
               (swimmy.school::apply-pfwr-mutation-bias 20.0 20.0 p1 p2)
-            (assert-true (>= (+ sl tp) 48.0)
-                         (format nil "Expected WR-only PF recovery scale >=48.0, got ~,3f" (+ sl tp)))))
+            (assert-true (>= (+ sl tp) 56.0)
+                         (format nil "Expected WR-only PF recovery scale >=56.0, got ~,3f" (+ sl tp)))))
       (setf swimmy.school::*pfwr-mutation-bias-enabled* orig-enabled)
       (setf swimmy.school::*pfwr-mutation-bias-strength* orig-strength)
       (setf swimmy.school::*pfwr-target-pf* orig-target-pf)
@@ -551,11 +594,109 @@
       (when orig-select
         (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-select)))))
 
+(deftest test-clamp-child-sltp-to-parent-envelope-limits-explosive-values
+  "Child SL/TP should be capped to a parent-relative envelope to avoid no-trade explosions."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-SLTP-CAP-P1"
+                                          :sl 0.22 :tp 0.31
+                                          :profit-factor 1.18 :win-rate 0.48))
+         (p2 (swimmy.school:make-strategy :name "UT-SLTP-CAP-P2"
+                                          :sl 0.18 :tp 0.29
+                                          :profit-factor 1.16 :win-rate 0.47))
+         (orig-cap (and (boundp 'swimmy.school::*breeder-sltp-parent-multiplier-cap*)
+                        swimmy.school::*breeder-sltp-parent-multiplier-cap*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*breeder-sltp-parent-multiplier-cap* 2.0)
+          (multiple-value-bind (sl tp)
+              (swimmy.school::clamp-child-sltp-to-parent-envelope 1.80 3.00 p1 p2)
+            (assert-true (<= sl 0.441)
+                         (format nil "Expected SL cap <=0.44, got ~,3f" sl))
+            (assert-true (<= tp 0.621)
+                         (format nil "Expected TP cap <=0.62, got ~,3f" tp))
+            (assert-true (>= sl 0.1)
+                         (format nil "Expected SL floor >=0.1, got ~,3f" sl))
+            (assert-true (>= tp 0.1)
+                         (format nil "Expected TP floor >=0.1, got ~,3f" tp))))
+      (if orig-cap
+          (setf swimmy.school::*breeder-sltp-parent-multiplier-cap* orig-cap)
+          (makunbound 'swimmy.school::*breeder-sltp-parent-multiplier-cap*)))))
+
+(deftest test-breed-strategies-borrows-logic-when-parents-are-empty
+  "Breeder should borrow entry/exit/indicators from same-category donor when parents have NIL logic."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-LOGIC-NIL-P1"
+                                          :category :trend :timeframe 300 :symbol "USDJPY"
+                                          :entry nil :exit nil :indicators nil
+                                          :sl 0.22 :tp 0.31 :rank :B :generation 10))
+         (p2 (swimmy.school:make-strategy :name "UT-LOGIC-NIL-P2"
+                                          :category :trend :timeframe 300 :symbol "USDJPY"
+                                          :entry nil :exit nil :indicators nil
+                                          :sl 0.20 :tp 0.29 :rank :B :generation 9))
+         (donor (swimmy.school:make-strategy :name "UT-LOGIC-DONOR"
+                                             :category :trend :timeframe 300 :symbol "USDJPY"
+                                             :entry '(> close sma-20)
+                                             :exit '(< close sma-20)
+                                             :indicators '((sma 20))
+                                             :sl 0.18 :tp 0.27 :rank :legend :generation 100))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-q (and (fboundp 'swimmy.school::select-sltp-with-q)
+                      (symbol-function 'swimmy.school::select-sltp-with-q))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list p1 p2 donor))
+          ;; Keep Q-selection deterministic and non-intrusive for this test.
+          (when (fboundp 'swimmy.school::select-sltp-with-q)
+            (setf (symbol-function 'swimmy.school::select-sltp-with-q)
+                  (lambda (_tf _dir _sym fallback-sl fallback-tp)
+                    (declare (ignore _tf _dir _sym))
+                    (values fallback-sl fallback-tp))))
+          (let ((child (swimmy.school::breed-strategies p1 p2)))
+            (assert-true (not (null (swimmy.school:strategy-entry child)))
+                         "Expected borrowed non-NIL entry logic")
+            (assert-true (not (null (swimmy.school:strategy-exit child)))
+                         "Expected borrowed non-NIL exit logic")
+            (assert-true (not (null (swimmy.school:strategy-indicators child)))
+                         "Expected borrowed non-NIL indicators")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when orig-q
+        (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-q)))))
+
+(deftest test-breed-strategies-uses-default-logic-when-no-donor
+  "Breeder should inject default logic genes when parents are empty and no donor exists."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-LOGIC-DEF-P1"
+                                          :category :trend :timeframe 300 :symbol "USDJPY"
+                                          :entry nil :exit nil :indicators nil
+                                          :sl 0.22 :tp 0.31 :rank :B :generation 10))
+         (p2 (swimmy.school:make-strategy :name "UT-LOGIC-DEF-P2"
+                                          :category :trend :timeframe 300 :symbol "USDJPY"
+                                          :entry nil :exit nil :indicators nil
+                                          :sl 0.20 :tp 0.29 :rank :B :generation 9))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-q (and (fboundp 'swimmy.school::select-sltp-with-q)
+                      (symbol-function 'swimmy.school::select-sltp-with-q))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list p1 p2))
+          (when (fboundp 'swimmy.school::select-sltp-with-q)
+            (setf (symbol-function 'swimmy.school::select-sltp-with-q)
+                  (lambda (_tf _dir _sym fallback-sl fallback-tp)
+                    (declare (ignore _tf _dir _sym))
+                    (values fallback-sl fallback-tp))))
+          (let ((child (swimmy.school::breed-strategies p1 p2)))
+            (assert-true (not (null (swimmy.school:strategy-entry child)))
+                         "Expected default non-NIL entry logic")
+            (assert-true (not (null (swimmy.school:strategy-exit child)))
+                         "Expected default non-NIL exit logic")
+            (assert-true (not (null (swimmy.school:strategy-indicators child)))
+                         "Expected default non-NIL indicators")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when orig-q
+        (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-q)))))
+
 (deftest test-find-diverse-breeding-partner-falls-back-past-similar-neighbor
   "Breeder should scan forward for a non-similar partner when immediate neighbor is too similar."
-  (let* ((p1 (swimmy.school:make-strategy :name "UT-P1" :sl 20.0 :tp 60.0 :rank :B))
-         (p2 (swimmy.school:make-strategy :name "UT-P2" :sl 20.0 :tp 60.0 :rank :B))
-         (p3 (swimmy.school:make-strategy :name "UT-P3" :sl 20.0 :tp 60.0 :rank :B))
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-P1" :sl 20.0 :tp 60.0 :rank :B :trades 50))
+         (p2 (swimmy.school:make-strategy :name "UT-P2" :sl 20.0 :tp 60.0 :rank :B :trades 50))
+         (p3 (swimmy.school:make-strategy :name "UT-P3" :sl 20.0 :tp 60.0 :rank :B :trades 50))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
         (progn
@@ -570,16 +711,59 @@
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
+(deftest test-can-breed-p-rejects-retired-rank
+  "Retired strategies must not be used as breeding parents."
+  (let ((s (swimmy.school:make-strategy :name "UT-RETIRED-PARENT"
+                                        :rank :retired
+                                        :status :active
+                                        :sl 0.22 :tp 0.31
+                                        :profit-factor 1.20 :win-rate 0.47)))
+    (assert-false (swimmy.school::can-breed-p s)
+                  "Expected can-breed-p to reject :retired strategy")))
+
+(deftest test-can-breed-p-rejects-incubator-rank
+  "Incubator (untested) strategies must not be used as breeding parents."
+  (let ((s (swimmy.school:make-strategy :name "UT-INCUBATOR-PARENT"
+                                        :rank :incubator
+                                        :status :active
+                                        :sl 0.22 :tp 0.31
+                                        :profit-factor 0.0 :win-rate 0.0
+                                        :trades 0)))
+    (assert-false (swimmy.school::can-breed-p s)
+                  "Expected can-breed-p to reject :incubator strategy")))
+
+(deftest test-can-breed-p-rejects-low-trade-parent
+  "Low-trade parents should be excluded from breeding to avoid zero-trade cascades."
+  (let* ((low (swimmy.school:make-strategy :name "UT-LOW-TRADES-PARENT"
+                                           :rank :B
+                                           :status :active
+                                           :sl 0.22 :tp 0.31
+                                           :trades 0
+                                           :profit-factor 1.10 :win-rate 0.46))
+         (ok (swimmy.school:make-strategy :name "UT-ENOUGH-TRADES-PARENT"
+                                          :rank :B
+                                          :status :active
+                                          :sl 0.22 :tp 0.31
+                                          :trades 50
+                                          :profit-factor 1.10 :win-rate 0.46)))
+    (assert-false (swimmy.school::can-breed-p low)
+                  "Expected can-breed-p to reject low-trade parent")
+    (assert-true (swimmy.school::can-breed-p ok)
+                 "Expected can-breed-p to allow parent with enough trades")))
+
 (deftest test-find-diverse-breeding-partner-prefers-pfwr-complement
   "Breeder should prefer a complement partner when parent has WR/PF deficit imbalance."
   (let* ((parent (swimmy.school:make-strategy :name "UT-COMP-PARENT"
                                               :rank :B :sl 20.0 :tp 60.0
+                                              :trades 50
                                               :profit-factor 1.40 :win-rate 0.34))
          (cand1 (swimmy.school:make-strategy :name "UT-COMP-CAND1"
                                              :rank :B :sl 20.0 :tp 70.0
+                                             :trades 50
                                              :profit-factor 1.45 :win-rate 0.35))
          (cand2 (swimmy.school:make-strategy :name "UT-COMP-CAND2"
                                              :rank :B :sl 20.0 :tp 30.0
+                                             :trades 50
                                              :profit-factor 1.22 :win-rate 0.49))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
@@ -600,16 +784,19 @@
   (let* ((parent (swimmy.school:make-strategy :name "UT-COMP-STRICT-PARENT"
                                               :rank :B :generation 50
                                               :sl 20.0 :tp 60.0
+                                              :trades 50
                                               :profit-factor 1.45 :win-rate 0.34
                                               :sharpe 1.1))
          (cand-high-no-complement (swimmy.school:make-strategy :name "UT-COMP-STRICT-HIGH"
                                                                :rank :LEGEND :generation 1200
                                                                :sl 20.0 :tp 70.0
+                                                               :trades 50
                                                                :profit-factor 1.60 :win-rate 0.35
                                                                :sharpe 2.6))
          (cand-low-complement (swimmy.school:make-strategy :name "UT-COMP-STRICT-LOW"
                                                            :rank :B :generation 5
                                                            :sl 20.0 :tp 30.0
+                                                           :trades 50
                                                            :profit-factor 1.22 :win-rate 0.49
                                                            :sharpe 0.2))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
@@ -632,16 +819,19 @@
   (let* ((parent (swimmy.school:make-strategy :name "UT-COMP-FILTER-PARENT"
                                               :rank :B :generation 90
                                               :sl 20.0 :tp 60.0
+                                              :trades 50
                                               :profit-factor 1.45 :win-rate 0.34
                                               :sharpe 1.2))
          (cand-high-but-weak-pf (swimmy.school:make-strategy :name "UT-COMP-FILTER-WEAK"
                                                              :rank :LEGEND :generation 1400
                                                              :sl 20.0 :tp 30.0
+                                                             :trades 50
                                                              :profit-factor 1.05 :win-rate 0.53
                                                              :sharpe 2.8))
          (cand-lower-but-balanced (swimmy.school:make-strategy :name "UT-COMP-FILTER-GOOD"
                                                                :rank :B :generation 8
                                                                :sl 20.0 :tp 30.0
+                                                               :trades 50
                                                                :profit-factor 1.23 :win-rate 0.47
                                                                :sharpe 0.3))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
@@ -664,16 +854,19 @@
   (let* ((parent (swimmy.school:make-strategy :name "UT-NEAR-PF-PARENT"
                                               :rank :B :generation 80
                                               :sl 20.0 :tp 60.0
+                                              :trades 50
                                               :profit-factor 1.12 :win-rate 0.48
                                               :sharpe 1.1))
          (cand-high-no-pf (swimmy.school:make-strategy :name "UT-NEAR-PF-HIGH-NO"
                                                        :rank :LEGEND :generation 1200
                                                        :sl 20.0 :tp 70.0
+                                                       :trades 50
                                                        :profit-factor 1.10 :win-rate 0.62
                                                        :sharpe 2.4))
          (cand-near-pf (swimmy.school:make-strategy :name "UT-NEAR-PF-CAND"
                                                     :rank :B :generation 6
                                                     :sl 20.0 :tp 34.0
+                                                    :trades 50
                                                     :profit-factor 1.25 :win-rate 0.46
                                                     :sharpe 0.3))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
@@ -688,6 +881,76 @@
                          :start-index 1)))
             (assert-true (eq picked cand-near-pf)
                          (format nil "Expected near-PF candidate UT-NEAR-PF-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-prefers-wr-only-recovery-over-pf-only
+  "For a WR-only parent, prefer WR-only higher-PF partner over PF-only low-WR partner."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-WRONLY-PARENT"
+                                              :rank :B :generation 60
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.18 :win-rate 0.49
+                                              :sharpe 1.0))
+         (cand-pf-only (swimmy.school:make-strategy :name "UT-WRONLY-PFONLY"
+                                                    :rank :LEGEND :generation 1400
+                                                    :sl 20.0 :tp 80.0
+                                                    :trades 50
+                                                    :profit-factor 1.44 :win-rate 0.38
+                                                    :sharpe 2.6))
+         (cand-wr-only-high-pf (swimmy.school:make-strategy :name "UT-WRONLY-HIGHPF"
+                                                            :rank :B :generation 7
+                                                            :sl 20.0 :tp 35.0
+                                                            :trades 50
+                                                            :profit-factor 1.27 :win-rate 0.47
+                                                            :sharpe 0.4))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-pf-only cand-wr-only-high-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-wr-only-high-pf)
+                         (format nil "Expected WR-only high-PF candidate UT-WRONLY-HIGHPF, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-allows-wr-complement-with-moderate-pf
+  "PF-only parent should accept WR complement with moderate PF to recover WR deficit."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-PFONLY-PARENT"
+                                              :rank :B :generation 55
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.45 :win-rate 0.34
+                                              :sharpe 1.2))
+         (cand-high-no-wr (swimmy.school:make-strategy :name "UT-PFONLY-NONCOMP"
+                                                       :rank :LEGEND :generation 1500
+                                                       :sl 20.0 :tp 75.0
+                                                       :trades 50
+                                                       :profit-factor 1.62 :win-rate 0.35
+                                                       :sharpe 2.7))
+         (cand-wr-moderate-pf (swimmy.school:make-strategy :name "UT-PFONLY-WR-MIDPF"
+                                                           :rank :B :generation 9
+                                                           :sl 20.0 :tp 33.0
+                                                           :trades 50
+                                                           :profit-factor 1.10 :win-rate 0.49
+                                                           :sharpe 0.5))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-high-no-wr cand-wr-moderate-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-wr-moderate-pf)
+                         (format nil "Expected WR complement UT-PFONLY-WR-MIDPF, got ~a"
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
@@ -806,16 +1069,19 @@
   (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-COMP-PARENT"
                                               :rank :B :generation 90
                                               :sl 20.0 :tp 60.0
+                                              :trades 50
                                               :profit-factor 1.45 :win-rate 0.34
                                               :sharpe 1.2))
          (cand-non-complement (swimmy.school:make-strategy :name "UT-CORR-COMP-NON"
                                                            :rank :LEGEND :generation 1400
                                                            :sl 20.0 :tp 30.0
+                                                           :trades 50
                                                            :profit-factor 1.55 :win-rate 0.35
                                                            :sharpe 2.8))
          (cand-complement (swimmy.school:make-strategy :name "UT-CORR-COMP-YES"
                                                        :rank :B :generation 8
                                                        :sl 20.0 :tp 30.0
+                                                       :trades 50
                                                        :profit-factor 1.22 :win-rate 0.49
                                                        :sharpe 0.3))
          (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
@@ -846,3 +1112,201 @@
       (if orig-comp-threshold
           (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
           (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*)))))
+
+(deftest test-find-diverse-breeding-partner-relaxes-distance-for-partial-pf-recovery
+  "PF-deficit parent should allow distance-relaxed partner that improves PF even below strict near-target threshold."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-PARTIAL-PF-PARENT"
+                                              :rank :B :generation 70
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.12 :win-rate 0.48
+                                              :sharpe 1.0))
+         (cand-partial-pf (swimmy.school:make-strategy :name "UT-CORR-PARTIAL-PF-CAND"
+                                                       :rank :B :generation 9
+                                                       :sl 20.0 :tp 32.0
+                                                       :trades 50
+                                                       :profit-factor 1.18 :win-rate 0.46
+                                                       :sharpe 0.4))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*))
+         (orig-comp-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance-complement*)
+                                   swimmy.school::*breeder-min-genetic-distance-complement*))
+         (orig-near-pf-threshold (and (boundp 'swimmy.school::*breeder-near-pf-threshold*)
+                                      swimmy.school::*breeder-near-pf-threshold*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.12))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* 0.10)
+          ;; Keep strict near-PF threshold so this candidate is NOT treated as full complement.
+          (setf swimmy.school::*breeder-near-pf-threshold* 1.24)
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-partial-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-partial-pf)
+                         (format nil "Expected partial PF-recovery partner UT-CORR-PARTIAL-PF-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*))
+      (if orig-comp-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*))
+      (if orig-near-pf-threshold
+          (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
+          (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))
+
+(deftest test-find-diverse-breeding-partner-relaxes-distance-for-modest-partial-pf-recovery
+  "PF-deficit parent should still allow distance-relaxed partner on modest PF improvement."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-MODEST-PF-PARENT"
+                                              :rank :B :generation 75
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.20 :win-rate 0.48
+                                              :sharpe 1.0))
+         (cand-modest-pf (swimmy.school:make-strategy :name "UT-CORR-MODEST-PF-CAND"
+                                                      :rank :B :generation 10
+                                                      :sl 20.0 :tp 31.0
+                                                      :trades 50
+                                                      :profit-factor 1.22 :win-rate 0.46
+                                                      :sharpe 0.4))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*))
+         (orig-comp-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance-complement*)
+                                   swimmy.school::*breeder-min-genetic-distance-complement*))
+         (orig-near-pf-threshold (and (boundp 'swimmy.school::*breeder-near-pf-threshold*)
+                                      swimmy.school::*breeder-near-pf-threshold*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.12))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* 0.10)
+          ;; Keep strict near-PF threshold so this candidate is NOT treated as full complement.
+          (setf swimmy.school::*breeder-near-pf-threshold* 1.24)
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-modest-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-modest-pf)
+                         (format nil "Expected modest partial PF-recovery partner UT-CORR-MODEST-PF-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*))
+      (if orig-comp-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*))
+      (if orig-near-pf-threshold
+          (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
+          (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))
+
+(deftest test-find-diverse-breeding-partner-relaxes-distance-to-0p11-for-partial-pf-recovery
+  "PF partial-recovery partner should still pass when distance is 0.11."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-PARTIAL011-PARENT"
+                                              :rank :B :generation 76
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.20 :win-rate 0.48
+                                              :sharpe 1.0))
+         (cand-partial-pf (swimmy.school:make-strategy :name "UT-CORR-PARTIAL011-CAND"
+                                                       :rank :B :generation 11
+                                                       :sl 20.0 :tp 31.0
+                                                       :trades 50
+                                                       :profit-factor 1.22 :win-rate 0.46
+                                                       :sharpe 0.4))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*))
+         (orig-comp-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance-complement*)
+                                   swimmy.school::*breeder-min-genetic-distance-complement*))
+         (orig-near-pf-threshold (and (boundp 'swimmy.school::*breeder-near-pf-threshold*)
+                                      swimmy.school::*breeder-near-pf-threshold*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.11))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* 0.10)
+          (setf swimmy.school::*breeder-near-pf-threshold* 1.24)
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-partial-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-partial-pf)
+                         (format nil "Expected 0.11 partial PF-recovery partner UT-CORR-PARTIAL011-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*))
+      (if orig-comp-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*))
+      (if orig-near-pf-threshold
+          (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
+          (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))
+
+(deftest test-find-diverse-breeding-partner-relaxes-distance-for-tiny-partial-pf-recovery
+  "PF partial-recovery should work with +0.01 PF improvement when distance is 0.11."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-CORR-PARTIAL001-PARENT"
+                                              :rank :B :generation 77
+                                              :sl 20.0 :tp 60.0
+                                              :trades 50
+                                              :profit-factor 1.20 :win-rate 0.48
+                                              :sharpe 1.0))
+         (cand-tiny-pf (swimmy.school:make-strategy :name "UT-CORR-PARTIAL001-CAND"
+                                                    :rank :B :generation 12
+                                                    :sl 20.0 :tp 31.0
+                                                    :trades 50
+                                                    :profit-factor 1.21 :win-rate 0.46
+                                                    :sharpe 0.4))
+         (orig-dist (symbol-function 'swimmy.school::calculate-genetic-distance))
+         (orig-genome (symbol-function 'swimmy.school::extract-genome))
+         (orig-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance*)
+                              swimmy.school::*breeder-min-genetic-distance*))
+         (orig-comp-threshold (and (boundp 'swimmy.school::*breeder-min-genetic-distance-complement*)
+                                   swimmy.school::*breeder-min-genetic-distance-complement*))
+         (orig-near-pf-threshold (and (boundp 'swimmy.school::*breeder-near-pf-threshold*)
+                                      swimmy.school::*breeder-near-pf-threshold*)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::extract-genome)
+                (lambda (_s) (declare (ignore _s)) '(mock-genome)))
+          (setf (symbol-function 'swimmy.school::calculate-genetic-distance)
+                (lambda (_g1 _g2) (declare (ignore _g1 _g2)) 0.11))
+          (setf swimmy.school::*breeder-min-genetic-distance* 0.15)
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* 0.10)
+          (setf swimmy.school::*breeder-near-pf-threshold* 1.24)
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-tiny-pf)
+                         :start-index 1)))
+            (assert-true (eq picked cand-tiny-pf)
+                         (format nil "Expected tiny partial PF-recovery partner UT-CORR-PARTIAL001-CAND, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::calculate-genetic-distance) orig-dist)
+      (setf (symbol-function 'swimmy.school::extract-genome) orig-genome)
+      (if orig-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance* orig-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance*))
+      (if orig-comp-threshold
+          (setf swimmy.school::*breeder-min-genetic-distance-complement* orig-comp-threshold)
+          (makunbound 'swimmy.school::*breeder-min-genetic-distance-complement*))
+      (if orig-near-pf-threshold
+          (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
+          (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))

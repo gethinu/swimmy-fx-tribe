@@ -498,6 +498,7 @@ REVERSION : ~a"
              (if a-stage1-counts
                  (a-stage1-failure-summary-line a-stage1-counts :label "A Stage1 Failures (24h DB)")
                  "A Stage1 Failures (24h DB): unavailable"))
+           (a-gate-pressure-line (a-gate-pressure-active-b-summary-line))
            (a-near-miss-snippet (build-a-near-miss-snippet-from-db :limit 5))
            (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
                                  (a-candidate-metrics-snippet :limit 6)
@@ -556,6 +557,8 @@ Current status of the autonomous strategy generation pipeline.
 
 	~a
 
+	~a
+
 	⚙️ System Status
 	~a
 	✅ Native Lisp Orchestration (V28)
@@ -572,6 +575,7 @@ Current status of the autonomous strategy generation pipeline.
 	            oos-snippet
 	            validation-coverage-line
 	            a-stage1-snippet
+	            a-gate-pressure-line
 	            a-near-miss-snippet
 	            a-funnel-snippet
 	            top-snippet
@@ -635,6 +639,89 @@ Current status of the autonomous strategy generation pipeline.
                 all-oos all-cpcv active-oos active-cpcv))
     (error (e)
       (format nil "Validation Coverage (DB): unavailable (~a)" e))))
+
+(defun a-gate-pressure-active-b-summary-line ()
+  "Return A Stage1 gate pressure summary for Active B candidates."
+  (handler-case
+      (let* ((criteria (get-rank-criteria :A))
+             (sh-min (float (getf criteria :sharpe-min 0.45) 1.0))
+             (pf-min (float (getf criteria :pf-min 1.30) 1.0))
+             (wr-min (float (getf criteria :wr-min 0.43) 1.0))
+             (dd-max (float (getf criteria :maxdd-max 0.16) 1.0))
+             ;; "near" band highlights candidates close to PF gate.
+             (pf-near-min (max 0.0 (- pf-min 0.06)))
+             (b-rank-where "UPPER(rank) IN (':B','B')")
+             (total
+               (or (execute-single
+                    (format nil "SELECT count(*) FROM strategies WHERE ~a" b-rank-where))
+                   0))
+             (pass-all
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(sharpe, 0.0) >= ?
+                                AND COALESCE(profit_factor, 0.0) >= ?
+                                AND COALESCE(win_rate, 0.0) >= ?
+                                AND COALESCE(max_dd, 1.0) < ?"
+                            b-rank-where)
+                    sh-min pf-min wr-min dd-max)
+                   0))
+             (pass-sharpe
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(sharpe, 0.0) >= ?"
+                            b-rank-where)
+                    sh-min)
+                   0))
+             (pass-pf
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(profit_factor, 0.0) >= ?"
+                            b-rank-where)
+                    pf-min)
+                   0))
+             (pass-wr
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(win_rate, 0.0) >= ?"
+                            b-rank-where)
+                    wr-min)
+                   0))
+             (pass-maxdd
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(max_dd, 1.0) < ?"
+                            b-rank-where)
+                    dd-max)
+                   0))
+             (pf-near
+               (or (execute-single
+                    (format nil
+                            "SELECT count(*) FROM strategies
+                              WHERE ~a
+                                AND COALESCE(sharpe, 0.0) >= ?
+                                AND COALESCE(win_rate, 0.0) >= ?
+                                AND COALESCE(max_dd, 1.0) < ?
+                                AND COALESCE(profit_factor, 0.0) >= ?
+                                AND COALESCE(profit_factor, 0.0) < ?"
+                            b-rank-where)
+                    sh-min wr-min dd-max pf-near-min pf-min)
+                   0)))
+        (format nil
+                "A Gate Pressure (Active B): total=~d pass_all=~d | pass sharpe=~d pf=~d wr=~d maxdd=~d | pf_near[~,2f,~,2f)=~d"
+                total pass-all pass-sharpe pass-pf pass-wr pass-maxdd
+                pf-near-min pf-min pf-near))
+    (error (e)
+      (format nil "A Gate Pressure (Active B): unavailable (~a)" e))))
 
 (defun oos-metrics-summary-line ()
   "Human-readable summary of OOS pipeline health for reports/Discord."

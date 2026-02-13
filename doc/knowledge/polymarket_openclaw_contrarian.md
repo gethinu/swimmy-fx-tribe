@@ -38,7 +38,7 @@ python3 tools/polymarket_openclaw_bot.py \
 ```bash
 python3 tools/polymarket_openclaw_bot.py \
   --config-file tools/configs/polymarket_openclaw.contrarian.example.json \
-  --openclaw-cmd "python3 tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa" \
+  --openclaw-cmd "python3 tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --agent-market-cap-fallbacks 12,8,5 --agent-fallback-retries 0 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa" \
   --limit 250 \
   --journal-file data/reports/polymarket_openclaw_journal.jsonl \
   --write-plan data/reports/polymarket_openclaw_plan.json
@@ -82,11 +82,38 @@ python3 tools/polymarket_openclaw_cycle.py \
 - `plan_<run_id>.json`（今回の注文プラン）
 - `journal.jsonl`（累積ジャーナル）
 - `report_<date>_<run_id>.json`（当日サマリー）
+- `latest_status.json`（毎回上書きされる最新状態。まずここを見れば現況が分かる）
+- `status_history.jsonl`（実行ごとの状態履歴）
 
 ## 5. 出力確認
 - 標準出力にJSONを表示。
 - `summary.entries > 0` かつ `summary.total_stake_usd > 0` なら候補あり。
 - `entries[].expected_value_usd` はコスト控除後の期待値。
+
+`latest_status.json` の確認例:
+```bash
+cat data/reports/polymarket_openclaw/latest_status.json
+```
+
+監視CLI（推奨）:
+```bash
+python3 tools/polymarket_openclaw_status.py
+```
+
+直近N回の推移を確認:
+```bash
+python3 tools/polymarket_openclaw_status.py --last-runs 10
+```
+
+時間窓サマリー（例: 直近24時間）:
+```bash
+python3 tools/polymarket_openclaw_status.py --last-runs 200 --window-minutes 1440
+```
+
+問題時に非0終了コードで監視したい場合:
+```bash
+python3 tools/polymarket_openclaw_status.py --fail-on-problem --max-age-seconds 1800
+```
 
 ## 6. 日次サマリー
 ```bash
@@ -102,6 +129,7 @@ python3 tools/polymarket_openclaw_report.py \
 - `total_stake_usd`: 想定投下額
 - `total_expected_value_usd`: 期待値合計（コスト控除後）
 - `expected_return_on_stake`: `total_expected_value_usd / total_stake_usd`
+- `signal_summary`: 実行時シグナル健全性（`agent_signal_ratio`, `source_counts`）
 
 ### 決着反映（実現PnL）
 `settlements.json` 例:
@@ -181,8 +209,14 @@ python3 tools/polymarket_openclaw_autotune.py \
 - `POLYCLAW_HEURISTIC_LIMIT`
 - `POLYCLAW_HEURISTIC_QUESTION_KEYWORDS`
 - `POLYCLAW_SIGNALS_META_FILE`
+- `POLYCLAW_LAST_GOOD_SIGNALS_FILE`
+- `POLYCLAW_LAST_GOOD_SIGNALS_META_FILE`
 - `POLYCLAW_SIGNAL_SYNC_MIN_SIGNALS`
+- `POLYCLAW_SIGNAL_SYNC_MIN_AGENT_SIGNALS`
+- `POLYCLAW_SIGNAL_SYNC_MIN_AGENT_RATIO`
 - `POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS`
+- `POLYCLAW_SYNC_SOFT_FAIL`
+- `POLYCLAW_USE_LAST_GOOD_SIGNALS_ON_BAD`
 - `POLYCLAW_REQUIRE_FRESH_SIGNALS`
 - `POLYCLAW_MIN_SIGNAL_COUNT`
 - `POLYCLAW_MAX_SIGNAL_AGE_SECONDS`
@@ -199,7 +233,59 @@ python3 tools/polymarket_openclaw_autotune.py \
 - `POLYCLAW_MIN_LIQUIDITY_USD`（最低流動性USD。未満市場は除外）
 - `POLYCLAW_MIN_VOLUME_USD`（最低出来高USD。未満市場は除外）
 
-## 9. OpenClaw Windows導入トラブル対応
+## 9. Live Execution（実注文）手順
+前提:
+- 実注文にはウォレット紐付けが必須（`POLYCLAW_LIVE_PRIVATE_KEY`）。
+- OpenClawの実行場所は必ずしもWindowsである必要はない。Linux側で `signals.jsonl` が生成できるなら稼働可能。
+
+### Step 1: 実行経路だけ先に確認（ウォレット未設定で可）
+`.env`:
+```bash
+POLYCLAW_LIVE_EXECUTION=1
+POLYCLAW_LIVE_DRY_RUN=1
+POLYCLAW_LIVE_MAX_ORDERS_PER_RUN=2
+POLYCLAW_LIVE_MIN_EXPECTED_VALUE_USD=0.2
+```
+
+確認ポイント:
+- cycle結果JSONに `live_execution_enabled: true`
+- `execution.ok: true`
+- `execution.dry_run: true`
+- `execution.sent > 0`（エントリーがある回のみ）
+
+### Step 2: ウォレット紐付け
+`.env`:
+```bash
+POLYCLAW_LIVE_PRIVATE_KEY=0x...
+POLYCLAW_LIVE_CHAIN_ID=137
+POLYCLAW_LIVE_HOST=https://clob.polymarket.com
+```
+
+必要時のみ:
+- `POLYCLAW_LIVE_SIGNATURE_TYPE`
+- `POLYCLAW_LIVE_FUNDER`
+- `POLYCLAW_LIVE_API_KEY / SECRET / PASSPHRASE`
+
+### Step 3: 小ロットで実注文開始
+`.env`:
+```bash
+POLYCLAW_LIVE_EXECUTION=1
+POLYCLAW_LIVE_DRY_RUN=0
+POLYCLAW_LIVE_MAX_ORDERS_PER_RUN=1
+POLYCLAW_LIVE_MIN_STAKE_USD=1.0
+POLYCLAW_LIVE_FAIL_ON_ERROR=1
+```
+
+反映:
+```bash
+systemctl --user restart swimmy-polymarket-openclaw.service
+tail -n 120 logs/polymarket_openclaw_cycle.log
+```
+
+出力:
+- `data/reports/polymarket_openclaw/execution_<date>_<run_id>.json`
+
+## 10. OpenClaw Windows導入トラブル対応
 `openclaw onboard` 実行時に下記が出る場合:
 - `Config invalid`
 - `agents.defaults.contextPruning.mode: Invalid input`
@@ -221,17 +307,19 @@ openclaw agent --local --agent main --json -m "reply with JSON"
 
 Linux側の本番シグナル切替:
 1. `.env` に bridge コマンドを設定（OpenClaw `signals` サブコマンド未提供版でも可）
-   - `POLYCLAW_OPENCLAW_CMD="/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa"`
+   - `POLYCLAW_OPENCLAW_CMD="/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --agent-market-cap-fallbacks 12,8,5 --agent-retries 3 --agent-fallback-retries 0 --agent-retry-sleep-ms 500 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa"`
 2. `.env` の `POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=0` に変更
 3. 必要なら品質ガードを有効化
    - `POLYCLAW_MIN_AGENT_SIGNAL_COUNT=10`
    - `POLYCLAW_MIN_AGENT_SIGNAL_RATIO=0.2`
-4. 反映
+4. bridgeでリトライを増やした場合は同期タイムアウトも余裕を持たせる
+   - 例: `POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS=120`
+5. 反映
 ```bash
 systemctl --user restart swimmy-openclaw-signal-sync.service
 systemctl --user restart swimmy-polymarket-openclaw.service
 ```
-5. 確認
+6. 確認
 ```bash
 tail -n 80 logs/openclaw_signal_sync.log
 tail -n 80 logs/polymarket_openclaw_cycle.log

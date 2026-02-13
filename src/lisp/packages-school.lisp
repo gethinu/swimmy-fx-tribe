@@ -170,7 +170,6 @@
    #:strategy-rank-rank
    #:strategy-rank-trades
    #:check-promotion
-   #:recruit-elite-strategy
    
    ;; V47.0: B/A/S Rank System
    #:run-rank-evaluation

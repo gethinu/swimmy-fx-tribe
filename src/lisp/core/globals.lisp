@@ -98,7 +98,7 @@
 (defparameter *rr-expected-backtest-count* 0)
 (defparameter *rr-backtest-start-time* 0)
 
-(defparameter *qual-backtest-results-buffer* nil "Buffer for Qualification (Incubator/Scout) backtests")
+(defparameter *qual-backtest-results-buffer* nil "Buffer for Qualification (Incubator) backtests")
 (defparameter *qual-expected-backtest-count* 0)
 (defparameter *qual-backtest-start-time* 0)
 (defparameter *backtest-submit-last-id* nil "Last request_id submitted for backtests.")

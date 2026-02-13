@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-02-12T15:00:48.938134+00:00",
+  "updated_at": "2026-02-13T07:15:49.719962+00:00",
   "signal_count": 62,
   "source_counts": {
-    "openclaw_agent": 20,
-    "heuristic_fallback": 42
+    "openclaw_agent": 12,
+    "heuristic_fallback": 50
   },
-  "agent_signal_count": 20,
-  "agent_signal_ratio": 0.322581,
-  "openclaw_cmd": "/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa --openclaw-cmd /mnt/c/Users/stair/AppData/Roaming/npm/openclaw",
+  "agent_signal_count": 12,
+  "agent_signal_ratio": 0.193548,
+  "openclaw_cmd": "/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/openclaw_agent_signal_bridge.py --limit 120 --agent-market-cap 20 --agent-market-cap-fallbacks 12,8,5 --agent-retries 3 --agent-fallback-retries 0 --agent-retry-sleep-ms 500 --question-keyword nba --question-keyword nfl --question-keyword mlb --question-keyword nhl --question-keyword ncaa --openclaw-cmd /mnt/c/Users/stair/AppData/Roaming/npm/openclaw",
   "signals_file": "/home/swimmy/swimmy/data/openclaw/signals.jsonl"
 }

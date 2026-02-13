@@ -7,6 +7,8 @@ import time
 BASE = os.path.abspath(os.path.dirname(__file__) + "/..")
 LOG = os.path.join(BASE, "logs", "evolution_daemon.log")
 LOCK_PATH = "/tmp/swimmy_evolution_daemon.lock"
+CHILD_MONITOR_INTERVAL_SEC = 5.0
+CHILD_STOP_TIMEOUT_SEC = 20.0
 
 
 def _is_truthy(value: str) -> bool:
@@ -72,16 +74,67 @@ def _wait_if_school_running(log):
     log.write("[EVODAEMON] school-daemon stopped; starting evolution child process.\n")
 
 
+def _stop_child_process(proc, log) -> None:
+    try:
+        proc.terminate()
+    except Exception:
+        return
+
+    try:
+        proc.wait(timeout=CHILD_STOP_TIMEOUT_SEC)
+        return
+    except subprocess.TimeoutExpired:
+        log.write("[EVODAEMON] child did not exit after terminate; forcing kill.\n")
+    except Exception:
+        return
+
+    try:
+        proc.kill()
+    except Exception:
+        return
+    try:
+        proc.wait(timeout=CHILD_STOP_TIMEOUT_SEC)
+    except Exception:
+        pass
+
+
+def _monitor_child_process(
+    proc,
+    log,
+    should_pause_fn=should_pause_for_school,
+    sleep_fn=time.sleep,
+    check_interval_sec: float = CHILD_MONITOR_INTERVAL_SEC,
+):
+    while True:
+        code = proc.poll()
+        if code is not None:
+            return "exited", code
+
+        if should_pause_fn():
+            log.write(
+                "[EVODAEMON] school-daemon detected after child start; stopping evolution child.\n"
+            )
+            _stop_child_process(proc, log)
+            return "paused_for_school", 0
+
+        sleep_fn(check_interval_sec)
+
+
 def main() -> int:
     with open(LOG, "a", buffering=1) as log:
         log.write(f"[EVODAEMON] starting at {time.ctime()}\n")
         lock_file = _acquire_singleton_lock(log)
         try:
-            _wait_if_school_running(log)
-            proc = subprocess.Popen(CMD, cwd=BASE, stdout=log, stderr=log)
-            proc.wait()
-            log.write(f"[EVODAEMON] exit code {proc.returncode} at {time.ctime()}\n")
-            return proc.returncode
+            while True:
+                _wait_if_school_running(log)
+                proc = subprocess.Popen(CMD, cwd=BASE, stdout=log, stderr=log)
+                status, code = _monitor_child_process(proc, log)
+                if status == "exited":
+                    log.write(f"[EVODAEMON] exit code {code} at {time.ctime()}\n")
+                    return code
+                log.write(
+                    "[EVODAEMON] child stopped due to school-daemon; waiting before restart.\n"
+                )
         finally:
             lock_file.close()
 

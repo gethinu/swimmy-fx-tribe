@@ -185,7 +185,11 @@ def sync_from_command(
     openclaw_cmd: str,
     signals_file: Path,
     meta_file: Path,
+    last_good_signals_file: Path | None,
+    last_good_meta_file: Path | None,
     min_signals: int,
+    min_agent_signals: int,
+    min_agent_ratio: float,
     timeout_seconds: int,
 ) -> Dict[str, Any]:
     started = datetime.now(timezone.utc).isoformat()
@@ -209,11 +213,36 @@ def sync_from_command(
         return {"ok": False, "error": f"parse failed: {exc}", "signal_count": 0, "started_at": started}
 
     count = len(signals)
+    agent_signal_count = int(source_counts.get("openclaw_agent", 0))
+    agent_signal_ratio = (float(agent_signal_count) / count) if count > 0 else 0.0
     if count < max(0, min_signals):
         return {
             "ok": False,
             "error": f"too few signals: {count} < {min_signals}",
             "signal_count": count,
+            "source_counts": dict(source_counts),
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
+            "started_at": started,
+        }
+    if min_agent_signals > 0 and agent_signal_count < min_agent_signals:
+        return {
+            "ok": False,
+            "error": f"too few agent signals: {agent_signal_count} < {min_agent_signals}",
+            "signal_count": count,
+            "source_counts": dict(source_counts),
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
+            "started_at": started,
+        }
+    if min_agent_ratio > 0.0 and agent_signal_ratio < min_agent_ratio:
+        return {
+            "ok": False,
+            "error": f"agent signal ratio too low: {agent_signal_ratio:.6f} < {min_agent_ratio:.6f}",
+            "signal_count": count,
+            "source_counts": dict(source_counts),
+            "agent_signal_count": agent_signal_count,
+            "agent_signal_ratio": round(agent_signal_ratio, 6),
             "started_at": started,
         }
 
@@ -223,12 +252,16 @@ def sync_from_command(
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "signal_count": count,
         "source_counts": source_counts,
-        "agent_signal_count": int(source_counts.get("openclaw_agent", 0)),
-        "agent_signal_ratio": round((float(source_counts.get("openclaw_agent", 0)) / count), 6) if count > 0 else 0.0,
+        "agent_signal_count": agent_signal_count,
+        "agent_signal_ratio": round(agent_signal_ratio, 6),
         "openclaw_cmd": openclaw_cmd,
         "signals_file": str(signals_file),
     }
     _write_atomic(meta_file, json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
+    if last_good_signals_file is not None:
+        _write_atomic(last_good_signals_file, jsonl)
+    if last_good_meta_file is not None:
+        _write_atomic(last_good_meta_file, json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
     return {
         "ok": True,
         "signal_count": count,
@@ -237,6 +270,8 @@ def sync_from_command(
         "agent_signal_ratio": float(meta["agent_signal_ratio"]),
         "signals_file": str(signals_file),
         "meta_file": str(meta_file),
+        "last_good_signals_file": str(last_good_signals_file) if last_good_signals_file is not None else "",
+        "last_good_meta_file": str(last_good_meta_file) if last_good_meta_file is not None else "",
     }
 
 
@@ -245,7 +280,17 @@ def main() -> None:
     parser.add_argument("--openclaw-cmd", default=os.getenv("POLYCLAW_OPENCLAW_CMD", ""))
     parser.add_argument("--signals-file", default=os.getenv("POLYCLAW_SIGNALS_FILE", str(BASE_DIR / "data" / "openclaw" / "signals.jsonl")))
     parser.add_argument("--meta-file", default=os.getenv("POLYCLAW_SIGNALS_META_FILE", str(BASE_DIR / "data" / "openclaw" / "signals.meta.json")))
+    parser.add_argument(
+        "--last-good-signals-file",
+        default=os.getenv("POLYCLAW_LAST_GOOD_SIGNALS_FILE", str(BASE_DIR / "data" / "openclaw" / "signals.last_good.jsonl")),
+    )
+    parser.add_argument(
+        "--last-good-meta-file",
+        default=os.getenv("POLYCLAW_LAST_GOOD_SIGNALS_META_FILE", str(BASE_DIR / "data" / "openclaw" / "signals.last_good.meta.json")),
+    )
     parser.add_argument("--min-signals", type=int, default=int(os.getenv("POLYCLAW_SIGNAL_SYNC_MIN_SIGNALS", "1")))
+    parser.add_argument("--min-agent-signals", type=int, default=int(os.getenv("POLYCLAW_SIGNAL_SYNC_MIN_AGENT_SIGNALS", "0")))
+    parser.add_argument("--min-agent-ratio", type=float, default=float(os.getenv("POLYCLAW_SIGNAL_SYNC_MIN_AGENT_RATIO", "0")))
     parser.add_argument("--timeout-seconds", type=int, default=int(os.getenv("POLYCLAW_SIGNAL_SYNC_TIMEOUT_SECONDS", "30")))
     args = parser.parse_args()
 
@@ -258,7 +303,11 @@ def main() -> None:
         openclaw_cmd=cmd,
         signals_file=Path(args.signals_file),
         meta_file=Path(args.meta_file),
+        last_good_signals_file=Path(args.last_good_signals_file) if str(args.last_good_signals_file).strip() else None,
+        last_good_meta_file=Path(args.last_good_meta_file) if str(args.last_good_meta_file).strip() else None,
         min_signals=max(0, args.min_signals),
+        min_agent_signals=max(0, args.min_agent_signals),
+        min_agent_ratio=max(0.0, min(1.0, args.min_agent_ratio)),
         timeout_seconds=max(1, args.timeout_seconds),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

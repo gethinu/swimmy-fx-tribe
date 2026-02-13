@@ -70,6 +70,48 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         text = " ".join(cmd)
         self.assertIn("--allow-duplicate-open-markets", text)
 
+    def test_load_signal_summary_from_meta(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            signals_file.write_text('{"market_id":"m1","p_yes":0.6}\n', encoding="utf-8")
+            meta_file.write_text(
+                (
+                    '{"updated_at":"2026-02-12T15:00:00+00:00","signal_count":5,'
+                    '"source_counts":{"openclaw_agent":2,"heuristic_fallback":3},'
+                    '"agent_signal_count":2,"agent_signal_ratio":0.4}'
+                ),
+                encoding="utf-8",
+            )
+            summary = cycle.load_signal_summary(
+                signals_meta_file=str(meta_file),
+                signals_file=str(signals_file),
+            )
+
+        self.assertEqual(5, summary["signal_count"])
+        self.assertEqual(2, summary["agent_signal_count"])
+        self.assertAlmostEqual(0.4, summary["agent_signal_ratio"])
+        self.assertEqual(2, summary["source_counts"]["openclaw_agent"])
+        self.assertEqual(3, summary["source_counts"]["heuristic_fallback"])
+
+    def test_load_signal_summary_uses_signals_suffix_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            signals_file.write_text('{"market_id":"m1","p_yes":0.6}\n', encoding="utf-8")
+            meta_file.write_text(
+                '{"signal_count":4,"source_counts":{"openclaw_agent":1,"heuristic_fallback":3}}',
+                encoding="utf-8",
+            )
+            summary = cycle.load_signal_summary(
+                signals_meta_file="",
+                signals_file=str(signals_file),
+            )
+
+        self.assertEqual(4, summary["signal_count"])
+        self.assertEqual(1, summary["agent_signal_count"])
+        self.assertAlmostEqual(0.25, summary["agent_signal_ratio"])
+
     def test_build_report_command_with_settlements(self) -> None:
         cmd = cycle.build_report_command(
             base_dir=Path("/repo"),
@@ -85,6 +127,31 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         self.assertIn("--settlements-file s.json", text)
         self.assertIn("--fee-bps-per-side 20.0", text)
         self.assertIn("--slippage-bps-per-side 30.0", text)
+
+    def test_build_execute_command(self) -> None:
+        cmd = cycle.build_execute_command(
+            base_dir=Path("/repo"),
+            plan_file=Path("/tmp/plan.json"),
+            run_id="r1",
+            run_date="2026-02-12",
+            order_type="fok",
+            max_orders=3,
+            min_expected_value_usd=0.2,
+            min_stake_usd=1.5,
+            fail_on_error=True,
+            write_report=Path("/tmp/execution.json"),
+        )
+        text = " ".join(cmd)
+        self.assertIn("tools/polymarket_openclaw_execute.py", text)
+        self.assertIn("--plan-file /tmp/plan.json", text)
+        self.assertIn("--run-id r1", text)
+        self.assertIn("--run-date 2026-02-12", text)
+        self.assertIn("--order-type FOK", text)
+        self.assertIn("--max-orders 3", text)
+        self.assertIn("--min-expected-value-usd 0.2", text)
+        self.assertIn("--min-stake-usd 1.5", text)
+        self.assertIn("--write-report /tmp/execution.json", text)
+        self.assertIn("--fail-on-error", text)
 
     def test_build_fetch_settlements_command(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -189,6 +256,86 @@ class TestPolymarketOpenClawCycle(unittest.TestCase):
         self.assertIn("\"min_edge\": 0.03", applied)
         self.assertIn("\"min_edge\": 0.02", backup)
         self.assertTrue(Path(paths["backup_file"]).name.startswith("active_config_r1_"))
+
+    def test_build_latest_status_snapshot(self) -> None:
+        snapshot = cycle.build_latest_status_snapshot(
+            result={
+                "run_id": "r1",
+                "run_date": "2026-02-13",
+                "plan_summary": {"entries": 2, "total_stake_usd": 3.5},
+                "signal_summary": {"signal_count": 20, "agent_signal_count": 4, "agent_signal_ratio": 0.2},
+                "live_execution_enabled": True,
+                "execution": {"ok": True, "skipped": False, "attempted": 2, "sent": 2, "failed": 0},
+                "report_summary": {"total_expected_value_usd": 0.3, "expected_return_on_stake": 0.0857},
+                "paths": {
+                    "plan_file": "/tmp/plan.json",
+                    "report_file": "/tmp/report.json",
+                    "journal_file": "/tmp/journal.jsonl",
+                },
+            },
+            updated_at="2026-02-13T00:00:00+00:00",
+        )
+        self.assertEqual("r1", snapshot["run_id"])
+        self.assertEqual(2, snapshot["entries"])
+        self.assertAlmostEqual(3.5, snapshot["total_stake_usd"])
+        self.assertTrue(snapshot["live_execution_enabled"])
+        self.assertTrue(snapshot["execution_ok"])
+        self.assertEqual(2, snapshot["execution_sent"])
+        self.assertEqual(20, snapshot["signal_count"])
+        self.assertEqual("/tmp/report.json", snapshot["report_file"])
+
+    def test_build_latest_status_snapshot_when_live_disabled(self) -> None:
+        snapshot = cycle.build_latest_status_snapshot(
+            result={
+                "run_id": "r3",
+                "run_date": "2026-02-13",
+                "plan_summary": {"entries": 0, "total_stake_usd": 0.0},
+                "signal_summary": {"signal_count": 5, "agent_signal_count": 1, "agent_signal_ratio": 0.2},
+                "live_execution_enabled": False,
+                "execution": {},
+                "report_summary": {},
+                "paths": {},
+            },
+            updated_at="2026-02-13T00:00:00+00:00",
+        )
+        self.assertFalse(snapshot["live_execution_enabled"])
+        self.assertTrue(snapshot["execution_ok"])
+        self.assertTrue(snapshot["execution_skipped"])
+
+    def test_write_latest_status_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            status_file = Path(td) / "latest_status.json"
+            cycle.write_latest_status_snapshot(
+                status_file=status_file,
+                snapshot={"run_id": "r2", "entries": 1},
+            )
+            payload = status_file.read_text(encoding="utf-8")
+        self.assertIn("\"run_id\": \"r2\"", payload)
+        self.assertIn("\"entries\": 1", payload)
+
+    def test_append_status_history_caps_and_replaces_same_run(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            history_file = Path(td) / "status_history.jsonl"
+            cycle.append_status_history(
+                history_file=history_file,
+                snapshot={"run_id": "r1", "entries": 1},
+                max_entries=2,
+            )
+            cycle.append_status_history(
+                history_file=history_file,
+                snapshot={"run_id": "r2", "entries": 2},
+                max_entries=2,
+            )
+            cycle.append_status_history(
+                history_file=history_file,
+                snapshot={"run_id": "r1", "entries": 3},
+                max_entries=2,
+            )
+            lines = [line for line in history_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(2, len(lines))
+        self.assertIn("\"run_id\": \"r2\"", lines[0])
+        self.assertIn("\"run_id\": \"r1\"", lines[1])
+        self.assertIn("\"entries\": 3", lines[1])
 
 
 if __name__ == "__main__":
