@@ -83,7 +83,8 @@ def main() -> None:
         print("❌ SWIMMY_DISCORD_RECRUIT not set.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Target Webhook: {webhook[-20:]}")
+    # Never print webhook URLs (tokens are embedded in the URL).
+    print("Target Webhook: (configured)", flush=True)
 
     ctx = zmq.Context()
     sock = ctx.socket(zmq.PUSH)

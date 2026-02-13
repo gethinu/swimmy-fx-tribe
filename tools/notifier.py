@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import hashlib
+import re
 from pathlib import Path
 
 import requests
@@ -62,6 +63,25 @@ message_queue = deque()
 _dedupe_cache = {}
 _dedupe_lock = threading.Lock()
 _dedupe_last_prune = 0.0
+
+
+_DISCORD_WEBHOOK_RE = re.compile(
+    r"^https?://(?:canary\.)?discord(?:app)?\.com/api/webhooks/(\d+)(?:/([^/?#]+))?",
+    re.IGNORECASE,
+)
+
+
+def redact_discord_webhook_url(url: str) -> str:
+    """Return a safe-to-log webhook identifier without the token."""
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    m = _DISCORD_WEBHOOK_RE.match(text)
+    if not m:
+        # Best-effort generic redaction for unknown URLs.
+        return "<redacted-url>"
+    webhook_id = m.group(1)
+    return f"https://discord.com/api/webhooks/{webhook_id}/<redacted>"
 
 
 def resolve_base_dir() -> Path:
@@ -250,7 +270,8 @@ def process_queue():
             continue
 
         webhook_url, payload = message_queue.popleft()
-        print(f"[DEBUG] Worker popped message for {webhook_url[:40]}...", flush=True)
+        safe_webhook = redact_discord_webhook_url(webhook_url)
+        print(f"[DEBUG] Worker popped message for {safe_webhook}", flush=True)
         msg_id = id(payload)  # Unique ID for tracking retries
         retry_count = failed_count.get(msg_id, 0)
 
@@ -269,7 +290,7 @@ def process_queue():
 
             elif response.status_code >= 400:
                 print(
-                    f"[NOTIFIER] Error {response.status_code} for {webhook_url}: {response.text}",
+                    f"[NOTIFIER] Error {response.status_code} for {safe_webhook}: {response.text}",
                     flush=True,
                 )
                 # Don't retry HTTP errors (webhook invalid, etc)
@@ -278,7 +299,7 @@ def process_queue():
 
             else:
                 # Success - cleanup
-                print(f"[NOTIFIER] Sent to {webhook_url[:60]}...", flush=True)
+                print(f"[NOTIFIER] Sent to {safe_webhook}", flush=True)
                 if msg_id in failed_count:
                     del failed_count[msg_id]
 
