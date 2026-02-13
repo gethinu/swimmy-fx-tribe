@@ -96,6 +96,10 @@ class TestOpenclawSignalSync(unittest.TestCase):
                 )
 
             self.assertTrue(result["ok"])
+            self.assertEqual(1, result["agent_signal_count"])
+            self.assertAlmostEqual(0.5, result["agent_signal_ratio"])
+            self.assertEqual(1, result["source_counts"]["openclaw_agent"])
+            self.assertEqual(1, result["source_counts"]["heuristic_fallback"])
             self.assertTrue(signals_file.exists())
             self.assertTrue(meta_file.exists())
             saved = signals_file.read_text(encoding="utf-8")

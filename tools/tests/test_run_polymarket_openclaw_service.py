@@ -11,6 +11,7 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         env = {
             "POLYCLAW_CONFIG_FILE": "/cfg.json",
             "POLYCLAW_SIGNALS_FILE": "/signals.jsonl",
+            "POLYCLAW_SIGNALS_META_FILE": "/signals.meta.json",
             "POLYCLAW_OUTPUT_DIR": "/out",
         }
         argv = svc.build_cycle_args(env=env, base_dir=Path("/repo"))
@@ -18,6 +19,7 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertIn("tools/polymarket_openclaw_cycle.py", text)
         self.assertIn("--config-file /cfg.json", text)
         self.assertIn("--signals-file /signals.jsonl", text)
+        self.assertIn("--signals-meta-file /signals.meta.json", text)
         self.assertIn("--output-dir /out", text)
 
     def test_build_cycle_args_with_openclaw_cmd(self) -> None:
@@ -326,6 +328,62 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
 
         self.assertTrue(health["ok"])
         self.assertAlmostEqual(0.5, health["agent_signal_ratio"])
+
+    def test_evaluate_signal_health_reads_source_counts_from_signals_when_meta_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6,"source":"openclaw_agent"}',
+                        '{"market_id":"m2","p_yes":0.4,"source":"heuristic_fallback"}',
+                        '{"market_id":"m3","p_yes":0.5,"source":"openclaw_agent"}',
+                        '{"market_id":"m4","p_yes":0.7,"source":"heuristic_fallback"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_RATIO": "0.5",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(health["ok"])
+        self.assertEqual(2, health["agent_signal_count"])
+        self.assertAlmostEqual(0.5, health["agent_signal_ratio"])
+
+    def test_evaluate_signal_health_fails_from_signals_when_meta_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6,"source":"heuristic_fallback"}',
+                        '{"market_id":"m2","p_yes":0.4,"source":"heuristic_fallback"}',
+                        '{"market_id":"m3","p_yes":0.5,"source":"heuristic_fallback"}',
+                        '{"market_id":"m4","p_yes":0.7,"source":"heuristic_fallback"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_RATIO": "0.25",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertFalse(health["ok"])
+        self.assertEqual("low_agent_signal_ratio", health["reason"])
+        self.assertEqual(0, health["agent_signal_count"])
 
 
 if __name__ == "__main__":

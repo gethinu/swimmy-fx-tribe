@@ -94,6 +94,10 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
         "POLYCLAW_OUTPUT_DIR",
         str(base_dir / "data" / "reports" / "polymarket_openclaw"),
     ).strip()
+    signals_meta_file = env.get(
+        "POLYCLAW_SIGNALS_META_FILE",
+        str(base_dir / "data" / "openclaw" / "signals.meta.json"),
+    ).strip()
 
     if not signals_file and not openclaw_cmd:
         raise ValueError("Set POLYCLAW_SIGNALS_FILE or POLYCLAW_OPENCLAW_CMD")
@@ -135,6 +139,8 @@ def build_cycle_args(*, env: Mapping[str, str], base_dir: Path) -> List[str]:
 
     if signals_file:
         args.extend(["--signals-file", signals_file])
+    if signals_meta_file:
+        args.extend(["--signals-meta-file", signals_meta_file])
     if openclaw_cmd:
         args.extend(["--openclaw-cmd", openclaw_cmd])
     if markets_file:
@@ -224,6 +230,39 @@ def _signal_count_from_file(path: Path) -> int:
     return count
 
 
+def _source_counts_from_file(path: Path) -> Dict[str, int]:
+    if not path.exists():
+        return {}
+    by_market_id: Dict[str, str] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            market_id = str(payload.get("market_id") or payload.get("market") or payload.get("id") or "").strip()
+            if not market_id:
+                continue
+            try:
+                p_yes = float(payload.get("p_yes", payload.get("prob_yes", payload.get("probability_yes"))))
+            except (TypeError, ValueError):
+                continue
+            if p_yes < 0.0 or p_yes > 1.0:
+                continue
+            source = str(payload.get("source") or "unknown").strip() or "unknown"
+            by_market_id[market_id] = source
+
+    counts: Dict[str, int] = {}
+    for source in by_market_id.values():
+        counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
 def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[str, object]:
     signals_file = Path(
         env.get("POLYCLAW_SIGNALS_FILE", str(base_dir / "data" / "openclaw" / "signals.jsonl"))
@@ -298,6 +337,8 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
         except Exception:
             pass
 
+    if not source_counts and (min_agent_signal_count > 0 or min_agent_signal_ratio > 0.0):
+        source_counts = _source_counts_from_file(signals_file)
     if source_counts and agent_signal_count <= 0:
         agent_signal_count = int(source_counts.get("openclaw_agent", 0))
     if signal_count > 0 and agent_signal_ratio <= 0.0:

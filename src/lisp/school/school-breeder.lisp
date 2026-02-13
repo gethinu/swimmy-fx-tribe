@@ -111,7 +111,7 @@
   "Maximum SL/TP scale multiplier from PF recovery expansion.")
 (defparameter *pfwr-complement-scale-floor* 1.40
   "Minimum SL/TP scale multiplier for opposite-complement pair stabilization.")
-(defparameter *pfwr-wr-only-scale-floor* 1.22
+(defparameter *pfwr-wr-only-scale-floor* 1.30
   "Minimum SL/TP scale multiplier when WR deficit is already resolved but PF is still below target.")
 (defparameter *breeder-priority-use-a-base-score* t
   "When T, breeder parent ranking uses A-base-aware culling score if available.")
@@ -127,6 +127,16 @@
   "Minimum PF required for WR-complement candidates to avoid over-fragile pairings.")
 (defparameter *breeder-complement-min-wr-when-needs-pf* 0.38
   "Minimum WR required for PF-complement candidates to avoid over-fragile pairings.")
+(defparameter *breeder-near-pf-threshold* 1.24
+  "PF threshold treated as near-target when parent mainly needs PF recovery.")
+(defparameter *breeder-near-pf-min-wr* 0.43
+  "Minimum WR required for near-PF candidates to be considered PF-recovery partners.")
+(defparameter *breeder-near-pf-bonus* 1.0
+  "Partner score bonus for near-target PF candidates when parent needs PF.")
+(defparameter *breeder-wr-only-recovery-min-pf-delta* 0.02
+  "Minimum PF improvement required to treat WR-only partner as PF-recovery upgrade.")
+(defparameter *breeder-wr-only-recovery-bonus* 0.8
+  "Extra score bonus for WR-only x WR-only PF-recovery pairings.")
 (defparameter *breeder-prioritize-complement-partner* t
   "When T, prioritize partners that satisfy at least one PF/WR deficit of the parent.")
 (defparameter *breeder-min-genetic-distance* 0.15
@@ -300,6 +310,25 @@
       (wr-ok :wr-only)
       (t :none))))
 
+(defun candidate-near-pf-recovery-p (candidate)
+  "True when candidate is close to PF target and already meets WR target."
+  (let ((cand-pf (float (or (strategy-profit-factor candidate) 0.0)))
+        (cand-wr (float (or (strategy-win-rate candidate) 0.0))))
+    (and (< cand-pf (float *pfwr-target-pf*))
+         (>= cand-pf *breeder-near-pf-threshold*)
+         (>= cand-wr *breeder-near-pf-min-wr*))))
+
+(defun candidate-wr-only-pf-recovery-p (parent candidate)
+  "True when WR-only parent can improve PF via WR-only higher-PF partner."
+  (let ((parent-class (strategy-pfwr-class parent))
+        (cand-class (strategy-pfwr-class candidate))
+        (parent-pf (float (or (strategy-profit-factor parent) 0.0)))
+        (cand-pf (float (or (strategy-profit-factor candidate) 0.0))))
+    (and (eq parent-class :wr-only)
+         (eq cand-class :wr-only)
+         (candidate-near-pf-recovery-p candidate)
+         (>= cand-pf (+ parent-pf *breeder-wr-only-recovery-min-pf-delta*)))))
+
 (defun opposite-pfwr-complements-p (parent1 parent2)
   "True when parents are opposite complements: PF-only x WR-only."
   (let ((c1 (strategy-pfwr-class parent1))
@@ -315,11 +344,17 @@
          (cand-wr (float (or (strategy-win-rate candidate) 0.0)))
          (cand-has-pf (and (strategy-meets-target-pf-p candidate)
                            (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
+         (cand-near-pf (candidate-near-pf-recovery-p candidate))
+         (cand-wr-only-recovery (candidate-wr-only-pf-recovery-p parent candidate))
          (cand-has-wr (and (strategy-meets-target-wr-p candidate)
                            (>= cand-pf *breeder-complement-min-pf-when-needs-wr*)))
          (bonus 0.0))
     (when (and parent-needs-pf cand-has-pf)
       (incf bonus *breeder-complement-pf-bonus*))
+    (when (and parent-needs-pf (not cand-has-pf) cand-near-pf)
+      (incf bonus *breeder-near-pf-bonus*))
+    (when cand-wr-only-recovery
+      (incf bonus *breeder-wr-only-recovery-bonus*))
     (when (and parent-needs-wr cand-has-wr)
       (incf bonus *breeder-complement-wr-bonus*))
     (when (and parent-needs-pf parent-needs-wr cand-has-pf cand-has-wr)
@@ -341,7 +376,9 @@
                                     (>= cand-wr *breeder-complement-min-wr-when-needs-pf*)))
          (cand-wr-complement-p (and (>= cand-wr (float *pfwr-target-wr*))
                                     (>= cand-pf *breeder-complement-min-pf-when-needs-wr*))))
-    (or (and parent-needs-pf cand-pf-complement-p)
+    (or (and parent-needs-pf
+             (or cand-pf-complement-p
+                 (candidate-near-pf-recovery-p candidate)))
         (and parent-needs-wr cand-wr-complement-p))))
 
 (defun breeding-min-genetic-distance-for-candidate (parent candidate)
@@ -515,6 +552,9 @@
         (best-score most-negative-double-float)
         (best-complement nil)
         (best-complement-score most-negative-double-float)
+        (best-wr-only-recovery nil)
+        (best-wr-only-recovery-score most-negative-double-float)
+        (parent-wr-only-p (eq (strategy-pfwr-class parent) :wr-only))
         (parent-needs-complement (or (not (strategy-meets-target-pf-p parent))
                                      (not (strategy-meets-target-wr-p parent)))))
     (loop for idx from start-index below (length sorted-candidates)
@@ -528,18 +568,28 @@
                       (*breeder-current-pair-min-distance* min-distance))
                  (when (strategies-correlation-ok-p parent candidate)
                    (let ((score (breeding-partner-score parent candidate))
-                         (complements-p (candidate-complements-parent-p parent candidate)))
+                        (complements-p (candidate-complements-parent-p parent candidate))
+                        (wr-only-recovery-p (candidate-wr-only-pf-recovery-p parent candidate)))
                      (when (> score best-score)
                        (setf best candidate
                              best-score score))
                      (when (and complements-p (> score best-complement-score))
                        (setf best-complement candidate
-                             best-complement-score score))))))
-    (if (and *breeder-prioritize-complement-partner*
-             parent-needs-complement
-             best-complement)
-        best-complement
-        best)))
+                             best-complement-score score))
+                     (when (and wr-only-recovery-p (> score best-wr-only-recovery-score))
+                       (setf best-wr-only-recovery candidate
+                             best-wr-only-recovery-score score))))))
+    (cond
+      ((and *breeder-prioritize-complement-partner*
+            parent-wr-only-p
+            best-wr-only-recovery)
+       best-wr-only-recovery)
+      ((and *breeder-prioritize-complement-partner*
+            parent-needs-complement
+            best-complement)
+       best-complement)
+      (t
+       best))))
 
 
 
