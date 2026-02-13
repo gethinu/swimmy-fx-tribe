@@ -10,6 +10,7 @@ from tools.xau_autobot import (
     can_open_trade,
     decide_signal,
     ema_last,
+    evaluate_once,
     is_session_allowed,
     resolve_config_path,
     volatility_filter_pass,
@@ -170,6 +171,107 @@ class TestXauAutoBotConfig(unittest.TestCase):
             p2 = Path(td) / "missing-b.json"
             resolved = resolve_config_path("", default_candidates=[str(p1), str(p2)])
             self.assertEqual(resolved, "")
+
+
+class _FakeGateway:
+    def __init__(
+        self,
+        *,
+        rates,
+        open_positions,
+        has_opposite,
+        close_results,
+        open_positions_after_close,
+    ):
+        self._rates = rates
+        self._open_positions = open_positions
+        self._has_opposite = has_opposite
+        self._close_results = close_results
+        self._open_positions_after_close = open_positions_after_close
+        self.orders = []
+        self.close_calls = 0
+
+    def fetch_rates(self):
+        return self._rates
+
+    def get_tick_context(self):
+        return (2000.2, 2000.0, 0.1)
+
+    def open_positions(self):
+        return self._open_positions
+
+    def has_opposite_position(self, signal):
+        return self._has_opposite
+
+    def close_opposite_positions(self, signal):
+        self.close_calls += 1
+        self._open_positions = self._open_positions_after_close
+        return list(self._close_results)
+
+    def send_market_order(self, side, sl, tp):
+        self.orders.append({"side": side, "sl": sl, "tp": tp})
+        return {"retcode": 0, "request": {"side": side, "sl": sl, "tp": tp}}
+
+
+class TestXauAutoBotLiveBehavior(unittest.TestCase):
+    def _base_config(self) -> BotConfig:
+        return BotConfig.from_dict(
+            {
+                "symbol": "XAUUSD",
+                "fast_ema": 1,
+                "slow_ema": 3,
+                "atr_period": 2,
+                "pullback_atr": 0.0,
+                "session_start_hour_utc": 0,
+                "session_end_hour_utc": 23,
+                "min_atr_ratio_to_median": 0.0,
+                "max_atr_ratio_to_median": 999.0,
+                "max_spread_points": 80.0,
+                "max_positions": 1,
+            }
+        )
+
+    def _rates(self):
+        return {
+            "time": [1700000000, 1700000300, 1700000600, 1700000900, 1700001200],
+            "high": [10.2, 9.2, 8.2, 7.2, 6.2],
+            "low": [9.8, 8.8, 7.8, 6.8, 5.8],
+            "close": [10.0, 9.0, 8.0, 7.0, 6.0],
+        }
+
+    def test_evaluate_once_closes_opposite_position_before_new_entry(self):
+        config = self._base_config()
+        gateway = _FakeGateway(
+            rates=self._rates(),
+            open_positions=1,
+            has_opposite=True,
+            close_results=[{"retcode": 10009, "deal": 1}],
+            open_positions_after_close=0,
+        )
+
+        payload, _ = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "CLOSE")
+        self.assertEqual(payload["signal"], "SELL")
+        self.assertEqual(gateway.close_calls, 1)
+        self.assertEqual(len(gateway.orders), 0)
+
+    def test_evaluate_once_blocks_when_opposite_position_remains_open(self):
+        config = self._base_config()
+        gateway = _FakeGateway(
+            rates=self._rates(),
+            open_positions=1,
+            has_opposite=True,
+            close_results=[{"retcode": -1, "error": "close failed"}],
+            open_positions_after_close=1,
+        )
+
+        payload, _ = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "BLOCKED")
+        self.assertEqual(payload["reason"], "opposite_close_failed")
+        self.assertEqual(gateway.close_calls, 1)
+        self.assertEqual(len(gateway.orders), 0)
 
 
 if __name__ == "__main__":

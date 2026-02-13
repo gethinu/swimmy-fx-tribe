@@ -284,8 +284,92 @@ class Mt5Gateway:
 
     def open_positions(self) -> int:
         assert mt5 is not None
+        return len(self.own_positions())
+
+    def own_positions(self) -> List[Any]:
+        assert mt5 is not None
         positions = mt5.positions_get(symbol=self.config.symbol)
-        return len(positions) if positions else 0
+        if not positions:
+            return []
+        out: List[Any] = []
+        for position in positions:
+            if int(getattr(position, "magic", 0)) == int(self.config.magic):
+                out.append(position)
+        return out
+
+    def has_opposite_position(self, signal: str) -> bool:
+        normalized_signal = signal.upper()
+        for position in self.own_positions():
+            side = self._position_side(position)
+            if side and side != normalized_signal:
+                return True
+        return False
+
+    def close_opposite_positions(self, signal: str) -> List[Dict[str, Any]]:
+        assert mt5 is not None
+        ask, bid, _point = self.get_tick_context()
+        normalized_signal = signal.upper()
+        results: List[Dict[str, Any]] = []
+        for position in self.own_positions():
+            side = self._position_side(position)
+            if not side or side == normalized_signal:
+                continue
+            volume = float(getattr(position, "volume", 0.0))
+            ticket = int(getattr(position, "ticket", 0))
+            if side == "BUY":
+                close_type = mt5.ORDER_TYPE_SELL
+                price = bid
+            else:
+                close_type = mt5.ORDER_TYPE_BUY
+                price = ask
+            request: Dict[str, Any] = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": self.config.symbol,
+                "position": ticket,
+                "volume": volume,
+                "type": close_type,
+                "price": price,
+                "deviation": self.config.deviation,
+                "magic": self.config.magic,
+                "comment": f"{self.config.comment}_close",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            if self.config.dry_run:
+                results.append(
+                    {
+                        "retcode": 0,
+                        "dry_run": True,
+                        "closed_side": side,
+                        "request": request,
+                    }
+                )
+                continue
+            result = mt5.order_send(request)
+            if result is None:
+                results.append(
+                    {
+                        "retcode": -1,
+                        "error": str(mt5.last_error()),
+                        "closed_side": side,
+                        "request": request,
+                    }
+                )
+                continue
+            result_dict = result._asdict()
+            result_dict["closed_side"] = side
+            result_dict["request"] = request
+            results.append(result_dict)
+        return results
+
+    def _position_side(self, position: Any) -> Optional[str]:
+        assert mt5 is not None
+        position_type = int(getattr(position, "type", -1))
+        if position_type == int(mt5.POSITION_TYPE_BUY):
+            return "BUY"
+        if position_type == int(mt5.POSITION_TYPE_SELL):
+            return "SELL"
+        return None
 
     def send_market_order(self, side: str, sl: float, tp: float) -> Dict[str, Any]:
         assert mt5 is not None
@@ -381,6 +465,27 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "atr": atr_value,
             "spread_points": spread_points,
             "open_positions": open_positions,
+        }, bar_time
+
+    if gateway.has_opposite_position(signal):
+        close_results = gateway.close_opposite_positions(signal)
+        remaining_positions = gateway.open_positions()
+        if remaining_positions > 0:
+            return {
+                "action": "BLOCKED",
+                "reason": "opposite_close_failed",
+                "symbol": config.symbol,
+                "signal": signal,
+                "open_positions": remaining_positions,
+                "close_results": close_results,
+            }, bar_time
+        return {
+            "action": "CLOSE",
+            "symbol": config.symbol,
+            "signal": signal,
+            "spread_points": spread_points,
+            "close_results": close_results,
+            "open_positions": remaining_positions,
         }, bar_time
 
     if not can_open_trade(
