@@ -1,0 +1,66 @@
+# Allow user swimmy to manage Swimmy systemd services without a password.
+#
+# This is intentionally limited to restart/status/is-active on specific units.
+#
+# Install:
+#   sudo bash tools/ops/install_swimmy_systemctl_sudoers.sh
+#
+# Verify:
+#   sudo -n /usr/bin/systemctl status swimmy-brain.service
+
+swimmy ALL=(root) NOPASSWD: \
+  /usr/bin/systemctl restart swimmy-brain, \
+  /usr/bin/systemctl restart swimmy-brain.service, \
+  /usr/bin/systemctl restart swimmy-school, \
+  /usr/bin/systemctl restart swimmy-school.service, \
+  /usr/bin/systemctl restart swimmy-guardian, \
+  /usr/bin/systemctl restart swimmy-guardian.service, \
+  /usr/bin/systemctl restart swimmy-data-keeper, \
+  /usr/bin/systemctl restart swimmy-data-keeper.service, \
+  /usr/bin/systemctl restart swimmy-backtest, \
+  /usr/bin/systemctl restart swimmy-backtest.service, \
+  /usr/bin/systemctl restart swimmy-risk, \
+  /usr/bin/systemctl restart swimmy-risk.service, \
+  /usr/bin/systemctl restart swimmy-notifier, \
+  /usr/bin/systemctl restart swimmy-notifier.service, \
+  /usr/bin/systemctl restart swimmy-evolution, \
+  /usr/bin/systemctl restart swimmy-evolution.service, \
+  /usr/bin/systemctl restart swimmy-watchdog, \
+  /usr/bin/systemctl restart swimmy-watchdog.service, \
+  /usr/bin/systemctl status swimmy-brain, \
+  /usr/bin/systemctl status swimmy-brain.service, \
+  /usr/bin/systemctl status swimmy-school, \
+  /usr/bin/systemctl status swimmy-school.service, \
+  /usr/bin/systemctl status swimmy-guardian, \
+  /usr/bin/systemctl status swimmy-guardian.service, \
+  /usr/bin/systemctl status swimmy-data-keeper, \
+  /usr/bin/systemctl status swimmy-data-keeper.service, \
+  /usr/bin/systemctl status swimmy-backtest, \
+  /usr/bin/systemctl status swimmy-backtest.service, \
+  /usr/bin/systemctl status swimmy-risk, \
+  /usr/bin/systemctl status swimmy-risk.service, \
+  /usr/bin/systemctl status swimmy-notifier, \
+  /usr/bin/systemctl status swimmy-notifier.service, \
+  /usr/bin/systemctl status swimmy-evolution, \
+  /usr/bin/systemctl status swimmy-evolution.service, \
+  /usr/bin/systemctl status swimmy-watchdog, \
+  /usr/bin/systemctl status swimmy-watchdog.service, \
+  /usr/bin/systemctl is-active swimmy-brain, \
+  /usr/bin/systemctl is-active swimmy-brain.service, \
+  /usr/bin/systemctl is-active swimmy-school, \
+  /usr/bin/systemctl is-active swimmy-school.service, \
+  /usr/bin/systemctl is-active swimmy-guardian, \
+  /usr/bin/systemctl is-active swimmy-guardian.service, \
+  /usr/bin/systemctl is-active swimmy-data-keeper, \
+  /usr/bin/systemctl is-active swimmy-data-keeper.service, \
+  /usr/bin/systemctl is-active swimmy-backtest, \
+  /usr/bin/systemctl is-active swimmy-backtest.service, \
+  /usr/bin/systemctl is-active swimmy-risk, \
+  /usr/bin/systemctl is-active swimmy-risk.service, \
+  /usr/bin/systemctl is-active swimmy-notifier, \
+  /usr/bin/systemctl is-active swimmy-notifier.service, \
+  /usr/bin/systemctl is-active swimmy-evolution, \
+  /usr/bin/systemctl is-active swimmy-evolution.service, \
+  /usr/bin/systemctl is-active swimmy-watchdog, \
+  /usr/bin/systemctl is-active swimmy-watchdog.service
+

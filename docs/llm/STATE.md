@@ -162,6 +162,8 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-14**: Brain/Guardian の auto-revival（`swimmy-guardian` / `swimmy-watchdog`）は `systemctl restart` が polkit で `Interactive authentication required` になる環境を想定し、**まず** `sudo -n /usr/bin/systemctl restart <unit>` を試す。成功すれば SIGTERM フォールバックを使わずに復旧できる（flapping/進捗リセットを抑制）。`sudo -n` が使えない場合/許可が無い場合は従来通り `systemctl show -p MainPID --value` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させる。
+- **2026-02-14**: passwordless `systemctl` 運用を `/etc/sudoers.d/swimmy-systemctl`（`restart/status/is-active` を unit 限定で許可）で提供する方針を追加。テンプレートは `tools/ops/swimmy-systemctl.sudoers`、インストールは `sudo bash tools/ops/install_swimmy_systemctl_sudoers.sh` を正本とする。
 - **2026-02-14**: Polymarket OpenClaw status の運用契約を更新。cycle timer が無効なとき、status ファイルが更新されず stale になるのは仕様のため `Health: disabled` として扱い、`--fail-on-problem` でも exit 0 とする方針へ更新。
 - **2026-02-14**: Archive drift の表示契約を更新。Library の GRAVEYARD/RETIRED raw dir count は overlap により二重計上されるため、drift 判定を canonical(unique-name) に統一し、`delta(DB-LibraryCanonical)` と `overlap` を併記する方針へ更新。
 - **2026-02-13**: BACKTEST_RESULT 適用の数値メトリクス耐性を追加。`metrics` がキー存在でも値が `NIL` の場合は `0.0/0` として正規化し、`The value NIL is not of type REAL` で受信ループが落ちないことを正本化。
