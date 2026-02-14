@@ -9,6 +9,7 @@
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
 - **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Polymarket OpenClaw（任意）**: Polymarket（予測市場）向けの自動エントリーサブシステム。cycle/signal-sync は user systemd、status/notifier は systemd(system) を使用し、成果物は `data/reports/polymarket_openclaw_live/` に保存する（FX コアとは独立）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
@@ -63,7 +64,7 @@
   - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `get-library-archive-canonical-count` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する（Archive drift は per-dir mismatch に加えて Library canonical/overlap も併記して誤読を防ぐ）。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
-- **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。
+- **運用（systemd正本）**: Swimmy FX コアは systemd(system) を正本とし、systemctl --user は診断用途のみ。Polymarket OpenClaw は user systemd（`systemctl --user`）を正本（cycle/signal-sync）とし、status/notifier は systemd(system) で監査する。
 - **Evolution Loop 排他契約**: `tools/evolution_daemon.py` は `school-daemon.lisp` の稼働を監視し、後発で school が起動した場合は自身の SBCL 子プロセス（`run_lisp_evolution.lisp`）を停止して待機へ戻る。`SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` 指定時のみ並列実行を許可する。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
@@ -324,6 +325,42 @@
 - `swimmy-school.service` の `ExecStartPre` で `tools/restore_legend_61.lisp` を実行し、起動時に Legends を自動復元＆再検証フラグセット（BACKTESTは本起動後に送信）。
 - Breeding時のLegend占有率を各カテゴリ上位5本に制限、遺伝的距離しきい値を0.35へ強化。
 - 保護テストは `tools/test_legend_protection.lisp`（CIでも実行）。
+
+## Polymarket OpenClaw Runbook（任意）
+
+### 状態確認（定常）
+- Cycle timer（user）: `systemctl --user status swimmy-polymarket-openclaw.timer --no-pager`
+- Cycle log: `tail -n 200 logs/polymarket_openclaw_cycle.log`
+- Status（ファイル）: `python3 tools/polymarket_openclaw_status.py --output-dir data/reports/polymarket_openclaw_live`
+- Status monitor（system）: `systemctl status swimmy-polymarket-openclaw-status.timer --no-pager`
+- Notifier（system）: `systemctl status swimmy-notifier.service --no-pager`
+
+### 停止（安全側）
+- 自動売買停止（user）: `systemctl --user disable --now swimmy-polymarket-openclaw.timer`
+- シグナル更新停止（user）: `systemctl --user disable --now swimmy-openclaw-signal-sync.timer`
+- Status monitor 停止（system）: `sudo systemctl disable --now swimmy-polymarket-openclaw-status.timer`
+
+### 初回セットアップ（最低限）
+- Polymarket 側で **USDC Deposit** と **Approve Tokens** を 1 回通す（Allowance が 0 の間は注文が失敗する）。
+- Allowance/Balances の診断: `python3 tools/polymarket_balance_allowance.py`
+  - `balance` が USDC 残高、`allowances` が 0 でないこと（max uint が典型）。
+- Proxy/Smart wallet を使う場合:
+  - `POLYCLAW_LIVE_FUNDER=0x...` と `POLYCLAW_LIVE_SIGNATURE_TYPE=<int>` を設定する（EOA 署名者と funder が分離するため）。
+
+### トラブルシュート（典型）
+- `systemctl --user start swimmy-polymarket-openclaw.service` が無反応:
+  - oneshot のため stdout が出ないのは正常。`systemctl --user status ...` と `journalctl --user -u ...`、`logs/polymarket_openclaw_cycle.log` を見る。
+- status が `Health: disabled`:
+  - cycle timer が disabled のときは意図的に disabled 扱い（stale 誤検知を抑止）。
+- `missing_private_key`:
+  - `POLYCLAW_LIVE_PRIVATE_KEY_FILE`（推奨）または `POLYCLAW_LIVE_PRIVATE_KEY` を設定する。
+- `allowance=0` / `balance=0`:
+  - Polymarket 側の Approve/Deposit が未完了。`tools/polymarket_balance_allowance.py` で確認する。
+
+### セキュリティ（必須）
+- 秘密鍵は `.env` 直書きではなく `POLYCLAW_LIVE_PRIVATE_KEY_FILE` を推奨。
+  - 例: `~/.secrets/` を `chmod 700`、鍵ファイルは `chmod 600`
+- Discord webhook は `config/.env.systemd` に隔離し、`chmod 600` で保護する（notifier/status は `.env` を読まない）。
 
 ## 次アクション
 1. ドキュメント体系化（進行中）

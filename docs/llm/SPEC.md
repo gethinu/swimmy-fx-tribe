@@ -156,3 +156,54 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 - **入力**: `strategy_daily_pnl` を用いた日次PnL相関（Pearson）。
 - **判定**: `|corr| < 0.2` を非相関とみなし、`uncorrelated_pairs / total_pairs` をスコア化。
 - **注意**: 非相関は**ランクではなく指標**。単一戦略の並び・ランク体系は変更しない。
+
+## 12. Optional: Polymarket OpenClaw (Prediction Market Autotrader)
+Swimmy の FX コアとは独立に、Polymarket（Polygon）の予測市場へ自動エントリーする補助サブシステム。
+ZMQ バックボーンは使わず、**HTTP API + ローカルファイル + systemd timer** で完結する（Guardian の Risk Gate 対象外）。
+
+### 12.1. ゴール / 非ゴール
+- **ゴール**: 定期サイクルで `signals -> market universe -> plan -> (optional) live execution -> report -> status` を生成し、問題は Discord に通知する。
+- **非ゴール**: HFT、利益保証、FX コア（MT5/Rust/Lisp）との統合リスクゲート。
+
+### 12.2. コンポーネント
+- **Signal Sync**: `tools/openclaw_signal_sync.py`
+  - systemd: `~/.config/systemd/user/swimmy-openclaw-signal-sync.timer`（5分ごと）
+  - 出力: `data/openclaw/signals.jsonl` / `data/openclaw/signals.meta.json`（+ `signals.last_good.*`）
+  - シグナル源: `POLYCLAW_OPENCLAW_CMD`（OpenClaw CLI/Bridge）またはヒューリスティック生成（`tools/openclaw_signal_heuristic.py`）
+- **Cycle（計画/実行/レポート）**: `tools/run_polymarket_openclaw_service.py` → `tools/polymarket_openclaw_cycle.py`
+  - systemd: `~/.config/systemd/user/swimmy-polymarket-openclaw.timer`（30分ごと）
+  - 出力: `data/reports/polymarket_openclaw_live/`（`plan_*.json`, `execution_*.json`, `report_*.json`, `journal.jsonl`, `latest_status.json`, `status_history.jsonl`）
+- **Execution（任意）**: `tools/polymarket_openclaw_execute.py`
+  - 有効化: `POLYCLAW_LIVE_EXECUTION=1`（デフォルトは OFF）
+  - 事前条件: Polymarket 側で USDC の Approve/Deposit を済ませる（Allowance が 0 の間は注文が失敗する）
+- **Status Monitor**: `tools/polymarket_openclaw_status.py`
+  - systemd(system): `/etc/systemd/system/swimmy-polymarket-openclaw-status.timer`（10分ごと）
+  - 契約: cycle timer が無効なら `Health: disabled`（stale 誤検知を抑止）
+- **Discord Notifier**: `tools/notifier.py`
+  - systemd(system): `/etc/systemd/system/swimmy-notifier.service`
+  - シークレット分離: `config/.env.systemd` の webhook のみ使用（`.env` の取引秘密情報を読まない）
+
+### 12.3. 主なファイル/成果物
+- **Signals（入力）**:
+  - `data/openclaw/signals.jsonl`: JSONL（例: `{"market_id":"553865","p_yes":0.14,"confidence":0.66}`）
+  - `data/openclaw/signals.meta.json`: 更新時刻、件数、ソース内訳、openclaw 実行コマンドの記録（トレーサビリティ）
+- **Cycle（出力）**: `data/reports/polymarket_openclaw_live/`
+  - `plan_<RUN_ID>.json`: エントリー候補（market_id/side/price/stake/EV）
+  - `execution_<DATE>_<RUN_ID>.json`: 注文送信結果（sent/failed/orderID 等）
+  - `report_<DATE>_<RUN_ID>.json`: 日次集計（stake/EV/realized）
+  - `journal.jsonl`: 監査用の追記ログ（run_summary/entry など）
+  - `latest_status.json`, `status_history.jsonl`: status 監視用スナップショット
+- **Logs**: `logs/openclaw_signal_sync.log`, `logs/polymarket_openclaw_cycle.log`, `logs/polymarket_openclaw_status.log`
+
+### 12.4. リスク/セーフティ（ガード）
+- **ポジション/回数上限**: `POLYCLAW_MAX_OPEN_POSITIONS`, `POLYCLAW_MAX_DAILY_ENTRIES`
+- **損失ガード**: `POLYCLAW_MAX_DAILY_LOSS_STREAK`, `POLYCLAW_MAX_DAILY_REALIZED_LOSS_USD`
+- **品質フィルタ**: `POLYCLAW_MIN_LIQUIDITY_USD`, `POLYCLAW_MIN_VOLUME_USD`
+- **シグナル鮮度**: `POLYCLAW_REQUIRE_FRESH_SIGNALS=1`, `POLYCLAW_MAX_SIGNAL_AGE_SECONDS`
+- **重複防止**: `POLYCLAW_ALLOW_DUPLICATE_OPEN_MARKETS=0`（未解決マーケットの重複エントリーをブロック）
+
+### 12.5. ウォレットモデル（Polymarket）
+- 実行は Polygon（`chain_id=137`）を前提。
+- Polymarket は EOA（署名者）と Proxy/Smart Wallet（funder）が分離することがある。
+  - この場合 `POLYCLAW_LIVE_FUNDER=0x...` と `POLYCLAW_LIVE_SIGNATURE_TYPE` を適切に設定する。
+- 秘密鍵は `.env` 直書きではなく `POLYCLAW_LIVE_PRIVATE_KEY_FILE`（例: `~/.secrets/polyclaw_live.key`）の利用を推奨する。

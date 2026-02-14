@@ -106,3 +106,47 @@ graph TD
 - **Watchdog**: Lisp内に `school-watchdog` (Broken Arrow) 実装。100msフリーズを検知。
 - **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）を自動再起動。
 - **DNA Verify**: 起動時のファイル改ざん検知 (SHA256)。
+
+## Polymarket OpenClaw（任意）
+FX コアとは独立したサブシステムとして、Polymarket（Polygon）へ自動エントリーする。
+スケジューリングは systemd timer、I/O はファイル（JSON/JSONL）で完結し、Discord 通知のみ Notifier を共有する。
+
+```mermaid
+graph TD
+    subgraph Signals
+        OpenClaw[OpenClaw CLI / Bridge] --> Sync[openclaw_signal_sync.py]
+        Heu[Heuristic Generator] --> Sync
+        Sync --> SignalsFile[(data/openclaw/signals.jsonl)]
+        Sync --> SignalsMeta[(data/openclaw/signals.meta.json)]
+    end
+
+    subgraph Cycle
+        Timer1[systemd user timer<br/>swimmy-polymarket-openclaw.timer] --> Run[run_polymarket_openclaw_service.py]
+        Run --> CycleMain[polymarket_openclaw_cycle.py]
+        CycleMain --> Plan[plan_*.json]
+        CycleMain --> Exec[execution_*.json]
+        CycleMain --> Report[report_*.json]
+        CycleMain --> Journal[journal.jsonl]
+        CycleMain --> Status[latest_status.json<br/>status_history.jsonl]
+    end
+
+    subgraph Polymarket
+        Gamma[Gamma API<br/>market universe] <-->|HTTP| CycleMain
+        CLOB[CLOB API<br/>orders/balances] <-->|HTTP| CycleMain
+        Polygon[(Polygon USDC allowances)] -. onchain .- CLOB
+    end
+
+    subgraph Monitoring
+        Timer2[systemd system timer<br/>swimmy-polymarket-openclaw-status.timer] --> Mon[polymarket_openclaw_status.py]
+        Mon --> Status
+        Mon -->|ZMQ 5562| Notifier[tools/notifier.py]
+        Notifier --> Discord[Discord Webhook]
+    end
+
+    SignalsFile --> CycleMain
+```
+
+**スケジュール（既定）**:
+- Signal Sync: 5分ごと（`swimmy-openclaw-signal-sync.timer`）
+- Cycle: 30分ごと（`swimmy-polymarket-openclaw.timer`）
+- Status Monitor: 10分ごと（`swimmy-polymarket-openclaw-status.timer`）

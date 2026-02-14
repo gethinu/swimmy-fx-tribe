@@ -694,3 +694,63 @@ Discord通知の非同期中継（Python）。
 - 既存フィールドの削除・型変更は破壊的変更とみなす。
 - `type` フィールドは必須。
 - 補助サービス（Data Keeper / Notifier / Risk Gateway）は `schema_version` を必須とする（現在 1）。
+
+## Polymarket OpenClaw Interfaces（HTTP + Files, 任意）
+Polymarket OpenClaw は FX コアの ZMQ インターフェースとは独立し、**HTTP API + ローカルファイル**で完結する。
+Discord 通知のみ Notifier（ZMQ 5562）を共有する。
+
+### External HTTP APIs
+- **Gamma API（Market Universe）**: `https://gamma-api.polymarket.com/markets`
+  - マーケット一覧、質問文、流動性などの取得に使用。
+- **CLOB API（Trading）**: `https://clob.polymarket.com`
+  - balance/allowance の更新、注文送信、API creds 生成/導出に使用。
+- **On-chain（Polygon）**:
+  - 初回のみ USDC の Approve が必要（Allowance=0 の間は注文が失敗する）。
+
+### Local File Interfaces
+- **Signals（input）**
+  - `data/openclaw/signals.jsonl`（JSONL; 1行=1シグナル）
+    - 例:
+      - `{"market_id":"553865","p_yes":0.14,"confidence":0.66}`
+  - `data/openclaw/signals.meta.json`（JSON; 更新時刻/件数/ソース内訳/openclaw_cmd 等）
+  - `data/openclaw/signals.last_good.jsonl` / `data/openclaw/signals.last_good.meta.json`（フォールバック用）
+- **Reports（output）**: `data/reports/polymarket_openclaw_live/`
+  - `plan_<RUN_ID>.json`: 候補エントリー一覧（market_id/side/entry_price/stake_usd/EV 等）
+  - `execution_<DATE>_<RUN_ID>.json`: 送信結果（attempted/sent/failed + orderID/status）
+  - `report_<DATE>_<RUN_ID>.json`: 日次の集計（stake/EV/realized）
+  - `journal.jsonl`: 追記ログ（`type=run_summary|entry|...`）
+  - `latest_status.json`: status スナップショット（monitor 正本）
+  - `status_history.jsonl`: status 履歴（JSONL; window 集計に使用）
+- **Logs**
+  - `logs/openclaw_signal_sync.log`
+  - `logs/polymarket_openclaw_cycle.log`
+  - `logs/polymarket_openclaw_status.log`
+
+### Env Contract（抜粋）
+- Signal source:
+  - `POLYCLAW_SIGNALS_FILE`（推奨: `data/openclaw/signals.jsonl`）
+  - `POLYCLAW_OPENCLAW_CMD`（未設定なら `POLYCLAW_USE_HEURISTIC_IF_NO_OPENCLAW_CMD=1` でヒューリスティック生成）
+- Output:
+  - `POLYCLAW_OUTPUT_DIR`（推奨: `data/reports/polymarket_openclaw_live`）
+- Live execution:
+  - `POLYCLAW_LIVE_EXECUTION=1`
+  - `POLYCLAW_LIVE_PRIVATE_KEY_FILE`（推奨）または `POLYCLAW_LIVE_PRIVATE_KEY`
+  - `POLYCLAW_LIVE_CHAIN_ID=137`
+  - `POLYCLAW_LIVE_HOST=https://clob.polymarket.com`
+  - Proxy wallet 対応（必要時）: `POLYCLAW_LIVE_FUNDER=0x...`, `POLYCLAW_LIVE_SIGNATURE_TYPE=<int>`
+- Status monitor thresholds:
+  - `POLYCLAW_STATUS_MAX_AGE_SECONDS`, `POLYCLAW_STATUS_WINDOW_MINUTES`, `POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW` など
+- Discord（monitor→notifier）:
+  - `POLYCLAW_STATUS_DISCORD_WHEN=problem|always|never`
+  - `POLYCLAW_STATUS_DISCORD_WEBHOOK_ENV=SWIMMY_DISCORD_ALERTS`
+
+### systemd Units（実体）
+- **user units（OpenClaw）**:
+  - `~/.config/systemd/user/swimmy-openclaw-signal-sync.service`
+  - `~/.config/systemd/user/swimmy-openclaw-signal-sync.timer`
+  - `~/.config/systemd/user/swimmy-polymarket-openclaw.service`
+  - `~/.config/systemd/user/swimmy-polymarket-openclaw.timer`
+- **system units（monitor/notifier）**:
+  - `/etc/systemd/system/swimmy-polymarket-openclaw-status.service`
+  - `/etc/systemd/system/swimmy-polymarket-openclaw-status.timer`
+  - `/etc/systemd/system/swimmy-notifier.service`
