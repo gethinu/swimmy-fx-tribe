@@ -57,17 +57,14 @@
   (format t "DB UNRANKED(NIL): ~d~%" (getf db :unranked 0))
 
   (format t "~%--- Drift Check ---~%")
-  (when (/= db-grave lib-grave)
-    (format t "⚠️ Graveyard mismatch: DB=~d Library=~d delta(DB-Library)=~@d~%"
-            db-grave lib-grave (- db-grave lib-grave)))
-  (when (/= db-retired lib-retired)
-    (format t "⚠️ Retired mismatch: DB=~d Library=~d delta(DB-Library)=~@d~%"
-            db-retired lib-retired (- db-retired lib-retired)))
-  (when (or (/= db-grave lib-grave)
-            (/= db-retired lib-retired)
-            (/= db-archive lib-canonical))
-    (format t "⚠️ Archive canonical mismatch: DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d~%"
-            db-archive lib-canonical delta-archive))
+  (when (> lib-overlap 0)
+    (format t "Note: Library overlap=~d (names present in BOTH dirs). Raw dir counts double-count overlap; drift uses canonical unique names.~%"
+            lib-overlap))
+  (if (= delta-archive 0)
+      (format t "✅ Archive canonical aligned: DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d~%"
+              db-archive lib-canonical delta-archive)
+      (format t "⚠️ Archive canonical mismatch: DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d~%"
+              db-archive lib-canonical delta-archive))
 
   (format t "~%--- NULL/Malformed Audit ---~%")
   (format t "  NULL Names : ~d~%" null-names)

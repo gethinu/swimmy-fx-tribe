@@ -114,27 +114,20 @@
          (db-active (getf db :active 0))
          (db-grave (getf db :graveyard 0))
          (lib-grave (getf lib :graveyard 0))
-         (delta-grave (- db-grave lib-grave))
          (db-retired (getf db :retired 0))
          (lib-retired (getf lib :retired 0))
-         (delta-retired (- db-retired lib-retired))
          (db-archive-total (+ db-grave db-retired))
+         (lib-overlap (- (+ lib-grave lib-retired) lib-canonical))
          (delta-archive (- db-archive-total lib-canonical))
          (warnings nil))
     (when (/= db-active kb-active)
       (push (format nil "KB active mismatch (DB=~d KB=~d)" db-active kb-active) warnings))
-    (when (/= db-grave lib-grave)
-      (push (format nil "Graveyard mismatch (DB=~d Library=~d delta(DB-Library)=~@d)"
-                    db-grave lib-grave delta-grave)
-            warnings))
-    (when (/= db-retired lib-retired)
-      (push (format nil "Retired mismatch (DB=~d Library=~d delta(DB-Library)=~@d)"
-                    db-retired lib-retired delta-retired)
-            warnings))
-    (when (or (/= db-grave lib-grave)
-              (/= db-retired lib-retired)
-              (/= db-archive-total lib-canonical))
-      (push (format nil "Archive canonical mismatch (DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d)"
-                    db-archive-total lib-canonical delta-archive)
+    ;; NOTE: Library raw GRAVEYARD/RETIRED dir counts double-count names present in BOTH dirs.
+    ;; Use canonical unique-name count as the primary drift signal to avoid "counts reset" misreads.
+    (when (or (/= db-archive-total lib-canonical)
+              (> lib-overlap 0))
+      (push (format nil "Archive canonical (DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d) (Library raw GRAVEYARD=~d RETIRED=~d overlap=~d)"
+                    db-archive-total lib-canonical delta-archive
+                    lib-grave lib-retired (max 0 lib-overlap))
             warnings))
     (nreverse warnings)))
