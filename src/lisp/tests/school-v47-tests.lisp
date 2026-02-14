@@ -87,7 +87,7 @@
 (deftest test-spread-pips-from-bid-ask
   "Execution cost: spread pips calculation"
   (let ((spread (swimmy.school:spread-pips-from-bid-ask "USDJPY" 150.00 150.02)))
-    (assert-true (< (abs (- spread 2.0)) 0.0001) "USDJPY spread should be ~2.0 pips")))
+    (assert-true (< (abs (- spread 2.0)) 0.0001) "USDJPY spread should be approximately 2.0 pips")))
 
 (deftest test-slippage-pips-from-fill
   "Execution cost: slippage pips calculation"
@@ -99,7 +99,7 @@
 (deftest test-calculate-cost-pips-defaults
   "Execution cost: cost pips defaults to spread only"
   (let ((cost (swimmy.school:calculate-cost-pips "USDJPY" 150.00 150.02)))
-    (assert-true (< (abs (- cost 2.0)) 0.0001) "USDJPY default cost should be ~2.0 pips")))
+    (assert-true (< (abs (- cost 2.0)) 0.0001) "USDJPY default cost should be approximately 2.0 pips")))
 
 (deftest test-calculate-cost-pips-with-extras
   "Execution cost: cost pips includes slippage/commission/swap"
