@@ -110,18 +110,43 @@ log "[AUDIT] Starting system audit (system scope)"
 SYSTEMCTL_STATUS_MODE=""
 SYSTEMCTL_REPAIR_MODE=""
 
-if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
-  SYSTEMCTL_STATUS_MODE="sudo"
-  SYSTEMCTL_REPAIR_MODE="sudo"
-elif command -v systemctl >/dev/null 2>&1; then
+SYSTEMCTL_BIN=""
+if command -v systemctl >/dev/null 2>&1; then
+  SYSTEMCTL_BIN="$(command -v systemctl)"
   SYSTEMCTL_STATUS_MODE="direct"
   SYSTEMCTL_REPAIR_MODE="direct"
-  # Running without passwordless sudo is normal in many environments.
-  # Health WARNs should reflect actual service/audit issues, not privilege shape.
-  log "[INFO] sudo unavailable; using direct systemctl"
 else
   log "[WARN] systemctl command not found; skipping systemd checks"
   mark_warn
+fi
+
+sudo_systemctl_probe() {
+  # Determine whether SUDO_CMD can run systemctl for Swimmy units without an
+  # interactive prompt (e.g., passwordless sudoers for /usr/bin/systemctl restart/status/is-active).
+  #
+  # Note: we intentionally do NOT probe `sudo true` because many deployments grant
+  # passwordless sudo only for specific systemctl subcommands/units.
+  local probe_unit="${1:-swimmy-brain.service}"
+  local output=""
+  if [[ -z "${SUDO_CMD_ARR[0]:-}" ]] || ! command -v "${SUDO_CMD_ARR[0]}" >/dev/null 2>&1; then
+    return 1
+  fi
+  output="$("${SUDO_CMD_ARR[@]}" "$SYSTEMCTL_BIN" is-active "$probe_unit" 2>&1 || true)"
+  if printf '%s' "$output" | rg -qi "a password is required|interactive authentication required|authentication is required"; then
+    return 1
+  fi
+  return 0
+}
+
+if [[ -n "$SYSTEMCTL_BIN" ]]; then
+  if sudo_systemctl_probe "swimmy-brain.service"; then
+    SYSTEMCTL_REPAIR_MODE="sudo"
+    log "[INFO] sudo available for systemctl repairs; will use SUDO_CMD for restart steps"
+  else
+    # Running without passwordless sudo is normal in many environments.
+    # Health WARNs should reflect actual service/audit issues, not privilege shape.
+    log "[INFO] sudo unavailable for systemctl repairs; using direct systemctl"
+  fi
 fi
 
 run_systemctl() {
@@ -129,10 +154,10 @@ run_systemctl() {
   shift
   case "$mode" in
     sudo)
-      "${SUDO_CMD_ARR[@]}" systemctl "$@"
+      "${SUDO_CMD_ARR[@]}" "$SYSTEMCTL_BIN" "$@"
       ;;
     direct)
-      systemctl "$@"
+      "$SYSTEMCTL_BIN" "$@"
       ;;
     *)
       return 127
@@ -191,6 +216,11 @@ run_systemctl_repair_step() {
     return 0
   fi
   if printf '%s' "$output" | rg -qi "interactive authentication required|authentication is required"; then
+    log "[WARN] repair skipped ($desc): $(printf '%s' "$output" | head -n 1)"
+    mark_warn
+    return 2
+  fi
+  if printf '%s' "$output" | rg -qi "sudo:.*password|a password is required|sorry, try again"; then
     log "[WARN] repair skipped ($desc): $(printf '%s' "$output" | head -n 1)"
     mark_warn
     return 2

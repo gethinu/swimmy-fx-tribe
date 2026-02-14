@@ -56,6 +56,8 @@
   - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
     - **Statusのdisabled扱い**: `tools/polymarket_openclaw_status.py` は cycle timer が `enabled` でない場合 `Health: disabled` として扱い、`--fail-on-problem` 指定でも exit 0 とする（OpenClaw停止中に status ファイルが更新されず stale になるのは仕様のため）。
   - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
+  - **sudo 可用性の判定（systemctl限定NOPASSWD対応）**: `sudo -n true` の可否ではなく、`SUDO_CMD systemctl is-active swimmy-brain.service` の実行可否で「非対話 sudo が systemctl に使えるか」を判定する。これにより「systemctl だけ NOPASSWD（allowlist sudoers）」の環境でも restart 修復が動作する。
+  - **権限不足時の修復スキップ**: `Interactive authentication required`（polkit）および `sudo: a password is required`（sudoers非許可）は **FAIL 扱いにせず WARN で skip** し、監査を継続する。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5564` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
     - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5564 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。

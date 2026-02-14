@@ -412,8 +412,8 @@
                                         (format nil "**Current Rank Distribution:**~%🏆 S-Rank: ~d | 🎯 A-Rank: ~d | 📋 B-Rank: ~d~%⚰️ Graveyard/Pending: ~d~%~%"
                                                 s-count a-count b-count grave-count)))))
 
-      (when a-stage1-line
-        (setf report-msg (concatenate 'string report-msg a-stage1-line "~%~%")))
+        (when a-stage1-line
+          (setf report-msg (concatenate 'string report-msg a-stage1-line (format nil "~%~%"))))
 
       ;; 1. Group results by category
       (dolist (res results)
@@ -439,32 +439,32 @@
         
         (setf cat-stats (sort cat-stats #'> :key (lambda (x) (getf x :avg))))
         
-        ;; 3. Build the report
-        (when cat-stats
-          (setf report-msg (concatenate 'string report-msg "🚀 **Strongest Categories (Current Batch):**~%"))
-          (loop for i from 0 below (min 5 (length cat-stats))
-                for stat = (nth i cat-stats)
-                do (setf report-msg (concatenate 'string report-msg 
+          ;; 3. Build the report
+          (when cat-stats
+            (setf report-msg (concatenate 'string report-msg (format nil "🚀 **Strongest Categories (Current Batch):**~%")))
+            (loop for i from 0 below (min 5 (length cat-stats))
+                  for stat = (nth i cat-stats)
+                  do (setf report-msg (concatenate 'string report-msg 
+                                                    (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
+                                                            (getf stat :cat) (getf stat :avg) (getf stat :count)))))
+            
+            (when (> (length cat-stats) 5)
+              (setf report-msg (concatenate 'string report-msg (format nil "~%📉 **Weakest Categories:**~%")))
+              (let ((weakest (reverse (last cat-stats (min 3 (length cat-stats))))))
+                (dolist (stat weakest)
+                  (setf report-msg (concatenate 'string report-msg 
                                                   (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
-                                                          (getf stat :cat) (getf stat :avg) (getf stat :count)))))
-          
-          (when (> (length cat-stats) 5)
-            (setf report-msg (concatenate 'string report-msg "~%📉 **Weakest Categories:**~%"))
-            (let ((weakest (reverse (last cat-stats (min 3 (length cat-stats))))))
-              (dolist (stat weakest)
-                (setf report-msg (concatenate 'string report-msg 
-                                                (format nil "  • ~a: ~,2f Sharpe (~d strats)~%" 
-                                                        (getf stat :cat) (getf stat :avg) (getf stat :count))))))))
+                                                          (getf stat :cat) (getf stat :avg) (getf stat :count))))))))
 
         ;; 4. Individual Results Listing
-        (when results
-          (let ((sorted (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe))))
-                (top-count (min 10 (length results))))
-            (setf report-msg (concatenate 'string report-msg "~%🌟 **Top Strategy Results (Latest):**~%"))
-            (loop for i from 0 below top-count
-                  for s = (nth i sorted)
-                  for metrics = (cdr s)
-                  for sharpe = (or (getf metrics :sharpe) 0.0)
+          (when results
+            (let ((sorted (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe))))
+                  (top-count (min 10 (length results))))
+              (setf report-msg (concatenate 'string report-msg (format nil "~%🌟 **Top Strategy Results (Latest):**~%")))
+              (loop for i from 0 below top-count
+                    for s = (nth i sorted)
+                    for metrics = (cdr s)
+                    for sharpe = (or (getf metrics :sharpe) 0.0)
                   for pf = (or (getf metrics :profit-factor) (getf metrics :pf) 0.0)
                   for wr = (or (getf metrics :win-rate) (getf metrics :wr) 0.0)
                   for maxdd = (or (getf metrics :max-dd) (getf metrics :max_dd) 0.0)
