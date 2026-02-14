@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Swimmy Archive Drift Reconcile hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
+

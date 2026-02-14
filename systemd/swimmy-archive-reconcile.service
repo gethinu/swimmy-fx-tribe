@@ -1,0 +1,17 @@
+[Unit]
+Description=Swimmy Archive Drift Reconcile (Library -> DB)
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+# Archive drift can involve scanning hundreds of thousands of files.
+TimeoutStartSec=3600
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/ops/reconcile_archive_db.py --no-data-sexp --grace-sec 600 --prune-db-only
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+StandardOutput=append:/home/swimmy/swimmy/logs/archive_reconcile.log
+StandardError=append:/home/swimmy/swimmy/logs/archive_reconcile.log
+
