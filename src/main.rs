@@ -11,6 +11,7 @@ mod audit; // Phase 8: Immutable Audit Logging
 mod cpcv;   // V47.0: CPCV Backtest Validation
 mod kalman; // V47.0: Kalman Filter for Parameter Estimation
 mod strategy_ast; // Phase 23: Native AST Protocol
+mod cmd_route; // S-expression command routing (Brain -> MT5 vs internal)
 
 use zmq::{Context, POLLIN};
 use serde::{Deserialize, Serialize};
@@ -1566,6 +1567,16 @@ fn main() {
                 continue;
             }
 
+            // MT5 execution protocol uses S-expressions (e.g., ORDER_OPEN/REQ_HISTORY).
+            // If an MT5 command arrives on 5559, forward it directly to the EA bridge.
+            if matches!(
+                cmd_route::route_sexp_message(&msg),
+                cmd_route::SexpRoute::ForwardToMt5
+            ) {
+                let _ = pub_to_mt5.send(&msg, 0);
+                continue;
+            }
+
             // SXP Dispatcher
             if msg.contains("CPCV_VALIDATE") {
                 println!("🧪 CPCV_VALIDATE received (SXP)");
@@ -1808,6 +1819,16 @@ fn main() {
             if let Ok(Ok(msg)) = sub_from_brain.recv_string(0) {
                 // V7.13: S-Expression Support for Brain Commands
                 let is_sexp = msg.starts_with('(');
+
+                // Brain -> MT5 uses S-expression protocol; forward MT5 commands as-is.
+                if is_sexp {
+                    if let cmd_route::SexpRoute::ForwardToMt5 =
+                        cmd_route::route_sexp_message(&msg)
+                    {
+                        let _ = pub_to_mt5.send(&msg, 0);
+                        continue;
+                    }
+                }
                 
                 if msg.contains("REJECTED") {
                     println!("🛑 BRAIN VETO: Trade Rejected by Constitution!");
