@@ -732,11 +732,13 @@ void SendOpenPositions() {
             first = false;
             pos_count++;
             
-            sexp += StringFormat("((ticket . %I64u) (magic . %I64d) (type . \"%s\") (volume . %.2f))",
+            double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            sexp += StringFormat("((ticket . %I64u) (magic . %I64d) (type . \"%s\") (volume . %.2f) (entry_price . %.5f))",
                ticket,
                PositionGetInteger(POSITION_MAGIC),
                (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL",
-               PositionGetDouble(POSITION_VOLUME));
+               PositionGetDouble(POSITION_VOLUME),
+               entry_price);
          }
       }
    }

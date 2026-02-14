@@ -72,8 +72,8 @@ MT5からブロードキャストされる。
 ```
 ((type . "POSITIONS")
  (symbol . "USDJPY")
- (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10) (entry_price . 145.120))  ; optional
-          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05)))))
+ (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10) (entry_price . 145.120))
+          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05) (entry_price . 145.300)))))
 ```
 注記: `entry_price` は任意。存在する場合、Pending→Warrior 昇格（約定確認）時の DryRun slippage 証拠として利用できる。
 
