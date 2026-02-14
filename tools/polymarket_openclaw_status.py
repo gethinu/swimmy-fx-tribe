@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -92,10 +93,91 @@ def _env_int(key: str, default: int) -> int:
     except ValueError:
         return int(default)
 
+def _env_bool(key: str, default: bool = False) -> bool:
+    raw = str(os.getenv(key, "")).strip().lower()
+    if not raw:
+        return bool(default)
+    return raw in {"1", "true", "yes", "on"}
+
 
 def _env_str(key: str, default: str = "") -> str:
     raw = str(os.getenv(key, "")).strip()
     return raw if raw else str(default)
+
+def systemctl_is_enabled(unit: str) -> str:
+    target = str(unit or "").strip()
+    if not target:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["systemctl", "is-enabled", target],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return ""
+    return str(proc.stdout or "").strip()
+
+
+def is_systemd_enabled_state(state: str) -> bool:
+    value = str(state or "").strip().lower()
+    return value in {"enabled", "enabled-runtime"}
+
+
+def build_disabled_status(
+    *,
+    cycle_timer: str,
+    cycle_timer_state: str,
+    status_file: Path,
+    history_file: Path,
+    window_minutes: int,
+) -> Dict[str, Any]:
+    health = {
+        "status": "disabled",
+        "reason": f"cycle timer disabled: {cycle_timer} state={cycle_timer_state or 'unknown'}",
+        "age_seconds": 0.0,
+    }
+    payload: Dict[str, Any] = {
+        "updated_at": "",
+        "run_id": "",
+        "run_date": "",
+        "entries": 0,
+        "total_stake_usd": 0.0,
+        "signal_count": 0,
+        "agent_signal_count": 0,
+        "agent_signal_ratio": 0.0,
+        "open_markets": 0,
+        "blocked_open_markets": 0,
+        "quality_filtered_markets": 0,
+        "live_execution_enabled": False,
+        "execution_ok": False,
+        "execution_skipped": True,
+        "execution_attempted": 0,
+        "execution_sent": 0,
+        "execution_failed": 0,
+        "plan_file": "",
+        "report_file": "",
+        "journal_file": "",
+        "cycle_ok": True,
+        "cycle_error": "",
+    }
+    return {
+        **payload,
+        "health": health,
+        "status_file": str(status_file),
+        "history_file": str(history_file),
+        "recent_runs": [],
+        "window_summary": {
+            "window_minutes": max(0, int(window_minutes)),
+            "runs": 0,
+            "entries": 0,
+            "execution_sent": 0,
+            "execution_failed": 0,
+            "total_stake_usd": 0.0,
+        },
+    }
 
 
 def summarize_recent_runs(
@@ -269,6 +351,8 @@ def render_text_summary(
 def should_discord_notify(*, when: str, health_status: str) -> bool:
     mode = str(when or "").strip().lower()
     status = str(health_status or "").strip().lower()
+    if status == "disabled":
+        return False
     if mode in {"", "never", "off", "0", "false", "no"}:
         return False
     if mode in {"always", "on", "1", "true", "yes"}:
@@ -292,6 +376,8 @@ def discord_color_for_status(status: str) -> int:
     value = str(status or "").strip().lower()
     if value == "ok":
         return 3066993  # green
+    if value == "disabled":
+        return 10070709  # gray
     if value in {"warn", "stale"}:
         return 16705372  # yellow
     if value == "error":
@@ -519,6 +605,34 @@ def main() -> None:
     history_file = (
         Path(args.history_file).expanduser() if args.history_file.strip() else output_dir / "status_history.jsonl"
     )
+
+    # If the cycle timer is disabled, OpenClaw is treated as intentionally disabled to
+    # avoid noisy "stale" alerts (status files naturally stop updating).
+    ignore_cycle_timer = _env_bool("POLYCLAW_STATUS_IGNORE_CYCLE_TIMER", False)
+    cycle_timer = _env_str("POLYCLAW_CYCLE_TIMER_UNIT", "swimmy-polymarket-openclaw.timer")
+    if (not ignore_cycle_timer) and cycle_timer:
+        cycle_timer_state = systemctl_is_enabled(cycle_timer)
+        if cycle_timer_state and (not is_systemd_enabled_state(cycle_timer_state)):
+            disabled_out = build_disabled_status(
+                cycle_timer=cycle_timer,
+                cycle_timer_state=cycle_timer_state,
+                status_file=status_file,
+                history_file=history_file,
+                window_minutes=max(0, int(args.window_minutes)),
+            )
+            if args.json:
+                print(json.dumps(disabled_out, ensure_ascii=False, indent=2))
+            else:
+                print(
+                    render_text_summary(
+                        payload=disabled_out,
+                        health=disabled_out.get("health", {}),
+                        recent_runs=disabled_out.get("recent_runs", []),
+                        window_summary=disabled_out.get("window_summary", {}),
+                    )
+                )
+            return
+
     status_load_ok = True
     try:
         payload = load_status_payload(status_file)
@@ -607,7 +721,7 @@ def main() -> None:
             )
         )
 
-    if args.fail_on_problem and str(health.get("status", "ok")).lower() != "ok":
+    if args.fail_on_problem and str(health.get("status", "ok")).lower() not in {"ok", "disabled"}:
         raise SystemExit(1)
     if not status_load_ok:
         raise SystemExit(1)

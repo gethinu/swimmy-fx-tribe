@@ -16,7 +16,7 @@
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
 - **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。
   - **Report表示**: Graveyard/Retired は DB値を表示しつつ、Libraryとの差分（ドリフト）も併記する（「数がリセット」誤解を防ぐ）。
-  - **Drift内訳表示**: `Source Drift` の Graveyard/Retired mismatch は `delta(DB-Library)` を明示し、DB側余剰かLibrary側不足かを一目で判別できる文言を正本とする。
+  - **Drift内訳表示**: `Source Drift` は **canonical（GRAVEYARD+RETIRED の unique-name）を主指標**とし、`delta(DB-LibraryCanonical)` を正本の差分として表示する。Libraryは同名ファイルが `GRAVEYARD/` と `RETIRED/` の両方に残ることがあり、その場合 **raw dir count は overlap 分だけ二重計上**されるため、per-dir の `delta(DB-Library)` は誤読（「数がリセット」等）を誘発しやすい。従って drift 判定は canonical を優先し、raw は `overlap` とセットで説明目的に限定する。
   - **ドリフト修復**: `tools/ops/reconcile_archive_db.py` で `data/library/GRAVEYARD/`・`data/library/RETIRED/` をスキャンし、DBへ backfill / rank補正できる（非破壊、ただし大量更新のため運用タイミングに注意）。
   - **ドリフト修復の実行安定化**: 稼働中に archive ファイルが増減する環境では、`reconcile_archive_db.py` の `--grace-sec` で直近更新ファイルを保留してから補正する。`--grace-sec` の既定は `0`（無効）で、指定時は `mtime > (scan_start - grace_sec)` の archive を今回スキャン対象から除外する。これにより実行中レースで `wrong_rank` が再発し続ける現象を抑制する。
   - **Archive Migration 読み込み耐性**: `migrate-existing-data` の graveyard 読み込みは行単位 `safe-read-sexp` で実行し、壊れた行をスキップして継続する。先頭5件まで `Skip malformed graveyard line` を記録し、1行の破損で全体 migration が停止しないことを正本とする。
@@ -53,6 +53,7 @@
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。**このフォールバック自体は運用上正常であり WARN にしない**（健康状態のWARNはサービス/監査項目の実体に限定）。`.env` を自動読み込みして Discord 設定を拾う。
   - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
+    - **Statusのdisabled扱い**: `tools/polymarket_openclaw_status.py` は cycle timer が `enabled` でない場合 `Health: disabled` として扱い、`--fail-on-problem` 指定でも exit 0 とする（OpenClaw停止中に status ファイルが更新されず stale になるのは仕様のため）。
   - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
@@ -157,6 +158,8 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-14**: Polymarket OpenClaw status の運用契約を更新。cycle timer が無効なとき、status ファイルが更新されず stale になるのは仕様のため `Health: disabled` として扱い、`--fail-on-problem` でも exit 0 とする方針へ更新。
+- **2026-02-14**: Archive drift の表示契約を更新。Library の GRAVEYARD/RETIRED raw dir count は overlap により二重計上されるため、drift 判定を canonical(unique-name) に統一し、`delta(DB-LibraryCanonical)` と `overlap` を併記する方針へ更新。
 - **2026-02-13**: BACKTEST_RESULT 適用の数値メトリクス耐性を追加。`metrics` がキー存在でも値が `NIL` の場合は `0.0/0` として正規化し、`The value NIL is not of type REAL` で受信ループが落ちないことを正本化。
 - **2026-02-13**: `Msg Error` 可観測性を強化。message-dispatcher の例外ログに `head`（先頭プレビュー）と `step`（ブレッドクラム）を付与し、原因メッセージ/経路を同定できるように更新。
 - **2026-02-13**: Allocation の pending 管理を修正。executor の `swimmy.globals:*pending-orders*`（UUID→(ts,retry,msg)）と School の warrior slot 用 pending を分離し、`check-pending-timeouts` が誤って retry table を走査して `NIL is not of type REAL` を起こす不具合を解消（`*allocation-pending-orders*` 導入）。

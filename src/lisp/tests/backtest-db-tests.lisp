@@ -953,8 +953,8 @@
             (let ((warnings (swimmy.school::report-source-drift)))
               (assert-true (> (length warnings) 0) "Drift warnings should be reported")
               (assert-true
-               (find-if (lambda (w) (search "delta(DB-Library)=" w)) warnings)
-               "Drift warnings should include delta(DB-Library) direction")))
+               (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=" w)) warnings)
+               "Drift warnings should include delta(DB-LibraryCanonical) direction")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
@@ -986,7 +986,7 @@
                 (write-line "(dummy)" s)))
             (let ((warnings (swimmy.school::report-source-drift)))
               (assert-true
-               (find-if (lambda (w) (search "Archive canonical mismatch" w)) warnings)
+               (find-if (lambda (w) (search "Archive canonical (" w)) warnings)
                "Drift warnings should include canonical archive mismatch")
               (assert-true
                (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=" w)) warnings)
@@ -1028,7 +1028,7 @@
                 (write-dummy (merge-pathnames "CAN-ZERO-B.lisp" rt-dir))))
             (let ((warnings (swimmy.school::report-source-drift)))
               (assert-true
-               (find-if (lambda (w) (search "Archive canonical mismatch" w)) warnings)
+               (find-if (lambda (w) (search "Archive canonical (" w)) warnings)
                "Drift warnings should include canonical archive line")
               (assert-true
                (find-if (lambda (w) (search "delta(DB-LibraryCanonical)=" w)) warnings)
