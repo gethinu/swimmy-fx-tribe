@@ -172,14 +172,35 @@
     (if (null union) 0.0
         (/ (length intersection) (float (length union))))))
 
+(defun strategy-correlation-scope-key (strategy)
+  "Return a normalized correlation scope key for STRATEGY.
+
+Correlation screening (Jaccard/Highlander) is only meaningful within the same
+trading universe. For multi-symbol evolution, we scope correlation to:
+  (timeframe × direction × symbol)
+so identical logic across different symbols is allowed."
+  (let* ((tf-raw (and (fboundp 'strategy-timeframe) (strategy-timeframe strategy)))
+         (tf (if (fboundp 'get-tf-minutes)
+                 (get-tf-minutes (or tf-raw 1))
+                 (or tf-raw 1)))
+         (dir (and (fboundp 'strategy-direction) (strategy-direction strategy)))
+         (sym (and (fboundp 'strategy-symbol) (strategy-symbol strategy))))
+    (list (or tf 1)
+          (or dir :BOTH)
+          (string-upcase (or sym "USDJPY")))))
+
 (defun find-correlated-strategy (strategy kb &optional (threshold 0.9))
   "Find structurally correlated strategies (Simons Challenge).
-   Returns (values match score)."
-  (dolist (s kb)
-    (unless (string= (strategy-name s) (strategy-name strategy))
-      (let ((score (calculate-jaccard-similarity strategy s)))
-        (when (> score threshold)
-          (return-from find-correlated-strategy (values s score))))))
+   Returns (values match score).
+
+V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
+  (let ((target-scope (strategy-correlation-scope-key strategy)))
+    (dolist (s kb)
+      (when (and (not (string= (strategy-name s) (strategy-name strategy)))
+                 (equal target-scope (strategy-correlation-scope-key s)))
+        (let ((score (calculate-jaccard-similarity strategy s)))
+          (when (> score threshold)
+            (return-from find-correlated-strategy (values s score)))))))
   (values nil 0.0))
 
 ;;; ============================================================================

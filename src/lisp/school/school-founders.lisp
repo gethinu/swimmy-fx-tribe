@@ -337,7 +337,38 @@
                   (values nil nil nil 0.0)))
             (values nil nil nil 0.0)))))
 
-(defun recruit-founder (founder-type)
+(defun normalize-symbol-string (symbol)
+  "Normalize SYMBOL into an uppercase string, or NIL when unavailable."
+  (cond
+    ((null symbol) nil)
+    ((stringp symbol) (string-upcase symbol))
+    ((symbolp symbol) (string-upcase (symbol-name symbol)))
+    (t nil)))
+
+(defun rewrite-strategy-name-for-symbol (name symbol)
+  "Ensure strategy NAME includes SYMBOL (P12.5 mismatch guard contract).
+
+If NAME already contains SYMBOL (case-insensitive), return as-is.
+If NAME contains another known pair token, replace it with SYMBOL.
+Otherwise, append \"-SYMBOL\"."
+  (let* ((name (or name ""))
+         (sym (normalize-symbol-string symbol)))
+    (cond
+      ((or (null sym) (string= sym "")) name)
+      ((search sym name :test #'char-equal) name)
+      (t
+       (block done
+         (dolist (tok '("USDJPY" "EURUSD" "GBPUSD" "EURJPY" "GBPJPY" "AUDUSD"))
+           (let ((pos (search tok name :test #'char-equal)))
+             (when pos
+               (return-from done
+                 (concatenate 'string
+                              (subseq name 0 pos)
+                              sym
+                              (subseq name (+ pos (length tok))))))))
+         (format nil "~a-~a" name sym))))))
+
+(defun recruit-founder (founder-type &key symbol)
   "P8: Injects a Founder Strategy via add-to-kb (single entry point).
    Now includes BT validation (Sharpe >= 0.1) per Expert Panel conditions."
   (let ((maker-func (gethash founder-type *founder-registry*)))
@@ -349,6 +380,13 @@
               ;; V50.5: Provisional Entry (Async Validation)
               ;; Allow entry with Rank=NIL, then trigger backtest.
               (progn
+                ;; Multi-symbol evolution: allow symbol override, and ensure
+                ;; P12.5 mismatch guard can validate name<->symbol consistency.
+                (let ((override (normalize-symbol-string symbol)))
+                  (when (and override (stringp override) (not (string= override "")))
+                    (setf (strategy-symbol founder) override)
+                    (setf (strategy-name founder)
+                          (rewrite-strategy-name-for-symbol (strategy-name founder) override))))
                 (when (and *founder-preflight-screen-enabled*
                            (founder-preflight-reject-active-p founder))
                   (format t "[HEADHUNTER] ⏱️ Founder ~a cooldown active. Skipping retry.~%"

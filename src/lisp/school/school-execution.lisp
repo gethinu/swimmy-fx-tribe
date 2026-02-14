@@ -654,7 +654,11 @@
 
 (defun recruit-special-forces ()
   (force-recruit-strategy "T-Nakane-Gotobi")
-  (let ((known-names (make-hash-table :test 'equal))
+  (let ((symbols (if (and (boundp 'swimmy.core::*supported-symbols*)
+                          swimmy.core::*supported-symbols*)
+                     swimmy.core::*supported-symbols*
+                     '("USDJPY")))
+        (known-names (make-hash-table :test 'equal))
         (recruited 0)
         (auto-skipped 0))
     (dolist (s *strategy-knowledge-base*)
@@ -670,12 +674,17 @@
              (let ((proto (handler-case (funcall maker-func)
                             (error () nil))))
                (when proto
-                 (let ((name (strategy-name proto)))
-                   (unless (and name (gethash name known-names))
-                     (when (recruit-founder key)
-                       (incf recruited))
-                     (when name
-                       (setf (gethash name known-names) t)))))))))
+                 (let ((base-name (strategy-name proto)))
+                   (when (and base-name (stringp base-name))
+                     ;; Multi-symbol evolution: recruit the same founder archetype per
+                     ;; supported symbol, with distinct names (P12.5 contract).
+                     (dolist (sym symbols)
+                       (let ((name (rewrite-strategy-name-for-symbol base-name sym)))
+                         (unless (and name (gethash name known-names))
+                           (when (recruit-founder key :symbol sym)
+                             (incf recruited))
+                           (when name
+                             (setf (gethash name known-names) t))))))))))))
      *founder-registry*)
     (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts (auto-skipped ~d)~%"
             recruited auto-skipped)))
