@@ -450,7 +450,12 @@ def full_kelly_fraction(*, win_prob: float, price: float) -> float:
     return value if value > 0.0 else 0.0
 
 
-_TEMP_RANGE_RE = re.compile(r"between\s+\d+\s*-\s*\d+\s*°?\s*f", re.IGNORECASE)
+_WEATHER_BUCKET_RE = re.compile(
+    r"(highest\s+temperature\s+in\s+.+?\s+be\s+)"
+    r"(?:between\s+-?\d+\s*-\s*-?\d+\s*°?\s*[fc]|-?\d+\s*°?\s*[fc](?:\s+or\s+(?:below|lower|higher|above|more))?)"
+    r"(\s+on\s+[A-Za-z]+\s+\d{1,2})",
+    re.IGNORECASE,
+)
 
 
 def diversification_key_for_question(question: str) -> str:
@@ -465,9 +470,11 @@ def diversification_key_for_question(question: str) -> str:
         return ""
     lowered = text.lower()
 
-    # Weather range markets: normalize the numeric range so all buckets group together.
-    if "temperature" in lowered and " between " in lowered:
-        return _TEMP_RANGE_RE.sub("between <range>f", lowered)
+    # Weather markets: normalize the bucket so all mutually-exclusive buckets group together.
+    if "highest temperature in" in lowered and " be " in lowered and " on " in lowered:
+        normalized = _WEATHER_BUCKET_RE.sub(r"\\1<bucket>\\2", lowered)
+        if normalized != lowered:
+            return normalized
 
     # "Will X win Y?" markets: group by the tail ("win Y") to avoid stacking
     # mutually-exclusive winners for the same event.
