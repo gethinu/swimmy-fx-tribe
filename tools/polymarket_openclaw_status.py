@@ -11,7 +11,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 
 def resolve_base_dir() -> Path:
@@ -104,21 +104,61 @@ def _env_str(key: str, default: str = "") -> str:
     raw = str(os.getenv(key, "")).strip()
     return raw if raw else str(default)
 
-def systemctl_is_enabled(unit: str) -> str:
-    target = str(unit or "").strip()
-    if not target:
-        return ""
+
+def _systemctl_run(args: Sequence[str], *, env: Mapping[str, str] | None = None) -> str:
     try:
         proc = subprocess.run(
-            ["systemctl", "is-enabled", target],
+            list(args),
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
             check=False,
+            env=dict(env) if env is not None else None,
         )
     except FileNotFoundError:
         return ""
     return str(proc.stdout or "").strip()
+
+
+def _synthesize_systemctl_user_env() -> Dict[str, str]:
+    # systemd(user) calls typically require XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS.
+    # When executed from a systemd(system) unit (even with User=swimmy), those env vars
+    # are often absent; synthesize them best-effort.
+    env: Dict[str, str] = dict(os.environ)
+    runtime_dir = str(env.get("XDG_RUNTIME_DIR", "")).strip() or f"/run/user/{os.getuid()}"
+    runtime_path = Path(runtime_dir)
+    if runtime_path.exists():
+        env["XDG_RUNTIME_DIR"] = str(runtime_path)
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path={runtime_path}/bus")
+    return env
+
+
+def _systemctl_load_state(unit: str, *, scope: str) -> str:
+    target = str(unit or "").strip()
+    if not target:
+        return ""
+    if scope == "user":
+        env = _synthesize_systemctl_user_env()
+        return _systemctl_run(["systemctl", "--user", "show", "-p", "LoadState", "--value", target], env=env)
+    return _systemctl_run(["systemctl", "show", "-p", "LoadState", "--value", target])
+
+
+def systemctl_is_enabled_any(unit: str) -> Tuple[str, str]:
+    target = str(unit or "").strip()
+    if not target:
+        return "", ""
+
+    # Prefer the user scope when the unit exists there (OpenClaw cycle timer is user-level).
+    user_load = _systemctl_load_state(target, scope="user").strip().lower()
+    if user_load and user_load != "not-found":
+        env = _synthesize_systemctl_user_env()
+        state = _systemctl_run(["systemctl", "--user", "is-enabled", target], env=env)
+        if state:
+            return state, "user"
+
+    # Fallback to the system scope.
+    state = _systemctl_run(["systemctl", "is-enabled", target])
+    return state, "system" if state else ""
 
 
 def is_systemd_enabled_state(state: str) -> bool:
@@ -130,13 +170,17 @@ def build_disabled_status(
     *,
     cycle_timer: str,
     cycle_timer_state: str,
+    cycle_timer_scope: str,
     status_file: Path,
     history_file: Path,
     window_minutes: int,
 ) -> Dict[str, Any]:
     health = {
         "status": "disabled",
-        "reason": f"cycle timer disabled: {cycle_timer} state={cycle_timer_state or 'unknown'}",
+        "reason": (
+            f"cycle timer disabled: {cycle_timer} state={cycle_timer_state or 'unknown'}"
+            + (f" scope={cycle_timer_scope}" if cycle_timer_scope else "")
+        ),
         "age_seconds": 0.0,
     }
     payload: Dict[str, Any] = {
@@ -611,11 +655,12 @@ def main() -> None:
     ignore_cycle_timer = _env_bool("POLYCLAW_STATUS_IGNORE_CYCLE_TIMER", False)
     cycle_timer = _env_str("POLYCLAW_CYCLE_TIMER_UNIT", "swimmy-polymarket-openclaw.timer")
     if (not ignore_cycle_timer) and cycle_timer:
-        cycle_timer_state = systemctl_is_enabled(cycle_timer)
+        cycle_timer_state, cycle_timer_scope = systemctl_is_enabled_any(cycle_timer)
         if cycle_timer_state and (not is_systemd_enabled_state(cycle_timer_state)):
             disabled_out = build_disabled_status(
                 cycle_timer=cycle_timer,
                 cycle_timer_state=cycle_timer_state,
+                cycle_timer_scope=cycle_timer_scope,
                 status_file=status_file,
                 history_file=history_file,
                 window_minutes=max(0, int(args.window_minutes)),
