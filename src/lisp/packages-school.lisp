@@ -40,6 +40,7 @@
    ;; Execution Costs
    #:get-pip-size
    #:spread-pips-from-bid-ask
+   #:calculate-cost-pips
    #:slippage-pips-from-fill
    
    ;; Meta Learning

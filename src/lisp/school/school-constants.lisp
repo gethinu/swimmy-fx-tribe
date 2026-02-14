@@ -76,5 +76,12 @@
     (when (and (numberp expected) (numberp fill-price) (> pip-size 0))
       (/ (* sign (- fill-price expected)) pip-size))))
 
+(defun calculate-cost-pips (symbol bid ask &key (slippage-pips 0.0) (commission-pips 0.0) (swap-pips 0.0))
+  "Return total execution cost in pips: spread + slippage + commission + swap."
+  (+ (float (spread-pips-from-bid-ask symbol bid ask) 1.0)
+     (if (numberp slippage-pips) (float slippage-pips 1.0) 0.0)
+     (if (numberp commission-pips) (float commission-pips 1.0) 0.0)
+     (if (numberp swap-pips) (float swap-pips 1.0) 0.0)))
+
 ;;; 5. SCREENING THRESHOLDS
 (defparameter *phase1-min-sharpe* 0.1 "Minimum Sharpe for Phase 1 (Screening)")

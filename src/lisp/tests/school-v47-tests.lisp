@@ -78,6 +78,19 @@
     (assert-true (< (abs (- buy-slip 0.5)) 0.0001) "BUY slippage should be ~0.5 pips")
     (assert-true (< (abs (- sell-slip 1.0)) 0.0001) "SELL slippage should be ~1.0 pips")))
 
+(deftest test-calculate-cost-pips-defaults
+  "Execution cost: cost pips defaults to spread only"
+  (let ((cost (swimmy.school:calculate-cost-pips "USDJPY" 150.00 150.02)))
+    (assert-true (< (abs (- cost 2.0)) 0.0001) "USDJPY default cost should be ~2.0 pips")))
+
+(deftest test-calculate-cost-pips-with-extras
+  "Execution cost: cost pips includes slippage/commission/swap"
+  (let ((cost (swimmy.school:calculate-cost-pips "USDJPY" 150.00 150.02
+                                                 :slippage-pips 0.5
+                                                 :commission-pips 0.2
+                                                 :swap-pips -0.1)))
+    (assert-true (< (abs (- cost 2.6)) 0.0001) "USDJPY cost should be ~2.6 pips")))
+
 ;;; ==========================================
 ;;; V47.5 LIVE TRADE AUDIT TESTS
 ;;; ==========================================
