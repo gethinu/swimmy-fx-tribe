@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -449,6 +450,35 @@ def full_kelly_fraction(*, win_prob: float, price: float) -> float:
     return value if value > 0.0 else 0.0
 
 
+_TEMP_RANGE_RE = re.compile(r"between\s+\d+\s*-\s*\d+\s*°?\s*f", re.IGNORECASE)
+
+
+def diversification_key_for_question(question: str) -> str:
+    """Return a stable key for grouping mutually-related markets.
+
+    Goal: avoid "fake diversification" where we enter multiple mutually-exclusive
+    ranges for the same underlying event (e.g., temperature ranges for the same
+    city+date) or many teams in the same championship market.
+    """
+    text = " ".join(str(question or "").strip().split())
+    if not text:
+        return ""
+    lowered = text.lower()
+
+    # Weather range markets: normalize the numeric range so all buckets group together.
+    if "temperature" in lowered and " between " in lowered:
+        return _TEMP_RANGE_RE.sub("between <range>f", lowered)
+
+    # "Will X win Y?" markets: group by the tail ("win Y") to avoid stacking
+    # mutually-exclusive winners for the same event.
+    if lowered.startswith("will "):
+        idx = lowered.find(" win ")
+        if idx > 0:
+            return "will <entity>" + lowered[idx:]
+
+    return lowered
+
+
 def _build_candidate(
     *,
     signal: OpenClawSignal,
@@ -583,11 +613,16 @@ def build_trade_plan(
         max_entries_this_run = 0
 
     entries: List[TradePlanEntry] = []
+    used_groups: Set[str] = set()
     for candidate in candidates:
         if len(entries) >= max_entries_this_run:
             break
         if remaining_budget <= 0.0:
             break
+
+        group_key = diversification_key_for_question(candidate.question)
+        if group_key and group_key in used_groups:
+            continue
 
         kelly_target = max(0.0, config.bankroll_usd * candidate.kelly_fraction * max(0.0, config.kelly_scale))
         stake = min(kelly_target, per_trade_cap, remaining_budget)
@@ -603,6 +638,8 @@ def build_trade_plan(
         candidate.stake_usd = round(stake, 2)
         candidate.expected_value_usd = round(expected_value_usd, 4)
         entries.append(candidate)
+        if group_key:
+            used_groups.add(group_key)
         remaining_budget -= stake
 
     total_stake = round(sum(item.stake_usd for item in entries), 2)

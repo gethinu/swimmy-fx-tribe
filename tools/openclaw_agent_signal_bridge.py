@@ -58,18 +58,53 @@ def extract_agent_json_from_stdout(stdout: str) -> Mapping[str, Any]:
         return {}
     try:
         payload = json.loads(text)
-        return payload if isinstance(payload, Mapping) else {}
+        if isinstance(payload, Mapping):
+            return payload
+        if isinstance(payload, list):
+            # OpenClaw sometimes prints JSON arrays (either direct signal rows or payload objects).
+            if not payload:
+                return {}
+            if all(isinstance(item, Mapping) for item in payload):
+                if any(("market_id" in item) or ("p_yes" in item) for item in payload):
+                    # Direct signal list: wrap as a single payload text so downstream parsing works.
+                    return {"payloads": [{"text": json.dumps(payload, ensure_ascii=False)}]}
+                if any("text" in item for item in payload):
+                    # Payload list already in expected shape.
+                    return {"payloads": payload}
+            # Unknown array shape: still wrap as text and let JSON parsing attempt downstream.
+            return {"payloads": [{"text": json.dumps(payload, ensure_ascii=False)}]}
+        return {}
     except json.JSONDecodeError:
         pass
 
+    # Salvage: OpenClaw may prepend logs to a JSON blob.
     start = text.find("{")
     end = text.rfind("}")
     if start >= 0 and end > start:
         try:
             payload = json.loads(text[start : end + 1])
-            return payload if isinstance(payload, Mapping) else {}
+            if isinstance(payload, Mapping):
+                return payload
+        except json.JSONDecodeError:
+            payload = None
+
+    start = text.find("[")
+    end = text.rfind("]")
+    if start >= 0 and end > start:
+        try:
+            payload = json.loads(text[start : end + 1])
+            if isinstance(payload, list):
+                if not payload:
+                    return {}
+                if all(isinstance(item, Mapping) for item in payload):
+                    if any(("market_id" in item) or ("p_yes" in item) for item in payload):
+                        return {"payloads": [{"text": json.dumps(payload, ensure_ascii=False)}]}
+                    if any("text" in item for item in payload):
+                        return {"payloads": payload}
+                return {"payloads": [{"text": json.dumps(payload, ensure_ascii=False)}]}
         except json.JSONDecodeError:
             return {}
+
     return {}
 
 
