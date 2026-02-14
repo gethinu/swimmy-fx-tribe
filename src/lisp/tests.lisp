@@ -8169,6 +8169,7 @@
                   test-recruit-founder-preflight-cooldown-skips-second-retry-after-reject
                   test-backtest-uses-csv-override
                   test-heartbeat-webhook-prefers-env
+                  test-backtest-webhook-routes-to-system-logs
                   test-backtest-v2-uses-alist
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades

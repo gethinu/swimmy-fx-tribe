@@ -43,6 +43,12 @@
 (defparameter *mc-validation-iterations* 250
   "Monte Carlo iterations used for rank-gate validation.")
 
+(defparameter *mc-evidence-request-interval* 3600
+  "Minimum seconds between automatic backfill backtests for MC pnl-history evidence per strategy.")
+
+(defparameter *mc-evidence-last-dispatch-at* (make-hash-table :test 'equal)
+  "Strategy-name keyed timestamps (seconds since epoch) for last MC evidence backfill dispatch.")
+
 (defparameter *dryrun-min-slippage-samples* 20
   "Minimum DryRun slippage samples required for Stage2 slippage gate.")
 
@@ -157,6 +163,34 @@ If CAP is positive and exceeded, keep the most recent CAP trades (rows are times
             drawdowns
             final-pnls)))))))
 
+(defun maybe-request-mc-evidence-backfill-backtest (strategy)
+  "Best-effort: dispatch a BACKTEST with include_trades to backfill pnl-history evidence
+for Stage2 MC gate when trade count is already sufficient but pnl-history is missing.
+Returns dispatch-state when accepted, otherwise NIL."
+  (let* ((name (%normalize-strategy-name (strategy-name strategy)))
+         (now (get-universal-time)))
+    (when name
+      (let* ((last (gethash name *mc-evidence-last-dispatch-at* nil))
+             (age (and last (- now last))))
+        (when (and (numberp age) (<= age *mc-evidence-request-interval*))
+          (format t "[MC] ⏳ Evidence backfill throttled for ~a (age ~ds)~%" name age)
+          (return-from maybe-request-mc-evidence-backfill-backtest nil))
+        (let* ((req-id (swimmy.core:generate-uuid))
+               (dispatch-state (ignore-errors
+                                 (request-backtest strategy
+                                                  :request-id req-id
+                                                  :include-trades t))))
+          (cond
+            ((backtest-dispatch-accepted-p dispatch-state)
+             (setf (gethash name *mc-evidence-last-dispatch-at*) now)
+             (format t "[MC] 📤 Dispatched evidence backfill backtest for ~a (req ~a, state=~a)~%"
+                     name req-id dispatch-state)
+             dispatch-state)
+            (t
+             (format t "[MC] ⚠️ Evidence backfill dispatch rejected for ~a (state=~a)~%"
+                     name dispatch-state)
+             nil)))))))
+
 (defun common-stage2-bootstrap-eligibility (strategy)
   "Return (values eligible-p trade-evidence cpcv-pass-rate)."
   (let* ((trade-evidence (if (fboundp 'strategy-trade-evidence-count)
@@ -181,8 +215,16 @@ If CAP is positive and exceeded, keep the most recent CAP trades (rows are times
     (let ((prob-ruin (strategy-mc-prob-ruin strategy :iterations mc-iterations)))
       (cond
         ((and (null prob-ruin) require-mc (not bootstrap-eligible))
-         (values nil
-                 (format nil "MC gate failed: insufficient pnl-history (need >=~d trades)" *mc-min-trades*)))
+         (let* ((evidence (if (numberp trade-evidence) trade-evidence 0))
+                (dispatched (and (>= evidence *mc-min-trades*)
+                                 (maybe-request-mc-evidence-backfill-backtest strategy))))
+           (values nil
+                   (if dispatched
+                       (format nil "MC gate failed: insufficient pnl-history (need >=~d trades). Backfill backtest dispatched (state=~a)"
+                               *mc-min-trades*
+                               dispatched)
+                       (format nil "MC gate failed: insufficient pnl-history (need >=~d trades)"
+                               *mc-min-trades*)))))
         ((and prob-ruin (> prob-ruin *mc-prob-ruin-threshold*))
          (values nil
                  (format nil "MC gate failed: prob_ruin=~,3f > ~,3f"

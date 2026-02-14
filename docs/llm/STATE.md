@@ -77,6 +77,7 @@
   - `A Expectancy`: `net_expectancy_pips = calculate-avg-pips(strategy) - *max-spread-pips*` を使用し、`net_expectancy_pips > 0` を必須とする（暫定的に既存スプレッド上限をコスト近似として採用）。
   - `MC gate`: `school-monte-carlo` の `prob_ruin`（`MaxDD > 20%` の発生確率）を使い、`prob_ruin <= 0.02` を必須とする。
     - 実装既定: `strategy-pnl-history` が **30トレード以上**ある場合のみ判定し、`iterations=250` で評価する（不足時は不合格）。
+    - **証拠不足の自己修復（Backfill）**: trade evidence（`strategy-trades` 等）が十分（>=30）なのに `strategy-pnl-history` が欠落している場合、`include_trades` 付き BACKTEST を自動 dispatch して trade_list を回収する（戦略ごとにスロットル）。
   - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
     - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
     - 永続化方針: `dryrun_slippage_samples` テーブルへ保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持する。再起動後もゲート判定を継続できるようにする。
