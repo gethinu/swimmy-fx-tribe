@@ -42,6 +42,27 @@ class TestOpenClawAgentSignalBridge(unittest.TestCase):
         self.assertAlmostEqual(signals["m1"]["p_yes"], 0.25, places=6)
         self.assertAlmostEqual(signals["m1"]["confidence"], 0.77, places=6)
 
+    def test_agent_only_filters_to_agent_rows(self) -> None:
+        mod = load_module()
+        fallback = [
+            {"market_id": "m1", "p_yes": 0.5, "confidence": 0.6},
+            {"market_id": "m2", "p_yes": 0.5, "confidence": 0.6},
+        ]
+        agent = {"m1": {"p_yes": 0.9, "confidence": 0.8}}
+
+        merged = mod.select_output_signals(fallback_signals=fallback, agent_signals=agent, agent_only=False)
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(merged[0]["market_id"], "m1")
+        self.assertEqual(merged[0]["source"], "openclaw_agent")
+
+        filtered = mod.select_output_signals(fallback_signals=fallback, agent_signals=agent, agent_only=True)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["market_id"], "m1")
+        self.assertEqual(filtered[0]["source"], "openclaw_agent")
+
+        empty = mod.select_output_signals(fallback_signals=fallback, agent_signals={}, agent_only=True)
+        self.assertEqual(empty, [])
+
 
 if __name__ == "__main__":
     unittest.main()

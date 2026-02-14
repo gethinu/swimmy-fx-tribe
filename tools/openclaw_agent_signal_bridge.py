@@ -360,6 +360,23 @@ def merge_agent_signals(
     return merged
 
 
+def select_output_signals(
+    *,
+    fallback_signals: Sequence[Mapping[str, Any]],
+    agent_signals: Mapping[str, Mapping[str, float]],
+    agent_only: bool,
+) -> List[Dict[str, Any]]:
+    """Build the JSONL rows we will emit.
+
+    In `agent_only` mode we only emit rows where the OpenClaw agent produced a
+    score. This prevents accidentally trading on the heuristic fallback output.
+    """
+    merged = merge_agent_signals(fallback_signals, agent_signals)
+    if not agent_only:
+        return merged
+    return [row for row in merged if str(row.get("source", "")).strip() == "openclaw_agent"]
+
+
 def _ps_quote_single(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
@@ -550,6 +567,11 @@ def main() -> None:
     parser.add_argument("--agent-fallback-retries", type=int, default=0)
     parser.add_argument("--agent-retry-sleep-ms", type=int, default=300)
     parser.add_argument("--timeout-seconds", type=int, default=12)
+    parser.add_argument(
+        "--agent-only",
+        action="store_true",
+        help="Emit only rows scored by the OpenClaw agent (no heuristic fallback rows).",
+    )
     parser.add_argument("--write-jsonl", default="")
     args = parser.parse_args()
 
@@ -588,8 +610,12 @@ def main() -> None:
         if fatal_error:
             print(f"[openclaw_agent_signal_bridge] fatal agent response: {fatal_error}", file=sys.stderr)
 
-    merged = merge_agent_signals(fallback, agent_rows)
-    text = render_jsonl(merged)
+    output_rows = select_output_signals(
+        fallback_signals=fallback,
+        agent_signals=agent_rows,
+        agent_only=bool(args.agent_only),
+    )
+    text = render_jsonl(output_rows)
     print(text, end="")
     if args.write_jsonl:
         Path(args.write_jsonl).write_text(text, encoding="utf-8")
