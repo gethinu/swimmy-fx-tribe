@@ -221,8 +221,14 @@ else
   if [[ -n "$SYSTEMCTL_REPAIR_MODE" ]]; then
     local_rc=0
     log "[REPAIR] daemon-reload"
-    run_systemctl_repair_step "daemon-reload" daemon-reload
-    local_rc=$?
+    # run_systemctl_repair_step may return 2 when repair is skipped due to
+    # Interactive authentication required. Under `set -e`, calling it directly
+    # would abort the audit. Wrap in `if` so we can capture rc and continue.
+    if run_systemctl_repair_step "daemon-reload" daemon-reload; then
+      local_rc=0
+    else
+      local_rc=$?
+    fi
     [[ $local_rc -eq 1 ]] && mark_fail
 
     for svc in "${services[@]}"; do
@@ -256,12 +262,18 @@ else
         fi
       fi
       log "[REPAIR] enable $svc"
-      run_systemctl_repair_step "enable $svc" enable "$svc"
-      local_rc=$?
+      if run_systemctl_repair_step "enable $svc" enable "$svc"; then
+        local_rc=0
+      else
+        local_rc=$?
+      fi
       [[ $local_rc -eq 1 ]] && mark_fail
       log "[REPAIR] restart $svc"
-      run_systemctl_repair_step "restart $svc" restart "$svc"
-      local_rc=$?
+      if run_systemctl_repair_step "restart $svc" restart "$svc"; then
+        local_rc=0
+      else
+        local_rc=$?
+      fi
       [[ $local_rc -eq 1 ]] && mark_fail
     done
   else

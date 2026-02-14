@@ -11,6 +11,8 @@ if [ -f "$ROOT/.env" ]; then
   set +a
 fi
 
+PRIMARY_WEBHOOK="${SWIMMY_XAU_NOTIFY_WEBHOOK:-${SWIMMY_DISCORD_REPORTS:-}}"
+
 CMD=(
   "$ROOT/.venv/bin/python"
   "$ROOT/tools/xau_autobot_cycle_compare.py"
@@ -22,14 +24,14 @@ CMD=(
   --write-comparison data/reports/xau_autobot_cycle_comparison.json
 )
 
-if [ -n "${SWIMMY_DISCORD_REPORTS:-}" ]; then
-  CMD+=(--discord-webhook "${SWIMMY_DISCORD_REPORTS}")
+if [ -n "${PRIMARY_WEBHOOK:-}" ]; then
+  CMD+=(--discord-webhook "${PRIMARY_WEBHOOK}")
 fi
 
 fallbacks=()
 for key in SWIMMY_DISCORD_SYSTEM_LOGS SWIMMY_DISCORD_ALERTS SWIMMY_DISCORD_APEX; do
   val="${!key:-}"
-  if [ -n "$val" ] && [ "$val" != "${SWIMMY_DISCORD_REPORTS:-}" ]; then
+  if [ -n "$val" ] && [ "$val" != "${PRIMARY_WEBHOOK:-}" ]; then
     fallbacks+=("$val")
   fi
 done
