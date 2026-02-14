@@ -11,7 +11,8 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 | **Guardian** | Rust (V15.x) | Middleware | MT5-Lisp間の通信仲介、Risk Gate (拒否権)、高速バックテスト、ニューラルネット予測 |
 | **School/Brain** | Common Lisp (V50.6) | Cognitive Engine | 戦略の遺伝的進化(Breeding)、ポートフォリオ構築、物語生成、Discord通知 |
 | **Data Keeper** | Python | Persistence Layer | Port 5561（REQ/REP, S式 + schema_version=1）。ヒストリカルデータ保存（**M1は最大 10M candles / symbol**、その他TFは最大 500k / symbol / TF）。ティック履歴も保存（VAP用途、GET_TICKS/ADD_TICK）。 |
-| **Pattern Similarity Service** | Python | Analytics/Gating | チャートパターン画像化・埋め込み・近傍検索・確率返却（REQ/REP 5565, S式 + schema_version=1）。 |
+| **Pattern Similarity Service** | Python | Analytics/Gating | チャートパターン画像化・埋め込み・近傍検索・確率返却（REQ/REP 5564, S式 + schema_version=1）。 |
+| **Inference Worker** | Python | LLM | LLM推論（Gemini API等）のオフロード（REQ/REP 5565, S式 + schema_version=1）。 |
 
 ## 3. 取引前提
 - **銘柄**: USDJPY, EURUSD, GBPUSD (Config可変)。マルチカレンシー対応。
@@ -21,15 +22,9 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 ## 4. 戦略仕様
 - **KB (Knowledge Base)**: 戦略はSQLite (`swimmy.db`) とフラットファイル (`data/library/`) で管理。
 - **ランク体系**: 
-  - **Stage 1（固定閾値）**
-  - **B-RANK**: Sharpe >= 0.15 / PF >= 1.05 / WR >= 35% / MaxDD < 25%
-  - **A-RANK**: Sharpe >= 0.45 / PF >= 1.30 / WR >= 43% / MaxDD < 16%
-  - **S-RANK**: Sharpe >= 0.75 / PF >= 1.70 / WR >= 50% / MaxDD < 10%
-  - **Stage 2（検証ゲート）**
-  - **A昇格**: OOS Sharpe >= 0.35 かつ コスト控除後 Expectancy > 0
-  - **S昇格**: CPCV pass_rate >= 70% かつ CPCV median MaxDD < 12%
-  - **共通（A/S昇格時）**: Monte Carlo `prob_ruin <= 2%` を満たし、DryRun 実測スリッページが運用上限以下であること
-  - **Incubator**: Stage 1 の B-RANK 条件未満
+  - **Incubator/B-RANK**: Sharpe ≥ 0.1
+  - **A-RANK**: Sharpe ≥ 0.3 + OOS検証合格
+  - **S-RANK**: **IS Sharpe ≥ 0.5** + CPCV検証合格（実弾許可、PF/WR/MaxDDはCPCV中央値で判定）
   - **Legend**: 不老不死（外部導入戦略）
   - **Graveyard**: 廃棄戦略（失敗パターン分析用）
   - **Retired**: Max Age 退役アーカイブ（低ウェイト学習、`data/library/RETIRED/`・`data/memory/retired.sexp`）
@@ -42,12 +37,16 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 
 ## 4.5. Pattern Similarity Gate (Regime/Gate)
 - **目的**: 類似チャートパターンの集合意識をレジーム/ゲートとして利用（既存戦略の前段フィルタ）。
-- **モデル**: Phase 1 は `vector-fallback-v1`（OHLCV派生ベクトル埋め込み）を正本として実装。CLIP ViT-B/32 相当は Phase 2 以降の差し替え候補とし、`model` フィールドで実装モデル名を返す。
+- **モデル**: 画像埋め込み（CLIP ViT-B/32相当）。GPU利用可能なら加速、不可ならCPUフォールバック。
 - **特徴量**: ローソク足画像 + ティック出来高 + 価格帯別出来高（VAP）。
 - **検索**: 近傍探索は **距離重み付き確率** を返す（k=30、閾値=0.60）。
 - **ゲート**: 不一致時はロットを **0.7倍** に減衰（ソフトゲート）。**ライブ/OOS/CPCV/バックテストに適用**。
 - **適用範囲**: **TF一致のみ**（H1以上の足確定時に評価）。
-- **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。
+- **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。  
+  - `ATR(period)` はサンプルwindow末尾の直近 `period` 本から算出（既定 `period=14`、`SWIMMY_PATTERN_LABEL_ATR_PERIOD` で上書き）。  
+  - `future_return = close(t+horizon) - close(t)`  
+  - `threshold = ATR * atr_mult`（既定 `atr_mult=0.50`、`SWIMMY_PATTERN_LABEL_ATR_MULT` で上書き）  
+  - `future_return >= threshold => UP` / `future_return <= -threshold => DOWN` / それ以外 => `FLAT`
   - M5/M15: 4時間
   - H1/H4: 1日
   - D1: 1週間
@@ -66,9 +65,6 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - H1/H4/D1/W1/MN1: 1本ごと
 - **保存**: `data/patterns/` に npz + FAISS インデックスを保存。SQLiteはメタ情報のみ保持。
 - **VAP生成**: MT5ティック由来で生成（**ヒストリカルはData Keeperにティック履歴保存**。スキーマ/取得APIはTBD）。
-- **EV一貫性**: Gate は単体で売買判断を置き換えず、**コスト込み期待値(EV)最大化**の前段フィルタとして扱う。
-  - `EV_net` が閾値未満なら No-Trade。Gate は低信頼時に `EV_threshold` を引き上げる、またはロットを減衰。
-  - 学習/検証は **Purged CV + Embargo** と WFV を前提にレジーム耐性を確認する。
 
 ## 5. リスク管理 (Guardian & Lisp)
 - **Risk Gate (Rust)**:
@@ -92,7 +88,8 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - Notifier (PUSH 5562, S式 + schema_version=1) -> Notifier Service
   - Risk Gateway (REQ/REP 5563, S式 + schema_version=1) <-> Lisp
   - Backtest Service (PUSH 5580 / PULL 5581, S式) <-> Lisp
-  - Pattern Similarity (REQ/REP 5565, S式 + schema_version=1) <-> Lisp
+  - Pattern Similarity (REQ/REP 5564, S式 + schema_version=1) <-> Lisp
+  - Inference Worker (REQ/REP 5565, S式 + schema_version=1) <-> Lisp
 - **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist形式）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSONを維持。
 - **Persistence**: 
   - **SQLite**: メタデータ、ランク、トレードログ。
@@ -103,7 +100,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 
 ## 7. 実行制約・環境
 - **OS**: Windows (MT5) + WSL2 (Rust/Lisp/Python)
-- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）。
+- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-pattern-similarity`, `swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）。
 - **Hot Reload**: `./tools/reload.sh` でLispプロセスを停止せずにコード更新可能。
 
 ## 8. 非要件
@@ -140,10 +137,10 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 
 | Rank | Label | Criteria (AND条件) | Validation Gate |
 | :--- | :--- | :--- | :--- |
-| **S-Rank** | Verified Elite | Sharpe >= 0.75<br>PF >= 1.70<br>WR >= 50%<br>MaxDD < 10% | **CPCV**<br>- pass_rate >= 70%<br>- median MaxDD < 12%<br>- 共通ゲート（MC/DryRun）合格 |
-| **A-Rank** | Pro | Sharpe >= 0.45<br>PF >= 1.30<br>WR >= 43%<br>MaxDD < 16% | **OOS**<br>- OOS Sharpe >= 0.35<br>- コスト控除後 Expectancy > 0<br>- 共通ゲート（MC/DryRun）合格 |
-| **B-Rank** | Selection | Sharpe >= 0.15<br>PF >= 1.05<br>WR >= 35%<br>MaxDD < 25% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
-| **Incubator** | - | B-Rank条件未満 | (None) |
+| **S-Rank** | Verified Elite | **IS Sharpe ≥ 0.5** | **CPCV** (Combinatorial Purged Cross-Validation)<br>- Median Sharpe ≥ 0.5<br>- Median PF ≥ 1.5<br>- Median WR ≥ 45%<br>- Median MaxDD < 15%<br>- Pass Rate ≥ 50% |
+| **A-Rank** | Pro | Sharpe ≥ 0.3<br>PF ≥ 1.2<br>WR ≥ 40%<br>MaxDD < 20% | **OOS** (Out-of-Sample)<br>- OOS Sharpe ≥ 0.3 |
+| **B-Rank** | Selection | Sharpe ≥ 0.1<br>PF ≥ 1.0<br>WR ≥ 30%<br>MaxDD < 30% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
+| **Incubator** | - | Sharpe < 0.1 | (None) |
 | **Retired** | Archive | Max Age 退役 / 明示退役 | (None) |
 
 ### 11.3. Persistence Logic

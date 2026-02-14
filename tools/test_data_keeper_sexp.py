@@ -1,4 +1,6 @@
 import sys
+import os
+import tempfile
 from pathlib import Path
 
 
@@ -15,6 +17,11 @@ sys.path.insert(0, str(BASE_DIR / "src" / "python"))
 sys.path.insert(0, str(BASE_DIR / "tools"))
 
 from sexp_utils import parse_sexp_alist
+
+# Isolate tick persistence away from the real repo `data/`.
+_tmp = tempfile.TemporaryDirectory()
+os.environ["SWIMMY_TICKS_DIR"] = str(Path(_tmp.name) / "ticks")
+
 import data_keeper
 
 

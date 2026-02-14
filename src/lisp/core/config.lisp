@@ -107,9 +107,10 @@
 (defparameter *port-external* (env-int-or "SWIMMY_PORT_EXTERNAL" 5559))
 (defparameter *port-data-keeper* (env-int-or "SWIMMY_PORT_DATA_KEEPER" 5561))
 (defparameter *port-notifier* (env-int-or "SWIMMY_PORT_NOTIFIER" 5562))
+(defparameter *port-pattern-similarity* (env-int-or "SWIMMY_PORT_PATTERN_SIMILARITY" 5564))
+(defparameter *port-inference* (env-int-or "SWIMMY_PORT_INFERENCE" 5565))
 (defparameter *port-backtest-req* (env-int-or "SWIMMY_PORT_BACKTEST_REQ" 5580))
 (defparameter *port-backtest-res* (env-int-or "SWIMMY_PORT_BACKTEST_RES" 5581))
-(defparameter *port-pattern-similarity* (env-int-or "SWIMMY_PORT_PATTERN_SIMILARITY" 5565))
 
 (defparameter *backtest-service-enabled* (env-bool-or "SWIMMY_BACKTEST_SERVICE" nil)
   "Enable dedicated backtest service (5580/5581) when true.")

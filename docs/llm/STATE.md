@@ -8,7 +8,7 @@
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
-- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service / Inference Worker は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Polymarket OpenClaw（任意）**: Polymarket（予測市場）向けの自動エントリーサブシステム。cycle/signal-sync は user systemd、status/notifier は systemd(system) を使用し、成果物は `data/reports/polymarket_openclaw_live/` に保存する（FX コアとは独立）。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
@@ -56,10 +56,10 @@
   - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
     - **Statusのdisabled扱い**: `tools/polymarket_openclaw_status.py` は cycle timer が `enabled` でない場合 `Health: disabled` として扱い、`--fail-on-problem` 指定でも exit 0 とする（OpenClaw停止中に status ファイルが更新されず stale になるのは仕様のため）。
   - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
-  - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
+  - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5564` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
-    - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5565 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
-  - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
+    - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5564 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
+  - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5564` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
   - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
   - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `get-library-archive-canonical-count` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する（Archive drift は per-dir mismatch に加えて Library canonical/overlap も併記して誤読を防ぐ）。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
@@ -91,8 +91,9 @@
 - **Archive Drift Reconcile 契約**: `tools/ops/reconcile_archive_db.py` は Library→DB 補完だけでなく、DB側余剰アーカイブ名（DB-only）件数を可視化する。必要時はオプションで DB-only 行をバックアップテーブルへ退避してから prune できる（既定は非破壊）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
-- **Pattern Similarity Service**: 5565(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
-- **Pattern Similarity 実装状態（Phase 1/2）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。Lisp側は `src/lisp/core/pattern-similarity-client.lisp` で 5565 に接続し、`school-execution` で H1/H4/D1/W1/MN1 のソフトゲート（不一致時 lot 0.7x）と `execution.pattern_gate` telemetry を実装。Phase 2 として `tools/pattern_vector_dl.py`（Siamese/Triplet）と `tools/train_pattern_vector_model.py` を追加し、学習済みチェックポイント（`SWIMMY_PATTERN_DL_MODEL_PATH` または `data/patterns/models/vector_siamese_v1.pt`）が存在する場合は service が `vector-siamese-v1` 埋め込みを優先する。
+- **Pattern Similarity Service**: 5564(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
+- **Inference Worker**: 5565(REQ/REP) で **S式のみ**受理（`type="INFERENCE"`）。`SWIMMY_PORT_INFERENCE` でポート上書き可能。
+- **Pattern Similarity 実装状態（Phase 1/2）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。Lisp側は `src/lisp/core/pattern-similarity-client.lisp` で 5564 に接続し、`school-execution` で H1/H4/D1/W1/MN1 のソフトゲート（不一致時 lot 0.7x）と `execution.pattern_gate` telemetry を実装。Phase 2 として `tools/pattern_vector_dl.py`（Siamese/Triplet）と `tools/train_pattern_vector_model.py` を追加し、学習済みチェックポイント（`SWIMMY_PATTERN_DL_MODEL_PATH` または `data/patterns/models/vector_siamese_v1.pt`）が存在する場合は service が `vector-siamese-v1` 埋め込みを優先する。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
 - **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
 - **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
@@ -181,8 +182,8 @@
 - **2026-02-13**: PF回復の上位ターゲット圧を追加。`avg_wr>=0.47` かつ `avg_pf<1.70` の WR-ready ペアに `upside scale floor` を適用し、A基準達成済みでも S基準PFへ寄せる探索圧を維持する方針を追記。
 - **2026-02-13**: B-Rank culling の保持順を PF帯優先へ更新。`PF>=A基準` → `PF near` → `others` の順に保持候補を選び、同帯内のみ culling score で並べる方針を追加。
 - **2026-02-13**: `tools/system_audit.sh` の systemd監査を強化。`sudo -n` が使えない環境でも `systemctl` 直実行へフォールバックして状態確認を継続し、監査自体を `skipping systemctl status` で欠落させない方針を追加。
-- **2026-02-13**: `tools/system_audit.sh` の監査契約を更新。`swimmy-pattern-similarity` は unit 未登録でも実プロセス + `:5565` LISTEN を fallback 健全判定として扱い、`Interactive authentication required` 発生時の auto-repair は WARN スキップで監査継続する方針を追加。
-- **2026-02-13**: Dashboard のサービス表示契約を更新。`PatternSim` は systemd unit 未登録時でも fallback 健全判定（実プロセス + `:5565` LISTEN）を表示に反映し、運用者が実稼働を誤認しない方針を追加。
+- **2026-02-13**: `tools/system_audit.sh` の監査契約を更新。`swimmy-pattern-similarity` は unit 未登録でも実プロセス + `:5564` LISTEN を fallback 健全判定として扱い、`Interactive authentication required` 発生時の auto-repair は WARN スキップで監査継続する方針を追加。
+- **2026-02-13**: Dashboard のサービス表示契約を更新。`PatternSim` は systemd unit 未登録時でも fallback 健全判定（実プロセス + `:5564` LISTEN）を表示に反映し、運用者が実稼働を誤認しない方針を追加。
 - **2026-02-13**: `tools/deep_audit.lisp` をストリーミング監査へ更新。archive-heavy DB でも `init-knowledge-base` を呼ばず、DB/Library のランク集計と `data_sexp` のサンプル復元で健全性を確認する方針へ変更。
 - **2026-02-13**: `backtest_status.txt` の保存先を `swimmy.main::*backtest-status-path*` へ抽象化。テストは一時ファイルへバインドし、本番 `data/reports/backtest_status.txt` を汚染しない方針へ更新。
 - **2026-02-12**: Evolution Report の `System Status` 契約を更新。`Evolution Daemon Active` を固定表示せず、systemd実状態（`swimmy-evolution.service`）を反映し、`systemctl` 取得不能時のみ heartbeat 補助判定へ切替える方針を追加。
@@ -237,8 +238,8 @@
 - **2026-02-11**: School heartbeat 更新をサイクル完了依存から独立tickへ変更。`run-stagnant-flush-tick` で `data/heartbeat/school.tick` を更新し、長時間フェーズ実行中の `Evolution report/heartbeat stale` 誤検知を抑制。
 - **2026-02-11**: Pattern Similarity の Phase 2（ベクトル深層学習）を追加。`tools/pattern_vector_dl.py` と `tools/train_pattern_vector_model.py` を実装し、service側で学習済み Siamese チェックポイントを自動ロードして `model=vector-siamese-v1` を返せるように更新。未配置時は `vector-fallback-v1` へフォールバック。
 - **2026-02-11**: Data Keeper の Tick API（`ADD_TICK` / `GET_TICKS`）を実装。`tools/test_data_keeper_sexp.py` に契約テスト（追加/取得/時間窓）を追加。
-- **2026-02-11**: Lisp Core に Pattern Similarity client を追加（`SWIMMY_PORT_PATTERN_SIMILARITY` / 既定5565）。`school-execution` に H1+ のソフトゲート（不一致時 lot 0.7x）を接続し、`execution.pattern_gate` telemetry を追加。
-- **2026-02-11**: Pattern Similarity Service (5565) の Phase 1 実装を追加。`tools/pattern_similarity_service.py`、`systemd/swimmy-pattern-similarity.service`、`tools/test_pattern_similarity_sexp.py` を追加し、`tools/install_services.sh` / `tools/system_audit.sh` にサービス反映。
+- **2026-02-11**: Lisp Core に Pattern Similarity client を追加（`SWIMMY_PORT_PATTERN_SIMILARITY` / 既定5564）。`school-execution` に H1+ のソフトゲート（不一致時 lot 0.7x）を接続し、`execution.pattern_gate` telemetry を追加。
+- **2026-02-11**: Pattern Similarity Service (5564) の Phase 1 実装を追加。`tools/pattern_similarity_service.py`、`systemd/swimmy-pattern-similarity.service`、`tools/test_pattern_similarity_sexp.py` を追加し、`tools/install_services.sh` / `tools/system_audit.sh` にサービス反映。
 - **2026-02-11**: `upsert-strategy` に Archive Rank 保護を追加し、DB既存 `:GRAVEYARD/:RETIRED` が通常upsertで `NIL/Active` に戻る退行を防止。
 - **2026-02-11**: OOS dispatch の成否契約を厳格化。Backtest送信が受理されなかった要求を `sent` に残さず `error` 化し、`oos_status` の `sent/pending` 誤増加を抑制。
 - **2026-02-11**: OOS status 表示のダミー値を廃止。`data/send/db` の失敗内訳と latency(avg/min/max) を実測から表示するよう更新。

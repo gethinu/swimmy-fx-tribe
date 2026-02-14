@@ -17,6 +17,7 @@ graph TD
         Lisp[Lisp Brain / School]
         DataKeeper[Python Data Keeper]
         PatternSim[Pattern Similarity Service]
+        Inference[Inference Worker]
         Notifier[Notifier Service]
         RiskGateway[Risk Gateway]
         BacktestSvc[Backtest Service]
@@ -32,7 +33,8 @@ graph TD
     
     Rust <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
     Lisp <-->|REQ/REP :5561 (History, S-exp)| DataKeeper
-    Lisp <-->|REQ/REP :5565 (Pattern, S-exp)| PatternSim
+    Lisp <-->|REQ/REP :5564 (Pattern, S-exp)| PatternSim
+    Lisp <-->|REQ/REP :5565 (Inference, S-exp)| Inference
 
     Lisp -- "PUSH :5562 (Notify, S-exp)" --> Notifier
     Rust -- "PUSH :5562 (Notify, S-exp)" --> Notifier
@@ -76,9 +78,14 @@ graph TD
 - メインプロセスのI/O負荷を軽減。
 
 ### 5. Pattern Similarity Service (Perception)
-- **Python Service (Port 5565 / REQ/REP + S-expression, schema_version=1)**
+- **Python Service (Port 5564 / REQ/REP + S-expression, schema_version=1)**
 - チャートパターンの画像化・埋め込み・近傍検索を担当。
 - 生成した埋め込みとインデックスは `data/patterns/` に保存。
+
+### 6. Inference Worker (LLM)
+- **Python Service (Port 5565 / REQ/REP + S-expression, schema_version=1)**
+- Lisp Brain からの LLM 呼び出しをオフロード（Gemini API等）。
+- 応答は文字列（text）を返す。タイムアウト時は呼び出し側で fail-open。
 
 ## 実行タイミング
 | 頻度 | 主体 | 処理内容 |
@@ -104,7 +111,7 @@ graph TD
 
 ## フェイルセーフ & 監視
 - **Watchdog**: Lisp内に `school-watchdog` (Broken Arrow) 実装。100msフリーズを検知。
-- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）を自動再起動。
+- **Systemd**: コア4サービス（`swimmy-brain`, `swimmy-guardian`, `swimmy-school`, `swimmy-data-keeper`）＋補助（`swimmy-pattern-similarity`, `swimmy-backtest`, `swimmy-risk`, `swimmy-notifier`, `swimmy-evolution`, `swimmy-watchdog`）を自動再起動。
 - **DNA Verify**: 起動時のファイル改ざん検知 (SHA256)。
 
 ## Polymarket OpenClaw（任意）
