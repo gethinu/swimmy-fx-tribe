@@ -414,17 +414,40 @@ def restart_service(tracker: RevivalTracker) -> bool:
         return True
 
     print(f"[WATCHDOG] Restarting {tracker.service}...")
-    result = subprocess.run(
-        ["systemctl", "restart", tracker.service],
-        capture_output=True,
-        text=True,
-    )
+    systemctl_path = "/usr/bin/systemctl"
+    sudo_path = "/usr/bin/sudo"
 
-    if result.returncode == 0:
+    # Prefer non-interactive sudo when available so we can manage system units
+    # without triggering polkit prompts. Falls back to direct systemctl, then
+    # finally to MainPID-based SIGTERM/SIGKILL (systemd Restart= relaunch).
+    attempts = [
+        ([sudo_path, "-n", systemctl_path, "restart", tracker.service], "sudo -n systemctl"),
+        ([systemctl_path, "restart", tracker.service], "systemctl"),
+    ]
+
+    result = None
+    label = None
+    for cmd, attempt_label in attempts:
+        label = attempt_label
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError as e:
+            # Should not happen in normal deployments, but keep watchdog alive.
+            print(f"[WATCHDOG] ❌ {attempt_label} restart FAILED: {e}")
+            result = None
+            continue
+
+        if result.returncode == 0:
+            break
+
+    if result is not None and result.returncode == 0:
         print(f"[WATCHDOG] ✅ {tracker.service} restart SUCCESS")
         return True
     else:
-        print(f"[WATCHDOG] ❌ {tracker.service} restart FAILED: {result.stderr}")
+        stderr = ""
+        if result is not None:
+            stderr = (result.stderr or "").strip()
+        print(f"[WATCHDOG] ❌ {tracker.service} restart FAILED ({label}): {stderr}")
         # Fallback: for system units we may lack privileges; kill MainPID and let systemd Restart= relaunch.
         if _kill_service_main_pid(tracker.service):
             print(
