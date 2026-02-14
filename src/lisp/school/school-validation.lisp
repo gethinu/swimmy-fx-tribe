@@ -924,6 +924,18 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
 (defvar *cpcv-last-dispatch-signatures* (make-hash-table :test 'equal)
   "Strategy name -> signature of metrics used to detect meaningful changes.")
 
+(defvar *cpcv-last-result-outcomes* (make-hash-table :test 'equal)
+  "Strategy name -> last CPCV result outcome for dispatch throttling.
+Values: :inflight, :passed, :criteria-fail, :runtime-fail.")
+
+(defun note-cpcv-result-outcome (strategy-name outcome)
+  "Record last CPCV OUTCOME for STRATEGY-NAME.
+Used to avoid re-dispatching known criteria failures in tight loops."
+  (let ((name (%normalize-strategy-name strategy-name)))
+    (when (and name (keywordp outcome))
+      (setf (gethash name *cpcv-last-result-outcomes*) outcome)
+      outcome)))
+
 (defun cpcv-dispatch-signature (strategy)
   "Build dispatch signature from S-gate relevant metrics."
   (list (round (* 1000 (float (or (strategy-sharpe strategy) 0.0))))
@@ -937,11 +949,20 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
   (let* ((name (strategy-name strategy))
          (sig (cpcv-dispatch-signature strategy))
          (last-time (and name (gethash name *cpcv-last-dispatch-times*)))
-         (last-sig (and name (gethash name *cpcv-last-dispatch-signatures*))))
+         (last-sig (and name (gethash name *cpcv-last-dispatch-signatures*)))
+         (outcome (and name (gethash name *cpcv-last-result-outcomes* nil)))
+         (age (and last-time (- now last-time)))
+         ;; Criteria failures are stable; re-dispatch only if metrics change.
+         ;; Runtime failures / stuck inflight should remain retryable after cooldown.
+         (retryable-outcome-p (or (null outcome)
+                                  (eq outcome :inflight)
+                                  (eq outcome :runtime-fail))))
     (or (null name)
         (null last-time)
         (not (equal sig last-sig))
-        (>= (- now last-time) *cpcv-strategy-retry-interval*))))
+        (and retryable-outcome-p
+             (numberp age)
+             (>= age *cpcv-strategy-retry-interval*)))))
 
 (defun mark-cpcv-dispatched (strategy &key (now (get-universal-time)))
   "Record strategy dispatch timestamp/signature for CPCV cooldown."
@@ -949,16 +970,21 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
     (when name
       (setf (gethash name *cpcv-last-dispatch-times*) now)
       (setf (gethash name *cpcv-last-dispatch-signatures*)
-            (cpcv-dispatch-signature strategy)))))
+            (cpcv-dispatch-signature strategy))
+      (setf (gethash name *cpcv-last-result-outcomes*) :inflight))))
 
 (defun fetch-cpcv-candidates (&optional strategies)
-  "Fetch CPCV candidates from DB (A-rank, elite by Sharpe threshold)."
+  "Fetch CPCV candidates from DB (A-rank, S-base ready, elite by Sharpe threshold)."
   (let* ((source (or strategies
                      (fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))))
     (remove-if-not
      (lambda (s)
        (and (eq (strategy-rank s) :A)
-            (cpcv-elite-p s)))
+            (cpcv-elite-p s)
+            ;; Only dispatch CPCV when strategy already passes S-base IS gates.
+            ;; Otherwise CPCV cycles waste throughput on strategies that cannot
+            ;; be promoted to :S even if CPCV passes.
+            (check-rank-criteria s :S :include-cpcv nil)))
      source)))
 
 (defun run-a-rank-cpcv-batch ()

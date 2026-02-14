@@ -588,6 +588,16 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                            ((not is-passed)
                             (swimmy.school::%cpcv-metric-inc :result_criteria_failed)
                             (swimmy.school::%cpcv-metric-inc :result_failed)))
+                         ;; Persist last outcome so dispatch loop can avoid re-sending
+                         ;; stable criteria failures in tight cycles.
+                         (when (fboundp 'swimmy.school::note-cpcv-result-outcome)
+                           (cond
+                             (runtime-error-msg
+                              (swimmy.school::note-cpcv-result-outcome name :runtime-fail))
+                             ((not is-passed)
+                              (swimmy.school::note-cpcv-result-outcome name :criteria-fail))
+                             (t
+                              (swimmy.school::note-cpcv-result-outcome name :passed))))
                          (when (fboundp 'swimmy.school::write-cpcv-status-file)
                            (ignore-errors (swimmy.school::write-cpcv-status-file :reason "result"))))
                        (when known-strategy-p

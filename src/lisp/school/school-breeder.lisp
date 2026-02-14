@@ -146,6 +146,8 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "When T, breeder parent ranking uses A-base-aware culling score if available.")
 (defparameter *breeder-priority-generation-weight* 0.01
   "Generation bonus weight in breeder parent ranking.")
+(defparameter *breeder-priority-cpcv-pass-rate-weight* 0.35
+  "Additive bonus weight for CPCV pass-rate in breeder parent ranking. 0 disables.")
 (defparameter *breeder-complement-wr-bonus* 1.5
   "Partner score bonus when candidate satisfies WR target that parent is missing.")
 (defparameter *breeder-complement-pf-bonus* 1.5
@@ -419,8 +421,11 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                                 :win-rate (strategy-win-rate strategy)
                                 :max-dd (strategy-max-dd strategy)))))
          (generation-bonus (* (or (strategy-generation strategy) 0)
-                              *breeder-priority-generation-weight*)))
-    (+ rank-bonus base-score generation-bonus)))
+                              *breeder-priority-generation-weight*))
+         (cpcv-pass (float (or (strategy-cpcv-pass-rate strategy) 0.0) 1.0))
+         (cpcv-weight (float (or *breeder-priority-cpcv-pass-rate-weight* 0.0) 1.0))
+         (cpcv-bonus (* cpcv-weight cpcv-pass)))
+    (+ rank-bonus base-score generation-bonus cpcv-bonus)))
 
 (defun strategy-meets-target-pf-p (strategy &optional (target *pfwr-target-pf*))
   (>= (float (or (strategy-profit-factor strategy) 0.0))

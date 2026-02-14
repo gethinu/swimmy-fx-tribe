@@ -15,6 +15,112 @@
 (defvar *global-win-rate* 0.0)
 
 ;;; -------------------------------------------------------
+;;; 0. AUTO MAINTENANCE (Naval: Subtraction -> Action)
+;;; -------------------------------------------------------
+
+(defparameter *advisor-maintenance-enabled* t
+  "When T, Advisor Council will run daily auto-maintenance before sending the report.")
+
+(defparameter *advisor-maintenance-dry-run* nil
+  "When T, do not mutate state; only report what would be done.")
+
+(defparameter *advisor-zombie-threshold-seconds* 604800
+  "Seconds since last trade/update to consider a strategy a zombie (default: 7d).")
+
+(defparameter *advisor-zombie-min-trades* 6
+  "Minimum trade evidence required before a strategy can be retired as a zombie.")
+
+(defparameter *advisor-zombie-max-actions* 25
+  "Safety cap for zombie retire actions per day.")
+
+(defparameter *advisor-zombie-protected-ranks* '(:S :A :legend)
+  "Ranks protected from zombie retirement.")
+
+(defvar *advisor-maintenance-last-day* nil
+  "YYYYMMDD of last executed advisor maintenance sweep (localtime).")
+
+(defun %advisor-day-key (&optional (now (get-universal-time)))
+  (multiple-value-bind (s m h date month year) (decode-universal-time now)
+    (declare (ignore s m h))
+    (+ (* year 10000) (* month 100) date)))
+
+(defun advisor-zombie-candidates (&key (now (get-universal-time))
+                                       (limit *advisor-zombie-max-actions*))
+  "Return zombie strategy objects (housekeeping candidates) based on last trade/update age.
+
+LIMIT controls the maximum number of returned strategies. When NIL, returns all zombies (uncapped)."
+  (let ((candidates nil))
+    (dolist (strat (copy-list *strategy-knowledge-base*))
+      (when strat
+        (let* ((rank (strategy-rank strat))
+               (trades (or (strategy-trades strat) 0))
+               (last (or (strategy-last-update strat) 0))
+               (age (and (numberp last) (> last 0) (- now last))))
+          (when (and (eq (strategy-status strat) :active)
+                     (not (strategy-immortal strat))
+                     (not (member rank *advisor-zombie-protected-ranks* :test #'eq))
+                     (>= trades *advisor-zombie-min-trades*)
+                     age
+                     (> age *advisor-zombie-threshold-seconds*))
+            (push strat candidates)))))
+    ;; Oldest first (most stale)
+    (setf candidates (sort candidates #'>
+                           :key (lambda (s)
+                                  (- now (or (strategy-last-update s) 0)))))
+    (if (and (numberp limit) (> limit 0))
+        (subseq candidates 0 (min (length candidates) limit))
+        candidates)))
+
+(defun advisor-low-sharpe-candidate-p (strat)
+  "Return T when STRAT would be graveyarded by prune-low-sharpe-strategies."
+  (let ((sharpe (or (strategy-sharpe strat) 0.0))
+        (rank (strategy-rank strat)))
+    (and (not (newborn-protected-p strat))
+         (< sharpe *prune-sharpe-threshold*)
+         (not (member rank *prune-protected-ranks*))
+         t)))
+
+(defun run-advisor-auto-maintenance (&key (now (get-universal-time)))
+  "Execute (or report) daily auto-maintenance. Returns a human-readable summary string."
+  (unless *advisor-maintenance-enabled*
+    (return-from run-advisor-auto-maintenance nil))
+
+  (let ((day-key (%advisor-day-key now)))
+    (when (and (numberp *advisor-maintenance-last-day*)
+               (= *advisor-maintenance-last-day* day-key))
+      (return-from run-advisor-auto-maintenance nil))
+    (setf *advisor-maintenance-last-day* day-key))
+
+  (let* ((zombies (advisor-zombie-candidates :now now))
+         (zombie-names (mapcar #'strategy-name zombies))
+         (low-sharpe-cnt (count-if #'advisor-low-sharpe-candidate-p *strategy-knowledge-base*))
+         (retired 0)
+         (graveyarded 0))
+
+    (unless *advisor-maintenance-dry-run*
+      ;; Housekeeping: retire zombies (inactive)
+      (dolist (s zombies)
+        (ignore-errors
+          (send-to-retired s "Auto Maintenance: Zombie (>7d inactive)"))
+        (incf retired))
+
+      ;; Objective failure: graveyard low-sharpe laggards
+      (setf graveyarded (or (ignore-errors (prune-low-sharpe-strategies)) 0)))
+
+    (format nil "🧹 **Auto Maintenance**~%~
+- Mode: ~a~%~
+- Housekeeping (Zombies -> Retired): ~d~%~
+- Objective Failure (Low Sharpe -> Graveyard): ~d~@[ (would ~d)~]~%~
+- Sample Zombies: ~{`~a`~^, ~}"
+            (if *advisor-maintenance-dry-run* "DRY-RUN" "EXECUTE")
+            (if *advisor-maintenance-dry-run* (length zombies) retired)
+            graveyarded
+            (and *advisor-maintenance-dry-run* low-sharpe-cnt)
+            (if zombie-names
+                (subseq zombie-names 0 (min 5 (length zombie-names)))
+                '("None")))))
+
+;;; -------------------------------------------------------
 ;;; 1. NASSIM TALEB (Risk & Anti-Fragility)
 ;;; -------------------------------------------------------
 
@@ -52,22 +158,12 @@
 
 (defun generate-naval-report ()
   "Generate Naval Ravikant's Simplicity Report."
-  (let ((total-strats (if (boundp '*evolved-strategies*) (length *evolved-strategies*) 0))
-        (zombies 0)
-        (candidates nil)
-        (now (get-universal-time)))
-    
-    ;; Analyze Zombies
-    (when (boundp '*evolved-strategies*)
-      (dolist (strat *evolved-strategies*)
-        (let* ((name (strategy-name strat))
-               (stats (if (boundp '*strategy-usage-stats*) (gethash name *strategy-usage-stats*) nil))
-               (last-trade (if stats (getf stats :last-trade) 0)))
-          (when (or (zerop last-trade) (> (- now last-trade) 604800)) ; 7 days
-            (incf zombies)
-            (push name candidates)))))
-    
-    (setf candidates (sort candidates #'string<))
+  (let* ((now (get-universal-time))
+         (total-strats (length *strategy-knowledge-base*))
+         ;; Reporting should show the full zombie count; action caps are applied only during execution.
+         (zombie-strats (advisor-zombie-candidates :now now :limit nil))
+         (zombies (length zombie-strats))
+         (candidates (sort (mapcar #'strategy-name zombie-strats) #'string<)))
     
     (format nil "🧘 **Naval's Simplicity Report**~%~
                  - Total Strategies: ~d~%~
@@ -131,10 +227,14 @@
 
 (defun run-advisor-council ()
   "Run the council and notify Discord."
-  (let ((report (generate-advisor-reports)))
+  (let* ((maintenance (ignore-errors (run-advisor-auto-maintenance)))
+         (report (generate-advisor-reports))
+         (final (if (and maintenance (> (length maintenance) 0))
+                    (format nil "~a~%~%~a" report maintenance)
+                    report)))
     (if (fboundp 'notify-discord-daily)
-        (funcall 'notify-discord-daily report :title "🧐 Advisor Council Report")
-        (format t "DEBUG OUTPUT:~%~a~%" report))
+        (funcall 'notify-discord-daily final :title "🧐 Advisor Council Report")
+        (format t "DEBUG OUTPUT:~%~a~%" final))
     (format t "[ADVISORS] Council report generated and sent.~%")))
 
 (format t "[SCHOOL] 🏛️ Advisor Council (Unified) loaded~%")

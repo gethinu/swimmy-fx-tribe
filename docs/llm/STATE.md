@@ -5,6 +5,9 @@
 - **Rust (Guardian)**: `V15.x` Full Duplex, Risk Gate実装済み。Daily Loss Limit: -¥5000。
 - **MQL5 (Bridge)**: `V15.2` Multi-TF対応。
 - **Lisp (Brain/School)**: `V50.6` Pure Lisp Daemon。SQLite移行完了。
+- **Multi-Symbol Evolution**: `swimmy.core::*supported-symbols*`（既定 `USDJPY/EURUSD/GBPUSD`）を「進化・候補生成の対象」として扱う。起動時の Founder 注入（`recruit-special-forces`）は supported symbols ごとに Founder を展開し、`strategy.symbol` を正しく付与して backtest を回す（EURUSD/GBPUSD が `A Candidate Funnel` に出ない問題の正本修正）。
+  - **Symbol Name Contract (P12.5)**: symbol override で生成する Founder 変種は、名前にも symbol を含める（例: `...-EURUSD`）。これにより `check-symbol-mismatch` が「名前とsymbolの取り違え」を実際にブロックできる。
+  - **Duplicate/Correlation Scope**: `add-to-kb` / Founder preflight の correlation screening（Jaccard/Highlander）は **(timeframe × direction × symbol) の同一カテゴリ内のみ**で適用し、**同一ロジックの multi-symbol 展開**（例: USDJPY と EURUSD）をブロックしない。
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。

@@ -980,13 +980,17 @@
     (assert-true (search "pass=1" line))))
 
 (deftest test-fetch-cpcv-candidates-filters-by-elite-sharpe
-  "fetch-cpcv-candidates should return A-rank elites (sharpe>=0.75)"
-  (let* ((mk (lambda (name sharpe pf wr dd)
+  "fetch-cpcv-candidates should return A-rank CPCV candidates that pass S-base gates (excluding CPCV)."
+  (let* ((mk (lambda (name sharpe pf wr dd trades)
                (swimmy.school:make-strategy :name name :rank :A
                                             :sharpe sharpe :profit-factor pf
-                                            :win-rate wr :max-dd dd)))
-         (s-pass (funcall mk "S-PASS" 0.8 1.8 0.55 0.09))
-         (s-fpf (funcall mk "S-FPF" 0.8 1.6 0.55 0.09))
+                                            :win-rate wr :max-dd dd
+                                            :trades trades)))
+         (s-pass (funcall mk "S-PASS" 0.8 1.8 0.55 0.09 0))
+         ;; Staged S PF/WR gates should allow this when trade evidence is >= 30.
+         (s-stage (funcall mk "S-STAGE" 0.8 1.6 0.46 0.09 35))
+         ;; Still fails staged PF/WR gates (even with enough trades).
+         (s-fail (funcall mk "S-FAIL" 0.8 1.3 0.40 0.09 35))
          (b-elite (swimmy.school:make-strategy :name "B-ELITE" :rank :B
                                                :sharpe 0.8 :profit-factor 2.0
                                                :win-rate 0.6 :max-dd 0.1))
@@ -994,13 +998,17 @@
     (unwind-protect
         (progn
           (setf (symbol-function 'swimmy.school:fetch-candidate-strategies)
-                (lambda (&rest args) (declare (ignore args)) (list s-pass s-fpf b-elite)))
+                (lambda (&rest args) (declare (ignore args)) (list s-pass s-stage s-fail b-elite)))
           (let ((cands (swimmy.school::fetch-cpcv-candidates)))
-            (assert-equal 2 (length cands) "should return only A-rank elites")
+            (assert-equal 2 (length cands) "should return only S-base-ready A-rank candidates")
             (assert-true (find "S-PASS" cands :key #'swimmy.school:strategy-name :test #'string=)
                          "S-PASS should be included")
-            (assert-true (find "S-FPF" cands :key #'swimmy.school:strategy-name :test #'string=)
-                         "S-FPF should be included")))
+            (assert-true (find "S-STAGE" cands :key #'swimmy.school:strategy-name :test #'string=)
+                         "S-STAGE should be included")
+            (assert-false (find "S-FAIL" cands :key #'swimmy.school:strategy-name :test #'string=)
+                          "S-FAIL should be excluded")
+            (assert-false (find "B-ELITE" cands :key #'swimmy.school:strategy-name :test #'string=)
+                          "B-ELITE should be excluded")))
       (setf (symbol-function 'swimmy.school:fetch-candidate-strategies) orig-fetch))))
 
 (deftest test-cpcv-dispatch-eligible-cooldown
@@ -1008,6 +1016,8 @@
   (let* ((orig-interval swimmy.school::*cpcv-strategy-retry-interval*)
          (orig-times swimmy.school::*cpcv-last-dispatch-times*)
          (orig-sigs swimmy.school::*cpcv-last-dispatch-signatures*)
+         (orig-outcomes (and (boundp 'swimmy.school::*cpcv-last-result-outcomes*)
+                             swimmy.school::*cpcv-last-result-outcomes*))
          (strat (swimmy.school:make-strategy :name "UT-CPCV-CD" :rank :A
                                              :sharpe 0.8 :profit-factor 1.8
                                              :win-rate 0.55 :max-dd 0.09)))
@@ -1016,22 +1026,35 @@
           (setf swimmy.school::*cpcv-strategy-retry-interval* 300)
           (setf swimmy.school::*cpcv-last-dispatch-times* (make-hash-table :test 'equal))
           (setf swimmy.school::*cpcv-last-dispatch-signatures* (make-hash-table :test 'equal))
+          (setf swimmy.school::*cpcv-last-result-outcomes* (make-hash-table :test 'equal))
           (assert-true (swimmy.school::cpcv-dispatch-eligible-p strat :now 1000)
                        "First dispatch should be eligible")
           (swimmy.school::mark-cpcv-dispatched strat :now 1000)
           (assert-false (swimmy.school::cpcv-dispatch-eligible-p strat :now 1100)
                         "Unchanged strategy inside cooldown should be skipped")
-          (setf (swimmy.school:strategy-sharpe strat) 0.95)
-          (assert-true (swimmy.school::cpcv-dispatch-eligible-p strat :now 1100)
-                       "Metric change should bypass cooldown")
-          (swimmy.school::mark-cpcv-dispatched strat :now 1100)
-          (assert-false (swimmy.school::cpcv-dispatch-eligible-p strat :now 1200)
-                        "Cooldown should apply again after marking dispatch")
+          ;; Cooldown expiry should allow retry when result is still inflight/unknown.
           (assert-true (swimmy.school::cpcv-dispatch-eligible-p strat :now 1400)
-                       "Cooldown expiry should allow redispatch"))
+                       "Cooldown expiry should allow redispatch when inflight/unknown")
+          ;; But once we know CPCV failed criteria, do not re-dispatch just because time passed.
+          (setf (gethash (swimmy.school:strategy-name strat) swimmy.school::*cpcv-last-result-outcomes*)
+                :criteria-fail)
+          (assert-false (swimmy.school::cpcv-dispatch-eligible-p strat :now 1400)
+                        "Criteria-failed strategy should not be redispatched on time alone")
+          ;; Metric change should still bypass cooldown even after criteria fail.
+          (setf (swimmy.school:strategy-sharpe strat) 0.95)
+          (assert-true (swimmy.school::cpcv-dispatch-eligible-p strat :now 1400)
+                       "Metric change should bypass cooldown and criteria-fail lockout")
+          ;; Runtime failures (or stuck inflight) should remain retryable after cooldown.
+          (swimmy.school::mark-cpcv-dispatched strat :now 1400)
+          (setf (gethash (swimmy.school:strategy-name strat) swimmy.school::*cpcv-last-result-outcomes*)
+                :runtime-fail)
+          (assert-true (swimmy.school::cpcv-dispatch-eligible-p strat :now 1800)
+                       "Runtime-failed strategy should be retryable after cooldown"))
       (setf swimmy.school::*cpcv-strategy-retry-interval* orig-interval)
       (setf swimmy.school::*cpcv-last-dispatch-times* orig-times)
-      (setf swimmy.school::*cpcv-last-dispatch-signatures* orig-sigs))))
+      (setf swimmy.school::*cpcv-last-dispatch-signatures* orig-sigs)
+      (when (boundp 'swimmy.school::*cpcv-last-result-outcomes*)
+        (setf swimmy.school::*cpcv-last-result-outcomes* orig-outcomes)))))
 
 (deftest test-run-a-rank-cpcv-batch-respects-strategy-cooldown
   "run-a-rank-cpcv-batch should skip unchanged recently dispatched strategies."
@@ -3296,6 +3319,86 @@
       (setf swimmy.core:*discord-daily-webhook* orig-daily)
       (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))))
 
+(deftest test-advisor-council-triggers-auto-maintenance
+  "Advisor Council should trigger auto-maintenance (housekeeping->retired, objective failure->graveyard) and include a summary."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-retired (symbol-function 'swimmy.school::send-to-retired))
+         (orig-graveyard (symbol-function 'swimmy.school:send-to-graveyard))
+         (orig-notify (symbol-function 'swimmy.core:notify-discord-daily))
+         (now (get-universal-time))
+         (zombie (swimmy.school:make-strategy :name "UT-ZOMBIE"
+                                              :sharpe 1.0
+                                              :trades 10
+                                              :rank :B))
+         (low (swimmy.school:make-strategy :name "UT-LOW-SHARPE"
+                                           :sharpe 0.0
+                                           :trades 10
+                                           :rank nil))
+         (retired-calls nil)
+         (graveyard-calls nil)
+         (captured-msg nil))
+    (unwind-protect
+        (progn
+          ;; Ensure not protected by newborn/age guards.
+          (setf (swimmy.school::strategy-creation-time zombie) (- now (* 10 24 60 60)))
+          (setf (swimmy.school::strategy-last-update zombie) (- now (* 8 24 60 60)))
+          (setf (swimmy.school::strategy-creation-time low) (- now (* 2 24 60 60)))
+          (setf (swimmy.school::strategy-last-update low) now)
+          (setf swimmy.school::*strategy-knowledge-base* (list zombie low))
+
+          (setf (symbol-function 'swimmy.school::send-to-retired)
+                (lambda (s reason)
+                  (declare (ignore reason))
+                  (push (swimmy.school::strategy-name s) retired-calls)
+                  nil))
+          (setf (symbol-function 'swimmy.school:send-to-graveyard)
+                (lambda (s reason)
+                  (declare (ignore reason))
+                  (push (swimmy.school::strategy-name s) graveyard-calls)
+                  nil))
+          (setf (symbol-function 'swimmy.core:notify-discord-daily)
+                (lambda (msg &key color title)
+                  (declare (ignore color title))
+                  (setf captured-msg msg)
+                  nil))
+
+          (swimmy.school::run-advisor-council)
+
+          (assert-true (find "UT-ZOMBIE" retired-calls :test #'string=)
+                       "Expected zombie strategy to be retired (housekeeping)")
+          (assert-true (find "UT-LOW-SHARPE" graveyard-calls :test #'string=)
+                       "Expected low-sharpe strategy to be graveyarded (objective failure)")
+          (assert-true (and (stringp captured-msg) (search "Auto Maintenance" captured-msg))
+                       "Expected maintenance summary included in Advisor Council message"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school::send-to-retired) orig-retired)
+      (setf (symbol-function 'swimmy.school:send-to-graveyard) orig-graveyard)
+      (setf (symbol-function 'swimmy.core:notify-discord-daily) orig-notify))))
+
+(deftest test-naval-report-zombie-count-not-capped
+  "Naval report should count all zombies, not cap counts to the daily action limit."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-max-actions swimmy.school::*advisor-zombie-max-actions*)
+         (now (get-universal-time))
+         (kb nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*advisor-zombie-max-actions* 25)
+          (dotimes (i 30)
+            (let ((s (swimmy.school:make-strategy :name (format nil "UT-ZOMBIE-~2,'0d" i)
+                                                  :sharpe 1.0
+                                                  :trades 10
+                                                  :rank :B)))
+              (setf (swimmy.school::strategy-last-update s) (- now (* 8 24 60 60)))
+              (push s kb)))
+          (setf swimmy.school::*strategy-knowledge-base* kb)
+          (let ((report (swimmy.school::generate-naval-report)))
+            (assert-true (and (stringp report)
+                              (search "Zombies (>7d inactive): 30" report))
+                         "Expected Naval report zombie count to reflect all zombies (30), not the action cap (25).")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*advisor-zombie-max-actions* orig-max-actions))))
+
 (deftest test-recruit-notification-uses-category
   "recruit notification should say Category and omit Clan/tribe"
   (let ((captured nil)
@@ -5257,6 +5360,93 @@
           (setf (symbol-value cooldown-sym) orig-cooldown)
           (makunbound cooldown-sym)))))
 
+(deftest test-recruit-founder-applies-symbol-override-and-rewrites-name
+  "recruit-founder should accept a symbol override, set strategy.symbol, and rewrite strategy.name to include the symbol."
+  (let* ((orig-registry swimmy.school::*founder-registry*)
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-preflight (and (boundp 'swimmy.school::*founder-preflight-screen-enabled*)
+                              swimmy.school::*founder-preflight-screen-enabled*))
+         (orig-startup (and (boundp 'swimmy.school::*startup-mode*)
+                            swimmy.school::*startup-mode*))
+         (captured nil)
+         (key :ut-founder-symbol-override)
+         (maker (lambda ()
+                  (swimmy.school:make-strategy
+                   :name "UT-FOUNDER-SYM"
+                   :category :trend
+                   :timeframe 60
+                   :symbol "USDJPY"
+                   :rank nil
+                   :sl 0.22
+                   :tp 0.31
+                   :indicators '((sma 20))
+                   :entry '(> close sma-20)
+                   :exit '(< close sma-20)))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*founder-registry* (make-hash-table :test 'equal))
+          (setf (gethash key swimmy.school::*founder-registry*) maker)
+          ;; Isolate this test from preflight/correlation behavior.
+          (setf swimmy.school::*founder-preflight-screen-enabled* nil)
+          ;; Avoid async BT dispatch path; we only assert on the strategy handed to add-to-kb.
+          (setf swimmy.school::*startup-mode* t)
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (strategy source &rest _args)
+                  (declare (ignore source _args))
+                  (setf captured strategy)
+                  t))
+          (assert-true (swimmy.school::recruit-founder key :symbol "EURUSD")
+                       "Expected recruit-founder to accept EURUSD symbol override")
+          (assert-true (and captured (swimmy.school::strategy-p captured))
+                       "Expected add-to-kb to receive a strategy instance")
+          (assert-equal "EURUSD" (swimmy.school::strategy-symbol captured)
+                        "Expected strategy.symbol to be set to override")
+          (assert-true (search "EURUSD" (string-upcase (swimmy.school::strategy-name captured)))
+                       "Expected strategy.name to include override symbol"))
+      (setf swimmy.school::*founder-registry* orig-registry)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf swimmy.school::*founder-preflight-screen-enabled* orig-preflight)
+      (setf swimmy.school::*startup-mode* orig-startup))))
+
+(deftest test-recruit-special-forces-recruits-founders-per-supported-symbol
+  "recruit-special-forces should attempt founder recruitment per supported symbol (USDJPY/EURUSD/GBPUSD)."
+  (let* ((orig-registry swimmy.school::*founder-registry*)
+         (orig-meta swimmy.school::*founder-registry-meta*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-recruit (symbol-function 'swimmy.school::recruit-founder))
+         (orig-supported swimmy.core::*supported-symbols*)
+         (calls nil)
+         (key :ut-founder-multi-symbol))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*founder-registry* (make-hash-table :test 'equal))
+          (setf swimmy.school::*founder-registry-meta* (make-hash-table :test 'equal))
+          (setf (gethash key swimmy.school::*founder-registry*)
+                (lambda ()
+                  (swimmy.school:make-strategy :name "UT-SF-FOUNDER" :rank nil)))
+          (setf (gethash key swimmy.school::*founder-registry-meta*)
+                (list :name "UT-SF-FOUNDER" :source-file "unit-test"))
+          (setf (symbol-function 'swimmy.school::recruit-founder)
+                (lambda (_key &key symbol)
+                  (push symbol calls)
+                  t))
+          (swimmy.school::recruit-special-forces)
+          (assert-equal 3 (length calls)
+                        "Expected one recruit attempt per supported symbol")
+          (assert-true (find "USDJPY" calls :test #'string=)
+                       "Expected USDJPY attempt")
+          (assert-true (find "EURUSD" calls :test #'string=)
+                       "Expected EURUSD attempt")
+          (assert-true (find "GBPUSD" calls :test #'string=)
+                       "Expected GBPUSD attempt"))
+      (setf swimmy.school::*founder-registry* orig-registry)
+      (setf swimmy.school::*founder-registry-meta* orig-meta)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.core::*supported-symbols* orig-supported)
+      (setf (symbol-function 'swimmy.school::recruit-founder) orig-recruit))))
+
 (deftest test-backtest-uses-csv-override
   "request-backtest should honor SWIMMY_BACKTEST_CSV_OVERRIDE when set"
   (require :sb-posix)
@@ -5670,6 +5860,57 @@
                 (lambda (&rest args) (declare (ignore args)) nil))
           (assert-false (swimmy.school:add-to-kb child :breeder :notify nil :require-bt nil)
                         "Expected near-identical breeder clone to remain rejected"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*startup-mode* orig-startup)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify))))
+
+(deftest test-add-to-kb-allows-correlated-strategy-across-symbols
+  "Correlation screening should not block identical logic across different symbols (multi-currency evolution)."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-startup swimmy.school::*startup-mode*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (symbol-function 'swimmy.school::notify-recruit-unified))
+         (base (swimmy.school:make-strategy :name "UT-CORR-USDJPY"
+                                            :symbol "USDJPY"
+                                            :timeframe 300
+                                            :direction :BOTH
+                                            :rank :B
+                                            :sl 10.0
+                                            :tp 20.0
+                                            :sharpe 1.2
+                                            :indicators '((sma 20))
+                                            :entry '(> close sma-20)
+                                            :exit '(< close sma-20)))
+         (eur (swimmy.school:make-strategy :name "UT-CORR-EURUSD"
+                                           :symbol "EURUSD"
+                                           :timeframe 300
+                                           :direction :BOTH
+                                           :rank :incubator
+                                           :sl 10.0
+                                           :tp 20.0
+                                           :sharpe 0.0
+                                           :indicators '((sma 20))
+                                           :entry '(> close sma-20)
+                                           :exit '(< close sma-20))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list base))
+          (setf swimmy.school::*category-pools* (make-hash-table))
+          (setf swimmy.school::*startup-mode* t)
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::notify-recruit-unified)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (assert-true (swimmy.school:add-to-kb eur :founder :notify nil :require-bt nil)
+                       "Expected EURUSD clone logic to be accepted (symbol-scoped correlation)")
+          (assert-true (find "UT-CORR-EURUSD"
+                             swimmy.school::*strategy-knowledge-base*
+                             :key #'swimmy.school:strategy-name
+                             :test #'string=)
+                       "Expected EURUSD strategy to be present in KB"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf swimmy.school::*category-pools* orig-pools)
       (setf swimmy.school::*startup-mode* orig-startup)
@@ -8016,10 +8257,11 @@
                   test-load-strategy-recovers-struct-sexp
                   test-init-knowledge-base-skips-nil-strategies
                   test-backtest-cache-sexp
-                  test-trade-logs-supports-pair-id
-                  test-strategy-daily-pnl-aggregation
+	                  test-trade-logs-supports-pair-id
+	                  test-strategy-daily-pnl-aggregation
 	                  test-add-to-kb-allows-breeder-logic-variant-when-sltp-differs
 	                  test-add-to-kb-rejects-breeder-logic-duplicate-when-sltp-too-close
+	                  test-add-to-kb-allows-correlated-strategy-across-symbols
 	                  test-add-to-kb-allows-breeder-variant-even-if-graveyard-pattern
 	                  test-add-to-kb-breeder-phase1-bypasses-graveyard-pattern
 	                  test-add-to-kb-breeder-phase1-graveyard-bypass-can-be-disabled
@@ -8237,6 +8479,8 @@
                   test-ledger-persists-equity
                   test-system-pulse-5m-text
                   test-notify-discord-daily-accepts-custom-title
+                  test-advisor-council-triggers-auto-maintenance
+                  test-naval-report-zombie-count-not-capped
                   test-backtest-pending-count-decrements-on-recv
                   test-deferred-flush-respects-batch
                   test-deferred-flush-counts-only-accepted-dispatches
@@ -8244,13 +8488,15 @@
                   test-deferred-flush-applies-rate-limit-pause
                   test-schedule-deferred-founders-respects-hard-cap
                   test-schedule-deferred-founders-skips-db-archived-candidates
-                  test-flush-deferred-founders-skips-db-archived-before-dispatch
-                  test-recruit-founder-preflight-skips-logic-duplicate-before-add-to-kb
-                  test-recruit-founder-preflight-cooldown-skips-second-retry-after-reject
-                  test-backtest-uses-csv-override
-                  test-heartbeat-webhook-prefers-env
-                  test-backtest-webhook-routes-to-system-logs
-                  test-backtest-v2-uses-alist
+	                  test-flush-deferred-founders-skips-db-archived-before-dispatch
+	                  test-recruit-founder-preflight-skips-logic-duplicate-before-add-to-kb
+	                  test-recruit-founder-preflight-cooldown-skips-second-retry-after-reject
+	                  test-recruit-founder-applies-symbol-override-and-rewrites-name
+	                  test-recruit-special-forces-recruits-founders-per-supported-symbol
+	                  test-backtest-uses-csv-override
+	                  test-heartbeat-webhook-prefers-env
+	                  test-backtest-webhook-routes-to-system-logs
+	                  test-backtest-v2-uses-alist
                   test-prune-low-sharpe-skips-newborn-age
                   test-prune-similar-skips-newborn-trades
                   test-hard-cap-skips-newborn
@@ -8288,6 +8534,7 @@
 	                  test-pfwr-mutation-bias-expands-scale-for-opposite-complements
 	                  test-pfwr-mutation-bias-expands-scale-for-wr-only-pairs
 	                  test-strategy-breeding-priority-score-prefers-a-base-near-candidate
+	                  test-strategy-breeding-priority-score-prefers-high-cpcv-pass-rate
 	                  test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-lowers-rr-when-wr-gap-dominates
                   test-mutate-sltp-with-pfwr-bias-raises-rr-when-pf-gap-dominates

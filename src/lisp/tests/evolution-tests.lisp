@@ -602,6 +602,28 @@
                  (format nil "Expected near-A score (~,3f) > far-A score (~,3f)"
                          near-score far-score))))
 
+(deftest test-strategy-breeding-priority-score-prefers-high-cpcv-pass-rate
+  "Breeding priority should prefer higher CPCV pass-rate when base metrics tie."
+  (let* ((base (list :rank :A
+                     :generation 4
+                     :sharpe 1.20
+                     :profit-factor 1.55
+                     :win-rate 0.48
+                     :max-dd 0.05))
+         (low (apply #'swimmy.school:make-strategy
+                     (append (list :name "UT-PRIORITY-CPCV-LOW"
+                                   :cpcv-pass-rate 0.20)
+                             base)))
+         (high (apply #'swimmy.school:make-strategy
+                      (append (list :name "UT-PRIORITY-CPCV-HIGH"
+                                    :cpcv-pass-rate 0.80)
+                              base)))
+         (low-score (swimmy.school::strategy-breeding-priority-score low))
+         (high-score (swimmy.school::strategy-breeding-priority-score high)))
+    (assert-true (> high-score low-score)
+                 (format nil "Expected high-CPCV score (~,3f) > low-CPCV score (~,3f)"
+                         high-score low-score))))
+
 (deftest test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
   "PF/WR mutation bias should raise RR when PF deficit dominates."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-PF1"
