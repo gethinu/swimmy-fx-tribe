@@ -1145,8 +1145,12 @@ fn main() {
                     println!("🧟 Attempting to Revive Brain (death {}/{} in window)...", 
                         revival_tracker.death_count, MAX_DEATHS_IN_WINDOW);
                     
-                    // V15.4 P1 (Graham): Use systemctl instead of pkill for safer lifecycle management
-                    let restart_result = std::process::Command::new("systemctl")
+                    // V15.4 P1 (Graham): Prefer non-interactive sudo so we can manage system units
+                    // without triggering polkit prompts. Fall back to direct systemctl, then to
+                    // MainPID kill so systemd Restart= can relaunch.
+                    let restart_result = std::process::Command::new("/usr/bin/sudo")
+                        .arg("-n")
+                        .arg("/usr/bin/systemctl")
                         .arg("restart")
                         .arg("swimmy-brain")
                         .output();
@@ -1155,17 +1159,44 @@ fn main() {
                     let restart_ok = match restart_result {
                         Ok(output) => {
                             if output.status.success() {
-                                println!("✅ systemctl restart swimmy-brain: SUCCESS");
+                                println!("✅ sudo -n systemctl restart swimmy-brain: SUCCESS");
                                 true
                             } else {
-                                println!("❌ systemctl restart failed: exit code {:?}", output.status.code());
+                                println!("❌ sudo -n systemctl restart failed: exit code {:?}", output.status.code());
                                 println!("   stderr: {}", String::from_utf8_lossy(&output.stderr));
                                 false
                             }
                         },
                         Err(e) => {
-                            println!("❌ Failed to execute systemctl: {}", e);
+                            println!("❌ Failed to execute sudo/systemctl: {}", e);
                             false
+                        }
+                    };
+
+                    // If sudo is not configured, try direct systemctl (may still fail under polkit/no-tty).
+                    let restart_ok = if restart_ok {
+                        true
+                    } else {
+                        let restart_result = std::process::Command::new("/usr/bin/systemctl")
+                            .arg("restart")
+                            .arg("swimmy-brain")
+                            .output();
+
+                        match restart_result {
+                            Ok(output) => {
+                                if output.status.success() {
+                                    println!("✅ systemctl restart swimmy-brain: SUCCESS");
+                                    true
+                                } else {
+                                    println!("❌ systemctl restart failed: exit code {:?}", output.status.code());
+                                    println!("   stderr: {}", String::from_utf8_lossy(&output.stderr));
+                                    false
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to execute systemctl: {}", e);
+                                false
+                            }
                         }
                     };
 
@@ -2511,6 +2542,31 @@ mod tests {
         assert!(
             revival_block.contains("-TERM"),
             "guardian auto-revival must send SIGTERM fallback to MainPID"
+        );
+    }
+
+    #[test]
+    fn test_revival_prefers_non_interactive_sudo_systemctl() {
+        // The guardian runs as User=swimmy under systemd(system). In that mode, `systemctl restart`
+        // can fail under polkit without a tty. Use `sudo -n /usr/bin/systemctl ...` when allowed,
+        // otherwise fall back to MainPID kill.
+        let src_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("main.rs");
+        let src = std::fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", src_path.display(), e));
+
+        let start = src.find("Attempting to Revive Brain")
+            .expect("revival block start marker must exist");
+        let end = src[start..]
+            .find("EMERGENCY CLOSE")
+            .map(|i| start + i)
+            .expect("revival block end marker must exist");
+        let revival_block = &src[start..end];
+
+        assert!(
+            revival_block.contains("/usr/bin/sudo") && revival_block.contains(".arg(\"-n\")") && revival_block.contains("/usr/bin/systemctl"),
+            "guardian auto-revival must prefer non-interactive sudo systemctl"
         );
     }
 }
