@@ -328,6 +328,10 @@
     #:get-top-carry-pairs
     ;; Phase 29: Swap Data Persistence
     #:record-swap-data
+    ;; EV-First: Cost/Pip utilities
+    #:get-pip-size
+    #:spread-pips-from-bid-ask
+    #:calculate-cost-pips
     ;; Phase 30: Breakout/Tactician
     #:deploy-breakout-strategy
     ;; Phase 31: Backtest V2 Logic

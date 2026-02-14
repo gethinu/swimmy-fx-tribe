@@ -1,5 +1,5 @@
 [Unit]
-Description=Swimmy Pattern Similarity Service
+Description=Swimmy Pattern Similarity Service (REQ/REP 5564, S-exp)
 After=network.target
 
 [Service]
@@ -9,12 +9,15 @@ Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/pattern_similarity_service.py
 Restart=always
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
 Environment=HOME=/home/swimmy
+Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/home/swimmy/swimmy/.env
-# Logs
 StandardOutput=append:/home/swimmy/swimmy/logs/pattern_similarity.log
 StandardError=append:/home/swimmy/swimmy/logs/pattern_similarity.log
 
 [Install]
 WantedBy=default.target
+

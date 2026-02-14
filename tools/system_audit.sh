@@ -59,7 +59,7 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-services_default=(swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-notifier swimmy-pattern-similarity swimmy-backtest)
+services_default=(swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-pattern-similarity swimmy-notifier swimmy-backtest)
 if [[ -n "${SWIMMY_AUDIT_SERVICES:-}" ]]; then
   # shellcheck disable=SC2206
   services=($SWIMMY_AUDIT_SERVICES)

@@ -2,8 +2,7 @@
 
 ## 通信方式
 - **Transport**: TCP
-- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist）を正本（送信側はS式のみ）。外部API境界（Discord/HTTP/MCP stdio）はJSON維持。
-- **Legacy互換**: Brain の message-dispatcher は `BACKTEST_RESULT` と `TICK` の JSON payload を受け取った場合に限り S式へ変換して処理する（ただし運用/契約はS式のみ）。
+- **Encoding**: 内部ZMQ＋補助サービス境界はS-expression（alist）に統一。**ZMQはS式のみでJSONは受理しない**。外部API境界（Discord/HTTP/MCP stdio）はJSON維持。
 - **Key/文字**: キーはASCII小文字、文字列はUTF-8想定。
 - **Ports**:
   - `5557`: Market Data (MT5 PUB -> Rust SUB)
@@ -14,7 +13,8 @@
   - `5561`: Data Keeper (REQ/REP, S-expression) -> Data Keeper Service
   - `5562`: Notifications (Rust/Lisp PUSH -> Notifier Service, S-expression)
   - `5563`: Risk Gateway (REQ/REP, S-expression) -> Risk Gateway Service
-  - `5565`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
+  - `5564`: Pattern Similarity (REQ/REP, S-expression) -> Pattern Similarity Service
+  - `5565`: Inference Worker (REQ/REP, S-expression) -> Inference Worker Service
   - `5580`: Backtest Commands (Lisp PUSH -> Backtest Service PULL)
   - `5581`: Backtest Results (Backtest Service PUSH -> Lisp PULL)
 
@@ -72,10 +72,9 @@ MT5からブロードキャストされる。
 ```
 ((type . "POSITIONS")
  (symbol . "USDJPY")
- (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10) (entry_price . 145.120))
-          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05) (entry_price . 145.300)))))
+ (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10))
+          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05)))))
 ```
-注記: `entry_price` は任意。存在する場合、Pending→Warrior 昇格（約定確認）時の DryRun slippage 証拠として利用できる。
 
 **SWAP_DATA**:
 ```
@@ -102,11 +101,8 @@ MT5からブロードキャストされる。
  (pnl . 1234.56)
  (symbol . "USDJPY")
  (ticket . 123456789)
- (magic . 123456)
- (entry_price . 145.120)  ; optional
- (exit_price . 145.300))  ; optional
+ (magic . 123456))
 ```
-注記: `entry_price` / `exit_price` は任意。存在する場合は執行スリッページの算出に利用する。`Rank昇格のDryRunゲート` はこの実測スリッページ算出結果を参照するため、取得可能な環境では両キーを送る。
 
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
@@ -181,18 +177,6 @@ Brainが即時で処理する管理系コマンド。
 Lisp -> Rustへ「意図」を送る。
 スキーマはExecution用とほぼ同じだが、Risk Gate用のメタデータが含まれる場合がある。
 
-**HEARTBEAT**:
-Brain の生存通知。Guardian は Port 5556 の受信が一定時間止まると Dead Man's Switch（Brain Silence）を発火するため、Brain は定期的に HEARTBEAT を送る。
-```
-((type . "HEARTBEAT")
- (id . "uuid-v4")
- (timestamp . "2026-02-11T00:24:10Z")  ; ISO-8601 string
- (version . "2.0")
- (source . "BRAIN")
- (status . "OK"))
-```
-
-**SIGNAL**:
 ```
 ((type . "SIGNAL")
  (strategy . "Trend-Follow-V1")
@@ -222,9 +206,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
               (sma_long . 20)
               (sl . 0.0010)
               (tp . 0.0015)
- (volume . 0.02)))
- (request_id . "RID-123")         ; 必須: 相関ID
- (include_trades . #t)            ; optional: trade_list を返す（巨大時は省略されうる）
+              (volume . 0.02)))
  (phase . "phase1")               ; optional
  (range_id . "P1")                ; optional
  (start_time 1293840000)          ; optional (Unix seconds) - Option<i64>
@@ -237,9 +219,6 @@ Brainのバックテスト要求を専用サービスへオフロードする。
  (symbol . "USDJPY")
  (timeframe 1))                   ; Option<i64>
 ```
-**Required keys**: `action`, `strategy`, `request_id`  
-**Optional keys**: `include_trades`, `phase`, `range_id`, `start_time`, `end_time`, `data_id`, `candles_file`, `aux_candles`, `aux_candles_files`, `swap_history`, `symbol`, `timeframe`  
-**Bool値の表現（内部S式）**: `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルは Guardian `serde_lexpr` の bool デコードと不整合を起こすため、Backtest/CPCV 送信時は `#t/#f` に正規化して送る。
 
 **BACKTEST_RESULT (Response, Guardianフォーマットそのまま)**:
 **必須**: `result` 内に `request_id`（相関ID）。
@@ -274,10 +253,6 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (trades_truncated . false)
             (trades_ref . "RID-123"))))
 ```
-**Notes**:
-- Phase1（`phase="phase1"` / `range_id="P1"`）の結果では `strategy_name` が `<base>_P1` で返る場合がある。受信側は `"_P1"` を除去した基底名でライフサイクル更新（rank判定/DB更新）を行う。
-- `_P1` 結果は Phase1 screening 専用であり、RR/QUAL バッチ進捗カウントには加算しない。
-- `strategy_name` のサフィックス正規化は **末尾一致のみ**で行う（`-RR` / `-QUAL` / `-OOS` / `_P1`）。基底名中に含まれる同一トークンは削除しない（例: `foo-QUAL-123-QUAL` は `foo-QUAL-123` に正規化）。
 
 **BACKTEST_RESULT (Error, S-Expression only / JSON禁止)**:
 ```
@@ -300,20 +275,13 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
  (strategy_params . ((name . "Volvo-Scalp-Gen0")
                      (sma_short . 10)
                      (sma_long . 50)
-                     (sl . 0.15)
-                     (tp . 0.40)
-                     (volume . 0.01)
-                     ;; optional (strategy-to-alistが持つキー)
-                     (indicator_type . rsi)
-                     (timeframe . 60)              ; minutes (H1=60)
-                     (filter_enabled . #t)
-                     (filter_tf . "D1")
-                     (filter_period . 200)
-                     (filter_logic . "PRICE_ABOVE_SMA"))))) ; 必須(空でも可)
+                     (sl . 50.0)
+                     (tp . 100.0)
+                     (volume . 0.01))))) ; 必須(空でも可)
 ```
 **Required keys**: `action`, `strategy_name`, `symbol`, `candles_file`, `strategy_params`  
 **Optional keys**: `request_id`  
-**Notes**: `strategy_params` は `strategy-to-alist` 出力（S式のalist）。空でもキー自体は必須。Guardianは `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する。トップレベルキーは package 修飾付き（例: `swimmy.school::action`, `swimmy.school:action`）でも受理する。  
+**Notes**: `strategy_params` は `strategy-to-alist` 出力（S式のalist）。空でもキー自体は必須。  
 
 **CPCV_RESULT (Response, Guardianフォーマット)**:
 ```
@@ -349,10 +317,6 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (trades_truncated . false)
             (trades_ref . "RID-123"))))
 ```
-**Notes**:
-- 正常評価結果では `path_count` は **1以上**であること。
-- 評価不能時は `error` を必ず含める（`path_count/passed_count/failed_count` が 0 のみの結果を返さない）。
-- Brain/School は `path_count/passed_count/failed_count` がすべて 0 かつ `error` なしの結果を **runtime error 相当の無効結果** として扱う（criteria failure にしない）。
 
 ### 6. Data Keeper Service (Port 5561)
 ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
@@ -581,7 +545,7 @@ Discord通知の非同期中継（Python）。
  (status . "RESET_COMPLETE"))
 ```
 
-### 9. Pattern Similarity Service (Port 5565)
+### 9. Pattern Similarity Service (Port 5564)
 チャートパターンの画像化・埋め込み・近傍検索を行う補助サービス（Python）。  
 **プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
 **必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。  
@@ -599,7 +563,7 @@ Discord通知の非同期中継（Python）。
 ((type . "PATTERN_SIMILARITY_RESULT")
  (schema_version . 1)
  (status . "ok")
- (model . "vector-fallback-v1") ; 実装モデル名（例: clip-vit-b32 / vector-fallback-v1）
+ (model . "clip-vit-b32")
  (indices . (((symbol . "USDJPY")
               (timeframe . "H1")
               (count . 12345)
@@ -623,10 +587,7 @@ Discord通知の非同期中継（Python）。
 ((type . "PATTERN_SIMILARITY_RESULT")
  (schema_version . 1)
  (status . "ok")
- (message . "build started")
- (details . (((symbol . "USDJPY")
-              (timeframe . "H1")
-              (count . 12345))))) ; optional
+ (message . "build started"))
 ```
 
 **QUERY (Request)**:
@@ -679,7 +640,53 @@ Discord通知の非同期中継（Python）。
 **Notes**:
 - `candles` はTFごとの **window_bars** と一致する長さを要求する。  
 - ペイロードサイズ上限は **デフォルト 2MB（設定で変更可）**（超過時は `error`）。  
-- `model` は実装モデル名を返す（例: `clip-vit-b32`, `vector-fallback-v1`）。  
+
+### 10. Inference Worker Service (Port 5565)
+LLM推論を行う補助サービス（Python）。  
+**プロトコル**: ZMQ **REQ/REP** + **S-expression（alist）**。  
+**必須キー**: `type` / `schema_version` / `action`（`schema_version=1`）。  
+
+**STATUS (Request)**:
+```
+((type . "INFERENCE")
+ (schema_version . 1)
+ (action . "STATUS"))
+```
+
+**STATUS (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (key_present . true)
+ (model_url . "https://..."))
+```
+
+**ASK (Request)**:
+```
+((type . "INFERENCE")
+ (schema_version . 1)
+ (action . "ASK")
+ (prompt . "Summarize today's trading notes.")
+ (temperature . 0.5)   ; optional
+ (max_tokens . 512))   ; optional
+```
+
+**ASK (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "ok")
+ (text . "...."))
+```
+
+**Error (Response)**:
+```
+((type . "INFERENCE_RESULT")
+ (schema_version . 1)
+ (status . "error")
+ (error . "message"))
+```
 
 ## エラーとタイムアウト
 - **タイムアウト**:

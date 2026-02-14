@@ -25,6 +25,7 @@
                (:file "src/lisp/core/data-client")  ; V8.0: Data Keeper client
                (:file "src/lisp/core/pattern-similarity-client") ; Pattern Similarity client
                (:file "src/lisp/core/risk-client")  ; V8.0: Risk Gateway client
+               (:file "src/lisp/core/pattern-similarity-client") ; Pattern Similarity client
                (:file "src/lisp/core/inference-client") ; V8.0: Inference client
                (:file "src/lisp/core/profiling")
                
@@ -126,7 +127,9 @@
                (:file "src/lisp/school/school-allocation") ; SRP Refactor V19
                (:file "src/lisp/school/school-guards")
                (:file "src/lisp/school/school-evaluation") ; SRP Refactor
+               (:file "src/lisp/school/school-cost") ; EV-First: Cost/Pip utilities
                (:file "src/lisp/school/school-pip-audit") ; Phase 28: Live Trade Audit
+               (:file "src/lisp/school/school-pattern-gate") ; Pattern Similarity soft gate
                (:file "src/lisp/school/school-execution") ; SRP Refactor
                (:file "src/lisp/school")                  ; Orchestrator
                (:file "src/lisp/school/school-fortress") ; Added
@@ -162,8 +165,10 @@
                
                ;; TESTS
                (:file "src/lisp/tests")
+               (:file "src/lisp/tests/school-v47-tests")
                (:file "src/lisp/tests/local-storage-sexp-tests")
                (:file "src/lisp/tests/telemetry-tests")
+               (:file "src/lisp/tests/pattern-similarity-gate-tests")
                (:file "src/lisp/tests/backtest-db-tests")
                (:file "src/lisp/tests/backtest-payload-tests")
                (:file "src/lisp/tests/pair-composite-tests")

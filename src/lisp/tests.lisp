@@ -7962,6 +7962,13 @@
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
                   test-data-keeper-request-sexp
+                  test-pattern-gate-aligned
+                  test-pattern-gate-disagree
+                  test-pattern-gate-low-confidence
+                  test-pattern-gate-flat
+                  test-pattern-gate-missing-probs-fail-open
+                  test-pattern-gate-apply-soft-gate
+                  test-pattern-similarity-query-request-sexp
                   test-message-dispatcher-compiles-without-warnings
                   test-safe-read-used-for-db-rank
                   test-req-history-uses-count
@@ -8249,10 +8256,14 @@
                   test-move-strategy-from-rank
                   test-ensure-rank-graveyard-deletes-old-rank-file
                   test-evaluate-strategy-performance-sends-to-graveyard
-	                  test-ensure-rank-retired-saves-pattern
-	                  test-lifecycle-retire-on-max-losses
-		                  test-phase-8-weekly-prune-skips-when-incubator-pending
-	                  test-phase-7-wisdom-update-respects-interval
+                  test-ensure-rank-retired-saves-pattern
+                  test-lifecycle-retire-on-max-losses
+                  ;; EV-First: Cost/Pip utilities
+                  test-pip-size-by-symbol
+                  test-spread-pips-from-bid-ask
+                  test-cost-pips-defaults
+                  test-phase-8-weekly-prune-skips-when-incubator-pending
+                  test-phase-7-wisdom-update-respects-interval
                   test-wisdom-push-elite-candidate-keeps-top-n
                   ;; V8.5: Evolution Tests (Genetic Mutation)
 		                  test-rewrite-logic-symbols-sma
