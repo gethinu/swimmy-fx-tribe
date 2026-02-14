@@ -20,6 +20,7 @@
 
 (let* ((db (get-db-rank-counts))
        (lib (get-library-rank-counts))
+       (lib-canonical (get-library-archive-canonical-count))
        (sql-total (swimmy.core:execute-single "SELECT count(*) FROM strategies"))
        (null-names (swimmy.core:execute-single "SELECT count(*) FROM strategies WHERE name IS NULL"))
        (empty-hashes (swimmy.core:execute-single "SELECT count(*) FROM strategies WHERE hash IS NULL OR hash = ''"))
@@ -28,6 +29,9 @@
        (db-active (getf db :active 0))
        (lib-grave (getf lib :graveyard 0))
        (lib-retired (getf lib :retired 0))
+       (db-archive (+ db-grave db-retired))
+       (lib-overlap (- (+ lib-grave lib-retired) lib-canonical))
+       (delta-archive (- db-archive lib-canonical))
        (lib-active (+ (getf lib :s 0) (getf lib :a 0) (getf lib :b 0)
                       (getf lib :incubator 0) (getf lib :legend 0))))
 
@@ -35,10 +39,14 @@
   (format t "DB Total Entries   : ~d~%" sql-total)
   (format t "DB Active (Total-Archive): ~d~%" db-active)
   (format t "DB Archive         : ~d (GRAVEYARD=~d RETIRED=~d)~%"
-          (+ db-grave db-retired) db-grave db-retired)
+          db-archive db-grave db-retired)
   (format t "Library Active Dirs: ~d (S+A+B+INCUBATOR+LEGEND)~%" lib-active)
   (format t "Library Archive    : ~d (GRAVEYARD=~d RETIRED=~d)~%"
           (+ lib-grave lib-retired) lib-grave lib-retired)
+  (format t "Library Archive (Canonical): ~d (unique names across GRAVEYARD+RETIRED)~%" lib-canonical)
+  (when (> lib-overlap 0)
+    (format t "Library Archive (Overlap)  : ~d (names present in BOTH GRAVEYARD and RETIRED; raw dir counts double-count these)~%"
+            lib-overlap))
   
   (format t "~%--- Rank Sync Check ---~%")
   (format t "DB S-Rank: ~d | Library S dir: ~d~%" (getf db :s 0) (getf lib :s 0))
@@ -55,6 +63,11 @@
   (when (/= db-retired lib-retired)
     (format t "⚠️ Retired mismatch: DB=~d Library=~d delta(DB-Library)=~@d~%"
             db-retired lib-retired (- db-retired lib-retired)))
+  (when (or (/= db-grave lib-grave)
+            (/= db-retired lib-retired)
+            (/= db-archive lib-canonical))
+    (format t "⚠️ Archive canonical mismatch: DB archive=~d Library canonical=~d delta(DB-LibraryCanonical)=~@d~%"
+            db-archive lib-canonical delta-archive))
 
   (format t "~%--- NULL/Malformed Audit ---~%")
   (format t "  NULL Names : ~d~%" null-names)

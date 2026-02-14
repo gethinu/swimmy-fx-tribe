@@ -625,7 +625,12 @@
                              (swimmy.school:continuous-learning-step))
                          (error () nil))
                        (setf *dispatch-step* :tick/maybe-alert-backtest-stale)
-                       (maybe-alert-backtest-stale))))
+                       (maybe-alert-backtest-stale)
+                       ;; Keep Brain->Guardian PUB channel alive even when no orders fire.
+                       ;; This prevents false "brain silence" and emergency mode entry blocks.
+                       (when (fboundp 'swimmy.executor:send-heartbeat)
+                         (setf *dispatch-step* :tick/send-heartbeat)
+                         (ignore-errors (swimmy.executor:send-heartbeat))))))
                   ((string= type-str "STATUS_NOW")
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
                           (bid (%alist-val sexp '(bid :bid) 0.0))

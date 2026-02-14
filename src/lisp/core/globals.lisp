@@ -164,7 +164,8 @@
 (defparameter *philosophy-log* nil)
 
 ;;; ADDITIONAL MISSING GLOBALS (Comprehensive Review)
-(defparameter *danger-cooldown-until* nil)
+(defparameter *danger-cooldown-until* 0
+  "Universal time until which trading is paused by the danger system (0 = inactive).")
 (defparameter *symbol-round-robin-index* 0)
 (defparameter *dream-cycle* 0)
 (defparameter *dream-interval* 3600)

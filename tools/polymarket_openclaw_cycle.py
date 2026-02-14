@@ -238,6 +238,25 @@ def _run_json_command(cmd: List[str]) -> Dict:
     return json.loads(stdout) if stdout else {}
 
 
+def summarize_execution_error(execution_payload: Mapping[str, Any]) -> str:
+    """Return the first useful error message from an execution payload."""
+    try:
+        top_error = execution_payload.get("error")
+        if isinstance(top_error, str) and top_error.strip():
+            return top_error.strip()
+        results = execution_payload.get("results") or []
+        if isinstance(results, list):
+            for row in results:
+                if not isinstance(row, Mapping):
+                    continue
+                err = row.get("error")
+                if isinstance(err, str) and err.strip():
+                    return err.strip()
+    except Exception:
+        return ""
+    return ""
+
+
 def should_run_posttrade_steps(plan_summary: Dict[str, Any]) -> bool:
     try:
         return int(plan_summary.get("entries", 0) or 0) > 0
@@ -628,7 +647,28 @@ def main() -> None:
         cycle_ok = False
         cycle_exit_code = int(getattr(exc, "returncode", 1) or 1)
         stderr = (getattr(exc, "stderr", "") or "").strip()
-        cycle_error = f"{cycle_error_step or 'cycle'} failed (exit={cycle_exit_code})"
+        stdout = (getattr(exc, "stdout", "") or getattr(exc, "output", "") or "").strip()
+
+        # Try to salvage JSON output from failing subcommands (notably execute),
+        # so latest_status.json remains informative even when --fail-on-error is enabled.
+        parsed_stdout: Dict[str, Any] = {}
+        if stdout:
+            try:
+                parsed = json.loads(stdout)
+                if isinstance(parsed, Mapping):
+                    parsed_stdout = dict(parsed)
+            except json.JSONDecodeError:
+                parsed_stdout = {}
+
+        if cycle_error_step == "execute" and parsed_stdout:
+            execution_result = parsed_stdout
+            extra = summarize_execution_error(execution_result)
+            cycle_error = f"{cycle_error_step or 'cycle'} failed (exit={cycle_exit_code})"
+            if extra:
+                cycle_error = f"{cycle_error}: {extra[:240]}"
+        else:
+            cycle_error = f"{cycle_error_step or 'cycle'} failed (exit={cycle_exit_code})"
+
         if stderr:
             cycle_error = f"{cycle_error}: {stderr[:200]}"
     except Exception as exc:  # pragma: no cover - defensive

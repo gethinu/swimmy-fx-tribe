@@ -276,19 +276,44 @@ run_warn "Notifier direct test" python3 "$ROOT/tools/test_notifier_direct.py"
 run_warn "Broadcast routing" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/broadcast_test_v2.lisp"
 run_warn "Evolution report" tail -n 120 "$ROOT/data/reports/evolution_factory_report.txt"
 if [[ -f "$ROOT/tools/polymarket_openclaw_status.py" ]]; then
-  polyclaw_status_args=(
-    --max-age-seconds "${POLYCLAW_STATUS_MAX_AGE_SECONDS:-1800}"
-    --last-runs "${POLYCLAW_STATUS_LAST_RUNS:-5}"
-    --window-minutes "${POLYCLAW_STATUS_WINDOW_MINUTES:-120}"
-    --min-runs-in-window "${POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW:-0}"
-    --min-sent-in-window "${POLYCLAW_STATUS_MIN_SENT_IN_WINDOW:-0}"
-    --min-entries-in-window "${POLYCLAW_STATUS_MIN_ENTRIES_IN_WINDOW:-0}"
-    --fail-on-problem
-  )
-  if [[ -n "${POLYCLAW_OUTPUT_DIR:-}" ]]; then
-    polyclaw_status_args+=(--output-dir "$POLYCLAW_OUTPUT_DIR")
+  # Polymarket/OpenClaw is optional. Treat disabled timer as intentional disablement
+  # and skip audit to avoid stale false positives.
+  polyclaw_timer="swimmy-polymarket-openclaw.timer"
+  polyclaw_timer_state=""
+  polyclaw_enabled="0"
+  if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
+    polyclaw_timer_state="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" is-enabled "$polyclaw_timer" 2>/dev/null || true)"
+    case "$polyclaw_timer_state" in
+      enabled|enabled-runtime)
+        polyclaw_enabled="1"
+        ;;
+      *)
+        polyclaw_enabled="0"
+        ;;
+    esac
   fi
-  run_warn "Polymarket OpenClaw status" python3 "$ROOT/tools/polymarket_openclaw_status.py" "${polyclaw_status_args[@]}"
+
+  if [[ "$polyclaw_enabled" == "1" ]]; then
+    polyclaw_status_args=(
+      --max-age-seconds "${POLYCLAW_STATUS_MAX_AGE_SECONDS:-1800}"
+      --last-runs "${POLYCLAW_STATUS_LAST_RUNS:-5}"
+      --window-minutes "${POLYCLAW_STATUS_WINDOW_MINUTES:-120}"
+      --min-runs-in-window "${POLYCLAW_STATUS_MIN_RUNS_IN_WINDOW:-0}"
+      --min-sent-in-window "${POLYCLAW_STATUS_MIN_SENT_IN_WINDOW:-0}"
+      --min-entries-in-window "${POLYCLAW_STATUS_MIN_ENTRIES_IN_WINDOW:-0}"
+      --fail-on-problem
+    )
+    if [[ -n "${POLYCLAW_OUTPUT_DIR:-}" ]]; then
+      polyclaw_status_args+=(--output-dir "$POLYCLAW_OUTPUT_DIR")
+    fi
+    run_warn "Polymarket OpenClaw status" python3 "$ROOT/tools/polymarket_openclaw_status.py" "${polyclaw_status_args[@]}"
+  else
+    if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
+      log "[SKIP] Polymarket OpenClaw status (disabled: $polyclaw_timer state=${polyclaw_timer_state:-unknown})"
+    else
+      log "[SKIP] Polymarket OpenClaw status (disabled: systemctl unavailable)"
+    fi
+  fi
 fi
 run_fail "Integrity audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/integrity_audit.lisp"
 run_fail "Deep audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/deep_audit.lisp"

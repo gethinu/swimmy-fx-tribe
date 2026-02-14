@@ -299,6 +299,45 @@ def _kill_service_main_pid(service_name: str) -> bool:
         return False
 
 
+def _reset_silence_timer_on_pid_change(
+    state: "BrainState",
+    *,
+    last_pid: Optional[int],
+    current_pid: Optional[int],
+    now: Optional[float] = None,
+) -> Optional[int]:
+    """
+    Reset Brain silence timer when systemd MainPID changes.
+
+    Rationale: The watchdog measures silence since the last message received on
+    Brain's PUB socket. When the Brain restarts, there can be a long startup
+    period before it publishes anything. Without resetting the timer, the
+    watchdog can falsely treat the *new* Brain as silent for the *old* Brain's
+    downtime and repeatedly kill it, preventing successful startup.
+    """
+    if now is None:
+        now = time.time()
+
+    if not current_pid or current_pid <= 0:
+        return last_pid
+
+    # First observation: treat as a fresh start.
+    if last_pid is None:
+        state.last_msg_time = now
+        state.reset()
+        return current_pid
+
+    if current_pid != last_pid:
+        print(
+            f"[WATCHDOG] Detected swimmy-brain MainPID change {last_pid}->{current_pid}; resetting silence timer (startup grace)"
+        )
+        state.last_msg_time = now
+        state.reset()
+        return current_pid
+
+    return last_pid
+
+
 def send_discord_alert(
     title: str, description: str, color: int = 16711680, mention: bool = True
 ):
@@ -586,6 +625,28 @@ def run_tests():
     )
     results.append(("Config loading", True))
 
+    # Test 5: Brain PID change should reset silence timer (startup grace)
+    print("\n[TEST 5] Brain PID Change Grace Test")
+    test_state = BrainState()
+    test_state.last_msg_time = 0.0
+    test_state.phase = 2
+    test_state.close_sent = True
+    try:
+        # Helper will be added in production code. For now this should fail (RED).
+        new_pid = _reset_silence_timer_on_pid_change(
+            test_state, last_pid=111, current_pid=222, now=100.0
+        )
+    except Exception:
+        new_pid = None
+    assert (
+        new_pid == 222
+    ), "PID change should return new PID and reset silence timer (startup grace)"
+    assert test_state.last_msg_time == 100.0, "Silence timer should reset to now"
+    assert test_state.phase == 0, "Phase should reset to 0 after PID change"
+    assert test_state.close_sent is False, "close_sent should reset after PID change"
+    print("  ✅ PID change grace: resets silence timer + phases")
+    results.append(("PID change grace", True))
+
     # Summary
     print("\n" + "=" * 60)
     passed = sum(1 for _, r in results if r)
@@ -621,10 +682,21 @@ def main():
 
     print(f"[WATCHDOG] Subscribed to Brain (port {ZMQ_BRAIN_PORT})")
 
+    last_brain_main_pid: Optional[int] = None
+
     last_guardian_check = time.time()
 
     while True:
         try:
+            # Detect Brain restarts and reset silence timer so we don't kill a
+            # fresh startup for the previous instance's downtime.
+            current_brain_main_pid = _systemd_main_pid("swimmy-brain")
+            last_brain_main_pid = _reset_silence_timer_on_pid_change(
+                brain_state,
+                last_pid=last_brain_main_pid,
+                current_pid=current_brain_main_pid,
+            )
+
             # 1. Check for Brain messages
             try:
                 msg = brain_sub.recv_string(flags=0)

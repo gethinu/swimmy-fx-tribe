@@ -539,17 +539,39 @@
     (setf swimmy.main::*dispatch-step* :tick/cleanup-stale-allocations))
   (cleanup-stale-allocations)
   ;; V45: Use per-symbol history for regime detection (Fix: Opus 2026-01-20)
+  (when (boundp 'swimmy.main::*dispatch-step*)
+    (setf swimmy.main::*dispatch-step* :tick/load-history))
   (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))
     ;; V49.0: Added S-Rank Gate (Musk)
-    (when (and (trading-allowed-p) (s-rank-gate-passed-p) history (> (length history) 100))
+    ;; NOTE: Set dispatch-step before each gate so Msg Error logs point to the true failing step
+    ;; even when earlier helpers leave a stale step value behind.
+    (when (boundp 'swimmy.main::*dispatch-step*)
+      (setf swimmy.main::*dispatch-step* :tick/trading-allowed-p))
+    (let ((allowed (trading-allowed-p)))
+      (when (and allowed history (> (length history) 100))
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/s-rank-gate-passed-p))
+        (when (s-rank-gate-passed-p)
+      (when (boundp 'swimmy.main::*dispatch-step*)
+        (setf swimmy.main::*dispatch-step* :tick/close-category-positions))
       (close-category-positions symbol bid ask)
+      (when (boundp 'swimmy.main::*dispatch-step*)
+        (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
       (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
+      (when (boundp 'swimmy.main::*dispatch-step*)
+        (setf swimmy.main::*dispatch-step* :tick/volatility-allows-trading-p))
       (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
     
       (when (>= (length history) 50)
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/research-enhanced-analysis))
         (research-enhanced-analysis history)
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/detect-regime-hmm))
         (detect-regime-hmm history))
     
+      (when (boundp 'swimmy.main::*dispatch-step*)
+        (setf swimmy.main::*dispatch-step* :tick/elect-leader))
       (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
       ;; Swarm Logic Removed (Center of gravity restored to individual strategies)
       (handler-case
@@ -598,7 +620,7 @@
                               (record-strategy-trade top-name :trade 0)))))))))))
         (error (e)
           (declare (ignore e))
-          nil)))))
+          nil)))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING

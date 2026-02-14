@@ -160,11 +160,19 @@
 
 (defun check-pending-timeouts ()
   "Remove pending orders that timed out (never confirmed by MT5)"
-  (let ((now (get-universal-time))
-        (dead-magic nil))
+  (let* ((now (get-universal-time))
+         ;; Be robust: production state/config can get corrupted; never let this
+         ;; maintenance step kill tick processing.
+         (ttl (if (numberp *pending-ttl*) *pending-ttl* 60))
+         (dead-magic nil))
     (maphash (lambda (magic info)
-               (when (> (- now (getf info :timestamp)) *pending-ttl*)
-                 (push magic dead-magic)))
+               (let ((ts (and (listp info) (getf info :timestamp))))
+                 (cond
+                   ;; Malformed pending entry (missing timestamp): drop it to avoid crashing.
+                   ((not (numberp ts))
+                    (push magic dead-magic))
+                   ((> (- now ts) ttl)
+                    (push magic dead-magic)))))
              *allocation-pending-orders*)
     (dolist (m dead-magic)
       (remhash m *allocation-pending-orders*)

@@ -52,12 +52,13 @@
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
+  - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
     - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5565 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
   - **Dashboard表示整合**: `tools/dashboard.py` の `PatternSim` 表示は systemd unit 状態だけでなく fallback 健全判定（`pattern_similarity_service.py` + `:5565` LISTEN）を参照し、unit未登録でも誤って常時 `inactive` と表示しない。
   - **権限不足時の修復挙動**: `enable/restart` が `Interactive authentication required` で失敗する環境では修復を FAIL 扱いにせず WARN でスキップし、監査の観測結果（status/dashboard/log/DB）を継続する。
-  - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する。
+  - **Deep Audit スケーリング**: `tools/deep_audit.lisp` は archive-heavy DB（`strategies` が数十万行）でも完走することを正本とし、全件 `SELECT data_sexp` → S式復元のような巨大 materialize を監査で行わない。監査は `get-db-rank-counts` / `get-library-rank-counts` / `get-library-archive-canonical-count` / `map-strategies-from-db`（limit付き）などのストリーミング観測で実施する（Archive drift は per-dir mismatch に加えて Library canonical/overlap も併記して誤読を防ぐ）。
 - **運用**: ログはDiscordに集約。`./tools/monitor_evolution.sh` で状況確認。
 - **運用（Brain起動）**: `swimmy-brain` は systemd 経由のみで起動する。cron watchdog `tools/check_guardian_health.sh` が **systemd MainPID 以外**の `/home/swimmy/swimmy/run.sh` を自動停止する（MainPID が取得できない場合は `run.sh` を全停止）。
 - **運用（systemd正本）**: systemd(system) を正本とし、systemctl --user は診断用途のみ。

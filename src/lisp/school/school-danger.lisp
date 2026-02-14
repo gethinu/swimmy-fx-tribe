@@ -82,10 +82,17 @@
         (setf swimmy.globals:*danger-cooldown-until* (+ (get-universal-time) duration-entry)))))
 
 (defun danger-cooldown-active-p ()
-  (> swimmy.globals:*danger-cooldown-until* (get-universal-time)))
+  ;; Be robust: *danger-cooldown-until* can be NIL on fresh boot/hot-reload.
+  (let ((until (if (numberp swimmy.globals:*danger-cooldown-until*)
+                   swimmy.globals:*danger-cooldown-until*
+                   0)))
+    (> until (get-universal-time))))
 
 (defun get-cooldown-remaining ()
-  (max 0 (- swimmy.globals:*danger-cooldown-until* (get-universal-time))))
+  (let ((until (if (numberp swimmy.globals:*danger-cooldown-until*)
+                   swimmy.globals:*danger-cooldown-until*
+                   0)))
+    (max 0 (- until (get-universal-time)))))
 
 (defun reset-danger-state ()
   (setf *consecutive-losses* 0)

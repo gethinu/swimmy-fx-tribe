@@ -1980,6 +1980,8 @@
   "internal-process-msg should process TICK S-expression"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
          (orig-update (symbol-function 'swimmy.main:update-candle))
+         (orig-hb (and (fboundp 'swimmy.executor:send-heartbeat)
+                       (symbol-function 'swimmy.executor:send-heartbeat)))
          (orig-process (and (fboundp 'swimmy.school:process-category-trades)
                             (symbol-function 'swimmy.school:process-category-trades)))
          (orig-save (and (fboundp 'swimmy.shell:save-live-status)
@@ -1989,13 +1991,17 @@
          (orig-learn (and (fboundp 'swimmy.school:continuous-learning-step)
                           (symbol-function 'swimmy.school:continuous-learning-step)))
          (orig-last swimmy.globals::*last-guardian-heartbeat*)
-         (called nil))
+         (called nil)
+         (hb-called nil))
     (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
     (unwind-protect
         (progn
           (setf swimmy.globals::*last-guardian-heartbeat* 0)
           (setf (symbol-function 'swimmy.main:update-candle)
                 (lambda (bid symbol) (setf called (list bid symbol))))
+          (when orig-hb
+            (setf (symbol-function 'swimmy.executor:send-heartbeat)
+                  (lambda () (setf hb-called t) nil)))
           (when orig-process
             (setf (symbol-function 'swimmy.school:process-category-trades)
                   (lambda (&rest _args) (declare (ignore _args)) nil)))
@@ -2010,9 +2016,12 @@
                   (lambda () nil)))
           (funcall fn "((type . \"TICK\") (symbol . \"USDJPY\") (bid . 1.23) (ask . 1.24))")
           (assert-equal '(1.23 "USDJPY") called)
+          (assert-true hb-called "TICK should trigger brain heartbeat send")
           (assert-true (> swimmy.globals::*last-guardian-heartbeat* 0)
                        "TICK should update last guardian heartbeat"))
       (setf (symbol-function 'swimmy.main:update-candle) orig-update)
+      (when orig-hb
+        (setf (symbol-function 'swimmy.executor:send-heartbeat) orig-hb))
       (when orig-process
         (setf (symbol-function 'swimmy.school:process-category-trades) orig-process))
       (when orig-save
@@ -2027,6 +2036,8 @@
   "internal-process-msg should process TICK JSON payloads (legacy MT5 bridge compatibility)."
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
          (orig-update (symbol-function 'swimmy.main:update-candle))
+         (orig-hb (and (fboundp 'swimmy.executor:send-heartbeat)
+                       (symbol-function 'swimmy.executor:send-heartbeat)))
          (orig-process (and (fboundp 'swimmy.school:process-category-trades)
                             (symbol-function 'swimmy.school:process-category-trades)))
          (orig-save (and (fboundp 'swimmy.shell:save-live-status)
@@ -2036,13 +2047,17 @@
          (orig-learn (and (fboundp 'swimmy.school:continuous-learning-step)
                           (symbol-function 'swimmy.school:continuous-learning-step)))
          (orig-last swimmy.globals::*last-guardian-heartbeat*)
-         (called nil))
+         (called nil)
+         (hb-called nil))
     (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
     (unwind-protect
         (progn
           (setf swimmy.globals::*last-guardian-heartbeat* 0)
           (setf (symbol-function 'swimmy.main:update-candle)
                 (lambda (bid symbol) (setf called (list bid symbol))))
+          (when orig-hb
+            (setf (symbol-function 'swimmy.executor:send-heartbeat)
+                  (lambda () (setf hb-called t) nil)))
           (when orig-process
             (setf (symbol-function 'swimmy.school:process-category-trades)
                   (lambda (&rest _args) (declare (ignore _args)) nil)))
@@ -2059,9 +2074,12 @@
           (assert-true (and called (numberp (first called)) (< (abs (- (first called) 1.23)) 1.0e-6))
                        (format nil "Expected JSON TICK to call update-candle with bid close to 1.23; got ~a" called))
           (assert-equal "USDJPY" (second called))
+          (assert-true hb-called "JSON TICK should trigger brain heartbeat send")
           (assert-true (> swimmy.globals::*last-guardian-heartbeat* 0)
                        "JSON TICK should update last guardian heartbeat"))
       (setf (symbol-function 'swimmy.main:update-candle) orig-update)
+      (when orig-hb
+        (setf (symbol-function 'swimmy.executor:send-heartbeat) orig-hb))
       (when orig-process
         (setf (symbol-function 'swimmy.school:process-category-trades) orig-process))
       (when orig-save
@@ -2104,6 +2122,30 @@
               (declare (ignore _val))
               (assert-true presentp "Expected executor pending order to remain intact"))))
       (setf swimmy.globals:*pending-orders* orig-globals)
+      (setf swimmy.school::*allocation-pending-orders* orig-alloc)
+      (setf swimmy.school::*pending-ttl* orig-ttl))))
+
+(deftest test-allocation-pending-timeouts-tolerates-malformed-entry
+  "check-pending-timeouts should not error if allocation pending entry is malformed (missing :timestamp)."
+  (let ((orig-alloc swimmy.school::*allocation-pending-orders*)
+        (orig-ttl swimmy.school::*pending-ttl*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          ;; Simulate corrupted config/state (observed in production logs).
+          (setf swimmy.school::*pending-ttl* nil)
+          ;; Malformed entry: missing :timestamp (observed in production logs).
+          (setf (gethash 999 swimmy.school::*allocation-pending-orders*)
+                (list :strategy "UT-BAD" :symbol "USDJPY"))
+          (let ((ok (handler-case (progn (swimmy.school::check-pending-timeouts) t)
+                      (error (e)
+                        (format t "[TEST] Unexpected error: ~a~%" e)
+                        nil))))
+            (assert-true ok "check-pending-timeouts should tolerate malformed entries"))
+          (multiple-value-bind (_val presentp)
+              (gethash 999 swimmy.school::*allocation-pending-orders*)
+            (declare (ignore _val))
+            (assert-false presentp "Expected malformed pending entry to be removed")))
       (setf swimmy.school::*allocation-pending-orders* orig-alloc)
       (setf swimmy.school::*pending-ttl* orig-ttl))))
 
@@ -3316,6 +3358,18 @@
   "Test cooldown is inactive initially"
   (setf cl-user::*danger-cooldown-until* 0)
   (assert-false (cl-user::danger-cooldown-active-p) "Cooldown should be inactive"))
+
+(deftest test-cooldown-tolerates-nil-until
+  "Cooldown helpers should treat NIL until as inactive (no type errors)."
+  (let ((orig cl-user::*danger-cooldown-until*))
+    (unwind-protect
+        (progn
+          (setf cl-user::*danger-cooldown-until* nil)
+          (assert-false (cl-user::danger-cooldown-active-p)
+                        "Cooldown should be inactive when until is NIL")
+          (assert-equal 0 (cl-user::get-cooldown-remaining)
+                        "Remaining seconds should be 0 when until is NIL"))
+      (setf cl-user::*danger-cooldown-until* orig))))
 
 ;;; ─────────────────────────────────────────
 ;;; V6.18: RESIGNATION TESTS
@@ -7661,6 +7715,24 @@
             swimmy.school::*last-stagnant-crank-cull-day* orig-cull-day
             swimmy.school::*last-max-age-retire-day* orig-retire-day))))
 
+(deftest test-select-strategies-for-regime-uses-real-categories
+  "select-strategies-for-regime should select REVERSION/SCALP strategies in exhausted/ranging regimes (not empty)."
+  (let* ((s-trend (swimmy.school:make-strategy :name "UT-TREND" :category :trend))
+         (s-rev (swimmy.school:make-strategy :name "UT-REVERSION" :category :reversion))
+         (s-brk (swimmy.school:make-strategy :name "UT-BREAKOUT" :category :breakout))
+         (s-scalp (swimmy.school:make-strategy :name "UT-SCALP" :category :scalp))
+         (pool (list s-trend s-rev s-brk s-scalp)))
+    (let ((selected-exhausted (swimmy.school::select-strategies-for-regime :trend-exhausted pool))
+          (selected-ranging (swimmy.school::select-strategies-for-regime :ranging pool)))
+      (assert-true (> (length selected-exhausted) 0)
+                   "Expected non-empty selection for :trend-exhausted")
+      (assert-true (> (length selected-ranging) 0)
+                   "Expected non-empty selection for :ranging")
+      (assert-true (find s-rev selected-exhausted :test #'eq)
+                   "Expected :reversion strategy included for :trend-exhausted")
+      (assert-true (find s-rev selected-ranging :test #'eq)
+                   "Expected :reversion strategy included for :ranging"))))
+
 ;;; ─────────────────────────────────────────
 ;;; TEST RUNNER
 ;;; ─────────────────────────────────────────
@@ -7753,12 +7825,13 @@
 			                  test-pulse-check-equity-format-no-trailing-dot
 		                  test-executor-pending-orders-sends-sexp
 	                  test-internal-cmd-json-disallowed
-	                  test-internal-process-msg-tick-sexp
-	                  test-internal-process-msg-tick-json
-	                  test-allocation-pending-timeouts-ignores-executor-pending-orders
-	                  test-internal-process-msg-status-now-sexp
-	                  test-internal-process-msg-history-sexp
-	                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp
+		                  test-internal-process-msg-tick-sexp
+		                  test-internal-process-msg-tick-json
+		                  test-allocation-pending-timeouts-ignores-executor-pending-orders
+		                  test-allocation-pending-timeouts-tolerates-malformed-entry
+		                  test-internal-process-msg-status-now-sexp
+		                  test-internal-process-msg-history-sexp
+		                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp
                   test-internal-process-msg-history-sexp-normalizes-symbol-key
                   test-data-client-sexp-candle-normalizes-unix-timestamp
                   test-update-candle-updates-symbol-history-all-symbols
@@ -7805,6 +7878,7 @@
 	                  test-age-increment-daily-guard
 	                  test-max-age-retire-daily-guard
 	                  test-process-breeding-cycle-increments-age-once-per-day
+	                  test-select-strategies-for-regime-uses-real-categories
 	                  test-promotion-triggers-noncorrelation-notification
                   test-composite-score-prefers-stable-pf-wr
                   test-composite-score-penalizes-high-dd

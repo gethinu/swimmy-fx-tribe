@@ -839,7 +839,11 @@
       (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))
     
     ;; 4. Global Portfolio Construction (The Draft) - Moved to school-portfolio.lisp
-    (construct-global-portfolio)))
+    ;; NOTE: This draft can be CPU/DB heavy (N^2 correlation checks). During startup mode we
+    ;; defer it so Brain can finish initialization and bind ZMQ ports quickly.
+    (if (and (boundp '*startup-mode*) *startup-mode*)
+        (format t "[PORTFOLIO] ⏳ Startup mode: deferring global draft.~%")
+        (construct-global-portfolio))))
 
 
 ;;; ---------------------------------------------------------------------------

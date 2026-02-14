@@ -194,14 +194,16 @@
   (let ((target-categories 
          (case regime
            ((:trend-early :trend-mature) '(:trend :breakout))
-           ((:trend-exhausted) '(:mean-reversion :counter-trend))
-           ((:range-expansion :ranging) '(:range :mean-reversion))
+           ;; Category taxonomy is :trend/:reversion/:breakout/:scalp (see DSL strategy struct).
+           ;; Keep regime mapping aligned with real categories to avoid scanning 0 candidates live.
+           ((:trend-exhausted) '(:reversion :scalp))
+           ((:range-expansion :ranging) '(:reversion :scalp))
            ((:range-compression) '(:breakout :trend))
            ;; V45: Don't fully halt - allow LEGEND + scalp with warning (Opus 2026-01-20)
            ((:volatile-spike :illiquid) 
             (format t "[L] ⚠️ MARKET CAUTION (~a). Limiting to LEGEND/scalp strategies.~%" regime)
             '(:scalp :legend))  ;; Allow defensive trading
-           (t '(:trend :range))))) ;; Default generic
+           (t '(:trend :reversion))))) ;; Default generic
     
     (remove-if-not 
      (lambda (s) 

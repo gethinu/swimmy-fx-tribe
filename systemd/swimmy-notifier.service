@@ -11,7 +11,8 @@ ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/notifi
 Restart=always
 RestartSec=5
 Environment=HOME=/home/swimmy
-EnvironmentFile=/home/swimmy/swimmy/.env
+# Notifier doesn't need trading secrets; keep its environment minimal.
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
 # Logs
 StandardOutput=append:/home/swimmy/swimmy/logs/notifier.log
 StandardError=append:/home/swimmy/swimmy/logs/notifier.log
