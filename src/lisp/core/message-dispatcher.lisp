@@ -56,6 +56,26 @@
                                     :close (if close (float close) 0.0)
                                     :volume (if vol (float vol) 0.0))))))
 
+(defun %sexp-position->jsown (entry)
+  "Convert POSITIONS entry alist into a jsown object.
+This keeps school allocation reconciliation independent of the dispatcher read package."
+  (when (listp entry)
+    (let* ((ticket (%alist-val-normalized entry '(ticket) nil))
+           (magic (%alist-val-normalized entry '(magic) nil))
+           (type-raw (%alist-val-normalized entry '(type) nil))
+           (volume (%alist-val-normalized entry '(volume) nil))
+           (entry-price (%alist-val-normalized entry '(entry_price entry-price) nil))
+           (type-str (cond
+                       ((stringp type-raw) type-raw)
+                       ((symbolp type-raw) (symbol-name type-raw))
+                       (t ""))))
+      (jsown:new-js
+        ("ticket" ticket)
+        ("magic" magic)
+        ("type" type-str)
+        ("volume" volume)
+        ("entry_price" entry-price)))))
+
 (defun %json-val (obj keys &optional default)
   "Return first matching value from JSON object by key list."
   (or (loop for k in keys
@@ -680,6 +700,17 @@
                    (let ((order-id (%alist-val sexp '(id :id) nil))
                          (ticket (%alist-val sexp '(ticket :ticket) nil)))
                      (format t "[DISPATCH] 📥 ORDER_ACK id=~a ticket=~a~%" order-id ticket)))
+                  ((string= type-str "POSITIONS")
+                   (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
+                          (symbol-str (cond
+                                        ((symbolp symbol) (symbol-name symbol))
+                                        ((stringp symbol) symbol)
+                                        (t "")))
+                          (data (%alist-val sexp '(data :data) nil))
+                          (positions (remove nil (mapcar #'%sexp-position->jsown (or data '())))))
+                     (when (and symbol-str (> (length symbol-str) 0)
+                                (fboundp 'swimmy.school:reconcile-with-mt5-positions))
+                       (swimmy.school:reconcile-with-mt5-positions symbol-str positions))))
                   ((string= type-str swimmy.core:+MSG-TRADE-CLOSED+)
                    (swimmy.executor:process-trade-closed sexp msg))
                   ((string= type-str swimmy.core:+MSG-HISTORY+)

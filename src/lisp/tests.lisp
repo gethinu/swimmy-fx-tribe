@@ -2105,8 +2105,33 @@
       (when orig-status
         (setf (symbol-function 'swimmy.shell:send-periodic-status-report) orig-status))
       (when orig-learn
-        (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn))
+      (setf (symbol-function 'swimmy.school:continuous-learning-step) orig-learn))
       (setf swimmy.globals::*last-guardian-heartbeat* orig-last))))
+
+(deftest test-internal-process-msg-positions-sexp
+  "internal-process-msg should process POSITIONS S-expression and reconcile allocations."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-reconcile (and (fboundp 'swimmy.school:reconcile-with-mt5-positions)
+                              (symbol-function 'swimmy.school:reconcile-with-mt5-positions)))
+         (called nil))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (when orig-reconcile
+            (setf (symbol-function 'swimmy.school:reconcile-with-mt5-positions)
+                  (lambda (symbol positions)
+                    (setf called (list symbol positions))
+                    nil)))
+          (funcall fn
+                   "((type . \"POSITIONS\") (symbol . \"USDJPY\") (data . (((ticket . 1) (magic . 110012345) (type . \"BUY\") (volume . 0.10) (entry_price . 100.03)))))")
+          (assert-true called "Expected POSITIONS to trigger reconcile-with-mt5-positions")
+          (assert-equal "USDJPY" (first called))
+          (let* ((positions (second called))
+                 (pos (and (listp positions) (first positions))))
+            (assert-true (and pos (listp pos) (jsown:keyp pos "entry_price"))
+                         "Expected jsown position object with entry_price")))
+      (when orig-reconcile
+        (setf (symbol-function 'swimmy.school:reconcile-with-mt5-positions) orig-reconcile)))))
 
 (deftest test-allocation-pending-timeouts-ignores-executor-pending-orders
   "School allocation pending cleanup should not scan executor retry pending orders (UUID table)."
@@ -2142,6 +2167,50 @@
       (setf swimmy.globals:*pending-orders* orig-globals)
       (setf swimmy.school::*allocation-pending-orders* orig-alloc)
       (setf swimmy.school::*pending-ttl* orig-ttl))))
+
+(deftest test-reconcile-with-mt5-positions-records-dryrun-slippage-on-promotion
+  "reconcile-with-mt5-positions should record DryRun slippage when entry_price is available."
+  (let ((orig-pending swimmy.school::*allocation-pending-orders*)
+        (orig-warriors swimmy.school::*warrior-allocation*)
+        (orig-record (and (fboundp 'swimmy.school::record-dryrun-slippage)
+                          (symbol-function 'swimmy.school::record-dryrun-slippage)))
+        (magic 110012345)
+        (captured nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*warrior-allocation* (make-hash-table :test 'equal))
+          (setf (gethash magic swimmy.school::*allocation-pending-orders*)
+                (list :timestamp (get-universal-time)
+                      :strategy "UT-SLIP"
+                      :symbol "USDJPY"
+                      :category :trend
+                      :direction :buy
+                      :magic magic
+                      :entry-bid 100.00
+                      :entry-ask 100.02))
+          (when orig-record
+            (setf (symbol-function 'swimmy.school::record-dryrun-slippage)
+                  (lambda (strategy-name slippage-pips)
+                    (setf captured (list strategy-name slippage-pips))
+                    slippage-pips)))
+          (swimmy.school:reconcile-with-mt5-positions
+           "USDJPY"
+           (list (jsown:new-js
+                   ("ticket" 1)
+                   ("magic" magic)
+                   ("type" "BUY")
+                   ("volume" 0.1)
+                   ("entry_price" 100.03))))
+          (assert-true captured "Expected DryRun slippage to be recorded on promotion")
+          (assert-equal "UT-SLIP" (first captured))
+          ;; Float rounding can introduce tiny pip drift; allow small epsilon.
+          (assert-true (< (abs (- (second captured) 1.0)) 1.0e-3)
+                       (format nil "Expected slippage about 1.0 pips; got ~a" (second captured))))
+      (setf swimmy.school::*allocation-pending-orders* orig-pending)
+      (setf swimmy.school::*warrior-allocation* orig-warriors)
+      (when orig-record
+        (setf (symbol-function 'swimmy.school::record-dryrun-slippage) orig-record)))))
 
 (deftest test-allocation-pending-timeouts-tolerates-malformed-entry
   "check-pending-timeouts should not error if allocation pending entry is malformed (missing :timestamp)."
@@ -7911,8 +7980,10 @@
 	                  test-internal-cmd-json-disallowed
 		                  test-internal-process-msg-tick-sexp
 		                  test-internal-process-msg-tick-json
+		                  test-internal-process-msg-positions-sexp
 		                  test-allocation-pending-timeouts-ignores-executor-pending-orders
 		                  test-allocation-pending-timeouts-tolerates-malformed-entry
+		                  test-reconcile-with-mt5-positions-records-dryrun-slippage-on-promotion
 		                  test-internal-process-msg-status-now-sexp
 		                  test-internal-process-msg-history-sexp
 		                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp

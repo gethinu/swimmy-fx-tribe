@@ -6,8 +6,17 @@
 (defparameter *disable-auto-migration* nil
   "When true, skip auto-migration in init-db (useful for tests).")
 
+(defvar *db-initialized* nil
+  "When true and an SQLite connection is already established, skip init-db DDL work.
+   This prevents expensive/verbose schema checks from running in tight loops.")
+
 (defun init-db ()
   "Initialize SQLite database and create tables if not exist."
+  ;; NOTE: init-db is safe to call repeatedly, but doing full DDL checks in hot
+  ;; paths is expensive and spams logs. Once a connection exists, assume schema
+  ;; is already ensured for this process.
+  (when (and *db-initialized* swimmy.core::*sqlite-conn*)
+    (return-from init-db t))
   ;; Table: Strategies
   (execute-non-query
    "CREATE TABLE IF NOT EXISTS strategies (
@@ -181,6 +190,7 @@
    "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
       ON dryrun_slippage_samples(strategy_name, id DESC)")
 
+  (setf *db-initialized* t)
   (format t "[DB] 🗄️ SQLite tables ensured.~%")
 
   ;; Auto-Migration Check (Phase 39 Recovery)

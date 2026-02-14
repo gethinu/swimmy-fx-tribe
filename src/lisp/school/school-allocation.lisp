@@ -217,6 +217,17 @@
               
               ;; PROMOTE TO WARRIOR
               (let ((strat-name (getf pending :strategy)))
+                ;; Stage2 DryRun evidence: record slippage at entry-confirm time when MT5 provides entry_price.
+                (let* ((fill (and (jsown:keyp pos "entry_price") (jsown:val pos "entry_price")))
+                       (fill (and (numberp fill) (> fill 0.00001) (float fill)))
+                       (entry-bid (getf pending :entry-bid))
+                       (entry-ask (getf pending :entry-ask))
+                       (entry-dir (getf pending :direction)))
+                  (when (and fill (numberp entry-bid) (numberp entry-ask) entry-dir
+                             (fboundp 'record-dryrun-slippage))
+                    (let ((slip (slippage-pips-from-fill symbol entry-dir entry-bid entry-ask fill)))
+                      (when (numberp slip)
+                        (record-dryrun-slippage strat-name slip)))))
                 (setf (gethash key *warrior-allocation*)
                       (append pending 
                               (list :ticket ticket 
