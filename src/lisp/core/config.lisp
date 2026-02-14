@@ -158,11 +158,11 @@
         (getenv-or-dotenv "SWIMMY_DISCORD_LIVE_FEED"))
        
        ;; [MESO] System Logs
-       ((member k '("status" "recruit" "fallback" "apex") :test #'equal)
+       ((member k '("status" "recruit" "fallback" "apex" "backtest") :test #'equal)
         (getenv-or-dotenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
        
        ;; [MACRO] Reports
-       ((member k '("daily" "weekly" "journal" "backtest") :test #'equal)
+       ((member k '("daily" "weekly" "journal") :test #'equal)
         (getenv-or-dotenv "SWIMMY_DISCORD_REPORTS"))
        
        ;; [URGENT] Alerts
