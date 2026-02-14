@@ -6939,6 +6939,50 @@
       (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin) orig-mc)
       (setf (symbol-function 'swimmy.school::dryrun-slippage-p95) orig-dryrun))))
 
+(deftest test-common-stage2-mc-insufficiency-dispatches-backfill-backtest-when-trades-sufficient
+  "Common Stage2 should request a trade-log backfill backtest when MC is required but pnl-history is missing despite enough trades."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-MC-BACKFILL"
+                                             :rank :A
+                                             :trades 40
+                                             :cpcv-pass-rate 0.0))
+         (orig-mc (symbol-function 'swimmy.school::strategy-mc-prob-ruin))
+         (orig-req (symbol-function 'swimmy.school:request-backtest))
+         (orig-interval (and (boundp 'swimmy.school::*mc-evidence-request-interval*)
+                             swimmy.school::*mc-evidence-request-interval*))
+         (orig-cache (and (boundp 'swimmy.school::*mc-evidence-last-dispatch-at*)
+                          swimmy.school::*mc-evidence-last-dispatch-at*))
+         (called nil)
+         (include-called nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin)
+                (lambda (_strat &key iterations)
+                  (declare (ignore _strat iterations))
+                  nil))
+          (setf (symbol-function 'swimmy.school:request-backtest)
+                (lambda (_strat &key candles suffix symbol request-id include-trades)
+                  (declare (ignore _strat candles suffix symbol request-id))
+                  (setf called t
+                        include-called include-trades)
+                  :accepted))
+          (when (boundp 'swimmy.school::*mc-evidence-request-interval*)
+            (setf swimmy.school::*mc-evidence-request-interval* 0))
+          (when (boundp 'swimmy.school::*mc-evidence-last-dispatch-at*)
+            (setf swimmy.school::*mc-evidence-last-dispatch-at* (make-hash-table :test 'equal)))
+          (multiple-value-bind (passed msg)
+              (swimmy.school::common-stage2-gates-passed-p strat :require-mc t :require-dryrun nil)
+            (assert-false passed "Expected Stage2 fail while MC evidence is missing")
+            (assert-true called "Expected MC backfill backtest dispatch when trades are sufficient")
+            (assert-true include-called "Expected backfill dispatch to request include_trades")
+            (assert-true (search "insufficient pnl-history" (or msg ""))
+                         "Expected MC insufficiency message")))
+      (setf (symbol-function 'swimmy.school::strategy-mc-prob-ruin) orig-mc)
+      (setf (symbol-function 'swimmy.school:request-backtest) orig-req)
+      (when (boundp 'swimmy.school::*mc-evidence-request-interval*)
+        (setf swimmy.school::*mc-evidence-request-interval* orig-interval))
+      (when (boundp 'swimmy.school::*mc-evidence-last-dispatch-at*)
+        (setf swimmy.school::*mc-evidence-last-dispatch-at* orig-cache)))))
+
 (deftest test-strategy-mc-prob-ruin-falls-back-to-db-trade-history
   "strategy-mc-prob-ruin should use persisted backtest trade PnL when in-memory pnl-history is sparse."
   (let* ((strat (swimmy.school:make-strategy :name "UT-MC-DB-FALLBACK"
@@ -7948,12 +7992,13 @@
 		                  test-validate-a-rank-allows-dryrun-bootstrap-when-mc-passes
                   test-validate-a-rank-allows-mc-bootstrap-when-disabled
 		                  test-validate-a-rank-requires-mc-when-enabled
-		                  test-evaluate-a-rank-requires-common-stage2-gates
-		                  test-common-stage2-bootstrap-passes-for-mature-cpcv-candidate
-		                  test-common-stage2-bootstrap-does-not-bypass-with-low-trades
-		                  test-strategy-mc-prob-ruin-falls-back-to-db-trade-history
-		                  test-dryrun-slippage-persists-across-memory-reset
-		                  test-dryrun-slippage-db-cap-prunes-old-samples
+			                  test-evaluate-a-rank-requires-common-stage2-gates
+			                  test-common-stage2-bootstrap-passes-for-mature-cpcv-candidate
+			                  test-common-stage2-bootstrap-does-not-bypass-with-low-trades
+			                  test-common-stage2-mc-insufficiency-dispatches-backfill-backtest-when-trades-sufficient
+			                  test-strategy-mc-prob-ruin-falls-back-to-db-trade-history
+			                  test-dryrun-slippage-persists-across-memory-reset
+			                  test-dryrun-slippage-db-cap-prunes-old-samples
 		                  test-dryrun-slippage-db-period-prunes-old-samples
 	                  test-ensure-rank-blocks-s-without-cpcv
 	                  test-ensure-rank-blocked-s-emits-detailed-failure-gates
