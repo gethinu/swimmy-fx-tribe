@@ -59,12 +59,12 @@ function Quote-TaskArg {
 }
 
 function Build-TaskCommand {
-    param([string[]]$Args)
+    param([string[]]$RunArgs)
     if ($ShowWindow) {
         # Legacy behavior: visible PowerShell window.
-        $scriptPath = $Args[0]
+        $scriptPath = $RunArgs[0]
         $rest = @()
-        if ($Args.Length -gt 1) { $rest = $Args[1..($Args.Length - 1)] }
+        if ($RunArgs.Length -gt 1) { $rest = $RunArgs[1..($RunArgs.Length - 1)] }
 
         $cmdArgs = @("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath) + $rest
         return ($cmdArgs | ForEach-Object { Quote-TaskArg $_ }) -join " "
@@ -75,12 +75,12 @@ function Build-TaskCommand {
     }
 
     # Use Windows Script Host wrapper so no terminal window pops up (Windows 11 default terminal included).
-    $cmdArgs = @("wscript.exe", $runHidden) + $Args
+    $cmdArgs = @("wscript.exe", $runHidden) + $RunArgs
     return ($cmdArgs | ForEach-Object { Quote-TaskArg $_ }) -join " "
 }
 
-$cycleCmd = Build-TaskCommand -Args $cycleArgs
-$execCmd = Build-TaskCommand -Args $execArgs
+$cycleCmd = Build-TaskCommand -RunArgs $cycleArgs
+$execCmd = Build-TaskCommand -RunArgs $execArgs
 
 $reportArgs = @($liveReport, "-PythonExe", $PythonExe, "-Days", $ReportDays.ToString())
 if ($ReportIncludeDetails) { $reportArgs += "-IncludeDetails" }
@@ -88,7 +88,7 @@ if ($ReportDiagnostics) { $reportArgs += "-Diagnostics" }
 if ($ReportNotifyThresholdClosed -gt 0) { $reportArgs += @("-NotifyThresholdClosed", $ReportNotifyThresholdClosed.ToString()) }
 if (-not [string]::IsNullOrWhiteSpace($ReportNotifyWebhook)) { $reportArgs += @("-NotifyWebhook", $ReportNotifyWebhook) }
 if (-not [string]::IsNullOrWhiteSpace($ReportNotifyStatePath)) { $reportArgs += @("-NotifyStatePath", $ReportNotifyStatePath) }
-$reportCmd = Build-TaskCommand -Args $reportArgs
+$reportCmd = Build-TaskCommand -RunArgs $reportArgs
 
 function Install-StartupLauncher {
     param([string]$CommandLine)
