@@ -1409,6 +1409,24 @@
           (assert-true swimmy.globals:*backtest-submit-last-id* "Expected submit request_id to be set"))
       (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
 
+(deftest test-request-backtest-includes-include-trades-flag
+  "request-backtest should include include_trades flag when requested."
+  (let ((orig-send (symbol-function 'swimmy.school::send-zmq-msg))
+        (captured nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)
+                  t))
+          (let ((s (swimmy.school:make-strategy :name "UT-REQ-TRADES" :symbol "USDJPY")))
+            (swimmy.school::request-backtest s :candles nil :request-id "RID-TRADES" :include-trades t))
+          (assert-true (and (stringp captured)
+                            (search "(include_trades . t)" (string-downcase captured)))
+                       "Expected include_trades flag in dispatched S-expression"))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))))
+
 (deftest test-generate-uuid-changes-even-with-reset-rng
   "generate-uuid should vary even if random state resets"
   (let ((state (make-random-state nil))
@@ -7799,6 +7817,7 @@
                   test-backtest-debug-log-records-apply
                   test-backtest-status-includes-last-request-id
                   test-request-backtest-sets-submit-id
+                  test-request-backtest-includes-include-trades-flag
                   test-generate-uuid-uses-entropy-file
                   test-generate-uuid-changes-even-with-reset-rng
                   test-oos-retry-uses-new-request-id
