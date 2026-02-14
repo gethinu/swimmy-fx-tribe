@@ -3,6 +3,7 @@ param(
     [string]$RepoRoot = "",
     [int]$CycleMinutes = 15,
     [string]$TaskPrefix = "Swimmy-XAU",
+    [switch]$ShowWindow,
     [switch]$EnableLive,
     [switch]$EnableDailyReport,
     [string]$DailyReportTime = "06:10",
@@ -35,37 +36,84 @@ if ([string]::IsNullOrWhiteSpace($PythonExe)) {
 $runAll = Join-Path $scriptDir "xau_autobot_run_all.ps1"
 $liveLoop = Join-Path $scriptDir "xau_autobot_live_loop.ps1"
 $liveReport = Join-Path $scriptDir "xau_autobot_live_report.ps1"
+$runHidden = Join-Path $scriptDir "run_ps1_hidden.vbs"
 
 $cycleTask = "$TaskPrefix-Cycle"
 $execTask = "$TaskPrefix-Exec"
 $reportTask = "$TaskPrefix-Report"
-$startupLauncher = Join-Path (Join-Path $env:APPDATA "Microsoft\\Windows\\Start Menu\\Programs\\Startup") "$execTask.cmd"
+$startupLauncherCmd = Join-Path (Join-Path $env:APPDATA "Microsoft\\Windows\\Start Menu\\Programs\\Startup") "$execTask.cmd"
+$startupLauncherVbs = Join-Path (Join-Path $env:APPDATA "Microsoft\\Windows\\Start Menu\\Programs\\Startup") "$execTask.vbs"
 
-$cycleCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$runAll`" -PythonExe `"$PythonExe`""
-if ($SkipProbe) {
-    $cycleCmd += " -SkipProbe"
+$cycleArgs = @($runAll, "-PythonExe", $PythonExe)
+if ($SkipProbe) { $cycleArgs += "-SkipProbe" }
+
+$execArgs = @($liveLoop, "-PythonExe", $PythonExe, "-PollSeconds", "10")
+if ($EnableLive) { $execArgs += "-Live" }
+
+function Quote-TaskArg {
+    param([string]$Arg)
+    # /TR is a single string; quote each arg for Task Scheduler command-line parsing.
+    # We don't expect embedded quotes in our args, but escape them defensively.
+    $escaped = $Arg -replace '"', '\\"'
+    return '"' + $escaped + '"'
 }
 
-$execCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$liveLoop`" -PythonExe `"$PythonExe`" -PollSeconds 10"
-if ($EnableLive) {
-    $execCmd += " -Live"
+function Build-TaskCommand {
+    param([string[]]$Args)
+    if ($ShowWindow) {
+        # Legacy behavior: visible PowerShell window.
+        $scriptPath = $Args[0]
+        $rest = @()
+        if ($Args.Length -gt 1) { $rest = $Args[1..($Args.Length - 1)] }
+
+        $cmdArgs = @("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath) + $rest
+        return ($cmdArgs | ForEach-Object { Quote-TaskArg $_ }) -join " "
+    }
+
+    if (-not (Test-Path -LiteralPath $runHidden)) {
+        throw "Missing helper script: $runHidden"
+    }
+
+    # Use Windows Script Host wrapper so no terminal window pops up (Windows 11 default terminal included).
+    $cmdArgs = @("wscript.exe", $runHidden) + $Args
+    return ($cmdArgs | ForEach-Object { Quote-TaskArg $_ }) -join " "
 }
 
-$reportCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$liveReport`" -PythonExe `"$PythonExe`" -Days $ReportDays"
-if ($ReportIncludeDetails) {
-    $reportCmd += " -IncludeDetails"
-}
-if ($ReportDiagnostics) {
-    $reportCmd += " -Diagnostics"
-}
-if ($ReportNotifyThresholdClosed -gt 0) {
-    $reportCmd += " -NotifyThresholdClosed $ReportNotifyThresholdClosed"
-}
-if (-not [string]::IsNullOrWhiteSpace($ReportNotifyWebhook)) {
-    $reportCmd += " -NotifyWebhook `"$ReportNotifyWebhook`""
-}
-if (-not [string]::IsNullOrWhiteSpace($ReportNotifyStatePath)) {
-    $reportCmd += " -NotifyStatePath `"$ReportNotifyStatePath`""
+$cycleCmd = Build-TaskCommand -Args $cycleArgs
+$execCmd = Build-TaskCommand -Args $execArgs
+
+$reportArgs = @($liveReport, "-PythonExe", $PythonExe, "-Days", $ReportDays.ToString())
+if ($ReportIncludeDetails) { $reportArgs += "-IncludeDetails" }
+if ($ReportDiagnostics) { $reportArgs += "-Diagnostics" }
+if ($ReportNotifyThresholdClosed -gt 0) { $reportArgs += @("-NotifyThresholdClosed", $ReportNotifyThresholdClosed.ToString()) }
+if (-not [string]::IsNullOrWhiteSpace($ReportNotifyWebhook)) { $reportArgs += @("-NotifyWebhook", $ReportNotifyWebhook) }
+if (-not [string]::IsNullOrWhiteSpace($ReportNotifyStatePath)) { $reportArgs += @("-NotifyStatePath", $ReportNotifyStatePath) }
+$reportCmd = Build-TaskCommand -Args $reportArgs
+
+function Install-StartupLauncher {
+    param([string]$CommandLine)
+    if ($ShowWindow) {
+        $launcherDir = Split-Path -Parent $startupLauncherCmd
+        if (-not (Test-Path $launcherDir)) {
+            New-Item -Path $launcherDir -ItemType Directory -Force | Out-Null
+        }
+        $content = "@echo off`r`n$CommandLine`r`n"
+        Set-Content -Path $startupLauncherCmd -Value $content -Encoding Ascii
+        return $startupLauncherCmd
+    }
+
+    $launcherDir = Split-Path -Parent $startupLauncherVbs
+    if (-not (Test-Path $launcherDir)) {
+        New-Item -Path $launcherDir -ItemType Directory -Force | Out-Null
+    }
+    $vbs = @"
+Option Explicit
+Dim shell
+Set shell = CreateObject("WScript.Shell")
+shell.Run $([string]::Join("", '"', ($CommandLine -replace '"', '""'), '"')) , 0, False
+"@
+    Set-Content -Path $startupLauncherVbs -Value $vbs -Encoding Ascii
+    return $startupLauncherVbs
 }
 
 function Invoke-Schtasks {
@@ -78,25 +126,16 @@ function Invoke-Schtasks {
     return $LASTEXITCODE
 }
 
-function Install-StartupLauncher {
-    param([string]$CommandLine)
-    $launcherDir = Split-Path -Parent $startupLauncher
-    if (-not (Test-Path $launcherDir)) {
-        New-Item -Path $launcherDir -ItemType Directory -Force | Out-Null
-    }
-    $content = "@echo off`r`n$CommandLine`r`n"
-    Set-Content -Path $startupLauncher -Value $content -Encoding Ascii
-    return $startupLauncher
-}
-
 if ($Remove) {
     Invoke-Schtasks @("/Delete", "/TN", $cycleTask, "/F") | Out-Null
     Invoke-Schtasks @("/Delete", "/TN", $execTask, "/F") | Out-Null
     Invoke-Schtasks @("/Delete", "/TN", $reportTask, "/F") | Out-Null
     if ($DryRun) {
-        Write-Host "DRYRUN remove startup launcher: $startupLauncher"
-    } elseif (Test-Path $startupLauncher) {
-        Remove-Item -Path $startupLauncher -Force
+        Write-Host "DRYRUN remove startup launcher: $startupLauncherCmd"
+        Write-Host "DRYRUN remove startup launcher: $startupLauncherVbs"
+    } else {
+        if (Test-Path $startupLauncherCmd) { Remove-Item -Path $startupLauncherCmd -Force }
+        if (Test-Path $startupLauncherVbs) { Remove-Item -Path $startupLauncherVbs -Force }
     }
     Write-Host "Removed tasks: $cycleTask, $execTask, $reportTask"
     exit 0
@@ -118,7 +157,7 @@ if ($code -ne 0) { exit $code }
 $code = Invoke-Schtasks @("/Create", "/F", "/SC", "ONLOGON", "/TN", $execTask, "/TR", $execCmd)
 if ($code -ne 0) {
     if ($DryRun) {
-        Write-Host "DRYRUN fallback startup launcher: $startupLauncher"
+        Write-Host "DRYRUN fallback startup launcher: $startupLauncherVbs"
     } else {
         $launcherPath = Install-StartupLauncher -CommandLine $execCmd
         Write-Host "Exec ONLOGON task denied. Fallback startup launcher installed: $launcherPath"
@@ -149,7 +188,11 @@ Write-Host "  $cycleTask => $cycleCmd"
 if ($code -eq 0) {
     Write-Host "  $execTask  => $execCmd"
 } else {
-    Write-Host "  $execTask  => startup launcher $startupLauncher"
+    if ($ShowWindow) {
+        Write-Host "  $execTask  => startup launcher $startupLauncherCmd"
+    } else {
+        Write-Host "  $execTask  => startup launcher $startupLauncherVbs"
+    }
 }
 if ($EnableDailyReport) {
     Write-Host "  $reportTask => $reportCmd (daily at $DailyReportTime local time)"

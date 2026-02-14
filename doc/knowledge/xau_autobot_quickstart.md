@@ -223,6 +223,8 @@ py -3 -m pip install MetaTrader5 yfinance pandas
 
 登録（安全側: execはdry-run、cycleは15分ごと）:
 
+※ `tools\\...` は相対パスなので、PowerShell のカレントを **リポジトリ直下** にして実行してください（例: `cd C:\\path\\to\\swimmy`）。
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\xau_autobot_schedule.ps1 -SkipProbe
 ```
@@ -235,8 +237,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\windows\xau_autobot_sc
 
 注:
 - `Swimmy-XAU-Cycle` は `schtasks` で作成されます。
-- `Swimmy-XAU-Exec` は環境によって `ONLOGON` タスク作成が拒否されるため、その場合は Startup フォルダの `Swimmy-XAU-Exec.cmd` にフォールバックします。
+- `Swimmy-XAU-Exec` は環境によって `ONLOGON` タスク作成が拒否されるため、その場合は Startup フォルダの `Swimmy-XAU-Exec.vbs`（`-ShowWindow` 指定時は `Swimmy-XAU-Exec.cmd`）にフォールバックします。
 - live実注文を常駐化したい場合は `-EnableLive` を付けて再登録します。
+- 既定ではタスク実行時に **端末ウィンドウが出ない** ようにラップして登録します（Windows 11 の「既定の端末」が Windows Terminal でもポップアップしません）。表示してデバッグしたい場合は `-ShowWindow` を付けて再登録します。
 
 ## 13. 定期実行（cron / systemd）
 
