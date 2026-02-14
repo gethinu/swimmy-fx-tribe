@@ -116,8 +116,9 @@ if "${SUDO_CMD_ARR[@]}" true 2>/dev/null; then
 elif command -v systemctl >/dev/null 2>&1; then
   SYSTEMCTL_STATUS_MODE="direct"
   SYSTEMCTL_REPAIR_MODE="direct"
-  log "[WARN] sudo -n unavailable; using direct systemctl"
-  mark_warn
+  # Running without passwordless sudo is normal in many environments.
+  # Health WARNs should reflect actual service/audit issues, not privilege shape.
+  log "[INFO] sudo unavailable; using direct systemctl"
 else
   log "[WARN] systemctl command not found; skipping systemd checks"
   mark_warn

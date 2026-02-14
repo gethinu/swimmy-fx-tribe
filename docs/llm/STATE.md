@@ -51,8 +51,9 @@
 - **アーキテクチャ**: Rust Guardianを中心としたハブ＆スポーク。
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
-- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。`.env` を自動読み込みして Discord 設定を拾う。
+- **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。**このフォールバック自体は運用上正常であり WARN にしない**（健康状態のWARNはサービス/監査項目の実体に限定）。`.env` を自動読み込みして Discord 設定を拾う。
   - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
+  - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5565` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
     - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5565 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
@@ -80,6 +81,7 @@
     - **証拠不足の自己修復（Backfill）**: trade evidence（`strategy-trades` 等）が十分（>=30）なのに `strategy-pnl-history` が欠落している場合、`include_trades` 付き BACKTEST を自動 dispatch して trade_list を回収する（戦略ごとにスロットル）。
   - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
     - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
+    - **証拠収集（約定確認時）**: MT5 が `POSITIONS` に `entry_price` を含める環境では、Pending→Warrior 昇格（約定確認）時に `entry_price` を使って slippage を算出し、DryRun slippage サンプルへ追加できる（trade close を待たずに証拠を蓄積）。
     - 永続化方針: `dryrun_slippage_samples` テーブルへ保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持する。再起動後もゲート判定を継続できるようにする。
     - 削除ポリシー: `*dryrun-slippage-max-age-seconds*` が正の値のとき、`dryrun_slippage_samples` の古い行（`observed_at` が保持期間外）を戦略単位で削除する。`NIL` は期間削除を無効化。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
