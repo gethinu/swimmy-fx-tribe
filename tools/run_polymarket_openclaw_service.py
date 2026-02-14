@@ -461,6 +461,24 @@ def _source_counts_from_file(path: Path) -> Dict[str, int]:
     return counts
 
 
+_UNTRUSTED_SIGNAL_SOURCES = {"heuristic_fallback", "unknown"}
+
+
+def _count_trusted_source_counts(source_counts: Mapping[str, int]) -> int:
+    total = 0
+    for source, count in source_counts.items():
+        name = str(source or "").strip() or "unknown"
+        if name in _UNTRUSTED_SIGNAL_SOURCES:
+            continue
+        try:
+            value = int(count)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            total += value
+    return total
+
+
 def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[str, object]:
     signals_file = Path(
         env.get("POLYCLAW_SIGNALS_FILE", str(base_dir / "data" / "openclaw" / "signals.jsonl"))
@@ -538,7 +556,7 @@ def evaluate_signal_health(*, env: Mapping[str, str], base_dir: Path) -> Dict[st
     if not source_counts and (min_agent_signal_count > 0 or min_agent_signal_ratio > 0.0):
         source_counts = _source_counts_from_file(signals_file)
     if source_counts and agent_signal_count <= 0:
-        agent_signal_count = int(source_counts.get("openclaw_agent", 0))
+        agent_signal_count = _count_trusted_source_counts(source_counts)
     if signal_count > 0 and agent_signal_ratio <= 0.0:
         agent_signal_ratio = float(agent_signal_count) / float(signal_count)
 

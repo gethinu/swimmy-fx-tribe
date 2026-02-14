@@ -222,6 +222,38 @@ class TestOpenclawSignalSync(unittest.TestCase):
             saved = signals_file.read_text(encoding="utf-8")
             self.assertIn("\"market_id\": \"old\"", saved)
 
+    def test_sync_from_command_accepts_non_fallback_sources_as_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            meta_file = Path(td) / "signals.meta.json"
+            last_good_signals_file = Path(td) / "signals.last_good.jsonl"
+            last_good_meta_file = Path(td) / "signals.last_good.meta.json"
+            signals_file.write_text(json.dumps({"market_id": "old", "p_yes": 0.5}) + "\n", encoding="utf-8")
+            cp = mock.Mock()
+            cp.stdout = json.dumps(
+                [
+                    {"market_id": "m1", "p_yes": 0.63, "confidence": 0.9, "source": "weather_open_meteo"},
+                    {"market_id": "m2", "p_yes": 0.51, "confidence": 0.6, "source": "heuristic_fallback"},
+                ]
+            )
+            cp.returncode = 0
+
+            with mock.patch.object(sync.subprocess, "run", return_value=cp):
+                result = sync.sync_from_command(
+                    openclaw_cmd="weather",
+                    signals_file=signals_file,
+                    meta_file=meta_file,
+                    last_good_signals_file=last_good_signals_file,
+                    last_good_meta_file=last_good_meta_file,
+                    min_signals=1,
+                    min_agent_signals=1,
+                    min_agent_ratio=0.0,
+                    timeout_seconds=5,
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(1, result["agent_signal_count"])
+
     def test_resolve_openclaw_cmd_uses_heuristic_fallback(self) -> None:
         cmd = sync.resolve_openclaw_cmd(
             provided_cmd="",

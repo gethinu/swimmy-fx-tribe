@@ -155,6 +155,24 @@ def summarize_signal_sources(rows: List[Mapping[str, Any]]) -> Dict[str, int]:
     return counts
 
 
+_UNTRUSTED_SIGNAL_SOURCES = {"heuristic_fallback", "unknown"}
+
+
+def count_trusted_signals(source_counts: Mapping[str, int]) -> int:
+    total = 0
+    for source, count in source_counts.items():
+        name = str(source or "").strip() or "unknown"
+        if name in _UNTRUSTED_SIGNAL_SOURCES:
+            continue
+        try:
+            value = int(count)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            total += value
+    return total
+
+
 def serialize_signals_jsonl(signals: Dict[str, OpenClawSignal]) -> str:
     rows = []
     for market_id in sorted(signals.keys()):
@@ -213,7 +231,7 @@ def sync_from_command(
         return {"ok": False, "error": f"parse failed: {exc}", "signal_count": 0, "started_at": started}
 
     count = len(signals)
-    agent_signal_count = int(source_counts.get("openclaw_agent", 0))
+    agent_signal_count = count_trusted_signals(source_counts)
     agent_signal_ratio = (float(agent_signal_count) / count) if count > 0 else 0.0
     if count < max(0, min_signals):
         return {

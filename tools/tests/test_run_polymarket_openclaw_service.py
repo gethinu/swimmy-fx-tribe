@@ -526,6 +526,34 @@ class TestRunPolymarketOpenclawService(unittest.TestCase):
         self.assertEqual(2, health["agent_signal_count"])
         self.assertAlmostEqual(0.5, health["agent_signal_ratio"])
 
+    def test_evaluate_signal_health_counts_weather_source_as_agent_when_meta_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            signals_file = Path(td) / "signals.jsonl"
+            signals_file.write_text(
+                "\n".join(
+                    [
+                        '{"market_id":"m1","p_yes":0.6,"source":"weather_open_meteo"}',
+                        '{"market_id":"m2","p_yes":0.4,"source":"heuristic_fallback"}',
+                        '{"market_id":"m3","p_yes":0.5,"source":"weather_open_meteo"}',
+                        '{"market_id":"m4","p_yes":0.7,"source":"heuristic_fallback"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            env = {
+                "POLYCLAW_SIGNALS_FILE": str(signals_file),
+                "POLYCLAW_REQUIRE_FRESH_SIGNALS": "1",
+                "POLYCLAW_MAX_SIGNAL_AGE_SECONDS": "600",
+                "POLYCLAW_MIN_SIGNAL_COUNT": "1",
+                "POLYCLAW_MIN_AGENT_SIGNAL_RATIO": "0.5",
+            }
+            health = svc.evaluate_signal_health(env=env, base_dir=Path("/repo"))
+
+        self.assertTrue(health["ok"])
+        self.assertEqual(2, health["agent_signal_count"])
+        self.assertAlmostEqual(0.5, health["agent_signal_ratio"])
+
     def test_evaluate_signal_health_fails_from_signals_when_meta_missing(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             signals_file = Path(td) / "signals.jsonl"
