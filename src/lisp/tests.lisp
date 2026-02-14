@@ -5237,6 +5237,27 @@
           (sb-posix:setenv "SWIMMY_DISCORD_ALERTS" orig-alerts 1)
           (sb-posix:unsetenv "SWIMMY_DISCORD_ALERTS")))))
 
+(deftest test-backtest-webhook-routes-to-system-logs
+  "get-discord-webhook should route backtest to SWIMMY_DISCORD_SYSTEM_LOGS (not REPORTS)"
+  (require :sb-posix)
+  (let* ((orig-sys (uiop:getenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
+         (orig-rep (uiop:getenv "SWIMMY_DISCORD_REPORTS"))
+         (sys "https://example.com/system-logs")
+         (rep "https://example.com/reports")
+         (result nil))
+    (unwind-protect
+        (progn
+          (sb-posix:setenv "SWIMMY_DISCORD_SYSTEM_LOGS" sys 1)
+          (sb-posix:setenv "SWIMMY_DISCORD_REPORTS" rep 1)
+          (setf result (swimmy.core::get-discord-webhook "backtest"))
+          (assert-equal sys result "backtest should route to system logs"))
+      (if orig-sys
+          (sb-posix:setenv "SWIMMY_DISCORD_SYSTEM_LOGS" orig-sys 1)
+          (sb-posix:unsetenv "SWIMMY_DISCORD_SYSTEM_LOGS"))
+      (if orig-rep
+          (sb-posix:setenv "SWIMMY_DISCORD_REPORTS" orig-rep 1)
+          (sb-posix:unsetenv "SWIMMY_DISCORD_REPORTS")))))
+
 (deftest test-backtest-v2-uses-alist
   "request-backtest-v2 should send alist strategy payload"
   (let ((captured nil)
