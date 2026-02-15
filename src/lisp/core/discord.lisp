@@ -15,6 +15,21 @@
 (defparameter *notifier-context* nil)
 
 ;;; ==========================================
+;;; DISCORD SEND GUARD (Tests/Dev Safety)
+;;; ==========================================
+
+(defvar *discord-disabled* nil
+  "When true, suppress ALL Discord notifications.
+
+Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when available).")
+
+(defun discord-disabled-p ()
+  "Return T when Discord sends should be suppressed."
+  (or *discord-disabled*
+      (and (fboundp 'env-bool-or)
+           (env-bool-or "SWIMMY_DISABLE_DISCORD" nil))))
+
+;;; ==========================================
 ;;; NOTIFICATION CONSTANTS (Expert Panel P2)
 ;;; ==========================================
 (defconstant +color-recruit+ 9132483 "Green/Success")
@@ -167,6 +182,8 @@
 
 (defun queue-discord-notification (webhook msg &key (color +color-backtest+) (title "Swimmy Notification"))
   "Send notification to Notifier service via ZMQ"
+  (when (discord-disabled-p)
+    (return-from queue-discord-notification nil))
   (when (and webhook msg (not (equal msg "NIL")))
     (ensure-notifier-connection)
     (handler-case
@@ -191,6 +208,8 @@
 
 (defun queue-raw-discord-message (webhook payload)
   "Send raw JSON payload to Notifier"
+  (when (discord-disabled-p)
+    (return-from queue-raw-discord-message nil))
   (when (and webhook payload)
     (ensure-notifier-connection)
     (handler-case
