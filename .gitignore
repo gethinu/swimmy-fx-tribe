@@ -57,6 +57,7 @@ data/heartbeat/
 data/logs/
 data/reports/
 data/memory/
+data/snapshots/
 *.db
 *.sexp
 doc/memo4.txt

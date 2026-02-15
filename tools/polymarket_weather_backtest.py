@@ -14,6 +14,7 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import math
 import os
@@ -79,6 +80,117 @@ def parse_clob_token_ids(market: Mapping[str, Any]) -> List[str]:
         if isinstance(parsed, list):
             return [str(item).strip() for item in parsed if str(item).strip()]
     return []
+
+
+def parse_snapshot_dir_timestamp(name: str) -> Optional[datetime]:
+    text = str(name or "").strip()
+    if not text:
+        return None
+    # Expected: YYYYMMDDTHHMMSSZ
+    try:
+        return datetime.strptime(text, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def index_snapshot_dirs(snapshots_dir: Path) -> List[Tuple[int, Path]]:
+    base = Path(snapshots_dir)
+    if not base.exists():
+        return []
+    out: List[Tuple[int, Path]] = []
+    for day_dir in sorted(base.iterdir()):
+        if not day_dir.is_dir():
+            continue
+        for snap_dir in sorted(day_dir.iterdir()):
+            if not snap_dir.is_dir():
+                continue
+            ts = parse_snapshot_dir_timestamp(snap_dir.name)
+            if ts is None:
+                continue
+            out.append((int(ts.timestamp()), snap_dir))
+    out.sort(key=lambda item: item[0])
+    return out
+
+
+def find_snapshot_dir_before(
+    *,
+    index: Sequence[Tuple[int, Path]],
+    ts: int,
+    max_age_seconds: int = 0,
+) -> Optional[Tuple[int, Path]]:
+    if not index:
+        return None
+    times = [row[0] for row in index]
+    idx = bisect.bisect_right(times, int(ts)) - 1
+    if idx < 0:
+        return None
+    snap_ts, snap_dir = index[idx]
+    if max_age_seconds > 0 and (int(ts) - int(snap_ts)) > int(max_age_seconds):
+        return None
+    return int(snap_ts), snap_dir
+
+
+def load_snapshot_accepting_orders(snapshot_dir: Path) -> Dict[str, bool]:
+    path = Path(snapshot_dir) / "markets.jsonl"
+    if not path.exists():
+        return {}
+    out: Dict[str, bool] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        market_id = str(payload.get("market_id") or payload.get("id") or "").strip()
+        if not market_id:
+            continue
+        accepting = payload.get("accepting_orders")
+        if isinstance(accepting, bool):
+            out[market_id] = accepting
+    return out
+
+
+def load_snapshot_best_asks(snapshot_dir: Path) -> Dict[str, float]:
+    path = Path(snapshot_dir) / "clob_books.jsonl"
+    if not path.exists():
+        return {}
+    out: Dict[str, float] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        token_id = str(payload.get("token_id") or payload.get("asset_id") or payload.get("market") or "").strip()
+        if not token_id:
+            continue
+        best: Optional[float] = None
+        asks = payload.get("asks")
+        if isinstance(asks, list):
+            for ask in asks:
+                if not isinstance(ask, Mapping):
+                    continue
+                price = _to_float(ask.get("price"))
+                if price is None:
+                    continue
+                if best is None or float(price) < best:
+                    best = float(price)
+        if best is None:
+            best = _to_float(payload.get("last_trade_price", payload.get("lastTradePrice")))
+        if best is None:
+            continue
+        if best <= 0.0 or best >= 1.0:
+            continue
+        out[token_id] = float(best)
+    return out
 
 
 def select_price_at_timestamp(*, history: Sequence[Mapping[str, Any]], ts: int) -> Optional[float]:
@@ -342,6 +454,8 @@ def simulate_trading_backtest(
     price_history_fidelity: int,
     fee_bps_per_side: float,
     slippage_bps_per_side: float,
+    snapshots_dir: str = "",
+    snapshot_max_age_minutes: int = 0,
 ) -> Dict[str, Any]:
     # Group by entry date (UTC) to approximate daily risk budgeting.
     by_day: Dict[str, List[MarketForecast]] = {}
@@ -353,45 +467,110 @@ def simulate_trading_backtest(
     trade_records: List[Dict[str, Any]] = []
     cost_rate = max(0.0, 2.0 * (float(fee_bps_per_side) + float(slippage_bps_per_side)) / 10000.0)
 
-    # Cache token->history to avoid duplicate fetches (rare but cheap).
+    snapshot_index: List[Tuple[int, Path]] = []
+    snapshots_base = str(snapshots_dir or "").strip()
+    if snapshots_base:
+        snapshot_index = index_snapshot_dirs(Path(snapshots_base).expanduser())
+    snapshot_max_age_s = max(0, int(snapshot_max_age_minutes)) * 60
+
+    # Cache token->history/books to avoid duplicate fetches.
     history_cache: Dict[str, List[Mapping[str, Any]]] = {}
+    books_cache: Dict[Path, Dict[str, float]] = {}
+    accepting_cache: Dict[Path, Dict[str, bool]] = {}
+    pricing_source_counts: Dict[str, int] = {}
 
     for day in sorted(by_day.keys()):
         day_rows = by_day[day]
-        # Build candidate markets/signals for the day. We fetch prices only for the YES token and
-        # approximate NO price as 1-YES.
+        # Build candidate markets/signals for the day. Prefer snapshot pricing when available,
+        # otherwise use the limited-lookback CLOB price history endpoint.
         markets: List[MarketSnapshot] = []
         signals: Dict[str, OpenClawSignal] = {}
+        pricing_meta_by_market_id: Dict[str, Dict[str, Any]] = {}
         for row in day_rows:
             if not row.market_id or not row.yes_token_id:
                 continue
-            token = row.yes_token_id
-            hist = history_cache.get(token)
-            if hist is None:
-                hist = fetch_clob_price_history(
-                    token_id=token,
-                    interval=price_history_interval,
-                    fidelity=price_history_fidelity,
-                )
-                history_cache[token] = hist
-            price = select_price_at_timestamp(history=hist, ts=int(row.entry_time_utc.timestamp()))
-            if price is None:
+
+            entry_ts = int(row.entry_time_utc.timestamp())
+            yes_price: Optional[float] = None
+            no_price: Optional[float] = None
+            pricing_source = "history"
+            pricing_snapshot = ""
+
+            if snapshot_index:
+                snap = find_snapshot_dir_before(index=snapshot_index, ts=entry_ts, max_age_seconds=snapshot_max_age_s)
+                if snap is not None:
+                    _, snap_dir = snap
+                    accepting = accepting_cache.get(snap_dir)
+                    if accepting is None:
+                        accepting = load_snapshot_accepting_orders(snap_dir)
+                        accepting_cache[snap_dir] = accepting
+                    if accepting and accepting.get(row.market_id) is False:
+                        snap = None
+                    if snap is not None:
+                        best_asks = books_cache.get(snap_dir)
+                        if best_asks is None:
+                            best_asks = load_snapshot_best_asks(snap_dir)
+                            books_cache[snap_dir] = best_asks
+                        yes_price = best_asks.get(row.yes_token_id)
+                        no_price = best_asks.get(row.no_token_id)
+                        if yes_price is None and no_price is not None:
+                            yes_price = 1.0 - float(no_price)
+                        if no_price is None and yes_price is not None:
+                            no_price = 1.0 - float(yes_price)
+                        if yes_price is not None and no_price is not None:
+                            pricing_source = "snapshot"
+                            pricing_snapshot = snap_dir.name
+
+            if yes_price is None and no_price is None:
+                token = row.yes_token_id
+                hist = history_cache.get(token)
+                if hist is None:
+                    hist = fetch_clob_price_history(
+                        token_id=token,
+                        interval=price_history_interval,
+                        fidelity=price_history_fidelity,
+                    )
+                    history_cache[token] = hist
+                yes_price = select_price_at_timestamp(history=hist, ts=entry_ts)
+
+                if row.no_token_id:
+                    token_no = row.no_token_id
+                    hist_no = history_cache.get(token_no)
+                    if hist_no is None:
+                        hist_no = fetch_clob_price_history(
+                            token_id=token_no,
+                            interval=price_history_interval,
+                            fidelity=price_history_fidelity,
+                        )
+                        history_cache[token_no] = hist_no
+                    no_price = select_price_at_timestamp(history=hist_no, ts=entry_ts)
+
+                if yes_price is None and no_price is None:
+                    continue
+                if yes_price is None and no_price is not None:
+                    yes_price = 1.0 - float(no_price)
+                if no_price is None and yes_price is not None:
+                    no_price = 1.0 - float(yes_price)
+
+            if yes_price is None or no_price is None:
                 continue
-            yes_price = float(_clamp(price, 0.001, 0.999))
-            no_price = float(_clamp(1.0 - yes_price, 0.001, 0.999))
+            yes_price_f = float(_clamp(float(yes_price), 0.001, 0.999))
+            no_price_f = float(_clamp(float(no_price), 0.001, 0.999))
             markets.append(
                 MarketSnapshot(
                     market_id=row.market_id,
                     question=row.question,
                     yes_token_id=row.yes_token_id,
                     no_token_id=row.no_token_id or f"{row.market_id}:NO",
-                    yes_price=yes_price,
-                    no_price=no_price,
+                    yes_price=yes_price_f,
+                    no_price=no_price_f,
                     liquidity_usd=0.0,
                     volume_usd=0.0,
                 )
             )
             signals[row.market_id] = OpenClawSignal(market_id=row.market_id, p_yes=row.p_yes, confidence=row.confidence)
+            pricing_meta_by_market_id[row.market_id] = {"source": pricing_source, "snapshot": pricing_snapshot}
+            pricing_source_counts[pricing_source] = pricing_source_counts.get(pricing_source, 0) + 1
 
         plan = build_trade_plan(signals=signals, markets=markets, config=bot_config)
         for entry in plan.entries:
@@ -408,6 +587,7 @@ def simulate_trading_backtest(
             entry_price = float(entry.entry_price)
             gross_pnl = (stake * ((1.0 / entry_price) - 1.0)) if is_win else (-stake if is_resolved else 0.0)
             net_pnl = gross_pnl - (stake * cost_rate) if is_resolved else 0.0
+            pricing_meta = pricing_meta_by_market_id.get(entry.market_id, {})
             trade_records.append(
                 {
                     "entry_date": day,
@@ -423,6 +603,8 @@ def simulate_trading_backtest(
                     "winner": winner,
                     "resolved": bool(is_resolved),
                     "net_pnl_usd": round(float(net_pnl), 6),
+                    "pricing_source": str(pricing_meta.get("source") or ""),
+                    "pricing_snapshot": str(pricing_meta.get("snapshot") or ""),
                 }
             )
 
@@ -439,6 +621,7 @@ def simulate_trading_backtest(
         "win_rate": round((wins / len(realized)), 6) if realized else None,
         "return_on_stake": round((total_pnl / total_stake), 6) if total_stake > 0 else None,
         "trades": trade_records,
+        "pricing": {"sources": pricing_source_counts, "snapshots_indexed": len(snapshot_index)},
     }
 
 
@@ -459,6 +642,17 @@ def main() -> None:
     parser.add_argument("--max-events-per-series", type=int, default=120)
     parser.add_argument("--price-history-interval", default="1m")
     parser.add_argument("--price-history-fidelity", type=int, default=60)
+    parser.add_argument(
+        "--snapshots-dir",
+        default=str(BASE_DIR / "data" / "snapshots" / "polymarket_weather"),
+        help="Snapshot base dir (see tools/polymarket_weather_snapshot.py). Used for realistic entry pricing beyond CLOB lookback.",
+    )
+    parser.add_argument(
+        "--snapshot-max-age-minutes",
+        type=int,
+        default=180,
+        help="Max age of snapshot (minutes) relative to entry time. Older snapshots are ignored.",
+    )
     parser.add_argument("--fee-bps-per-side", type=float, default=-1.0)
     parser.add_argument("--slippage-bps-per-side", type=float, default=-1.0)
     parser.add_argument("--write-report", default="")
@@ -596,6 +790,8 @@ def main() -> None:
         price_history_fidelity=int(args.price_history_fidelity),
         fee_bps_per_side=fee_bps,
         slippage_bps_per_side=slippage_bps,
+        snapshots_dir=str(args.snapshots_dir),
+        snapshot_max_age_minutes=int(args.snapshot_max_age_minutes),
     )
 
     trades_all = trading.get("trades", [])
