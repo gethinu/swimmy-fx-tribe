@@ -16,6 +16,7 @@ import json
 import subprocess
 import time
 import os
+import errno
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,10 @@ import sys
 from pathlib import Path
 import urllib.request
 import urllib.error
+try:
+    import fcntl  # Unix-only
+except Exception:  # pragma: no cover
+    fcntl = None
 
 
 def _resolve_base_dir() -> Path:
@@ -54,6 +59,60 @@ def _env_int(key: str, default: int) -> int:
 
 BACKTEST_REQ_PORT = _env_int("SWIMMY_PORT_BACKTEST_REQ", 5580)
 BACKTEST_RES_PORT = _env_int("SWIMMY_PORT_BACKTEST_RES", 5581)
+
+_LOCK_PATH_ENV = "SWIMMY_BACKTEST_LOCK_PATH"
+_LOCK_DIR_ENV = "SWIMMY_BACKTEST_LOCK_DIR"
+_NO_LOCK_ENV = "SWIMMY_BACKTEST_NO_LOCK"
+
+
+def _resolve_lock_path(port: int) -> Path:
+    explicit = os.getenv(_LOCK_PATH_ENV, "").strip()
+    if explicit:
+        return Path(explicit)
+    lock_dir = os.getenv(_LOCK_DIR_ENV, "/tmp").strip() or "/tmp"
+    return Path(lock_dir) / f"swimmy-backtest-svc-{port}.lock"
+
+
+def _acquire_single_instance_lock(lock_path: Path):
+    """Ensure we don't accidentally run two backtest services on the same port."""
+    if os.getenv(_NO_LOCK_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+        return None
+    if fcntl is None:
+        return None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    fh = open(lock_path, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        holder_pid = None
+        try:
+            fh.seek(0)
+            holder_pid = fh.read().strip() or None
+        except Exception:
+            holder_pid = None
+        with contextlib.suppress(Exception):
+            fh.close()
+        holder = f" pid={holder_pid}" if holder_pid else ""
+        print(
+            f"[BACKTEST-SVC] ❌ Another backtest service instance is already running "
+            f"(lock={lock_path}{holder})."
+        )
+        print(
+            f"[BACKTEST-SVC] Fix: stop the existing service, or set SWIMMY_PORT_BACKTEST_REQ "
+            f"to a different port for manual runs."
+        )
+        raise SystemExit(0)
+    try:
+        fh.seek(0)
+        fh.truncate()
+        fh.write(str(os.getpid()))
+        fh.flush()
+    except Exception:
+        pass
+    return fh
 
 
 def _default_worker_count() -> int:
@@ -125,13 +184,10 @@ _OPTIONAL_LIST_KEYS = (
     "start_time",
     "end_time",
     "timeframe",
-    "phase",
-    "range_id",
-    "aux_candles",
     "aux_candles_files",
-    "swap_history",
 )
 _CANDLE_KEY_ALIASES = {
+    # Guardian expects Candle keys: t/o/h/l/c/v
     "timestamp": "t",
     "time": "t",
     "open": "o",
@@ -139,8 +195,10 @@ _CANDLE_KEY_ALIASES = {
     "low": "l",
     "close": "c",
     "volume": "v",
+    # Guardian expects SwapRecord keys: t/sl/ss
+    "swap_long": "sl",
+    "swap_short": "ss",
 }
-_CANDLE_CONTAINER_KEYS = {"candles", "aux_candles", "swap_history"}
 _FALLBACK_BOOL_PAIR_RE = re.compile(
     r"\((?P<key>[A-Za-z0-9_:\-]+)\s+\.\s+(?P<val>t|nil|true|false)\)",
     flags=re.IGNORECASE,
@@ -208,6 +266,12 @@ def _format_guardian_preview(msg: str, limit: int = 240) -> str:
 
 
 def _normalize_sexp_key(key):
+    # sexp_utils.parse_sexp() converts the symbol `t` into boolean True, even when it is
+    # used as a key (e.g. candle timestamp key). Convert it back to the expected symbol.
+    if key is True:
+        return "t"
+    if key is False:
+        return "f"
     if isinstance(key, str):
         key = key.strip()
         if "::" in key:
@@ -220,35 +284,56 @@ def _normalize_sexp_key(key):
     return str(key)
 
 
-def _normalize_candle_entry(raw: dict) -> dict:
+def _normalize_record_keys(raw: dict):
     if not isinstance(raw, dict):
         return raw
     out = {}
     for key, value in raw.items():
         norm_key = _normalize_sexp_key(key)
         mapped = _CANDLE_KEY_ALIASES.get(norm_key, norm_key)
+        # Prefer the canonical key when both are present.
         if mapped in out and mapped != norm_key:
             continue
         out[mapped] = value
     return out
 
 
-def _normalize_candle_list(raw):
-    if isinstance(raw, (list, tuple)):
-        return [_normalize_candle_entry(item) for item in raw]
+def _normalize_record_list(raw):
     if isinstance(raw, dict):
-        return {_normalize_sexp_key(k): _normalize_candle_list(v) for k, v in raw.items()}
+        return _normalize_record_keys(raw)
+    if isinstance(raw, (list, tuple)):
+        return [_normalize_record_keys(item) if isinstance(item, dict) else item for item in raw]
     return raw
 
 
+def _normalize_aux_candles(raw):
+    if not isinstance(raw, dict):
+        return raw
+    out = {}
+    for key, value in raw.items():
+        out[_normalize_sexp_key(key)] = _normalize_record_list(value)
+    return out
+
+
 def _normalize_backtest_payload(payload: dict) -> dict:
+    """Fix legacy/backwards-compatible shapes before feeding guardian."""
     if not isinstance(payload, dict):
         return payload
     output = dict(payload)
-    for key in _CANDLE_CONTAINER_KEYS:
-        if key not in output:
-            continue
-        output[key] = _normalize_candle_list(output[key])
+
+    strategy = output.get("strategy")
+    if isinstance(strategy, dict) and strategy.get("filter_tf") is not None:
+        # aux_candles keys are normalized/lowercased by serialization; match that.
+        strat2 = dict(strategy)
+        strat2["filter_tf"] = str(strategy.get("filter_tf", "")).strip().lower()
+        output["strategy"] = strat2
+
+    if "candles" in output:
+        output["candles"] = _normalize_record_list(output.get("candles"))
+    if "swap_history" in output:
+        output["swap_history"] = _normalize_record_list(output.get("swap_history"))
+    if "aux_candles" in output:
+        output["aux_candles"] = _normalize_aux_candles(output.get("aux_candles"))
     return output
 
 
@@ -327,11 +412,10 @@ def _normalize_backtest_sexpr(msg: str) -> str:
         return _fallback_normalize_bool_pairs(text)
     if not isinstance(payload, dict):
         return _fallback_normalize_bool_pairs(text)
-    payload = _normalize_backtest_payload(payload)
     action = str(payload.get("action", "")).strip().upper()
     if action != "BACKTEST":
         return text
-    return _sexp_serialize(payload)
+    return _sexp_serialize(_normalize_backtest_payload(payload))
 
 
 
@@ -379,7 +463,7 @@ def _sanitize_strategy(raw):
 
     filter_enabled = _coerce_bool(_get("filter_enabled", False))
     filter_tf = _get("filter_tf", "")
-    filter_tf = "" if filter_tf is None else str(filter_tf)
+    filter_tf = "" if filter_tf is None else str(filter_tf).strip().lower()
     filter_period = _to_int(_get("filter_period", 0), default=0)
     filter_logic = _get("filter_logic", "")
     filter_logic = "" if filter_logic is None else str(filter_logic)
@@ -432,6 +516,7 @@ class BacktestService:
         self.context = zmq.Context()
         self.data_cache = {}  # Data store: {data_id: candles}
         self.use_zmq = use_zmq
+        self._instance_lock = None
         self.worker_count = _resolve_worker_count()
         self.runtime_knobs = _resolve_runtime_knobs(worker_count=self.worker_count)
         self.max_inflight = int(self.runtime_knobs["max_inflight"])
@@ -445,9 +530,22 @@ class BacktestService:
         self._guardian_processes_lock = threading.Lock()
 
         if self.use_zmq:
+            self._instance_lock = _acquire_single_instance_lock(_resolve_lock_path(BACKTEST_REQ_PORT))
             # Receive backtest requests
             self.receiver = self.context.socket(zmq.PULL)
-            self.receiver.bind(f"tcp://*:{BACKTEST_REQ_PORT}")
+            try:
+                self.receiver.bind(f"tcp://*:{BACKTEST_REQ_PORT}")
+            except zmq.ZMQError as e:
+                if getattr(e, "errno", None) == errno.EADDRINUSE:
+                    print(
+                        f"[BACKTEST-SVC] ❌ Cannot bind tcp://*:{BACKTEST_REQ_PORT} "
+                        f"(Address already in use)."
+                    )
+                    print(
+                        f"[BACKTEST-SVC] Check who holds the port: ss -tulnp | rg ':{BACKTEST_REQ_PORT}'"
+                    )
+                    raise SystemExit(1)
+                raise
 
             # Send results back to Brain (Backtest PULL port 5581)
             self.sender = self.context.socket(zmq.PUSH)
