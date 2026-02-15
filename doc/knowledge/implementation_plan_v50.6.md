@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-02-15 運用追補: Backtest Service 入力互換 + 5580 競合対策
+
+- 症状: `S-Exp parse error: missing field \`t\``（MANUAL-TRADELIST系の inline candles が `timestamp` キー）と、`invalid type: symbol, expected boolean` が散発。
+- 症状: `zmq.error.ZMQError: Address already in use (tcp://*:5580)`（Backtest Service の二重起動/競合起動）。
+- 対応: `tools/backtest_service.py` で `timestamp/time/open/high/low/close/volume` を `t/o/h/l/c/v` へ正規化し、`swap_long/swap_short` も `sl/ss` へ正規化。
+- 対応: `tools/backtest_service.py` で `t` キーが `(true . ...)` に壊れるケースを防止（S式パーサが `t` を bool として解釈する副作用への局所対策）。
+- 対応: `tools/backtest_service.py` に単一インスタンスロック（`/tmp/swimmy-backtest-svc-<port>.lock`）を追加し、競合起動の再発を抑制。
+- 検証: `tools/test_backtest_service.py` に正規化の契約テストを追加（`timestamp`→`t`、`t`キー保持、`swap_*`→`s*`、`filter_tf`小文字化）。
+
 ## V50.8 追補 (2026-02-11) - Balanced Gate / DryRun Persistence
 
 | 項目 | 現行実装 |
