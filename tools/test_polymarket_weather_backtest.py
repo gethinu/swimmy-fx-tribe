@@ -101,6 +101,15 @@ class TestPolymarketWeatherBacktest(unittest.TestCase):
             self.assertEqual(0.4, float(trades[0].get("entry_price")))
             self.assertEqual("snapshot", trades[0].get("pricing_source"))
 
+    def test_fetch_clob_price_history_timeout_returns_empty(self) -> None:
+        mod = load_module()
+
+        with patch.object(mod, "urlopen", side_effect=TimeoutError("boom")):
+            self.assertEqual(
+                [],
+                mod.fetch_clob_price_history(token_id="t_yes", interval="1m", fidelity=60, host="https://clob.polymarket.com"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

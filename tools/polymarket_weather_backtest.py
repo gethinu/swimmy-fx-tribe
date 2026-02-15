@@ -241,7 +241,10 @@ def fetch_clob_price_history(
         return []
     params = urlencode({"market": token, "interval": str(interval), "fidelity": str(int(fidelity))})
     url = host.rstrip("/") + "/prices-history?" + params
-    payload = _request_json(url)
+    try:
+        payload = _request_json(url)
+    except (OSError, TimeoutError, ValueError):
+        return []
     hist = payload.get("history") if isinstance(payload, Mapping) else None
     return [row for row in hist if isinstance(row, Mapping)] if isinstance(hist, list) else []
 
