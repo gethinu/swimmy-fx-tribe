@@ -131,6 +131,16 @@ _OPTIONAL_LIST_KEYS = (
     "aux_candles_files",
     "swap_history",
 )
+_CANDLE_KEY_ALIASES = {
+    "timestamp": "t",
+    "time": "t",
+    "open": "o",
+    "high": "h",
+    "low": "l",
+    "close": "c",
+    "volume": "v",
+}
+_CANDLE_CONTAINER_KEYS = {"candles", "aux_candles", "swap_history"}
 _FALLBACK_BOOL_PAIR_RE = re.compile(
     r"\((?P<key>[A-Za-z0-9_:\-]+)\s+\.\s+(?P<val>t|nil|true|false)\)",
     flags=re.IGNORECASE,
@@ -210,6 +220,38 @@ def _normalize_sexp_key(key):
     return str(key)
 
 
+def _normalize_candle_entry(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        return raw
+    out = {}
+    for key, value in raw.items():
+        norm_key = _normalize_sexp_key(key)
+        mapped = _CANDLE_KEY_ALIASES.get(norm_key, norm_key)
+        if mapped in out and mapped != norm_key:
+            continue
+        out[mapped] = value
+    return out
+
+
+def _normalize_candle_list(raw):
+    if isinstance(raw, (list, tuple)):
+        return [_normalize_candle_entry(item) for item in raw]
+    if isinstance(raw, dict):
+        return {_normalize_sexp_key(k): _normalize_candle_list(v) for k, v in raw.items()}
+    return raw
+
+
+def _normalize_backtest_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return payload
+    output = dict(payload)
+    for key in _CANDLE_CONTAINER_KEYS:
+        if key not in output:
+            continue
+        output[key] = _normalize_candle_list(output[key])
+    return output
+
+
 def _as_pair_like(item):
     if isinstance(item, tuple) and len(item) == 2:
         return item[0], item[1]
@@ -285,6 +327,7 @@ def _normalize_backtest_sexpr(msg: str) -> str:
         return _fallback_normalize_bool_pairs(text)
     if not isinstance(payload, dict):
         return _fallback_normalize_bool_pairs(text)
+    payload = _normalize_backtest_payload(payload)
     action = str(payload.get("action", "")).strip().upper()
     if action != "BACKTEST":
         return text
@@ -382,7 +425,7 @@ def _build_guardian_payload(request: dict) -> dict:
     if "timeframe" in payload:
         strategy["timeframe"] = payload["timeframe"]
 
-    return payload
+    return _normalize_backtest_payload(payload)
 
 class BacktestService:
     def __init__(self, use_zmq=True):

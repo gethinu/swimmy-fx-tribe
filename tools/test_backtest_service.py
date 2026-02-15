@@ -171,6 +171,30 @@ def main():
     _assert_in("swap_history", payload, "swap_history")
     _assert_in("phase", payload, "phase")
     _assert_in("range_id", payload, "range_id")
+    assert payload["candles_file"] == "file.csv"
+    assert payload["timeframe"] == 1
+
+    payload_with_legacy_candles = svc._build_guardian_payload(
+        {
+            "strategy": {"name": "t"},
+            "candles": [
+                {"timestamp": 1700000010, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0},
+                {"time": 1700000011, "o": 2.0, "h": 3.0, "l": 1.0, "c": 2.5, "v": 20.0},
+            ],
+            "swap_history": [
+                {"timestamp": 1700000020, "sl": -1.0, "ss": 0.5},
+            ],
+        }
+    )
+    assert payload_with_legacy_candles["candles"][0]["t"] == 1700000010
+    assert payload_with_legacy_candles["candles"][0]["o"] == 1.0
+    assert payload_with_legacy_candles["candles"][0]["h"] == 2.0
+    assert payload_with_legacy_candles["candles"][0]["l"] == 0.5
+    assert payload_with_legacy_candles["candles"][0]["c"] == 1.5
+    assert payload_with_legacy_candles["candles"][0]["v"] == 10.0
+    assert payload_with_legacy_candles["candles"][1]["t"] == 1700000011
+    assert payload_with_legacy_candles["candles"][1]["o"] == 2.0
+    assert payload_with_legacy_candles["swap_history"][0]["t"] == 1700000020
 
     # Incoming SEXP should be normalized for bool fields before guardian parse
     raw = (
@@ -198,6 +222,28 @@ def main():
     _assert_in("(filter_enabled . #t)", normalized_shorthand, "shorthand filter_enabled normalized true")
     if "(filter_enabled . t)" in normalized_shorthand:
         raise AssertionError("shorthand bool symbol 't' should not be forwarded to guardian")
+
+    raw_candles = (
+        '((action . "BACKTEST") '
+        '(request_id . "RID-CANDLES") '
+        '(strategy ((name . "UT") (sma_short . 5) (sma_long . 20) (sl . 0.1) (tp . 0.2) (volume . 0.01) (indicator_type . sma) '
+        '(filter_enabled . t) (filter_tf . "") (filter_period . 0) (filter_logic . ""))) '
+        '(candles (((timestamp . 1) (open . 100.5) (high . 101.0) (low . 99.8) (close . 100.2) (volume . 1200.0)) '
+        '((time . 2) (o . 99.0) (h . 100.0) (l . 98.5) (c . 99.6) (v . 800.0)))) '
+        '(aux_candles ()) (swap_history (( (timestamp . 3) (sl . 1.1) (ss . 1.2))))'
+    )
+    normalized_candles = svc._normalize_backtest_sexpr(raw_candles)
+    _assert_in("(t . 1)", normalized_candles, "timestamp key normalized to t")
+    _assert_in("(o . 100.5)", normalized_candles, "open key normalized to o")
+    _assert_in("(h . 101)", normalized_candles, "high key normalized to h")
+    _assert_in("(l . 99.8)", normalized_candles, "low key normalized to l")
+    _assert_in("(c . 100.2)", normalized_candles, "close key normalized to c")
+    _assert_in("(v . 1200)", normalized_candles, "volume key normalized to v")
+    _assert_in("(t . 2)", normalized_candles, "time key normalized to t")
+    _assert_in("(t . 3)", normalized_candles, "swap_history timestamp mapped to t")
+    _assert_in("(sl . 1.1)", normalized_candles, "swap_history keeps swap fields")
+    if "(timestamp . 1)" in normalized_candles:
+        raise AssertionError("legacy timestamp key should be removed for candles")
 
     # Fallback path: even if parse fails, known bool keys should be normalized.
     orig_parse_sexp = svc.parse_sexp

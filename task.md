@@ -1,5 +1,24 @@
 # Tasks
 
+## Expert Panel 2026-02-15 (Timeframe Unification / Free TF Mining)
+- [ ] TF正規化の正本化（分int + 表示ラベル + バケット）を1箇所に実装し、各所の分岐を削減: `src/lisp/school/school-backtest.lisp`, `src/lisp/school/school-execution.lisp`, `src/lisp/school/school-strategy.lisp`
+- [ ] unknown TF のサイレント`M1`フォールバックを撤去（リサンプル or エラーへ）: `src/lisp/school/school-backtest.lisp:160`, `src/lisp/school/school-execution.lisp:321`
+- [ ] DataKeeperを任意TF対応へ（`tf_minutes(int)`受理 + M1から集約 + LRUキャッシュ）: `tools/data_keeper.py`
+- [ ] 月足の正本化（`MN`/`MN1`/`Monthly`の命名とロード整合）: `tools/data_keeper.py:263`, `data/historical/*_MN1.csv`
+- [ ] カテゴリ/相関スコープのTFをバケット化して有限化（TF無限で枠が無限にならないように）: `src/lisp/school/school-strategy.lisp:154`, `src/lisp/school/school-kb.lisp:175`
+- [ ] 進化/LLMのTF固定を撤去し、探索は“予算制”（候補数/回数/CPU秒）で制御: `src/lisp/school/school-evolution.lisp:186`, `src/lisp/school/school-evolution-llm.lisp:44`
+- [ ] 評価歪み修正（Sharpeのゼロ除外を見直し、低頻度戦略の過大評価を抑制。PSR/DSRや観測数ゲートを追加）: `guardian/src/backtester.rs:229`
+- [ ] レポート表示のTF表記統一（`M3600`→`H60`等、内部は分でも人間可読に）: `src/lisp/school/school-narrative.lisp`, `data/reports/evolution_factory_report.txt`
+
+## Expert Panel 2026-02-15 (Polymarket Weather Model A/B/C)
+- [ ] live予報のモデル指定を導入し、backtestと揃える: `tools/weather_open_meteo_signal.py`, `tools/polymarket_weather_backtest.py:717`
+- [ ] B-lite実装: `tools/weather_open_meteo_signal.py` に `--forecast-model`（複数指定）を追加し、失敗時フォールバック（残りモデルで継続）を実装
+- [ ] 校正器学習ツール（isotonic/Platt）を追加し、`data/models/polymarket_weather/calibration.json` を生成する
+- [ ] signal生成に校正器を適用して `p_yes` を上書き（取引入力を改善）: `tools/weather_open_meteo_signal.py:521`
+- [ ] backtestにも同じ校正器を適用できるようにする（評価の正本化）: `tools/polymarket_weather_backtest.py:386`
+- [ ] snapshot collector の signal 実行に timeout と stderr 記録を入れ、`errors.jsonl` に残す: `tools/polymarket_weather_snapshot.py:79`
+- [ ] （任意だが推奨）signal sync をraw保存対応にして、学習/監査を可能にする: `tools/openclaw_signal_sync.py:119`
+
 ## Expert Panel 2026-01-31
 - [ ] 入力の`read-from-string`経路を封鎖（`*read-eval*`無効化＋安全パーサ導入）: `src/lisp/core/message-dispatcher.lisp`, `src/lisp/school/school-evolution.lisp`, `src/lisp/core/persistence.lisp`
 - [ ] Backtest V2のpayload修正とPhase2昇格ロジック実装＋テスト: `src/lisp/school/school-backtest-v2.lisp`

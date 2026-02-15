@@ -6630,6 +6630,45 @@
       (setf (symbol-function 'swimmy.school::collect-active-symbols) orig-symbols)
       (setf (symbol-function 'swimmy.school::run-b-rank-culling-for-category) orig-cull))))
 
+(deftest test-timeframe-utils-support-arbitrary-minutes
+  "get-tf-string/get-tf-minutes should support arbitrary TF minutes (no silent M1 fallback)."
+  ;; Minutes -> Label
+  (assert-equal "M36" (swimmy.school::get-tf-string 36))
+  (assert-equal "H2" (swimmy.school::get-tf-string 120))
+  (assert-equal "H5" (swimmy.school::get-tf-string 300))
+  (assert-equal "H60" (swimmy.school::get-tf-string 3600))
+  (assert-equal "MN" (swimmy.school::get-tf-string 43200))
+  ;; Label -> Minutes
+  (assert-equal 36 (swimmy.school::get-tf-minutes "M36"))
+  (assert-equal 120 (swimmy.school::get-tf-minutes "H2"))
+  (assert-equal 300 (swimmy.school::get-tf-minutes "H5"))
+  (assert-equal 3600 (swimmy.school::get-tf-minutes "H60"))
+  (assert-equal 43200 (swimmy.school::get-tf-minutes "MN"))
+  (assert-equal 43200 (swimmy.school::get-tf-minutes "MN1")))
+
+(deftest test-resample-candles-aligns-to-unix-buckets
+  "resample-candles should align timestamps to bucket start (Guardian-compatible)."
+  (flet ((mk (ts o h l c)
+           (swimmy.globals:make-candle :timestamp ts :open o :high h :low l :close c :volume 1)))
+    ;; Newest-first M1 candles at 0,60,120,180,240.
+    (let* ((m1 (list (mk 240 5 6 4 5.5)
+                     (mk 180 4 5 3 4.5)
+                     (mk 120 3 4 2 3.5)
+                     (mk 60 2 3 1 2.5)
+                     (mk 0 1 2 0 1.5)))
+           ;; 3-minute resample => buckets [0..179], [180..359]
+           (out (swimmy.school::resample-candles m1 3)))
+      (assert-equal 2 (length out))
+      ;; Newest bucket first
+      (assert-equal 180 (swimmy.globals:candle-timestamp (first out)))
+      (assert-equal 0 (swimmy.globals:candle-timestamp (second out)))
+      ;; Bucket 180: open from ts=180, close from ts=240
+      (assert-equal 4 (swimmy.globals:candle-open (first out)))
+      (assert-equal 5.5 (swimmy.globals:candle-close (first out)))
+      ;; Bucket 0: open from ts=0, close from ts=120
+      (assert-equal 1 (swimmy.globals:candle-open (second out)))
+      (assert-equal 3.5 (swimmy.globals:candle-close (second out))))))
+
 (deftest test-b-rank-culling-for-category-filters-expectancy-candidates
   "Category culling should queue only A-base candidates that also pass expectancy gate."
   (let* ((mk (lambda (name wr)
@@ -8311,6 +8350,8 @@
                   test-b-rank-culling-for-category-filters-a-base-candidates
 	                  test-run-b-rank-culling-does-not-run-global-sharpe-only-promotion
 	                  test-run-b-rank-culling-uses-active-timeframes-dynamically
+	                  test-timeframe-utils-support-arbitrary-minutes
+	                  test-resample-candles-aligns-to-unix-buckets
 	                  test-b-rank-culling-for-category-filters-expectancy-candidates
 	                  test-b-rank-culling-records-category-a-candidate-metrics
 	                  test-a-candidate-metrics-snippet-summarizes-category-counts
