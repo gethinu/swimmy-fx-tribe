@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -412,7 +413,9 @@ def fetch_forecast_open_meteo(
     timezone_name: str,
     forecast_url: str = "https://api.open-meteo.com/v1/forecast",
     forecast_days: int = 16,
+    model: str = "",
 ) -> List[ForecastDay]:
+    model_text = str(model or "").strip()
     params = urlencode(
         {
             "latitude": str(latitude),
@@ -421,6 +424,7 @@ def fetch_forecast_open_meteo(
             "temperature_unit": "fahrenheit",
             "forecast_days": str(max(1, int(forecast_days))),
             "timezone": timezone_name or "auto",
+            **({"models": model_text} if model_text else {}),
         }
     )
     url = f"{forecast_url}?{params}"
@@ -467,14 +471,20 @@ def build_weather_signals_from_markets(
     now_utc: datetime,
     geocode_city: Callable[[str], Optional[GeocodeResult]],
     fetch_forecast: Callable[..., List[ForecastDay]],
+    forecast_models: Sequence[str] = (),
+    calibration: Optional[Mapping[str, Any]] = None,
     p_min: float = 0.01,
     p_max: float = 0.99,
 ) -> List[Dict[str, Any]]:
     """Return JSONL-ready OpenClaw-like rows for weather markets."""
     _ = now_utc  # Reserved for future lead-time / horizon logic.
     geocode_cache: Dict[str, Optional[GeocodeResult]] = {}
-    forecast_cache: Dict[Tuple[float, float, str], List[ForecastDay]] = {}
+    # Cache across repeated markets for the same city/location. When using multiple
+    # forecast models, we include the model name in the cache key.
+    forecast_cache: Dict[Tuple[float, float, str, str], List[ForecastDay]] = {}
     out: List[Dict[str, Any]] = []
+
+    models = [str(item).strip() for item in forecast_models if str(item).strip()]
 
     for market in markets:
         market_id = _extract_market_id(market)
@@ -494,46 +504,98 @@ def build_weather_signals_from_markets(
             continue
 
         key = (float(geo.latitude), float(geo.longitude), str(geo.timezone))
-        forecast = forecast_cache.get(key)
-        if forecast is None and key not in forecast_cache:
-            forecast = fetch_forecast(latitude=geo.latitude, longitude=geo.longitude, timezone_name=geo.timezone)
-            forecast_cache[key] = forecast
-        if not forecast:
+        temps_f: List[float] = []
+        lead_days: Optional[int] = None
+        model_temps: Dict[str, float] = {}
+        if models:
+            for model_name in models:
+                cache_key = (key[0], key[1], key[2], model_name)
+                forecast = forecast_cache.get(cache_key)
+                if forecast is None and cache_key not in forecast_cache:
+                    forecast = fetch_forecast(latitude=geo.latitude, longitude=geo.longitude, timezone_name=geo.timezone, model=model_name)
+                    forecast_cache[cache_key] = forecast
+                if not forecast:
+                    continue
+                target: Optional[ForecastDay] = None
+                for day in forecast:
+                    if day.day.month == parsed.month and day.day.day == parsed.day:
+                        target = day
+                        break
+                if target is None:
+                    continue
+                try:
+                    temp_val = float(target.temperature_max_f)
+                except (TypeError, ValueError):
+                    continue
+                temps_f.append(temp_val)
+                model_temps[model_name] = temp_val
+                if lead_days is None or int(target.lead_days) < lead_days:
+                    lead_days = int(target.lead_days)
+        else:
+            cache_key = (key[0], key[1], key[2], "")
+            forecast = forecast_cache.get(cache_key)
+            if forecast is None and cache_key not in forecast_cache:
+                forecast = fetch_forecast(latitude=geo.latitude, longitude=geo.longitude, timezone_name=geo.timezone)
+                forecast_cache[cache_key] = forecast
+            if not forecast:
+                continue
+            target: Optional[ForecastDay] = None
+            for day in forecast:
+                if day.day.month == parsed.month and day.day.day == parsed.day:
+                    target = day
+                    break
+            if target is None:
+                continue
+            temps_f = [float(target.temperature_max_f)]
+            lead_days = int(target.lead_days)
+
+        if not temps_f or lead_days is None:
             continue
 
-        target: Optional[ForecastDay] = None
-        for day in forecast:
-            if day.day.month == parsed.month and day.day.day == parsed.day:
-                target = day
-                break
-        if target is None:
-            continue
+        mu_f = float(sum(temps_f) / len(temps_f))
 
-        sigma_f = sigma_f_for_lead_days(target.lead_days)
+        sigma_base_f = float(sigma_f_for_lead_days(lead_days))
+        # Treat model disagreement as additional independent uncertainty.
+        sigma_model_f = 0.0
+        if len(temps_f) > 1:
+            sigma_model_f = math.sqrt(sum((x - mu_f) ** 2 for x in temps_f) / float(len(temps_f)))
+        sigma_total_f = math.sqrt((sigma_base_f**2) + (sigma_model_f**2))
+
         mu: float
         sigma: float
         if parsed.unit == "C":
-            mu = (float(target.temperature_max_f) - 32.0) * (5.0 / 9.0)
-            sigma = float(sigma_f) * (5.0 / 9.0)
+            mu = (float(mu_f) - 32.0) * (5.0 / 9.0)
+            sigma = float(sigma_total_f) * (5.0 / 9.0)
         else:
-            mu = float(target.temperature_max_f)
-            sigma = float(sigma_f)
+            mu = float(mu_f)
+            sigma = float(sigma_total_f)
         p_yes = normal_bucket_probability(mu=mu, sigma=sigma, low=parsed.low, high=parsed.high)
         p_yes = float(_clamp(float(p_yes), float(p_min), float(p_max)))
-        confidence = float(confidence_for_sigma(sigma_f))
+        if calibration is not None:
+            try:
+                from tools.probability_calibration import apply_probability_calibration
 
-        out.append(
-            {
-                "market_id": market_id,
-                "p_yes": round(p_yes, 6),
-                "confidence": round(confidence, 6),
-                "question": question,
-                "source": "weather_open_meteo",
-                "forecast_temperature_max_f": round(float(target.temperature_max_f), 3),
-                "sigma_f": round(float(sigma_f), 3),
-                "lead_days": int(target.lead_days),
-            }
-        )
+                p_yes = float(apply_probability_calibration(calibration, float(p_yes)))
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
+            p_yes = float(_clamp(float(p_yes), float(p_min), float(p_max)))
+        confidence = float(confidence_for_sigma(sigma_total_f))
+
+        row = {
+            "market_id": market_id,
+            "p_yes": round(p_yes, 6),
+            "confidence": round(confidence, 6),
+            "question": question,
+            "source": "weather_open_meteo",
+            "forecast_temperature_max_f": round(float(mu_f), 3),
+            "sigma_f": round(float(sigma_total_f), 3),
+            "lead_days": int(lead_days),
+        }
+        if model_temps:
+            row["forecast_models"] = sorted(model_temps.keys())
+            row["forecast_model_temps_f"] = {k: round(float(v), 3) for k, v in sorted(model_temps.items())}
+            row["sigma_model_f"] = round(float(sigma_model_f), 3)
+        out.append(row)
     return out
 
 
@@ -559,8 +621,32 @@ def main() -> None:
     parser.add_argument("--events-limit", type=int, default=4)
     parser.add_argument("--max-markets", type=int, default=4000)
     parser.add_argument("--forecast-days", type=int, default=16)
+    parser.add_argument(
+        "--forecast-model",
+        action="append",
+        default=[],
+        help="Open-Meteo model name (repeatable). If set, forecasts are ensembled across models.",
+    )
+    parser.add_argument(
+        "--calibration-file",
+        default="",
+        help="Optional probability calibration JSON (see tools/probability_calibration.py).",
+    )
     parser.add_argument("--write-jsonl", default="")
     args = parser.parse_args()
+
+    calibration: Optional[Mapping[str, Any]] = None
+    if str(args.calibration_file or "").strip():
+        try:
+            path = Path(str(args.calibration_file)).expanduser()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, Mapping):
+                from tools.probability_calibration import validate_calibration
+
+                validate_calibration(payload)
+                calibration = payload
+        except (OSError, ValueError, TypeError):
+            calibration = None
 
     markets = fetch_weather_markets_from_gamma(
         series_url=str(args.series_url),
@@ -581,6 +667,8 @@ def main() -> None:
             forecast_days=max(1, int(args.forecast_days)),
             **kwargs,
         ),
+        forecast_models=[part.strip() for item in (args.forecast_model or []) for part in str(item).split(",") if part.strip()],
+        calibration=calibration,
     )
     text = render_jsonl(rows)
     print(text, end="")

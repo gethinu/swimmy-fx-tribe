@@ -14,7 +14,7 @@
   "Soft gate multiplier when pattern direction mismatches.")
 (defparameter *pattern-gate-k* 30
   "Top-k neighbors for Pattern Similarity query.")
-(defparameter *pattern-gate-timeframes* '("H1" "H4" "D1" "W1" "MN1")
+(defparameter *pattern-gate-timeframes* '("H1" "H4" "D1" "W1" "MN")
   "Timeframes where pattern soft-gate is enabled.")
 (defparameter *signal-confidence-entry-threshold* 0.20
   "Minimum signal confidence required to allow a new entry.")
@@ -318,16 +318,20 @@
   (let* ((strategies (gethash category *active-team*))
          (lead-strat (first strategies))
          (lead-name (when lead-strat (strategy-name lead-strat)))
-         (timeframe (if lead-strat (strategy-timeframe lead-strat) 1))
-         (timeframe-key (cond ((= timeframe 5) "M5") ((= timeframe 15) "M15") ((= timeframe 30) "M30")
-                             ((= timeframe 60) "H1") ((= timeframe 240) "H4") ((= timeframe 1440) "D1")
-                             ((= timeframe 10080) "W1") ((= timeframe 43200) "MN1")
-                             (t "M1")))
-         (history (if (= timeframe 1) (gethash symbol *candle-histories*)
-                      (let ((tf-map (gethash symbol *candle-histories-tf*)))
-                        (or (and tf-map (gethash timeframe-key tf-map))
-                            (when (and (= timeframe 60) (gethash symbol *candle-histories*))
-                               (resample-candles (gethash symbol *candle-histories*) 60)))))))
+         (tf-slot (if lead-strat (strategy-timeframe lead-strat) 1))
+         (timeframe (if (fboundp 'get-tf-minutes) (get-tf-minutes tf-slot)
+                        (if (numberp tf-slot) (round tf-slot) 1)))
+         (timeframe (or timeframe 1))
+         ;; Never silently fall back to M1 for unknown TF minutes.
+         ;; If DataKeeper doesn't provide that TF, we resample from M1 using aligned buckets.
+         (timeframe-key (if (fboundp 'get-tf-string) (get-tf-string timeframe) "M1"))
+         (history (cond
+                    ((= timeframe 1) (gethash symbol *candle-histories*))
+                    (t
+                     (let ((tf-map (gethash symbol *candle-histories-tf*)))
+                       (or (and tf-map (gethash timeframe-key tf-map))
+                           (when (gethash symbol *candle-histories*)
+                             (resample-candles (gethash symbol *candle-histories*) timeframe))))))))
     (values lead-name timeframe-key history)))
 
 (defun validate-trade-opportunity (category symbol timeframe-key history)

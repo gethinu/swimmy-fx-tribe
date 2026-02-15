@@ -299,7 +299,7 @@
   "Clear in-memory category funnel metrics."
   (clrhash *a-candidate-category-metrics*))
 
-(defun record-a-candidate-category-metric (timeframe direction symbol
+	(defun record-a-candidate-category-metric (timeframe direction symbol
                                            &key
                                              (b-count 0)
                                              (a-base-count 0)
@@ -319,14 +319,17 @@
                          :culling-triggered-p culling-triggered-p
                          :updated-at (get-universal-time)))
          (key (%a-candidate-category-key timeframe direction symbol)))
-    (setf (gethash key *a-candidate-category-metrics*) snapshot)
-    (when (fboundp 'swimmy.core::emit-telemetry-event)
-      (swimmy.core::emit-telemetry-event "rank.a_candidate_funnel"
-        :service "school"
-        :severity "info"
-        :correlation-id (format nil "~a|~a|M~a" symbol direction timeframe)
-        :data snapshot))
-    snapshot))
+	    (setf (gethash key *a-candidate-category-metrics*) snapshot)
+	    (when (fboundp 'swimmy.core::emit-telemetry-event)
+	      (swimmy.core::emit-telemetry-event "rank.a_candidate_funnel"
+	        :service "school"
+	        :severity "info"
+	        :correlation-id (format nil "~a|~a|~a"
+	                                symbol
+	                                direction
+	                                (if (fboundp 'get-tf-string) (get-tf-string timeframe) (format nil "M~a" timeframe)))
+	        :data snapshot))
+	    snapshot))
 
 (defun lookup-a-candidate-category-metric (timeframe direction symbol)
   "Lookup latest funnel metric snapshot for a category."
@@ -347,15 +350,17 @@
           (dolist (m (subseq (sort rows #'> :key (lambda (x) (getf x :a-ready-count 0)))
                              0
                              (min limit (length rows))))
-            (format s "- ~a/~a/M~a b=~d base=~d ready=~d queued=~d~@[ bootstrap~]~%"
-                    (or (getf m :symbol) "UNKNOWN")
-                    (or (getf m :direction) :BOTH)
-                    (or (getf m :timeframe) "?")
-                    (or (getf m :b-count) 0)
-                    (or (getf m :a-base-count) 0)
-                    (or (getf m :a-ready-count) 0)
-                    (or (getf m :queued-count) 0)
-                    (and (getf m :bootstrap-p) t)))))))
+            (let* ((tf (or (getf m :timeframe) 1))
+                   (tf-str (if (fboundp 'get-tf-string) (get-tf-string tf) (format nil "M~a" tf))))
+              (format s "- ~a/~a/~a b=~d base=~d ready=~d queued=~d~@[ bootstrap~]~%"
+                      (or (getf m :symbol) "UNKNOWN")
+                      (or (getf m :direction) :BOTH)
+                      tf-str
+                      (or (getf m :b-count) 0)
+                      (or (getf m :a-base-count) 0)
+                      (or (getf m :a-ready-count) 0)
+                      (or (getf m :queued-count) 0)
+                      (and (getf m :bootstrap-p) t))))))))
 
 (defun get-strategies-by-rank (rank &optional timeframe direction symbol)
   "Get all strategies with a specific rank, optionally filtered by TF/Direction/Symbol.

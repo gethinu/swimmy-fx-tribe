@@ -6237,7 +6237,9 @@
                                              :cpcv-pass-rate 0.8))
          (called 0)
          (orig (and (fboundp 'swimmy.school::notify-noncorrelated-promotion)
-                    (symbol-function 'swimmy.school::notify-noncorrelated-promotion))))
+                    (symbol-function 'swimmy.school::notify-noncorrelated-promotion)))
+         (orig-sync (and (fboundp 'swimmy.school::maybe-sync-evolution-report-on-promotion)
+                         (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion))))
     (let ((swimmy.core::*db-path-default* tmp-db)
           (swimmy.core::*sqlite-conn* nil)
           (swimmy.school::*disable-auto-migration* t))
@@ -6246,12 +6248,18 @@
             (swimmy.school::init-db)
             (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion)
                   (lambda (&rest args) (declare (ignore args)) (incf called)))
+            ;; Prevent test promotions from triggering evolution report sync + Discord send.
+            (when orig-sync
+              (setf (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion)
+                    (lambda (&rest args) (declare (ignore args)) nil)))
             (swimmy.school::ensure-rank strat :A "test")
             (assert-equal 1 called "A promotion should notify once")
             (swimmy.school::ensure-rank strat :S "test")
             (assert-equal 2 called "S promotion should notify once"))
         (when orig
           (setf (symbol-function 'swimmy.school::notify-noncorrelated-promotion) orig))
+        (when orig-sync
+          (setf (symbol-function 'swimmy.school::maybe-sync-evolution-report-on-promotion) orig-sync))
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
@@ -6669,6 +6677,41 @@
       (assert-equal 1 (swimmy.globals:candle-open (second out)))
       (assert-equal 3.5 (swimmy.globals:candle-close (second out))))))
 
+(deftest test-prepare-trade-context-does-not-silently-fallback-to-m1
+  "prepare-trade-context should not map unknown TF minutes to M1."
+  (let* ((orig-team swimmy.school::*active-team*)
+         (orig-hist swimmy.globals::*candle-histories*)
+         (orig-hist-tf swimmy.globals::*candle-histories-tf*)
+         (team (make-hash-table :test 'equal))
+         (hists (make-hash-table :test 'equal))
+         (hists-tf (make-hash-table :test 'equal))
+         (cat (list 300 :BOTH "USDJPY"))
+         (lead (swimmy.school:make-strategy :name "UT-PTC"
+                                            :symbol "USDJPY"
+                                            :direction :BOTH
+                                            :timeframe 300))
+         (m1 (list (swimmy.globals:make-candle :timestamp 240 :open 5 :high 6 :low 4 :close 5.5 :volume 1)
+                   (swimmy.globals:make-candle :timestamp 180 :open 4 :high 5 :low 3 :close 4.5 :volume 1)
+                   (swimmy.globals:make-candle :timestamp 120 :open 3 :high 4 :low 2 :close 3.5 :volume 1)
+                   (swimmy.globals:make-candle :timestamp 60 :open 2 :high 3 :low 1 :close 2.5 :volume 1)
+                   (swimmy.globals:make-candle :timestamp 0 :open 1 :high 2 :low 0 :close 1.5 :volume 1))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*active-team* team)
+          (setf swimmy.globals::*candle-histories* hists)
+          (setf swimmy.globals::*candle-histories-tf* hists-tf)
+          (setf (gethash "USDJPY" swimmy.globals::*candle-histories*) m1)
+          (setf (gethash cat swimmy.school::*active-team*) (list lead))
+          (multiple-value-bind (lead-name tf-key history)
+              (swimmy.school::prepare-trade-context cat "USDJPY")
+            (declare (ignore lead-name))
+            (assert-equal "H5" tf-key)
+            (assert-equal 1 (length history))
+            (assert-equal 0 (swimmy.globals:candle-timestamp (first history)))))
+      (setf swimmy.school::*active-team* orig-team)
+      (setf swimmy.globals::*candle-histories* orig-hist)
+      (setf swimmy.globals::*candle-histories-tf* orig-hist-tf))))
+
 (deftest test-b-rank-culling-for-category-filters-expectancy-candidates
   "Category culling should queue only A-base candidates that also pass expectancy gate."
   (let* ((mk (lambda (name wr)
@@ -6781,7 +6824,7 @@
    :queued-count 1
    :bootstrap-p nil)
   (let ((snippet (swimmy.school::a-candidate-metrics-snippet :limit 3)))
-    (assert-true (search "USDJPY/BOTH/M300" snippet))
+    (assert-true (search "USDJPY/BOTH/H5" snippet))
     (assert-true (search "base=2" snippet))
     (assert-true (search "ready=1" snippet))
     (assert-true (search "queued=1" snippet))))
@@ -8193,15 +8236,27 @@
   (format t "🧪 RUNNING SWIMMY TESTS (V6.18 - Expert Verified)~%")
   (format t "═══════════════════════════════════════~%~%")
   
-  ;; Isolate test outputs from live service files.
-  (let ((swimmy.core::*log-file-path* "data/memory/swimmy-tests-telemetry.jsonl")
-        (swimmy.core::*telemetry-fallback-log-path* "data/memory/swimmy-tests-telemetry-fallback.jsonl")
-        (swimmy.school::*evolution-report-path* "data/memory/swimmy-tests-evolution-report.txt"))
-    (ignore-errors (ensure-directories-exist swimmy.core::*log-file-path*))
-    (ignore-errors (ensure-directories-exist swimmy.core::*telemetry-fallback-log-path*))
-    (ignore-errors (ensure-directories-exist swimmy.school::*evolution-report-path*))
-    ;; Run each test
-    (dolist (test '(;; Clan tests
+  ;; Isolate test outputs from live service files, and suppress Discord sends.
+  (let ((orig-queue (and (fboundp 'swimmy.core:queue-discord-notification)
+                         (symbol-function 'swimmy.core:queue-discord-notification)))
+        (orig-queue-raw (and (fboundp 'swimmy.core::queue-raw-discord-message)
+                             (symbol-function 'swimmy.core::queue-raw-discord-message))))
+    (unwind-protect
+        (progn
+          (when orig-queue
+            (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-queue-raw
+            (setf (symbol-function 'swimmy.core::queue-raw-discord-message)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (let ((swimmy.core::*log-file-path* "data/memory/swimmy-tests-telemetry.jsonl")
+                (swimmy.core::*telemetry-fallback-log-path* "data/memory/swimmy-tests-telemetry-fallback.jsonl")
+                (swimmy.school::*evolution-report-path* "data/memory/swimmy-tests-evolution-report.txt"))
+            (ignore-errors (ensure-directories-exist swimmy.core::*log-file-path*))
+            (ignore-errors (ensure-directories-exist swimmy.core::*telemetry-fallback-log-path*))
+            (ignore-errors (ensure-directories-exist swimmy.school::*evolution-report-path*))
+            ;; Run each test
+            (dolist (test '(;; Clan tests
                   test-main-shadows-last-new-day
                   test-active-strategy-p-bas-legend
                   test-analyze-graveyard-for-avoidance-skips-corrupt-form
@@ -8352,6 +8407,7 @@
 	                  test-run-b-rank-culling-uses-active-timeframes-dynamically
 	                  test-timeframe-utils-support-arbitrary-minutes
 	                  test-resample-candles-aligns-to-unix-buckets
+	                  test-prepare-trade-context-does-not-silently-fallback-to-m1
 	                  test-b-rank-culling-for-category-filters-expectancy-candidates
 	                  test-b-rank-culling-records-category-a-candidate-metrics
 	                  test-a-candidate-metrics-snippet-summarizes-category-counts
@@ -8624,10 +8680,14 @@
                   test-check-symbol-mismatch-allows-generic
                   test-check-symbol-mismatch-blocks-eurusd-on-gbpusd
                   test-check-symbol-mismatch-case-insensitive))
-      (format t "Running ~a... " test)
-      (if (funcall test)
-          (format t "✅ PASSED~%")
-          (format t "❌ FAILED~%"))))
+              (format t "Running ~a... " test)
+              (if (funcall test)
+                  (format t "✅ PASSED~%")
+                  (format t "❌ FAILED~%")))))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))
+      (when orig-queue-raw
+        (setf (symbol-function 'swimmy.core::queue-raw-discord-message) orig-queue-raw))))
   
   (format t "~%═══════════════════════════════════════~%")
   (format t "📊 RESULTS: ~d passed, ~d failed~%~%" *tests-passed* *tests-failed*)

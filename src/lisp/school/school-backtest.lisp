@@ -87,32 +87,63 @@
   (alist-to-json (strategy-to-alist strat :name-suffix name-suffix)))
 
 
-;; Helper to resample candles (M1 -> M5, etc)
-;; WARN: CRITICAL DATA ORDER ASSUMPTION (Recurrence Prevention)
-;; Input 'candles' MUST be Newest-First (Time: T_n, T_n-1, ... T_1).
-(defun resample-candles (candles factor)
-  (let ((result nil)
-        (chunk nil)
-        (count 0))
-    (dolist (c candles)
-       (push c chunk)
-       (incf count)
-       (when (= count factor)
-         ;; Input candles are Newest-First (M5 M4 ...)
-         ;; So 'chunk' is (Start/Oldest ... End/Newest)
-         (let* ((start-candle (first chunk))      ; Oldest time (Open)
-                (end-candle (car (last chunk)))   ; Newest time (Close/Timestamp)
-                (high (loop for x in chunk maximize (candle-high x)))
-                (low (loop for x in chunk minimize (candle-low x)))
-                (vol (loop for x in chunk sum (candle-volume x))))
-            (push (make-candle :timestamp (candle-timestamp end-candle)
-                               :open (candle-open start-candle)
-                               :close (candle-close end-candle)
-                               :high high :low low :volume vol)
-                  result))
-         (setf chunk nil)
-         (setf count 0)))
-    (nreverse result)))
+;; Helper to resample M1 candles to arbitrary minutes (aligned buckets).
+;; Input 'candles' MUST be Newest-First (same as Data Keeper responses).
+;; This implementation aligns to Unix bucket boundaries, matching Guardian's resampler.
+(defun resample-candles (candles minutes)
+  "Resample M1 candles into MINUTES candles (newest-first), aligned to unix bucket start.
+
+MINUTES is an integer number of minutes (e.g., 5, 60, 240, 3600)."
+  (let ((m (if (numberp minutes) (round minutes) 1)))
+    (cond
+      ((or (null candles) (<= m 1)) candles)
+      (t
+       (let* ((tf-seconds (* m 60))
+              ;; We scan oldest->newest to compute correct open/close, but return newest-first.
+              (ordered (reverse candles))
+              (result nil)
+              (current-bucket-start nil)
+              (open 0.0)
+              (high most-negative-double-float)
+              (low most-positive-double-float)
+              (close 0.0)
+              (vol 0.0)
+              (has-data nil))
+         (dolist (c ordered)
+           (let* ((ts (candle-timestamp c))
+                  (bucket-start (* (floor ts tf-seconds) tf-seconds)))
+             (if (or (null current-bucket-start)
+                     (/= bucket-start current-bucket-start))
+                 (progn
+                   (when has-data
+                     (push (make-candle :timestamp current-bucket-start
+                                        :open open
+                                        :high high
+                                        :low low
+                                        :close close
+                                        :volume vol)
+                           result))
+                   (setf current-bucket-start bucket-start
+                         open (candle-open c)
+                         high (candle-high c)
+                         low (candle-low c)
+                         close (candle-close c)
+                         vol (candle-volume c)
+                         has-data t))
+                 (progn
+                   (setf high (max high (candle-high c)))
+                   (setf low (min low (candle-low c)))
+                   (setf close (candle-close c))
+                   (setf vol (+ vol (candle-volume c)))))))
+         (when has-data
+           (push (make-candle :timestamp current-bucket-start
+                              :open open
+                              :high high
+                              :low low
+                              :close close
+                              :volume vol)
+                 result))
+         result)))))
 
 ;;; ==========================================
 ;;; TICK REPLAY (Phase 12)
@@ -160,36 +191,57 @@
 (defun get-tf-string (tf)
   "Convert a numeric timeframe (in minutes) or a timeframe string to a valid string.
    Returns the input if it's already a string (e.g., 'H1')."
-  (cond ((stringp tf) tf) ; Already a string, return it
-        ((not (numberp tf)) "M1") ; Not a number, default to M1
-        ((= tf 1) "M1")
-        ((= tf 5) "M5")
-        ((= tf 15) "M15")
-        ((= tf 30) "M30")
-        ((= tf 60) "H1")
-        ((= tf 240) "H4")
-        ((= tf 1440) "D1")
-        ((= tf 10080) "W1")
-        ((= tf 43200) "MN")
-        (t "M1")))
+  (cond
+    ((stringp tf) (string-upcase tf))
+    ((not (numberp tf)) "M1")
+    (t
+     (let ((m (round tf)))
+       (cond
+         ((<= m 1) "M1")
+         ((= m 43200) "MN")
+         ((and (>= m 10080) (zerop (mod m 10080))) (format nil "W~d" (/ m 10080)))
+         ((and (>= m 1440) (zerop (mod m 1440))) (format nil "D~d" (/ m 1440)))
+         ((and (>= m 60) (zerop (mod m 60))) (format nil "H~d" (/ m 60)))
+         (t (format nil "M~d" m)))))))
 
 (defun get-tf-minutes (tf)
   "Convert a numeric timeframe or a timeframe string to total minutes.
    Handles 'M1', 'M5', 'H1', 'H4', 'D1', 'W1', 'MN'."
-  (cond ((numberp tf) (round tf))
-        ((stringp tf)
-         (let ((up (string-upcase tf)))
-           (cond ((string= up "M1") 1)
-                 ((string= up "M5") 5)
-                 ((string= up "M15") 15)
-                 ((string= up "M30") 30)
-                 ((string= up "H1") 60)
-                 ((string= up "H4") 240)
-                 ((string= up "D1") 1440)
-                 ((string= up "W1") 10080)
-                 ((string= up "MN") 43200)
-                 (t 1))))
-        (t 1)))
+  (labels ((all-digits-p (s)
+             (and (stringp s)
+                  (> (length s) 0)
+                  (loop for ch across s always (digit-char-p ch))))
+           (parse-int (s default)
+             (handler-case (parse-integer s) (error () default))))
+    (cond
+      ((numberp tf) (round tf))
+      ((stringp tf)
+       (let* ((up (string-upcase tf)))
+         (cond
+           ((or (string= up "MN") (string= up "MN1")) 43200)
+           ((and (>= (length up) 2) (char= (char up 0) #\M)
+                 (all-digits-p (subseq up 1)))
+            (parse-int (subseq up 1) 1))
+           ((and (>= (length up) 2) (char= (char up 0) #\H)
+                 (all-digits-p (subseq up 1)))
+            (* 60 (parse-int (subseq up 1) 1)))
+           ((and (>= (length up) 2) (char= (char up 0) #\D)
+                 (all-digits-p (subseq up 1)))
+            (* 1440 (parse-int (subseq up 1) 1)))
+           ((and (>= (length up) 2) (char= (char up 0) #\W)
+                 (all-digits-p (subseq up 1)))
+            (* 10080 (parse-int (subseq up 1) 1)))
+           ;; Legacy fixed labels
+           ((string= up "M1") 1)
+           ((string= up "M5") 5)
+           ((string= up "M15") 15)
+           ((string= up "M30") 30)
+           ((string= up "H1") 60)
+           ((string= up "H4") 240)
+           ((string= up "D1") 1440)
+           ((string= up "W1") 10080)
+           (t 1))))
+      (t 1))))
 
 
 ;; Request backtest from Rust
@@ -199,93 +251,84 @@
    When INCLUDE-TRADES is true, requests per-trade pnl `trade_list` in the result."
   (let* ((req-id (or request-id (swimmy.core::generate-uuid)))
          (actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
-  
-  (setf swimmy.globals:*backtest-submit-last-id* req-id)
-  
-  ;; V8.0: Multi-Timeframe Logic
-  ;; Strategy decides its own destiny (timeframe)
-  (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
-         (timeframe (get-tf-minutes tf-slot))
-         
-         ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
-         (target-candles candles)
-         (len (length target-candles))
-         (aux-candles-ht (make-hash-table :test 'equal))  ;; Initialize aux candles as hash table
-         (msg nil))    ;; Message payload (string)
-    
-    ;; V8.10: Fetch Aux Candles for MTF
-    (when (and (slot-exists-p strat 'filter-enabled)
-               (strategy-filter-enabled strat)
-               (strategy-filter-tf strat))
-      (let* ((ftf (strategy-filter-tf strat))
-             (ftf-str (cond ((stringp ftf) ftf)
-                            ((numberp ftf) (get-tf-string ftf)) 
-                            (t "D1")))
-             ;; FIXME: Symbol hardcoded to USDJPY in history logic too?
-             ;; Ideally we fetch specific symbol history but for now we rely on *candle-histories-tf*
-             (sym-hist (if (and (boundp '*candle-histories-tf*) *candle-histories-tf*)
-                              (gethash actual-symbol *candle-histories-tf*)
-                              nil))
-             (hist (if sym-hist
-                       (gethash ftf-str sym-hist)
-                       nil)))
-        (when hist
-           (format t "[L] 🧩 Attaching ~a Filter Data (~d bars)~%" ftf-str (length hist))
-           (setf (gethash ftf-str aux-candles-ht) (candles-to-json hist)))))
+    (setf swimmy.globals:*backtest-submit-last-id* req-id)
 
-    (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: M~d)...~%" 
-            (strategy-name strat) actual-symbol suffix len timeframe)
-    
-    (let* ((override swimmy.core::*backtest-csv-override*)
-           (data-file (if (and override (> (length override) 0))
-                          override
-                          (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
-           (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
-           (use-file (and (probe-file data-file)
-                          (not wfv-suffix)))
-           (strategy-alist (strategy-to-alist strat :name-suffix suffix)))
+    ;; V8.0: Multi-Timeframe Logic
+    ;; Strategy decides its own destiny (timeframe)
+    (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
+           (timeframe (get-tf-minutes tf-slot))
+           ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
+           (target-candles candles)
+           (len (length target-candles))
+           (aux-candles-ht (make-hash-table :test 'equal))
+           (msg nil))
 
-	      (if use-file
-	          ;; Fast path: CSV on disk (recommended)
-	          (let* ((payload-sexpr `((action . "BACKTEST")
-	                                  (strategy . ,strategy-alist)
-	                                  (request_id . ,req-id)
-	                                  (data_id ,(format nil "~a_M1" actual-symbol))
-	                                  (candles_file ,data-file)
-	                                  (symbol . ,actual-symbol)
-	                                  (timeframe ,timeframe)
-	                                  ,@(when include-trades '((include_trades . t))))))
-	            (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
-	            (let ((*print-case* :downcase)
-	                  (*print-pretty* nil)
-                  (*print-right-margin* most-positive-fixnum)
-                  (*print-escape* t)
-                  (*package* (find-package :swimmy.school)))
-              (setf msg (format nil "~s" payload-sexpr))))
+      ;; V8.10: Fetch Aux Candles for MTF
+      (when (and (slot-exists-p strat 'filter-enabled)
+                 (strategy-filter-enabled strat)
+                 (strategy-filter-tf strat))
+        (let* ((ftf (strategy-filter-tf strat))
+               (ftf-str (cond ((stringp ftf) ftf)
+                              ((numberp ftf) (get-tf-string ftf))
+                              (t "D1")))
+               (sym-hist (and (boundp '*candle-histories-tf*) *candle-histories-tf*
+                              (gethash actual-symbol *candle-histories-tf*)))
+               (hist (and sym-hist (gethash ftf-str sym-hist))))
+          (when hist
+            (format t "[L] 🧩 Attaching ~a Filter Data (~d bars)~%" ftf-str (length hist))
+            (setf (gethash ftf-str aux-candles-ht) (candles-to-json hist)))))
 
-          ;; Fallback / WFV: send candles inline (避けたいが必要時のみ)
-	          (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
-	                                    using (hash-value v)
-	                                    collect (cons k v)))
-	                 (payload-sexpr `((action . "BACKTEST")
-	                                  (strategy . ,strategy-alist)
-	                                  (request_id . ,req-id)
-	                                  (candles . ,(candles-to-sexp target-candles))
-	                                  (aux_candles . ,aux-candles)
-	                                  (symbol . ,actual-symbol)
-	                                  (timeframe ,timeframe)
-	                                  ,@(when include-trades '((include_trades . t))))))
-	            (let ((*print-case* :downcase)
-	                  (*print-pretty* nil)
-	                  (*print-right-margin* most-positive-fixnum)
-                  (*print-escape* t)
-                  (*package* (find-package :swimmy.school)))
-              (setf msg (format nil "~s" payload-sexpr)))
-            (format t "[L] 📤 Sent Backtest Request (TF: M~d)~%" timeframe))))
+      (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: ~a)...~%"
+              (strategy-name strat) actual-symbol suffix len (get-tf-string timeframe))
 
-      ;; Dispatch
-      (when msg
-        (send-zmq-msg msg :target :backtest)))))
+      (let* ((override swimmy.core::*backtest-csv-override*)
+             (data-file (if (and override (> (length override) 0))
+                            override
+                            (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
+             (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
+             (use-file (and (probe-file data-file) (not wfv-suffix)))
+             (strategy-alist (strategy-to-alist strat :name-suffix suffix)))
+
+        (if use-file
+            ;; Fast path: CSV on disk (recommended)
+            (let* ((payload-sexpr `((action . "BACKTEST")
+                                    (strategy . ,strategy-alist)
+                                    (request_id . ,req-id)
+                                    (data_id ,(format nil "~a_M1" actual-symbol))
+                                    (candles_file ,data-file)
+                                    (symbol . ,actual-symbol)
+                                    (timeframe ,timeframe)
+                                    ,@(when include-trades '((include_trades . t))))))
+              (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
+              (let ((*print-case* :downcase)
+                    (*print-pretty* nil)
+                    (*print-right-margin* most-positive-fixnum)
+                    (*print-escape* t)
+                    (*package* (find-package :swimmy.school)))
+                (setf msg (format nil "~s" payload-sexpr))))
+
+            ;; Fallback / WFV: send candles inline (避けたいが必要時のみ)
+            (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
+                                      using (hash-value v)
+                                      collect (cons k v)))
+                   (payload-sexpr `((action . "BACKTEST")
+                                    (strategy . ,strategy-alist)
+                                    (request_id . ,req-id)
+                                    (candles . ,(candles-to-sexp target-candles))
+                                    (aux_candles . ,aux-candles)
+                                    (symbol . ,actual-symbol)
+                                    (timeframe ,timeframe)
+                                    ,@(when include-trades '((include_trades . t))))))
+              (let ((*print-case* :downcase)
+                    (*print-pretty* nil)
+                    (*print-right-margin* most-positive-fixnum)
+                    (*print-escape* t)
+                    (*package* (find-package :swimmy.school)))
+                (setf msg (format nil "~s" payload-sexpr)))
+              (format t "[L] 📤 Sent Backtest Request (TF: ~a)~%" (get-tf-string timeframe))))
+
+        (when msg
+          (send-zmq-msg msg :target :backtest))))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)

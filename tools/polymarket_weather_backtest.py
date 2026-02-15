@@ -340,6 +340,8 @@ def build_market_forecasts(
     *,
     events: Sequence[Mapping[str, Any]],
     forecast_temp_max_f_by_city_date: Mapping[Tuple[str, date], float],
+    sigma_model_f_by_city_date: Mapping[Tuple[str, date], float] | None = None,
+    calibration: Mapping[str, Any] | None = None,
     entry_offset_hours: int,
 ) -> List[MarketForecast]:
     forecasts: List[MarketForecast] = []
@@ -356,8 +358,7 @@ def build_market_forecasts(
         event_end = end_dt.date()
         entry_time = start_dt.astimezone(timezone.utc) + timedelta(hours=offset_h)
         lead_days = max(0, (event_end - entry_time.date()).days)
-        sigma_f = sigma_f_for_lead_days(lead_days)
-        conf = confidence_for_sigma(sigma_f)
+        sigma_base_f = float(sigma_f_for_lead_days(lead_days))
 
         for market in markets:
             if not isinstance(market, Mapping):
@@ -370,9 +371,19 @@ def build_market_forecasts(
             if parsed is None:
                 continue
             # Forecast lookup: keyed by (city string from question, target date).
-            mu_f = forecast_temp_max_f_by_city_date.get((parsed.city, date(event_end.year, parsed.month, parsed.day)))
+            target_day = date(event_end.year, parsed.month, parsed.day)
+            mu_f = forecast_temp_max_f_by_city_date.get((parsed.city, target_day))
             if mu_f is None:
                 continue
+
+            sigma_model_f = 0.0
+            if sigma_model_f_by_city_date is not None:
+                try:
+                    sigma_model_f = float(sigma_model_f_by_city_date.get((parsed.city, target_day), 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    sigma_model_f = 0.0
+            sigma_f = math.sqrt((sigma_base_f**2) + (sigma_model_f**2))
+            conf = confidence_for_sigma(sigma_f)
 
             mu: float
             sigma: float
@@ -385,6 +396,14 @@ def build_market_forecasts(
 
             p_yes = float(normal_bucket_probability(mu=mu, sigma=sigma, low=parsed.low, high=parsed.high))
             p_yes = float(_clamp(p_yes, 0.001, 0.999))
+            if calibration is not None:
+                try:
+                    from tools.probability_calibration import apply_probability_calibration
+
+                    p_yes = float(apply_probability_calibration(calibration, float(p_yes)))
+                except (OSError, ValueError, TypeError, KeyError):
+                    pass
+                p_yes = float(_clamp(p_yes, 0.001, 0.999))
 
             token_ids = parse_clob_token_ids(market)
             yes_token = token_ids[0] if len(token_ids) >= 2 else ""
@@ -643,6 +662,27 @@ def main() -> None:
     parser.add_argument("--entry-offset-hours", type=int, default=6)
     parser.add_argument("--candidate-per-event", type=int, default=3)
     parser.add_argument("--max-events-per-series", type=int, default=120)
+    parser.add_argument(
+        "--forecast-model",
+        action="append",
+        default=["gfs_seamless"],
+        help="Open-Meteo historical forecast model name (repeatable). Used to ensemble mu across models.",
+    )
+    parser.add_argument(
+        "--calibration-file",
+        default="",
+        help="Optional probability calibration JSON (see tools/probability_calibration.py).",
+    )
+    parser.add_argument(
+        "--write-calibration",
+        default="",
+        help="Write an isotonic calibration JSON trained on resolved markets in this run.",
+    )
+    parser.add_argument(
+        "--skip-trading",
+        action="store_true",
+        help="Skip trading simulation (accuracy-only). Useful for long windows and calibration training.",
+    )
     parser.add_argument("--price-history-interval", default="1m")
     parser.add_argument("--price-history-fidelity", type=int, default=60)
     parser.add_argument(
@@ -660,6 +700,19 @@ def main() -> None:
     parser.add_argument("--slippage-bps-per-side", type=float, default=-1.0)
     parser.add_argument("--write-report", default="")
     args = parser.parse_args()
+
+    calibration: Mapping[str, Any] | None = None
+    if str(args.calibration_file or "").strip():
+        try:
+            path = Path(str(args.calibration_file)).expanduser()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, Mapping):
+                from tools.probability_calibration import validate_calibration
+
+                validate_calibration(payload)
+                calibration = payload
+        except (OSError, ValueError, TypeError):
+            calibration = None
 
     today = datetime.now(timezone.utc).date()
     end = date.fromisoformat(args.end_date) if args.end_date else today
@@ -709,47 +762,91 @@ def main() -> None:
     # We import Open-Meteo geocoding/forecast from weather_open_meteo_signal for consistency.
     from tools.weather_open_meteo_signal import geocode_city_open_meteo
 
-    temp_map: Dict[Tuple[str, date], float] = {}
+    models = [part.strip() for item in (args.forecast_model or []) for part in str(item).split(",") if part.strip()]
+    # Preserve order while deduping.
+    seen_models: set[str] = set()
+    forecast_models: List[str] = []
+    for name in models:
+        if name in seen_models:
+            continue
+        seen_models.add(name)
+        forecast_models.append(name)
+    if not forecast_models:
+        forecast_models = ["gfs_seamless"]
+
+    temps_by_city_day: Dict[Tuple[str, date], List[float]] = {}
     for city in unique_cities:
         geo = geocode_city_open_meteo(city=city)
         if geo is None:
             continue
-        params = {
-            "latitude": str(geo.latitude),
-            "longitude": str(geo.longitude),
-            "daily": "temperature_2m_max",
-            "start_date": start.isoformat(),
-            "end_date": end.isoformat(),
-            "timezone": "UTC",
-            "temperature_unit": "fahrenheit",
-            "models": "gfs_seamless",
-        }
-        url = "https://historical-forecast-api.open-meteo.com/v1/forecast?" + urlencode(params)
-        payload = _request_json(url)
-        daily = payload.get("daily") if isinstance(payload, Mapping) else None
-        if not isinstance(daily, Mapping):
-            continue
-        times = daily.get("time")
-        temps = daily.get("temperature_2m_max")
-        if not isinstance(times, list) or not isinstance(temps, list):
-            continue
-        for t, temp in zip(times, temps):
-            if not isinstance(t, str):
-                continue
+        for model_name in forecast_models:
+            params = {
+                "latitude": str(geo.latitude),
+                "longitude": str(geo.longitude),
+                "daily": "temperature_2m_max",
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "timezone": "UTC",
+                "temperature_unit": "fahrenheit",
+                "models": model_name,
+            }
+            url = "https://historical-forecast-api.open-meteo.com/v1/forecast?" + urlencode(params)
             try:
-                day = date.fromisoformat(t[:10])
-            except ValueError:
+                payload = _request_json(url)
+            except (OSError, TimeoutError, ValueError):
                 continue
-            val = _to_float(temp)
-            if val is None:
+            daily = payload.get("daily") if isinstance(payload, Mapping) else None
+            if not isinstance(daily, Mapping):
                 continue
-            temp_map[(city, day)] = float(val)
+            times = daily.get("time")
+            temps = daily.get("temperature_2m_max")
+            if not isinstance(times, list) or not isinstance(temps, list):
+                continue
+            for t, temp in zip(times, temps):
+                if not isinstance(t, str):
+                    continue
+                try:
+                    day = date.fromisoformat(t[:10])
+                except ValueError:
+                    continue
+                val = _to_float(temp)
+                if val is None:
+                    continue
+                temps_by_city_day.setdefault((city, day), []).append(float(val))
+
+    temp_map: Dict[Tuple[str, date], float] = {}
+    sigma_model_map: Dict[Tuple[str, date], float] = {}
+    for key, temps in temps_by_city_day.items():
+        if not temps:
+            continue
+        mu = sum(float(x) for x in temps) / float(len(temps))
+        temp_map[key] = float(mu)
+        if len(temps) > 1:
+            sigma_model = math.sqrt(sum((float(x) - float(mu)) ** 2 for x in temps) / float(len(temps)))
+            sigma_model_map[key] = float(sigma_model)
 
     forecasts_all = build_market_forecasts(
         events=events,
         forecast_temp_max_f_by_city_date=temp_map,
+        sigma_model_f_by_city_date=sigma_model_map,
+        calibration=calibration,
         entry_offset_hours=int(args.entry_offset_hours),
     )
+
+    if str(args.write_calibration or "").strip():
+        from tools.probability_calibration import fit_isotonic_calibrator, validate_calibration
+
+        samples: List[Tuple[float, int]] = []
+        for row in forecasts_all:
+            if row.winner == "YES":
+                samples.append((float(row.p_yes), 1))
+            elif row.winner == "NO":
+                samples.append((float(row.p_yes), 0))
+        calib = fit_isotonic_calibrator(samples=samples)
+        validate_calibration(calib)
+        out_path = Path(str(args.write_calibration)).expanduser()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(calib, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Candidate reduction per event: keep top N by p_yes.
     # This keeps network cost bounded for trading simulation (prices are only available for ~1 month).
@@ -786,16 +883,28 @@ def main() -> None:
             "slippage_bps_per_side": slippage_bps,
         }
     )
-    trading = simulate_trading_backtest(
-        rows=forecasts,
-        bot_config=bot_config,
-        price_history_interval=str(args.price_history_interval),
-        price_history_fidelity=int(args.price_history_fidelity),
-        fee_bps_per_side=fee_bps,
-        slippage_bps_per_side=slippage_bps,
-        snapshots_dir=str(args.snapshots_dir),
-        snapshot_max_age_minutes=int(args.snapshot_max_age_minutes),
-    )
+    if bool(args.skip_trading):
+        trading = {
+            "resolved_trades": 0,
+            "total_stake_usd": 0.0,
+            "expected_value_usd": 0.0,
+            "realized_pnl_usd": 0.0,
+            "win_rate": None,
+            "return_on_stake": None,
+            "trades": [],
+            "pricing": {"sources": {}, "snapshots_indexed": 0},
+        }
+    else:
+        trading = simulate_trading_backtest(
+            rows=forecasts,
+            bot_config=bot_config,
+            price_history_interval=str(args.price_history_interval),
+            price_history_fidelity=int(args.price_history_fidelity),
+            fee_bps_per_side=fee_bps,
+            slippage_bps_per_side=slippage_bps,
+            snapshots_dir=str(args.snapshots_dir),
+            snapshot_max_age_minutes=int(args.snapshot_max_age_minutes),
+        )
 
     trades_all = trading.get("trades", [])
     if not isinstance(trades_all, list):

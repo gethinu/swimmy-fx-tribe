@@ -22,7 +22,8 @@
                     (data_id . ,data-id)
                     (timeframe . ,tf-num))))
     (send-zmq-msg (swimmy.core::sexp->string payload :package *package*) :target :cmd)
-    (format t "[STRESS] 📤 Testing ~a on ~a (TF: M~d)~%" (strategy-name strat) data-id tf-num)))
+    (format t "[STRESS] 📤 Testing ~a on ~a (TF: ~a)~%"
+            (strategy-name strat) data-id (get-tf-string tf-num))))
 
 (defvar *stress-test-triggered* nil "Flag to prevent re-running stress test")
 

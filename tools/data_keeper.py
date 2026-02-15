@@ -7,7 +7,7 @@ import fcntl
 import requests
 from datetime import datetime
 from pathlib import Path
-from collections import defaultdict, deque
+from collections import defaultdict, deque, OrderedDict
 
 
 def resolve_base_dir() -> Path:
@@ -61,7 +61,14 @@ MAX_CANDLES_PER_SYMBOL = 500_000
 MAX_TICKS_PER_SYMBOL = _env_int("SWIMMY_MAX_TICKS_PER_SYMBOL", 200_000)
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5
-VALID_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
+CORE_TIMEFRAMES = {"M1", "M5", "M15", "M30", "H1", "H4", "H12", "D1", "W1", "MN"}
+
+MAX_CUSTOM_TF_CACHE = _env_int("SWIMMY_MAX_CUSTOM_TF_CACHE", 32)
+MAX_CUSTOM_TF_CANDLES = _env_int("SWIMMY_MAX_CUSTOM_TF_CANDLES", 50_000)
+
+# Custom TF cache: (symbol, tf_minutes) -> {"m1_version": int, "candles": deque(oldest-first)}
+custom_tf_cache = OrderedDict()
+m1_versions = defaultdict(int)
 
 # In-memory storage: history[symbol][timeframe] = deque
 candle_histories = defaultdict(
@@ -102,12 +109,192 @@ def _normalize_symbol(value):
 
 
 def _normalize_timeframe(value):
-    if not value:
-        return "M1"
-    tf = str(value).upper()
-    if tf not in VALID_TIMEFRAMES:
+    """Normalize timeframe input to minutes and a canonical label.
+
+    Supported inputs:
+    - Core labels: M1/M5/M15/M30/H1/H4/H12/D1/W1/MN (+ aliases MN1/Monthly)
+    - Arbitrary minute integers (e.g. 36, 210, 300, 3600)
+    - Arbitrary labels like "M36", "H5", "H60", "D2", "W3"
+    """
+    minutes = _normalize_timeframe_minutes(value)
+    if minutes is None:
         return None
-    return tf
+    return _timeframe_label_from_minutes(minutes)
+
+
+def _timeframe_label_from_minutes(minutes: int) -> str:
+    m = int(minutes)
+    if m <= 1:
+        return "M1"
+    if m == 43200:
+        return "MN"
+    if m >= 10080 and m % 10080 == 0:
+        return f"W{m // 10080}"
+    if m >= 1440 and m % 1440 == 0:
+        return f"D{m // 1440}"
+    if m >= 60 and m % 60 == 0:
+        return f"H{m // 60}"
+    return f"M{m}"
+
+
+def _normalize_timeframe_minutes(value):
+    if value is None:
+        return 1
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        m = _coerce_int(value)
+        if not m or m <= 0:
+            return None
+        return m
+    tf = str(value).strip().upper()
+    if not tf:
+        return 1
+    if tf in ("MN1", "MONTHLY"):
+        tf = "MN"
+    if tf == "MN":
+        return 43200
+    if tf.isdigit():
+        m = int(tf)
+        return m if m > 0 else None
+    # Label forms: M36, H5, D2, W3
+    if len(tf) >= 2 and tf[0] in ("M", "H", "D", "W"):
+        n = tf[1:]
+        if n.isdigit():
+            base = int(n)
+            if tf[0] == "M":
+                return base
+            if tf[0] == "H":
+                return base * 60
+            if tf[0] == "D":
+                return base * 1440
+            if tf[0] == "W":
+                return base * 10080
+    return None
+
+
+def _normalize_core_timeframe_label(value):
+    """Return canonical label for core TFs only, or None for custom TFs."""
+    label = _normalize_timeframe(value)
+    if not label:
+        return None
+    if label == "MN1":
+        label = "MN"
+    if label not in CORE_TIMEFRAMES:
+        return None
+    return label
+
+
+def _resample_candles_aligned(candles: list[dict], tf_seconds: int) -> list[dict]:
+    """Resample candles (oldest-first) into tf_seconds buckets, aligned to unix bucket start.
+
+    This matches Guardian's resampler semantics to avoid "BT vs execution saw different bars".
+    """
+    if not candles or tf_seconds <= 60:
+        return list(candles)
+
+    resampled: list[dict] = []
+    current_bucket_start = None
+
+    open_ = 0.0
+    high = float("-inf")
+    low = float("inf")
+    close = 0.0
+    volume = 0
+    has_data = False
+
+    for c in candles:
+        ts = _coerce_int(c.get("timestamp"))
+        if ts is None:
+            continue
+        bucket_start = (ts // int(tf_seconds)) * int(tf_seconds)
+
+        if current_bucket_start is None or bucket_start != current_bucket_start:
+            if has_data:
+                resampled.append(
+                    {
+                        "timestamp": int(current_bucket_start),
+                        "open": float(open_),
+                        "high": float(high),
+                        "low": float(low),
+                        "close": float(close),
+                        "volume": int(volume),
+                    }
+                )
+            current_bucket_start = bucket_start
+            open_ = float(c.get("open", 0.0))
+            high = float(c.get("high", open_))
+            low = float(c.get("low", open_))
+            close = float(c.get("close", open_))
+            volume = int(_coerce_int(c.get("volume"), default=0) or 0)
+            has_data = True
+        else:
+            high = max(high, float(c.get("high", high)))
+            low = min(low, float(c.get("low", low)))
+            close = float(c.get("close", close))
+            volume += int(_coerce_int(c.get("volume"), default=0) or 0)
+
+    if has_data:
+        resampled.append(
+            {
+                "timestamp": int(current_bucket_start),
+                "open": float(open_),
+                "high": float(high),
+                "low": float(low),
+                "close": float(close),
+                "volume": int(volume),
+            }
+        )
+
+    return resampled
+
+
+def _get_history_series(symbol: str, tf_minutes: int, count: int) -> list[dict]:
+    """Return candles newest-first."""
+    tf_minutes = int(tf_minutes)
+    label = _timeframe_label_from_minutes(tf_minutes)
+
+    # Fast path: core TFs (stored as-is)
+    if label in CORE_TIMEFRAMES:
+        history = list(candle_histories[symbol].get(label, []))
+        if count < len(history):
+            history = history[-count:]
+        history.reverse()
+        return history
+
+    # Custom TF: resample from M1 with LRU cache + version invalidation.
+    m1 = candle_histories[symbol].get("M1")
+    if not m1:
+        return []
+
+    key = (symbol, tf_minutes)
+    version = int(m1_versions.get(symbol, 0))
+    cached = custom_tf_cache.get(key)
+    if cached and cached.get("m1_version") == version:
+        series = list(cached.get("candles", []))
+        custom_tf_cache.move_to_end(key)
+    else:
+        # Build up to MAX_CUSTOM_TF_CANDLES (oldest-first)
+        need_m1 = max(0, (MAX_CUSTOM_TF_CANDLES + 2) * tf_minutes)
+        base = list(m1)
+        if need_m1 and need_m1 < len(base):
+            base = base[-need_m1:]
+        series = _resample_candles_aligned(base, tf_seconds=tf_minutes * 60)
+        if MAX_CUSTOM_TF_CANDLES and len(series) > MAX_CUSTOM_TF_CANDLES:
+            series = series[-MAX_CUSTOM_TF_CANDLES:]
+        custom_tf_cache[key] = {
+            "m1_version": version,
+            "candles": deque(series, maxlen=MAX_CUSTOM_TF_CANDLES),
+        }
+        custom_tf_cache.move_to_end(key)
+        while len(custom_tf_cache) > MAX_CUSTOM_TF_CACHE:
+            custom_tf_cache.popitem(last=False)
+
+    if count < len(series):
+        series = series[-count:]
+    series = list(series)
+    series.reverse()
+    return series
 
 
 def _normalize_candle(candle):
@@ -265,11 +452,20 @@ def load_historical_data():
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
     # V9.5 Fix: Re-enable M1 for fast startup (Expert Panel 2026-01-14)
     # M1 CSVs are ~300MB each, but loading avoids slow MT5 backfill loop
-    timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"]
+    timeframes = ["M1", "M5", "M15", "M30", "H1", "H4", "H12", "D1", "W1", "MN"]
 
     for symbol in SUPPORTED_SYMBOLS:
         for tf in timeframes:
             candidates = [f"{symbol}_{tf}.csv", f"{symbol}.a_{tf}.csv"]
+            if tf == "MN":
+                candidates.extend(
+                    [
+                        f"{symbol}_MN1.csv",
+                        f"{symbol}.a_MN1.csv",
+                        f"{symbol}_Monthly.csv",
+                        f"{symbol}.a_Monthly.csv",
+                    ]
+                )
             csv_path = None
             for c in candidates:
                 p = os.path.join(data_dir, c)
@@ -413,6 +609,15 @@ def get_csv_path(symbol, tf):
     """Deep Validation: Helper to find CSV path."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "historical")
     candidates = [f"{symbol}_{tf}.csv", f"{symbol}.a_{tf}.csv"]
+    if str(tf).upper() in ("MN", "MN1"):
+        candidates.extend(
+            [
+                f"{symbol}_MN1.csv",
+                f"{symbol}.a_MN1.csv",
+                f"{symbol}_Monthly.csv",
+                f"{symbol}.a_Monthly.csv",
+            ]
+        )
     for c in candidates:
         p = os.path.join(data_dir, c)
         if os.path.exists(p):
@@ -460,16 +665,17 @@ def handle_request_sexp(message: str) -> str:
             return _error_response("Missing symbol")
         if symbol not in SUPPORTED_SYMBOLS:
             return _error_response(f"Unsupported symbol: {symbol}")
-        timeframe = _normalize_timeframe(data.get("timeframe"))
-        if not timeframe:
+        tf_value = data.get("timeframe")
+        if tf_value is None and "timeframe_minutes" in data:
+            tf_value = data.get("timeframe_minutes")
+        tf_minutes = _normalize_timeframe_minutes(tf_value)
+        if not tf_minutes:
             return _error_response("Invalid timeframe")
+        timeframe = _timeframe_label_from_minutes(tf_minutes)
         count = _coerce_int(data.get("count"))
         if not count or count <= 0:
             return _error_response("Invalid count")
-        history = list(candle_histories[symbol].get(timeframe, []))
-        if count < len(history):
-            history = history[-count:]
-        history.reverse()
+        history = _get_history_series(symbol, tf_minutes, count)
         return sexp_response(
             {
                 "type": "DATA_KEEPER_RESULT",
@@ -485,7 +691,10 @@ def handle_request_sexp(message: str) -> str:
         symbol = _normalize_symbol(data.get("symbol"))
         if not symbol:
             return _error_response("Missing symbol")
-        timeframe = _normalize_timeframe(data.get("timeframe"))
+        tf_value = data.get("timeframe")
+        if tf_value is None and "timeframe_minutes" in data:
+            tf_value = data.get("timeframe_minutes")
+        timeframe = _normalize_core_timeframe_label(tf_value)
         if not timeframe:
             return _error_response("Invalid timeframe")
         path = get_csv_path(symbol, timeframe)
@@ -501,7 +710,7 @@ def handle_request_sexp(message: str) -> str:
             return _error_response("Missing symbol")
         if symbol not in SUPPORTED_SYMBOLS:
             return _error_response(f"Unsupported symbol: {symbol}")
-        timeframe = _normalize_timeframe(data.get("timeframe"))
+        timeframe = _normalize_core_timeframe_label(data.get("timeframe"))
         if not timeframe:
             return _error_response("Invalid timeframe")
         candle, err = _normalize_candle(data.get("candle"))
@@ -509,6 +718,8 @@ def handle_request_sexp(message: str) -> str:
             return _error_response(err)
         with save_lock:
             candle_histories[symbol][timeframe].append(candle)
+            if timeframe == "M1":
+                m1_versions[symbol] += 1
         return sexp_response(
             {
                 "type": "DATA_KEEPER_RESULT",

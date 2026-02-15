@@ -1,8 +1,14 @@
+import inspect
 import importlib.util
+import io
+import math
+import json
 import sys
 import unittest
+from contextlib import redirect_stdout
 from datetime import date, datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 
@@ -221,6 +227,41 @@ class TestWeatherOpenMeteoSignal(unittest.TestCase):
                     with patch.object(mod.sys, "argv", ["weather_open_meteo_signal.py"]):
                         mod.main()
 
+    def test_main_supports_calibration_file(self) -> None:
+        mod = load_module()
+        calibration = {"method": "isotonic", "points": [{"x": 0.0, "y": 0.5}, {"x": 1.0, "y": 0.5}]}
+        markets = [
+            {
+                "id": "m1",
+                "question": "Will the highest temperature in New York City be between 54-56°F on February 13?",
+            }
+        ]
+        geo = mod.GeocodeResult(
+            name="New York City",
+            latitude=40.7128,
+            longitude=-74.0060,
+            timezone="America/New_York",
+        )
+        forecast = [mod.ForecastDay(day=date(2026, 2, 13), temperature_max_f=55.0, lead_days=1)]
+
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "calibration.json"
+            path.write_text(json.dumps(calibration), encoding="utf-8")
+            out = io.StringIO()
+            with patch.object(mod, "fetch_weather_markets_from_gamma", return_value=markets):
+                with patch.object(mod, "geocode_city_open_meteo", return_value=geo):
+                    with patch.object(mod, "fetch_forecast_open_meteo", return_value=forecast):
+                        with patch.object(mod.sys, "argv", ["weather_open_meteo_signal.py", "--calibration-file", str(path)]):
+                            try:
+                                with redirect_stdout(out):
+                                    mod.main()
+                            except SystemExit as exc:
+                                self.fail(f"main() should accept --calibration-file (SystemExit={exc.code})")
+            lines = [line for line in out.getvalue().splitlines() if line.strip()]
+            self.assertEqual(1, len(lines))
+            row = json.loads(lines[0])
+            self.assertEqual(0.5, float(row.get("p_yes")))
+
     def test_build_weather_signals_from_markets_uses_cache(self) -> None:
         mod = load_module()
         markets = [
@@ -272,6 +313,115 @@ class TestWeatherOpenMeteoSignal(unittest.TestCase):
         near = next(row for row in signals if row["market_id"] == "m1")
         far = next(row for row in signals if row["market_id"] == "m2")
         self.assertGreater(near["p_yes"], far["p_yes"])
+
+    def test_build_weather_signals_from_markets_supports_multi_model_ensemble(self) -> None:
+        mod = load_module()
+        markets = [
+            {
+                "id": "m1",
+                "question": "Will the highest temperature in New York City be between 54-56°F on February 13?",
+            }
+        ]
+
+        calls = {"geocode": 0, "forecast_models": []}
+
+        def geocode_city(city: str):
+            calls["geocode"] += 1
+            return mod.GeocodeResult(
+                name=city,
+                latitude=40.7128,
+                longitude=-74.0060,
+                timezone="America/New_York",
+            )
+
+        def fetch_forecast(*, latitude: float, longitude: float, timezone_name: str, model: str = ""):
+            _ = (latitude, longitude, timezone_name)
+            calls["forecast_models"].append(model)
+            temp_by_model = {"model_a": 50.0, "model_b": 60.0}
+            return [
+                mod.ForecastDay(
+                    day=date(2026, 2, 13),
+                    temperature_max_f=float(temp_by_model.get(model, 55.0)),
+                    lead_days=1,
+                )
+            ]
+
+        base_sigma = float(mod.sigma_f_for_lead_days(1))
+        base_conf = float(mod.confidence_for_sigma(base_sigma))
+        signals = mod.build_weather_signals_from_markets(
+            markets=markets,
+            now_utc=datetime(2026, 2, 12, 12, 0, tzinfo=timezone.utc),
+            geocode_city=geocode_city,
+            fetch_forecast=fetch_forecast,
+            forecast_models=["model_a", "model_b"],
+        )
+
+        self.assertEqual(1, len(signals))
+        self.assertEqual(1, calls["geocode"])
+        self.assertEqual(["model_a", "model_b"], sorted(calls["forecast_models"]))
+
+        row = signals[0]
+        self.assertEqual("m1", row.get("market_id"))
+        # Mean of 50F and 60F
+        self.assertEqual(55.0, float(row.get("forecast_temperature_max_f")))
+
+        sigma_total = math.sqrt((base_sigma**2) + (5.0**2))
+        sigma_used = float(row.get("sigma_f"))
+        self.assertEqual(round(sigma_total, 3), sigma_used)
+        self.assertLess(float(row.get("confidence")), base_conf)
+
+        parsed = mod.parse_temperature_bucket_question(markets[0]["question"])
+        assert parsed is not None
+        expected_p = mod.normal_bucket_probability(mu=55.0, sigma=sigma_total, low=parsed.low, high=parsed.high)
+        self.assertEqual(round(float(expected_p), 6), float(row.get("p_yes")))
+
+    def test_build_weather_signals_from_markets_applies_probability_calibration(self) -> None:
+        mod = load_module()
+
+        sig = inspect.signature(mod.build_weather_signals_from_markets)
+        self.assertIn("calibration", sig.parameters)
+
+        markets = [
+            {
+                "id": "m1",
+                "question": "Will the highest temperature in New York City be between 54-56°F on February 13?",
+            }
+        ]
+
+        def geocode_city(city: str):
+            return mod.GeocodeResult(
+                name=city,
+                latitude=40.7128,
+                longitude=-74.0060,
+                timezone="America/New_York",
+            )
+
+        def fetch_forecast(*, latitude: float, longitude: float, timezone_name: str, model: str = ""):
+            _ = (latitude, longitude, timezone_name, model)
+            return [
+                mod.ForecastDay(
+                    day=date(2026, 2, 13),
+                    temperature_max_f=55.0,
+                    lead_days=1,
+                )
+            ]
+
+        parsed = mod.parse_temperature_bucket_question(markets[0]["question"])
+        assert parsed is not None
+        sigma = float(mod.sigma_f_for_lead_days(1))
+        p_raw = float(mod.normal_bucket_probability(mu=55.0, sigma=sigma, low=parsed.low, high=parsed.high))
+        self.assertNotAlmostEqual(0.5, p_raw, places=3)
+
+        calibration = {"method": "isotonic", "points": [{"x": 0.0, "y": 0.5}, {"x": 1.0, "y": 0.5}]}
+        rows = mod.build_weather_signals_from_markets(
+            markets=markets,
+            now_utc=datetime(2026, 2, 12, 12, 0, tzinfo=timezone.utc),
+            geocode_city=geocode_city,
+            fetch_forecast=fetch_forecast,
+            calibration=calibration,
+        )
+        self.assertEqual(1, len(rows))
+        self.assertEqual(0.5, float(rows[0].get("p_yes")))
 
     def test_build_weather_signals_supports_celsius_exact_bucket(self) -> None:
         mod = load_module()

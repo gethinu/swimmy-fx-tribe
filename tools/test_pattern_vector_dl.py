@@ -3,7 +3,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError:  # Optional dependency for DL tooling.
+    np = None
 
 
 def resolve_base_dir() -> Path:
@@ -18,7 +21,16 @@ BASE_DIR = resolve_base_dir()
 sys.path.insert(0, str(BASE_DIR / "tools"))
 
 
+def _require_numpy() -> None:
+    if np is not None:
+        return
+    import unittest
+
+    raise unittest.SkipTest("numpy is not installed; skipping DL pattern-vector tests")
+
+
 def _make_samples(n=90, channels=5, window=120):
+    _require_numpy()
     rng = np.random.default_rng(42)
     samples = np.zeros((n, channels, window), dtype=np.float32)
     labels = np.zeros((n,), dtype=np.int32)
@@ -59,6 +71,7 @@ def _make_h1_rows(count: int = 360):
 
 
 def test_train_and_load_checkpoint():
+    _require_numpy()
     import pattern_vector_dl as dl
 
     tmp = Path(tempfile.mkdtemp(prefix="pattern_vector_dl_"))
@@ -88,6 +101,7 @@ def test_train_and_load_checkpoint():
 
 
 def test_train_from_history_writes_checkpoint_and_meta():
+    _require_numpy()
     import csv
     import train_pattern_vector_model as trainer
 

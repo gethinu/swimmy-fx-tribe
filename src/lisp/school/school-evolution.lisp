@@ -193,7 +193,10 @@
             ;; If same, force change
             (evolve-strategy strategy) ; Retry
             (progn
-              (format t "[EVOLUTION] 🧬 Mutating Timeframe: ~a M~d -> M~d~%" (strategy-name strategy) current-tf new-tf)
+              (format t "[EVOLUTION] 🧬 Mutating Timeframe: ~a ~a -> ~a~%"
+                      (strategy-name strategy)
+                      (if (fboundp 'get-tf-string) (get-tf-string current-tf) current-tf)
+                      (if (fboundp 'get-tf-string) (get-tf-string new-tf) new-tf))
               (mutate-timeframe-param strategy current-tf new-tf))))
 
       ;; 90% Chance to mutate Indicators
