@@ -230,14 +230,12 @@ fn sharpe_ratio(returns: &[f64]) -> f64 {
     if returns.is_empty() {
         return 0.0;
     }
-    let active: Vec<f64> = returns
+    // IMPORTANT: Include 0-return days. Dropping them inflates Sharpe for sparse strategies.
+    let mean = returns.iter().sum::<f64>() / returns.len() as f64;
+    let variance = returns
         .iter()
-        .copied()
-        .filter(|r| r.abs() > 1e-12)
-        .collect();
-    let sample = if active.len() >= 2 { &active[..] } else { returns };
-    let mean = sample.iter().sum::<f64>() / sample.len() as f64;
-    let variance = sample.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / sample.len() as f64;
+        .map(|r| (r - mean).powi(2))
+        .sum::<f64>() / returns.len() as f64;
     let std = variance.sqrt();
     if std == 0.0 {
         return 0.0;
@@ -1216,10 +1214,12 @@ mod tests {
     }
 
     #[test]
-    fn test_sharpe_ratio_ignores_zero_returns() {
+    fn test_sharpe_ratio_includes_zero_returns() {
         let returns = vec![0.0, 0.0, 0.01, 0.02];
         let sharpe = sharpe_ratio(&returns);
-        assert!(sharpe > 30.0);
+        // If you drop 0-return days, Sharpe gets artificially inflated for sparse strategies.
+        // This assertion locks in the "include zeros" behavior to prevent regressions.
+        assert!((sharpe - 14.359032633914383).abs() < 1e-9);
     }
     
     #[test]
