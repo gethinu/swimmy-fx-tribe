@@ -14,7 +14,7 @@
          (out (getf result :sexp)))
     (assert-true (and strat (swimmy.school::strategy-p strat)) "Expected strategy instance")
     (assert-equal "Legacy-1" (strategy-name strat))
-    (assert-equal "M5" (strategy-timeframe strat))
+    (assert-equal 5 (strategy-timeframe strat))
     (assert-true
      (and (stringp out) (search "#S(STRATEGY" out))
      "Expected #S serialization")))
@@ -24,7 +24,9 @@
   (let* ((s (swimmy.school:make-strategy :name "S-1" :symbol "USDJPY" :timeframe "H1"))
          (sexp (format nil "~s" s))
          (result (swimmy.school::normalize-strategy-sexp sexp))
+         (strat (getf result :strategy))
          (out (getf result :sexp)))
     (assert-true
      (and (stringp out) (search "#S(STRATEGY" out))
-     "Expected #S serialization")))
+     "Expected #S serialization")
+    (assert-equal 60 (strategy-timeframe strat))))
