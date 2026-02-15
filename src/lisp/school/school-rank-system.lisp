@@ -370,9 +370,18 @@
                       *strategy-knowledge-base*)))
     ;; Apply TF filter
     (when timeframe
-      (setf candidates (remove-if-not 
-                         (lambda (s) (eql (strategy-timeframe s) timeframe)) 
-                         candidates)))
+      (let* ((tf-key (if (fboundp 'get-tf-bucket-minutes)
+                         (get-tf-bucket-minutes timeframe)
+                         timeframe)))
+        (setf candidates
+              (remove-if-not
+               (lambda (s)
+                 (let* ((raw (or (strategy-timeframe s) 1))
+                        (k (if (fboundp 'get-tf-bucket-minutes)
+                               (get-tf-bucket-minutes raw)
+                               raw)))
+                   (eql k tf-key)))
+               candidates))))
     ;; Apply Direction filter
     (when direction
       (setf candidates (remove-if-not 
@@ -618,8 +627,8 @@
 ;;; V47.2: Category = TF × Direction × Symbol
 ;;; ---------------------------------------------------------------------------
 
-(defparameter *supported-timeframes* '(5 15 60 240 1440 10080)
-  "M5, M15, H1, H4, D1, W1")
+(defparameter *supported-timeframes* '(5 15 30 60 240 1440 10080 43200)
+  "Category TF buckets (minutes): M5, M15, M30, H1, H4, D1, W1, MN")
 (defparameter *supported-directions* '(:BUY :SELL :BOTH))
 (defparameter *supported-symbols* '("EURUSD" "GBPUSD" "USDJPY"))
 
@@ -716,8 +725,14 @@
 (defun collect-active-timeframes ()
   "Collect all unique timeframes present in the active KB."
   (remove nil
-          (remove-duplicates (mapcar #'strategy-timeframe *strategy-knowledge-base*)
-                             :test #'eql)))
+          (remove-duplicates
+           (mapcar (lambda (s)
+                     (let ((raw (or (strategy-timeframe s) 1)))
+                       (if (fboundp 'get-tf-bucket-minutes)
+                           (get-tf-bucket-minutes raw)
+                           raw)))
+                   *strategy-knowledge-base*)
+           :test #'eql)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; A-RANK EVALUATION

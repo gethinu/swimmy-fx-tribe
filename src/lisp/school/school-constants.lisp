@@ -5,7 +5,7 @@
 ;;; ==========================================
 
 ;;; 1. UNIVERSE DEFINITION (Simons Scope)
-(defparameter *timeframes* '("M5" "M15" "H1" "H4" "D1" "W1" "MN") "Multi-Timeframe Scope")
+(defparameter *timeframes* '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN") "Multi-Timeframe Scope")
 (defparameter *symbols* '("USDJPY" "EURUSD" "GBPUSD") "Primary Currency Pairs")
 
 ;;; 2. BACKTEST RANGE (Screening)

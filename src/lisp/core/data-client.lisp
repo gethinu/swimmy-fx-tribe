@@ -174,7 +174,7 @@
           (let ((tf-hash (gethash symbol *candle-histories-tf*)))
             (if tf-hash (gethash timeframe tf-hash) nil)))))
 
-(defun add-candle-to-keeper (symbol candle)
+(defun add-candle-to-keeper (symbol candle &optional (timeframe "M1"))
   "Push a new candle to Data Keeper for persistence."
   (when *data-keeper-available*
     (let* ((candle-alist `((timestamp . ,(candle-timestamp candle))
@@ -185,6 +185,7 @@
                            (volume . ,(candle-volume candle))))
            (command (build-data-keeper-request "ADD_CANDLE"
                                                :symbol symbol
+                                               :timeframe timeframe
                                                :candle candle-alist)))
       (data-keeper-query command))))
 

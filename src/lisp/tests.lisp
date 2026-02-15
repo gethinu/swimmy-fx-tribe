@@ -6606,7 +6606,7 @@
       (setf (symbol-function 'swimmy.school::validate-for-a-rank-promotion) orig-validate))))
 
 (deftest test-run-b-rank-culling-uses-active-timeframes-dynamically
-  "run-b-rank-culling should include active B timeframes (e.g., M300/M3600)."
+  "run-b-rank-culling should include active B timeframes via TF buckets (e.g., H5->H4 bucket)."
   (let* ((s (swimmy.school:make-strategy :name "UT-TF-300"
                                          :rank :B
                                          :symbol "USDJPY"
@@ -6631,8 +6631,8 @@
                 (lambda (timeframe direction symbol)
                   (push (list timeframe direction symbol) calls)))
           (swimmy.school::run-b-rank-culling)
-          (assert-true (find 300 calls :key #'first :test #'eql)
-                       "Expected dynamic active timeframe 300 to be processed"))
+          (assert-true (find 240 calls :key #'first :test #'eql)
+                       "Expected dynamic active TF bucket (300->240) to be processed"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf swimmy.school::*supported-directions* orig-dirs)
       (setf (symbol-function 'swimmy.school::collect-active-symbols) orig-symbols)
@@ -6653,6 +6653,15 @@
   (assert-equal 3600 (swimmy.school::get-tf-minutes "H60"))
   (assert-equal 43200 (swimmy.school::get-tf-minutes "MN"))
   (assert-equal 43200 (swimmy.school::get-tf-minutes "MN1")))
+
+(deftest test-timeframe-bucketization-is-finite
+  "get-tf-bucket-minutes should map arbitrary TFs into finite category/correlation buckets."
+  (assert-equal 5 (swimmy.school::get-tf-bucket-minutes 1))
+  (assert-equal 30 (swimmy.school::get-tf-bucket-minutes 36))
+  (assert-equal 60 (swimmy.school::get-tf-bucket-minutes 45)) ; tie -> prefer larger bucket
+  (assert-equal 240 (swimmy.school::get-tf-bucket-minutes 300))
+  (assert-equal 1440 (swimmy.school::get-tf-bucket-minutes 3600))
+  (assert-equal 43200 (swimmy.school::get-tf-bucket-minutes "MN1")))
 
 (deftest test-resample-candles-aligns-to-unix-buckets
   "resample-candles should align timestamps to bucket start (Guardian-compatible)."
@@ -8372,15 +8381,17 @@
 	                  test-run-legend-breeding-routes-child-through-add-to-kb
 	                  test-increment-breeding-count-does-not-graveyard-on-limit
 	                  test-daily-pnl-correlation
-                  test-daily-pnl-aggregation-scheduler
-                  test-2300-trigger-logic
-                  test-midnight-reset-logic
-                  test-daily-report-no-duplicate-after-flag-reset
-	                  test-weekly-summary-dedup
-	                  test-periodic-maintenance-flushes-stagnant-c-rank
-	                  test-evolution-report-throttle-uses-last-write
-	                  test-write-evolution-report-files-respects-configured-path
-		                  test-evolution-report-staleness-alert-throttles
+	                  test-daily-pnl-aggregation-scheduler
+	                  test-2300-trigger-logic
+	                  test-midnight-reset-logic
+		                  test-daily-report-no-duplicate-after-flag-reset
+		                  test-weekly-summary-dedup
+		                  test-weekly-summary-dedup-uses-sent-file
+		                  test-weekly-summary-notification-routes-to-weekly-channel
+		                  test-periodic-maintenance-flushes-stagnant-c-rank
+		                  test-evolution-report-throttle-uses-last-write
+		                  test-write-evolution-report-files-respects-configured-path
+			                  test-evolution-report-staleness-alert-throttles
 		                  test-scheduler-calls-timeout-flushes
 	                  test-periodic-maintenance-sends-brain-heartbeat
 	                  test-stagnant-crank-daily-guard

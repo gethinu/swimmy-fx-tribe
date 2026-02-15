@@ -123,6 +123,83 @@
       (when orig-notify
         (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
 
+(deftest test-weekly-summary-dedup-uses-sent-file
+  "Weekly summary should skip when .opus/weekly_summary.sent indicates it was sent recently."
+  (let* ((orig-home swimmy.core::*swimmy-home*)
+         (orig-last swimmy.shell::*last-weekly-summary*)
+         (orig-notify (and (fboundp 'swimmy.core:notify-discord)
+                           (symbol-function 'swimmy.core:notify-discord)))
+         (called 0)
+         (tmp-root (format nil "/tmp/swimmy-weekly-summary-~a/" (get-universal-time))))
+    (unwind-protect
+        (progn
+          ;; Isolate files under /tmp to avoid touching real .opus state.
+          (setf swimmy.core::*swimmy-home* (uiop:ensure-directory-pathname tmp-root))
+          (let ((sent-path (swimmy.core::swimmy-path ".opus/weekly_summary.sent")))
+            (ensure-directories-exist sent-path)
+            (with-open-file (out sent-path :direction :output :if-exists :supersede)
+              (format out "~a~%" (swimmy.shell::get-date-string))))
+          ;; Simulate restart/hot-reload reset.
+          (setf swimmy.shell::*last-weekly-summary* 0)
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-discord)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    (incf called))))
+          (let ((result (swimmy.shell::generate-weekly-summary)))
+            (assert-true (null result) "Should skip weekly summary when sentinel indicates already sent")
+            (assert-equal 0 called "Should not notify when skipping")
+            (assert-false (probe-file (swimmy.core::swimmy-path ".opus/weekly_summary.md"))
+                          "Should not overwrite weekly summary file when skipping")))
+      (setf swimmy.core::*swimmy-home* orig-home)
+      (setf swimmy.shell::*last-weekly-summary* orig-last)
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-discord) orig-notify)))))
+
+(deftest test-weekly-summary-notification-routes-to-weekly-channel
+  "Weekly summary should send its notification via notify-discord-weekly (Reports), not notify-discord (Live Feed)."
+  (let* ((orig-home swimmy.core::*swimmy-home*)
+         (orig-last swimmy.shell::*last-weekly-summary*)
+         (orig-weekly (and (fboundp 'swimmy.core:notify-discord-weekly)
+                           (symbol-function 'swimmy.core:notify-discord-weekly)))
+         (orig-main (and (fboundp 'swimmy.core:notify-discord)
+                         (symbol-function 'swimmy.core:notify-discord)))
+         (weekly-called 0)
+         (main-called 0)
+         (tmp-root (format nil "/tmp/swimmy-weekly-route-~a/" (get-universal-time))))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*swimmy-home* (uiop:ensure-directory-pathname tmp-root))
+          ;; Ensure no prior sent state exists.
+          (ignore-errors (delete-file (swimmy.core::swimmy-path ".opus/weekly_summary.sent")))
+          (ignore-errors (delete-file (swimmy.core::swimmy-path ".opus/weekly_summary.md")))
+          ;; Simulate restart/hot-reload reset.
+          (setf swimmy.shell::*last-weekly-summary* 0)
+          (when orig-weekly
+            (setf (symbol-function 'swimmy.core:notify-discord-weekly)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    (incf weekly-called)
+                    t)))
+          (when orig-main
+            (setf (symbol-function 'swimmy.core:notify-discord)
+                  (lambda (&rest _args)
+                    (declare (ignore _args))
+                    (incf main-called)
+                    t)))
+          (let ((result (swimmy.shell::generate-weekly-summary)))
+            (assert-true (stringp (namestring result)) "Expected weekly summary to return a path on success")
+            (assert-equal 1 weekly-called "Expected weekly channel notify to fire once")
+            (assert-equal 0 main-called "Expected main notify to NOT be used for weekly summary")
+            (assert-true (probe-file (swimmy.core::swimmy-path ".opus/weekly_summary.md"))
+                         "Expected weekly summary file to be generated")))
+      (setf swimmy.core::*swimmy-home* orig-home)
+      (setf swimmy.shell::*last-weekly-summary* orig-last)
+      (when orig-weekly
+        (setf (symbol-function 'swimmy.core:notify-discord-weekly) orig-weekly))
+      (when orig-main
+        (setf (symbol-function 'swimmy.core:notify-discord) orig-main)))))
+
 (deftest test-daily-cull-guard
   "Daily Stagnant C-Rank guard should run only once per day."
   (let* ((orig-day (and (boundp 'swimmy.school::*last-stagnant-crank-cull-day*)

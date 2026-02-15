@@ -422,13 +422,19 @@
                (sharpe (getf metrics :sharpe))
                (strat (or (find name swimmy.globals:*strategy-knowledge-base* :key #'swimmy.school:strategy-name :test #'string=)
                           (find name swimmy.globals:*evolved-strategies* :key #'swimmy.school:strategy-name :test #'string=))))
-          (if strat
-              (let* ((sym (swimmy.school:strategy-symbol strat))
-                     (dir (swimmy.school:strategy-direction strat))
-                     (tf (swimmy.school:strategy-timeframe strat))
-                     (cat-key (format nil "~a/~a/M~d" sym dir tf)))
-                (push sharpe (gethash cat-key category-map)))
-              (push sharpe (gethash "New/Testing" category-map)))))
+	          (if strat
+	              (let* ((sym (swimmy.school:strategy-symbol strat))
+	                     (dir (swimmy.school:strategy-direction strat))
+	                     (tf-raw (or (swimmy.school:strategy-timeframe strat) 1))
+	                     (tf-scope (if (fboundp 'swimmy.school::get-tf-bucket-minutes)
+	                                   (swimmy.school::get-tf-bucket-minutes tf-raw)
+	                                   tf-raw))
+	                     (tf-label (if (fboundp 'swimmy.school::get-tf-string)
+	                                   (swimmy.school::get-tf-string tf-scope)
+	                                   (format nil "M~d" tf-scope)))
+	                     (cat-key (format nil "~a/~a/~a" sym dir tf-label)))
+	                (push sharpe (gethash cat-key category-map)))
+	              (push sharpe (gethash "New/Testing" category-map)))))
       
       ;; 2. Calculate category stats
       (let ((cat-stats nil))

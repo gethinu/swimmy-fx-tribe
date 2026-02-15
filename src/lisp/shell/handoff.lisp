@@ -13,7 +13,8 @@
 ;;; ==========================================
 
 (defparameter *handoff-path* (swimmy.core::swimmy-path ".opus/daily_handoff.md"))
-(defparameter *last-weekly-summary* 0)
+(defvar *last-weekly-summary* 0
+  "Universal time when weekly summary was last generated in this image (in-memory guard).")
 
 ;;; ==========================================
 ;;; UTILITY FUNCTIONS
@@ -146,17 +147,61 @@
 ;;; WEEKLY SUMMARY
 ;;; ==========================================
 
+(defun %digits-only-p (s)
+  (and (stringp s)
+       (> (length s) 0)
+       (every #'digit-char-p s)))
+
+(defun %parse-ymd (s)
+  "Parse YYYY-MM-DD into integers; returns (values year month day) or NILs."
+  (let* ((text (string-trim '(#\Space #\Tab #\Newline #\Return) (or s "")))
+         (p1 (position #\- text))
+         (p2 (and p1 (position #\- text :start (1+ p1)))))
+    (when (and p1 p2)
+      (let ((year (ignore-errors (parse-integer text :start 0 :end p1)))
+            (month (ignore-errors (parse-integer text :start (1+ p1) :end p2)))
+            (day (ignore-errors (parse-integer text :start (1+ p2)))))
+        (values year month day)))))
+
+(defun %read-weekly-summary-sent-ut (&optional (path (swimmy.core::swimmy-path ".opus/weekly_summary.sent")))
+  "Read last weekly summary timestamp (UT seconds) from .opus/weekly_summary.sent.
+Supports either an integer UT, or a YYYY-MM-DD date (interpreted at local midnight)."
+  (when (probe-file path)
+    (ignore-errors
+      (with-open-file (in path :direction :input)
+        (let* ((line (read-line in nil nil))
+               (s (and line (string-trim '(#\Space #\Tab #\Newline #\Return) line))))
+          (cond
+            ((or (null s) (= (length s) 0)) nil)
+            ((%digits-only-p s) (parse-integer s))
+            (t
+             (multiple-value-bind (y m d) (%parse-ymd s)
+               (when (and (integerp y) (integerp m) (integerp d))
+                 (encode-universal-time 0 0 0 d m y))))))))))
+
+(defun %write-weekly-summary-sent (&optional (path (swimmy.core::swimmy-path ".opus/weekly_summary.sent")))
+  "Persist the last weekly summary date so de-dupe survives restarts/hot reloads."
+  (ensure-directories-exist path)
+  (with-open-file (out path :direction :output :if-exists :supersede)
+    (format out "~a~%" (get-date-string)))
+  path)
+
 (defun generate-weekly-summary ()
   "Generate weekly summary (call once per week)."
   (let* ((now (get-universal-time))
-         (last *last-weekly-summary*))
+         (summary-path (swimmy.core::swimmy-path ".opus/weekly_summary.md"))
+         (last-mem (if (numberp *last-weekly-summary*) *last-weekly-summary* 0))
+         (last-file (ignore-errors
+                      (when (probe-file summary-path)
+                        (or (file-write-date summary-path) 0))))
+         (last-sent (or (%read-weekly-summary-sent-ut) 0))
+         (last (max (or last-mem 0) (or last-file 0) (or last-sent 0))))
     (when (and (numberp last)
                (> last 0)
                (< (- now last) (* 7 24 3600)))
       (format t "[SHELL] ⏭️ Weekly summary already generated recently. Skipping.~%")
       (return-from generate-weekly-summary nil))
-    (let* ((progress (get-goal-progress))
-           (summary-path (swimmy.core::swimmy-path ".opus/weekly_summary.md")))
+    (let* ((progress (get-goal-progress)))
     
     (handler-case
         (progn
@@ -192,15 +237,15 @@
             
             (format out "*週次レビューを依頼: `/daily-review` で Opus と対話*~%"))
           
-          ;; Send Discord notification
-          (notify-discord
-           (format nil "📊 **週次サマリー生成完了**~%~%累計: ¥~:d (~,1f%)~%~%詳細: .opus/weekly_summary.md"
-                   (round (getf progress :actual-pnl))
-                   (getf progress :progress-pct))
-           :color 3447003)
-          
-          (setf *last-weekly-summary* (get-universal-time))
-          summary-path)
+          ;; Send Discord notification (route weekly summary to Reports, not Live Feed)
+	          (swimmy.core:notify-discord-weekly
+	           (format nil "📊 **週次サマリー生成完了**~%~%累計: ¥~:d (~,1f%)~%~%詳細: .opus/weekly_summary.md"
+	                   (round (getf progress :actual-pnl))
+	                   (getf progress :progress-pct)))
+	         
+	          (setf *last-weekly-summary* (get-universal-time))
+	          (ignore-errors (%write-weekly-summary-sent))
+	          summary-path)
       (error (e)
         (format t "[SHELL] ⚠️ Failed to generate weekly summary: ~a~%" e)
         nil)))))
@@ -295,27 +340,32 @@
           (let* ((danger (if (boundp '*danger-level*) (symbol-value '*danger-level*) 0))
                  (watchers
                   ;; 1. Gather Category Watchers (S-RANK per TF/Direction)
-                  ;; 3 Directions x 6 TFs = 18 possible categories per symbol
+                  ;; 3 Directions x 8 TF buckets = 24 possible categories per symbol
                   (let ((results nil)
-                        (tfs '(5 15 60 240 1440 10080))
+                        (tfs (if (boundp 'swimmy.school::*supported-timeframes*)
+                                 swimmy.school::*supported-timeframes*
+                                 '(5 15 30 60 240 1440 10080 43200)))
                         (dirs '(:BUY :SELL :BOTH)))
                     (dolist (tf tfs)
                       (dolist (dir dirs)
                         (let ((s-strats (swimmy.school:get-strategies-by-rank :S tf dir symbol)))
                           (when s-strats
                             (let ((best (car (sort (copy-list s-strats) #'> :key #'swimmy.school:strategy-sharpe))))
-                              (push (format nil "  • M~d ~a: `~a` (S:~,2f)"
-                                            tf dir
-                                            (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
-                                            (or (swimmy.school:strategy-sharpe best) 0.0))
-                                    results))))))
+                              (let ((tf-str (if (fboundp 'swimmy.school::get-tf-string)
+                                                (swimmy.school::get-tf-string tf)
+                                                (format nil "M~d" tf))))
+                                (push (format nil "  • ~a ~a: `~a` (S:~,2f)"
+                                              tf-str dir
+                                              (subseq (swimmy.school:strategy-name best) 0 (min 20 (length (swimmy.school:strategy-name best))))
+                                              (or (swimmy.school:strategy-sharpe best) 0.0))
+                                      results)))))))
                     (if results (nreverse results) '("  (Sランク待機なし)"))))
                  (market-source-str (%status-source-label market-source))
                  (market-reason-str (%status-market-reason-label market-reason))
                  (pred-reason-str (%status-prediction-reason-label pred-reason))
                  (freshness-str (%status-freshness-summary history now))
                  (pred-action (if (symbolp pred) (string-upcase (symbol-name pred)) "HOLD"))
-                 (pred-conf (* 100 (if (numberp conf) conf 0.0))))
+                  (pred-conf (* 100 (if (numberp conf) conf 0.0))))
             (swimmy.core:notify-discord-status
              (format nil "🕒 **~a 状況レポート**
 価格: **~,3f**

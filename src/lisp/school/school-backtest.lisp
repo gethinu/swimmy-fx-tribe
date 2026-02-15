@@ -243,6 +243,45 @@ MINUTES is an integer number of minutes (e.g., 5, 60, 240, 3600)."
            (t 1))))
       (t 1))))
 
+;; Finite timeframe buckets for category/correlation scoping.
+;; We keep internal TF as minutes(int) per-strategy, but categories must remain bounded
+;; even when exploring arbitrary TFs (M36/H2/H5/H60...).
+(defparameter *tf-scope-buckets-minutes* '(5 15 30 60 240 1440 10080 43200)
+  "Finite TF buckets (minutes) for category/correlation scoping.
+M1 and other sub-5m timeframes are bucketed to M5.")
+
+(defun get-tf-bucket-minutes (tf)
+  "Normalize TF (minutes or label) into one of *tf-scope-buckets-minutes*."
+  (let* ((m (get-tf-minutes tf))
+         (m (if (and (numberp m) (> m 0)) (round m) 5)))
+    (cond
+      ((<= m 5) 5)
+      (t
+       (let ((best nil)
+             (best-diff nil))
+         (dolist (b *tf-scope-buckets-minutes*
+                    (or best 5))
+           (let ((d (abs (- m b))))
+             ;; Tie-breaker: prefer larger bucket (more conservative scope).
+             (when (or (null best-diff)
+                       (< d best-diff)
+                       (and (= d best-diff) (or (null best) (> b best))))
+               (setf best b
+                     best-diff d)))))))))
+
+;; Bounded TF exploration set (minutes). Categories/correlation are bucketed separately via get-tf-bucket-minutes.
+(defparameter *tf-mining-candidates-minutes*
+  '(6 10 12 20 36 45 90 120 180 210 300 360 420 510 720 2880 3600)
+  "Extra TF minutes to mine beyond the default TF buckets.
+Keep this list bounded to avoid exploding the search space/data volume.")
+
+(defun get-tf-mutation-options ()
+  "Return bounded TF minutes list for evolution/LLM timeframe exploration."
+  (sort (remove-duplicates
+         (append *tf-scope-buckets-minutes* *tf-mining-candidates-minutes*)
+         :test #'eql)
+        #'<))
+
 
 ;; Request backtest from Rust
 (defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil) include-trades)
@@ -253,17 +292,25 @@ MINUTES is an integer number of minutes (e.g., 5, 60, 240, 3600)."
          (actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
     (setf swimmy.globals:*backtest-submit-last-id* req-id)
 
-    ;; V8.0: Multi-Timeframe Logic
-    ;; Strategy decides its own destiny (timeframe)
+    ;; V8.0: Multi-Timeframe Logic - strategy decides its own destiny (timeframe)
     (let* ((tf-slot (if (slot-exists-p strat 'timeframe) (strategy-timeframe strat) 1))
            (timeframe (get-tf-minutes tf-slot))
            ;; P5.1: Use raw candles (M1) for data_id to ensure cache hits
            (target-candles candles)
            (len (length target-candles))
            (aux-candles-ht (make-hash-table :test 'equal))
+           (override swimmy.core::*backtest-csv-override*)
+           (data-file (if (and override (> (length override) 0))
+                          override
+                          (format nil "~a"
+                                  (swimmy.core::swimmy-path
+                                   (format nil "data/historical/~a_M1.csv" actual-symbol)))))
+           (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
+           (use-file (and (probe-file data-file) (not wfv-suffix)))
+           (strategy-alist (strategy-to-alist strat :name-suffix suffix))
            (msg nil))
 
-      ;; V8.10: Fetch Aux Candles for MTF
+      ;; V8.10: Fetch Aux Candles for MTF (optional)
       (when (and (slot-exists-p strat 'filter-enabled)
                  (strategy-filter-enabled strat)
                  (strategy-filter-tf strat))
@@ -281,54 +328,46 @@ MINUTES is an integer number of minutes (e.g., 5, 60, 240, 3600)."
       (format t "[L] 📊 Requesting backtest for ~a on ~a~a (Candles: ~d / TF: ~a)...~%"
               (strategy-name strat) actual-symbol suffix len (get-tf-string timeframe))
 
-      (let* ((override swimmy.core::*backtest-csv-override*)
-             (data-file (if (and override (> (length override) 0))
-                            override
-                            (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" actual-symbol)))))
-             (wfv-suffix (or (search "_IS" suffix) (search "_OOS" suffix)))
-             (use-file (and (probe-file data-file) (not wfv-suffix)))
-             (strategy-alist (strategy-to-alist strat :name-suffix suffix)))
+      (if use-file
+          ;; Fast path: CSV on disk (recommended)
+          (let ((payload-sexpr `((action . "BACKTEST")
+                                 (strategy . ,strategy-alist)
+                                 (request_id . ,req-id)
+                                 (data_id ,(format nil "~a_M1" actual-symbol))
+                                 (candles_file ,data-file)
+                                 (symbol . ,actual-symbol)
+                                 (timeframe ,timeframe)
+                                 ,@(when include-trades '((include_trades . t))))))
+            (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
+            (let ((*print-case* :downcase)
+                  (*print-pretty* nil)
+                  (*print-right-margin* most-positive-fixnum)
+                  (*print-escape* t)
+                  (*package* (find-package :swimmy.school)))
+              (setf msg (format nil "~s" payload-sexpr))))
 
-        (if use-file
-            ;; Fast path: CSV on disk (recommended)
-            (let* ((payload-sexpr `((action . "BACKTEST")
-                                    (strategy . ,strategy-alist)
-                                    (request_id . ,req-id)
-                                    (data_id ,(format nil "~a_M1" actual-symbol))
-                                    (candles_file ,data-file)
-                                    (symbol . ,actual-symbol)
-                                    (timeframe ,timeframe)
-                                    ,@(when include-trades '((include_trades . t))))))
-              (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
-              (let ((*print-case* :downcase)
-                    (*print-pretty* nil)
-                    (*print-right-margin* most-positive-fixnum)
-                    (*print-escape* t)
-                    (*package* (find-package :swimmy.school)))
-                (setf msg (format nil "~s" payload-sexpr))))
+          ;; Fallback / WFV: send candles inline (避けたいが必要時のみ)
+          (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
+                                    using (hash-value v)
+                                    collect (cons k v)))
+                 (payload-sexpr `((action . "BACKTEST")
+                                  (strategy . ,strategy-alist)
+                                  (request_id . ,req-id)
+                                  (candles . ,(candles-to-sexp target-candles))
+                                  (aux_candles . ,aux-candles)
+                                  (symbol . ,actual-symbol)
+                                  (timeframe ,timeframe)
+                                  ,@(when include-trades '((include_trades . t))))))
+            (let ((*print-case* :downcase)
+                  (*print-pretty* nil)
+                  (*print-right-margin* most-positive-fixnum)
+                  (*print-escape* t)
+                  (*package* (find-package :swimmy.school)))
+              (setf msg (format nil "~s" payload-sexpr)))
+            (format t "[L] 📤 Sent Backtest Request (TF: ~a)~%" (get-tf-string timeframe))))
 
-            ;; Fallback / WFV: send candles inline (避けたいが必要時のみ)
-            (let* ((aux-candles (loop for k being the hash-keys of aux-candles-ht
-                                      using (hash-value v)
-                                      collect (cons k v)))
-                   (payload-sexpr `((action . "BACKTEST")
-                                    (strategy . ,strategy-alist)
-                                    (request_id . ,req-id)
-                                    (candles . ,(candles-to-sexp target-candles))
-                                    (aux_candles . ,aux-candles)
-                                    (symbol . ,actual-symbol)
-                                    (timeframe ,timeframe)
-                                    ,@(when include-trades '((include_trades . t))))))
-              (let ((*print-case* :downcase)
-                    (*print-pretty* nil)
-                    (*print-right-margin* most-positive-fixnum)
-                    (*print-escape* t)
-                    (*package* (find-package :swimmy.school)))
-                (setf msg (format nil "~s" payload-sexpr)))
-              (format t "[L] 📤 Sent Backtest Request (TF: ~a)~%" (get-tf-string timeframe))))
-
-        (when msg
-          (send-zmq-msg msg :target :backtest))))))
+      (when msg
+        (send-zmq-msg msg :target :backtest)))))
 
 ;;; ══════════════════════════════════════════════════════════════════
 ;;;  WALK-FORWARD VALIDATION (López de Prado)

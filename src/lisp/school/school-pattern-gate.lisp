@@ -40,8 +40,9 @@ Returns (values new-lot multiplier reason p-up p-down p-flat).
 
 Fail-open:
 - When not applicable TF, insufficient history, missing query-fn, or service error -> multiplier=1.0."
-  (let* ((tf (string-upcase (format nil "~a" timeframe-key)))
-         (allowed (member tf '("H1" "H4" "D1" "W1" "MN1" "MN") :test #'string=))
+  (let* ((tf-raw (string-upcase (format nil "~a" timeframe-key)))
+         (tf (if (string= tf-raw "MN1") "MN" tf-raw))
+         (allowed (member tf '("H1" "H4" "D1" "W1" "MN") :test #'string=))
          (window (cond ((string= tf "W1") 104)
                        (t 120))))
     (cond

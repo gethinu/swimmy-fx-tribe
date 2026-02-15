@@ -16,7 +16,18 @@
 
 (defun generate-vs-prompt (strategy-type context)
   "Generate a Verbalized Sampling prompt with deep context."
-  (let ((analysis (or (getf context :analysis) "No analysis available")))
+  (let* ((analysis (or (getf context :analysis) "No analysis available"))
+         (tf-options (if (fboundp 'get-tf-mutation-options)
+                         (get-tf-mutation-options)
+                         '(5 15 30 60 240 1440 10080 43200)))
+         (tf-options-str
+           (format nil "~{~a~^, ~}"
+                   (mapcar (lambda (m)
+                             (let ((label (if (fboundp 'get-tf-string)
+                                              (get-tf-string m)
+                                              (format nil "M~d" m))))
+                               (format nil "~d (~a)" m label)))
+                           tf-options))))
     (format nil "You are an expert algorithmic trading strategist.
 
 TASK: Generate ~d distinct trading strategies of type '~a'.
@@ -45,13 +56,14 @@ RULES:
 1. Names must be unique (include Gen0 suffix).
 2. SL must NOT exceed 0.10 (10%).
 3. Logic must be valid Lisp s-expressions.
-4. Timeframe MUST be one of: 5 (M5), 15 (M15), 60 (H1), 240 (H4). DO NOT USE 1 (M1).
+4. Timeframe MUST be one of: ~a. DO NOT USE 1 (M1).
 5. Output ONLY valid JSON.
 
 Generate strategies now:"
             *vs-candidate-count*
             strategy-type
-            analysis)))
+            analysis
+            tf-options-str)))
 
 (defun evolve-via-llm (&optional requested-type)
   "Driver function: Auto-generate strategies using Verbalized Sampling."
@@ -98,7 +110,12 @@ Generate strategies now:"
                   (setf (strategy-sl strat) (min (strategy-sl strat) *safety-cap-sl*))
                   (setf (strategy-tp strat) (min (strategy-tp strat) *safety-cap-tp*))
 
-                  (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f) TF: ~d~%" (strategy-name strat) conf (strategy-timeframe strat))
+                  (let* ((tf (or (strategy-timeframe strat) 1))
+                         (tf-str (if (fboundp 'get-tf-string)
+                                     (get-tf-string tf)
+                                     (format nil "M~d" tf))))
+                    (format t "[L] 🆕 Candidate: ~a (Conf: ~,2f) TF: ~a~%"
+                            (strategy-name strat) conf tf-str))
 
                   (if (and *evolved-strategies* (> (length *evolved-strategies*) 0))
                        (request-clone-check strat nil)

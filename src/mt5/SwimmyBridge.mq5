@@ -339,19 +339,21 @@ int RegisterWarrior(ulong magic, ulong ticket, string symbol) {
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 //| Helper to map string TF to ENUM_TIMEFRAMES                        |
+//| NOTE: MT5 supports a fixed set of ENUM_TIMEFRAMES. Custom TFs     |
+//| should be resampled from M1 on the Brain/DataKeeper side.         |
 //+------------------------------------------------------------------+
-ENUM_TIMEFRAMES StringToTimeframe(string tf) {
-   if(tf == "M1") return PERIOD_M1;
-   if(tf == "M5") return PERIOD_M5;
-   if(tf == "M15") return PERIOD_M15;
-   if(tf == "M30") return PERIOD_M30;
-   if(tf == "H1") return PERIOD_H1;
-   if(tf == "H4") return PERIOD_H4;
-   if(tf == "H12") return PERIOD_H12;
-   if(tf == "D1") return PERIOD_D1;
-   if(tf == "W1") return PERIOD_W1;
-   if(tf == "MN") return PERIOD_MN1;
-   return PERIOD_M1; // Default
+bool TryStringToTimeframe(string tf, ENUM_TIMEFRAMES &period) {
+   if(tf == "M1")  { period = PERIOD_M1;  return true; }
+   if(tf == "M5")  { period = PERIOD_M5;  return true; }
+   if(tf == "M15") { period = PERIOD_M15; return true; }
+   if(tf == "M30") { period = PERIOD_M30; return true; }
+   if(tf == "H1")  { period = PERIOD_H1;  return true; }
+   if(tf == "H4")  { period = PERIOD_H4;  return true; }
+   if(tf == "H12") { period = PERIOD_H12; return true; }
+   if(tf == "D1")  { period = PERIOD_D1;  return true; }
+   if(tf == "W1")  { period = PERIOD_W1;  return true; }
+   if(tf == "MN")  { period = PERIOD_MN1; return true; }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -370,7 +372,14 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
       return;
    }
    
-   ENUM_TIMEFRAMES period = StringToTimeframe(tf);
+   ENUM_TIMEFRAMES period = PERIOD_M1;
+   string tf_label = tf;
+   if(!TryStringToTimeframe(tf, period)) {
+      // Avoid silently mislabeling M1 data as a custom TF.
+      LogInfo("⚠️ Unsupported TF '" + tf + "' requested; sending M1 for resampling.");
+      period = PERIOD_M1;
+      tf_label = "M1";
+   }
    
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
@@ -392,14 +401,14 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
    }
    
    if(copied > 0) {
-      LogInfo("📊 Sending " + IntegerToString(copied) + " " + tf + " candles for " + _Symbol + "...");
+      LogInfo("📊 Sending " + IntegerToString(copied) + " " + tf_label + " candles for " + _Symbol + "...");
       
       int batch_size = 5000;
       for(int batch = 0; batch < copied; batch += batch_size) {
          int end = MathMin(batch + batch_size, copied);
          
          string sexp = StringFormat("((type . \"HISTORY\") (symbol . \"%s\") (tf . \"%s\") (batch . %d) (total . %d) (data . (", 
-                                    EscapeSexpString(_Symbol), EscapeSexpString(tf), batch / batch_size, (copied / batch_size) + 1);
+                                    EscapeSexpString(_Symbol), EscapeSexpString(tf_label), batch / batch_size, (copied / batch_size) + 1);
          
          for(int i = end - 1; i >= batch; i--) {
             sexp += StringFormat("((t . %I64d) (o . %.5f) (h . %.5f) (l . %.5f) (c . %.5f))",
@@ -415,7 +424,7 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
          
          Sleep(50); // Small delay between batches
       }
-      LogInfo("✅ History Sent: " + IntegerToString(copied) + " bars (" + tf + ") for " + _Symbol);
+      LogInfo("✅ History Sent: " + IntegerToString(copied) + " bars (" + tf_label + ") for " + _Symbol);
    } else {
       LogError("Failed to copy rates for " + _Symbol + " " + tf + ". Error: " + IntegerToString(GetLastError()));
    }

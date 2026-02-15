@@ -186,18 +186,25 @@
   ;; 10% Chance to mutate Timeframe (Expert Panel Recommendation)
   (if (< (random 10) 1)
       (let* ((raw-tf (strategy-timeframe strategy))
-             (current-tf (if (numberp raw-tf) raw-tf 0)) ; Handle "H1" strings
-             (options '(5 15 60 240)) ; M5, M15, H1, H4
-             (new-tf (nth (random (length options)) options)))
-        (if (= new-tf current-tf)
-            ;; If same, force change
-            (evolve-strategy strategy) ; Retry
-            (progn
-              (format t "[EVOLUTION] 🧬 Mutating Timeframe: ~a ~a -> ~a~%"
-                      (strategy-name strategy)
-                      (if (fboundp 'get-tf-string) (get-tf-string current-tf) current-tf)
-                      (if (fboundp 'get-tf-string) (get-tf-string new-tf) new-tf))
-              (mutate-timeframe-param strategy current-tf new-tf))))
+             (current-tf (cond
+                           ((numberp raw-tf) (round raw-tf))
+                           ((and (stringp raw-tf) (fboundp 'get-tf-minutes)) (get-tf-minutes raw-tf))
+                           (t 60)))
+             (options (if (fboundp 'get-tf-mutation-options)
+                          (get-tf-mutation-options)
+                          '(5 15 30 60 240 1440 10080 43200)))
+             (new-tf current-tf))
+        ;; Pick a different TF (bounded search space).
+        (dotimes (_ 10)
+          (setf new-tf (nth (random (length options)) options))
+          (when (/= new-tf current-tf)
+            (return)))
+        (when (/= new-tf current-tf)
+          (format t "[EVOLUTION] 🧬 Mutating Timeframe: ~a ~a -> ~a~%"
+                  (strategy-name strategy)
+                  (if (fboundp 'get-tf-string) (get-tf-string current-tf) current-tf)
+                  (if (fboundp 'get-tf-string) (get-tf-string new-tf) new-tf))
+          (mutate-timeframe-param strategy current-tf new-tf)))
 
       ;; 90% Chance to mutate Indicators
       (let ((indicators (strategy-indicators strategy)))

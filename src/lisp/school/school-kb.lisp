@@ -180,9 +180,13 @@ trading universe. For multi-symbol evolution, we scope correlation to:
   (timeframe × direction × symbol)
 so identical logic across different symbols is allowed."
   (let* ((tf-raw (and (fboundp 'strategy-timeframe) (strategy-timeframe strategy)))
-         (tf (if (fboundp 'get-tf-minutes)
-                 (get-tf-minutes (or tf-raw 1))
-                 (or tf-raw 1)))
+         ;; Scope TF is bucketed to keep correlation keys finite under arbitrary TF exploration.
+         (tf (cond
+               ((fboundp 'get-tf-bucket-minutes)
+                (get-tf-bucket-minutes (or tf-raw 1)))
+               ((fboundp 'get-tf-minutes)
+                (get-tf-minutes (or tf-raw 1)))
+               (t (or tf-raw 1))))
          (dir (and (fboundp 'strategy-direction) (strategy-direction strategy)))
          (sym (and (fboundp 'strategy-symbol) (strategy-symbol strategy))))
     (list (or tf 1)

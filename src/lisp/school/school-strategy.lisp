@@ -153,9 +153,14 @@
 
 (defun make-category-key (strat)
   "V47.8: Category Key = (Timeframe Direction Symbol)"
-  (list (strategy-timeframe strat)
-        (strategy-direction strat)
-        (strategy-symbol strat)))
+  (let* ((tf (or (strategy-timeframe strat) 1))
+         ;; Category keys must remain bounded even with arbitrary TF exploration.
+         (tf-scope (if (fboundp 'get-tf-bucket-minutes)
+                       (get-tf-bucket-minutes tf)
+                       tf)))
+    (list tf-scope
+          (strategy-direction strat)
+          (strategy-symbol strat))))
 
 (defun categorize-strategy (strat)
   "V47.8: Categorize strategy by TF x Direction x Symbol.
