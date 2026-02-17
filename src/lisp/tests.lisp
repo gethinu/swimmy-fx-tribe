@@ -2613,6 +2613,37 @@
             (assert-false pendingp "Expected pending order to be removed on ORDER_ACK")))
       (setf swimmy.globals:*pending-orders* orig-pending))))
 
+(deftest test-internal-process-msg-order-ack-accepts-sharp-bool-token
+  "ORDER_ACK with #t payload should not be rejected as invalid SEXP."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-pending swimmy.globals:*pending-orders*)
+         (order-id "UT-ORDER-ACK-SHARP"))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.globals:*pending-orders* (make-hash-table :test 'equal))
+          (setf (gethash order-id swimmy.globals:*pending-orders*)
+                (list (get-universal-time)
+                      0
+                      '((type . "ORDER_OPEN")
+                        (instrument . "USDJPY")
+                        (side . "BUY")
+                        (lot . 0.10))))
+          (let ((out-stream (make-string-output-stream)))
+            (let ((*standard-output* out-stream))
+              (funcall fn
+                       (format nil
+                               "((type . \"ORDER_ACK\") (id . \"~a\") (ticket . 123456) (symbol . \"USDJPY\") (dup . #t))"
+                               order-id)))
+            (let ((output (get-output-stream-string out-stream)))
+              (assert-false (search "Unsafe/invalid SEXP" output)
+                            "Expected #t payload to be parsed without invalid SEXP warning")))
+          (multiple-value-bind (_ pendingp)
+              (gethash order-id swimmy.globals:*pending-orders*)
+            (declare (ignore _))
+            (assert-false pendingp "Expected pending order to be removed on ORDER_ACK with #t")))
+      (setf swimmy.globals:*pending-orders* orig-pending))))
+
 (deftest test-internal-process-msg-order-reject-clears-executor-pending
   "ORDER_REJECT should clear matching UUID from executor pending retry table."
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -10359,6 +10390,7 @@
                   test-internal-process-msg-account-info-refreshes-heartbeat
 			                  test-internal-process-msg-positions-sexp
 			                  test-internal-process-msg-order-ack-clears-executor-pending
+			                  test-internal-process-msg-order-ack-accepts-sharp-bool-token
 			                  test-internal-process-msg-order-reject-clears-executor-pending
 			                  test-internal-process-msg-order-reject-sink-guard-alert
 			                  test-internal-process-msg-order-reject-sink-guard-alert-dedupes-duplicate-id

@@ -421,8 +421,24 @@ bool ValidateOrderComment(string comment, string &reason) {
 //| Connection functions with retry logic                             |
 //+------------------------------------------------------------------+
 bool ConnectPubSocket() {
+   if(g_context == 0) {
+      LogError("Cannot connect PUB socket: ZMQ context is null");
+      g_pub_connected = false;
+      return false;
+   }
+
+   if(g_pub_socket != 0 && !g_pub_connected) {
+      zmq_close(g_pub_socket);
+      g_pub_socket = 0;
+   }
+
    if(g_pub_socket == 0) {
       g_pub_socket = zmq_socket(g_context, ZMQ_PUB);
+      if(g_pub_socket == 0) {
+         LogError("Failed to create PUB socket");
+         g_pub_connected = false;
+         return false;
+      }
    }
    
    string addr_pub_str = "tcp://" + InpWSL_IP + ":" + IntegerToString(InpPortMarket);
@@ -442,8 +458,24 @@ bool ConnectPubSocket() {
 }
 
 bool ConnectSubSocket() {
+   if(g_context == 0) {
+      LogError("Cannot connect SUB socket: ZMQ context is null");
+      g_sub_connected = false;
+      return false;
+   }
+
+   if(g_sub_socket != 0 && !g_sub_connected) {
+      zmq_close(g_sub_socket);
+      g_sub_socket = 0;
+   }
+
    if(g_sub_socket == 0) {
       g_sub_socket = zmq_socket(g_context, ZMQ_SUB);
+      if(g_sub_socket == 0) {
+         LogError("Failed to create SUB socket");
+         g_sub_connected = false;
+         return false;
+      }
    }
    
    string addr_sub_str = "tcp://" + InpWSL_IP + ":" + IntegerToString(InpPortExec);
@@ -507,6 +539,10 @@ int OnInit() {
    }
    
    g_context = zmq_ctx_new();
+   if(g_context == 0) {
+      LogError("Failed to create ZMQ context");
+      return(INIT_FAILED);
+   }
    
    // Initial connection attempts
    ConnectPubSocket();
@@ -525,6 +561,11 @@ void OnDeinit(const int reason) {
    if(g_pub_socket != 0) zmq_close(g_pub_socket);
    if(g_sub_socket != 0) zmq_close(g_sub_socket);
    if(g_context != 0) zmq_term(g_context);
+   g_pub_socket = 0;
+   g_sub_socket = 0;
+   g_context = 0;
+   g_pub_connected = false;
+   g_sub_connected = false;
    LogInfo("👋 Swimmy Bridge " + _Symbol + " shutdown");
 }
 
@@ -978,15 +1019,20 @@ bool SendPubWithRetry(string sexp, int max_attempts, int retry_delay_ms, int &at
    int payload_len = ArraySize(data) - 1;
    if(payload_len <= 0) return false;
 
+   int last_rc = -1;
    for(int attempt = 1; attempt <= attempts; attempt++) {
       attempts_used = attempt;
       int rc = zmq_send(g_pub_socket, data, payload_len, ZMQ_DONTWAIT);
+      last_rc = rc;
       if(rc >= 0) {
          return true;
       }
       if(attempt < attempts && retry_delay_ms > 0) {
          Sleep(retry_delay_ms);
       }
+   }
+   if(last_rc < 0) {
+      g_pub_connected = false;
    }
    return false;
 }

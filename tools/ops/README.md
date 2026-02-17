@@ -76,12 +76,19 @@ By default it sends only reject-path cases and skips live order placement.
 - Refresh metrics from DB
 - Generate report
 - Skip rank evaluation/culling
+- Skip full knowledge-base hydration (`init-knowledge-base`) to avoid long-running DB-wide SEXP reconstruction in report-only runs
 
 Run rank evaluation only when explicitly requested:
 
 ```bash
 tools/ops/finalize_rank_report.sh --with-rank-eval
 ```
+
+`--with-rank-eval` mode keeps the full path:
+- load knowledge base
+- refresh metrics
+- run rank evaluation
+- generate report
 
 ## Reseed active B from archive
 

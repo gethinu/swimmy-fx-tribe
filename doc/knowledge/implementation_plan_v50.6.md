@@ -22,6 +22,7 @@
 - `swimmy-school.service` を再起動し、`ExecStartPre`（`tools/restore_legend_61.lisp`）成功を確認。
 - DB確認: `Aggressive-Reversal=10080(W1)`, `MA-Ribbon-Scalp=10080(W1)`, `CCI-Trend-Breakout=240(H4)`。
 - 再起動後ログで対象3戦略の `execution.order_submitted` に `M1` は未検出。
+- `src/mt5/SwimmyBridge.mq5` の再コンパイル成功（2026-02-17 JST、ローカル確認）。
 - 監査ツール `tools/check_order_timeframe_consistency.py` を追加。  
   例: `python3 tools/check_order_timeframe_consistency.py --since 2026-02-17T17:04:06 --fail-on-issues`
 - `tools/system_audit.sh` に「Order timeframe consistency」ステップを統合。既定は `--lookback-minutes 120`（`ORDER_TF_AUDIT_LOOKBACK_MINUTES` で変更、固定開始時刻は `ORDER_TF_AUDIT_SINCE`）。
@@ -33,6 +34,7 @@
   - `ORDER_OPEN` の `symbol=ALL` は fail-close（全チャート一括発注を禁止）
   - `HISTORY` 送信の `total` バッチ数を厳密計算（5000本境界の off-by-one 解消）
   - コマンド処理は `MAX_COMMANDS_PER_TIMER` で1秒あたり複数件ドレイン
+  - ZMQ `context/socket` 生成失敗時は `INIT_FAILED` / 接続失敗扱いで fail-close、`ACK/REJECT` 送信全失敗時は `g_pub_connected=false` に落として再接続ループへ復帰
 
 ## 2026-02-17 実装追補: TF内部統一 + 低トレード過大評価補正
 
@@ -488,7 +490,7 @@ Sharpe < 0.3 → 違反
 
 ---
 
-### P6 ✅ 完了 (V47.5 Testing - Commit: TBD)
+### P6 ✅ 完了 (V47.5 Testing - Commit: 2b765a1)
 
 #### ① V47.5専用テスト追加
 - [x] テストファイル作成: `src/lisp/tests/school-v47-tests.lisp`
