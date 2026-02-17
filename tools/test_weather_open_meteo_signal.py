@@ -25,6 +25,16 @@ def load_module():
 
 
 class TestWeatherOpenMeteoSignal(unittest.TestCase):
+    def test_normalize_forecast_models_uses_defaults_and_dedupes(self) -> None:
+        mod = load_module()
+
+        defaults = mod.normalize_forecast_models([])
+        self.assertGreaterEqual(len(defaults), 1)
+        self.assertEqual(len(defaults), len(set(defaults)))
+
+        parsed = mod.normalize_forecast_models(["a,b", "b", "", " c "])
+        self.assertEqual(["a", "b", "c"], parsed)
+
     def test_geocode_and_forecast_network_errors_do_not_crash(self) -> None:
         mod = load_module()
 

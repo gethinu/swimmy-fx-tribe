@@ -43,6 +43,34 @@ if str(BASE_DIR) not in sys.path:
 from tools.weather_range_model import normal_bucket_probability, parse_temperature_bucket_question
 
 
+DEFAULT_FORECAST_MODELS: Tuple[str, ...] = ("gfs_seamless", "ecmwf_ifs025")
+
+
+def normalize_forecast_models(raw_models: Sequence[str], *, defaults: Sequence[str] = DEFAULT_FORECAST_MODELS) -> List[str]:
+    """Parse/normalize CLI forecast model values.
+
+    Accepts repeatable values and comma-separated values.
+    """
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw_models or []:
+        for part in str(item or "").split(","):
+            name = str(part or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append(name)
+    if out:
+        return out
+    for part in defaults or ():
+        name = str(part or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
@@ -659,6 +687,7 @@ def main() -> None:
     )
     if not markets:
         markets = fetch_gamma_markets(gamma_url=args.gamma_url, limit=max(1, args.limit))
+    forecast_models = normalize_forecast_models(args.forecast_model or [])
     rows = build_weather_signals_from_markets(
         markets=markets,
         now_utc=datetime.now(timezone.utc),
@@ -667,7 +696,7 @@ def main() -> None:
             forecast_days=max(1, int(args.forecast_days)),
             **kwargs,
         ),
-        forecast_models=[part.strip() for item in (args.forecast_model or []) for part in str(item).split(",") if part.strip()],
+        forecast_models=forecast_models,
         calibration=calibration,
     )
     text = render_jsonl(rows)

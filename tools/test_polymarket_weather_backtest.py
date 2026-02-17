@@ -24,6 +24,16 @@ def load_module():
 
 
 class TestPolymarketWeatherBacktest(unittest.TestCase):
+    def test_normalize_forecast_models_uses_defaults_and_dedupes(self) -> None:
+        mod = load_module()
+
+        defaults = mod.normalize_forecast_models([])
+        self.assertGreaterEqual(len(defaults), 1)
+        self.assertEqual(len(defaults), len(set(defaults)))
+
+        parsed = mod.normalize_forecast_models(["a,b", "b", "", " c "])
+        self.assertEqual(["a", "b", "c"], parsed)
+
     def test_parse_clob_token_ids_accepts_list_and_json_string(self) -> None:
         mod = load_module()
         self.assertEqual(["1", "2"], mod.parse_clob_token_ids({"clobTokenIds": ["1", "2"]}))

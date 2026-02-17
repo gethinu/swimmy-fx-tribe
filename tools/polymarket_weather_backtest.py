@@ -48,6 +48,30 @@ from tools.weather_open_meteo_signal import confidence_for_sigma, sigma_f_for_le
 from tools.weather_range_model import normal_bucket_probability, parse_temperature_bucket_question
 
 
+DEFAULT_FORECAST_MODELS: Tuple[str, ...] = ("gfs_seamless", "ecmwf_ifs025")
+
+
+def normalize_forecast_models(raw_models: Sequence[str], *, defaults: Sequence[str] = DEFAULT_FORECAST_MODELS) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw_models or []:
+        for part in str(item or "").split(","):
+            name = str(part or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append(name)
+    if out:
+        return out
+    for part in defaults or ():
+        name = str(part or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
@@ -665,7 +689,7 @@ def main() -> None:
     parser.add_argument(
         "--forecast-model",
         action="append",
-        default=["gfs_seamless"],
+        default=[],
         help="Open-Meteo historical forecast model name (repeatable). Used to ensemble mu across models.",
     )
     parser.add_argument(
@@ -762,17 +786,7 @@ def main() -> None:
     # We import Open-Meteo geocoding/forecast from weather_open_meteo_signal for consistency.
     from tools.weather_open_meteo_signal import geocode_city_open_meteo
 
-    models = [part.strip() for item in (args.forecast_model or []) for part in str(item).split(",") if part.strip()]
-    # Preserve order while deduping.
-    seen_models: set[str] = set()
-    forecast_models: List[str] = []
-    for name in models:
-        if name in seen_models:
-            continue
-        seen_models.add(name)
-        forecast_models.append(name)
-    if not forecast_models:
-        forecast_models = ["gfs_seamless"]
+    forecast_models = normalize_forecast_models(args.forecast_model or [])
 
     temps_by_city_day: Dict[Tuple[str, date], List[float]] = {}
     for city in unique_cities:

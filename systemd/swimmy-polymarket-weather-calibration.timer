@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Swimmy Polymarket Weather Calibration update daily
+
+[Timer]
+OnCalendar=*-*-* 06:05:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Swimmy Polymarket Weather Calibration Update
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/polymarket_weather_calibration_update.py --calibration-file /home/swimmy/swimmy/data/models/polymarket_weather/calibration.json --write-report /home/swimmy/swimmy/data/reports/weather_calibration_update_latest.json --train-days 120 --eval-days 30
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+
+StandardOutput=append:/home/swimmy/swimmy/logs/polymarket_weather_calibration.log
+StandardError=append:/home/swimmy/swimmy/logs/polymarket_weather_calibration.log
