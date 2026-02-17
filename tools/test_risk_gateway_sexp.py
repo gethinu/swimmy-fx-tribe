@@ -35,6 +35,21 @@ def main():
     parsed_reset = parse_sexp_alist(reset)
     assert parsed_reset["status"] == "RESET_COMPLETE"
 
+    # Bypass mode: gatekeeper disabled should approve even when DD is large.
+    orig_disable = getattr(risk_gateway, "DISABLE_GATEKEEPER", False)
+    try:
+        risk_gateway.DISABLE_GATEKEEPER = True
+        bypass = risk_gateway.handle_request_sexp(
+            '((type . "RISK_GATEWAY") (schema_version . 1) (action . "CHECK_RISK") '
+            '(side . "SELL") (symbol . "EURUSD") (lot . 0.5) (daily_pnl . -99999.0) '
+            '(equity . 1000.0) (consecutive_losses . 99))'
+        )
+        parsed_bypass = parse_sexp_alist(bypass)
+        assert parsed_bypass["status"] == "APPROVED"
+        assert "disabled" in str(parsed_bypass.get("reason", "")).lower()
+    finally:
+        risk_gateway.DISABLE_GATEKEEPER = orig_disable
+
     err = risk_gateway.handle_request_sexp('((schema_version . 1))')
     parsed_err = parse_sexp_alist(err)
     assert parsed_err["status"] == "ERROR"

@@ -94,12 +94,20 @@ def _env_int(key, default):
         return default
 
 
+def _env_bool(key, default=False):
+    raw = os.getenv(key)
+    if raw is None or raw == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Configuration (Environment overrides supported)
 ZMQ_PORT = _env_int("SWIMMY_RISK_GATEWAY_PORT", 5563)
 DAILY_LOSS_LIMIT_SOFT = _env_float("SWIMMY_DAILY_LOSS_LIMIT", -5000.0)
 DAILY_LOSS_LIMIT_HARD = _env_float(
     "SWIMMY_DAILY_LOSS_LIMIT_HARD", min(DAILY_LOSS_LIMIT_SOFT * 2, -10000.0)
 )
+DISABLE_GATEKEEPER = _env_bool("SWIMMY_DISABLE_GATEKEEPER", False)
 MAX_DRAWDOWN_PERCENT = _env_float("SWIMMY_MAX_DRAWDOWN_PCT", 5.0)
 MAX_CONSECUTIVE_LOSSES = _env_int("SWIMMY_MAX_CONSECUTIVE_LOSSES", 5)
 MAX_RISK_PER_TRADE_PERCENT = _env_float("SWIMMY_MAX_RISK_PER_TRADE_PCT", 2.0)
@@ -137,6 +145,12 @@ def _error_response(message: str):
 
 def handle_check_risk(data):
     global daily_loss_triggered, hard_stop_triggered, start_equity
+
+    if DISABLE_GATEKEEPER:
+        return {
+            "status": "APPROVED",
+            "reason": "Gatekeeper disabled by SWIMMY_DISABLE_GATEKEEPER",
+        }
 
     # 1. Parse Input
     try:
