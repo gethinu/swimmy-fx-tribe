@@ -23,6 +23,8 @@
 - DB確認: `Aggressive-Reversal=10080(W1)`, `MA-Ribbon-Scalp=10080(W1)`, `CCI-Trend-Breakout=240(H4)`。
 - 再起動後ログで対象3戦略の `execution.order_submitted` に `M1` は未検出。
 - `src/mt5/SwimmyBridge.mq5` の再コンパイル成功（2026-02-17 JST、ローカル確認）。
+- `swimmy-guardian.service` を 2026-02-17 20:02 JST に再起動し、`0.0.0.0:5557/5560` の再リッスン復帰と `Active: running` を確認。
+- 再起動後監査: `python3 tools/check_order_timeframe_consistency.py --lookback-minutes 30 --fail-on-issues` → `orders=3 issues=0`。
 - 監査ツール `tools/check_order_timeframe_consistency.py` を追加。  
   例: `python3 tools/check_order_timeframe_consistency.py --since 2026-02-17T17:04:06 --fail-on-issues`
 - `tools/system_audit.sh` に「Order timeframe consistency」ステップを統合。既定は `--lookback-minutes 120`（`ORDER_TF_AUDIT_LOOKBACK_MINUTES` で変更、固定開始時刻は `ORDER_TF_AUDIT_SINCE`）。
