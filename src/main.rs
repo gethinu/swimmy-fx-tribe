@@ -899,6 +899,18 @@ fn env_u64_or(default: u64, key: &str) -> u64 {
         .unwrap_or(default)
 }
 
+fn env_bool_or(default: bool, key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "y" | "t"
+            )
+        })
+        .unwrap_or(default)
+}
+
 fn main() {
     // V9.0: Naval's Modularization - Standalone Backtest Mode
     let args: Vec<String> = std::env::args().collect();
@@ -908,6 +920,13 @@ fn main() {
     }
 
     println!("🦀 Guardian (Full Duplex + Backtester + Neural Net) is activating...");
+    let allow_external_order_open =
+        env_bool_or(false, "SWIMMY_ALLOW_EXTERNAL_ORDER_OPEN");
+    if allow_external_order_open {
+        println!("⚠️ External ORDER_OPEN forwarding on :5559 is ENABLED.");
+    } else {
+        println!("🛡️ External ORDER_OPEN forwarding on :5559 is disabled.");
+    }
 
     let context = Context::new();
     let _target_ip = "172.18.192.1"; // Windows IP
@@ -1652,7 +1671,13 @@ fn main() {
                 cmd_route::route_sexp_message(&msg),
                 cmd_route::SexpRoute::ForwardToMt5
             ) {
-                let _ = pub_to_mt5.send(&msg, 0);
+                if cmd_route::should_forward_external_to_mt5(&msg, allow_external_order_open) {
+                    let _ = pub_to_mt5.send(&msg, 0);
+                } else {
+                    println!(
+                        "🛡️ Blocked external ORDER_OPEN on :5559 (set SWIMMY_ALLOW_EXTERNAL_ORDER_OPEN=1 to enable)."
+                    );
+                }
                 continue;
             }
 

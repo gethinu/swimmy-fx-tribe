@@ -55,22 +55,43 @@ fn lexpr_alist_to_map(
     Ok(out)
 }
 
-pub fn route_sexp_message(message: &str) -> SexpRoute {
+fn parse_sexp_map(message: &str) -> Option<std::collections::HashMap<String, lexpr::Value>> {
     let msg = message.trim();
     if !msg.starts_with('(') {
-        return SexpRoute::Unknown;
+        return None;
     }
 
-    let val: lexpr::Value = match lexpr::from_str(msg) {
-        Ok(v) => v,
-        Err(_) => return SexpRoute::Unknown,
-    };
-    let map = match lexpr_alist_to_map(&val) {
-        Ok(m) => m,
-        Err(_) => return SexpRoute::Unknown,
+    let val: lexpr::Value = lexpr::from_str(msg).ok()?;
+    lexpr_alist_to_map(&val).ok()
+}
+
+fn get_type_token(map: &std::collections::HashMap<String, lexpr::Value>) -> Option<String> {
+    map.get("type").and_then(lexpr_to_string)
+}
+
+pub fn is_order_open_message(message: &str) -> bool {
+    parse_sexp_map(message)
+        .and_then(|map| get_type_token(&map))
+        .is_some_and(|token| token == "ORDER_OPEN")
+}
+
+pub fn should_forward_external_to_mt5(message: &str, allow_external_order_open: bool) -> bool {
+    if !matches!(route_sexp_message(message), SexpRoute::ForwardToMt5) {
+        return false;
+    }
+    if is_order_open_message(message) && !allow_external_order_open {
+        return false;
+    }
+    true
+}
+
+pub fn route_sexp_message(message: &str) -> SexpRoute {
+    let map = match parse_sexp_map(message) {
+        Some(m) => m,
+        None => return SexpRoute::Unknown,
     };
 
-    if let Some(t) = map.get("type").and_then(lexpr_to_string) {
+    if let Some(t) = get_type_token(&map) {
         match t.as_str() {
             // MT5 execution protocol (S-expression)
             "ORDER_OPEN" | "CLOSE" | "CLOSE_SHORT_TF" | "REQ_HISTORY" | "GET_POSITIONS"
@@ -121,5 +142,22 @@ mod tests {
     fn backtest_action_is_internal() {
         let msg = r#"((action . "BACKTEST") (symbol . "USDJPY"))"#;
         assert_eq!(route_sexp_message(msg), SexpRoute::HandleInternally);
+    }
+
+    #[test]
+    fn external_order_open_is_blocked_by_default() {
+        let msg = r#"((type . "ORDER_OPEN") (instrument . "USDJPY") (side . "BUY") (lot . 0.01) (sl . 1.0) (tp . 2.0))"#;
+        assert_eq!(route_sexp_message(msg), SexpRoute::ForwardToMt5);
+        assert!(is_order_open_message(msg));
+        assert!(!should_forward_external_to_mt5(msg, false));
+        assert!(should_forward_external_to_mt5(msg, true));
+    }
+
+    #[test]
+    fn external_non_order_open_still_forwards_when_order_open_blocked() {
+        let msg = r#"((type . "CLOSE") (symbol . "USDJPY") (close_all . true))"#;
+        assert_eq!(route_sexp_message(msg), SexpRoute::ForwardToMt5);
+        assert!(!is_order_open_message(msg));
+        assert!(should_forward_external_to_mt5(msg, false));
     }
 }
