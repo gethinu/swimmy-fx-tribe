@@ -222,32 +222,45 @@ REVERSION : ~a"
   (handler-case
       (let* ((rows (execute-to-list
                     (concatenate 'string
-                                 "SELECT name, sharpe, rank, trades "
-                                 "FROM strategies "
-                                 "WHERE rank IS NULL OR (UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) ")))
+                                 "SELECT s.name, s.sharpe, s.rank, s.trades, "
+                                 "       COALESCE(bt.trade_count, 0) AS composite_trades "
+                                 "FROM strategies s "
+                                 "LEFT JOIN ("
+                                 "  SELECT strategy_name, COUNT(*) AS trade_count "
+                                 "  FROM backtest_trade_logs "
+                                 "  GROUP BY strategy_name"
+                                 ") bt ON bt.strategy_name = s.name "
+                                 "WHERE s.rank IS NULL OR (UPPER(s.rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) ")))
              (sorted (sort (copy-list rows)
                            #'>
                            :key (lambda (row)
-                                  (destructuring-bind (_name sharpe _rank trades) row
+                                  (destructuring-bind (_name sharpe _rank trades composite-trades) row
                                     (declare (ignore _name _rank))
-                                    (evidence-adjusted-sharpe
-                                     (if (numberp sharpe) (float sharpe 1.0) 0.0)
-                                     (if (numberp trades) (round trades) 0))))))
+                                    (let* ((official (if (numberp trades) (round trades) 0))
+                                           (composite (if (numberp composite-trades) (round composite-trades) 0))
+                                           (effective (max official composite)))
+                                      (evidence-adjusted-sharpe
+                                       (if (numberp sharpe) (float sharpe 1.0) 0.0)
+                                       effective))))))
              (top (subseq sorted 0 (min 5 (length sorted)))))
         (with-output-to-string (s)
           (format s "~%🌟 **Top Candidates:**~%")
           (dolist (row top)
-            (destructuring-bind (name sharpe rank trades) row
+            (destructuring-bind (name sharpe rank trades composite-trades) row
               (let* ((safe-name (or name ""))
                      (label (%format-db-rank-label rank))
                      (raw-sharpe (if (numberp sharpe) (float sharpe 1.0) 0.0))
-                     (trade-count (if (numberp trades) (round trades) 0))
-                     (adjusted-sharpe (evidence-adjusted-sharpe raw-sharpe trade-count)))
-                (format s "- `~a` (S=~,2f (raw ~,2f), ~a)~%"
+                     (official-trades (if (numberp trades) (round trades) 0))
+                     (composite-count (if (numberp composite-trades) (round composite-trades) 0))
+                     (effective-trades (max official-trades composite-count))
+                     (adjusted-sharpe (evidence-adjusted-sharpe raw-sharpe effective-trades)))
+                (format s "- `~a` (S=~,2f (raw ~,2f), ~a, TE official/composite=~d/~d)~%"
                         (%display-candidate-name safe-name)
                         adjusted-sharpe
                         raw-sharpe
-                        label))))))
+                        label
+                        official-trades
+                        composite-count))))))
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 

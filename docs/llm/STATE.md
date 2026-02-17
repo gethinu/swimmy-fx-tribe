@@ -391,6 +391,11 @@
 - **2026-01-31**: SBCLロード時STYLE-WARNING追加整理（school-* の未使用変数/ハンドラ整理）。
 - **2026-02-01**: 依存ライブラリ更新（Quicklisp dist 2026-01-01）と警告対策（pzmq ASDF命名、cl-sqlite CFFI struct参照、ironclad/postmodernのdefgeneric再定義ガード）。
 - **2026-02-01**: school-breeder の括弧不整合を修正（ロード時COMPILE-FILEエラー解消）。
+- **2026-02-17**: AランクOOS dispatch に explicit range を追加。`maybe-request-oos-backtest` が `data/historical/<SYMBOL>_M1.csv` の timestamp から 70/30 split を算出し、`request-backtest` に `start_time/end_time` を渡す契約へ更新（suffix は `-OOS` 維持）。
+- **2026-02-17**: `request-backtest` が `:start-ts/:end-ts` を受け取り、S式 BACKTEST payload に `start_time/end_time`（Option Some 形式）を含められるよう更新。
+- **2026-02-17**: Guardian の :5559 SXP BACKTEST ルートでも `start_time/end_time` スライスを適用。`sub_from_brain` ルートと同じ日付範囲セマンティクスに統一。
+- **2026-02-17**: Top Candidates 表示を `TE official/composite=official_trades/backtest_trade_logs_count` へ拡張。並び順は `max(official, composite)` を trade evidence として `evidence-adjusted-sharpe` に反映。
+- **2026-02-17**: MT5 `SendHistoryData` の default history window を長期TF向けに拡張（D1=20000, W1=10000, MN1=2400）。
 - **2026-02-01**: Quicklisp dist側のパッチを撤回し、`local-projects` のパッチ版を優先利用する構成に整理。
 - **2026-02-01**: SBCL起動オプションを `SWIMMY_SBCL_DYNAMIC_SPACE_MB` に統一（run.sh / tools / systemd）。
 - **2026-02-01**: Quicklisp local-projects固定化スクリプトとパッチを追加（`tools/setup_quicklisp_local_projects.sh`）。

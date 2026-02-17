@@ -350,12 +350,19 @@ Budget is auto-shrunk under backtest pending pressure."
 
 
 ;; Request backtest from Rust
-(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil) include-trades)
+(defun %option-some (key value)
+  "Encode Option<T> Some(value) for S-expression payloads."
+  (list key value))
+
+(defun request-backtest (strat &key (candles *candle-history*) (suffix "") (symbol nil) (request-id nil)
+                               include-trades start-ts end-ts)
   "Send strategy to Rust for high-speed backtesting. Resamples based on strategy's timeframe.
    Uses strategy's native symbol if not overridden.
    When INCLUDE-TRADES is true, requests per-trade pnl `trade_list` in the result."
   (let* ((req-id (or request-id (swimmy.core::generate-uuid)))
-         (actual-symbol (or symbol (strategy-symbol strat) "USDJPY")))
+         (actual-symbol (or symbol (strategy-symbol strat) "USDJPY"))
+         (start-time (and (numberp start-ts) (truncate start-ts)))
+         (end-time (and (numberp end-ts) (truncate end-ts))))
     (setf swimmy.globals:*backtest-submit-last-id* req-id)
 
     ;; V8.0: Multi-Timeframe Logic - strategy decides its own destiny (timeframe)
@@ -403,6 +410,8 @@ Budget is auto-shrunk under backtest pending pressure."
                                  (candles_file ,data-file)
                                  (symbol . ,actual-symbol)
                                  (timeframe ,timeframe)
+                                 ,@(when start-time (list (%option-some 'start_time start-time)))
+                                 ,@(when end-time (list (%option-some 'end_time end-time)))
                                  ,@(when include-trades '((include_trades . t))))))
             (format t "[L] 🚀 Zero-Copy SXP: Using Data ID ~a_M1~%" actual-symbol)
             (let ((*print-case* :downcase)
@@ -423,6 +432,8 @@ Budget is auto-shrunk under backtest pending pressure."
                                   (aux_candles . ,aux-candles)
                                   (symbol . ,actual-symbol)
                                   (timeframe ,timeframe)
+                                  ,@(when start-time (list (%option-some 'start_time start-time)))
+                                  ,@(when end-time (list (%option-some 'end_time end-time)))
                                   ,@(when include-trades '((include_trades . t))))))
             (let ((*print-case* :downcase)
                   (*print-pretty* nil)

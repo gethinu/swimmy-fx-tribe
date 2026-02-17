@@ -324,6 +324,103 @@
         (when created-file (delete-file data-path))
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-maybe-request-oos-backtest-includes-explicit-range
+  "OOS dispatch should include explicit start/end range derived from CSV."
+  (let* ((symbol "UT-OOS-RANGE")
+         (data-path (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol)))
+         (tmp-db (format nil "/tmp/swimmy-oos-range-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-interval swimmy.school::*oos-request-interval*)
+         (orig-dispatch-map swimmy.school::*oos-last-dispatch-at*)
+         (captured-start nil)
+         (captured-end nil)
+         (captured-suffix nil))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist data-path)
+           (with-open-file (s data-path :direction :output :if-exists :supersede :if-does-not-exist :create)
+             (write-line "timestamp,open,high,low,close,volume" s)
+             ;; 10 bars, ascending by 60s.
+             (dotimes (i 10)
+               (format s "~d,145.1,145.2,145.0,145.15,1000~%" (+ 1700000000 (* i 60)))))
+
+           (setf swimmy.core::*db-path-default* tmp-db)
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (setf swimmy.school::*oos-request-interval* 0)
+           (setf swimmy.school::*oos-last-dispatch-at* (make-hash-table :test 'equal))
+
+           (setf (symbol-function 'swimmy.school::request-backtest)
+                 (lambda (strat &key suffix request-id start-ts end-ts &allow-other-keys)
+                   (declare (ignore strat request-id))
+                   (setf captured-suffix suffix
+                         captured-start start-ts
+                         captured-end end-ts)
+                   t))
+
+           (let* ((strat (cl-user::make-strategy :name "UnitTest-OOS-Range"
+                                                 :symbol symbol
+                                                 :oos-sharpe nil))
+                  (req-id (swimmy.school::maybe-request-oos-backtest strat)))
+             (assert-true req-id "dispatch should return request_id")
+             (assert-equal "-OOS" captured-suffix "A-rank OOS suffix should be canonical")
+             ;; n=10, ratio=0.3 => OOS starts at index floor(10*0.7)=7
+             (assert-equal 1700000420 captured-start "expected OOS start timestamp from CSV split")
+             (assert-equal 1700000540 captured-end "expected OOS end timestamp from CSV split")))
+      (setf swimmy.school::*oos-request-interval* orig-interval)
+      (setf swimmy.school::*oos-last-dispatch-at* orig-dispatch-map)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file data-path) (delete-file data-path))
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
+(deftest test-top-candidates-displays-official-and-composite-evidence
+  "Top Candidates should display official/composite evidence and sort by composite-adjusted evidence."
+  (let* ((tmp-db (format nil "/tmp/swimmy-topcand-evidence-split-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-topcand-evidence-split-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (swimmy.persistence:init-library)
+             (swimmy.school::upsert-strategy
+              (make-strategy :name "TC-COMP-HIGH"
+                             :sharpe 5.0
+                             :trades 10
+                             :symbol "USDJPY"
+                             :rank :B))
+             (swimmy.school::upsert-strategy
+              (make-strategy :name "TC-OFFICIAL-HIGH"
+                             :sharpe 4.8
+                             :trades 100
+                             :symbol "USDJPY"
+                             :rank :B))
+             ;; Composite evidence from persisted trade_list should lift TC-COMP-HIGH.
+             (let ((trade-list
+                     (loop for i from 1 to 120
+                           collect (list (cons 'timestamp (+ 1700000000 i))
+                                         (cons 'pnl 1.0)
+                                         (cons 'symbol "USDJPY")))))
+               (swimmy.school:record-backtest-trades
+                "RID-TC-COMP-HIGH" "TC-COMP-HIGH" "OOS" trade-list))
+             (let* ((snippet (swimmy.school::build-top-candidates-snippet-from-db))
+                    (pos-comp (search "TC-COMP-HIGH" snippet))
+                    (pos-official (search "TC-OFFICIAL-HIGH" snippet)))
+               (assert-not-nil pos-comp "Composite-evidence candidate should appear")
+               (assert-not-nil pos-official "Official-evidence candidate should appear")
+               (assert-true (search "TE official/composite=10/120" snippet)
+                            "Expected explicit official/composite evidence display")
+               (assert-true (< pos-comp pos-official)
+                            "Composite-adjusted ordering should prioritize TC-COMP-HIGH")))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-oos-data-quality-gate
   "Invalid CSV should be rejected and not dispatch OOS."
   (let* ((data-path (swimmy.core::swimmy-path "data/historical/BAD_M1.csv"))

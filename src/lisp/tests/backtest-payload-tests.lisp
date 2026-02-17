@@ -265,6 +265,41 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
       (assert-true (and (stringp request-id) (> (length request-id) 0))
                    "Expected non-empty request_id in V2 payload"))))
 
+(deftest test-request-backtest-includes-range-when-provided
+  "request-backtest should include start_time/end_time when explicitly provided."
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)
+                  t))
+          (let* ((strat (swimmy.school:make-strategy
+                         :name "Test-BT-Range"
+                         :indicators '((sma 5) (sma 20))
+                         :sl 0.001
+                         :tp 0.002
+                         :volume 0.01
+                         :indicator-type "sma"
+                         :timeframe 60
+                         :symbol "USDJPY"))
+                 (candles (list (swimmy.globals:make-candle
+                                 :timestamp 1700000000
+                                 :open 1.0 :high 1.0 :low 1.0 :close 1.0 :volume 1.0))))
+            (swimmy.school:request-backtest strat
+                                            :candles candles
+                                            :request-id "RID-RANGE-001"
+                                            :start-ts 1700000000
+                                            :end-ts 1700086400)))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
+    (assert-not-nil captured "Expected backtest payload to be sent")
+    (let ((payload (parse-sexpr-payload captured)))
+      (assert-equal "RID-RANGE-001" (field 'request_id payload) "request_id should match")
+      (assert-equal 1700000000 (option-some 'start_time payload) "start_time should be included")
+      (assert-equal 1700086400 (option-some 'end_time payload) "end_time should be included"))))
+
 (deftest test-request-backtest-v2-emits-none-optionals
   "request-backtest-v2 should emit Option fields as empty lists when nil"
   (let ((captured nil)

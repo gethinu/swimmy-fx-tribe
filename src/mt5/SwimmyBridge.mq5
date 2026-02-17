@@ -707,10 +707,12 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
    
-   // Load more data for higher TFs to ensure deep history, unless count is specified
+   // Load deeper history for higher TFs to avoid sparse-trade validation windows.
    if(count <= 0) {
        count = 100000;
-       if(period == PERIOD_W1 || period == PERIOD_D1) count = 5000; // 5000 weeks ~ 100 years
+       if(period == PERIOD_D1)  count = 20000; // ~54 years
+       if(period == PERIOD_W1)  count = 10000; // ~192 years (bounded by broker history)
+       if(period == PERIOD_MN1) count = 2400;  // ~200 years (bounded by broker history)
    }
    
    int copied = 0;

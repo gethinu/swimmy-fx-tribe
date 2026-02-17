@@ -562,12 +562,50 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                   (values t nil)))))))
     (error (e) (values nil (format nil "validation error: ~a" e)))))
 
+(defun %derive-oos-dispatch-range (path)
+  "Derive OOS [start,end] unix timestamps from PATH using *oos-test-ratio* split.
+CSV is assumed ascending by timestamp in historical files."
+  (handler-case
+      (progn
+        (unless (probe-file path)
+          (return-from %derive-oos-dispatch-range (values nil nil)))
+        (with-open-file (s path :direction :input)
+          (let ((header (read-line s nil nil)))
+            (unless header
+              (return-from %derive-oos-dispatch-range (values nil nil)))
+            (let* ((cols (mapcar #'string-downcase
+                                 (remove "" (split-sequence:split-sequence #\, header) :test #'string=)))
+                   (ts-index (or (position "timestamp" cols :test #'string=) 0))
+                   (timestamps '()))
+              (loop for row = (read-line s nil nil)
+                    while row
+                    do (let* ((cells (remove "" (split-sequence:split-sequence #\, row) :test #'string=)))
+                         (when (> (length cells) ts-index)
+                           (let ((ts (ignore-errors (parse-integer (nth ts-index cells) :junk-allowed t))))
+                             (when (numberp ts)
+                               (push ts timestamps))))))
+              (let* ((ordered (sort timestamps #'<))
+                     (n (length ordered)))
+                (when (<= n 0)
+                  (return-from %derive-oos-dispatch-range (values nil nil)))
+                (let* ((ratio (min 1.0 (max 0.0 (float *oos-test-ratio* 1.0))))
+                       (oos-start-idx (min (1- n) (max 0 (floor (* n (- 1.0 ratio))))))
+                       (start-ts (nth oos-start-idx ordered))
+                       (end-ts (nth (1- n) ordered)))
+                  (values start-ts end-ts)))))))
+    (error ()
+      (values nil nil))))
+
 (defun maybe-request-oos-backtest (strat)
   "Dispatch async OOS backtest if not requested recently. Returns request-id or NIL."
   (ignore-errors (init-db))
   (let* ((name (strategy-name strat))
+         (symbol (or (strategy-symbol strat) "USDJPY"))
+         (data-file (format nil "~a" (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol))))
          (now (get-universal-time))
          (req-id nil)
+         (range-start nil)
+         (range-end nil)
          (last-req (handler-case
                        (multiple-value-list (lookup-oos-request name))
                      (error (e)
@@ -588,8 +626,10 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                                          (string= last-status "error"))))
                           age)
                          ((and memory-age (<= memory-age *oos-request-interval*))
-                          memory-age)
+                         memory-age)
                          (t nil))))
+    (multiple-value-setq (range-start range-end)
+      (%derive-oos-dispatch-range data-file))
     (cond
       ;; Throttle if a recent request is still pending (DB queue) or if fallback memory says recent dispatch.
       (throttle-age
@@ -611,7 +651,12 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
          (handler-case
              (progn
                (enqueue-oos-request name req-id :status status :requested-at now)
-               (let ((dispatch-state (request-backtest strat :suffix "-OOS" :request-id req-id :include-trades t)))
+               (let ((dispatch-state (request-backtest strat
+                                                       :suffix "-OOS"
+                                                       :request-id req-id
+                                                       :include-trades t
+                                                       :start-ts range-start
+                                                       :end-ts range-end)))
                  (cond
                    ;; Backward-compatible success contract:
                    ;; accept any non-NIL state except explicit throttle rejection.
@@ -624,6 +669,8 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                                   ("request_id" req-id)
                                   ("oos_kind" "a-rank")
                                   ("status" status)
+                                  ("start_ts" range-start)
+                                  ("end_ts" range-end)
                                   ("dispatch_state" (format nil "~a" dispatch-state)))))
                       (swimmy.core::emit-telemetry-event "oos.requested"
                         :service "school"
