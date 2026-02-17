@@ -375,6 +375,28 @@ This keeps school allocation reconciliation independent of the dispatcher read p
     (when raw
       (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
 
+(defun %normalize-token-string (value)
+  "Normalize VALUE into an uppercase trimmed string token."
+  (let ((raw (cond
+               ((null value) nil)
+               ((stringp value) value)
+               ((symbolp value) (symbol-name value))
+               (t (format nil "~a" value)))))
+    (when raw
+      (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
+
+(defparameter +order-reject-sink-guard-reasons+
+  '("MISSING_INSTRUMENT" "INVALID_INSTRUMENT"
+    "MISSING_COMMENT" "INVALID_COMMENT_FORMAT"
+    "MISSING_STRATEGY" "MISSING_TIMEFRAME" "INVALID_COMMENT_TF")
+  "ORDER_REJECT reasons that indicate MT5 sink-guard fail-closed blocking.")
+
+(defun %sink-guard-order-reject-reason-p (reason)
+  "Return T when REASON is a sink-guard fail-closed reject reason."
+  (let ((token (%normalize-token-string reason)))
+    (and token
+         (member token +order-reject-sink-guard-reasons+ :test #'string=))))
+
 (defun %active-rank-token-p (rank)
   "Return T if rank token is active for CPCV notifications."
   (let ((token (%normalize-rank-token rank)))
@@ -765,6 +787,7 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                                     ((stringp reason-raw) reason-raw)
                                     ((symbolp reason-raw) (symbol-name reason-raw))
                                     (t (format nil "~a" reason-raw))))
+                          (reason-token (%normalize-token-string reason))
                           (retcode (%alist-val sexp '(retcode :retcode) nil)))
                      (when (and (stringp order-id)
                                 (boundp 'swimmy.globals:*pending-orders*)
@@ -780,8 +803,16 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                          :data (jsown:new-js
                                  ("id" (or order-id ""))
                                  ("symbol" (or symbol ""))
-                                 ("reason" reason)
-                                 ("retcode" (or retcode "")))))))
+                                 ("reason" (or reason-token reason))
+                                 ("retcode" (or retcode "")))))
+                     (when (and (%sink-guard-order-reject-reason-p reason-token)
+                                (fboundp 'swimmy.core:notify-discord-alert))
+                       (swimmy.core:notify-discord-alert
+                        (format nil "❌ MT5 ORDER_REJECT fail-closed: reason=~a symbol=~a id=~a retcode=~a"
+                                reason-token
+                                (or symbol "N/A")
+                                (or order-id "N/A")
+                                (or retcode "N/A"))))))
                   ((string= type-str "POSITIONS")
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
                           (symbol-str (cond

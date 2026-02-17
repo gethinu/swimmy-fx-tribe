@@ -2629,6 +2629,73 @@
             (assert-false pendingp "Expected pending order to be removed on ORDER_REJECT")))
       (setf swimmy.globals:*pending-orders* orig-pending))))
 
+(deftest test-internal-process-msg-order-reject-sink-guard-alert
+  "Sink-guard ORDER_REJECT should trigger Discord alert for operator visibility."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-notify-alert (and (fboundp 'swimmy.core:notify-discord-alert)
+                                 (symbol-function 'swimmy.core:notify-discord-alert)))
+         (alert-msg nil))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (setf alert-msg msg)
+                  nil))
+          (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-ALERT\") (symbol . \"USDJPY\") (reason . \"MISSING_STRATEGY\") (retcode . 0))")
+          (assert-true alert-msg "Expected sink-guard ORDER_REJECT to trigger alert")
+          (assert-true (search "MISSING_STRATEGY" alert-msg)
+                       "Expected alert payload to include reject reason"))
+      (if orig-notify-alert
+          (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
+          (fmakunbound 'swimmy.core:notify-discord-alert)))))
+
+(deftest test-internal-process-msg-order-reject-instrument-sink-guard-alert
+  "Instrument sink-guard ORDER_REJECT reasons should trigger Discord alert."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-notify-alert (and (fboundp 'swimmy.core:notify-discord-alert)
+                                 (symbol-function 'swimmy.core:notify-discord-alert))))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (dolist (reason '("MISSING_INSTRUMENT" "INVALID_INSTRUMENT"))
+          (let ((alert-msg nil))
+            (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                  (lambda (msg &key color)
+                    (declare (ignore color))
+                    (setf alert-msg msg)
+                    nil))
+            (funcall fn
+                     (format nil "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-~a\") (symbol . \"USDJPY\") (reason . \"~a\") (retcode . 0))"
+                             reason reason))
+            (assert-true alert-msg
+                         (format nil "Expected ~a ORDER_REJECT to trigger alert" reason))
+            (assert-true (search reason alert-msg)
+                         (format nil "Expected alert payload to include reason ~a" reason))))
+      (if orig-notify-alert
+          (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
+          (fmakunbound 'swimmy.core:notify-discord-alert)))))
+
+(deftest test-internal-process-msg-order-reject-non-sink-no-alert
+  "Non sink-guard ORDER_REJECT should not trigger Discord alert spam."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-notify-alert (and (fboundp 'swimmy.core:notify-discord-alert)
+                                 (symbol-function 'swimmy.core:notify-discord-alert)))
+         (alert-called nil))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                (lambda (msg &key color)
+                  (declare (ignore msg color))
+                  (setf alert-called t)
+                  nil))
+          (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-NO-ALERT\") (symbol . \"USDJPY\") (reason . \"NO_MONEY\") (retcode . 10019))")
+          (assert-false alert-called "Expected non sink-guard ORDER_REJECT to skip alert"))
+      (if orig-notify-alert
+          (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
+          (fmakunbound 'swimmy.core:notify-discord-alert)))))
+
 (deftest test-allocation-pending-timeouts-ignores-executor-pending-orders
   "School allocation pending cleanup should not scan executor retry pending orders (UUID table)."
   (let ((orig-globals swimmy.globals:*pending-orders*)
@@ -10227,10 +10294,13 @@
 	                  test-internal-process-msg-tick-sexp
 	                  test-internal-process-msg-tick-json
                   test-internal-process-msg-account-info-refreshes-heartbeat
-		                  test-internal-process-msg-positions-sexp
-		                  test-internal-process-msg-order-ack-clears-executor-pending
-		                  test-internal-process-msg-order-reject-clears-executor-pending
-		                  test-allocation-pending-timeouts-ignores-executor-pending-orders
+			                  test-internal-process-msg-positions-sexp
+			                  test-internal-process-msg-order-ack-clears-executor-pending
+			                  test-internal-process-msg-order-reject-clears-executor-pending
+			                  test-internal-process-msg-order-reject-sink-guard-alert
+			                  test-internal-process-msg-order-reject-instrument-sink-guard-alert
+			                  test-internal-process-msg-order-reject-non-sink-no-alert
+			                  test-allocation-pending-timeouts-ignores-executor-pending-orders
 		                  test-allocation-pending-timeouts-tolerates-malformed-entry
 		                  test-reconcile-with-mt5-positions-records-dryrun-slippage-on-promotion
 		                  test-internal-process-msg-status-now-sexp
