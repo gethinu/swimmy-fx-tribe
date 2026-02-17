@@ -10,6 +10,12 @@
 
 (defvar *risk-alert-throttle* (make-hash-table :test 'equal)
   "Timestamp of last alert for (symbol action reason) to prevent spam")
+(defparameter *execution-link-heartbeat-timeout* 60
+  "Max allowed silence (sec) for Guardian heartbeat before blocking ORDER_OPEN.")
+(defparameter *execution-link-account-timeout* 60
+  "Max allowed silence (sec) for ACCOUNT_INFO before blocking ORDER_OPEN.")
+(defparameter *execution-link-alert-interval* 300
+  "Minimum seconds between stale-link alert notifications per symbol/action.")
 
 ;;; ==========================================
 ;;; MECU: CURRENCY DECOMPOSITION & EXPOSURE
@@ -45,7 +51,27 @@
         (lot-size 100000.0)) ; Standard FX Lot
     
     (flet ((add-exposure (currency amount-jpy)
-             (incf (gethash currency exposures 0.0) amount-jpy)))
+             (incf (gethash currency exposures 0.0) amount-jpy))
+           (pending-msg-val (msg key)
+             (cond
+               ((null msg) nil)
+               ;; ORDER_OPEN V2 pending entries are alists.
+               ((and (listp msg) (consp (first msg)))
+                (swimmy.core:sexp-alist-get msg key))
+               ;; Backward compatibility for legacy jsown payloads.
+               (t (handler-case (jsown:val msg key) (error () nil)))))
+           (as-string (value)
+             (cond
+               ((stringp value) value)
+               ((symbolp value) (symbol-name value))
+               (t nil)))
+           (as-float (value)
+             (cond
+               ((numberp value) (float value))
+               ((stringp value)
+                (let ((n (ignore-errors (swimmy.core:safe-parse-number value))))
+                  (when (numberp n) (float n))))
+               (t nil))))
       
       ;; 1. Scan Arm States (Active Positions)
       (when (boundp 'swimmy.engine::*arm-states*)
@@ -71,17 +97,24 @@
         (maphash (lambda (uuid entry)
                    (declare (ignore uuid))
                    (let* ((msg (third entry))
-                          (symbol (jsown:val msg "symbol"))
-                          (action (jsown:val msg "action"))
-                          (size (jsown:val msg "volume"))
-                          (parts (decompose-pair symbol))
-                          (base (first parts))
-                          (quote (second parts))
-                          (price (get-price-to-jpy base))
-                          (notional-base (* size lot-size price))
-                          (dir (if (string= action "BUY") 1.0 -1.0)))
-                     (add-exposure base (* dir notional-base))
-                     (add-exposure quote (* dir -1.0 notional-base))))
+                          (symbol (as-string (or (pending-msg-val msg "instrument")
+                                                 (pending-msg-val msg "symbol"))))
+                          (action (as-string (or (pending-msg-val msg "side")
+                                                 (pending-msg-val msg "action"))))
+                          (size (as-float (or (pending-msg-val msg "lot")
+                                              (pending-msg-val msg "volume"))))
+                          (dir (cond
+                                 ((and action (string-equal action "BUY")) 1.0)
+                                 ((and action (string-equal action "SELL")) -1.0)
+                                 (t nil))))
+                     (when (and symbol size dir (> size 0.0))
+                       (let* ((parts (decompose-pair symbol))
+                              (base (first parts))
+                              (quote (second parts))
+                              (price (get-price-to-jpy base))
+                              (notional-base (* size lot-size price)))
+                         (add-exposure base (* dir notional-base))
+                         (add-exposure quote (* dir -1.0 notional-base))))))
                  swimmy.globals::*pending-orders*)))
 
     ;; 3. Aggregate totals normalized by Equity
@@ -182,11 +215,94 @@
       (when (fboundp 'swimmy.core:notify-discord)
         (swimmy.core:notify-discord msg :color 15158332)))))
 
+(defun execution-link-stale-reason (&optional (now (get-universal-time)))
+  "Return stale-link reason string when MT5 execution link is stale; otherwise NIL."
+  (let* ((guardian-ts (and (boundp 'swimmy.globals::*last-guardian-heartbeat*)
+                           (numberp swimmy.globals::*last-guardian-heartbeat*)
+                           swimmy.globals::*last-guardian-heartbeat*))
+         (account-ts (and (boundp 'swimmy.globals::*last-account-info-time*)
+                          (numberp swimmy.globals::*last-account-info-time*)
+                          swimmy.globals::*last-account-info-time*))
+         (guardian-age (and guardian-ts (> guardian-ts 0) (- now guardian-ts)))
+         (account-age (and account-ts (> account-ts 0) (- now account-ts))))
+    (cond
+      ((or (null guardian-age) (> guardian-age *execution-link-heartbeat-timeout*))
+       (if guardian-age
+           (format nil "guardian heartbeat stale (~ds)" guardian-age)
+           "guardian heartbeat missing"))
+      ((or (null account-age) (> account-age *execution-link-account-timeout*))
+       (if account-age
+           (format nil "ACCOUNT_INFO stale (~ds)" account-age)
+           "ACCOUNT_INFO missing"))
+      (t nil))))
+
 (defun safe-order (action symbol lot sl tp &optional (magic 0) (comment nil))
   "Safe wrapper for placing orders via ZeroMQ. Enforces all risk checks via CENTRALIZED RISK GATEWAY."
   (let ((daily-pnl (if (boundp '*daily-pnl*) *daily-pnl* 0.0))
         (equity (if (boundp '*current-equity*) *current-equity* 0.0))
-        (cons-losses (if (boundp '*consecutive-losses*) *consecutive-losses* 0)))
+        (cons-losses (if (boundp '*consecutive-losses*) *consecutive-losses* 0))
+        (comment-reason (swimmy.core::invalid-order-comment-reason comment)))
+    (when comment-reason
+      (let ((reason-label (case comment-reason
+                            (:missing-comment "Missing ORDER_OPEN comment")
+                            (:invalid-format "Invalid ORDER_OPEN comment format")
+                            (:missing-strategy "Missing strategy in ORDER_OPEN comment")
+                            (:missing-timeframe "Missing timeframe in ORDER_OPEN comment")
+                            (otherwise "Invalid ORDER_OPEN comment"))))
+        (log-warn (format nil "ORDER BLOCKED: ~a ~a comment=~a reason=~a"
+                          action symbol (or comment "") reason-label)
+                  :data (jsown:new-js
+                          ("type" "trade_denied")
+                          ("reason" "invalid_order_comment")
+                          ("comment_reason" (string-downcase (symbol-name comment-reason)))
+                          ("comment" (or comment ""))))
+        (when (fboundp 'swimmy.core::emit-telemetry-event)
+          (swimmy.core::emit-telemetry-event "execution.context_missing"
+            :service "engine"
+            :severity "warn"
+            :data (jsown:new-js
+                    ("symbol" symbol)
+                    ("action" action)
+                    ("reason" reason-label)
+                    ("comment" (or comment ""))))
+          )
+        (when (fboundp 'swimmy.core:notify-discord-alert)
+          (swimmy.core:notify-discord-alert
+           (format nil "🚫 ORDER BLOCKED (Invalid Comment)~%Symbol: ~a~%Action: ~a~%Reason: ~a~%Comment: ~a"
+                   symbol action reason-label (or comment ""))
+           :color 15158332))
+        (return-from safe-order nil)))
+
+    (let* ((now (get-universal-time))
+           (link-stale-reason (execution-link-stale-reason now)))
+      (when link-stale-reason
+        (log-warn (format nil "ORDER BLOCKED: ~a ~a reason=~a"
+                          action symbol link-stale-reason)
+                  :data (jsown:new-js
+                          ("type" "trade_denied")
+                          ("reason" "execution_link_stale")
+                          ("detail" link-stale-reason)
+                          ("symbol" symbol)
+                          ("action" action)))
+        (when (fboundp 'swimmy.core::emit-telemetry-event)
+          (swimmy.core::emit-telemetry-event "execution.link_stale"
+            :service "engine"
+            :severity "warn"
+            :data (jsown:new-js
+                    ("symbol" symbol)
+                    ("action" action)
+                    ("detail" link-stale-reason))))
+        (when (fboundp 'swimmy.core:notify-discord-alert)
+          (let* ((alert-key (format nil "order-link-stale-~a-~a" symbol action))
+                 (last-time (gethash alert-key *risk-alert-throttle*)))
+            (when (or (null last-time)
+                      (> (- now last-time) *execution-link-alert-interval*))
+              (setf (gethash alert-key *risk-alert-throttle*) now)
+              (swimmy.core:notify-discord-alert
+               (format nil "🚫 ORDER BLOCKED (Link Stale)~%Symbol: ~a~%Action: ~a~%Reason: ~a"
+                       symbol action link-stale-reason)
+               :color 15158332))))
+        (return-from safe-order nil)))
         
     ;; 1. External Authority Check (Phase 3 Risk Gateway)
     (multiple-value-bind (approved-p reason)

@@ -542,11 +542,13 @@ void ExecuteCommand(string cmd) {
    if(type == "ORDER_OPEN") {
       if(instrument == "") {
          LogError("ORDER_OPEN missing instrument");
+         SendTradeReject(cmd, "MISSING_INSTRUMENT", 0);
          return;
       }
       string side = GetStringFromSexp(cmd, "side");
       if(side != "BUY" && side != "SELL") {
          LogError("ORDER_OPEN invalid side: " + side);
+         SendTradeReject(cmd, "INVALID_SIDE", 0);
          return;
       }
       double sl = GetValueFromSexp(cmd, "sl");
@@ -565,12 +567,24 @@ void ExecuteCommand(string cmd) {
          if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
             RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
             SendTradeAck(cmd, g_trade.ResultOrder());
+         } else {
+            long rc = g_trade.ResultRetcode();
+            string reason = g_trade.ResultRetcodeDescription();
+            if(reason == "") reason = "BUY_FAILED";
+            LogError("ORDER_OPEN BUY failed: " + reason + " (retcode=" + IntegerToString((int)rc) + ")");
+            SendTradeReject(cmd, reason, rc);
          }
       } else if(side == "SELL") {
          LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
          if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
             RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
             SendTradeAck(cmd, g_trade.ResultOrder());
+         } else {
+            long rc = g_trade.ResultRetcode();
+            string reason = g_trade.ResultRetcodeDescription();
+            if(reason == "") reason = "SELL_FAILED";
+            LogError("ORDER_OPEN SELL failed: " + reason + " (retcode=" + IntegerToString((int)rc) + ")");
+            SendTradeReject(cmd, reason, rc);
          }
       }
    }
@@ -638,6 +652,21 @@ void SendTradeAck(string orig_cmd, ulong ticket) {
    string id = GetStringFromSexp(orig_cmd, "id");
    string sexp = StringFormat("((type . \"ORDER_ACK\") (id . \"%s\") (ticket . %I64u) (symbol . \"%s\"))", 
                               EscapeSexpString(id), ticket, EscapeSexpString(_Symbol));
+   uchar data[];
+   StringToCharArray(sexp, data);
+   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+}
+
+void SendTradeReject(string orig_cmd, string reason, long retcode) {
+   if(!g_pub_connected) return;
+   string id = GetStringFromSexp(orig_cmd, "id");
+   string norm_reason = reason;
+   if(norm_reason == "") norm_reason = "ORDER_REJECT";
+   string sexp = StringFormat("((type . \"ORDER_REJECT\") (id . \"%s\") (symbol . \"%s\") (reason . \"%s\") (retcode . %d))",
+                              EscapeSexpString(id),
+                              EscapeSexpString(_Symbol),
+                              EscapeSexpString(norm_reason),
+                              (int)retcode);
    uchar data[];
    StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);

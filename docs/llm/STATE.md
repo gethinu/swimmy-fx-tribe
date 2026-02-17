@@ -11,11 +11,17 @@
 - **MCP Gateway**: read-only/backtest-execのみ有効。trade-capableは封印（403固定）。
 - **Backtest Service**: Python ZMQサービス（`SWIMMY_BACKTEST_SERVICE=1` 時に有効）。BrainからのBACKTESTを 5580 で受信し、結果を 5581 で返却。
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
+- **Timeframe Canonical Contract**: 戦略の内部時間足は **分（minutes, int）** を正本とする。既定スコープは 8TF バケット（`5/15/30/60/240/1440/10080/43200`）だが、進化/バックテスト探索では任意TF（例: `36/120/300/3600` 分）を許容する。カテゴリ分割・相関判定・Pattern Gate 判定は有限バケットへ正規化して扱い、探索候補集合は budget 制御で上限化する。
 - **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service / Inference Worker は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
 - **Polymarket OpenClaw（任意）**: Polymarket（予測市場）向けの自動エントリーサブシステム。cycle/signal-sync は user systemd、status/notifier は systemd(system) を使用し、成果物は `data/reports/polymarket_openclaw_live/` に保存する（FX コアとは独立）。
+- **XAU AutoBot（任意・別系統）**: FXコア（Rust/Lisp）とは独立した MT5 補助運用。`Swimmy-XAU-Cycle` は最適化/プローブ/active config 更新のみを担当し、**実注文の正本は `Swimmy-XAU-Exec`（ONLOGON）または Startup launcher (`Swimmy-XAU-Exec.vbs`) で `tools/windows/xau_autobot_live_loop.ps1 -Live` を常駐起動すること**。`-Live` 未指定は `dry_run` となり注文は送信されない。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
+- **ORDER_OPEN コメント契約**: `comment` はトップシグナル戦略の実行文脈（`strategy_name|tf_key`）を送る。`NIL` 名や「文脈欠落による `M1` フォールバック」をコメントへ出さない。`M1` は戦略TFが実際に1分足のときのみ許容する。
+- **Execution Fail-Closed 契約**: 実行文脈（`strategy_name` / `timeframe`）が欠落・不正な場合は、`NIL` や既定TFへ丸めずに**発注を中止**する。`NIL` で先に進むフォールバックを禁止する。`timeframe="NIL"` / 空文字 / 不正ラベル（例: `"UNKNOWN"`）は「不正な時間足」として fail-closed 対象にする。
+- **ORDER_OPEN Sink Guard 契約**: `safe-order` と `make-order-message` は送信前に `comment` を検証し、`strategy|tf` 形式不正（区切り欠落、strategy/timeframe 欠落、`NIL` 含有）を検知した場合は送信せず fail-closed で中止する。
+- **Fail-Closed 可観測性契約**: fail-closed で発注を中止した場合は、`notify-discord-alert` による運用アラートと `execution.context_missing` telemetry を同時出力し、運用者が即時検知できる状態を正本とする。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
 - **Daily PnL Aggregation**: `strategy_daily_pnl` を日次集計（00:10 JST）、非相関スコア計算に使用。
 - **Graveyard/Retired 指標**: Evolution Report は DB（`get-db-rank-counts`）を正本、Libraryファイル数はドリフト検知に使用。
@@ -38,6 +44,7 @@
   - **通知対象**: CPCV個別通知は既知戦略（KBまたはDBに存在する `strategy_name`）のみ送信し、未知戦略名の結果はメトリクス/履歴には残しても Discord alert は送信しない。
   - **履歴CSV耐性**: CPCV個別通知は `data/logs/cpcv_history.csv` にも記録するが、`median_sharpe/pass_rate` などの数値が欠落・`NIL` の場合でも 0.0 として記録し、通知/受信ループを `Msg Error` で落とさない。
 - **CPCV Validate (評価条件)**: Guardian の `CPCV_VALIDATE` は `strategy_params` の `indicator_type/timeframe/filter_*` を解釈して（可能なら）Backtestと同等の条件でCPCVを評価する（timeframe>1はResample、filter有効時は同一データからauxを生成してMTF filter適用）。
+- **CPCV Validate メモリ契約**: Guardian の `CPCV_VALIDATE` は 1リクエスト内で `candles_file` を1回だけロードし、各 path/range 評価は同一 candle バッファのスライスを再利用する。pathごとのCSV全件再読込を禁止する。
 - **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
@@ -50,6 +57,7 @@
 - **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
 - **Evolution Report 保存先**: レポート保存は `*evolution-report-path*` を正本とし、`write-evolution-report-files` は固定パスを直接書かない。テスト/運用で保存先をバインド可能にして本番 `data/reports/evolution_factory_report.txt` の意図しない上書きを防ぐ。
   - **テスト隔離**: `run-all-tests` は `*evolution-report-path*` を `data/memory/swimmy-tests-evolution-report.txt` へバインドし、本番レポートを汚染しない。
+- **Test Telemetry 隔離契約**: `deftest` 実行は単体呼び出し（`(swimmy.tests::test-...)`）でも telemetry 出力先を `data/memory/swimmy-tests-telemetry*.jsonl` にバインドし、本番 `logs/swimmy.json.log` へテスト由来 WARN/telemetry を混入させない。
 - **Backtest Status 保存先**: `maybe-log-backtest-recv` の backtest status 書き込み先は `swimmy.main::*backtest-status-path*` を正本とし、固定パス `data/reports/backtest_status.txt` を直接書かない（テスト/監査で保存先をバインド可能にして本番 status を汚染しない）。
 
 ## 決定事項
@@ -74,6 +82,8 @@
 - **Evolution Loop 排他契約**: `tools/evolution_daemon.py` は `school-daemon.lisp` の稼働を監視し、後発で school が起動した場合は自身の SBCL 子プロセス（`run_lisp_evolution.lisp`）を停止して待機へ戻る。`SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` 指定時のみ並列実行を許可する。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
+- **Rank TradeEvidence Floor**: Aは `trade evidence >= 50`、Sは `trade evidence >= 100` を必須とする。`run-rank-evaluation` で既存A/Sにも floor sweep を適用し、`evaluate-a-rank-strategy` は floor 未達を即時 `:B` へ降格して先へ進めない。
+- **S Rank Conformance Sweep**: `run-rank-evaluation` は既存 `:S` 戦略に対しても `check-rank-criteria :S` を再評価し、基準逸脱した戦略を `:A`（A基準通過時）または `:B` へ降格する。trade floor のみ満たす S を残留させない。
 - **Aランク WR下限の扱い**: 高RR例外を設けず、Aの `WR>=43%` を一律適用する（実装/レポート/テストを同一基準で運用）。
 - **A基準不合格内訳の可視化**: Evolution/Backtest系レポートには A Stage1 基準の不合格内訳（Sharpe/PF/WR/MaxDD）を常時表示し、昇格停滞の要因を定点観測できるようにする。
 - **A Near-Miss 可視化**: Evolution Report は Bランク候補のうち `a-base-deficit-score` が小さい戦略（A Stage1 に近い候補）を表示し、各候補の不足ゲート（Sharpe/PF/WR/MaxDD）を明示する。ランク閾値や昇格ゲートは変更しない。
@@ -97,12 +107,19 @@
 - **Archive Drift Reconcile 契約**: `tools/ops/reconcile_archive_db.py` は Library→DB 補完だけでなく、DB側余剰アーカイブ名（DB-only）件数を可視化する。必要時はオプションで DB-only 行をバックアップテーブルへ退避してから prune できる（既定は非破壊）。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
+- **Executor Pending契約**: `swimmy.globals:*pending-orders*`（UUID→(timestamp,retry,msg)）の `msg` は `ORDER_OPEN` V2 の `instrument/side/lot` を正本キーとして扱う。`ORDER_ACK` / `ORDER_REJECT` 受信時は同一UUIDの pending を即時除去し、retry/timeout へ残存させない。
+- **Execution Link Freshness Gate契約**: `safe-order` は `ORDER_OPEN` 送信前に MT5 実行リンクの鮮度を検証し、`guardian heartbeat` または `ACCOUNT_INFO` が stale の場合は fail-closed で注文を中止する。中止時は `swimmy.globals:*pending-orders*` に enqueue せず、`execution.link_stale` telemetry と（スロットル付き）運用アラートで可観測化する。
+- **Executor Pending Pause契約**: `check-pending-orders` は MT5 実行リンク（guardian heartbeat / ACCOUNT_INFO）が stale の間、pending retry/timeout を停止する。stale 中は pending を保持し、再送・timeout通知を行わない（復旧後に通常 retry 判定へ戻る）。
 - **Pattern Similarity Service**: 5564(REQ/REP) で **S式のみ**受理。QUERY入力はOHLCVのS式、画像生成はサービス側（バイナリ送信は禁止）。
 - **Inference Worker**: 5565(REQ/REP) で **S式のみ**受理（`type="INFERENCE"`）。`SWIMMY_PORT_INFERENCE` でポート上書き可能。
-- **Pattern Similarity 実装状態（Phase 1/2）**: `tools/pattern_similarity_service.py` を実装。`STATUS/BUILD_INDEX/QUERY` 契約を提供し、埋め込み保存を `data/patterns/` に実装（FAISS未導入環境は NumPy 近傍探索にフォールバック）。Lisp側は `src/lisp/core/pattern-similarity-client.lisp` で 5564 に接続し、`school-execution` で H1/H4/D1/W1/MN1 のソフトゲート（不一致時 lot 0.7x）と `execution.pattern_gate` telemetry を実装。Phase 2 として `tools/pattern_vector_dl.py`（Siamese/Triplet）と `tools/train_pattern_vector_model.py` を追加し、学習済みチェックポイント（`SWIMMY_PATTERN_DL_MODEL_PATH` または `data/patterns/models/vector_siamese_v1.pt`）が存在する場合は service が `vector-siamese-v1` 埋め込みを優先する。
+- **Pattern Similarity 実装状態（Phase 1/2）**: `tools/pattern_similarity_service.py` は `STATUS/BUILD_INDEX/QUERY` 契約を提供し、`data/patterns/` の index をロードする。埋め込み backend は `clip-vit-b32`（画像）と `vector-siamese-v1`（学習済みSiamese）を併用可能で、`QUERY` は backend別確率と混合確率を返す。ベクトル学習器は `tools/pattern_vector_dl.py` / `tools/train_pattern_vector_model.py` で管理し、学習済みモデルは `SWIMMY_PATTERN_DL_MODEL_PATH`（既定 `data/patterns/models/vector_siamese_v1.pt`）からロードする。
+- **Pattern Similarity Decision Policy**: `QUERY` は `intended_direction`（BUY/SELL）を受け取り、歪み検知（volume/range/price-band concentration）を通過した場合のみ `follow/fade/no-trade` を算出する。`SWIMMY_PATTERN_POLICY_MODE` は `shadow/soft-enforce/full-enforce` を取り、既定は `shadow`（助言のみ、強制停止なし）。
+- **Pattern Similarity Ensemble Weight**: `SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` は vector backend の混合重み（clip は `1-w`）を表す。2026-02-17 の比較ベンチ結果に基づき、既定値は `0.00`（clip優先）とする。
+- **Pattern Backend Auto Calibration**: `tools/pattern_backend_calibration_update.py` が定期ベンチを実行し、`data/reports/pattern_backend_calibration_latest.json`（評価レポート）と `data/patterns/models/ensemble_weight.json`（推奨重み）を更新する。重みファイルは `vector_weight`（global）に加えて `symbol_timeframe_weights`（`<SYMBOL>:<TF>` -> `0.0..1.0` 数値）を持てる。`tools/pattern_similarity_service.py` は `SWIMMY_PATTERN_ENSEMBLE_WEIGHT_FILE`（既定 `data/patterns/models/ensemble_weight.json`）を優先し、`symbol_timeframe_weights` → global `vector_weight` → `SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` の順で実行時重みを決定する。
+- **Pattern Backend Calibration Health Audit**: `tools/system_audit.sh` は `tools/pattern_backend_calibration_status.py` を呼び出し、`swimmy-pattern-backend-calibration.timer` の有効状態と `data/reports/pattern_backend_calibration_latest.json` の鮮度（既定48時間以内）を監査する。異常時は WARN として可視化する。
 - **Pattern DB**: `data/patterns/` に npz + FAISS を保存、SQLiteはメタ情報のみ。
-- **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。
-- **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）で **ロット0.7倍**のソフトゲート。**ライブ/OOS/CPCV/バックテストに適用**。
+- **時間足データ方針**: M1は **10M candles/シンボル** 保存。M5/M15/M30はM1からリサンプル。H1/H4/D1/W1/MN1は直取得。任意TFは minutes(int) を正本として M1+resample 経路で評価可能にする。
+- **Pattern Gate**: H1以上の足確定時に評価、TF一致のみ適用。距離重み確率（k=30 / 閾値0.60）に加えて `decision_action` を実売買側で解釈し、`follow` は不一致時 0.70x、`fade` は 0.55x、`no-trade` は 0.35x へロット減衰する（停止強制は行わず最小ロットで fail-soft）。低歪み局面（`distortion_passed=false`）はノイズ回避のため gate 適用をスキップできる。**ライブ/OOS/CPCV/バックテストに適用**。
 - **Signal Confidence Gate**: `process-category-trades` の最終候補シグナルに確度ゲートを適用する。`confidence < 0.20` はエントリー見送り、`0.20 <= confidence < 0.35` はロット `0.55x`、`>= 0.35` は通常ロット。confidence欠落時は後方互換として `1.0` 扱い。
 - **ラベル評価幅**: M5/M15=4時間、H1/H4=1日、D1=1週間、W1/MN1=1か月（ATR基準のUp/Down/Flat）。
 - **サンプルストライド**: M5=30分(6本)、M15=1時間(4本)、H1/H4/D1/W1/MN1=1本。
@@ -157,6 +174,12 @@
 ## 既知のバグ/課題
 - **WSL IP**: MT5側の設定 (`InpWSL_IP`) は **空がデフォルト**。手動指定が必須。
 - **Backtest Status**: `data/reports/backtest_status.txt` の `last_request_id` と `pending` を監視。
+- **Backtest停滞アラート契約**: `Backtest停滞` は pending/inflight が正のときだけ発報する。CPCV-only フェーズや idle（未投入）時は「最終受信時刻が古い」だけでアラートを出さない。
+- **Watchdog Silence Timeout契約**: `swimmy-watchdog` の Brain silence 判定は `TIMEOUT_WARN/ BLOCK/ CLOSE` の3段階を維持しつつ、実効値の下限を `120/300/600s` とする。環境値がこれより小さい場合は clamp して運用し、30〜90秒級の通常無通信区間で `BRAIN TIMEOUT` を誤発火させない。
+- **Band Alias Binding契約**: `evaluate-strategy-signal` は `BOLLINGER` を `BB` 同義として扱い、`UPPER-BAND/LOWER-BAND`（および `*-PREV`）を alias 束縛する。`bb-upper/bb-lower` 系と `upper-band/lower-band` 系が混在しても `unbound variable` で評価停止しない。
+- **Logic Symbol Package Normalization契約**: `evaluate-strategy-signal` は `entry/exit` ロジック中の参照シンボルを package 非依存で解決する。`COMMON-LISP-USER::SMA-20` や `SWIMMY.TESTS::LOWER-BAND` のような外部packageシンボルでも、同名の評価用束縛へ alias 解決し `unbound variable` で評価停止しない。
+- **Signal Candidate Scope契約**: `collect-strategy-signals` は active rank（`:B/:A/:S/:LEGEND`）のみを評価対象にする。`:GRAVEYARD/:RETIRED/NIL` rank は評価ループへ入れず、エラー連打とCPU飽和を抑止する。
+- **Legacy Keyword Logic Normalization契約**: `evaluate-strategy-signal` は legacy shorthand（例: `((:RSI-BELOW 10))`, `((:RSI-ABOVE 90))`, `((:CROSS-OVER :SMA 50 :SMA 200))`, `((:CROSS-UNDER ...))`）を正規化してから評価する。`illegal function call`/compile-error ストームを防ぎ、旧Legend定義を fail-open ではなく安全に解釈する。
 - **Backtest Debug**: `SWIMMY_BACKTEST_DEBUG_RECV=1` で受信状況を `data/reports/backtest_debug.log` に追記（内部ZMQはS式のみのため、Backtest Serviceの戻りもS式であることが前提）。
 - **Backtest Option値**: Guardian `--backtest-only` の `Option<T>` は「空/1要素リスト」で表現（例: `(data_id "USDJPY_M1")` / `(data_id)` / `(start_time 1700000000)`）。
 - **データ不整合**: MT5とLisp間のヒストリカルデータ差異。
@@ -166,6 +189,47 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-17**: Aux service S式パース契約を更新。`parse_sexp_alist` は alist の短縮表記 `(key v1 v2...)` を top-level でも受理し、`(candles (... ) (...))` のような list-cdr 形式を `key -> list-value` として解釈する（`Expected alist at top level` の誤拒否を防止）。
+- **2026-02-17**: Executor pending pause 契約を追加。`check-pending-orders` は execution link stale 中に retry/timeout を進めず、リンク断中の `Order Timed Out` 連発を抑止する方針を正本化。
+- **2026-02-17**: Rank評価契約を更新。`run-rank-evaluation` に S conformance sweep（既存 `:S` の `check-rank-criteria :S` 再評価）を追加し、基準逸脱Sを `:A/:B` へ自動降格する方針を正本化。
+- **2026-02-17**: 既存DBの S不整合ランクを是正。`s_conformance_backup_20260217` へ更新前 `:S` 行を退避し、S staged gate 不合格の `RECRUIT-RND-1768781166-12` を `:B` へ降格（`strategies.rank` 反映）した。
+- **2026-02-17**: Test telemetry 隔離契約を拡張。`run-all-tests` だけでなく個別 `deftest` 実行時も telemetry 出力先を `data/memory/swimmy-tests-telemetry*.jsonl` へ固定し、検証用 fail-closed WARN（例: `ORDER BLOCKED ... NIL|M1`）が本番 `logs/swimmy.json.log` へ混入しない方針を正本化。
+- **2026-02-17**: Execution link freshness gate 契約を追加。`safe-order` は MT5実行リンク（guardian heartbeat / ACCOUNT_INFO）が stale の間は fail-closed で `ORDER_OPEN` を送らず、pending retry table を増やさない方針を正本化。
+- **2026-02-17**: テスト契約を現行ゲート仕様へ整合（A `TradeEvidence>=50` / S `TradeEvidence>=100` / S昇格CommonStage2）。CPCV候補・B-rank culling・promotion通知・evolution report件数の回帰テストを更新し、`test-backtest-trade-logs-insert` は `*disable-auto-migration*` を有効化して DB lock フレークを抑止。実運用ロジックの挙動変更はなし（テスト安定化のみ）。
+- **2026-02-17**: `swimmy-watchdog` の timeout 運用契約を更新。`TIMEOUT_WARN/BLOCK/CLOSE` は最小 `120/300/600s` を下回らないよう clamp し、短周期 silence（約30〜90秒）での誤 `BRAIN TIMEOUT` / 不要な `swimmy-brain` 再起動ループを抑止する方針を正本化。
+- **2026-02-17**: Strategy signal 評価契約を更新。`BOLLINGER` を `BB` 同義で正規化し、`UPPER-BAND/LOWER-BAND` alias 束縛（`*-PREV` 含む）を追加して、`Hunted-BB-Reversion` 系の `LOWER-BAND is unbound` を防ぐ方針を正本化。
+- **2026-02-17**: Strategy signal の symbol package 正規化契約を追加。`entry/exit` が `COMMON-LISP-USER::*` や他packageの指標シンボル（例: `SMA-20`, `BB-LOWER`, `UPPER-BAND`）を含んでも、評価器は同名束縛へ alias 解決して `unbound variable` を防ぐ方針を正本化。
+- **2026-02-17**: Signal candidate scope 契約を追加。`collect-strategy-signals` は active rank（`:B/:A/:S/:LEGEND`）のみを評価し、graveyard/retired/NIL rank を live 評価ループから除外してログストームとCPU過負荷を防ぐ方針を正本化。
+- **2026-02-17**: Legacy keyword logic 正規化契約を追加。`evaluate-strategy-signal` は `((:RSI-BELOW ...))` / `((:RSI-ABOVE ...))` / `((:CROSS-OVER ...))` / `((:CROSS-UNDER ...))` 形式を canonical logic へ変換してから評価し、`illegal function call` を起点とした compile-error 連鎖を防ぐ方針を正本化。
+- **2026-02-17**: Timeframe canonical 契約を更新。内部表現を minutes(int) に統一し、既定8TFバケットを維持しつつ任意TF探索（例: M36/H2/H5/H60）を許容する方針を正本化。カテゴリ/相関/Pattern Gate は有限バケットへ正規化し、TF mutation pool は pending 圧で budget 制御する。
+- **2026-02-17**: Rank TradeEvidence floor 契約を追加。A `>=50`、S `>=100` を必須化し、`run-rank-evaluation` の floor sweep（`S<100` 降格、`A<50` 降格）と `evaluate-a-rank-strategy` の未達即時降格を正本化。
+- **2026-02-17**: 低頻度Sharpe過大評価の統計ドリフト対策を更新。Guardian の Sharpe 算出は 0 リターン日を除外せずに計算し、trade evidence が薄い戦略は rank/score で上振れしにくくする方針を正本化。
+- **2026-02-17**: 既存DBのA/S証拠不足ランクを一括是正。`trade_floor_backup_20260217` を退避後に `S<50 -> B`、`50<=S<100 -> A`、`A<50 -> B` を適用し、`strategies.rank` と `data_sexp` の rank 表記を同期した。
+- **2026-02-17**: Backtest停滞アラート契約を更新。`maybe-alert-backtest-stale` は pending/inflight が正のときのみ通知し、CPCV-only/idle で `Backtest停滞` を誤送信しない方針を正本化。
+- **2026-02-17**: Guardian CPCV のメモリ契約を更新。`CPCV_VALIDATE` は 1リクエストにつき CSV全件ロードを1回に限定し、path/range ごとの再読込を行わない（同一バッファ再利用）方針を正本化。
+- **2026-02-17**: Indicator type 正規化契約を追加。`strategy.indicators` の type が `sma` / `:SMA` / `"sma"` のように package や表現が混在しても、評価器は同一指標として解釈して束縛を生成する。`SMA-20` などの unbound で評価停止しない。
+- **2026-02-17**: Logic 参照指標の補完契約を追加。`strategy.indicators` と `entry/exit` の期間参照（例: `SMA-20`）が不整合でも、評価器は参照された period 指標を history から補完束縛し、`SMA-20` unbound で評価停止しない。補完対象は `SMA/EMA/RSI/CCI/ATR/WILLIAMS` の `-<period>` と `-<period>-PREV`。
+- **2026-02-17**: Logic symbol alias 解決契約を拡張。`evaluate-strategy-signal` は package/case 混在の参照シンボルをシンボル名ベースで正規化して束縛解決し、`SWIMMY.TESTS::SMA-20` やエスケープ小文字（例: `|sma-20|`, `|lower-band|`）でも unbound で評価停止しない。
+- **2026-02-17**: Strategy indicator 評価契約を更新。`evaluate-strategy-signal` / `get-indicator-values` は `williams` 指標を正式サポートし、`WILLIAMS`（および period 付き変数）を常に束縛できることを正本化。`SWIMMY.SCHOOL::WILLIAMS` の unbound で評価停止しない。
+- **2026-02-17**: Bollinger パラメータ正規化契約を追加。`(bb period)` のように偏差が欠落した指標は `dev=2.0` を既定補完して評価し、`NIL is not of type NUMBER` を起こさない。
+- **2026-02-17**: Guardian Dead-Man timeout の運用契約を再更新。`BRAIN_TIMEOUT_SECS` は SPEC/INTERFACES と整合する `300s` を正本とし、さらに「初回 Brain motor signal 受信前」は startup grace（既定 900s）中の silence を timeout 判定しない方針を追加。長時間コールドスタート中の誤 `BRAIN DEAD DETECTED` / 不要な `swimmy-brain` restart を抑止する。
+- **2026-02-17**: Guardian の Dead-Man timeout 判定契約を更新。`sub_from_brain` に未処理メッセージがあるループでは `BRAIN_TIMEOUT_SECS` 超過でも即時 Dead 判定しない（受信優先）。これにより、CPCV/Backtest の重い処理中に heartbeat がキュー済みでも `BRAIN DEAD DETECTED`/`AUTO-REVIVAL HALTED` を誤発火させない方針を正本化。
+- **2026-02-17**: fail-closed 可観測性契約を追加。実行文脈欠落で注文を中止した際に Discord alert と `execution.context_missing` telemetry を出力する方針を正本化。
+- **2026-02-17**: Execution fail-closed 契約を追加。`strategy_name/timeframe` が欠落した注文は `NIL`/既定TFへフォールバックせず中止し、文脈不整合を早期に顕在化させる方針を正本化。
+- **2026-02-17**: ORDER_OPEN コメントの実行文脈契約を更新。`process-category-trades` で選抜したトップ戦略の `strategy_name/timeframe` を実行経路へ引き渡し、`NIL|M1` のような文脈欠落コメントを送信しない方針を正本化。
+- **2026-02-17**: 実行時時間足の厳格パース契約を追加。`"NIL"`/空文字/未知ラベルの `timeframe` は `M1` へ丸めず、`execution.context_missing` を出して fail-closed で注文中止する。
+- **2026-02-17**: ORDER_OPEN の sink guard 契約を拡張。`safe-order` に加えて `make-order-message` でも `comment` を厳格検証し、`strategy|tf` 形式を満たさない（`NIL` 含む）注文は MT5 送信前に fail-closed で中止する方針を正本化。
+- **2026-02-17**: Executor pending の運用契約を更新。MECU exposure 計算で pending `ORDER_OPEN` を `instrument/side/lot` で解釈し、`ORDER_ACK` 受信時に該当UUIDを `swimmy.globals:*pending-orders*` から除去する方針を正本化。
+- **2026-02-17**: MT5 reject 応答契約を追加。MT5 が注文拒否時に `ORDER_REJECT`（`id`/`symbol`/`reason`/`retcode`）を返し、Dispatcher は `ORDER_REJECT` 受信時も該当UUIDを `swimmy.globals:*pending-orders*` から即時除去して timeout リトライ残留を防ぐ方針を正本化。
+- **2026-02-17**: XAU AutoBot の運用契約を更新。`Swimmy-XAU-Cycle` の成功は「最適化成功」であり実注文稼働を意味しないことを明確化。実注文の健全判定は `xau_autobot.py --loop --live` 常駐（Exec task または Startup launcher）を正本とし、`-Live` 抜けを停止要因として扱う方針を追加。
+- **2026-02-17**: Pattern Similarity の運用契約を更新。`QUERY` に `intended_direction`（BUY/SELL）を追加し、service側で `follow/fade/no-trade` の decision を返す方針を正本化。`SWIMMY_PATTERN_POLICY_MODE` 既定値は `shadow`（助言のみ、強制停止なし）とする。
+- **2026-02-17**: Pattern Similarity の実装契約を更新。backend は `clip-vit-b32` と `vector-siamese-v1` の併用を正本化し、低歪み局面（volume/range/price-band concentration が弱い）は gate 適用をスキップしてノイズ照合を抑制する方針を追加。
+- **2026-02-17**: Pattern backend 比較ベンチ（`data/reports/pattern_backend_benchmark_2026-02-17.json`）の結果を反映し、`SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` の既定値を `0.00`（clip優先）へ更新。
+- **2026-02-17**: Pattern backend 自動校正契約を追加。`tools/pattern_backend_calibration_update.py` + `swimmy-pattern-backend-calibration.timer` により定期ベンチを実行し、`data/patterns/models/ensemble_weight.json` を更新して service 側へ動的反映する方針を正本化。
+- **2026-02-17**: Pattern backend 校正の監査契約を追加。`tools/system_audit.sh` に `tools/pattern_backend_calibration_status.py` を統合し、timer 有効性と calibration report 鮮度（既定48時間）を WARN 監査する方針を正本化。
+- **2026-02-17**: Pattern backend 重み適用契約を拡張。`ensemble_weight.json` の `symbol_timeframe_weights`（`<SYMBOL>:<TF>`）を導入し、QUERY時の重み決定を `symbol+timeframe` 単位で上書き可能にした。
+- **2026-02-17**: Pattern backend 運用実装を更新。`pattern_backend_calibration_update.py` が `ensemble_weight.json` に `symbol_timeframe_weights` を出力し、`pattern_similarity_service.py` の `STATUS/QUERY` レスポンスに重み適用情報（default file path / applied weight / weight_source）を返す方針を正本化。
+- **2026-02-17**: Pattern Gate 実行ポリシーを更新。Lisp実売買側は `decision_action` を解釈し、`follow/mismatch=0.70x`、`fade=0.55x`、`no-trade=0.35x` の段階減衰を適用する（強制停止ではなく fail-soft）。あわせて telemetry に `vector_weight_applied/weight_source` を記録し、symbol+timeframe 重みの実適用を追跡可能にする。
 - **2026-02-14**: Brain/Guardian の auto-revival（`swimmy-guardian` / `swimmy-watchdog`）は `systemctl restart` が polkit で `Interactive authentication required` になる環境を想定し、**まず** `sudo -n /usr/bin/systemctl restart <unit>` を試す。成功すれば SIGTERM フォールバックを使わずに復旧できる（flapping/進捗リセットを抑制）。`sudo -n` が使えない場合/許可が無い場合は従来通り `systemctl show -p MainPID --value` → `SIGTERM`（必要時 `SIGKILL`）で MainPID を落とし、systemd の `Restart=` で復旧させる。
 - **2026-02-14**: passwordless `systemctl` 運用を `/etc/sudoers.d/swimmy-systemctl`（`restart/status/is-active` を unit 限定で許可）で提供する方針を追加。テンプレートは `tools/ops/swimmy-systemctl.sudoers`、インストールは `sudo bash tools/ops/install_swimmy_systemctl_sudoers.sh` を正本とする。
 - **2026-02-14**: Polymarket OpenClaw status の運用契約を更新。cycle timer が無効なとき、status ファイルが更新されず stale になるのは仕様のため `Health: disabled` として扱い、`--fail-on-problem` でも exit 0 とする方針へ更新。

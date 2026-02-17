@@ -246,6 +246,14 @@ This keeps school allocation reconciliation independent of the dispatcher read p
 (defparameter *backtest-dead-letter* nil
   "Dead-letter queue for BACKTEST_RESULT messages that failed processing.")
 
+(defun current-backtest-pending-count ()
+  "Return current backtest pending/inflight count (never negative)."
+  (max 0
+       (- (if (boundp 'swimmy.globals::*backtest-submit-count*)
+              swimmy.globals::*backtest-submit-count*
+              0)
+          *backtest-recv-count*)))
+
 (defun backtest-debug-enabled-p ()
   (let ((val (uiop:getenv *backtest-debug-env*)))
     (and val (> (length val) 0)
@@ -301,10 +309,7 @@ This keeps school allocation reconciliation independent of the dispatcher read p
               *backtest-recv-last-trades*)
       (handler-case
           (progn
-            (let ((pending (max 0 (- (if (boundp 'swimmy.globals::*backtest-submit-count*)
-                                         swimmy.globals::*backtest-submit-count*
-                                         0)
-                                     *backtest-recv-count*))))
+            (let ((pending (current-backtest-pending-count)))
             (ensure-directories-exist *backtest-status-path*)
             (with-open-file (s *backtest-status-path*
                                :direction :output
@@ -322,12 +327,14 @@ This keeps school allocation reconciliation independent of the dispatcher read p
 
 (defun maybe-alert-backtest-stale ()
   "Alert if backtest results have not arrived for a while."
-  (let ((now (get-universal-time)))
-    (when (and (> (- now *backtest-recv-last-ts*) *backtest-stale-threshold*)
+  (let* ((now (get-universal-time))
+         (pending (current-backtest-pending-count)))
+    (when (and (> pending 0)
+               (> (- now *backtest-recv-last-ts*) *backtest-stale-threshold*)
                (> (- now *backtest-stale-last-alert*) *backtest-stale-alert-interval*))
       (setf *backtest-stale-last-alert* now)
-      (format t "[BACKTEST] ⚠️ No results for ~d sec (count=~d)~%"
-              (- now *backtest-recv-last-ts*) *backtest-recv-count*)
+      (format t "[BACKTEST] ⚠️ No results for ~d sec (count=~d pending=~d)~%"
+              (- now *backtest-recv-last-ts*) *backtest-recv-count* pending)
       (when (fboundp 'swimmy.core:notify-discord-alert)
         (swimmy.core:notify-discord-alert
          (format nil "Backtest停滞: ~d秒間結果なし (count=~d, last=~a)"
@@ -419,6 +426,8 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                                       result))
                           (full-name (%normalize-strategy-name (%result-strategy-name result)))
                           (sharpe (float (%alist-val result '(sharpe sharpe_ratio sharpe-ratio) 0.0)))
+                          (adjusted-sharpe (float (%alist-val result '(adjusted_sharpe adjusted-sharpe) sharpe)))
+                          (sharpe-ci-lower (float (%alist-val result '(sharpe_ci_lower sharpe-ci-lower) adjusted-sharpe)))
                           (trades (or (%alist-val result '(trades total_trades total-trades) 0) 0))
                           (pnl (float (%alist-val result '(pnl total_profit total-profit) 0.0)))
                           (win-rate (%normalize-rate (%alist-val result '(win_rate winrate win-rate) 0.0)))
@@ -438,7 +447,10 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                                         (is-phase1 (%strip-terminal-suffix full-name "_P1"))
                                         (t full-name))))
                           (request-id (%alist-val result '(request_id request-id) nil))
-                          (metrics (list :sharpe sharpe :trades trades :pnl pnl
+                          (metrics (list :sharpe sharpe
+                                         :adjusted-sharpe adjusted-sharpe
+                                         :sharpe-ci-lower sharpe-ci-lower
+                                         :trades trades :pnl pnl
                                          :win-rate win-rate :profit-factor profit-factor :max-dd max-dd
                                          :request-id request-id)))
                      (backtest-debug-log "recv sexp name=~a full=~a sharpe=~,4f trades=~d"
@@ -707,9 +719,50 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                      (setf swimmy.globals:*last-guardian-heartbeat* (get-universal-time))
                      (maybe-alert-backtest-stale)))
                   ((string= type-str swimmy.core:+MSG-ORDER-ACK+)
-                   (let ((order-id (%alist-val sexp '(id :id) nil))
+                   (let* ((order-id-raw (%alist-val sexp '(id :id) nil))
+                          (order-id (cond
+                                      ((stringp order-id-raw) order-id-raw)
+                                      ((symbolp order-id-raw) (symbol-name order-id-raw))
+                                      (t order-id-raw)))
                          (ticket (%alist-val sexp '(ticket :ticket) nil)))
+                     (when (and (stringp order-id)
+                                (boundp 'swimmy.globals:*pending-orders*)
+                                (hash-table-p swimmy.globals:*pending-orders*))
+                       (remhash order-id swimmy.globals:*pending-orders*))
                      (format t "[DISPATCH] 📥 ORDER_ACK id=~a ticket=~a~%" order-id ticket)))
+                  ((string= type-str swimmy.core:+MSG-ORDER-REJECT+)
+                   (let* ((order-id-raw (%alist-val sexp '(id :id) nil))
+                          (order-id (cond
+                                      ((stringp order-id-raw) order-id-raw)
+                                      ((symbolp order-id-raw) (symbol-name order-id-raw))
+                                      (t order-id-raw)))
+                          (symbol-raw (%alist-val sexp '(symbol :symbol) nil))
+                          (symbol (cond
+                                    ((stringp symbol-raw) symbol-raw)
+                                    ((symbolp symbol-raw) (symbol-name symbol-raw))
+                                    (t symbol-raw)))
+                          (reason-raw (%alist-val sexp '(reason :reason) "ORDER_REJECT"))
+                          (reason (cond
+                                    ((stringp reason-raw) reason-raw)
+                                    ((symbolp reason-raw) (symbol-name reason-raw))
+                                    (t (format nil "~a" reason-raw))))
+                          (retcode (%alist-val sexp '(retcode :retcode) nil)))
+                     (when (and (stringp order-id)
+                                (boundp 'swimmy.globals:*pending-orders*)
+                                (hash-table-p swimmy.globals:*pending-orders*))
+                       (remhash order-id swimmy.globals:*pending-orders*))
+                     (format t "[DISPATCH] ❌ ORDER_REJECT id=~a symbol=~a reason=~a retcode=~a~%"
+                             order-id symbol reason (or retcode "N/A"))
+                     (when (fboundp 'swimmy.core::emit-telemetry-event)
+                       (swimmy.core::emit-telemetry-event "execution.order_reject"
+                         :service "dispatcher"
+                         :severity "warn"
+                         :correlation-id order-id
+                         :data (jsown:new-js
+                                 ("id" (or order-id ""))
+                                 ("symbol" (or symbol ""))
+                                 ("reason" reason)
+                                 ("retcode" (or retcode "")))))))
                   ((string= type-str "POSITIONS")
                    (let* ((symbol (%alist-val sexp '(symbol :symbol) ""))
                           (symbol-str (cond

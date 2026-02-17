@@ -13,6 +13,7 @@
 (defparameter +MSG-ORDER-OPEN+ "ORDER_OPEN")
 (defparameter +MSG-ORDER-FILL+ "ORDER_FILL")
 (defparameter +MSG-ORDER-ACK+ "ORDER_ACK")  ;; Incoming
+(defparameter +MSG-ORDER-REJECT+ "ORDER_REJECT") ;; Incoming
 (defparameter +MSG-TRADE-CLOSED+ "TRADE_CLOSED") ;; Incoming
 (defparameter +MSG-ACCOUNT-INFO+ "ACCOUNT_INFO") ;; Incoming
 (defparameter +MSG-HISTORY+ "HISTORY") ;; Incoming
@@ -115,6 +116,33 @@
                 (version . ,+protocol-version+))))
     (append base payload-alist)))
 
+(defun split-order-comment-context (comment-text)
+  "Split COMMENT-TEXT into (strategy timeframe) by first | separator."
+  (let ((sep (and (stringp comment-text) (position #\| comment-text))))
+    (when sep
+      (values (subseq comment-text 0 sep)
+              (subseq comment-text (1+ sep))))))
+
+(defun invalid-order-comment-reason (comment)
+  "Return keyword reason when COMMENT is invalid execution context.
+Valid format is \"strategy|timeframe\" with non-empty, non-NIL tokens."
+  (let* ((raw (if comment
+                  (string-trim '(#\Space #\Tab #\Newline #\Return) (format nil "~a" comment))
+                  ""))
+         (up (string-upcase raw)))
+    (cond
+      ((string= raw "") :missing-comment)
+      ((not (position #\| raw)) :invalid-format)
+      ((or (string= up "NIL") (search "NIL|" up)) :missing-strategy)
+      (t
+       (multiple-value-bind (strategy timeframe) (split-order-comment-context raw)
+         (let ((s (string-trim '(#\Space #\Tab #\Newline #\Return) (or strategy "")))
+               (tf (string-trim '(#\Space #\Tab #\Newline #\Return) (or timeframe ""))))
+           (cond
+             ((or (string= s "") (string= (string-upcase s) "NIL")) :missing-strategy)
+             ((or (string= tf "") (string= (string-upcase tf) "NIL")) :missing-timeframe)
+             (t nil))))))))
+
 (defun make-order-message (strategy-id symbol side lot price sl tp &key (magic 0) (comment ""))
   "Construct an ORDER_OPEN message (Protocol V2).
    
@@ -128,7 +156,12 @@
      tp: Take Profit
      magic: Magic number
      comment: Order comment"
-  (let ((side-str (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side))))
+  (let* ((side-str (if (keywordp side) (string-upcase (symbol-name side)) (string-upcase side)))
+         (comment-reason (invalid-order-comment-reason comment)))
+    (when comment-reason
+      (error "Invalid ORDER_OPEN comment (~a): ~a"
+             comment-reason
+             (or comment "")))
     (make-protocol-message +MSG-ORDER-OPEN+
       `((strategy_id . ,strategy-id)
         (instrument . ,symbol)

@@ -31,7 +31,8 @@
  - **Bridge**: MCP Gateway は JSON‑RPC を受け取り、S式に変換して `:5559`（External Command）へPUBする。
 
 ## データスキーマ (S-expression)
-S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。
+S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。  
+alist の value が list の場合は、Lispの短縮表記（例: `(candles ((timestamp . 1) ... ) ((timestamp . 2) ...))`）を許容し、受信側は `key -> list-value` として解釈する。
 
 ### 1. Market Data (Port 5557)
 MT5からブロードキャストされる。
@@ -93,6 +94,17 @@ MT5からブロードキャストされる。
  (ticket . 123456789)
  (symbol . "USDJPY"))
 ```
+**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_ACK` 受信時に同一 `id` の pending エントリを `swimmy.globals:*pending-orders*` から除去する。
+
+**ORDER_REJECT**:
+```
+((type . "ORDER_REJECT")
+ (id . "uuid-v4")
+ (symbol . "USDJPY")
+ (reason . "NO_MONEY")
+ (retcode . 10019)) ; optional
+```
+**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_REJECT` 受信時も同一 `id` の pending エントリを即時除去する（timeout retryへ残さない）。`reason` は拒否理由文字列、`retcode` はMT5側の取引リターンコード（取得できる場合のみ付与）。
 
 **TRADE_CLOSED**:
 ```
@@ -117,9 +129,12 @@ RustからMT5へ送信される。
  (sl . 144.500)
  (tp . 146.500)
  (magic . 123456)
- (comment . "StrategyName"))
+ (comment . "StrategyName|H1"))
 ```
-**備考**: `instrument` + `side` + `lot` が正式。`symbol/action` など旧キーは受理しない（Sender側もS式に統一する）。
+**備考**: `instrument` + `side` + `lot` が正式。`symbol/action` など旧キーは受理しない（Sender側もS式に統一する）。  
+`comment` は **必須** で、`"<strategy_name>|<tf_key>"`（例: `Volvo-Scalp-Gen0|H1`）を正本とする。`strategy_name` に `NIL` を入れない。`tf_key` は `M30/H2/H5/H60/MN` のようなラベルを許容する。  
+Sender (`safe-order` / `make-order-message`) は `comment` を検証し、形式不正（区切り欠落、strategy/timeframe欠落、`NIL` 含有）は fail-closed で送信中止する。  
+`CLOSE_SHORT_TF` は `comment` の `|D1`/`|W1`/`|MN` サフィックスを保護判定に利用する。
 
 **CLOSE**:
 ```
@@ -196,6 +211,7 @@ Brainのバックテスト要求を専用サービスへオフロードする。
 **Option値の表現（serde_lexpr）**: Guardian `--backtest-only` は `Option<T>` を **空リスト or 1要素リスト**で受け取る。  
 - `None` → `(candles_file)` / `(data_id)` / `(start_time)` のように **値なし**（空リスト）  
 - `Some(x)` → `(candles_file "path.csv")` / `(start_time 1700000000)` のように **値1つ**（1要素リスト）  
+- `timeframe`（strategy内、およびトップレベル Option<i64>）は **minutes(int)** を正本とする。`300`（=H5）や `3600`（=H60）のような非標準TFも許容し、`0` 以下は不正値として扱う。  
 
 **BACKTEST (Request, S-Expression)**:
 ```
@@ -563,7 +579,11 @@ Discord通知の非同期中継（Python）。
 ((type . "PATTERN_SIMILARITY_RESULT")
  (schema_version . 1)
  (status . "ok")
- (model . "clip-vit-b32")
+ (model . "mixed")
+ (policy_mode . "shadow")
+ (ensemble_default_vector_weight . 0.0)
+ (ensemble_weight_file . "/home/swimmy/swimmy/data/patterns/models/ensemble_weight.json")
+ (available_backends . ("clip-vit-b32" "vector-siamese-v1"))
  (indices . (((symbol . "USDJPY")
               (timeframe . "H1")
               (count . 12345)
@@ -597,6 +617,7 @@ Discord通知の非同期中継（Python）。
  (action . "QUERY")
  (symbol . "USDJPY")
  (timeframe . "H1")
+ (intended_direction . "BUY") ; optional: "BUY" / "SELL"
  (as_of . 1709234560)    ; optional
  (k . 30)                ; optional
  (candles . (((timestamp . 1709234500)
@@ -621,6 +642,33 @@ Discord通知の非同期中継（Python）。
  (result . ((p_up . 0.62)
             (p_down . 0.21)
             (p_flat . 0.17)
+            (backend_used . "mixed")
+            (vector_weight_applied . 0.15)
+            (weight_source . "file_symbol_timeframe") ; file_symbol_timeframe / file_global / env_default
+            (backend_probs . (((backend . "clip-vit-b32")
+                               (weight . 0.85)
+                               (p_up . 0.58)
+                               (p_down . 0.24)
+                               (p_flat . 0.18))
+                              ((backend . "vector-siamese-v1")
+                               (weight . 0.15)
+                               (p_up . 0.66)
+                               (p_down . 0.18)
+                               (p_flat . 0.16))))
+            (distortion_score . 1.43)
+            (distortion_threshold . 1.10)
+            (distortion_passed . true)
+            (distortion_features . ((volume_spike_z . 1.91)
+                                    (range_spike_z . 1.22)
+                                    (body_ratio . 0.67)
+                                    (vap_concentration . 0.18)))
+            (policy_mode . "shadow")
+            (intended_direction . "BUY")
+            (decision_action . "follow") ; follow / fade / no-trade
+            (decision_reason . "ev_follow_ge_ev_fade")
+            (ev_follow . 0.33)
+            (ev_fade . -0.33)
+            (enforce_no_trade . false)
             (top_k . (((id . "H1:USDJPY:1700000000")
                        (distance . 0.12)
                        (label . "UP"))
@@ -640,6 +688,10 @@ Discord通知の非同期中継（Python）。
 **Notes**:
 - `candles` はTFごとの **window_bars** と一致する長さを要求する。  
 - ペイロードサイズ上限は **デフォルト 2MB（設定で変更可）**（超過時は `error`）。  
+- `intended_direction` が未指定の場合、`decision_action` は `no-trade` を返しうる（方向依存EVを計算できないため）。  
+- `policy_mode=shadow` では `decision_action` は助言として返すのみで、実売買の強制停止は行わない。  
+- `enforce_no_trade=true` は「強制停止すべき」というサービス側判定を示すフラグであり、最終執行は呼び出し側の責務。  
+- backend重みは `SWIMMY_PATTERN_ENSEMBLE_WEIGHT_FILE`（既定 `data/patterns/models/ensemble_weight.json`）を優先し、`symbol_timeframe_weights` に `<SYMBOL>:<TF>` があればそれを使用、なければファイルの `vector_weight`、さらに欠落/不正時は `SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` にフォールバックする。`symbol_timeframe_weights` の値は `0.0..1.0` の数値（例: `"USDJPY:H1": 0.15`）を正本とする。  
 
 ### 10. Inference Worker Service (Port 5565)
 LLM推論を行う補助サービス（Python）。  
