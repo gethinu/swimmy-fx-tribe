@@ -150,6 +150,15 @@
     (let ((key (find-symbol "ACTION" :swimmy.main)))
       (assert-true (and (listp form) key (assoc key form)) "Expected alist"))))
 
+(deftest test-safe-read-normalizes-sharp-booleans
+  "safe-read-sexp should accept #t/#f and normalize to t/nil."
+  (let ((form (swimmy.core:safe-read-sexp "((ok . #t) (ng . #f))")))
+    (let ((ok-key (find-symbol "OK" :swimmy.main))
+          (ng-key (find-symbol "NG" :swimmy.main)))
+      (assert-true (and (listp form) ok-key ng-key) "Expected parsed alist for #t/#f")
+      (assert-true (eq (cdr (assoc ok-key form)) t) "Expected #t normalized to T")
+      (assert-true (null (cdr (assoc ng-key form))) "Expected #f normalized to NIL"))))
+
 (deftest test-internal-process-msg-rejects-read-eval
   "internal-process-msg should ignore unsafe sexp"
   (let ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main)))
@@ -2678,8 +2687,8 @@
           (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
           (fmakunbound 'swimmy.core:notify-discord-alert)))))
 
-(deftest test-internal-process-msg-order-reject-sink-guard-alert-dedupes-different-ids-same-reason
-  "Sink-guard ORDER_REJECT with different IDs but same reason/symbol should alert once within dedupe window."
+(deftest test-internal-process-msg-order-reject-sink-guard-alert-does-not-dedupe-different-ids
+  "Sink-guard ORDER_REJECT with different IDs should not be deduped by symbol/reason."
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
          (orig-notify-alert (and (fboundp 'swimmy.core:notify-discord-alert)
                                  (symbol-function 'swimmy.core:notify-discord-alert)))
@@ -2698,7 +2707,7 @@
                   nil))
           (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-A\") (symbol . \"USDJPY\") (reason . \"MISSING_STRATEGY\") (retcode . 0))")
           (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-B\") (symbol . \"USDJPY\") (reason . \"MISSING_STRATEGY\") (retcode . 0))")
-          (assert-equal 1 alert-count "Expected same-reason sink-guard reject alerts to be deduped across IDs"))
+          (assert-equal 2 alert-count "Expected different order IDs to each trigger alert"))
       (setf swimmy.main::*order-reject-alert-dedupe-window-sec* orig-window)
       (setf swimmy.main::*order-reject-alert-last-sent* orig-cache)
       (if orig-notify-alert
@@ -10353,7 +10362,7 @@
 			                  test-internal-process-msg-order-reject-clears-executor-pending
 			                  test-internal-process-msg-order-reject-sink-guard-alert
 			                  test-internal-process-msg-order-reject-sink-guard-alert-dedupes-duplicate-id
-			                  test-internal-process-msg-order-reject-sink-guard-alert-dedupes-different-ids-same-reason
+			                  test-internal-process-msg-order-reject-sink-guard-alert-does-not-dedupe-different-ids
 			                  test-internal-process-msg-order-reject-instrument-sink-guard-alert
 			                  test-internal-process-msg-order-reject-non-sink-no-alert
 			                  test-allocation-pending-timeouts-ignores-executor-pending-orders

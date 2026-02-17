@@ -33,6 +33,7 @@
 ## データスキーマ (S-expression)
 S式は alist 形式のS-expressionで表現する（例: `((type . "TICK") (symbol . "USDJPY") ...)`）。  
 alist の value が list の場合は、Lispの短縮表記（例: `(candles ((timestamp . 1) ... ) ((timestamp . 2) ...))`）を許容し、受信側は `key -> list-value` として解釈する。
+bool token は `true/false`・`t/nil`・`#t/#f` を同義で受理し、受信側で正規化して扱う。
 
 ### 1. Market Data (Port 5557)
 MT5からブロードキャストされる。

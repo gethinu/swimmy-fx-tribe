@@ -27,6 +27,7 @@
 - `tools/system_audit.sh` に「Order timeframe consistency」ステップを統合。既定は `--lookback-minutes 120`（`ORDER_TF_AUDIT_LOOKBACK_MINUTES` で変更、固定開始時刻は `ORDER_TF_AUDIT_SINCE`）。
 - `src/mt5/SwimmyBridge.mq5` を運用補強:
   - S式キー抽出は「パターン定義順」ではなく「文字列内で最初に現れた一致」を優先（混在フォーマット時の誤抽出を低減）
+  - S式キー抽出は quoted string 内の疑似キー一致を探索対象外にし、判定は事前マスク化で低オーバーヘッド化
   - `ORDER_OPEN` は `instrument` 欠落時でも `symbol` を受理（旧ペイロード互換）
   - `instrument/symbol` が `NIL/NULL/NONE` の場合は空扱いに正規化し、`ORDER_OPEN` は fail-close
   - `ORDER_OPEN` の `symbol=ALL` は fail-close（全チャート一括発注を禁止）

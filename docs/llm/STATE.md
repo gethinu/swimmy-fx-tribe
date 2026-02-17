@@ -13,6 +13,8 @@
 - **Lifecycle**: Rank（Incubator/B/A/S/Legend/Graveyard/Retired）が正義。Tierロジックは廃止（保存はRankディレクトリ）。
 - **Timeframe Canonical Contract**: 戦略の内部時間足は **分（minutes, int）** を正本とする。既定スコープは 8TF バケット（`5/15/30/60/240/1440/10080/43200`）だが、進化/バックテスト探索では任意TF（例: `36/120/300/3600` 分）を許容する。カテゴリ分割・相関判定・Pattern Gate 判定は有限バケットへ正規化して扱い、探索候補集合は budget 制御で上限化する。
 - **Aux Services**: Data Keeper / Notifier / Risk Gateway / Pattern Similarity Service / Inference Worker は **S式 + schema_version=1** のみ受理（ZMQでJSONは受理しない）。
+- **Dispatcher S式 bool互換契約**: `safe-read-sexp` / `internal-process-msg` は Rust `serde_lexpr` 由来の `#t/#f` を `t/nil` と同義で受理し、sharp-boolean を含む受信S式を `Unsafe/invalid SEXP` として誤棄却しない。
+- **Dispatcher invalid S式可観測性契約**: `Unsafe/invalid SEXP` ログには payload 先頭プレビュー（`head`）を含め、破損入力の発生源をログだけで特定できる状態を正本とする。
 - **Polymarket OpenClaw（任意）**: Polymarket（予測市場）向けの自動エントリーサブシステム。cycle/signal-sync は user systemd、status/notifier は systemd(system) を使用し、成果物は `data/reports/polymarket_openclaw_live/` に保存する（FX コアとは独立）。
 - **XAU AutoBot（任意・別系統）**: FXコア（Rust/Lisp）とは独立した MT5 補助運用。`Swimmy-XAU-Cycle` は最適化/プローブ/active config 更新のみを担当し、**実注文の正本は `Swimmy-XAU-Exec`（ONLOGON）または Startup launcher (`Swimmy-XAU-Exec.vbs`) で `tools/windows/xau_autobot_live_loop.ps1 -Live` を常駐起動すること**。`-Live` 未指定は `dry_run` となり注文は送信されない。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
@@ -201,6 +203,8 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-17**: Dispatcher の S式 bool互換契約を追加。`safe-read-sexp` は `#t/#f` を `t/nil` 相当として受理し、`serde_lexpr` 由来メッセージの誤 `Unsafe/invalid SEXP` を抑止する方針を正本化。
+- **2026-02-17**: Dispatcher の invalid S式可観測性契約を追加。`Unsafe/invalid SEXP` ログに payload 先頭（`head`）を併記し、再現時に原因メッセージを即時特定できる方針を正本化。
 - **2026-02-17**: MT5 `ORDER_REJECT` 可観測化契約を更新。sink-guard fail-closed の Discord alert は維持しつつ、送信側再送による同一 `id+reason` の短時間重複をデデュープして通知スパムを抑止する方針を正本化。
 - **2026-02-17**: Evolution Report `Top Candidates` を更新。DB Active候補（Graveyard/Retired除外）を `evidence-adjusted-sharpe` でソートし、表示を `S=<adjusted> (raw <raw>)` に統一。回帰テスト（`test-top-candidates-*`）で検証済み。
 - **2026-02-17**: MT5 Bridge の DeadMan 判定順序を更新。`OnTimer` で `:5560` キュー処理を Dead Man's Switch 判定より先に実行し、キュー済み HEARTBEAT 未処理による誤クローズを防ぐ方針を正本化。

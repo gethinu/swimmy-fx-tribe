@@ -108,13 +108,15 @@ string ToUpperCopy(string value) {
    return out;
 }
 
-bool IsIndexInsideQuotedString(string text, int index) {
-   if(index <= 0) return false;
+void BuildQuotedStringMask(string text, bool &inside[]) {
+   int n = StringLen(text);
+   ArrayResize(inside, n);
 
    bool in_string = false;
    bool escaped = false;
-   int limit = MathMin(index, StringLen(text));
-   for(int i = 0; i < limit; i++) {
+   for(int i = 0; i < n; i++) {
+      inside[i] = in_string;
+
       int ch = StringGetCharacter(text, i);
       if(in_string) {
          if(!escaped && ch == 92) { // \
@@ -132,16 +134,21 @@ bool IsIndexInsideQuotedString(string text, int index) {
          }
       }
    }
-   return in_string;
 }
 
-int FindPatternOutsideQuotedStrings(string text, string pattern) {
+bool IsIndexInsideQuotedMask(bool &inside[], int index) {
+   if(index < 0) return false;
+   if(index >= ArraySize(inside)) return false;
+   return inside[index];
+}
+
+int FindPatternOutsideQuotedStrings(string text, string pattern, bool &inside[]) {
    if(pattern == "") return -1;
    int search_from = 0;
    while(true) {
       int hit = StringFind(text, pattern, search_from);
       if(hit < 0) return -1;
-      if(!IsIndexInsideQuotedString(text, hit)) {
+      if(!IsIndexInsideQuotedMask(inside, hit)) {
          return hit;
       }
       search_from = hit + 1;
@@ -179,10 +186,13 @@ bool FindSexpValue(string sexp, string key, string &value, bool &is_string) {
    patterns[22] = "(swimmy.main:" + key_lc + " ";
    patterns[23] = "(swimmy.globals:" + key_lc + " ";
 
+   bool inside_quotes[];
+   BuildQuotedStringMask(normalized, inside_quotes);
+
    int start = -1;
    int matched_len = 0;
    for(int i = 0; i < ArraySize(patterns); i++) {
-      int hit = FindPatternOutsideQuotedStrings(normalized, patterns[i]);
+      int hit = FindPatternOutsideQuotedStrings(normalized, patterns[i], inside_quotes);
       if(hit < 0) continue;
 
       int hit_len = StringLen(patterns[i]);
