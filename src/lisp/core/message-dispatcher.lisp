@@ -398,20 +398,17 @@ This keeps school allocation reconciliation independent of the dispatcher read p
          (member token +order-reject-sink-guard-reasons+ :test #'string=))))
 
 (defparameter *order-reject-alert-dedupe-window-sec* 120
-  "Suppress duplicate sink-guard ORDER_REJECT alerts for same id+reason within this window.")
+  "Suppress duplicate sink-guard ORDER_REJECT alerts for same symbol+reason within this window.")
 
 (defvar *order-reject-alert-last-sent* (make-hash-table :test 'equal)
   "Dedupe cache for sink-guard ORDER_REJECT alerts. key -> unix-time.")
 
 (defun %order-reject-alert-dedupe-key (order-id reason-token symbol)
   "Build dedupe key for sink-guard ORDER_REJECT alerts."
-  (let* ((id-token (and (stringp order-id)
-                        (string-trim '(#\Space #\Tab #\Newline #\Return) order-id)))
-         (reason (or (%normalize-token-string reason-token) "UNKNOWN"))
+  (declare (ignore order-id))
+  (let* ((reason (or (%normalize-token-string reason-token) "UNKNOWN"))
          (sym (or (%normalize-token-string symbol) "UNKNOWN")))
-    (if (and id-token (> (length id-token) 0))
-        (format nil "ID:~a|REASON:~a" id-token reason)
-        (format nil "SYMBOL:~a|REASON:~a" sym reason))))
+    (format nil "SYMBOL:~a|REASON:~a" sym reason)))
 
 (defun %maybe-prune-order-reject-alert-cache (&optional (now (get-universal-time)))
   "Prune stale dedupe entries so cache stays bounded."
