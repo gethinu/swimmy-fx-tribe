@@ -104,7 +104,7 @@ MT5からブロードキャストされる。
  (reason . "NO_MONEY")
  (retcode . 10019)) ; optional
 ```
-**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_REJECT` 受信時も同一 `id` の pending エントリを即時除去する（timeout retryへ残さない）。`reason` は拒否理由文字列、`retcode` はMT5側の取引リターンコード（取得できる場合のみ付与）。
+**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_REJECT` 受信時も同一 `id` の pending エントリを即時除去する（timeout retryへ残さない）。`reason` は拒否理由文字列、`retcode` はMT5側の取引リターンコード（取得できる場合のみ付与）。`reason` が `MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF` の場合は、Dispatcher が fail-closed 異常として Discord alert を発火し可観測化する。
 
 **TRADE_CLOSED**:
 ```
