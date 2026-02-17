@@ -481,7 +481,8 @@ This keeps school allocation reconciliation independent of the dispatcher read p
         (if (and (> (length msg) 0) (char= (char msg 0) #\())
             (let* ((sexp (swimmy.core:safe-read-sexp msg :package :swimmy.main)))
               (unless (and sexp (listp sexp))
-                (format t "[DISPATCH] ⚠️ Unsafe/invalid SEXP ignored~%")
+                (format t "[DISPATCH] ⚠️ Unsafe/invalid SEXP ignored head=~a~%"
+                        (%preview-msg msg))
                 (return-from internal-process-msg nil))
               (let* ((type (cdr (assoc 'type sexp)))
                      (type-str (cond ((stringp type) type)
