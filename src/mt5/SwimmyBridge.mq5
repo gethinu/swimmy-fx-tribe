@@ -64,6 +64,8 @@ datetime g_last_history_check = 0;
 datetime g_last_heartbeat = 0;
 const int HEARTBEAT_TIMEOUT = 300; // V15.2: Extended from 60s to 300s to avoid false triggers
 const int MAX_COMMANDS_PER_TIMER = 64; // Drain execution queue in bursts to avoid command backlog.
+const int ORDER_REPLY_MAX_ATTEMPTS = 3; // ACK/REJECT delivery is at-least-once with short retries.
+const int ORDER_REPLY_RETRY_DELAY_MS = 20;
 datetime g_last_symbol_mismatch_log = 0;
 int g_symbol_mismatch_count = 0;
 
@@ -770,6 +772,7 @@ void ExecuteCommand(string cmd) {
    string instrument = GetStringFromSexp(cmd, "instrument");
    string cmd_symbol = ToUpperCopy(instrument);
    if(cmd_symbol == "") cmd_symbol = ToUpperCopy(GetStringFromSexp(cmd, "symbol"));
+   if(IsNilLikeToken(cmd_symbol)) cmd_symbol = "";
    string this_symbol = ToUpperCopy(_Symbol);
 
    // Only execute commands for THIS symbol (or ALL)
@@ -910,19 +913,47 @@ void SendSwapData() {
    LogInfo("📊 SWAP DATA sent: L=" + DoubleToString(swap_long, 2) + " S=" + DoubleToString(swap_short, 2));
 }
 
+bool SendPubWithRetry(string sexp, int max_attempts, int retry_delay_ms, int &attempts_used) {
+   attempts_used = 0;
+   if(!g_pub_connected) return false;
+
+   int attempts = max_attempts;
+   if(attempts < 1) attempts = 1;
+
+   uchar data[];
+   StringToCharArray(sexp, data);
+   int payload_len = ArraySize(data) - 1;
+   if(payload_len <= 0) return false;
+
+   for(int attempt = 1; attempt <= attempts; attempt++) {
+      attempts_used = attempt;
+      int rc = zmq_send(g_pub_socket, data, payload_len, ZMQ_DONTWAIT);
+      if(rc >= 0) {
+         return true;
+      }
+      if(attempt < attempts && retry_delay_ms > 0) {
+         Sleep(retry_delay_ms);
+      }
+   }
+   return false;
+}
+
 // Helper to send ACK
 void SendTradeAck(string orig_cmd, ulong ticket) {
    if(!g_pub_connected) return;
    string id = GetStringFromSexp(orig_cmd, "id");
    string sexp = StringFormat("((type . \"ORDER_ACK\") (id . \"%s\") (ticket . %I64u) (symbol . \"%s\"))", 
                               EscapeSexpString(id), ticket, EscapeSexpString(_Symbol));
-   uchar data[];
-   StringToCharArray(sexp, data);
-   int rc = zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
-   if(rc < 0) {
-      LogError("Failed to send ORDER_ACK id=" + id + " ticket=" + StringFormat("%I64u", ticket));
+   int attempts_used = 0;
+   bool sent = SendPubWithRetry(sexp, ORDER_REPLY_MAX_ATTEMPTS, ORDER_REPLY_RETRY_DELAY_MS, attempts_used);
+   if(!sent) {
+      LogError("Failed to send ORDER_ACK id=" + id +
+               " ticket=" + StringFormat("%I64u", ticket) +
+               " attempts=" + IntegerToString(attempts_used));
    } else {
-      LogDebug("📨 ORDER_ACK sent id=" + id + " ticket=" + StringFormat("%I64u", ticket));
+      LogDebug("📨 ORDER_ACK sent id=" + id +
+               " ticket=" + StringFormat("%I64u", ticket) +
+               " attempts=" + IntegerToString(attempts_used));
    }
 }
 
@@ -936,13 +967,17 @@ void SendTradeReject(string orig_cmd, string reason, long retcode) {
                               EscapeSexpString(_Symbol),
                               EscapeSexpString(norm_reason),
                               (int)retcode);
-   uchar data[];
-   StringToCharArray(sexp, data);
-   int rc = zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
-   if(rc < 0) {
-      LogError("Failed to send ORDER_REJECT id=" + id + " reason=" + norm_reason);
+   int attempts_used = 0;
+   bool sent = SendPubWithRetry(sexp, ORDER_REPLY_MAX_ATTEMPTS, ORDER_REPLY_RETRY_DELAY_MS, attempts_used);
+   if(!sent) {
+      LogError("Failed to send ORDER_REJECT id=" + id +
+               " reason=" + norm_reason +
+               " attempts=" + IntegerToString(attempts_used));
    } else {
-      LogInfo("📨 ORDER_REJECT sent id=" + id + " reason=" + norm_reason + " retcode=" + IntegerToString((int)retcode));
+      LogInfo("📨 ORDER_REJECT sent id=" + id +
+              " reason=" + norm_reason +
+              " retcode=" + IntegerToString((int)retcode) +
+              " attempts=" + IntegerToString(attempts_used));
    }
 }
 
@@ -973,6 +1008,18 @@ void OnTick() {
    }
 }
 
+void DrainExecQueue(int max_commands) {
+   if(!g_sub_connected || max_commands <= 0) return;
+   for(int i = 0; i < max_commands; i++) {
+      uchar data_rcv[8192];
+      int size = zmq_recv(g_sub_socket, data_rcv, 8192, ZMQ_DONTWAIT);
+      if(size <= 0) {
+         break;
+      }
+      ExecuteCommand(CharArrayToString(data_rcv, 0, size));
+   }
+}
+
 //+------------------------------------------------------------------+
 //| OnTimer - Main processing loop (1 second interval)                |
 //+------------------------------------------------------------------+
@@ -981,6 +1028,9 @@ void OnTimer() {
    if(!g_pub_connected || !g_sub_connected) {
       TryReconnect();
    }
+
+   // Process queued commands first so queued HEARTBEAT updates freshness before dead-man check.
+   DrainExecQueue(MAX_COMMANDS_PER_TIMER);
    
    CheckPositionsClosed();
    
@@ -1012,18 +1062,6 @@ void OnTimer() {
    
    // V8.5: Send ACCOUNT_INFO (30秒ごと、Expert Panel P0)
    SendAccountInfo();
-   
-   // Receive and process commands
-   if(g_sub_connected) {
-      for(int i = 0; i < MAX_COMMANDS_PER_TIMER; i++) {
-         uchar data_rcv[8192];
-         int size = zmq_recv(g_sub_socket, data_rcv, 8192, ZMQ_DONTWAIT);
-         if(size <= 0) {
-            break;
-         }
-         ExecuteCommand(CharArrayToString(data_rcv, 0, size));
-      }
-   }
 }
 //+------------------------------------------------------------------+
 

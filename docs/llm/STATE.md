@@ -37,6 +37,7 @@
   - **Archive Rank 保護**: DB既存ランクが `:GRAVEYARD/:RETIRED` の場合、通常の `upsert-strategy` で `NIL/Active` に戻さない（明示的なランク遷移のみ許可）。
 - **Graveyard Avoidance (P3)**: `analyze-graveyard-for-avoidance` は巨大な `data/memory/graveyard.sexp` をストリーム処理し、途中の破損フォーム（例: `unmatched close parenthesis`）で全体を中断せずにスキップして継続する。結果は `SWIMMY_GRAVEYARD_AVOID_CACHE_SEC`（既定300秒）でキャッシュし、Breeder が child 生成ごとにファイル全走査しないことを正本とする。**Read error のログは条件オブジェクトを丸ごと print せず**、`File-Position/Stream` 等の詳細を出さない（巨大ファイルの破損位置でログ出力自体が大規模割り当てになり OOM するのを防ぐ）。
 - **Top Candidates 表示**: Evolution Report の Top Candidates は **Active候補のみ**（Graveyard/Retired除外）。DBの `rank=NIL` は表示上 `INCUBATOR` として扱う（NILをそのまま出さない）。
+  - 並び順は `evidence-adjusted-sharpe(sharpe, trades)` を正本とし、表示は `S=<adjusted> (raw <raw>)` とする（`trades` 欠損は 0 扱い）。
 - **CPCV Status 表示**: 複数Lispデーモン間で「送信」と「受信」が分離するため、CPCVステータスは `data/reports/cpcv_status.txt` を正本として表示する（`last_start_unix` を保持して N/A を避ける）。
   - **reason伝播**: `cpcv_status.txt` の `updated: ... reason: <reason>` が存在する場合、Evolution Report の `CPCV Status` 行にも reason を表示する（`no-candidates` と runtime/criteria 失敗を誤読しないため）。
   - **failed内訳**: `failed` は `send_failed + result_failed` の合算で、`result_failed` は `runtime` と `criteria` の内訳を表示する。
@@ -111,7 +112,11 @@
 - **Execution Link Freshness Gate契約**: `safe-order` は `ORDER_OPEN` 送信前に MT5 実行リンクの鮮度を検証し、`guardian heartbeat` または `ACCOUNT_INFO` が stale の場合は fail-closed で注文を中止する。中止時は `swimmy.globals:*pending-orders*` に enqueue せず、`execution.link_stale` telemetry と（スロットル付き）運用アラートで可観測化する。
 - **Executor Pending Pause契約**: `check-pending-orders` は MT5 実行リンク（guardian heartbeat / ACCOUNT_INFO）が stale の間、pending retry/timeout を停止する。stale 中は pending を保持し、再送・timeout通知を行わない（復旧後に通常 retry 判定へ戻る）。
 - **MT5 Bridge Command Drain契約**: `SwimmyBridge` は `OnTimer` ごとに Execution SUB (`:5560`) の受信キューを複数件 drain する。1tick1件処理で queue を滞留させない。`HEARTBEAT` は symbol ルーティング前に処理し、`_Symbol` 不一致で無視しない。
+- **MT5 Bridge DeadMan 受信優先契約**: `SwimmyBridge` の `OnTimer` は Dead Man's Switch 判定より先に `:5560` 受信キューを drain し、キュー済み `HEARTBEAT` が未処理のまま誤クローズしない。
+- **MT5 Bridge ACK/REJECT 到達性契約**: `SwimmyBridge` は `ORDER_ACK` / `ORDER_REJECT` 送信で短時間再送を行い、送達を at-least-once とする。受信側（Dispatcher）は同一 `id` の重複受信を idempotent に処理する。
 - **MT5 Bridge ORDER_OPEN Sink Guard契約**: `SwimmyBridge` は受信 `ORDER_OPEN` の `comment` を `strategy|tf` 形式で検証し、欠落/形式不正/`NIL`/不正TFは `ORDER_REJECT` で fail-closed する。`SW-<magic>` などへのフォールバックを禁止する。
+- **MT5 Bridge ORDER_OPEN Instrument契約**: `SwimmyBridge` は `ORDER_OPEN` の `instrument/symbol` に具体シンボルを要求し、`ALL` は `INVALID_INSTRUMENT`、空値と nil-like（`NIL/NULL/NONE`）は `MISSING_INSTRUMENT` として `ORDER_REJECT` で fail-closed する。
+- **MT5 ORDER_REJECT 可観測化契約**: Dispatcher は `ORDER_REJECT` を受信したら pending UUID を即時除去する。さらに `reason` が `MISSING_INSTRUMENT/INVALID_INSTRUMENT/MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF` の場合は運用異常として Discord alert を発火し、受信側 fail-closed を見逃さない。送信側再送（at-least-once）による同一 `id+reason` の短時間重複受信では alert を重複発火しない（idempotent alert）。
 - **MT5 Bridge REQ_HISTORY TF正規化契約**: `SwimmyBridge` は `REQ_HISTORY.tf` を大文字小文字非依存で正規化し、`MN/MN1` および minutes文字列（例: `60/240/1440/10080/43200`）を標準TFへ変換する。非標準minutes（例: `300`）は `M1` 配信へフォールバックし、上位層のresampleを前提とする。
 - **MT5 Bridge CLOSE_SHORT_TF 保護契約**: `SwimmyBridge` は `POSITION_COMMENT` の `tf_key` を minutes に正規化して `>=1440m`（D1以上）を保護する。旧コメント形式互換のため `|D1`/`|W1`/`|MN`/`|MN1` サフィックス判定も維持する。
 - **MT5 Bridge S式受信互換契約**: `SwimmyBridge` の受信パーサは key-value を dot形式 `(<key> . <value>)` と shorthand形式 `(<key> <value>)` の双方で解釈する。`close_all` など真偽値は `true/false`, `t/nil`, `1/0`, `#t/#f` を受理する。
@@ -196,11 +201,14 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
-- **2026-02-17**: Evolution Report の Top Candidates 表示契約を更新。並び順を raw Sharpe から trade evidence 補正後 Sharpe（`evidence-adjusted-sharpe`）優先へ変更し、表示は `S=<adjusted> (raw <raw>)` を正本化。
+- **2026-02-17**: MT5 `ORDER_REJECT` 可観測化契約を更新。sink-guard fail-closed の Discord alert は維持しつつ、送信側再送による同一 `id+reason` の短時間重複をデデュープして通知スパムを抑止する方針を正本化。
+- **2026-02-17**: Evolution Report `Top Candidates` を更新。DB Active候補（Graveyard/Retired除外）を `evidence-adjusted-sharpe` でソートし、表示を `S=<adjusted> (raw <raw>)` に統一。回帰テスト（`test-top-candidates-*`）で検証済み。
+- **2026-02-17**: MT5 Bridge の DeadMan 判定順序を更新。`OnTimer` で `:5560` キュー処理を Dead Man's Switch 判定より先に実行し、キュー済み HEARTBEAT 未処理による誤クローズを防ぐ方針を正本化。
+- **2026-02-17**: MT5 Bridge の `ORDER_ACK/ORDER_REJECT` 応答到達性を更新。短時間再送で at-least-once 配信を許容し、Dispatcher 側は同一 `id` 重複を idempotent に処理する方針を正本化。
 - **2026-02-17**: MT5 Bridge の `REQ_HISTORY` TF正規化契約を追加。`MN/MN1` と minutes文字列TFを標準ENUMへ正規化し、非標準minutesは `M1` 返却＋上位resampleへフォールバックする方針を正本化。
 - **2026-02-17**: MT5 Bridge の ORDER_OPEN sink guard 契約を更新。受信 `comment` を `strategy|tf` 形式で再検証し、欠落/形式不正/NIL/不正TFを `ORDER_REJECT` で fail-closed する方針を正本化。
+- **2026-02-17**: MT5 Bridge の ORDER_OPEN instrument 契約を更新。実注文で `ALL` を受理せず、`instrument/symbol` が空または nil-like（`NIL/NULL/NONE`）なら `MISSING_INSTRUMENT`、`ALL` なら `INVALID_INSTRUMENT` の `ORDER_REJECT` で fail-closed とする方針を正本化。
 - **2026-02-17**: MT5 Bridge の `CLOSE_SHORT_TF` 保護契約を更新。`POSITION_COMMENT` の `tf_key` を minutes 正規化して `D1` 以上を保護し、旧形式 `|D1|W1|MN|MN1` サフィックス判定も後方互換で維持する方針を正本化。
-- **2026-02-17**: MT5 Bridge の S式受信互換を拡張。key-value を dot/shorthand 両形式で解釈し、bool値として `#t/#f` を受理する方針を正本化。
 - **2026-02-17**: MT5 Bridge の S式受信互換契約を更新。`(<key> . <value>)` と `(<key> <value>)` の両形式を受理し、bool値として `#t/#f` も解釈する方針を正本化。
 - **2026-02-17**: MT5 Bridge command drain 契約を追加。`OnTimer` で `:5560` コマンドを複数件処理し、`HEARTBEAT` を symbol filter 前で受理することで ORDER_OPEN 滞留と DeadMan 誤動作を抑止する方針を正本化。
 - **2026-02-17**: Aux service S式パース契約を更新。`parse_sexp_alist` は alist の短縮表記 `(key v1 v2...)` を top-level でも受理し、`(candles (... ) (...))` のような list-cdr 形式を `key -> list-value` として解釈する（`Expected alist at top level` の誤拒否を防止）。
@@ -237,6 +245,7 @@
 - **2026-02-17**: MT5 ORDER_OPEN 受信ガード契約を追加。`SwimmyBridge` は `comment` 欠落/形式不正/`NIL`/不正TF を `SW-<magic>` へフォールバックせず `ORDER_REJECT`（`MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF`）で fail-closed する方針を正本化。
 - **2026-02-17**: Executor pending の運用契約を更新。MECU exposure 計算で pending `ORDER_OPEN` を `instrument/side/lot` で解釈し、`ORDER_ACK` 受信時に該当UUIDを `swimmy.globals:*pending-orders*` から除去する方針を正本化。
 - **2026-02-17**: MT5 reject 応答契約を追加。MT5 が注文拒否時に `ORDER_REJECT`（`id`/`symbol`/`reason`/`retcode`）を返し、Dispatcher は `ORDER_REJECT` 受信時も該当UUIDを `swimmy.globals:*pending-orders*` から即時除去して timeout リトライ残留を防ぐ方針を正本化。
+- **2026-02-17**: MT5 reject 可観測化契約を拡張。Dispatcher は `ORDER_REJECT.reason` が fail-closed 系（`MISSING_INSTRUMENT/INVALID_INSTRUMENT/MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF`）の場合に Discord alert を発火し、受信側 fail-closed の発生を運用面で即時検知できるようにする。
 - **2026-02-17**: XAU AutoBot の運用契約を更新。`Swimmy-XAU-Cycle` の成功は「最適化成功」であり実注文稼働を意味しないことを明確化。実注文の健全判定は `xau_autobot.py --loop --live` 常駐（Exec task または Startup launcher）を正本とし、`-Live` 抜けを停止要因として扱う方針を追加。
 - **2026-02-17**: Pattern Similarity の運用契約を更新。`QUERY` に `intended_direction`（BUY/SELL）を追加し、service側で `follow/fade/no-trade` の decision を返す方針を正本化。`SWIMMY_PATTERN_POLICY_MODE` 既定値は `shadow`（助言のみ、強制停止なし）とする。
 - **2026-02-17**: Pattern Similarity の実装契約を更新。backend は `clip-vit-b32` と `vector-siamese-v1` の併用を正本化し、低歪み局面（volume/range/price-band concentration が弱い）は gate 適用をスキップしてノイズ照合を抑制する方針を追加。

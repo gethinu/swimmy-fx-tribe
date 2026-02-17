@@ -220,25 +220,34 @@ REVERSION : ~a"
 (defun build-top-candidates-snippet-from-db ()
   "Build top candidates snippet using DB as source of truth."
   (handler-case
-      ;; Show only active candidates (exclude GRAVEYARD/RETIRED). Rank NIL is treated as INCUBATOR for display.
       (let* ((rows (execute-to-list
                     (concatenate 'string
-                                 "SELECT name, sharpe, rank "
+                                 "SELECT name, sharpe, rank, trades "
                                  "FROM strategies "
-                                 "WHERE rank IS NULL OR (UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) "
-                                 "ORDER BY sharpe DESC LIMIT 5")))
-             (limit (length rows)))
+                                 "WHERE rank IS NULL OR (UPPER(rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) ")))
+             (sorted (sort (copy-list rows)
+                           #'>
+                           :key (lambda (row)
+                                  (destructuring-bind (_name sharpe _rank trades) row
+                                    (declare (ignore _name _rank))
+                                    (evidence-adjusted-sharpe
+                                     (if (numberp sharpe) (float sharpe 1.0) 0.0)
+                                     (if (numberp trades) (round trades) 0))))))
+             (top (subseq sorted 0 (min 5 (length sorted)))))
         (with-output-to-string (s)
           (format s "~%🌟 **Top Candidates:**~%")
-          (loop for i from 0 below limit
-                for row = (nth i rows)
-                do (destructuring-bind (name sharpe rank) row
-                     (let* ((safe-name (or name ""))
-                            (label (%format-db-rank-label rank)))
-                       (format s "- `~a` (S=~,2f, ~a)~%"
-                               (%display-candidate-name safe-name)
-                               (float (or sharpe 0.0))
-                               label))))))
+          (dolist (row top)
+            (destructuring-bind (name sharpe rank trades) row
+              (let* ((safe-name (or name ""))
+                     (label (%format-db-rank-label rank))
+                     (raw-sharpe (if (numberp sharpe) (float sharpe 1.0) 0.0))
+                     (trade-count (if (numberp trades) (round trades) 0))
+                     (adjusted-sharpe (evidence-adjusted-sharpe raw-sharpe trade-count)))
+                (format s "- `~a` (S=~,2f (raw ~,2f), ~a)~%"
+                        (%display-candidate-name safe-name)
+                        adjusted-sharpe
+                        raw-sharpe
+                        label))))))
     (error (e)
       (format nil "~%🌟 **Top Candidates:**~%  - error: ~a" e))))
 

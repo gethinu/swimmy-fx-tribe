@@ -2651,6 +2651,33 @@
           (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
           (fmakunbound 'swimmy.core:notify-discord-alert)))))
 
+(deftest test-internal-process-msg-order-reject-sink-guard-alert-dedupes-duplicate-id
+  "Duplicate sink-guard ORDER_REJECT with same id/reason should alert once within dedupe window."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-notify-alert (and (fboundp 'swimmy.core:notify-discord-alert)
+                                 (symbol-function 'swimmy.core:notify-discord-alert)))
+         (orig-window swimmy.main::*order-reject-alert-dedupe-window-sec*)
+         (orig-cache swimmy.main::*order-reject-alert-last-sent*)
+         (alert-count 0))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.main::*order-reject-alert-dedupe-window-sec* 300)
+          (setf swimmy.main::*order-reject-alert-last-sent* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.core:notify-discord-alert)
+                (lambda (msg &key color)
+                  (declare (ignore msg color))
+                  (incf alert-count)
+                  nil))
+          (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-DEDUPE\") (symbol . \"USDJPY\") (reason . \"MISSING_STRATEGY\") (retcode . 0))")
+          (funcall fn "((type . \"ORDER_REJECT\") (id . \"UT-REJECT-DEDUPE\") (symbol . \"USDJPY\") (reason . \"MISSING_STRATEGY\") (retcode . 0))")
+          (assert-equal 1 alert-count "Expected duplicate sink-guard reject alert to be deduped"))
+      (setf swimmy.main::*order-reject-alert-dedupe-window-sec* orig-window)
+      (setf swimmy.main::*order-reject-alert-last-sent* orig-cache)
+      (if orig-notify-alert
+          (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
+          (fmakunbound 'swimmy.core:notify-discord-alert)))))
+
 (deftest test-internal-process-msg-order-reject-instrument-sink-guard-alert
   "Instrument sink-guard ORDER_REJECT reasons should trigger Discord alert."
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -10298,6 +10325,7 @@
 			                  test-internal-process-msg-order-ack-clears-executor-pending
 			                  test-internal-process-msg-order-reject-clears-executor-pending
 			                  test-internal-process-msg-order-reject-sink-guard-alert
+			                  test-internal-process-msg-order-reject-sink-guard-alert-dedupes-duplicate-id
 			                  test-internal-process-msg-order-reject-instrument-sink-guard-alert
 			                  test-internal-process-msg-order-reject-non-sink-no-alert
 			                  test-allocation-pending-timeouts-ignores-executor-pending-orders

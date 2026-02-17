@@ -105,6 +105,7 @@ graph TD
 - **Evolution Factory Report**: `school-narrative.lisp` で生成。
   - **Trigger**: Scheduler (`start-evolution-service`) or Manual.
   - **Sync**: 生成直前に `refresh-strategy-metrics-from-db :force t` を実行し、SQLiteとInMemory状態を強制同期する。
+  - **Top Candidates**: Active候補を `evidence-adjusted-sharpe(sharpe,trades)` で選抜し、`S=<adjusted> (raw <raw>)` で表示する。
   - **Persistence**: 戦略のメトリクス（Sharpe, Rank等）は、バックテストやランク更新のたびに `upsert-strategy` でDBに即時保存される（べきである）。
 
 ## Structured Telemetry (V50.6)

@@ -27,6 +27,7 @@
 - `tools/system_audit.sh` に「Order timeframe consistency」ステップを統合。既定は `--lookback-minutes 120`（`ORDER_TF_AUDIT_LOOKBACK_MINUTES` で変更、固定開始時刻は `ORDER_TF_AUDIT_SINCE`）。
 - `src/mt5/SwimmyBridge.mq5` を運用補強:
   - `ORDER_OPEN` は `instrument` 欠落時でも `symbol` を受理（旧ペイロード互換）
+  - `instrument/symbol` が `NIL/NULL/NONE` の場合は空扱いに正規化し、`ORDER_OPEN` は fail-close
   - `ORDER_OPEN` の `symbol=ALL` は fail-close（全チャート一括発注を禁止）
   - `HISTORY` 送信の `total` バッチ数を厳密計算（5000本境界の off-by-one 解消）
   - コマンド処理は `MAX_COMMANDS_PER_TIMER` で1秒あたり複数件ドレイン
@@ -44,6 +45,7 @@
 - `score-from-metrics` に trade evidence 係数を導入し、低サンプル時のSharpe寄与を縮小。
 - A評価 / Breeder優先度 / Cullingスコアに `:trades` を渡し、同じ補正式で評価。
 - 通知側は raw Sharpe に加えて adjusted Sharpe を併記し、低頻度戦略の過信を抑制。
+- Evolution Report `Top Candidates` も raw Sharpe順から `evidence-adjusted-sharpe` 順へ統一し、表示を `S=<adjusted> (raw <raw>)` に更新。
 - A/S ランクに trade evidence floor を導入（A>=50, S>=100）。`run-rank-evaluation` で既存ランクにも降格スイープを適用。
 - `evaluate-a-rank-strategy` は floor 未達を即時 `:B` 降格として扱い、A維持を許容しない。
 
@@ -79,6 +81,17 @@
   - 閾値依存の固定値（80/120）を除去し、`min-trade-evidence-for-rank` 参照で将来閾値変更に追従
 - `test-backtest-trade-logs-insert` は `*disable-auto-migration*` を有効化し、巨大自動migration起因の `database is locked` フレークを解消。
 - 検証結果: `sbcl --script tests/test_runner.lisp` → **445 passed / 0 failed**。
+
+### Top Candidates 実装追補（2026-02-17 追加）
+
+- `build-top-candidates-snippet-from-db` を DB Active候補の `evidence-adjusted-sharpe(sharpe,trades)` ソートに変更。
+- 表示は `S=<adjusted> (raw <raw>)` へ統一（rank `NIL` は `INCUBATOR` 表示を維持）。
+- 検証（対象テスト）:
+  - `test-top-candidates-excludes-archive-and-hides-nil-rank` → pass
+  - `test-top-candidates-prefers-evidence-adjusted-sharpe-order` → pass
+  - `test-trade-logs-supports-pair-id` → pass（`backtest-db-tests` のネスト崩れ回復確認）
+  - `test-cpcv-status-snippet-reads-status-file-and-last-start` → pass
+  - フル回帰: `SWIMMY_DISABLE_DISCORD=1 sbcl --script tests/test_runner.lisp` → **456 passed / 0 failed**
 
 ### Sランク整合追補（2026-02-17 追加）
 

@@ -160,7 +160,7 @@
         (setf (symbol-function 'swimmy.school:evaluate-new-strategy) orig-evaluate)
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
-        (ignore-errors (delete-file tmp-db)))))
+        (ignore-errors (delete-file tmp-db))))))
 
 (deftest test-upsert-preserves-cpcv-when-missing
   "Upsert should not overwrite existing CPCV metrics with zero defaults."
@@ -1180,10 +1180,14 @@
                    (pos-high (search "TC-RAW-HIGH-LOW-N" snippet)))
               (assert-not-nil pos-mid "Expected high-evidence candidate in Top Candidates")
               (assert-not-nil pos-high "Expected low-evidence candidate in Top Candidates")
+              (assert-true (search "raw 3.60" snippet)
+                           "Expected raw Sharpe annotation for high-evidence candidate")
+              (assert-true (search "raw 5.00" snippet)
+                           "Expected raw Sharpe annotation for low-evidence candidate")
               (assert-true (< pos-mid pos-high)
                            "Expected evidence-adjusted ordering to rank high-evidence candidate first"))))
         (ignore-errors (close-db-connection))
-        (ignore-errors (delete-file tmp-db))))))
+        (ignore-errors (delete-file tmp-db)))))
 
 (deftest test-cpcv-status-snippet-reads-status-file-and-last-start
   "CPCV status snippet should read cpcv_status.txt (shared) and include last_start_unix."

@@ -94,7 +94,8 @@ MT5からブロードキャストされる。
  (ticket . 123456789)
  (symbol . "USDJPY"))
 ```
-**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_ACK` 受信時に同一 `id` の pending エントリを `swimmy.globals:*pending-orders*` から除去する。
+**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_ACK` 受信時に同一 `id` の pending エントリを `swimmy.globals:*pending-orders*` から除去する。  
+`ORDER_ACK` は配信保証のため送信側で短時間再送される場合があり、同一 `id` の重複受信を許容する（at-least-once）。受信側は idempotent に処理し、重複で pending 復活やエラー通知を発生させない。
 
 **ORDER_REJECT**:
 ```
@@ -104,7 +105,8 @@ MT5からブロードキャストされる。
  (reason . "NO_MONEY")
  (retcode . 10019)) ; optional
 ```
-**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_REJECT` 受信時も同一 `id` の pending エントリを即時除去する（timeout retryへ残さない）。`reason` は拒否理由文字列、`retcode` はMT5側の取引リターンコード（取得できる場合のみ付与）。`reason` が `MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF` の場合は、Dispatcher が fail-closed 異常として Discord alert を発火し可観測化する。
+**備考**: `id` は `ORDER_OPEN` の相関ID（UUID）。Brain/Executor は `ORDER_REJECT` 受信時も同一 `id` の pending エントリを即時除去する（timeout retryへ残さない）。`reason` は拒否理由文字列、`retcode` はMT5側の取引リターンコード（取得できる場合のみ付与）。`reason` が `MISSING_INSTRUMENT/INVALID_INSTRUMENT/MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF` の場合は、Dispatcher が fail-closed 異常として Discord alert を発火し可観測化する。  
+`ORDER_REJECT` も送信側再送で重複受信しうるため（at-least-once）、受信側は `id` ベースで idempotent に扱う。sink-guard alert は同一 `id+reason` の短時間重複発火を抑止する。
 
 **TRADE_CLOSED**:
 ```
@@ -133,6 +135,7 @@ RustからMT5へ送信される。
  (comment . "StrategyName|H1"))
 ```
 **備考**: `instrument` + `side` + `lot` が正式。`symbol/action` など旧キーは受理しない（Sender側もS式に統一する）。  
+`instrument` は具体シンボル（例: `USDJPY`）を必須とし、`ALL` は `ORDER_OPEN` では不正値として扱う。`NIL/NULL/NONE`（nil-like）や空値は `MISSING_INSTRUMENT` として扱う。  
 `comment` は **必須** で、`"<strategy_name>|<tf_key>"`（例: `Volvo-Scalp-Gen0|H1`）を正本とする。`strategy_name` に `NIL` を入れない。`tf_key` は `M30/H2/H5/H60/MN` のようなラベルを許容する。  
 Sender (`safe-order` / `make-order-message`) は `comment` を検証し、形式不正（区切り欠落、strategy/timeframe欠落、`NIL` 含有）は fail-closed で送信中止する。  
 Receiver（MT5 Bridge）も同一ルールで `comment` を検証し、形式不正（区切り欠落、strategy/timeframe欠落、`NIL` 含有、不正TF）は `SW-<magic>` などへフォールバックせず `ORDER_REJECT`（`reason=MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF`）で fail-closed とする。  

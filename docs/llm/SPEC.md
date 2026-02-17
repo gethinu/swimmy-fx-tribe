@@ -158,6 +158,12 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 - **判定**: `|corr| < 0.2` を非相関とみなし、`uncorrelated_pairs / total_pairs` をスコア化。
 - **注意**: 非相関は**ランクではなく指標**。単一戦略の並び・ランク体系は変更しない。
 
+### 11.5. Top Candidates (Evolution Report)
+- **抽出対象**: `strategies` の Active候補（`rank` が `:GRAVEYARD/:RETIRED` 以外、または `NULL`）。
+- **並び順**: raw Sharpe 降順ではなく `evidence-adjusted-sharpe(sharpe, trades)` 降順。
+- **表示形式**: `S=<adjusted> (raw <raw>)` を正本とし、低トレード戦略の過大評価を抑止する。
+- **Rank表示**: DBの `rank=NULL/NIL` は `INCUBATOR` 表示に正規化する。
+
 ## 12. Optional: Polymarket OpenClaw (Prediction Market Autotrader)
 Swimmy の FX コアとは独立に、Polymarket（Polygon）の予測市場へ自動エントリーする補助サブシステム。
 ZMQ バックボーンは使わず、**HTTP API + ローカルファイル + systemd timer** で完結する（Guardian の Risk Gate 対象外）。
