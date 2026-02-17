@@ -724,12 +724,31 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                                       ((stringp order-id-raw) order-id-raw)
                                       ((symbolp order-id-raw) (symbol-name order-id-raw))
                                       (t order-id-raw)))
-                         (ticket (%alist-val sexp '(ticket :ticket) nil)))
+                         (ticket (%alist-val sexp '(ticket :ticket) nil))
+                         (pending-before (if (and (boundp 'swimmy.globals:*pending-orders*)
+                                                  (hash-table-p swimmy.globals:*pending-orders*))
+                                             (hash-table-count swimmy.globals:*pending-orders*)
+                                             0)))
                      (when (and (stringp order-id)
                                 (boundp 'swimmy.globals:*pending-orders*)
                                 (hash-table-p swimmy.globals:*pending-orders*))
                        (remhash order-id swimmy.globals:*pending-orders*))
-                     (format t "[DISPATCH] 📥 ORDER_ACK id=~a ticket=~a~%" order-id ticket)))
+                     (let ((pending-after (if (and (boundp 'swimmy.globals:*pending-orders*)
+                                                   (hash-table-p swimmy.globals:*pending-orders*))
+                                              (hash-table-count swimmy.globals:*pending-orders*)
+                                              pending-before)))
+                       (format t "[DISPATCH] 📥 ORDER_ACK id=~a ticket=~a pending=~d->~d~%"
+                               order-id ticket pending-before pending-after)
+                       (when (fboundp 'swimmy.core::emit-telemetry-event)
+                         (swimmy.core::emit-telemetry-event "execution.order_ack"
+                           :service "dispatcher"
+                           :severity "info"
+                           :correlation-id (if (stringp order-id) order-id "unknown")
+                           :data (jsown:new-js
+                                   ("id" (if (stringp order-id) order-id ""))
+                                   ("ticket" (or ticket ""))
+                                   ("pending_before" pending-before)
+                                   ("pending_after" pending-after)))))))
                   ((string= type-str swimmy.core:+MSG-ORDER-REJECT+)
                    (let* ((order-id-raw (%alist-val sexp '(id :id) nil))
                           (order-id (cond

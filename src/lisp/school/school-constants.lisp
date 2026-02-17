@@ -5,8 +5,23 @@
 ;;; ==========================================
 
 ;;; 1. UNIVERSE DEFINITION (Simons Scope)
-(defparameter *timeframes* '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN") "Multi-Timeframe Scope")
+(defparameter *default-timeframe-buckets-minutes* '(5 15 30 60 240 1440 10080 43200)
+  "Default finite timeframe buckets in minutes (M5..MN).")
+(defparameter *timeframes* (copy-list *default-timeframe-buckets-minutes*)
+  "Default timeframe set (minutes). Arbitrary TF exploration is handled elsewhere.")
 (defparameter *symbols* '("USDJPY" "EURUSD" "GBPUSD") "Primary Currency Pairs")
+
+(defun default-timeframe-labels ()
+  "Return default timeframe labels (M5..MN) from minute buckets."
+  (mapcar (lambda (m)
+            (if (fboundp 'get-tf-string)
+                (get-tf-string m)
+                (cond ((= m 43200) "MN")
+                      ((and (>= m 10080) (zerop (mod m 10080))) (format nil "W~d" (/ m 10080)))
+                      ((and (>= m 1440) (zerop (mod m 1440))) (format nil "D~d" (/ m 1440)))
+                      ((and (>= m 60) (zerop (mod m 60))) (format nil "H~d" (/ m 60)))
+                      (t (format nil "M~d" m)))))
+          *timeframes*))
 
 ;;; 2. BACKTEST RANGE (Screening)
 ;;; Phase 1 (Screening): Learn from history (2011-2020)

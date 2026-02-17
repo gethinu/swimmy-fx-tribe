@@ -10,6 +10,159 @@
   "When true and an SQLite connection is already established, skip init-db DDL work.
    This prevents expensive/verbose schema checks from running in tight loops.")
 
+(defparameter *disable-timeframe-backfill* nil
+  "When true, skip automatic DB timeframe backfill in init-db.")
+
+(defparameter *timeframe-backfill-batch-size* 1000
+  "Batch size for strategy timeframe backfill updates.")
+
+(defun %db-timeframe-token->minutes (tf &optional default)
+  "Normalize timeframe token (integer/string) to minutes(int)."
+  (labels ((all-digits-p (s)
+             (and (stringp s)
+                  (> (length s) 0)
+                  (loop for ch across s always (digit-char-p ch))))
+           (parse-int (s fallback)
+             (handler-case (parse-integer s) (error () fallback))))
+    (cond
+      ((numberp tf)
+       (let ((m (round tf)))
+         (if (> m 0) m default)))
+      ((stringp tf)
+       (let* ((up (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) tf))))
+         (cond
+           ((or (string= up "") (string= up "NIL")) default)
+           ((or (string= up "MN") (string= up "MN1")) 43200)
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\M)
+                 (all-digits-p (subseq up 1)))
+            (max 1 (parse-int (subseq up 1) 1)))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\H)
+                 (all-digits-p (subseq up 1)))
+            (* 60 (max 1 (parse-int (subseq up 1) 1))))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\D)
+                 (all-digits-p (subseq up 1)))
+            (* 1440 (max 1 (parse-int (subseq up 1) 1))))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\W)
+                 (all-digits-p (subseq up 1)))
+            (* 10080 (max 1 (parse-int (subseq up 1) 1))))
+           ((all-digits-p up)
+            (max 1 (parse-int up 1)))
+           (t default))))
+      (t default))))
+
+(defun %extract-timeframe-token-from-data-sexp (sexp-str)
+  "Best-effort extraction of :TIMEFRAME token from serialized strategy SEXP."
+  (when (and (stringp sexp-str) (> (length sexp-str) 0))
+    (let* ((needle ":TIMEFRAME")
+           (up (string-upcase sexp-str))
+           (pos (search needle up))
+           (len (length sexp-str)))
+      (when pos
+        (let ((i (+ pos (length needle))))
+          (loop while (and (< i len)
+                           (find (char sexp-str i) '(#\Space #\Tab #\Newline #\Return)))
+                do (incf i))
+          (when (< i len)
+            (cond
+              ;; :TIMEFRAME "H1"
+              ((char= (char sexp-str i) #\")
+               (let ((j (position #\" sexp-str :start (1+ i))))
+                 (when j
+                   (subseq sexp-str (1+ i) j))))
+              ;; :TIMEFRAME #A((2) BASE-CHAR . "H1")
+              ((char= (char sexp-str i) #\#)
+               (let ((q1 (position #\" sexp-str :start i)))
+                 (when q1
+                   (let ((q2 (position #\" sexp-str :start (1+ q1))))
+                     (when q2
+                       (subseq sexp-str (1+ q1) q2))))))
+              ;; :TIMEFRAME 300 / H1 / MN1 / NIL ...
+              (t
+               (let ((j i))
+                 (loop while (and (< j len)
+                                  (not (find (char sexp-str j)
+                                             '(#\Space #\Tab #\Newline #\Return #\) #\( #\"))))
+                       do (incf j))
+                 (when (> j i)
+                   (subseq sexp-str i j)))))))))))
+
+(defun backfill-strategy-timeframes-to-minutes (&key force (batch-size *timeframe-backfill-batch-size*))
+  "Backfill mixed/legacy DB timeframe values to minutes(int).
+Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
+  (init-db)
+  (let* ((target-count (execute-single
+                        "SELECT count(*) FROM strategies
+                          WHERE timeframe IS NULL OR typeof(timeframe)='text'")))
+    (when (and (not force) (or (null target-count) (<= target-count 0)))
+      (return-from backfill-strategy-timeframes-to-minutes
+        (list :scanned 0 :updated 0 :rewritten 0 :defaulted 0 :remaining 0)))
+    (let ((last-rowid 0)
+          (scanned 0)
+          (updated 0)
+          (rewritten 0)
+          (defaulted 0))
+      (loop
+        for rows = (execute-to-list
+                    "SELECT rowid, timeframe, data_sexp
+                       FROM strategies
+                      WHERE (timeframe IS NULL OR typeof(timeframe)='text')
+                        AND rowid > ?
+                      ORDER BY rowid
+                      LIMIT ?"
+                    last-rowid batch-size)
+        while rows
+        do (with-transaction
+             (dolist (row rows)
+               (destructuring-bind (rowid tf-col data-sexp) row
+                 (setf last-rowid rowid)
+                 (incf scanned)
+                 (let* ((col-min (%db-timeframe-token->minutes tf-col nil))
+                        (sexp-token (and (null col-min)
+                                         (%extract-timeframe-token-from-data-sexp data-sexp)))
+                        (sexp-min (%db-timeframe-token->minutes sexp-token nil))
+                        (new-tf (or col-min sexp-min 1))
+                        (needs-default (and (null col-min) (null sexp-min)))
+                        (rewrite-p (and (stringp data-sexp)
+                                        (or (search ":TIMEFRAME \"" data-sexp :test #'char-equal)
+                                            (search ":TIMEFRAME #A(" data-sexp :test #'char-equal))))
+                        (new-data-sexp nil))
+                   (when needs-default
+                     (incf defaulted))
+                   (when rewrite-p
+                     (let ((obj (ignore-errors
+                                  (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school))))
+                       (when (and obj (strategy-p obj))
+                         (setf (strategy-timeframe obj) new-tf
+                               new-data-sexp (format nil "~s" obj)))))
+                   (if new-data-sexp
+                       (progn
+                         (execute-non-query
+                          "UPDATE strategies
+                              SET timeframe = ?, data_sexp = ?, updated_at = ?
+                            WHERE rowid = ?"
+                          new-tf new-data-sexp (get-universal-time) rowid)
+                         (incf rewritten))
+                       (execute-non-query
+                        "UPDATE strategies
+                            SET timeframe = ?, updated_at = ?
+                          WHERE rowid = ?"
+                        new-tf (get-universal-time) rowid))
+                   (incf updated))))))
+      (let ((remaining (execute-single
+                        "SELECT count(*) FROM strategies
+                          WHERE timeframe IS NULL OR typeof(timeframe)='text'")))
+        (format t "[DB] ♻️ Timeframe backfill complete: scanned=~d updated=~d rewritten=~d defaulted=~d remaining=~d~%"
+                scanned updated rewritten defaulted remaining)
+        (list :scanned scanned
+              :updated updated
+              :rewritten rewritten
+              :defaulted defaulted
+              :remaining remaining)))))
+
 (defun init-db ()
   "Initialize SQLite database and create tables if not exist."
   ;; NOTE: init-db is safe to call repeatedly, but doing full DDL checks in hot
@@ -201,7 +354,14 @@
           (when (< count 100) ;; If fewer than 100 valid strategies, assume migration needed
             (format t "[DB] 🆕 Low valid strategy count (~d). Triggering data migration from file...~%" count)
             (migrate-existing-data)))
-      (error (e) (format t "[DB] ⚠️ Auto-migration check failed: ~a~%" e)))))
+      (error (e) (format t "[DB] ⚠️ Auto-migration check failed: ~a~%" e))))
+
+  ;; V50.6 TF Unified: backfill legacy/null/text timeframe rows to minutes(int).
+  (unless *disable-timeframe-backfill*
+    (handler-case
+        (backfill-strategy-timeframes-to-minutes)
+      (error (e)
+        (format t "[DB] ⚠️ Timeframe backfill skipped due to error: ~a~%" e)))))
 
 (defun %parse-rank-safe (rank-str)
   "Safely parse rank string from DB. Returns rank and valid-p."

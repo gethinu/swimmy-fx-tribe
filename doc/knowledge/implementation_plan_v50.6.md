@@ -1,7 +1,99 @@
 # 🏛️ Strategy Lifecycle Implementation Plan V50.6
 
-**更新日:** 2026-02-07 JST
+**更新日:** 2026-02-17 JST
 **バージョン:** V50.6 (Structured Telemetry & Retired Rank)
+
+---
+
+## 2026-02-17 運用追補: Live実行TFコンテキストの fail-close 強化
+
+- `prepare-trade-context` は、呼び出し側から渡る `strategy-timeframe` よりも、解決済み戦略オブジェクトの `strategy-timeframe` を優先するよう修正。
+- `execute-category-trade` は、`timeframe` が有効でも `strategy-name` が KB/evolved で解決できない場合に fail-close（`execution.context_missing`）するよう修正。
+- これにより、古いシグナルペイロード由来の `|M1` 混入や `unknown` 戦略名での発注を抑止。
+
+### 追加テスト（2026-02-17 実行）
+
+- `test-prepare-trade-context-prefers-strategy-timeframe-over-stale-override` → pass
+- `test-execute-category-trade-fails-closed-on-unresolved-strategy-name` → pass
+- `test-execute-category-trade-fails-closed-on-missing-timeframe` → pass（回帰なし）
+
+### 運用確認（2026-02-17 JST）
+
+- `swimmy-school.service` を再起動し、`ExecStartPre`（`tools/restore_legend_61.lisp`）成功を確認。
+- DB確認: `Aggressive-Reversal=10080(W1)`, `MA-Ribbon-Scalp=10080(W1)`, `CCI-Trend-Breakout=240(H4)`。
+- 再起動後ログで対象3戦略の `execution.order_submitted` に `M1` は未検出。
+- 監査ツール `tools/check_order_timeframe_consistency.py` を追加。  
+  例: `python3 tools/check_order_timeframe_consistency.py --since 2026-02-17T17:04:06 --fail-on-issues`
+- `tools/system_audit.sh` に「Order timeframe consistency」ステップを統合。既定は `--lookback-minutes 120`（`ORDER_TF_AUDIT_LOOKBACK_MINUTES` で変更、固定開始時刻は `ORDER_TF_AUDIT_SINCE`）。
+- `src/mt5/SwimmyBridge.mq5` を運用補強:
+  - `ORDER_OPEN` は `instrument` 欠落時でも `symbol` を受理（旧ペイロード互換）
+  - `ORDER_OPEN` の `symbol=ALL` は fail-close（全チャート一括発注を禁止）
+  - `HISTORY` 送信の `total` バッチ数を厳密計算（5000本境界の off-by-one 解消）
+  - コマンド処理は `MAX_COMMANDS_PER_TIMER` で1秒あたり複数件ドレイン
+
+## 2026-02-17 実装追補: TF内部統一 + 低トレード過大評価補正
+
+- TF内部表現を `minutes(int)` 正本で統一（`M36/H2/H5/H60` 等の任意TFを許容）。
+- 8TF (`M5/M15/M30/H1/H4/D1/W1/MN`) は「デフォルト集合」として維持しつつ、カテゴリ淘汰/相関スコープはバケット化で有限化。
+- Pattern Gate は任意TFを直接拒否せず、クエリ時にバケットTFへ正規化（例: `H5 -> H4`）。
+- Guardian 側TF解釈を統一し、`M/H/D/W/MN` と数値分文字列（例: `"300"`）を同一経路で秒換算。
+- `runner/main` の履歴要求TFを定数由来に統一（ハードコード分岐を削減）。
+
+### 低トレード補正（トレード数35問題への対処）
+
+- `score-from-metrics` に trade evidence 係数を導入し、低サンプル時のSharpe寄与を縮小。
+- A評価 / Breeder優先度 / Cullingスコアに `:trades` を渡し、同じ補正式で評価。
+- 通知側は raw Sharpe に加えて adjusted Sharpe を併記し、低頻度戦略の過信を抑制。
+- A/S ランクに trade evidence floor を導入（A>=50, S>=100）。`run-rank-evaluation` で既存ランクにも降格スイープを適用。
+- `evaluate-a-rank-strategy` は floor 未達を即時 `:B` 降格として扱い、A維持を許容しない。
+
+### 検証（2026-02-17 実行）
+
+- `sbcl --script tests/test_runner.lisp` → **419 passed / 0 failed**
+- `cd guardian && cargo test test_get_tf_duration_supports_custom_timeframes -- --nocapture` → **pass**
+
+### 実測スナップショット（2026-02-17）
+
+- 対象DB: `data/memory/swimmy.db`
+- rank件数: `:A=36`, `:S=2`, `:B=140`, `:INCUBATOR=4972`, `:GRAVEYARD=350158`, `:RETIRED=39841`, `:LEGEND=26`
+- floor違反件数: `A_lt50=0`, `S_lt100=0`（違反ゼロを確認）
+- 低トレード高Sharpe上位10件は現在 `:GRAVEYARD`（A/Sではない）であることを確認
+- backup table: `trade_floor_backup_20260217` が存在し、`1707` rows
+
+### 追加ターゲットテスト（2026-02-17 実行）
+
+- `test-timeframe-utils-support-arbitrary-minutes` → pass
+- `test-timeframe-bucketization-is-finite` → pass
+- `test-score-from-metrics-penalizes-low-trade-evidence` → pass
+- `test-evaluate-a-rank-demotes-on-min-trade-evidence` → pass
+- `test-enforce-rank-trade-evidence-floors-demotes-existing-as` → pass
+- `cd guardian && cargo test test_sharpe_ratio_includes_zero_returns -- --nocapture` → pass
+
+### テスト追補（2026-02-17 追加）
+
+- 失敗していた回帰テストを、現行仕様（A: TradeEvidence>=50 / S: TradeEvidence>=100、S昇格時CommonStage2）に追従させた。
+  - CPCV候補抽出/バッチテストに trade evidence を付与
+  - B-rank culling の A-base 候補系テストに trade evidence を付与
+  - Promotion通知テストは Stage2判定をテスト目的で固定化
+  - Evolution report件数テストはタブ/Library注記を許容する比較へ修正
+  - 閾値依存の固定値（80/120）を除去し、`min-trade-evidence-for-rank` 参照で将来閾値変更に追従
+- `test-backtest-trade-logs-insert` は `*disable-auto-migration*` を有効化し、巨大自動migration起因の `database is locked` フレークを解消。
+- 検証結果: `sbcl --script tests/test_runner.lisp` → **445 passed / 0 failed**。
+
+### Sランク整合追補（2026-02-17 追加）
+
+- `run-rank-evaluation` に S conformance sweep を追加し、既存 `:S` も `check-rank-criteria :S` を再評価する仕様へ更新。
+- S基準逸脱時は `:A`（A基準通過時）または `:B` へ降格。trade floor のみ満たす `:S` 残留を防止。
+- 回帰テスト追加: `test-enforce-s-rank-criteria-conformance-demotes-noncompliant-s` → pass
+- 実DB是正（`data/memory/swimmy.db`）:
+  - backup table: `s_conformance_backup_20260217`（更新前 `:S` 3件を退避）
+  - 変更: `RECRUIT-RND-1768781166-12` を `:S -> :B`（1件）
+  - 是正後（手動是正直後）: `:S=2`, `:A=36`, `:B=140`
+- 運用反映（`tools/ops/finalize_rank_report.sh --with-rank-eval` 実行後）:
+  - `S` conformance sweep: `S-demoted=0`
+  - 上記 `RECRUIT-RND-1768781166-12` は週次評価/cullingにより最終的に `:GRAVEYARD` へ遷移
+  - 最新件数: `:S=2`, `:A=36`, `:B=139`, `:GRAVEYARD=350159`
+- 検証結果: `SWIMMY_DISABLE_DISCORD=1 sbcl --script tests/test_runner.lisp` → **450 passed / 0 failed**。
 
 ---
 
@@ -166,22 +258,31 @@ graph TD
 > [!IMPORTANT]
 > **淘汰は カテゴリ単位 で行う**
 
-### カテゴリキー = TF × Direction × Symbol
+### カテゴリキー = TF-Bucket × Direction × Symbol
 
 ```lisp
 (defun make-category-key (strategy)
-  (list (strategy-timeframe strategy)   ; M5, M15, H1, H4, D1, W1
+  ;; 内部TFは minutes(int) を正とする。
+  ;; ただしカテゴリ淘汰は有限化のため bucket 化したTFで行う。
+  (list (get-tf-bucket-minutes (strategy-timeframe strategy))
         (strategy-direction strategy)   ; :BUY, :SELL, :BOTH
         (strategy-symbol strategy)))    ; EURUSD, GBPUSD, USDJPY
 ```
 
+> [!IMPORTANT]
+> **TF運用ルール（V50.6追補）**
+> - 内部表現は `minutes(int)` を正とする（例: H5=300, H60=3600）。
+> - 8TF (`M5/M15/M30/H1/H4/D1/W1/MN`) はデフォルトの評価バケット。
+> - `M36/H2/H5/H60` など任意TFは探索対象として許容。
+> - ただしカテゴリ/相関スコープは 8TF バケットへ正規化し、無限分岐を防ぐ。
+
 ### 例
 
-| TF | Direction | Symbol | カテゴリキー |
-|----|-----------|--------|--------------|
-| M5 | :BUY | EURUSD | `(5 :BUY "EURUSD")` |
-| H1 | :SELL | GBPUSD | `(60 :SELL "GBPUSD")` |
-| D1 | :BOTH | USDJPY | `(1440 :BOTH "USDJPY")` |
+| Raw TF (minutes) | Bucket TF | Direction | Symbol | カテゴリキー |
+|----|-----------|-----------|--------|--------------|
+| 36 | M30 | :BUY | EURUSD | `(30 :BUY "EURUSD")` |
+| 300 | H4 | :SELL | GBPUSD | `(240 :SELL "GBPUSD")` |
+| 3600 | D1 | :BOTH | USDJPY | `(1440 :BOTH "USDJPY")` |
 
 ---
 

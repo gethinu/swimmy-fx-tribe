@@ -1,0 +1,13 @@
+[Unit]
+Description=Swimmy Pattern Backend Calibration Update
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/pattern_backend_calibration_update.py --write-report /home/swimmy/swimmy/data/reports/pattern_backend_calibration_latest.json --write-weight /home/swimmy/swimmy/data/patterns/models/ensemble_weight.json --max-samples 120 --min-samples 60 --weight-step 0.05
+Environment=HOME=/home/swimmy
+EnvironmentFile=/home/swimmy/swimmy/.env
+
+StandardOutput=append:/home/swimmy/swimmy/logs/pattern_backend_calibration.log
+StandardError=append:/home/swimmy/swimmy/logs/pattern_backend_calibration.log

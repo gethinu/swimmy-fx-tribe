@@ -151,15 +151,42 @@ def _normalize_key(key):
     return str(key)
 
 
+def _alist_entry_from_obj(obj):
+    if isinstance(obj, tuple) and len(obj) == 2:
+        return _sexp_to_python(obj)
+    if isinstance(obj, list) and obj and isinstance(obj[0], str):
+        key = _normalize_key(obj[0])
+        values = [_sexp_to_python(x) for x in obj[1:]]
+        if len(values) == 0:
+            return (key, [])
+        if len(values) == 1:
+            # Preserve one-element list-cdr values (e.g. (candles (...)))
+            # as list, while keeping scalar shorthand (e.g. (type "X")) scalar.
+            if isinstance(obj[1], (list, tuple)):
+                return (key, values)
+            return (key, values[0])
+        return (key, values)
+    return None
+
+
 def _sexp_to_python(obj):
     if isinstance(obj, tuple) and len(obj) == 2:
         return (_normalize_key(obj[0]), _sexp_to_python(obj[1]))
     if isinstance(obj, dict):
         return {k: _sexp_to_python(v) for k, v in obj.items()}
     if isinstance(obj, list):
-        if obj and all(isinstance(x, tuple) and len(x) == 2 for x in obj):
-            return {k: _sexp_to_python(v) for k, v in (_sexp_to_python(x) for x in obj)}
-        if len(obj) % 2 == 0 and all(isinstance(obj[i], str) for i in range(0, len(obj), 2)):
+        if obj:
+            entries = []
+            as_alist = True
+            for item in obj:
+                entry = _alist_entry_from_obj(item)
+                if entry is None:
+                    as_alist = False
+                    break
+                entries.append(entry)
+            if as_alist:
+                return {k: v for k, v in entries}
+        if len(obj) >= 4 and len(obj) % 2 == 0 and all(isinstance(obj[i], str) for i in range(0, len(obj), 2)):
             return {
                 _normalize_key(obj[i]): _sexp_to_python(obj[i + 1])
                 for i in range(0, len(obj), 2)

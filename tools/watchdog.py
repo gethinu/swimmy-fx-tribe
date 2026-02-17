@@ -37,9 +37,57 @@ ZMQ_BRAIN_CMD_PORT = 5555  # Brain's command socket (for position query)
 ZMQ_GUARDIAN_PORT = 5560  # Guardian's PUB socket to MT5
 
 # Graduated Timeout Thresholds (P4: Configurable)
-TIMEOUT_WARN_SECS = int(os.getenv("TIMEOUT_WARN_SECS", "30"))
-TIMEOUT_BLOCK_SECS = int(os.getenv("TIMEOUT_BLOCK_SECS", "90"))
-TIMEOUT_CLOSE_SECS = int(os.getenv("TIMEOUT_CLOSE_SECS", "180"))
+MIN_TIMEOUT_WARN_SECS = 120
+MIN_TIMEOUT_BLOCK_SECS = 300
+MIN_TIMEOUT_CLOSE_SECS = 600
+
+
+def _read_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    raw = raw.strip()
+    if not raw:
+        return default
+
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[WATCHDOG] Invalid {name}={raw!r}; using default {default}")
+        return default
+
+
+def _resolve_timeout_thresholds() -> tuple[int, int, int]:
+    configured_warn = _read_int_env("TIMEOUT_WARN_SECS", MIN_TIMEOUT_WARN_SECS)
+    configured_block = _read_int_env("TIMEOUT_BLOCK_SECS", MIN_TIMEOUT_BLOCK_SECS)
+    configured_close = _read_int_env("TIMEOUT_CLOSE_SECS", MIN_TIMEOUT_CLOSE_SECS)
+
+    warn_secs = max(configured_warn, MIN_TIMEOUT_WARN_SECS)
+    block_secs = max(configured_block, MIN_TIMEOUT_BLOCK_SECS, warn_secs + 1)
+    close_secs = max(configured_close, MIN_TIMEOUT_CLOSE_SECS, block_secs + 1)
+
+    if (warn_secs, block_secs, close_secs) != (
+        configured_warn,
+        configured_block,
+        configured_close,
+    ):
+        print(
+            "[WATCHDOG] Timeout thresholds clamped to safe values: "
+            f"WARN={warn_secs}s BLOCK={block_secs}s CLOSE={close_secs}s "
+            f"(configured={configured_warn}/{configured_block}/{configured_close})"
+        )
+
+    return warn_secs, block_secs, close_secs
+
+
+TIMEOUT_WARN_SECS, TIMEOUT_BLOCK_SECS, TIMEOUT_CLOSE_SECS = _resolve_timeout_thresholds()
+
+# Brain startup grace after MainPID change (default 900s)
+BRAIN_STARTUP_GRACE_SECS = max(
+    _read_int_env("WATCHDOG_BRAIN_STARTUP_GRACE_SECS", 900),
+    TIMEOUT_BLOCK_SECS,
+)
 
 # Policy (P2): CLOSE_ALL, MAINTAIN, GRADUATED
 TIMEOUT_POLICY = os.getenv("BRAIN_TIMEOUT_POLICY", "GRADUATED").upper()
@@ -150,6 +198,8 @@ class BrainState:
 
     def __init__(self):
         self.last_msg_time = time.time()
+        self.last_pid_change_time = self.last_msg_time
+        self.signal_seen_since_pid_change = False
         self.phase = 0  # 0=OK, 1=WARN, 2=BLOCK, 3=CLOSE
         self.death_count = 0
         self.first_death_time = datetime.now()
@@ -324,6 +374,8 @@ def _reset_silence_timer_on_pid_change(
     # First observation: treat as a fresh start.
     if last_pid is None:
         state.last_msg_time = now
+        state.last_pid_change_time = now
+        state.signal_seen_since_pid_change = False
         state.reset()
         return current_pid
 
@@ -332,10 +384,20 @@ def _reset_silence_timer_on_pid_change(
             f"[WATCHDOG] Detected swimmy-brain MainPID change {last_pid}->{current_pid}; resetting silence timer (startup grace)"
         )
         state.last_msg_time = now
+        state.last_pid_change_time = now
+        state.signal_seen_since_pid_change = False
         state.reset()
         return current_pid
 
     return last_pid
+
+
+def _is_within_startup_grace(state: "BrainState", now: Optional[float] = None) -> bool:
+    if now is None:
+        now = time.time()
+    if state.signal_seen_since_pid_change:
+        return False
+    return (now - state.last_pid_change_time) < BRAIN_STARTUP_GRACE_SECS
 
 
 def send_discord_alert(
@@ -603,7 +665,7 @@ def run_tests():
     # Test 1: Phase transitions
     print("\n[TEST 1] Phase Transition Test")
     test_state = BrainState()
-    test_state.last_msg_time = time.time() - 35  # 35s ago
+    test_state.last_msg_time = time.time() - (TIMEOUT_WARN_SECS + 5)
 
     assert (
         test_state.silence_secs() > TIMEOUT_WARN_SECS
@@ -670,6 +732,24 @@ def run_tests():
     print("  ✅ PID change grace: resets silence timer + phases")
     results.append(("PID change grace", True))
 
+    # Test 6: Startup grace should suppress timeout checks until first signal
+    print("\n[TEST 6] Startup Grace Suppression Test")
+    test_state = BrainState()
+    test_state.last_pid_change_time = 1000.0
+    test_state.signal_seen_since_pid_change = False
+    assert _is_within_startup_grace(test_state, now=1899.0), (
+        "startup grace should suppress timeout before first signal"
+    )
+    assert not _is_within_startup_grace(test_state, now=1901.0), (
+        "startup grace should end after grace window elapses"
+    )
+    test_state.signal_seen_since_pid_change = True
+    assert not _is_within_startup_grace(test_state, now=1200.0), (
+        "startup grace must stop applying after first signal"
+    )
+    print("  ✅ startup grace suppression logic")
+    results.append(("startup grace suppression", True))
+
     # Summary
     print("\n" + "=" * 60)
     passed = sum(1 for _, r in results if r)
@@ -695,6 +775,7 @@ def main():
     print(
         f"  Phases: {TIMEOUT_WARN_SECS}s → {TIMEOUT_BLOCK_SECS}s → {TIMEOUT_CLOSE_SECS}s"
     )
+    print(f"  Startup Grace: {BRAIN_STARTUP_GRACE_SECS}s (until first brain signal)")
     print("=" * 60)
 
     context = zmq.Context()
@@ -724,13 +805,16 @@ def main():
             try:
                 msg = brain_sub.recv_string(flags=0)
                 brain_state.last_msg_time = time.time()
+                brain_state.signal_seen_since_pid_change = True
                 if brain_state.phase > 0:
                     handle_brain_recovery()
             except zmq.Again:
                 pass
 
             # 2. Handle Brain timeout
-            if (
+            if _is_within_startup_grace(brain_state):
+                pass
+            elif (
                 brain_state.silence_secs() > TIMEOUT_WARN_SECS
                 and not brain_state.halted
             ):

@@ -29,6 +29,36 @@ entries = parse_sexp_list('(((name . "A") (sharpe . 1.0)) ((name . "B") (sharpe 
 assert entries[0]["name"] == "A"
 assert entries[1]["sharpe"] == 2.0
 
+# Alist shorthand parse (key list-cdr form)
+shorthand = parse_sexp_alist(
+    '((type . "PATTERN_SIMILARITY")'
+    ' (schema_version . 1)'
+    ' (action . "QUERY")'
+    ' (candles ((timestamp . 1) (open . 1.0)) ((timestamp . 2) (open . 2.0))))'
+)
+assert shorthand["type"] == "PATTERN_SIMILARITY"
+assert shorthand["action"] == "QUERY"
+assert isinstance(shorthand["candles"], list)
+assert len(shorthand["candles"]) == 2
+assert shorthand["candles"][0]["timestamp"] == 1
+assert shorthand["candles"][1]["open"] == 2.0
+
+shorthand_one = parse_sexp_alist(
+    '((type . "PATTERN_SIMILARITY")'
+    ' (schema_version . 1)'
+    ' (action . "QUERY")'
+    ' (candles ((timestamp . 1) (open . 1.0))))'
+)
+assert isinstance(shorthand_one["candles"], list)
+assert len(shorthand_one["candles"]) == 1
+assert shorthand_one["candles"][0]["timestamp"] == 1
+
+# Top-level shorthand-only alist should also be accepted.
+shorthand_top = parse_sexp_alist('((type "PATTERN_SIMILARITY") (schema_version 1) (action "STATUS"))')
+assert shorthand_top["type"] == "PATTERN_SIMILARITY"
+assert shorthand_top["schema_version"] == 1
+assert shorthand_top["action"] == "STATUS"
+
 # Invalid input should raise
 try:
     parse_sexp_alist("(")

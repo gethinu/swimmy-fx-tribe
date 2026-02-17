@@ -69,6 +69,8 @@ graph TD
 - **Pure Lisp Daemon (Systemd)**
 - **School**: 進化 (Breeding), 淘汰 (Culling), ランク付 (B/A/S)。
 - **Brain**: シグナル生成、Atomic Allocation (スロット確保)。
+- **Timeframe Model**: 戦略TFは minutes(int) を正本にし、既定8TFバケットでカテゴリ/相関を有限化。`M36/H2/H5/H60` など任意TF探索は mutation pool で制御する。
+- **Rank Safety**: A/S は trade evidence floor（A>=50, S>=100）を持ち、評価サイクルで既存ランクにも降格スイープを適用する。
 - **Scribe**: I/O分離用ワーカー。
 - **Hot Reload**: プロセスを止めずにロジック更新可能。
 
@@ -80,6 +82,7 @@ graph TD
 ### 5. Pattern Similarity Service (Perception)
 - **Python Service (Port 5564 / REQ/REP + S-expression, schema_version=1)**
 - チャートパターンの画像化・埋め込み・近傍検索を担当。
+- backend は `clip-vit-b32`（画像）と `vector-siamese-v1`（ベクトルDL）を併用し、`ensemble_weight.json` の `symbol_timeframe_weights` / `vector_weight` で実行時混合重みを決定。
 - 生成した埋め込みとインデックスは `data/patterns/` に保存。
 
 ### 6. Inference Worker (LLM)
@@ -96,7 +99,7 @@ graph TD
 | **Hourly** | Lisp | 学習、ファイルローテーション、**Evolution Report** |
 | **Daily (00:10 JST)** | Lisp | `strategy_daily_pnl` 日次集計 |
 | **Weekly (Sat)** | Guardian | Weekend Auto-Close (全決済) |
-| **Weekly (Sat)** | Lisp | Culling (Rank C/D 排除) |
+| **Weekly (Sat)** | Lisp | Culling & Rank Maintenance（B基盤整理、A/S再評価） |
 
 ## Reports & Metrics (V50.5.1 Mechanism)
 - **Evolution Factory Report**: `school-narrative.lisp` で生成。

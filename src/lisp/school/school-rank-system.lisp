@@ -58,6 +58,18 @@
     (:min-trades 30 :pf-min 1.55 :wr-min 0.45))
   "Descending stage specs for S-rank PF/WR gates keyed by trade evidence.")
 
+(defparameter *a-rank-min-trade-evidence* 50
+  "Minimum trade evidence required before A-rank eligibility.")
+
+(defparameter *s-rank-min-trade-evidence* 100
+  "Minimum trade evidence required before S-rank eligibility.")
+
+(defparameter *enforce-rank-trade-evidence-floors* t
+  "When T, rank evaluation demotes existing A/S strategies that violate trade-evidence floors.")
+
+(defparameter *enforce-s-rank-criteria-conformance* t
+  "When T, rank evaluation demotes existing S strategies that no longer satisfy S criteria.")
+
 ;;; ---------------------------------------------------------------------------
 ;;; COMPOSITE SCORE (Multi-Metric)
 ;;; ---------------------------------------------------------------------------
@@ -66,6 +78,10 @@
 (defparameter *score-weight-pf* 0.25)
 (defparameter *score-weight-wr* 0.20)
 (defparameter *score-weight-maxdd* 0.10)
+(defparameter *score-trade-confidence-k* 120.0
+  "Evidence scaling constant for Sharpe confidence shrinkage in composite score.")
+(defparameter *score-trade-confidence-floor* 0.55
+  "Minimum Sharpe confidence multiplier when trade evidence is sparse.")
 (defparameter *culling-a-base-deficit-penalty-enabled* t
   "When T, B-rank culling penalizes candidates farther from A-base thresholds.")
 (defparameter *culling-a-base-deficit-penalty-weight* 1.5
@@ -92,13 +108,31 @@
              (hi (float hi 1.0)))
         (/ (- (%clamp v lo hi) lo) (- hi lo)))))
 
+(defun trade-evidence-confidence-factor (trades)
+  "Return confidence multiplier [floor,1] from trade evidence count.
+Low trade counts are softly shrunk instead of hard-blocked."
+  (let* ((n (if (numberp trades) (max 0.0 (float trades 1.0)) 0.0))
+         (k (max 1.0 (float *score-trade-confidence-k* 1.0)))
+         (floor (%clamp (float *score-trade-confidence-floor* 1.0) 0.0 1.0))
+         (ratio (/ n (+ n k))))
+    (+ floor (* (- 1.0 floor) ratio))))
+
+(defun evidence-adjusted-sharpe (sharpe trades)
+  "Shrink Sharpe by trade-evidence confidence to avoid sparse-sample overvaluation."
+  (* (float (or sharpe 0.0) 1.0)
+     (trade-evidence-confidence-factor trades)))
+
 (defun score-from-metrics (metrics)
   "Compute composite score from metrics plist."
   (let* ((sharpe (or (getf metrics :sharpe) 0.0))
          (pf (or (getf metrics :profit-factor) 0.0))
          (wr (or (getf metrics :win-rate) 0.0))
+         (trades (getf metrics :trades nil))
+         (adj-sharpe (if (numberp trades)
+                         (evidence-adjusted-sharpe sharpe trades)
+                         (float sharpe 1.0)))
          (dd (or (getf metrics :max-dd) 1.0))
-         (n-sharpe (%norm sharpe 0.0 2.0))
+         (n-sharpe (%norm adj-sharpe 0.0 2.0))
          (n-pf (%norm pf 1.0 2.0))
          (n-wr (%norm wr 0.40 0.70))
          (n-dd (%norm dd 0.0 0.20)))
@@ -143,6 +177,7 @@
                 (list :sharpe (or (strategy-sharpe strategy) 0.0)
                       :profit-factor (or (strategy-profit-factor strategy) 0.0)
                       :win-rate (or (strategy-win-rate strategy) 0.0)
+                      :trades (or (strategy-trades strategy) 0)
                       :max-dd (or (strategy-max-dd strategy) 1.0))))
          (penalty (if *culling-a-base-deficit-penalty-enabled*
                       (* *culling-a-base-deficit-penalty-weight*
@@ -193,6 +228,13 @@
         (trade-count (or (strategy-trades strategy) 0)))
     (max history-count trade-count)))
 
+(defun min-trade-evidence-for-rank (rank)
+  "Return minimum trade evidence required for rank gate."
+  (case rank
+    (:A *a-rank-min-trade-evidence*)
+    (:S *s-rank-min-trade-evidence*)
+    (otherwise 0)))
+
 (defun effective-s-rank-criteria (strategy)
   "Return effective S-rank criteria considering staged PF/WR thresholds.
    Values: criteria-plist, trade-evidence-count, matched-stage-spec-or-nil."
@@ -217,10 +259,13 @@
          (sharpe (or (strategy-sharpe strategy) 0.0))
          (pf (or (strategy-profit-factor strategy) 0.0))
          (wr (or (strategy-win-rate strategy) 0.0))
-         (maxdd (or (strategy-max-dd strategy) 1.0)))
+         (maxdd (or (strategy-max-dd strategy) 1.0))
+         (trade-evidence (strategy-trade-evidence-count strategy))
+         (min-trade-evidence (min-trade-evidence-for-rank target-rank)))
     (cond
       ((eq target-rank :S)
-       (and (>= sharpe (getf criteria :sharpe-min 0))
+       (and (>= trade-evidence min-trade-evidence)
+            (>= sharpe (getf criteria :sharpe-min 0))
             (>= pf (getf criteria :pf-min 0))
             (>= wr (getf criteria :wr-min 0))
             (< maxdd (getf criteria :maxdd-max 1.0))
@@ -229,7 +274,8 @@
                 (and (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
                      (< (or (strategy-cpcv-median-maxdd strategy) 1.0) (getf criteria :cpcv-maxdd-max 1.0))))))
       (t
-       (and (>= sharpe (getf criteria :sharpe-min 0))
+       (and (>= trade-evidence min-trade-evidence)
+            (>= sharpe (getf criteria :sharpe-min 0))
             (>= pf (getf criteria :pf-min 0))
             (>= wr (getf criteria :wr-min 0))
             (< maxdd (getf criteria :maxdd-max 1.0))
@@ -243,6 +289,7 @@
 (defun %s-gate-label (gate)
   (case gate
     (:sharpe "sharpe")
+    (:trade-evidence "trade-evidence")
     (:pf "pf")
     (:wr "wr")
     (:maxdd "maxdd")
@@ -259,10 +306,12 @@
            (pf (or (strategy-profit-factor strategy) 0.0))
            (wr (or (strategy-win-rate strategy) 0.0))
            (maxdd (or (strategy-max-dd strategy) 1.0))
+           (min-trade-evidence (min-trade-evidence-for-rank :S))
            (pass-rate (or (strategy-cpcv-pass-rate strategy) 0.0))
            (cpcv-maxdd (or (strategy-cpcv-median-maxdd strategy) 1.0))
            (failed '())
            (common-stage2-message nil))
+      (when (< trade-evidence min-trade-evidence) (push :trade-evidence failed))
       (when (< sharpe (getf criteria :sharpe-min 0.0)) (push :sharpe failed))
       (when (< pf (getf criteria :pf-min 0.0)) (push :pf failed))
       (when (< wr (getf criteria :wr-min 0.0)) (push :wr failed))
@@ -276,6 +325,7 @@
             (setf common-stage2-message message))))
       (list :failed-gates (nreverse failed)
             :trade-evidence trade-evidence
+            :min-trade-evidence min-trade-evidence
             :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
             :sharpe sharpe
             :pf pf
@@ -750,6 +800,8 @@
   "Evaluate A-RANK strategy with CPCV (2021-2026 OOS).
    If passes S criteria → S-RANK. If fails → B-RANK or Graveyard."
   (let* ((name (strategy-name strategy))
+         (trade-evidence (strategy-trade-evidence-count strategy))
+         (a-min-trade-evidence (min-trade-evidence-for-rank :A))
          (cpcv-ready (and (numberp (strategy-cpcv-pass-rate strategy))
                           (> (or (strategy-cpcv-pass-rate strategy) 0.0) 0.0)
                           (> (or (strategy-cpcv-median-pf strategy) 0.0) 0.0)
@@ -760,12 +812,20 @@
                          (list :sharpe (strategy-cpcv-median-sharpe strategy)
                                :profit-factor (strategy-cpcv-median-pf strategy)
                                :win-rate (strategy-cpcv-median-wr strategy)
+                               :trades trade-evidence
                                :max-dd (strategy-cpcv-median-maxdd strategy))
                          (list :sharpe (strategy-sharpe strategy)
                                :profit-factor (strategy-profit-factor strategy)
                                :win-rate (strategy-win-rate strategy)
+                               :trades trade-evidence
                                :max-dd (strategy-max-dd strategy))))
                     (or (strategy-sharpe strategy) 0.0))))
+    (when (< trade-evidence a-min-trade-evidence)
+      (demote-rank strategy :B
+                   (format nil "Trade evidence floor failed (~d < ~d)"
+                           trade-evidence
+                           a-min-trade-evidence))
+      (return-from evaluate-a-rank-strategy :B))
     (if (check-rank-criteria strategy :S)
         (multiple-value-bind (common-pass common-msg)
             (if (fboundp 'common-stage2-gates-passed-p)
@@ -812,6 +872,56 @@
   (let ((count (1+ (or (strategy-breeding-count strategy) 0))))
     (setf (strategy-breeding-count strategy) count)))
 
+(defun enforce-rank-trade-evidence-floors ()
+  "Demote existing S/A strategies that do not meet trade-evidence floors.
+Returns plist summary:
+  (:s-demoted N :a-demoted N :s-min N :a-min N)"
+  (let* ((s-min (min-trade-evidence-for-rank :S))
+         (a-min (min-trade-evidence-for-rank :A))
+         (s-demoted 0)
+         (a-demoted 0))
+    ;; S floor:
+    ;; - n >= A-min and < S-min => S -> A
+    ;; - n < A-min => S -> B
+    (dolist (s (copy-list (get-strategies-by-rank :S)))
+      (let ((n (strategy-trade-evidence-count s)))
+        (when (< n s-min)
+          (let ((target (if (>= n a-min) :A :B)))
+            (demote-rank s target
+                         (format nil "S trade-evidence floor failed (~d < ~d)"
+                                 n s-min))
+            (incf s-demoted)))))
+    ;; A floor:
+    ;; - n < A-min => A -> B
+    (dolist (s (copy-list (get-strategies-by-rank :A)))
+      (let ((n (strategy-trade-evidence-count s)))
+        (when (< n a-min)
+          (demote-rank s :B
+                       (format nil "A trade-evidence floor failed (~d < ~d)"
+                               n a-min))
+          (incf a-demoted))))
+    (format t "[RANK] 📉 Trade-evidence floor sweep: S-demoted=~d (<~d) A-demoted=~d (<~d)~%"
+            s-demoted s-min a-demoted a-min)
+    (list :s-demoted s-demoted
+          :a-demoted a-demoted
+          :s-min s-min
+          :a-min a-min)))
+
+(defun enforce-s-rank-criteria-conformance ()
+  "Demote existing S strategies that no longer satisfy S criteria.
+Returns plist summary:
+  (:s-demoted N)"
+  (let ((s-demoted 0))
+    (dolist (s (copy-list (get-strategies-by-rank :S)))
+      (unless (check-rank-criteria s :S)
+        (let ((target (if (check-rank-criteria s :A) :A :B)))
+          (demote-rank s target
+                       (format nil "S criteria conformance failed (target ~a)" target))
+          (incf s-demoted))))
+    (format t "[RANK] 📉 S-criteria conformance sweep: S-demoted=~d~%"
+            s-demoted)
+    (list :s-demoted s-demoted)))
+
 (defun run-b-rank-culling (&optional single-tf)
   "Run culling for all TF × Direction × Symbol categories.
    V49.3: Dynamic symbol detection to prevent zombie-accumulation in non-major pairs."
@@ -826,14 +936,23 @@
 
 (defun run-rank-evaluation ()
   "Main rank evaluation cycle.
-   1. Evaluate new strategies (→ B or Graveyard)
-   2. Cull B-RANK if threshold reached (Dynamic Categories)
-   3. Validate A-RANK via CPCV (→ S or back)
+   1. Enforce A/S trade-evidence floors on existing ranks.
+   2. Enforce existing S-rank criteria conformance.
+   3. Cull B-RANK if threshold reached (Dynamic Categories)
+   4. Validate A-RANK via CPCV (→ S or back)
    V49.3: Added missing A-Rank evaluation loop."
   (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
   (reset-oos-failure-stats)
   ;; Normalize legacy OOS defaults so validation is re-triggered
   (normalize-oos-defaults)
+
+  ;; 0. Enforce trade-evidence floors on existing A/S ranks
+  (when *enforce-rank-trade-evidence-floors*
+    (enforce-rank-trade-evidence-floors))
+
+  ;; 0.5 Enforce S-rank criteria conformance on existing S ranks
+  (when *enforce-s-rank-criteria-conformance*
+    (enforce-s-rank-criteria-conformance))
   
   ;; 1. Culling
   (run-b-rank-culling)

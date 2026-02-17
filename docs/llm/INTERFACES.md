@@ -118,6 +118,7 @@ MT5からブロードキャストされる。
 
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
+受信側（MT5 Bridge）は key-value を `(<key> . <value>)` と `(<key> <value>)` の両形式で解釈する（`serde_lexpr` 由来の shorthand 互換）。
 
 **ORDER_OPEN**:
 ```
@@ -134,7 +135,8 @@ RustからMT5へ送信される。
 **備考**: `instrument` + `side` + `lot` が正式。`symbol/action` など旧キーは受理しない（Sender側もS式に統一する）。  
 `comment` は **必須** で、`"<strategy_name>|<tf_key>"`（例: `Volvo-Scalp-Gen0|H1`）を正本とする。`strategy_name` に `NIL` を入れない。`tf_key` は `M30/H2/H5/H60/MN` のようなラベルを許容する。  
 Sender (`safe-order` / `make-order-message`) は `comment` を検証し、形式不正（区切り欠落、strategy/timeframe欠落、`NIL` 含有）は fail-closed で送信中止する。  
-`CLOSE_SHORT_TF` は `comment` の `|D1`/`|W1`/`|MN` サフィックスを保護判定に利用する。
+Receiver（MT5 Bridge）も同一ルールで `comment` を検証し、形式不正（区切り欠落、strategy/timeframe欠落、`NIL` 含有、不正TF）は `SW-<magic>` などへフォールバックせず `ORDER_REJECT`（`reason=MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF`）で fail-closed とする。  
+`CLOSE_SHORT_TF` は `comment` の `tf_key` を minutesへ正規化し、`D1` 以上（`>=1440m`）を保護判定に利用する。後方互換として `|D1`/`|W1`/`|MN`/`|MN1` サフィックス判定も維持する。
 
 **CLOSE**:
 ```
@@ -143,6 +145,7 @@ Sender (`safe-order` / `make-order-message`) は `comment` を検証し、形式
  (magic . 123456)
  (symbol . "USDJPY"))
 ```
+`close_all` の真偽は `true/false`, `t/nil`, `1/0`, `#t/#f` を受理する。
 
 **REQ_HISTORY**:
 ```
@@ -152,6 +155,9 @@ Sender (`safe-order` / `make-order-message`) は `comment` を検証し、形式
  (count . 2000)
  (start . 1709234567))  ; optional (Unix seconds)
 ```
+**備考**: `tf` は大文字小文字を区別せず `M1/M5/M15/M30/H1/H4/H12/D1/W1/MN/MN1` を受理する。  
+分指定文字列（例: `"1"`, `"60"`, `"240"`, `"1440"`, `"10080"`, `"43200"`）も受理し、標準TFへ正規化する。  
+非標準分（例: `"300"`）は MT5 直取得不可のため `M1` を返し、上位層で resample する。  
 
 **GET_POSITIONS**:
 ```

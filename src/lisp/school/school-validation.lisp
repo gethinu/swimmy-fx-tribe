@@ -62,10 +62,10 @@
   "Strategy-name keyed list of absolute slippage samples (pips).")
 
 (defparameter *a-rank-require-dryrun* nil
-  "When NIL, A-rank Stage2 can bootstrap without DryRun samples (MC still required).")
+  "When NIL, A-rank Stage2 can bootstrap without DryRun samples.")
 
-(defparameter *a-rank-require-mc* nil
-  "When NIL, A-rank Stage2 can bootstrap without MC history evidence.")
+(defparameter *a-rank-require-mc* t
+  "When T, A-rank Stage2 requires MC history evidence (except explicit bootstrap path).")
 
 (defparameter *common-stage2-bootstrap-enabled* t
   "When T, mature CPCV-strong candidates can pass Stage2 with sparse MC/DryRun evidence.")

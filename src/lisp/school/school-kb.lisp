@@ -232,6 +232,12 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
   (when (null strategy)
     (format t "[KB] ❌ Cannot add NIL strategy~%")
     (return-from add-to-kb nil))
+
+  ;; Canonicalize timeframe to internal minutes(int) at the KB ingress.
+  (when (and (fboundp '%normalize-timeframe-minutes)
+             (fboundp 'strategy-timeframe))
+    (setf (strategy-timeframe strategy)
+          (%normalize-timeframe-minutes (strategy-timeframe strategy))))
   
   (bt:with-lock-held (*kb-lock*)
     (let ((name (strategy-name strategy))

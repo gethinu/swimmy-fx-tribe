@@ -12,6 +12,10 @@
   "Minimum directional probability to accept pattern alignment.")
 (defparameter *pattern-gate-lot-multiplier* 0.70
   "Soft gate multiplier when pattern direction mismatches.")
+(defparameter *pattern-gate-fade-lot-multiplier* 0.55
+  "Soft gate multiplier when Pattern decision_action is FADE.")
+(defparameter *pattern-gate-no-trade-lot-multiplier* 0.35
+  "Soft gate multiplier when Pattern decision_action is NO-TRADE.")
 (defparameter *pattern-gate-k* 30
   "Top-k neighbors for Pattern Similarity query.")
 (defparameter *pattern-gate-timeframes* '("H1" "H4" "D1" "W1" "MN")
@@ -170,9 +174,21 @@
                  (min (correlation-adjusted-lot symbol vol-scaled) 
                       rp-lot hdrl-lot kelly-adj)))))
 
+(defun %normalize-pattern-gate-timeframe-label (timeframe-key)
+  "Normalize arbitrary TF key to finite bucket label (e.g., H5 -> H4)."
+  (let* ((raw-min (if (fboundp 'get-tf-minutes)
+                      (get-tf-minutes timeframe-key)
+                      (if (numberp timeframe-key) (round timeframe-key) 1)))
+         (bucket-min (if (fboundp 'get-tf-bucket-minutes)
+                         (get-tf-bucket-minutes raw-min)
+                         raw-min)))
+    (if (fboundp 'get-tf-string)
+        (get-tf-string bucket-min)
+        (string-upcase (format nil "~a" timeframe-key)))))
+
 (defun pattern-gate-enabled-timeframe-p (timeframe-key)
   "Return T when Pattern gate should run for TIMEFRAME-KEY."
-  (member (string-upcase (format nil "~a" timeframe-key))
+  (member (%normalize-pattern-gate-timeframe-label timeframe-key)
           *pattern-gate-timeframes*
           :test #'string=))
 
@@ -188,6 +204,46 @@
              (if (numberp obj) (float obj) default)))
        (error () default)))
     (t default)))
+
+(defun %pattern-gate-coerce-bool (value &optional (default nil))
+  "Best-effort conversion to boolean."
+  (cond
+    ((eq value t) t)
+    ((null value) nil)
+    ((numberp value) (not (zerop value)))
+    ((stringp value)
+     (let ((v (string-downcase (string-trim '(#\Space #\Tab #\Newline) value))))
+       (cond
+         ((member v '("true" "#t" "t" "1" "yes" "on") :test #'string=) t)
+         ((member v '("false" "#f" "nil" "0" "no" "off" "") :test #'string=) nil)
+         (t default))))
+    (t default)))
+
+(defun %pattern-gate-normalize-action (value)
+  "Normalize decision action text into \"follow\"/\"fade\"/\"no-trade\"/\"unknown\"."
+  (let ((txt (string-downcase (string-trim '(#\Space #\Tab #\Newline)
+                                           (format nil "~a" (or value ""))))))
+    (cond
+      ((string= txt "follow") "follow")
+      ((string= txt "fade") "fade")
+      ((string= txt "no-trade") "no-trade")
+      (t "unknown"))))
+
+(defun %pattern-gate-decision-multiplier (decision-action enforce-no-trade)
+  "Return (values multiplier reason-code) for decision-driven soft gate.
+Multiplier NIL means fallback to direction mismatch logic."
+  (cond
+    (enforce-no-trade
+     (values (max 0.01 (float *pattern-gate-no-trade-lot-multiplier*))
+             "DECISION_NO_TRADE"))
+    ((string= decision-action "no-trade")
+     (values (max 0.01 (float *pattern-gate-no-trade-lot-multiplier*))
+             "DECISION_NO_TRADE"))
+    ((string= decision-action "fade")
+     (values (max 0.01 (float *pattern-gate-fade-lot-multiplier*))
+             "DECISION_FADE"))
+    (t
+     (values nil nil))))
 
 (defun %pattern-best-label (p-up p-down p-flat)
   "Return :UP/:DOWN/:FLAT from probabilities."
@@ -226,7 +282,8 @@
 
 (defun apply-pattern-soft-gate (category symbol direction timeframe-key history lot lead-name)
   "Apply pattern soft gate. Returns (values adjusted-lot gate-info-alist)."
-  (let ((base-lot (max 0.01 (float lot))))
+  (let* ((base-lot (max 0.01 (float lot)))
+         (tf-label (%normalize-pattern-gate-timeframe-label timeframe-key)))
     (unless (pattern-gate-enabled-timeframe-p timeframe-key)
       (return-from apply-pattern-soft-gate
         (values base-lot
@@ -234,13 +291,13 @@
                   (:reason . "SKIP_TF")
                   (:category . ,category)
                   (:symbol . ,symbol)
-                  (:timeframe . ,timeframe-key)
+                  (:timeframe . ,tf-label)
                   (:strategy . ,lead-name)
                   (:lot_before . ,base-lot)
                   (:lot_after . ,base-lot)))))
 
     (multiple-value-bind (result err)
-        (swimmy.core:query-pattern-similarity symbol timeframe-key history :k *pattern-gate-k*)
+        (swimmy.core:query-pattern-similarity symbol tf-label history :k *pattern-gate-k* :direction direction)
       (when err
         (return-from apply-pattern-soft-gate
           (values base-lot
@@ -249,7 +306,7 @@
                     (:error . ,err)
                     (:category . ,category)
                     (:symbol . ,symbol)
-                    (:timeframe . ,timeframe-key)
+                    (:timeframe . ,tf-label)
                     (:strategy . ,lead-name)
                     (:lot_before . ,base-lot)
                     (:lot_after . ,base-lot)))))
@@ -257,21 +314,46 @@
       (let* ((p-up (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_up) (/ 1.0 3.0)))
              (p-down (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_down) (/ 1.0 3.0)))
              (p-flat (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'p_flat) (/ 1.0 3.0)))
+             (distortion-passed (%pattern-gate-coerce-bool (swimmy.core:sexp-alist-get result 'distortion_passed) t))
+             (distortion-score (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'distortion_score) 0.0))
+             (distortion-threshold (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'distortion_threshold) 0.0))
+             (policy-mode (or (swimmy.core:sexp-alist-get result 'policy_mode) "shadow"))
+             (decision-action (%pattern-gate-normalize-action
+                               (swimmy.core:sexp-alist-get result 'decision_action)))
+             (decision-reason (or (swimmy.core:sexp-alist-get result 'decision_reason) "unknown"))
+             (enforce-no-trade (%pattern-gate-coerce-bool
+                                (swimmy.core:sexp-alist-get result 'enforce_no_trade)
+                                nil))
+             (ev-follow (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'ev_follow) 0.0))
+             (ev-fade (%pattern-gate-coerce-float (swimmy.core:sexp-alist-get result 'ev_fade) 0.0))
+             (vector-weight-applied (let ((raw (swimmy.core:sexp-alist-get result 'vector_weight_applied)))
+                                      (if raw (%pattern-gate-coerce-float raw 0.0) nil)))
+             (weight-source (or (swimmy.core:sexp-alist-get result 'weight_source) "unknown"))
+             (backend-used (or (swimmy.core:sexp-alist-get result 'backend_used) "unknown"))
              (expected (if (eq direction :buy) :up :down))
              (expected-prob (if (eq expected :up) p-up p-down))
              (best-label (%pattern-best-label p-up p-down p-flat))
              (match-p (and (>= expected-prob *pattern-gate-threshold*)
-                           (eq best-label expected)))
-             (applied (not match-p))
-             (adjusted (if applied
-                           (max 0.01 (* base-lot *pattern-gate-lot-multiplier*))
-                           base-lot)))
+                           (eq best-label expected))))
+        (multiple-value-bind (decision-mult decision-reason-code)
+            (%pattern-gate-decision-multiplier decision-action enforce-no-trade)
+          (let* ((decision-applied-p (not (null decision-mult)))
+                 (applied (and distortion-passed (or decision-applied-p (not match-p))))
+                 (adjusted (cond
+                             ((not distortion-passed) base-lot)
+                             (decision-mult (max 0.01 (* base-lot decision-mult)))
+                             ((not match-p) (max 0.01 (* base-lot *pattern-gate-lot-multiplier*)))
+                             (t base-lot))))
         (values adjusted
                 `((:applied . ,applied)
-                  (:reason . ,(if applied "MISMATCH" "MATCH"))
+                  (:reason . ,(cond
+                                ((not distortion-passed) "LOW_DISTORTION")
+                                (decision-reason-code decision-reason-code)
+                                (applied "MISMATCH")
+                                (t "MATCH")))
                   (:category . ,category)
                   (:symbol . ,symbol)
-                  (:timeframe . ,timeframe-key)
+                  (:timeframe . ,tf-label)
                   (:strategy . ,lead-name)
                   (:direction . ,(if (eq direction :buy) "BUY" "SELL"))
                   (:expected_label . ,(string-upcase (symbol-name expected)))
@@ -282,8 +364,20 @@
                   (:p_flat . ,p-flat)
                   (:threshold . ,*pattern-gate-threshold*)
                   (:k . ,*pattern-gate-k*)
+                  (:distortion_passed . ,distortion-passed)
+                  (:distortion_score . ,distortion-score)
+                  (:distortion_threshold . ,distortion-threshold)
+                  (:policy_mode . ,policy-mode)
+                  (:decision_action . ,decision-action)
+                  (:decision_reason . ,decision-reason)
+                  (:enforce_no_trade . ,enforce-no-trade)
+                  (:ev_follow . ,ev-follow)
+                  (:ev_fade . ,ev-fade)
+                  (:vector_weight_applied . ,vector-weight-applied)
+                  (:weight_source . ,weight-source)
+                  (:backend_used . ,backend-used)
                   (:lot_before . ,base-lot)
-                  (:lot_after . ,adjusted)))))))
+                  (:lot_after . ,adjusted)))))))))
 
 (defun emit-pattern-gate-telemetry (symbol timeframe-key gate-info)
   "Emit structured telemetry for pattern gate decision."
@@ -307,29 +401,103 @@
               ("p_flat" (%pattern-gate-get gate-info :p_flat 0.0))
               ("threshold" (%pattern-gate-get gate-info :threshold *pattern-gate-threshold*))
               ("k" (%pattern-gate-get gate-info :k *pattern-gate-k*))
+              ("distortion_passed" (if (%pattern-gate-get gate-info :distortion_passed nil) t nil))
+              ("distortion_score" (%pattern-gate-get gate-info :distortion_score 0.0))
+              ("distortion_threshold" (%pattern-gate-get gate-info :distortion_threshold 0.0))
+              ("policy_mode" (%pattern-gate-get gate-info :policy_mode "shadow"))
+              ("decision_action" (%pattern-gate-get gate-info :decision_action "unknown"))
+              ("decision_reason" (%pattern-gate-get gate-info :decision_reason "unknown"))
+              ("enforce_no_trade" (if (%pattern-gate-get gate-info :enforce_no_trade nil) t nil))
+              ("ev_follow" (%pattern-gate-get gate-info :ev_follow 0.0))
+              ("ev_fade" (%pattern-gate-get gate-info :ev_fade 0.0))
+              ("vector_weight_applied" (%pattern-gate-get gate-info :vector_weight_applied 0.0))
+              ("weight_source" (%pattern-gate-get gate-info :weight_source "unknown"))
+              ("backend_used" (%pattern-gate-get gate-info :backend_used "unknown"))
               ("lot_before" (%pattern-gate-get gate-info :lot_before 0.0))
               ("lot_after" (%pattern-gate-get gate-info :lot_after 0.0))))))
 
 
 ;;; P3 Refactor: Decomposed Execution Helpers (Expert Panel 2026-01-20)
 
-(defun prepare-trade-context (category symbol)
-  "Helper: Resolve strategy, timeframe, and history context."
+(defun resolve-strategy-by-name (name)
+  "Best-effort resolve strategy object by NAME from KB/evolved pools."
+  (when (and (stringp name) (> (length name) 0))
+    (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+        (find name *evolved-strategies* :key #'strategy-name :test #'string=))))
+
+(defun %digits-only-p (text)
+  "Return T when TEXT consists of one or more ASCII digits."
+  (and (stringp text)
+       (> (length text) 0)
+       (loop for ch across text always (digit-char-p ch))))
+
+(defun resolve-execution-timeframe-minutes (value)
+  "Strictly parse VALUE into timeframe minutes for live execution.
+Returns NIL for missing/invalid labels instead of silently coercing to M1."
+  (labels ((parse-positive-int (text)
+             (when (%digits-only-p text)
+               (handler-case
+                   (let ((n (parse-integer text)))
+                     (and (> n 0) n))
+                 (error () nil))))
+           (parse-string (raw)
+             (let* ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) raw))
+                    (up (string-upcase trimmed)))
+               (cond
+                 ((or (string= up "") (string= up "NIL")) nil)
+                 ((string= up "MN") 43200)
+                 ((string= up "MN1") 43200)
+                 ((%digits-only-p up) (parse-positive-int up))
+                 ((and (>= (length up) 2)
+                       (member (char up 0) '(#\M #\H #\D #\W) :test #'char=))
+                  (let ((mag (parse-positive-int (subseq up 1))))
+                    (when mag
+                      (case (char up 0)
+                        (#\M mag)
+                        (#\H (* 60 mag))
+                        (#\D (* 1440 mag))
+                        (#\W (* 10080 mag))
+                        (otherwise nil)))))
+                 (t nil)))))
+    (cond
+      ((null value) nil)
+      ((numberp value)
+       (let ((minutes (round value)))
+         (and (> minutes 0) minutes)))
+      ((stringp value) (parse-string value))
+      ((symbolp value) (parse-string (symbol-name value)))
+      (t nil))))
+
+(defun prepare-trade-context (category symbol &key strategy-name strategy-timeframe)
+  "Helper: Resolve strategy, timeframe, and history context.
+   Optional STRATEGY-NAME/STRATEGY-TIMEFRAME override active-team fallback."
   (let* ((strategies (gethash category *active-team*))
          (lead-strat (first strategies))
-         (lead-name (when lead-strat (strategy-name lead-strat)))
-         (tf-slot (if lead-strat (strategy-timeframe lead-strat) 1))
-         (timeframe (if (fboundp 'get-tf-minutes) (get-tf-minutes tf-slot)
-                        (if (numberp tf-slot) (round tf-slot) 1)))
-         (timeframe (or timeframe 1))
+         (signal-strat (resolve-strategy-by-name strategy-name))
+         (context-strat (or signal-strat lead-strat))
+         (lead-name (or strategy-name (and context-strat (strategy-name context-strat))))
+         ;; Prefer canonical strategy TF when strategy object is resolvable.
+         ;; Caller-provided TF can be stale (e.g., cached signal payload from pre-migration state).
+         (tf-slot (or (and context-strat (strategy-timeframe context-strat))
+                      strategy-timeframe))
+         (timeframe (resolve-execution-timeframe-minutes tf-slot))
          ;; Never silently fall back to M1 for unknown TF minutes.
          ;; If DataKeeper doesn't provide that TF, we resample from M1 using aligned buckets.
-         (timeframe-key (if (fboundp 'get-tf-string) (get-tf-string timeframe) "M1"))
+         (timeframe-key (and timeframe
+                             (if (fboundp 'get-tf-string) (get-tf-string timeframe) nil)))
          (history (cond
+                    ((null timeframe) nil)
                     ((= timeframe 1) (gethash symbol *candle-histories*))
                     (t
                      (let ((tf-map (gethash symbol *candle-histories-tf*)))
-                       (or (and tf-map (gethash timeframe-key tf-map))
+                       (or (and tf-map
+                                (or (gethash timeframe-key tf-map)
+                                    (and (stringp timeframe-key)
+                                         (string= timeframe-key "MN")
+                                         (gethash "MN1" tf-map))
+                                    (and (stringp timeframe-key)
+                                         (string= timeframe-key "MN1")
+                                         (gethash "MN" tf-map))))
                            (when (gethash symbol *candle-histories*)
                              (resample-candles (gethash symbol *candle-histories*) timeframe))))))))
     (values lead-name timeframe-key history)))
@@ -350,6 +518,37 @@
        (format t "[L] 🕰️ New Candle: ~a (~a) TS=~d~%" symbol timeframe-key latest-ts)
        t))))
 
+(defun report-execution-context-missing (symbol category reason &key strategy-name timeframe-key)
+  "Emit fail-closed observability signals (Discord + telemetry) for context-missing skips."
+  (let* ((cat (if (keywordp category) (string-downcase (symbol-name category)) (format nil "~a" category)))
+         (reason-label (case reason
+                         (:missing-strategy "Missing strategy context")
+                         (:missing-timeframe "Missing timeframe context")
+                         (otherwise "Missing execution context")))
+         (strategy-text (if (and strategy-name
+                                 (not (string= (string-upcase (format nil "~a" strategy-name)) "NIL")))
+                            (format nil "~a" strategy-name)
+                            "N/A"))
+         (timeframe-text (if (and timeframe-key
+                                  (not (string= (string-upcase (format nil "~a" timeframe-key)) "NIL")))
+                             (format nil "~a" timeframe-key)
+                             "N/A"))
+         (msg (format nil "🚫 EXECUTION BLOCKED (Context Missing)~%Symbol: ~a~%Category: ~a~%Reason: ~a~%Strategy: ~a~%Timeframe: ~a"
+                      symbol cat reason-label strategy-text timeframe-text)))
+    (when (fboundp 'swimmy.core::emit-telemetry-event)
+      (swimmy.core::emit-telemetry-event "execution.context_missing"
+        :service "school"
+        :severity "warn"
+        :data (jsown:new-js
+                ("symbol" symbol)
+                ("category" cat)
+                ("reason" reason-label)
+                ("strategy" strategy-text)
+                ("timeframe" timeframe-text))))
+    (when (fboundp 'swimmy.core:notify-discord-alert)
+      (swimmy.core:notify-discord-alert msg :color 15158332))
+    nil))
+
 (defun verify-signal-authority (symbol direction category lot rank lead-name)
   "Helper: Verify signal with Council, AI, and Blocking rules."
   (declare (ignore lead-name))
@@ -362,6 +561,20 @@
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."
   (declare (ignore magic-override))
+  (when (or (null lead-name)
+            (string= (string-upcase (format nil "~a" lead-name)) "NIL"))
+    (format t "[EXEC] 🚫 Missing strategy context before reservation for ~a (~a); skip trade.~%" symbol category)
+    (report-execution-context-missing symbol category :missing-strategy
+                                      :strategy-name lead-name
+                                      :timeframe-key timeframe-key)
+    (return-from execute-order-sequence nil))
+  (when (or (null timeframe-key)
+            (string= (string-upcase (format nil "~a" timeframe-key)) "NIL"))
+    (format t "[EXEC] 🚫 Missing timeframe context before reservation for ~a (~a); skip trade.~%" symbol category)
+    (report-execution-context-missing symbol category :missing-timeframe
+                                      :strategy-name lead-name
+                                      :timeframe-key timeframe-key)
+    (return-from execute-order-sequence nil))
   (let* ((entry-bid bid)
          (entry-ask ask)
          (entry-spread-pips (spread-pips-from-bid-ask symbol bid ask))
@@ -427,10 +640,18 @@
             (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
 
 (defun execute-category-trade (category direction symbol bid ask
-                               &key (lot-multiplier 1.0) signal-confidence)
+                               &key (lot-multiplier 1.0) signal-confidence strategy-name strategy-timeframe)
   (format t "[TRACE] execute-category-trade ~a ~a~%" category direction)
   (handler-case
       (when (and (numberp bid) (numberp ask) (total-exposure-allowed-p))
+        (let* ((strategy-name-text (and strategy-name
+                                        (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                     (format nil "~a" strategy-name))))
+               (strategy-name-provided (and strategy-name-text
+                                            (> (length strategy-name-text) 0)
+                                            (not (string= (string-upcase strategy-name-text) "NIL"))))
+               (resolved-signal-strat (and strategy-name-provided
+                                           (resolve-strategy-by-name strategy-name-text))))
         (let ((spread-pips (spread-pips-from-bid-ask symbol bid ask)))
           (when (> spread-pips *max-spread-pips*)
             (format t "[EXEC] 🚫 Spread Reject: ~a spread=~,2f pips (max=~,2f)~%"
@@ -447,7 +668,34 @@
                         ("max_spread_pips" *max-spread-pips*)
                         ("pip_size" (get-pip-size symbol)))))
             (return-from execute-category-trade nil)))
-        (multiple-value-bind (lead-name timeframe-key history) (prepare-trade-context category symbol)
+        (multiple-value-bind (lead-name timeframe-key history)
+            (prepare-trade-context category symbol
+                                   :strategy-name strategy-name
+                                   :strategy-timeframe strategy-timeframe)
+          (when (or (null lead-name)
+                    (string= (string-upcase (format nil "~a" lead-name)) "NIL"))
+            (format t "[EXEC] 🚫 Missing strategy context for ~a (~a); skip trade.~%" symbol category)
+            (report-execution-context-missing symbol category :missing-strategy
+                                              :strategy-name lead-name
+                                              :timeframe-key timeframe-key)
+            (return-from execute-category-trade nil))
+          (when (or (null timeframe-key)
+                    (string= (string-upcase (format nil "~a" timeframe-key)) "NIL"))
+            (format t "[EXEC] 🚫 Missing timeframe context for ~a (~a); skip trade.~%" symbol category)
+            (report-execution-context-missing symbol category :missing-timeframe
+                                              :strategy-name lead-name
+                                              :timeframe-key timeframe-key)
+            (return-from execute-category-trade nil))
+          ;; Fail-closed on unresolved explicit strategy identity once timeframe is valid.
+          ;; This prevents trading under stale/unknown strategy names with synthetic TF inputs.
+          (when (and strategy-name-provided
+                     (null resolved-signal-strat))
+            (format t "[EXEC] 🚫 Unresolved strategy context for ~a (~a): ~a~%"
+                    symbol category strategy-name-text)
+            (report-execution-context-missing symbol category :missing-strategy
+                                              :strategy-name strategy-name
+                                              :timeframe-key timeframe-key)
+            (return-from execute-category-trade nil))
           (when (validate-trade-opportunity category symbol timeframe-key history)
              (let* ((rank-data (when lead-name (get-strategy-rank lead-name)))
                     (rank (if rank-data (strategy-rank-rank rank-data) :incubator))
@@ -468,7 +716,7 @@
                     ;; Sleep Randomization (Anti-Gaming)
                     (sleep (/ (random 2000) 1000.0))
                     (execute-order-sequence category direction symbol bid ask gated-lot lead-name timeframe-key nil
-                                            :pair-id pair-id)))))))
+                                            :pair-id pair-id))))))))
     (error (e) (format t "[EXEC] 🚨 Error: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)
@@ -600,6 +848,9 @@
                        (top-name (when top-sig (getf top-sig :strategy-name)))
                    (top-cat (when top-sig (getf top-sig :category)))
                    (top-cache (when top-name (get-cached-backtest top-name)))
+                   (top-timeframe (or (and top-sig (getf top-sig :timeframe))
+                                      (let ((top-strat (resolve-strategy-by-name top-name)))
+                                        (and top-strat (strategy-timeframe top-strat)))))
                    (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
                   (when top-sig
                     (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
@@ -616,7 +867,9 @@
                         (let ((trade-executed
                                 (execute-category-trade top-cat direction symbol bid ask
                                                         :lot-multiplier confidence-lot-mult
-                                                        :signal-confidence signal-confidence)))
+                                                        :signal-confidence signal-confidence
+                                                        :strategy-name top-name
+                                                        :strategy-timeframe top-timeframe)))
                           (when trade-executed
                             (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
                             (record-category-trade-time strat-key)

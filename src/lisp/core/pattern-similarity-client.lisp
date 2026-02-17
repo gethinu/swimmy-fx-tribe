@@ -67,9 +67,17 @@
   "Return a new list sorted by timestamp ascending."
   (sort (copy-list candles) #'< :key #'candle-timestamp))
 
-(defun build-pattern-similarity-query-request (symbol timeframe candles &key (k 30) as-of)
+(defun %normalize-intended-direction (direction)
+  "Normalize DIRECTION into \"BUY\"/\"SELL\" or NIL."
+  (cond
+    ((or (eq direction :buy) (string= (string-upcase (format nil "~a" direction)) "BUY")) "BUY")
+    ((or (eq direction :sell) (string= (string-upcase (format nil "~a" direction)) "SELL")) "SELL")
+    (t nil)))
+
+(defun build-pattern-similarity-query-request (symbol timeframe candles &key (k 30) as-of direction)
   "Build QUERY request S-expression string for Pattern Similarity Service."
   (let* ((tf (string-upcase (format nil "~a" timeframe)))
+         (intended-direction (%normalize-intended-direction direction))
          (candles-alist (mapcar #'%candle->alist (%sort-candles-oldest-first candles)))
          (payload `((type . "PATTERN_SIMILARITY")
                     (schema_version . 1)
@@ -80,15 +88,18 @@
                     (candles . ,candles-alist))))
     (when as-of
       (setf payload (append payload `((as_of . ,as-of)))))
+    (when intended-direction
+      (setf payload (append payload `((intended_direction . ,intended-direction)))))
     (encode-sexp payload)))
 
-(defun pattern-similarity-query (symbol timeframe candles &key (k 30) as-of)
+(defun pattern-similarity-query (symbol timeframe candles &key (k 30) as-of direction)
   "Send QUERY to Pattern Similarity Service.
 
 Returns parsed S-expression (alist) on success, or NIL on error."
   (ensure-pattern-similarity-connection)
   (handler-case
-      (let* ((msg (build-pattern-similarity-query-request symbol timeframe candles :k k :as-of as-of)))
+      (let* ((msg (build-pattern-similarity-query-request
+                   symbol timeframe candles :k k :as-of as-of :direction direction)))
         (pzmq:send *pattern-similarity-socket* msg)
         (let ((resp (pzmq:recv-string *pattern-similarity-socket*)))
           (safe-read-sexp resp :package :swimmy.core)))
@@ -106,14 +117,14 @@ Returns parsed S-expression (alist) on success, or NIL on error."
     (when (and need history (>= (length history) need))
       (reverse (subseq history 0 need)))))
 
-(defun query-pattern-similarity (symbol timeframe history &key (k 30))
+(defun query-pattern-similarity (symbol timeframe history &key (k 30) direction)
   "Query Pattern Similarity service using newest-first HISTORY.
 
 Returns: (values result-alist nil) on success, (values nil reason-string) on skip/error."
   (let ((candles (%history->query-candles history timeframe)))
     (unless candles
       (return-from query-pattern-similarity (values nil "INSUFFICIENT_HISTORY")))
-    (let ((resp (pattern-similarity-query symbol timeframe candles :k k)))
+    (let ((resp (pattern-similarity-query symbol timeframe candles :k k :direction direction)))
       (cond
         ((null resp)
          (values nil "GATEWAY_UNREACHABLE"))
@@ -123,4 +134,3 @@ Returns: (values result-alist nil) on success, (values nil reason-string) on ski
          (values nil (or (sexp-alist-get resp 'error) "QUERY_ERROR")))))))
 
 (format t "[PATTERN-CLIENT] Pattern similarity client loaded~%")
-

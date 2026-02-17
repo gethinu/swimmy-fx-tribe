@@ -18,6 +18,8 @@ if echo "$run_output" | grep -q "SWIMMY_DISCORD_RECRUIT not set"; then
   echo "Expected .env to supply SWIMMY_DISCORD_RECRUIT" >&2
   exit 1
 fi
+echo "$run_output" | grep -q "Pattern backend calibration status" || { echo "Missing pattern calibration status step" >&2; exit 1; }
+echo "$run_output" | grep -q "Order timeframe consistency" || { echo "Missing order timeframe consistency step" >&2; exit 1; }
 
 tmp_dir="$(mktemp -d)"
 cleanup() {

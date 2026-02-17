@@ -20,6 +20,7 @@ input int    InpPortExec = 5560;            // ZMQ Execution (Guardian -> MT5)
 input bool   InpVerboseLog = false;         // Verbose Logging (Debug)
 input bool   InpUseOnTick = false;          // Use OnTick() for tick sending (high-freq)
 input int    InpReconnectInterval = 30;     // Reconnect interval (seconds)
+input bool   InpLogSymbolMismatch = true;   // Log ignored symbol-mismatch commands (throttled)
 
 #import "libzmq.dll"
    long zmq_ctx_new();
@@ -62,6 +63,9 @@ WarriorPosition g_warriors[16];
 datetime g_last_history_check = 0;
 datetime g_last_heartbeat = 0;
 const int HEARTBEAT_TIMEOUT = 300; // V15.2: Extended from 60s to 300s to avoid false triggers
+const int MAX_COMMANDS_PER_TIMER = 64; // Drain execution queue in bursts to avoid command backlog.
+datetime g_last_symbol_mismatch_log = 0;
+int g_symbol_mismatch_count = 0;
 
 //+------------------------------------------------------------------+
 //| Logging functions with level control                              |
@@ -90,24 +94,117 @@ string EscapeSexpString(string value) {
    return out;
 }
 
+string ToLowerCopy(string value) {
+   string out = value;
+   StringToLower(out);
+   return out;
+}
+
+string ToUpperCopy(string value) {
+   string out = value;
+   StringToUpper(out);
+   return out;
+}
+
 bool FindSexpValue(string sexp, string key, string &value, bool &is_string) {
-   string search = "(" + key + " . ";
-   int start = StringFind(sexp, search);
+   string normalized = ToLowerCopy(sexp);
+   string key_lc = ToLowerCopy(key);
+   string patterns[];
+   ArrayResize(patterns, 24);
+   patterns[0] = "(" + key_lc + " . ";
+   patterns[1] = "(:" + key_lc + " . ";
+   patterns[2] = "(swimmy.core::" + key_lc + " . ";
+   patterns[3] = "(swimmy.school::" + key_lc + " . ";
+   patterns[4] = "(swimmy.executor::" + key_lc + " . ";
+   patterns[5] = "(swimmy.main::" + key_lc + " . ";
+   patterns[6] = "(swimmy.globals::" + key_lc + " . ";
+   patterns[7] = "(swimmy.core:" + key_lc + " . ";
+   patterns[8] = "(swimmy.school:" + key_lc + " . ";
+   patterns[9] = "(swimmy.executor:" + key_lc + " . ";
+   patterns[10] = "(swimmy.main:" + key_lc + " . ";
+   patterns[11] = "(swimmy.globals:" + key_lc + " . ";
+   // Shorthand key-value forms: (key value)
+   patterns[12] = "(" + key_lc + " ";
+   patterns[13] = "(:" + key_lc + " ";
+   patterns[14] = "(swimmy.core::" + key_lc + " ";
+   patterns[15] = "(swimmy.school::" + key_lc + " ";
+   patterns[16] = "(swimmy.executor::" + key_lc + " ";
+   patterns[17] = "(swimmy.main::" + key_lc + " ";
+   patterns[18] = "(swimmy.globals::" + key_lc + " ";
+   patterns[19] = "(swimmy.core:" + key_lc + " ";
+   patterns[20] = "(swimmy.school:" + key_lc + " ";
+   patterns[21] = "(swimmy.executor:" + key_lc + " ";
+   patterns[22] = "(swimmy.main:" + key_lc + " ";
+   patterns[23] = "(swimmy.globals:" + key_lc + " ";
+
+   int start = -1;
+   int matched_len = 0;
+   for(int i = 0; i < ArraySize(patterns); i++) {
+      start = StringFind(normalized, patterns[i]);
+      if(start >= 0) {
+         matched_len = StringLen(patterns[i]);
+         break;
+      }
+   }
    if(start < 0) return false;
-   start += StringLen(search);
+   start += matched_len;
+
    while(start < StringLen(sexp) && StringGetCharacter(sexp, start) == ' ') start++;
    if(start >= StringLen(sexp)) return false;
-   if(StringGetCharacter(sexp, start) == '\"') {
+
+   if(StringGetCharacter(sexp, start) == 34) { // "
       is_string = true;
-      start++;
-      int end = StringFind(sexp, "\"", start);
-      if(end < 0) return false;
+      int value_start = start + 1;
+      int end = value_start;
+      bool escaped = false;
+      while(end < StringLen(sexp)) {
+         int ch = StringGetCharacter(sexp, end);
+         if(!escaped && ch == 92) { // \
+            escaped = true;
+            end++;
+            continue;
+         }
+         if(!escaped && ch == 34) { // "
+            break;
+         }
+         escaped = false;
+         end++;
+      }
+      if(end >= StringLen(sexp)) return false;
+      value = StringSubstr(sexp, value_start, end - value_start);
+      return true;
+   }
+
+   if(StringGetCharacter(sexp, start) == 40) { // (
+      // List value, e.g. (key (a b)).
+      is_string = false;
+      int end = start;
+      int depth = 0;
+      while(end < StringLen(sexp)) {
+         int ch = StringGetCharacter(sexp, end);
+         if(ch == 40) depth++;
+         if(ch == 41) {
+            depth--;
+            if(depth == 0) {
+               end++;
+               break;
+            }
+         }
+         end++;
+      }
+      if(depth != 0 || end <= start) return false;
       value = StringSubstr(sexp, start, end - start);
       return true;
    }
+
    is_string = false;
-   int end_token = StringFind(sexp, ")", start);
-   if(end_token < 0) return false;
+   int end_token = start;
+   while(end_token < StringLen(sexp)) {
+      int ch = StringGetCharacter(sexp, end_token);
+      if(ch == ' ' || ch == ')') break;
+      end_token++;
+   }
+   if(end_token <= start) return false;
    value = StringSubstr(sexp, start, end_token - start);
    StringTrimLeft(value);
    StringTrimRight(value);
@@ -135,9 +232,134 @@ bool GetBoolFromSexp(string sexp, string key) {
    // MQL5 StringToLower mutates the string (returns bool), so don't assign its return value.
    string lowered = raw;
    StringToLower(lowered);
-   if(lowered == "true" || lowered == "t" || lowered == "1") return true;
-   if(lowered == "false" || lowered == "nil" || lowered == "0") return false;
+   if(lowered == "true" || lowered == "t" || lowered == "1" || lowered == "#t") return true;
+   if(lowered == "false" || lowered == "nil" || lowered == "0" || lowered == "#f") return false;
    return false;
+}
+
+string NormalizeToken(string token) {
+   string out = token;
+   StringTrimLeft(out);
+   StringTrimRight(out);
+   StringToUpper(out);
+   return out;
+}
+
+bool IsAllDigits(string value) {
+   int n = StringLen(value);
+   if(n <= 0) return false;
+   for(int i = 0; i < n; i++) {
+      int ch = StringGetCharacter(value, i);
+      if(ch < '0' || ch > '9') return false;
+   }
+   return true;
+}
+
+bool TryParseTimeframeTokenToMinutes(string tf_raw, int &minutes) {
+   string tf = NormalizeToken(tf_raw);
+   minutes = 0;
+   if(tf == "") return false;
+
+   if(IsAllDigits(tf)) {
+      minutes = (int)StringToInteger(tf);
+      return (minutes > 0);
+   }
+
+   if(tf == "MN" || tf == "MN1") {
+      minutes = 43200;
+      return true;
+   }
+
+   if(StringLen(tf) < 2) return false;
+   int prefix = StringGetCharacter(tf, 0);
+   string suffix = StringSubstr(tf, 1);
+   if(!IsAllDigits(suffix)) return false;
+   int unit = (int)StringToInteger(suffix);
+   if(unit <= 0) return false;
+
+   if(prefix == 'M') {
+      minutes = unit;
+      return true;
+   }
+   if(prefix == 'H') {
+      minutes = unit * 60;
+      return true;
+   }
+   if(prefix == 'D') {
+      minutes = unit * 1440;
+      return true;
+   }
+   if(prefix == 'W') {
+      minutes = unit * 10080;
+      return true;
+   }
+   return false;
+}
+
+bool TryMinutesToStandardTimeframe(int minutes, ENUM_TIMEFRAMES &period, string &tf_label) {
+   switch(minutes) {
+      case 1:     period = PERIOD_M1;   tf_label = "M1";  return true;
+      case 5:     period = PERIOD_M5;   tf_label = "M5";  return true;
+      case 15:    period = PERIOD_M15;  tf_label = "M15"; return true;
+      case 30:    period = PERIOD_M30;  tf_label = "M30"; return true;
+      case 60:    period = PERIOD_H1;   tf_label = "H1";  return true;
+      case 240:   period = PERIOD_H4;   tf_label = "H4";  return true;
+      case 720:   period = PERIOD_H12;  tf_label = "H12"; return true;
+      case 1440:  period = PERIOD_D1;   tf_label = "D1";  return true;
+      case 10080: period = PERIOD_W1;   tf_label = "W1";  return true;
+      case 43200: period = PERIOD_MN1;  tf_label = "MN1"; return true;
+   }
+   return false;
+}
+
+bool IsNilLikeToken(string token) {
+   string normalized = NormalizeToken(token);
+   return (normalized == "" || normalized == "NIL" || normalized == "NULL" || normalized == "NONE");
+}
+
+bool ValidateOrderComment(string comment, string &reason) {
+   string trimmed = comment;
+   StringTrimLeft(trimmed);
+   StringTrimRight(trimmed);
+   if(trimmed == "") {
+      reason = "MISSING_COMMENT";
+      return false;
+   }
+
+   int delim = StringFind(trimmed, "|");
+   if(delim <= 0 || delim >= StringLen(trimmed) - 1) {
+      reason = "INVALID_COMMENT_FORMAT";
+      return false;
+   }
+   if(StringFind(trimmed, "|", delim + 1) >= 0) {
+      reason = "INVALID_COMMENT_FORMAT";
+      return false;
+   }
+
+   string strategy = StringSubstr(trimmed, 0, delim);
+   string tf_token = StringSubstr(trimmed, delim + 1);
+   StringTrimLeft(strategy);
+   StringTrimRight(strategy);
+   StringTrimLeft(tf_token);
+   StringTrimRight(tf_token);
+
+   if(IsNilLikeToken(strategy)) {
+      reason = "MISSING_STRATEGY";
+      return false;
+   }
+   if(IsNilLikeToken(tf_token)) {
+      reason = "MISSING_TIMEFRAME";
+      return false;
+   }
+
+   int tf_minutes = 0;
+   if(!TryParseTimeframeTokenToMinutes(tf_token, tf_minutes) || tf_minutes <= 0) {
+      reason = "INVALID_COMMENT_TF";
+      return false;
+   }
+
+   reason = "";
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -343,17 +565,12 @@ int RegisterWarrior(ulong magic, ulong ticket, string symbol) {
 //| should be resampled from M1 on the Brain/DataKeeper side.         |
 //+------------------------------------------------------------------+
 bool TryStringToTimeframe(string tf, ENUM_TIMEFRAMES &period) {
-   if(tf == "M1")  { period = PERIOD_M1;  return true; }
-   if(tf == "M5")  { period = PERIOD_M5;  return true; }
-   if(tf == "M15") { period = PERIOD_M15; return true; }
-   if(tf == "M30") { period = PERIOD_M30; return true; }
-   if(tf == "H1")  { period = PERIOD_H1;  return true; }
-   if(tf == "H4")  { period = PERIOD_H4;  return true; }
-   if(tf == "H12") { period = PERIOD_H12; return true; }
-   if(tf == "D1")  { period = PERIOD_D1;  return true; }
-   if(tf == "W1")  { period = PERIOD_W1;  return true; }
-   if(tf == "MN")  { period = PERIOD_MN1; return true; }
-   return false;
+   int minutes = 0;
+   string tf_label = "";
+   if(!TryParseTimeframeTokenToMinutes(tf, minutes)) {
+      return false;
+   }
+   return TryMinutesToStandardTimeframe(minutes, period, tf_label);
 }
 
 //+------------------------------------------------------------------+
@@ -362,7 +579,9 @@ bool TryStringToTimeframe(string tf, ENUM_TIMEFRAMES &period) {
 void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
    // Only send history for THIS chart's symbol
    // Note: Empty symbol ("") or "ALL" = broadcast to all EAs
-   if(symbol != "" && symbol != "ALL" && symbol != _Symbol) {
+   string symbol_norm = ToUpperCopy(symbol);
+   string this_symbol = ToUpperCopy(_Symbol);
+   if(symbol_norm != "" && symbol_norm != "ALL" && symbol_norm != this_symbol) {
       LogDebug("History request for " + symbol + " ignored (this EA handles " + _Symbol + ")");
       return;
    }
@@ -373,9 +592,17 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
    }
    
    ENUM_TIMEFRAMES period = PERIOD_M1;
-   string tf_label = tf;
-   if(!TryStringToTimeframe(tf, period)) {
-      // Avoid silently mislabeling M1 data as a custom TF.
+   string tf_label = "M1";
+   int requested_minutes = 0;
+   bool has_minutes = TryParseTimeframeTokenToMinutes(tf, requested_minutes);
+   if(has_minutes) {
+      if(!TryMinutesToStandardTimeframe(requested_minutes, period, tf_label)) {
+         // Non-standard minutes must be resampled from M1 in upper layers.
+         LogInfo("⚠️ Custom TF '" + tf + "' (" + IntegerToString(requested_minutes) + "m) requested; sending M1 for resampling.");
+         period = PERIOD_M1;
+         tf_label = "M1";
+      }
+   } else if(!TryStringToTimeframe(tf, period)) {
       LogInfo("⚠️ Unsupported TF '" + tf + "' requested; sending M1 for resampling.");
       period = PERIOD_M1;
       tf_label = "M1";
@@ -404,11 +631,12 @@ void SendHistoryData(string symbol, string tf, datetime start_time, int count) {
       LogInfo("📊 Sending " + IntegerToString(copied) + " " + tf_label + " candles for " + _Symbol + "...");
       
       int batch_size = 5000;
+      int total_batches = (copied + batch_size - 1) / batch_size;
       for(int batch = 0; batch < copied; batch += batch_size) {
          int end = MathMin(batch + batch_size, copied);
          
          string sexp = StringFormat("((type . \"HISTORY\") (symbol . \"%s\") (tf . \"%s\") (batch . %d) (total . %d) (data . (", 
-                                    EscapeSexpString(_Symbol), EscapeSexpString(tf_label), batch / batch_size, (copied / batch_size) + 1);
+                                    EscapeSexpString(_Symbol), EscapeSexpString(tf_label), batch / batch_size, total_batches);
          
          for(int i = end - 1; i >= batch; i--) {
             sexp += StringFormat("((t . %I64d) (o . %.5f) (h . %.5f) (l . %.5f) (c . %.5f))",
@@ -492,10 +720,23 @@ void CloseShortTimeframePositions(string symbol) {
          string comment = PositionGetString(POSITION_COMMENT);
          
          if((symbol == "ALL" || pos_symbol == _Symbol) && pos_magic >= MAGIC_BASE) {
-            // Check if comment contains D1, W1, or MN (protected timeframes)
-            bool is_protected = (StringFind(comment, "|D1") >= 0 ||
-                                 StringFind(comment, "|W1") >= 0 ||
-                                 StringFind(comment, "|MN") >= 0);
+            // Protect D1+ positions by timeframe token in comment (strategy|tf).
+            bool is_protected = false;
+            int tf_sep = StringFind(comment, "|");
+            if(tf_sep > 0 && tf_sep < StringLen(comment) - 1) {
+               string tf_token = StringSubstr(comment, tf_sep + 1);
+               int tf_minutes = 0;
+               if(TryParseTimeframeTokenToMinutes(tf_token, tf_minutes) && tf_minutes >= 1440) {
+                  is_protected = true;
+               }
+            }
+            if(!is_protected) {
+               // Backward-compatible fallback for legacy comment formats.
+               is_protected = (StringFind(comment, "|D1") >= 0 ||
+                               StringFind(comment, "|W1") >= 0 ||
+                               StringFind(comment, "|MN") >= 0 ||
+                               StringFind(comment, "|MN1") >= 0);
+            }
             
             if(is_protected) {
                protected_tf++;
@@ -517,20 +758,30 @@ void CloseShortTimeframePositions(string symbol) {
 //+------------------------------------------------------------------+
 void ExecuteCommand(string cmd) {
    string type = GetStringFromSexp(cmd, "type");
-   string instrument = GetStringFromSexp(cmd, "instrument");
-   string cmd_symbol = instrument;
-   if(cmd_symbol == "") cmd_symbol = GetStringFromSexp(cmd, "symbol");
+   type = ToUpperCopy(type);
 
-   // Only execute commands for THIS symbol (or ALL)
-   if(cmd_symbol != "" && cmd_symbol != "ALL" && cmd_symbol != _Symbol) {
-      return;  // Not for this EA
-   }
-   
-   // HEARTBEAT (High Priority)
+   // HEARTBEAT must be handled before symbol routing.
    if(type == "HEARTBEAT") {
       g_last_heartbeat = TimeCurrent();
       LogDebug("💓 Heartbeat received");
       return;
+   }
+
+   string instrument = GetStringFromSexp(cmd, "instrument");
+   string cmd_symbol = ToUpperCopy(instrument);
+   if(cmd_symbol == "") cmd_symbol = ToUpperCopy(GetStringFromSexp(cmd, "symbol"));
+   string this_symbol = ToUpperCopy(_Symbol);
+
+   // Only execute commands for THIS symbol (or ALL)
+   if(cmd_symbol != "" && cmd_symbol != "ALL" && cmd_symbol != this_symbol) {
+      g_symbol_mismatch_count++;
+      if(InpLogSymbolMismatch && (TimeCurrent() - g_last_symbol_mismatch_log >= 30)) {
+         LogInfo("⚠️ Ignored command for symbol " + cmd_symbol +
+                 " on chart " + _Symbol +
+                 " (mismatch count=" + IntegerToString(g_symbol_mismatch_count) + ")");
+         g_last_symbol_mismatch_log = TimeCurrent();
+      }
+      return;  // Not for this EA
    }
 
    LogDebug("Processing command: " + StringSubstr(cmd, 0, 100) + "...");
@@ -540,12 +791,17 @@ void ExecuteCommand(string cmd) {
 
    // ORDER_OPEN (Protocol V2)
    if(type == "ORDER_OPEN") {
-      if(instrument == "") {
-         LogError("ORDER_OPEN missing instrument");
+      if(cmd_symbol == "ALL") {
+         LogError("ORDER_OPEN does not support symbol=ALL");
+         SendTradeReject(cmd, "INVALID_INSTRUMENT", 0);
+         return;
+      }
+      if(cmd_symbol == "") {
+         LogError("ORDER_OPEN missing instrument/symbol");
          SendTradeReject(cmd, "MISSING_INSTRUMENT", 0);
          return;
       }
-      string side = GetStringFromSexp(cmd, "side");
+      string side = ToUpperCopy(GetStringFromSexp(cmd, "side"));
       if(side != "BUY" && side != "SELL") {
          LogError("ORDER_OPEN invalid side: " + side);
          SendTradeReject(cmd, "INVALID_SIDE", 0);
@@ -555,12 +811,18 @@ void ExecuteCommand(string cmd) {
       double tp = GetValueFromSexp(cmd, "tp");
       double vol = GetValueFromSexp(cmd, "lot");
       if(vol <= 0) vol = 0.01;
-      
+
+      string comment = GetStringFromSexp(cmd, "comment");
+      string comment_reason = "";
+      if(!ValidateOrderComment(comment, comment_reason)) {
+         LogError("ORDER_OPEN invalid comment: " + comment + " reason=" + comment_reason);
+         SendTradeReject(cmd, comment_reason, 0);
+         return;
+      }
+      StringTrimLeft(comment);
+      StringTrimRight(comment);
+
       g_trade.SetExpertMagicNumber((ulong)cmd_magic);
-      
-      string comment = "SW-" + IntegerToString(cmd_magic); // V16.0 format
-      string msg_comment = GetStringFromSexp(cmd, "comment");
-      if(msg_comment != "") comment = msg_comment;
 
       if(side == "BUY") {
          LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
@@ -617,6 +879,8 @@ void ExecuteCommand(string cmd) {
    }
    else if(type == "GET_SWAP") {
       SendSwapData();
+   } else {
+      LogError("Unknown command type [" + type + "] raw=" + StringSubstr(cmd, 0, 140));
    }
 }
 
@@ -654,7 +918,12 @@ void SendTradeAck(string orig_cmd, ulong ticket) {
                               EscapeSexpString(id), ticket, EscapeSexpString(_Symbol));
    uchar data[];
    StringToCharArray(sexp, data);
-   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   int rc = zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   if(rc < 0) {
+      LogError("Failed to send ORDER_ACK id=" + id + " ticket=" + StringFormat("%I64u", ticket));
+   } else {
+      LogDebug("📨 ORDER_ACK sent id=" + id + " ticket=" + StringFormat("%I64u", ticket));
+   }
 }
 
 void SendTradeReject(string orig_cmd, string reason, long retcode) {
@@ -669,7 +938,12 @@ void SendTradeReject(string orig_cmd, string reason, long retcode) {
                               (int)retcode);
    uchar data[];
    StringToCharArray(sexp, data);
-   zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   int rc = zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
+   if(rc < 0) {
+      LogError("Failed to send ORDER_REJECT id=" + id + " reason=" + norm_reason);
+   } else {
+      LogInfo("📨 ORDER_REJECT sent id=" + id + " reason=" + norm_reason + " retcode=" + IntegerToString((int)retcode));
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -725,7 +999,7 @@ void OnTimer() {
       }
       
       if(has_positions) {
-         LogInfo("💀 DEAD MAN'S SWITCH! Brain silent >60s. EMERGENCY CLOSE " + _Symbol);
+         LogInfo("💀 DEAD MAN'S SWITCH! Brain silent >" + IntegerToString(HEARTBEAT_TIMEOUT) + "s. EMERGENCY CLOSE " + _Symbol);
          CloseAllPositions(_Symbol);
          g_last_heartbeat = TimeCurrent();
       }
@@ -741,9 +1015,12 @@ void OnTimer() {
    
    // Receive and process commands
    if(g_sub_connected) {
-      uchar data_rcv[8192];
-      int size = zmq_recv(g_sub_socket, data_rcv, 8192, ZMQ_DONTWAIT);
-      if(size > 0) {
+      for(int i = 0; i < MAX_COMMANDS_PER_TIMER; i++) {
+         uchar data_rcv[8192];
+         int size = zmq_recv(g_sub_socket, data_rcv, 8192, ZMQ_DONTWAIT);
+         if(size <= 0) {
+            break;
+         }
          ExecuteCommand(CharArrayToString(data_rcv, 0, size));
       }
    }

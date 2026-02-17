@@ -34,6 +34,7 @@
    #:ind-sma
    #:ind-ema
    #:ind-bb
+   #:ind-williams
    #:ind-atr
    #:calculate-atr
 

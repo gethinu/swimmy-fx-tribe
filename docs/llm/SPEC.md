@@ -16,15 +16,16 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 
 ## 3. 取引前提
 - **銘柄**: USDJPY, EURUSD, GBPUSD (Config可変)。マルチカレンシー対応。
-- **時間足**: M1 (保存/基礎), M5/M15 (M1リサンプル), H1/H4/D1/W1/MN1 (分析/レジーム/ゲート)
+- **時間足**: 内部表現は **minutes(int)**。既定運用は 8TF バケット `M5/M15/M30/H1/H4/D1/W1/MN`（`5/15/30/60/240/1440/10080/43200`）。`M1` は保存/基礎データとして保持し、進化/バックテストでは `M36/H2/H5/H60` など任意TF探索を許容する（カテゴリ/相関/ゲートは有限バケットへ正規化）。
 - **取引時間**: 24時間 (土日除く)。Guardianが土曜朝(06:50 JST)に強制全決済(Weekend Close)を行う。
 
 ## 4. 戦略仕様
 - **KB (Knowledge Base)**: 戦略はSQLite (`swimmy.db`) とフラットファイル (`data/library/`) で管理。
 - **ランク体系**: 
-  - **Incubator/B-RANK**: Sharpe ≥ 0.1
-  - **A-RANK**: Sharpe ≥ 0.3 + OOS検証合格
-  - **S-RANK**: **IS Sharpe ≥ 0.5** + CPCV検証合格（実弾許可、PF/WR/MaxDDはCPCV中央値で判定）
+  - **B-RANK**: Stage1基準を通過（Sharpe ≥ 0.15 / PF ≥ 1.05 / WR ≥ 35% / MaxDD < 25%）
+  - **A-RANK**: B基準に加えて A基準（Sharpe ≥ 0.45 / PF ≥ 1.30 / WR ≥ 43% / MaxDD < 16%）+ OOS Sharpe ≥ 0.35 + Common Stage2 Gate
+  - **S-RANK**: S基準（Sharpe ≥ 0.75 / PF ≥ 1.70 / WR ≥ 50% / MaxDD < 10%、実装では trade evidence に応じた PF/WR staged gate を併用）+ CPCV pass_rate ≥ 70% + CPCV median MaxDD < 12% + Common Stage2 Gate
+  - **Trade Evidence Floor**: A は `>=50`、S は `>=100` を必須。未達は昇格不可かつ既存ランクも評価サイクルで降格対象。
   - **Legend**: 不老不死（外部導入戦略）
   - **Graveyard**: 廃棄戦略（失敗パターン分析用）
   - **Retired**: Max Age 退役アーカイブ（低ウェイト学習、`data/library/RETIRED/`・`data/memory/retired.sexp`）
@@ -37,10 +38,11 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 
 ## 4.5. Pattern Similarity Gate (Regime/Gate)
 - **目的**: 類似チャートパターンの集合意識をレジーム/ゲートとして利用（既存戦略の前段フィルタ）。
-- **モデル**: 画像埋め込み（CLIP ViT-B/32相当）。GPU利用可能なら加速、不可ならCPUフォールバック。
+- **モデル**: 画像埋め込み（`clip-vit-b32`）とベクトル深層学習（`vector-siamese-v1`）を併用。GPU利用可能なら加速、不可ならCPUフォールバック。
+- **重み付け**: backend混合は `SWIMMY_PATTERN_ENSEMBLE_WEIGHT_FILE`（既定 `data/patterns/models/ensemble_weight.json`）を優先し、`symbol_timeframe_weights`（`<SYMBOL>:<TF>`）→ global `vector_weight` → `SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` の順で決定する。
 - **特徴量**: ローソク足画像 + ティック出来高 + 価格帯別出来高（VAP）。
 - **検索**: 近傍探索は **距離重み付き確率** を返す（k=30、閾値=0.60）。
-- **ゲート**: 不一致時はロットを **0.7倍** に減衰（ソフトゲート）。**ライブ/OOS/CPCV/バックテストに適用**。
+- **ゲート**: `decision_action` を実売買側で解釈するソフトゲートを適用する。`follow` は従来どおり不一致時 **0.7倍**、`fade` は **0.55倍**、`no-trade` は **0.35倍** に減衰する（最終執行責務は呼び出し側）。`distortion_passed=false` はノイズ回避のため適用スキップ。**ライブ/OOS/CPCV/バックテストに適用**。
 - **適用範囲**: **TF一致のみ**（H1以上の足確定時に評価）。
 - **ラベル**: ATR基準の Up/Down/Flat。評価幅はTFグループ別固定。  
   - `ATR(period)` はサンプルwindow末尾の直近 `period` 本から算出（既定 `period=14`、`SWIMMY_PATTERN_LABEL_ATR_PERIOD` で上書き）。  
@@ -137,11 +139,13 @@ Evolution Factory Reportなどのレポートで表示される指標の算出�
 
 | Rank | Label | Criteria (AND条件) | Validation Gate |
 | :--- | :--- | :--- | :--- |
-| **S-Rank** | Verified Elite | **IS Sharpe ≥ 0.5** | **CPCV** (Combinatorial Purged Cross-Validation)<br>- Median Sharpe ≥ 0.5<br>- Median PF ≥ 1.5<br>- Median WR ≥ 45%<br>- Median MaxDD < 15%<br>- Pass Rate ≥ 50% |
-| **A-Rank** | Pro | Sharpe ≥ 0.3<br>PF ≥ 1.2<br>WR ≥ 40%<br>MaxDD < 20% | **OOS** (Out-of-Sample)<br>- OOS Sharpe ≥ 0.3 |
-| **B-Rank** | Selection | Sharpe ≥ 0.1<br>PF ≥ 1.0<br>WR ≥ 30%<br>MaxDD < 30% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
-| **Incubator** | - | Sharpe < 0.1 | (None) |
+| **S-Rank** | Verified Elite | Sharpe ≥ 0.75<br>PF/WR/MaxDD は S基準（PF≥1.70/WR≥50%/MaxDD<10%）<br>TradeEvidence ≥ 100 | **CPCV + Common Stage2**<br>- CPCV pass_rate ≥ 70%<br>- CPCV median MaxDD < 12%<br>- Common Stage2（MC prob_ruin / DryRun slippage） |
+| **A-Rank** | Pro | Sharpe ≥ 0.45<br>PF ≥ 1.30<br>WR ≥ 43%<br>MaxDD < 16%<br>TradeEvidence ≥ 50 | **OOS + Common Stage2**<br>- OOS Sharpe ≥ 0.35 |
+| **B-Rank** | Selection | Sharpe ≥ 0.15<br>PF ≥ 1.05<br>WR ≥ 35%<br>MaxDD < 25% | **Phase 1 Screening**<br>- Backtest (IS) Passed |
+| **Incubator** | - | Stage1未達 / 検証待ち | (None) |
 | **Retired** | Archive | Max Age 退役 / 明示退役 | (None) |
+
+- **S-Rank PF/WR staged gate（実装有効時）**: trade evidence に応じて S の PF/WR下限を段階適用する（`>=150: PF1.30/WR38%`, `>=100: PF1.40/WR42%`, `>=30: PF1.55/WR45%`）。
 
 ### 11.3. Persistence Logic
 - **Sync**: レポート生成時に `(refresh-strategy-metrics-from-db :force t)` を実行し、DB上の値を正とする。

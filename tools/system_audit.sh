@@ -50,6 +50,9 @@ Environment:
   DRY_RUN=1  Skip auto-repair steps
   SUDO_CMD="sudo -n"  Override sudo invocation (e.g., "sudo" for interactive)
   SWIMMY_AUDIT_SERVICES="svc1 svc2"  Override default services
+  ORDER_TF_AUDIT_LOOKBACK_MINUTES=120  Recency window for order timeframe audit
+  ORDER_TF_AUDIT_SINCE=ISO8601  Fixed lower bound for order timeframe audit (overrides lookback)
+  ORDER_TF_AUDIT_STRATEGY=name  Optional exact strategy filter for order timeframe audit
   .env is auto-loaded (environment variables take precedence)
 USAGE
 }
@@ -357,6 +360,35 @@ if [[ -f "$ROOT/tools/polymarket_openclaw_status.py" ]]; then
       log "[SKIP] Polymarket OpenClaw status (disabled: systemctl unavailable)"
     fi
   fi
+fi
+
+if [[ -f "$ROOT/tools/pattern_backend_calibration_status.py" ]]; then
+  pattern_cal_timer="${PATTERN_BACKEND_CALIBRATION_TIMER_UNIT:-swimmy-pattern-backend-calibration.timer}"
+  pattern_cal_report="${PATTERN_BACKEND_CALIBRATION_REPORT:-$ROOT/data/reports/pattern_backend_calibration_latest.json}"
+  pattern_cal_max_age="${PATTERN_BACKEND_CALIBRATION_MAX_AGE_SECONDS:-172800}"
+  run_warn "Pattern backend calibration status" \
+    python3 "$ROOT/tools/pattern_backend_calibration_status.py" \
+      --report "$pattern_cal_report" \
+      --timer-unit "$pattern_cal_timer" \
+      --max-age-seconds "$pattern_cal_max_age" \
+      --fail-on-problem
+fi
+if [[ -f "$ROOT/tools/check_order_timeframe_consistency.py" ]]; then
+  order_tf_audit_args=(
+    --db "${ORDER_TF_AUDIT_DB:-$ROOT/data/memory/swimmy.db}"
+    --log "${ORDER_TF_AUDIT_LOG:-$ROOT/logs/swimmy.json.log}"
+    --fail-on-issues
+  )
+  if [[ -n "${ORDER_TF_AUDIT_STRATEGY:-}" ]]; then
+    order_tf_audit_args+=(--strategy "$ORDER_TF_AUDIT_STRATEGY")
+  fi
+  if [[ -n "${ORDER_TF_AUDIT_SINCE:-}" ]]; then
+    order_tf_audit_args+=(--since "$ORDER_TF_AUDIT_SINCE")
+  else
+    order_tf_audit_args+=(--lookback-minutes "${ORDER_TF_AUDIT_LOOKBACK_MINUTES:-120}")
+  fi
+  run_warn "Order timeframe consistency" \
+    python3 "$ROOT/tools/check_order_timeframe_consistency.py" "${order_tf_audit_args[@]}"
 fi
 run_fail "Integrity audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/integrity_audit.lisp"
 run_fail "Deep audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/deep_audit.lisp"

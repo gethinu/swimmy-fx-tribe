@@ -57,6 +57,18 @@
            (stddev (sqrt variance)))
       (values sma (+ sma (* dev stddev)) (- sma (* dev stddev))))))
 
+(defun ind-williams (n history)
+  "Williams %R oscillator in [-100, 0]."
+  (when (>= (length history) n)
+    (let* ((window (subseq history 0 n))
+           (highest-high (reduce #'max (mapcar #'candle-high window)))
+           (lowest-low (reduce #'min (mapcar #'candle-low window)))
+           (close (candle-close (first history)))
+           (range (- highest-high lowest-low)))
+      (float (if (<= (abs range) 0.00001)
+                 -50.0
+                 (* -100.0 (/ (- highest-high close) range)))))))
+
 (defun ind-stoch (k-n d-n history)
   (declare (ignore d-n))
   (when (>= (length history) k-n)
@@ -126,12 +138,12 @@
     (if found min-l (candle-close (first history)))))
 
 (defparameter *allowed* '(+ - * / < > <= >= = and or not if 
-                          ind-sma ind-ema ind-rsi ind-macd ind-bb ind-stoch ind-atr ind-cci
+                          ind-sma ind-ema ind-rsi ind-macd ind-bb ind-williams ind-stoch ind-atr ind-cci
                           ind-ichimoku ind-donchian
                           ind-session-high ind-session-low
                           ind-kalman ind-kalman-velocity ind-kalman-trend
                           ind-smma is-staircase-pattern is-volume-increasing confirm-breakout
-                          cross-above cross-below defstrategy sma ema rsi macd bb stoch atr cci kalman close high low open
+                          cross-above cross-below defstrategy sma ema rsi macd bb williams stoch atr cci kalman close high low open
                           session-high session-low ichimoku donchian))
 
 (defun indicator-ref-p (sym)
@@ -142,6 +154,7 @@
         (search "ATR-" name)
         (search "MACD-" name)
         (search "BB-" name)
+        (search "WILLIAMS-" name)
         (search "STOCH-" name)
         (search "CCI-" name)
         (member sym '(close high low open)))))

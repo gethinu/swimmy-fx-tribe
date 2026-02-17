@@ -91,7 +91,21 @@
            ;; V6.10: Request history for EACH symbol individually (EURUSD/GBPUSD fix)
            ;; Now only fills the gap between Data Keeper's latest and NOW
            (format t "[L] 📊 Requesting history for all symbols...~%")
-           (let ((tfs '("M1" "M5" "M15" "M30" "H1" "H4" "H12" "D1" "W1")))
+           (let* ((tf-seed (if (and (boundp 'swimmy.school::*timeframes*)
+                                    swimmy.school::*timeframes*)
+                               swimmy.school::*timeframes*
+                               '(5 15 30 60 240 1440 10080 43200)))
+                  (tfs (cons "M1"
+                             (remove-duplicates
+                              (mapcar (lambda (tf)
+                                        (cond
+                                          ((stringp tf) (string-upcase tf))
+                                          ((and (numberp tf) (fboundp 'swimmy.school::get-tf-string))
+                                           (swimmy.school::get-tf-string tf))
+                                          ((numberp tf) (format nil "M~d" (round tf)))
+                                          (t (string-upcase (format nil "~a" tf)))))
+                                      tf-seed)
+                              :test #'string=))))
              (dolist (sym *supported-symbols*)
                (format t "[L] 📊 Requesting history for ~a...~%" sym)
                (dolist (tf tfs)

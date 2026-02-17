@@ -11,6 +11,45 @@
   (unless (find-package :swimmy.persistence)
     (load "src/lisp/core/persistence.lisp")))
 
+(defun %normalize-timeframe-minutes (tf)
+  "Normalize timeframe input to internal minutes(int)."
+  (labels ((all-digits-p (s)
+             (and (stringp s)
+                  (> (length s) 0)
+                  (loop for ch across s always (digit-char-p ch))))
+           (parse-int (s default)
+             (handler-case (parse-integer s) (error () default))))
+    (cond
+      ((numberp tf) (max 1 (round tf)))
+      ((stringp tf)
+       (let* ((up (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) tf))))
+         (cond
+           ((or (string= up "MN") (string= up "MN1")) 43200)
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\M)
+                 (all-digits-p (subseq up 1)))
+            (max 1 (parse-int (subseq up 1) 1)))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\H)
+                 (all-digits-p (subseq up 1)))
+            (* 60 (max 1 (parse-int (subseq up 1) 1))))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\D)
+                 (all-digits-p (subseq up 1)))
+            (* 1440 (max 1 (parse-int (subseq up 1) 1))))
+           ((and (>= (length up) 2)
+                 (char= (char up 0) #\W)
+                 (all-digits-p (subseq up 1)))
+            (* 10080 (max 1 (parse-int (subseq up 1) 1))))
+           (t 1))))
+      (t 1))))
+
+(defun %normalize-strategy-timeframe! (strat)
+  (when (and strat (strategy-p strat))
+    (setf (strategy-timeframe strat)
+          (%normalize-timeframe-minutes (strategy-timeframe strat))))
+  strat)
+
 (defun init-knowledge-base ()
   "Initialize with strategies from The Great Library + SQL database."
   (let* ((raw-file-strats (or (swimmy.persistence:load-all-strategies) '()))
@@ -21,6 +60,9 @@
                      (- (length raw-db-strats) (length db-strats)))))
     (when (> dropped 0)
       (format t "[KB] ⚠️ Dropped ~d invalid strategies during init.~%" dropped))
+    ;; Canonicalize loaded TFs to internal minutes(int).
+    (dolist (s file-strats) (%normalize-strategy-timeframe! s))
+    (dolist (s db-strats) (%normalize-strategy-timeframe! s))
 
     ;; Merge lists, prioritizing DB records if duplicates exist (Name based)
     (let ((kb (copy-list db-strats)))

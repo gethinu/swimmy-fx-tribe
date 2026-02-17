@@ -521,6 +521,20 @@ REVERSION : ~a"
              (retired-text (if lib-counts
                                (format nil "~d (Library ~d)" retired lib-retired)
                                (format nil "~d" retired)))
+             (s-min-trades (if (boundp '*s-rank-min-trade-evidence*)
+                               *s-rank-min-trade-evidence*
+                               0))
+             (a-min-trades (if (boundp '*a-rank-min-trade-evidence*)
+                               *a-rank-min-trade-evidence*
+                               0))
+             (a-mc-mode (if (and (boundp '*a-rank-require-mc*)
+                                 *a-rank-require-mc*)
+                            "req"
+                            "opt"))
+             (a-dryrun-mode (if (and (boundp '*a-rank-require-dryrun*)
+                                     *a-rank-require-dryrun*)
+                                "req"
+                                "opt"))
              (drift-text (if (and drift-warnings (not (null drift-warnings)))
                              (with-output-to-string (s)
                                (format s "~%📎 **Source Drift:**~%")
@@ -532,14 +546,14 @@ REVERSION : ~a"
 🏭 **Evolution Factory Report**
 Current status of the autonomous strategy generation pipeline.
 
-🧠 Knowledge Base (Active)
-~d Strategies
+	🧠 Knowledge Base (Active)
+	~d Strategies
 
-🏆 **S-Rank (Verified Elite)**
-~d (IS Sharpe≥0.75 PF≥1.70 WR≥50% MaxDD<10% + CPCV pass_rate≥70% & median MaxDD<12% + MC/DryRun)
+	🏆 **S-Rank (Verified Elite)**
+	~d (IS Sharpe≥0.75 PF≥1.70 WR≥50% MaxDD<10% + CPCV pass_rate≥70% & median MaxDD<12% + TradeEvidence≥~d + CommonStage2(MC req / DryRun req))
 
-🎖️ **A-Rank (Pro)**
-~d (Sharpe≥0.45 PF≥1.30 WR≥43% MaxDD<16% + OOS≥0.35 + Expectancy>0 + MC/DryRun)
+	🎖️ **A-Rank (Pro)**
+	~d (Sharpe≥0.45 PF≥1.30 WR≥43% MaxDD<16% + OOS≥0.35 + Expectancy>0 + TradeEvidence≥~d + Stage2(MC ~a / DryRun ~a))
 
 🪜 **B-Rank (Selection)**
 ~d (Sharpe≥0.15 PF≥1.05 WR≥35% MaxDD<25%)
@@ -574,11 +588,15 @@ Current status of the autonomous strategy generation pipeline.
 	~a
 	✅ Native Lisp Orchestration (V28)
 ~a"
-            active-count
-            s-rank
-            a-rank
-            b-rank
-            new-recruits
+	            active-count
+	            s-rank
+	            s-min-trades
+	            a-rank
+	            a-min-trades
+	            a-mc-mode
+	            a-dryrun-mode
+	            b-rank
+	            new-recruits
             graveyard-text
 	            retired-text
 	            drift-text

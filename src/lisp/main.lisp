@@ -93,8 +93,22 @@
             (setf *candle-history* history))
           (format t "[SYSTEM] ⚠️ No M1 history available for ~a~%" sym)))
 
-    ;; Load Other Timeframes (Nested key: symbol -> tf -> list)
-    (let ((timeframes '("M5" "M15" "M30" "H1" "H4" "D1" "W1" "MN")))
+    ;; Load default timeframe buckets (8TF) for runtime context.
+    ;; Arbitrary TF exploration remains enabled via M1+resampling in backtests.
+    (let* ((tf-seed (if (and (boundp 'swimmy.school::*timeframes*)
+                             swimmy.school::*timeframes*)
+                        swimmy.school::*timeframes*
+                        '(5 15 30 60 240 1440 10080 43200)))
+           (timeframes (remove-duplicates
+                        (mapcar (lambda (tf)
+                                  (cond
+                                    ((stringp tf) (string-upcase tf))
+                                    ((and (numberp tf) (fboundp 'swimmy.school::get-tf-string))
+                                     (swimmy.school::get-tf-string tf))
+                                    ((numberp tf) (format nil "M~d" (round tf)))
+                                    (t (string-upcase (format nil "~a" tf)))))
+                                tf-seed)
+                        :test #'string=)))
       (dolist (tf timeframes)
         ;; V11.0: Reduced to 5,000 for RAM safety
         (let ((tf-hist (get-history-from-keeper sym 5000 tf)))

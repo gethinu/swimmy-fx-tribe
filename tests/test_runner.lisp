@@ -6,6 +6,10 @@
 (require :asdf)
 (push (uiop:getcwd) asdf:*central-registry*)
 
+;; Hard safety guard: never send Discord messages while running tests.
+(require :sb-posix)
+(sb-posix:setenv "SWIMMY_DISABLE_DISCORD" "1" 1)
+
 (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))
   (when (probe-file quicklisp-init)
     (load quicklisp-init)))

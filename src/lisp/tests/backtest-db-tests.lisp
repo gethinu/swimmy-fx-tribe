@@ -160,7 +160,7 @@
         (setf (symbol-function 'swimmy.school:evaluate-new-strategy) orig-evaluate)
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
-        (ignore-errors (delete-file tmp-db))))))
+        (ignore-errors (delete-file tmp-db)))))
 
 (deftest test-upsert-preserves-cpcv-when-missing
   "Upsert should not overwrite existing CPCV metrics with zero defaults."
@@ -549,6 +549,53 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-backfill-strategy-timeframes-to-minutes-normalizes-mixed-values
+  "DB timeframe backfill should normalize text/null timeframe rows to minutes(int)."
+  (let* ((tmp-db (format nil "/tmp/swimmy-tf-backfill-~a.db" (get-universal-time)))
+         (name-h1 "TF-BACKFILL-H1")
+         (name-mn "TF-BACKFILL-MN1")
+         (name-300 "TF-BACKFILL-300"))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*disable-timeframe-backfill* t)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((s-h1 (make-strategy :name name-h1 :symbol "USDJPY" :timeframe "H1"))
+                  (s-mn (make-strategy :name name-mn :symbol "USDJPY" :timeframe "MN1"))
+                  (s-300 (make-strategy :name name-300 :symbol "USDJPY" :timeframe 300)))
+              (execute-non-query
+               "INSERT OR REPLACE INTO strategies (name, timeframe, rank, data_sexp)
+                VALUES (?, ?, ?, ?)"
+               name-h1 "H1" ":B" (format nil "~s" s-h1))
+              (execute-non-query
+               "INSERT OR REPLACE INTO strategies (name, timeframe, rank, data_sexp)
+                VALUES (?, ?, ?, ?)"
+               name-mn nil ":B" (format nil "~s" s-mn))
+              (execute-non-query
+               "INSERT OR REPLACE INTO strategies (name, timeframe, rank, data_sexp)
+                VALUES (?, ?, ?, ?)"
+               name-300 nil ":B" (format nil "~s" s-300)))
+            (let ((stats (swimmy.school::backfill-strategy-timeframes-to-minutes :force t)))
+              (assert-true (>= (getf stats :updated) 3)
+                           "Expected backfill to update inserted rows"))
+            (assert-equal 60 (execute-single "SELECT timeframe FROM strategies WHERE name = ?" name-h1))
+            (assert-equal 43200 (execute-single "SELECT timeframe FROM strategies WHERE name = ?" name-mn))
+            (assert-equal 300 (execute-single "SELECT timeframe FROM strategies WHERE name = ?" name-300))
+            (let ((sexp-h1 (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name-h1))
+                  (sexp-mn (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name-mn)))
+              (assert-false (search ":TIMEFRAME \"H1\"" sexp-h1 :test #'char-equal)
+                            "Expected H1 string timeframe to be rewritten in data_sexp")
+              (assert-false (search ":TIMEFRAME \"MN1\"" sexp-mn :test #'char-equal)
+                            "Expected MN1 string timeframe to be rewritten in data_sexp")))
+        (ignore-errors (execute-non-query
+                        "DELETE FROM strategies WHERE name IN (?, ?, ?)"
+                        name-h1 name-mn name-300))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-migrate-existing-data-skips-corrupted-graveyard-lines
   "migrate-existing-data should skip malformed graveyard lines and continue with valid entries."
   (let* ((tmp-db (format nil "/tmp/swimmy-migrate-~a.db" (get-universal-time)))
@@ -832,7 +879,8 @@
   "backtest_trade_logs should accept trade_list rows"
   (let* ((tmp-db (format nil "/tmp/swimmy-bt-~a.db" (get-universal-time))))
     (let ((swimmy.core::*db-path-default* tmp-db)
-          (swimmy.core::*sqlite-conn* nil))
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
       (unwind-protect
           (progn
             (swimmy.school::init-db)
@@ -1062,11 +1110,13 @@
             (setf *strategy-knowledge-base* nil)
             (let* ((report (swimmy.school::generate-evolution-report))
                    (report-clean (remove #\Return report))
+                   ;; Formatting may include tabs and library annotations.
+                   (report-flat (remove #\Tab report-clean))
                    (active-needle (format nil "Knowledge Base (Active)~%1 Strategies"))
                    (grave-needle (format nil "👻 Graveyard~%1")))
-              (assert-true (search active-needle report-clean)
+              (assert-true (search active-needle report-flat)
                            "Active count should be 1 (DB)")
-              (assert-true (search grave-needle report-clean)
+              (assert-true (search grave-needle report-flat)
                            "Graveyard count should be 1 (DB)")))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
@@ -1095,6 +1145,43 @@
               (assert-false (search "TC-GY" snippet) "Graveyard strategy must be excluded")
               (assert-false (search "TC-RT" snippet) "Retired strategy must be excluded")
               (assert-false (search ", NIL)" snippet) "Must never display NIL rank literal")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-top-candidates-prefers-evidence-adjusted-sharpe-order
+  "Top Candidates should rank by evidence-adjusted Sharpe, not raw Sharpe."
+  (let* ((tmp-db (format nil "/tmp/swimmy-topcand-adjusted-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-topcand-adjusted-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; Raw Sharpe is higher but evidence is sparse (n=10).
+            (swimmy.school::upsert-strategy
+             (make-strategy :name "TC-RAW-HIGH-LOW-N"
+                            :sharpe 5.0
+                            :trades 10
+                            :symbol "USDJPY"
+                            :rank :B))
+            ;; Raw Sharpe is lower but evidence is rich (n=200), should rank higher after adjustment.
+            (swimmy.school::upsert-strategy
+             (make-strategy :name "TC-RAW-MID-HIGH-N"
+                            :sharpe 3.6
+                            :trades 200
+                            :symbol "USDJPY"
+                            :rank :B))
+            (let* ((snippet (swimmy.school::build-top-candidates-snippet-from-db))
+                   (pos-mid (search "TC-RAW-MID-HIGH-N" snippet))
+                   (pos-high (search "TC-RAW-HIGH-LOW-N" snippet)))
+              (assert-not-nil pos-mid "Expected high-evidence candidate in Top Candidates")
+              (assert-not-nil pos-high "Expected low-evidence candidate in Top Candidates")
+              (assert-true (< pos-mid pos-high)
+                           "Expected evidence-adjusted ordering to rank high-evidence candidate first"))))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 

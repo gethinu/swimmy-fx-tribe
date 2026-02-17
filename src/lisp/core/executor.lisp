@@ -174,12 +174,21 @@
       (setf *last-heartbeat-sent* now))))
 
 ;; Phase 7: Retry Logic Implementation
+(defun execution-link-stale-reason-for-pending (&optional (now (get-universal-time)))
+  "Return stale-link reason when pending retry/timeout should be paused; otherwise NIL."
+  (when (fboundp 'swimmy.engine::execution-link-stale-reason)
+    (ignore-errors (swimmy.engine::execution-link-stale-reason now))))
+
 (defun check-pending-orders ()
   "Check pending orders for timeout and retry."
   (when (and (boundp 'swimmy.globals:*pending-orders*)
              (> (hash-table-count swimmy.globals:*pending-orders*) 0))
-    (let ((now (get-universal-time))
+    (let* ((now (get-universal-time))
+          (stale-reason (execution-link-stale-reason-for-pending now))
           (to-remove nil))
+      (when stale-reason
+        ;; Fail-closed: pause retries/timeouts while execution link is stale.
+        (return-from check-pending-orders nil))
       (maphash (lambda (id data)
                  (destructuring-bind (ts retries msg-obj) data
                    (when (> (- now ts) 5) ;; 5 seconds timeout
@@ -424,11 +433,13 @@
       (multiple-value-bind (equity equity-ok) (%payload-val* payload '(equity "equity") nil)
         (multiple-value-bind (balance balance-ok) (%payload-val* payload '(balance "balance") nil)
           (declare (ignore balance balance-ok))
-          (let ((prev-last-account-info *last-account-info-time*)
+          (let* ((now (get-universal-time))
+                (prev-last-account-info *last-account-info-time*)
                 (prev-current-equity *current-equity*)
                 (prev-monitoring-peak *monitoring-peak-equity*))
-          ;; V8.5: Track last ACCOUNT_INFO time for monitoring
-          (setf *last-account-info-time* (get-universal-time))
+          ;; ACCOUNT_INFO implies MT5 execution link is alive.
+          (setf *last-account-info-time* now
+                *last-guardian-heartbeat* now)
           ;; V8.5: Recovery notification
           (when *account-info-alert-sent*
             (notify-discord-alert "✅ ACCOUNT_INFO Recovered - MT5同期復旧" :color 3066993)

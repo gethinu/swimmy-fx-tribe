@@ -70,12 +70,49 @@
     "Sweet-Chariot-SMA-40"
     "CCI-Trend-Breakout"))
 
+(defparameter *legend-optimized-timeframe-cache* :uninitialized
+  "Cached JSON object loaded from data/optimized_timeframes.json.
+   :UNINITIALIZED means it has not been loaded yet.")
+
 (defun mark-revalidation-pending (strat)
   "Flag STRAT as pending revalidation (Legend gating)."
   (when (slot-exists-p strat 'revalidation-pending)
     (setf (strategy-revalidation-pending strat) t))
   (setf (strategy-status strat) :active)
   (upsert-strategy strat))
+
+(defun %load-optimized-timeframes ()
+  "Load optimized timeframe map from data/optimized_timeframes.json (cached)."
+  (when (eq *legend-optimized-timeframe-cache* :uninitialized)
+    (setf *legend-optimized-timeframe-cache*
+          (let ((path (swimmy.core::swimmy-path "data/optimized_timeframes.json")))
+            (if (probe-file path)
+                (handler-case
+                    (jsown:parse (uiop:read-file-string path))
+                  (error (e)
+                    (format t "[LEGENDS-61] ⚠️ Failed to parse optimized_timeframes.json: ~a~%" e)
+                    nil))
+                nil))))
+  *legend-optimized-timeframe-cache*)
+
+(defun %lookup-optimized-timeframe-minutes (strategy-name)
+  "Return optimized timeframe minutes for STRATEGY-NAME, or NIL if unavailable."
+  (let ((obj (%load-optimized-timeframes)))
+    (when (and obj (stringp strategy-name))
+      (let ((raw (handler-case (jsown:val obj strategy-name)
+                   (error () nil))))
+        (when (numberp raw)
+          (let ((m (round raw)))
+            (when (> m 0) m)))))))
+
+(defun %resolve-legend-timeframe-minutes (strat)
+  "Resolve canonical timeframe minutes for STRAT.
+   Priority: optimized_timeframes.json override -> strategy slot -> M1 fallback."
+  (or (%lookup-optimized-timeframe-minutes (strategy-name strat))
+      (let ((tf (and (slot-exists-p strat 'timeframe)
+                     (strategy-timeframe strat))))
+        (and (numberp tf) (> tf 0) (round tf)))
+      1))
 
 (defun %walk-and-collect (form names)
   "Recursively collect (make-strategy ...) forms inside FORM that match NAMES."
@@ -113,18 +150,29 @@
       (setf (strategy-rank s) :legend)
       (when (slot-exists-p s 'generation) (setf (strategy-generation s) 0))
       (when (slot-exists-p s 'immortal) (setf (strategy-immortal s) t))
-      (mark-revalidation-pending s)
       (let* ((name (strategy-name s))
+             (resolved-tf (%resolve-legend-timeframe-minutes s))
              (existing (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+        (when (slot-exists-p s 'timeframe)
+          (setf (strategy-timeframe s) resolved-tf))
         (if existing
             (progn
+              (when (slot-exists-p existing 'timeframe)
+                (setf (strategy-timeframe existing) resolved-tf))
+              (when (slot-exists-p existing 'generation)
+                (setf (strategy-generation existing) 0))
+              (when (slot-exists-p existing 'immortal)
+                (setf (strategy-immortal existing) t))
+              (mark-revalidation-pending existing)
               (ensure-rank existing :legend "Legend-61 restore")
               (ignore-errors (swimmy.persistence:move-strategy existing :legend :force t))
               (incf count-updated))
-            (when (add-to-kb s :founder :require-bt nil :notify nil)
-              (ensure-rank s :legend "Legend-61 restore")
-              (ignore-errors (swimmy.persistence:save-strategy s))
-              (incf count-added)))))
+            (progn
+              (mark-revalidation-pending s)
+              (when (add-to-kb s :founder :require-bt nil :notify nil)
+                (ensure-rank s :legend "Legend-61 restore")
+                (ignore-errors (swimmy.persistence:save-strategy s))
+                (incf count-added))))))
     (format t "[LEGENDS-61] ✅ Restoration complete. Added: ~d | Updated: ~d~%"
             count-added count-updated)))
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import signal
+import importlib
 import warnings
 from unittest import mock
 
@@ -23,22 +24,39 @@ def _completed(returncode: int, stdout: str = "", stderr: str = ""):
     return cp
 
 
-def test_restart_service_falls_back_to_kill_main_pid_on_auth_failure():
+def _load_watchdog_module():
     # Allow importing watchdog.py from the tools/ directory without packaging.
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
+    tools_dir = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+
+    if "watchdog" in sys.modules:
+        return importlib.reload(sys.modules["watchdog"])
+
     import watchdog as wd
+
+    return wd
+
+
+def test_restart_service_falls_back_to_kill_main_pid_on_auth_failure():
+    wd = _load_watchdog_module()
 
     calls = {"term": 0, "kill": 0}
     alive = {"yes": True}
 
     def fake_run(argv, capture_output=False, text=False):
         # watchdog uses list argv
-        if argv[:2] == ["systemctl", "restart"]:
+        if argv[:3] == ["/usr/bin/sudo", "-n", "/usr/bin/systemctl"]:
+            return _completed(
+                1,
+                stderr="sudo: a password is required\n",
+            )
+        if argv[:2] in (["systemctl", "restart"], ["/usr/bin/systemctl", "restart"]):
             return _completed(
                 1,
                 stderr="Failed to restart swimmy-brain.service: Interactive authentication required.\n",
             )
-        if argv[:2] == ["systemctl", "show"] and "MainPID" in argv:
+        if argv[:2] in (["systemctl", "show"], ["/usr/bin/systemctl", "show"]) and "MainPID" in argv:
             return _completed(0, stdout="424242\n")
         raise AssertionError(f"Unexpected subprocess.run argv={argv!r}")
 
@@ -71,9 +89,7 @@ def test_restart_service_falls_back_to_kill_main_pid_on_auth_failure():
 
 
 def test_send_discord_alert_does_not_emit_deprecation_warning():
-    # Allow importing watchdog.py from the tools/ directory without packaging.
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
-    import watchdog as wd
+    wd = _load_watchdog_module()
 
     # Ensure the code path builds a payload, but don't do real HTTP.
     wd.WEBHOOK_URL = "http://example.invalid/webhook"
@@ -89,7 +105,25 @@ def test_send_discord_alert_does_not_emit_deprecation_warning():
     assert not any(isinstance(w.message, DeprecationWarning) for w in caught)
 
 
+def test_timeout_thresholds_are_clamped_to_safe_minimums():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "TIMEOUT_WARN_SECS": "30",
+            "TIMEOUT_BLOCK_SECS": "90",
+            "TIMEOUT_CLOSE_SECS": "180",
+        },
+        clear=False,
+    ):
+        wd = _load_watchdog_module()
+
+    assert wd.TIMEOUT_WARN_SECS == 120
+    assert wd.TIMEOUT_BLOCK_SECS == 300
+    assert wd.TIMEOUT_CLOSE_SECS == 600
+
+
 if __name__ == "__main__":
     test_restart_service_falls_back_to_kill_main_pid_on_auth_failure()
     test_send_discord_alert_does_not_emit_deprecation_warning()
+    test_timeout_thresholds_are_clamped_to_safe_minimums()
     print("OK")

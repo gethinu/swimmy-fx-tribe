@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-17T08:00:25.438465+00:00",
+  "vector_weight": 0.0,
+  "clip_weight": 1.0,
+  "source_report": "/home/swimmy/swimmy/data/reports/pattern_backend_calibration_latest.json",
+  "symbol_timeframe_weights": {
+    "EURUSD:D1": 0.85,
+    "EURUSD:H1": 0.8,
+    "EURUSD:H4": 0.85,
+    "EURUSD:M15": 0.45,
+    "EURUSD:MN1": 0.45,
+    "EURUSD:W1": 0.0,
+    "GBPUSD:D1": 0.8,
+    "GBPUSD:H1": 0.15,
+    "GBPUSD:H4": 0.3,
+    "GBPUSD:M15": 0.15,
+    "GBPUSD:MN1": 0.9,
+    "GBPUSD:W1": 0.15,
+    "USDJPY:D1": 0.65,
+    "USDJPY:H1": 0.0,
+    "USDJPY:H4": 0.0,
+    "USDJPY:M15": 0.4,
+    "USDJPY:MN1": 0.65,
+    "USDJPY:W1": 0.95
+  }
+}

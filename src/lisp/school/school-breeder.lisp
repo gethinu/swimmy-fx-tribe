@@ -419,6 +419,7 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                           (list :sharpe (strategy-sharpe strategy)
                                 :profit-factor (strategy-profit-factor strategy)
                                 :win-rate (strategy-win-rate strategy)
+                                :trades (or (strategy-trades strategy) 0)
                                 :max-dd (strategy-max-dd strategy)))))
          (generation-bonus (* (or (strategy-generation strategy) 0)
                               *breeder-priority-generation-weight*))

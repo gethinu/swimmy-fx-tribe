@@ -167,7 +167,8 @@
                    (when active
                      (let ((order (swimmy.core:make-order-message
                                    "Engine-Position" symbol :buy dynamic-vol 0.0
-                                   (arm-state-sl state) (arm-state-tp state))))
+                                   (arm-state-sl state) (arm-state-tp state)
+                                   :comment "Engine-Position|M1")))
                        (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
                      (notify-execution "OPEN" symbol idx dynamic-vol 0)))
                   
@@ -181,7 +182,8 @@
                    (when active
                      (let ((order (swimmy.core:make-order-message
                                    "Engine-Position" symbol :sell dynamic-vol 0.0
-                                   (arm-state-sl state) (arm-state-tp state))))
+                                   (arm-state-sl state) (arm-state-tp state)
+                                   :comment "Engine-Position|M1")))
                        (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp order)))
                      (notify-execution "OPEN" symbol idx dynamic-vol 0))))))))))))
 

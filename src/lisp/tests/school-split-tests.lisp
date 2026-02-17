@@ -68,15 +68,73 @@
           (setf (symbol-function 'swimmy.core:query-pattern-similarity)
                 (lambda (&rest _args)
                   (declare (ignore _args))
-                  (values '((p_up . 0.30) (p_down . 0.55) (p_flat . 0.15)) nil)))
+                  (values '((p_up . 0.30) (p_down . 0.55) (p_flat . 0.15)
+                            (distortion_passed . t))
+                          nil)))
           (multiple-value-bind (lot gate)
               (swimmy.school::apply-pattern-soft-gate
                :trend "USDJPY" :buy "H1" nil 0.10 "UT-STRAT")
-            (assert-equal 0.07 lot "Expected 0.7x lot on mismatch")
+            (assert-true (< (abs (- lot 0.07)) 1e-6)
+                         "Expected 0.7x lot on mismatch")
             (assert-true (eq t (cdr (assoc :applied gate)))
                          "Gate should be applied")
             (assert-equal "MISMATCH" (cdr (assoc :reason gate))
                           "Reason should be MISMATCH")))
+      (setf (symbol-function 'swimmy.core:query-pattern-similarity) orig-query))))
+
+(deftest test-pattern-soft-gate-fade-decision-applies-stronger-reduction
+  "Pattern gate should apply fade multiplier when decision_action=fade."
+  (let ((orig-query (symbol-function 'swimmy.core:query-pattern-similarity)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:query-pattern-similarity)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (values '((p_up . 0.70) (p_down . 0.20) (p_flat . 0.10)
+                            (distortion_passed . t)
+                            (decision_action . "fade")
+                            (vector_weight_applied . 0.80)
+                            (weight_source . "file_symbol_timeframe"))
+                          nil)))
+          (multiple-value-bind (lot gate)
+              (swimmy.school::apply-pattern-soft-gate
+               :trend "USDJPY" :buy "H1" nil 0.10 "UT-STRAT")
+            (assert-true (< (abs (- lot 0.055)) 1e-6)
+                         "Expected 0.55x lot on decision_action=fade")
+            (assert-true (eq t (cdr (assoc :applied gate)))
+                         "Gate should be applied")
+            (assert-equal "DECISION_FADE" (cdr (assoc :reason gate))
+                          "Reason should be DECISION_FADE")
+            (assert-true (< (abs (- 0.80 (cdr (assoc :vector_weight_applied gate)))) 1e-6)
+                         "Expected vector_weight_applied telemetry field")
+            (assert-equal "file_symbol_timeframe" (cdr (assoc :weight_source gate))
+                          "Expected weight_source telemetry field")))
+      (setf (symbol-function 'swimmy.core:query-pattern-similarity) orig-query))))
+
+(deftest test-pattern-soft-gate-no-trade-decision-applies-strongest-reduction
+  "Pattern gate should apply no-trade multiplier when decision_action=no-trade."
+  (let ((orig-query (symbol-function 'swimmy.core:query-pattern-similarity)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core:query-pattern-similarity)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (values '((p_up . 0.65) (p_down . 0.25) (p_flat . 0.10)
+                            (distortion_passed . t)
+                            (decision_action . "no-trade")
+                            (enforce_no_trade . t))
+                          nil)))
+          (multiple-value-bind (lot gate)
+              (swimmy.school::apply-pattern-soft-gate
+               :trend "USDJPY" :buy "H1" nil 0.10 "UT-STRAT")
+            (assert-true (< (abs (- lot 0.035)) 1e-6)
+                         "Expected 0.35x lot on decision_action=no-trade")
+            (assert-true (eq t (cdr (assoc :applied gate)))
+                         "Gate should be applied")
+            (assert-equal "DECISION_NO_TRADE" (cdr (assoc :reason gate))
+                          "Reason should be DECISION_NO_TRADE")
+            (assert-true (eq t (cdr (assoc :enforce_no_trade gate)))
+                         "Expected enforce_no_trade telemetry field")))
       (setf (symbol-function 'swimmy.core:query-pattern-similarity) orig-query))))
 
 ;;; ==========================================

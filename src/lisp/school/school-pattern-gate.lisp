@@ -1,6 +1,18 @@
 ;;; school-pattern-gate.lisp - Pattern Similarity Soft Gate
 (in-package :swimmy.school)
 
+(defun %pattern-gate-normalized-tf-label (timeframe-key)
+  "Normalize arbitrary timeframe key into finite bucket label for pattern-gate scope."
+  (let* ((tf-min (if (fboundp 'get-tf-minutes)
+                     (get-tf-minutes timeframe-key)
+                     (if (numberp timeframe-key) (round timeframe-key) 1)))
+         (bucket (if (fboundp 'get-tf-bucket-minutes)
+                     (get-tf-bucket-minutes tf-min)
+                     tf-min)))
+    (if (fboundp 'get-tf-string)
+        (get-tf-string bucket)
+        (string-upcase (format nil "~a" timeframe-key)))))
+
 (defun pattern-gate-multiplier (direction p-up p-down p-flat &key (threshold 0.60) (mismatch-multiplier 0.70))
   "Return (values multiplier reason).
 
@@ -40,8 +52,7 @@ Returns (values new-lot multiplier reason p-up p-down p-flat).
 
 Fail-open:
 - When not applicable TF, insufficient history, missing query-fn, or service error -> multiplier=1.0."
-  (let* ((tf-raw (string-upcase (format nil "~a" timeframe-key)))
-         (tf (if (string= tf-raw "MN1") "MN" tf-raw))
+  (let* ((tf (%pattern-gate-normalized-tf-label timeframe-key))
          (allowed (member tf '("H1" "H4" "D1" "W1" "MN") :test #'string=))
          (window (cond ((string= tf "W1") 104)
                        (t 120))))

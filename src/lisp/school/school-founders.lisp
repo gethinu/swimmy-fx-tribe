@@ -58,7 +58,7 @@
    :sl 0.0010
    :tp 0.0015
    :volume 0.02
-   :indicators '((bb 20)
+   :indicators '((bb 20 2)
                  (rsi 4)
                  (ema 9)
                  (ema 21))

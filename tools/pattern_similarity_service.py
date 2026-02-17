@@ -3,6 +3,7 @@ import sys
 import time
 import threading
 import csv
+import json
 from pathlib import Path
 
 import zmq
@@ -29,6 +30,11 @@ try:  # optional (fast ANN)
     import faiss  # type: ignore
 except Exception:  # pragma: no cover
     faiss = None
+
+try:  # optional (vector deep backend)
+    import pattern_vector_dl as vector_dl  # type: ignore
+except Exception:  # pragma: no cover
+    vector_dl = None
 
 
 def resolve_base_dir() -> Path:
@@ -70,6 +76,15 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
+def _env_choice(key: str, default: str, choices: set[str]) -> str:
+    val = os.getenv(key, "").strip().lower()
+    if not val:
+        return default
+    if val in choices:
+        return val
+    return default
+
+
 ZMQ_PORT = _env_int("SWIMMY_PORT_PATTERN_SIMILARITY", 5564)
 PAYLOAD_MAX_BYTES = _env_int("SWIMMY_PATTERN_SIM_PAYLOAD_MAX_BYTES", 2_000_000)
 
@@ -88,6 +103,27 @@ PATTERNS_DIR = Path(os.getenv("SWIMMY_PATTERNS_DIR", str(BASE_DIR / "data" / "pa
 
 # Embedding backend: "clip" (preferred) or "pixel" (deterministic fallback)
 EMBED_BACKEND = os.getenv("SWIMMY_PATTERN_EMBED_BACKEND", "clip").strip().lower() or "clip"
+POLICY_MODE = _env_choice(
+    "SWIMMY_PATTERN_POLICY_MODE",
+    "shadow",
+    {"shadow", "soft-enforce", "full-enforce"},
+)
+DISTORTION_THRESHOLD = _env_float("SWIMMY_PATTERN_DISTORTION_THRESHOLD", 1.10)
+DECISION_MIN_EV = _env_float("SWIMMY_PATTERN_DECISION_MIN_EV", 0.05)
+DECISION_FLAT_PENALTY = _env_float("SWIMMY_PATTERN_DECISION_FLAT_PENALTY", 0.25)
+ENSEMBLE_VECTOR_WEIGHT = _env_float("SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT", 0.00)
+ENSEMBLE_WEIGHT_FILE = Path(
+    os.getenv(
+        "SWIMMY_PATTERN_ENSEMBLE_WEIGHT_FILE",
+        str(PATTERNS_DIR / "models" / "ensemble_weight.json"),
+    )
+)
+VECTOR_MODEL_PATH = Path(
+    os.getenv(
+        "SWIMMY_PATTERN_DL_MODEL_PATH",
+        str(PATTERNS_DIR / "models" / "vector_siamese_v1.pt"),
+    )
+)
 
 # Labeling (ATR-based)
 LABEL_ATR_PERIOD = _env_int("SWIMMY_PATTERN_LABEL_ATR_PERIOD", 14)
@@ -122,6 +158,7 @@ STRIDE_BARS = {
 _state_lock = threading.Lock()
 _build_threads = {}  # (symbol, tf) -> Thread
 _build_status = {}  # (symbol, tf) -> dict(status=..., message=..., built=..., total=...)
+_model_indices = {}  # (symbol, tf, model) -> PatternIndex
 
 
 class PatternIndex:
@@ -168,6 +205,20 @@ def _normalize_timeframe(value: str | None) -> str | None:
     if tf not in WINDOW_BARS:
         return None
     return tf
+
+
+def _normalize_tf(value: str | None) -> str | None:
+    "Backward-compatible alias used by training scripts."
+    return _normalize_timeframe(value)
+
+
+def _normalize_symbol(value: str | None) -> str | None:
+    if value is None:
+        return None
+    sym = str(value).strip().upper()
+    if not sym:
+        return None
+    return sym
 
 
 def _coerce_float(value, default=None):
@@ -259,6 +310,13 @@ _clip_lock = threading.Lock()
 _clip_model = None
 _clip_preprocess = None
 _clip_device = None
+_vector_lock = threading.Lock()
+_vector_model = None
+_vector_meta = None
+_vector_model_mtime = None
+_weight_cache_lock = threading.Lock()
+_weight_cache_mtime = None
+_weight_cache_value = None
 
 
 def _ensure_clip_loaded():
@@ -297,10 +355,68 @@ def _clip_embed(candles: list[dict]) -> tuple[str, "np.ndarray"]:
     return "clip-vit-b32", vec
 
 
+def _ensure_vector_loaded():
+    global _vector_model, _vector_meta, _vector_model_mtime
+    if vector_dl is None:
+        return None, None
+    if not VECTOR_MODEL_PATH.exists():
+        return None, None
+    with _vector_lock:
+        try:
+            mtime = VECTOR_MODEL_PATH.stat().st_mtime
+        except Exception:
+            return None, None
+        if _vector_model is None or _vector_model_mtime != mtime:
+            try:
+                model, meta = vector_dl.load_siamese_encoder(VECTOR_MODEL_PATH, device="cpu")
+            except Exception:
+                return None, None
+            _vector_model = model
+            _vector_meta = meta
+            _vector_model_mtime = mtime
+    return _vector_model, _vector_meta
+
+
+def _vector_embed(candles: list[dict]) -> tuple[str, "np.ndarray"]:
+    if np is None:
+        raise RuntimeError("numpy not available")
+    if vector_dl is None:
+        raise RuntimeError("vector backend not available")
+    model, meta = _ensure_vector_loaded()
+    if model is None or meta is None:
+        raise RuntimeError("vector model not available")
+    window = int(meta.get("window", 120))
+    vec = vector_dl.embed_candles(candles, model=model, window=window, device="cpu")
+    norm = float(np.linalg.norm(vec))
+    if norm > 0:
+        vec = vec / norm
+    backend = str(meta.get("backend", "vector-siamese-v1")) or "vector-siamese-v1"
+    return backend, vec.astype(np.float32)
+
+
+def _embed_for_model(model: str, candles: list[dict]) -> tuple[str, "np.ndarray"]:
+    m = str(model or "").strip().lower()
+    if m.startswith("vector-siamese"):
+        return _vector_embed(candles)
+    if m.startswith("clip"):
+        return _clip_embed(candles)
+    if m.startswith("pixel"):
+        return _pixel_embed(candles)
+    return _embed_candles(candles)
+
+
 def _embed_candles(candles: list[dict]) -> tuple[str, "np.ndarray"]:
     backend = EMBED_BACKEND
     if backend == "pixel":
         return _pixel_embed(candles)
+    if backend in ("vector", "siamese", "vector-siamese"):
+        try:
+            return _vector_embed(candles)
+        except Exception:
+            try:
+                return _clip_embed(candles)
+            except Exception:
+                return _pixel_embed(candles)
     if backend == "clip":
         try:
             return _clip_embed(candles)
@@ -373,11 +489,24 @@ def _distance_weighted_probs(labels: list[str], dists: list[float]) -> tuple[dic
     return probs, top_k
 
 
+def _remember_index(idx: PatternIndex, *, prefer_primary: bool = False) -> None:
+    with _state_lock:
+        _model_indices[(idx.symbol, idx.timeframe, idx.model)] = idx
+        primary_key = (idx.symbol, idx.timeframe)
+        if prefer_primary or primary_key not in _indices:
+            _indices[primary_key] = idx
+
+
 def _reset_state_for_tests() -> None:
+    global _weight_cache_mtime, _weight_cache_value
     with _state_lock:
         _indices.clear()
+        _model_indices.clear()
         _build_threads.clear()
         _build_status.clear()
+    with _weight_cache_lock:
+        _weight_cache_mtime = None
+        _weight_cache_value = None
 
 
 def _build_index_from_inline_samples(*, symbol: str, timeframe: str, samples: list[dict]) -> None:
@@ -416,8 +545,7 @@ def _build_index_from_inline_samples(*, symbol: str, timeframe: str, samples: li
         last_built=int(time.time()),
         ann_index=ann,
     )
-    with _state_lock:
-        _indices[(idx.symbol, idx.timeframe)] = idx
+    _remember_index(idx, prefer_primary=True)
 
 
 def _index_dir(symbol: str, timeframe: str) -> Path:
@@ -430,6 +558,14 @@ def _index_npz_path(symbol: str, timeframe: str) -> Path:
 
 def _index_faiss_path(symbol: str, timeframe: str) -> Path:
     return _index_dir(symbol, timeframe) / "index.faiss"
+
+
+def _legacy_patterns_npz_path(symbol: str, timeframe: str) -> Path:
+    return _index_dir(symbol, timeframe) / "patterns.npz"
+
+
+def _legacy_meta_path(symbol: str, timeframe: str) -> Path:
+    return _index_dir(symbol, timeframe) / "meta.json"
 
 
 def _save_index_to_disk(idx: PatternIndex) -> None:
@@ -486,6 +622,81 @@ def _load_index_from_disk(symbol: str, timeframe: str) -> PatternIndex | None:
     )
 
 
+def _label_to_name(value) -> str:
+    try:
+        iv = int(value)
+        if iv == 0:
+            return "UP"
+        if iv == 1:
+            return "DOWN"
+        if iv == 2:
+            return "FLAT"
+    except Exception:
+        pass
+    txt = str(value).upper()
+    if txt in ("UP", "DOWN", "FLAT"):
+        return txt
+    return "FLAT"
+
+
+def _load_legacy_vector_index(symbol: str, timeframe: str) -> PatternIndex | None:
+    if np is None:
+        return None
+    path = _legacy_patterns_npz_path(symbol, timeframe)
+    if not path.exists():
+        return None
+
+    data = np.load(path, allow_pickle=True)
+    if "vectors" not in data.files:
+        return None
+    embeddings = data["vectors"].astype(np.float32)
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    embeddings = embeddings / norms
+
+    labels_raw = data["labels"] if "labels" in data.files else np.array([], dtype=np.int32)
+    labels = [_label_to_name(x) for x in labels_raw.tolist()]
+    ids_raw = data["ids"] if "ids" in data.files else np.array([], dtype=object)
+    ids = [str(x) for x in ids_raw.tolist()]
+    n_rows = int(embeddings.shape[0])
+    if len(labels) < n_rows:
+        labels.extend(["FLAT"] * (n_rows - len(labels)))
+    if len(labels) > n_rows:
+        labels = labels[:n_rows]
+    if not ids:
+        ids = [f"{str(timeframe).upper()}:{str(symbol).upper()}:{i}" for i in range(n_rows)]
+    elif len(ids) < n_rows:
+        ids.extend([f"{str(timeframe).upper()}:{str(symbol).upper()}:{i}" for i in range(len(ids), n_rows)])
+    elif len(ids) > n_rows:
+        ids = ids[:n_rows]
+
+    model = "vector-siamese-v1"
+    last_built = int(path.stat().st_mtime)
+    meta_path = _legacy_meta_path(symbol, timeframe)
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            backend = str(meta.get("backend", "")).strip()
+            if backend:
+                model = backend
+            if "last_built" in meta:
+                last_built = int(float(meta["last_built"]))
+        except Exception:
+            pass
+
+    ann = _build_ann_index(embeddings)
+    return PatternIndex(
+        symbol=str(symbol).upper(),
+        timeframe=str(timeframe).upper(),
+        model=model,
+        ids=ids,
+        labels=labels,
+        embeddings=embeddings,
+        last_built=last_built,
+        ann_index=ann,
+    )
+
+
 def load_indices_from_disk() -> int:
     "Load persisted indices from PATTERNS_DIR into memory. Returns number loaded."
     loaded = 0
@@ -498,8 +709,18 @@ def load_indices_from_disk() -> int:
             idx = _load_index_from_disk(sym, tf)
             if idx is None:
                 continue
-            with _state_lock:
-                _indices[(idx.symbol, idx.timeframe)] = idx
+            _remember_index(idx, prefer_primary=True)
+            loaded += 1
+        except Exception:
+            continue
+    for npz in PATTERNS_DIR.glob("*/*/patterns.npz"):
+        try:
+            tf = npz.parent.name
+            sym = npz.parent.parent.name
+            idx = _load_legacy_vector_index(sym, tf)
+            if idx is None:
+                continue
+            _remember_index(idx, prefer_primary=False)
             loaded += 1
         except Exception:
             continue
@@ -553,6 +774,36 @@ def _load_candles_from_csv(path: Path) -> list[dict]:
     return _sort_candles(candles)
 
 
+def _load_candles(
+    symbol: str,
+    timeframe: str,
+    *,
+    start_time: int | None = None,
+    end_time: int | None = None,
+) -> list[dict]:
+    sym = _normalize_symbol(symbol)
+    tf = _normalize_timeframe(timeframe)
+    if not sym or not tf:
+        return []
+    csv_path = _resolve_historical_csv_path(sym, tf)
+    if csv_path is None:
+        return []
+    candles = _load_candles_from_csv(csv_path)
+    if start_time is None and end_time is None:
+        return candles
+    out = []
+    for c in candles:
+        ts = _coerce_int(c.get("timestamp"))
+        if ts is None:
+            continue
+        if start_time is not None and ts < int(start_time):
+            continue
+        if end_time is not None and ts > int(end_time):
+            continue
+        out.append(c)
+    return out
+
+
 def _atr(candles: list[dict], period: int) -> float | None:
     if period <= 0:
         return None
@@ -586,6 +837,23 @@ def _label_from_future_return(cur_close: float, future_close: float, atr: float)
     return "FLAT"
 
 
+def _label_window(window_candles: list[dict], future_candles: list[dict]) -> int:
+    "Backward-compatible helper for vector training scripts."
+    if not window_candles or not future_candles:
+        return 2
+    atr = _atr(window_candles, LABEL_ATR_PERIOD)
+    cur_close = _coerce_float(window_candles[-1].get("close"))
+    future_close = _coerce_float(future_candles[-1].get("close"))
+    if atr is None or atr <= 0 or cur_close is None or future_close is None:
+        return 2
+    label = _label_from_future_return(cur_close, future_close, atr)
+    if label == "UP":
+        return 0
+    if label == "DOWN":
+        return 1
+    return 2
+
+
 def _build_index_from_csv(
     *,
     symbol: str,
@@ -612,6 +880,7 @@ def _build_index_from_csv(
     if not force:
         existing = _load_index_from_disk(sym, tf)
         if existing is not None:
+            _remember_index(existing, prefer_primary=True)
             return existing
 
     csv_path = _resolve_historical_csv_path(sym, tf)
@@ -671,7 +940,275 @@ def _build_index_from_csv(
         ann_index=ann,
     )
     _save_index_to_disk(idx)
+    _remember_index(idx, prefer_primary=True)
     return idx
+
+
+def _normalize_direction(value) -> str:
+    if value is None:
+        return ""
+    txt = str(value).strip().upper()
+    if txt in ("BUY", "LONG", "UP"):
+        return "BUY"
+    if txt in ("SELL", "SHORT", "DOWN"):
+        return "SELL"
+    return ""
+
+
+def _calc_distortion_features(candles: list[dict]) -> dict:
+    if np is None or not candles:
+        return {
+            "volume_spike_z": 0.0,
+            "range_spike_z": 0.0,
+            "body_ratio": 0.0,
+            "vap_concentration": 0.0,
+            "score": 0.0,
+        }
+
+    sorted_c = _sort_candles(candles)
+    vols = np.asarray([max(0.0, _coerce_float(c.get("volume"), 0.0) or 0.0) for c in sorted_c], dtype=np.float64)
+    highs = np.asarray([_coerce_float(c.get("high"), 0.0) or 0.0 for c in sorted_c], dtype=np.float64)
+    lows = np.asarray([_coerce_float(c.get("low"), 0.0) or 0.0 for c in sorted_c], dtype=np.float64)
+    opens = np.asarray([_coerce_float(c.get("open"), 0.0) or 0.0 for c in sorted_c], dtype=np.float64)
+    closes = np.asarray([_coerce_float(c.get("close"), 0.0) or 0.0 for c in sorted_c], dtype=np.float64)
+
+    ranges = np.maximum(0.0, highs - lows)
+    n = len(sorted_c)
+    if n <= 2:
+        return {
+            "volume_spike_z": 0.0,
+            "range_spike_z": 0.0,
+            "body_ratio": 0.0,
+            "vap_concentration": 0.0,
+            "score": 0.0,
+        }
+
+    base_vol = vols[:-1]
+    base_rng = ranges[:-1]
+    last_vol = float(vols[-1])
+    last_rng = float(ranges[-1])
+    eps = 1e-9
+
+    vol_mu = float(np.mean(base_vol))
+    vol_sd = float(np.std(base_vol))
+    rng_mu = float(np.mean(base_rng))
+    rng_sd = float(np.std(base_rng))
+
+    volume_spike_z = (last_vol - vol_mu) / (vol_sd + eps)
+    range_spike_z = (last_rng - rng_mu) / (rng_sd + eps)
+
+    last_body = abs(float(closes[-1] - opens[-1]))
+    body_ratio = last_body / max(last_rng, eps)
+
+    price_min = float(np.min(closes))
+    price_max = float(np.max(closes))
+    if price_max <= price_min:
+        vap_concentration = 0.0
+    else:
+        hist, _ = np.histogram(closes, bins=20, range=(price_min, price_max), weights=vols)
+        total = float(np.sum(hist))
+        vap_concentration = float(np.max(hist) / total) if total > 0 else 0.0
+
+    score = (
+        0.45 * max(0.0, float(volume_spike_z))
+        + 0.35 * max(0.0, float(range_spike_z))
+        + 0.20 * max(0.0, (vap_concentration - 0.05) * 10.0)
+    )
+
+    return {
+        "volume_spike_z": float(volume_spike_z),
+        "range_spike_z": float(range_spike_z),
+        "body_ratio": float(body_ratio),
+        "vap_concentration": float(vap_concentration),
+        "score": float(score),
+    }
+
+
+def _decide_action(
+    *,
+    p_up: float,
+    p_down: float,
+    p_flat: float,
+    intended_direction: str,
+    distortion_passed: bool,
+) -> dict:
+    if not distortion_passed:
+        return {
+            "action": "no-trade",
+            "reason": "low_distortion",
+            "ev_follow": 0.0,
+            "ev_fade": 0.0,
+            "enforce_no_trade": POLICY_MODE != "shadow",
+        }
+
+    direction = _normalize_direction(intended_direction)
+    if not direction:
+        return {
+            "action": "no-trade",
+            "reason": "missing_direction",
+            "ev_follow": 0.0,
+            "ev_fade": 0.0,
+            "enforce_no_trade": POLICY_MODE != "shadow",
+        }
+
+    if direction == "BUY":
+        ev_follow = float(p_up - p_down - DECISION_FLAT_PENALTY * p_flat)
+        ev_fade = float(p_down - p_up - DECISION_FLAT_PENALTY * p_flat)
+    else:
+        ev_follow = float(p_down - p_up - DECISION_FLAT_PENALTY * p_flat)
+        ev_fade = float(p_up - p_down - DECISION_FLAT_PENALTY * p_flat)
+
+    best = max(ev_follow, ev_fade)
+    if best < DECISION_MIN_EV:
+        action = "no-trade"
+        reason = "weak_edge"
+    elif ev_follow >= ev_fade:
+        action = "follow"
+        reason = "ev_follow_ge_ev_fade"
+    else:
+        action = "fade"
+        reason = "ev_fade_gt_ev_follow"
+
+    return {
+        "action": action,
+        "reason": reason,
+        "ev_follow": float(ev_follow),
+        "ev_fade": float(ev_fade),
+        "enforce_no_trade": (POLICY_MODE != "shadow" and action == "no-trade"),
+    }
+
+
+def _query_single_index(idx: PatternIndex, candles: list[dict], k: int) -> tuple[dict, list[dict]]:
+    _model, q = _embed_for_model(idx.model, candles)
+    nn_idx, dists = _knn_search_index(idx, q, k)
+    neighbor_labels = [idx.labels[i] for i in nn_idx]
+    probs, top_k = _distance_weighted_probs(neighbor_labels, dists)
+    for j, i in enumerate(nn_idx):
+        top_k[j]["id"] = idx.ids[i] if i < len(idx.ids) else str(i)
+    return probs, top_k
+
+
+def _resolve_query_indices(symbol: str, timeframe: str) -> list[PatternIndex]:
+    sym = str(symbol).upper()
+    tf = str(timeframe).upper()
+    out: list[PatternIndex] = []
+    seen = set()
+    with _state_lock:
+        primary = _indices.get((sym, tf))
+        if primary is not None:
+            out.append(primary)
+            seen.add((primary.symbol, primary.timeframe, primary.model))
+        for key, idx in list(_model_indices.items()):
+            if key[0] == sym and key[1] == tf and key not in seen:
+                out.append(idx)
+                seen.add(key)
+    return out
+
+
+def _clamp_weight(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _parse_vector_weight(raw) -> float | None:
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except Exception:
+        return None
+    if value < 0.0 or value > 1.0:
+        return None
+    return _clamp_weight(value)
+
+
+def _normalize_symbol_timeframe_key(symbol: str, timeframe: str) -> str:
+    return f"{str(symbol).upper()}:{str(timeframe).upper()}"
+
+
+def _parse_symbol_timeframe_weights(raw) -> dict[str, float]:
+    out: dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, value in raw.items():
+        key_text = str(key or "").strip().upper()
+        if ":" not in key_text:
+            continue
+        parts = key_text.split(":", 1)
+        sym = parts[0].strip()
+        tf = parts[1].strip()
+        if not sym or not tf:
+            continue
+        weight = None
+        if isinstance(value, dict):
+            weight = _parse_vector_weight(value.get("vector_weight"))
+        else:
+            weight = _parse_vector_weight(value)
+        if weight is None:
+            continue
+        out[_normalize_symbol_timeframe_key(sym, tf)] = weight
+    return out
+
+
+def _load_weight_config_from_file(path: Path) -> dict | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    default_weight = _parse_vector_weight(payload.get("vector_weight"))
+    symbol_tf_weights = _parse_symbol_timeframe_weights(payload.get("symbol_timeframe_weights"))
+    if default_weight is None and not symbol_tf_weights:
+        return None
+    return {
+        "default_weight": default_weight,
+        "symbol_timeframe_weights": symbol_tf_weights,
+    }
+
+
+def _resolve_weight_from_config(*, symbol: str, timeframe: str, config: dict | None, default_weight: float) -> tuple[float, str]:
+    if isinstance(config, dict):
+        by_st = config.get("symbol_timeframe_weights")
+        if isinstance(by_st, dict):
+            key = _normalize_symbol_timeframe_key(symbol, timeframe)
+            if key in by_st:
+                return _clamp_weight(by_st[key]), "file_symbol_timeframe"
+        global_weight = config.get("default_weight")
+        if global_weight is not None:
+            return _clamp_weight(global_weight), "file_global"
+    return _clamp_weight(default_weight), "env_default"
+
+
+def _current_vector_weight(symbol: str, timeframe: str) -> tuple[float, str]:
+    global _weight_cache_mtime, _weight_cache_value
+    default = _clamp_weight(ENSEMBLE_VECTOR_WEIGHT)
+    path = ENSEMBLE_WEIGHT_FILE
+    if not path.exists():
+        return default, "env_default"
+    try:
+        mtime = float(path.stat().st_mtime)
+    except Exception:
+        return default, "env_default"
+    with _weight_cache_lock:
+        if _weight_cache_mtime != mtime:
+            _weight_cache_mtime = mtime
+            _weight_cache_value = _load_weight_config_from_file(path)
+        config = _weight_cache_value
+    return _resolve_weight_from_config(
+        symbol=symbol,
+        timeframe=timeframe,
+        config=config if isinstance(config, dict) else None,
+        default_weight=default,
+    )
+
+
+def _safe_backend_weight(model: str, *, vector_weight: float) -> float:
+    m = str(model).lower()
+    if m.startswith("vector-siamese"):
+        return _clamp_weight(vector_weight)
+    if m.startswith("clip"):
+        return _clamp_weight(1.0 - vector_weight)
+    return 0.0
 
 
 def handle_request_sexp(message: str) -> str:
@@ -718,6 +1255,11 @@ def handle_request_sexp(message: str) -> str:
                     models.add(str(getattr(idx, "model", "")))
                 except Exception:
                     pass
+            for (_symbol, _tf, model_name) in list(_model_indices.keys()):
+                try:
+                    models.add(str(model_name))
+                except Exception:
+                    pass
             builds = []
             for (symbol, tf), st in sorted(_build_status.items()):
                 entry = {"symbol": symbol, "timeframe": tf}
@@ -739,6 +1281,10 @@ def handle_request_sexp(message: str) -> str:
                 "type": "PATTERN_SIMILARITY_RESULT",
                 "status": "ok",
                 "model": model,
+                "policy_mode": POLICY_MODE,
+                "ensemble_default_vector_weight": float(_clamp_weight(ENSEMBLE_VECTOR_WEIGHT)),
+                "ensemble_weight_file": str(ENSEMBLE_WEIGHT_FILE),
+                "available_backends": sorted([m for m in models if m]),
                 "indices": indices,
                 "builds": builds,
             }
@@ -766,7 +1312,6 @@ def handle_request_sexp(message: str) -> str:
             try:
                 idx = _build_index_from_csv(symbol=sym, timeframe=tf, start_time=st, end_time=et, force=force_)
                 with _state_lock:
-                    _indices[(idx.symbol, idx.timeframe)] = idx
                     _build_status[key] = {"status": "ok", "count": int(idx.embeddings.shape[0]), "last_built": int(idx.last_built)}
             except Exception as e:
                 with _state_lock:
@@ -824,37 +1369,97 @@ def handle_request_sexp(message: str) -> str:
             return _error_response("candles length mismatch")
         k = data.get("k")
         k = _coerce_int(k, default=30) or 30
+        intended_direction = _normalize_direction(data.get("intended_direction"))
 
-        key = (str(symbol).upper(), tf_norm)
-        with _state_lock:
-            idx = _indices.get(key)
-        if idx is None:
+        symbol_norm = str(symbol).upper()
+        candidates = _resolve_query_indices(symbol_norm, tf_norm)
+        if not candidates:
             return _error_response("index not built")
 
-        try:
-            model, q = _embed_candles(candles)
-        except Exception as e:
-            return _error_response(f"embed error: {e}")
+        backend_details = []
+        ensemble_sum = {"p_up": 0.0, "p_down": 0.0, "p_flat": 0.0}
+        weight_sum = 0.0
+        vector_weight, weight_source = _current_vector_weight(symbol_norm, tf_norm)
+        top_k = []
 
-        try:
-            nn_idx, dists = _knn_search_index(idx, q, k)
-        except Exception as e:
-            return _error_response(f"search error: {e}")
+        for idx in candidates:
+            try:
+                probs, cur_top_k = _query_single_index(idx, candles, k)
+            except Exception:
+                continue
+            w = max(0.0, float(_safe_backend_weight(idx.model, vector_weight=vector_weight)))
+            weight_sum += w
+            ensemble_sum["p_up"] += w * float(probs["p_up"])
+            ensemble_sum["p_down"] += w * float(probs["p_down"])
+            ensemble_sum["p_flat"] += w * float(probs["p_flat"])
+            backend_details.append(
+                {
+                    "backend": idx.model,
+                    "weight": float(w),
+                    "p_up": float(probs["p_up"]),
+                    "p_down": float(probs["p_down"]),
+                    "p_flat": float(probs["p_flat"]),
+                }
+            )
+            if not top_k:
+                top_k = cur_top_k
 
-        neighbor_labels = [idx.labels[i] for i in nn_idx]
-        probs, top_k = _distance_weighted_probs(neighbor_labels, dists)
-        # Fill top_k ids.
-        for j, i in enumerate(nn_idx):
-            top_k[j]["id"] = idx.ids[i] if i < len(idx.ids) else str(i)
+        if not backend_details:
+            return _error_response("search error: no usable backend")
+        if weight_sum <= 0:
+            # If all backend weights were configured to zero, fallback to equal mixing.
+            weight_sum = float(len(backend_details))
+            ensemble_sum = {"p_up": 0.0, "p_down": 0.0, "p_flat": 0.0}
+            for item in backend_details:
+                item["weight"] = 1.0
+                ensemble_sum["p_up"] += float(item["p_up"])
+                ensemble_sum["p_down"] += float(item["p_down"])
+                ensemble_sum["p_flat"] += float(item["p_flat"])
+
+        p_up = float(ensemble_sum["p_up"] / weight_sum)
+        p_down = float(ensemble_sum["p_down"] / weight_sum)
+        p_flat = float(ensemble_sum["p_flat"] / weight_sum)
+        backend_used = "mixed" if len(backend_details) >= 2 else str(backend_details[0]["backend"])
+
+        distortion = _calc_distortion_features(candles)
+        distortion_score = float(distortion.get("score", 0.0))
+        distortion_passed = bool(distortion_score >= DISTORTION_THRESHOLD)
+        decision = _decide_action(
+            p_up=p_up,
+            p_down=p_down,
+            p_flat=p_flat,
+            intended_direction=intended_direction,
+            distortion_passed=distortion_passed,
+        )
 
         return sexp_response(
             {
                 "type": "PATTERN_SIMILARITY_RESULT",
                 "status": "ok",
                 "result": {
-                    "p_up": float(probs["p_up"]),
-                    "p_down": float(probs["p_down"]),
-                    "p_flat": float(probs["p_flat"]),
+                    "p_up": p_up,
+                    "p_down": p_down,
+                    "p_flat": p_flat,
+                    "backend_used": backend_used,
+                    "vector_weight_applied": float(vector_weight),
+                    "weight_source": str(weight_source),
+                    "backend_probs": backend_details,
+                    "distortion_score": distortion_score,
+                    "distortion_threshold": float(DISTORTION_THRESHOLD),
+                    "distortion_passed": distortion_passed,
+                    "distortion_features": {
+                        "volume_spike_z": float(distortion.get("volume_spike_z", 0.0)),
+                        "range_spike_z": float(distortion.get("range_spike_z", 0.0)),
+                        "body_ratio": float(distortion.get("body_ratio", 0.0)),
+                        "vap_concentration": float(distortion.get("vap_concentration", 0.0)),
+                    },
+                    "policy_mode": POLICY_MODE,
+                    "intended_direction": intended_direction,
+                    "decision_action": str(decision.get("action", "no-trade")),
+                    "decision_reason": str(decision.get("reason", "unknown")),
+                    "ev_follow": float(decision.get("ev_follow", 0.0)),
+                    "ev_fade": float(decision.get("ev_fade", 0.0)),
+                    "enforce_no_trade": bool(decision.get("enforce_no_trade", False)),
                     "top_k": top_k,
                 },
             }

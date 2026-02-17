@@ -5,7 +5,7 @@
   "fast_ema": 28,
   "slow_ema": 120,
   "atr_period": 14,
-  "pullback_atr": 0.3,
+  "pullback_atr": 0.1,
   "sl_atr": 1.5,
   "tp_atr": 2.5,
   "lot": 0.01,

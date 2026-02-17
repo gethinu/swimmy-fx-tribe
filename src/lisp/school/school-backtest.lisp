@@ -275,12 +275,78 @@ M1 and other sub-5m timeframes are bucketed to M5.")
   "Extra TF minutes to mine beyond the default TF buckets.
 Keep this list bounded to avoid exploding the search space/data volume.")
 
+(defparameter *tf-mutation-anchor-minutes* '(300 3600)
+  "Proven non-standard TFs to keep in the mutation pool even under tight budget.")
+
+(defparameter *tf-mutation-budget-mode* :auto
+  "TF mutation pool budget mode.
+ :AUTO = shrink options when backtest pending pressure is high.
+ :FULL = always return full option set.
+ INTEGER = explicit max option count (floored by core+anchor set).")
+
+(defparameter *tf-mutation-budget-medium-ratio* 0.60d0
+  "When pending/max-pending >= this, trim TF mutation options to medium budget.")
+
+(defparameter *tf-mutation-budget-high-ratio* 0.80d0
+  "When pending/max-pending >= this, trim TF mutation options to high-pressure budget.")
+
+(defparameter *tf-mutation-budget-critical-ratio* 1.00d0
+  "When pending/max-pending >= this, keep only core+anchor TF options.")
+
+(defun %tf-mutation-priority-seed (all-options)
+  "Prioritized seed list: 8 core buckets + proven anchors."
+  (remove-duplicates
+   (remove-if-not (lambda (m) (member m all-options :test #'eql))
+                  (append *tf-scope-buckets-minutes* *tf-mutation-anchor-minutes*))
+   :test #'eql))
+
+(defun %resolve-tf-mutation-budget-size (all-options)
+  "Resolve max TF option count based on budget mode and backtest pressure."
+  (let* ((full (length all-options))
+         (seed (length (%tf-mutation-priority-seed all-options)))
+         (floor (min full (max 1 seed)))
+         (mode *tf-mutation-budget-mode*))
+    (cond
+      ((or (eq mode :full) (eq mode :FULL)) full)
+      ((and (integerp mode) (> mode 0))
+       (max floor (min full mode)))
+      (t
+       (let* ((pending (if (fboundp 'backtest-pending-count)
+                           (backtest-pending-count)
+                           0))
+              (max-pending (if (and (boundp 'swimmy.globals::*backtest-max-pending*)
+                                    (numberp swimmy.globals::*backtest-max-pending*)
+                                    (> swimmy.globals::*backtest-max-pending* 0))
+                               swimmy.globals::*backtest-max-pending*
+                               1))
+              (ratio (/ (float pending 1.0d0)
+                        (float max-pending 1.0d0))))
+         (cond
+           ((>= ratio *tf-mutation-budget-critical-ratio*)
+            floor)
+           ((>= ratio *tf-mutation-budget-high-ratio*)
+            (max floor (min full (round (* full 0.50d0)))))
+           ((>= ratio *tf-mutation-budget-medium-ratio*)
+            (max floor (min full (round (* full 0.75d0)))))
+           (t
+            full)))))))
+
 (defun get-tf-mutation-options ()
-  "Return bounded TF minutes list for evolution/LLM timeframe exploration."
-  (sort (remove-duplicates
-         (append *tf-scope-buckets-minutes* *tf-mining-candidates-minutes*)
-         :test #'eql)
-        #'<))
+  "Return bounded TF minutes list for evolution/LLM timeframe exploration.
+Budget is auto-shrunk under backtest pending pressure."
+  (let* ((all-options (sort (remove-duplicates
+                             (append *tf-scope-buckets-minutes*
+                                     *tf-mining-candidates-minutes*)
+                             :test #'eql)
+                            #'<))
+         (budget (%resolve-tf-mutation-budget-size all-options)))
+    (if (>= budget (length all-options))
+        all-options
+        (let* ((seed (%tf-mutation-priority-seed all-options))
+               (rest (remove-if (lambda (m) (member m seed :test #'eql))
+                                all-options))
+               (prioritized (append seed rest)))
+          (subseq prioritized 0 (min budget (length prioritized)))))))
 
 
 ;; Request backtest from Rust

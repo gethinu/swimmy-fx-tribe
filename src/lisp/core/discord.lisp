@@ -483,22 +483,38 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
 
         ;; 4. Individual Results Listing
           (when results
-            (let ((sorted (sort (copy-list results) #'> :key (lambda (x) (getf (cdr x) :sharpe))))
+            (let ((sorted (sort (copy-list results) #'>
+                                :key (lambda (x)
+                                       (let* ((metrics (cdr x))
+                                              (raw-sharpe (float (or (getf metrics :sharpe) 0.0)))
+                                              (adj-sharpe (float (or (getf metrics :adjusted-sharpe) raw-sharpe)))
+                                              (ci-lower (float (or (getf metrics :sharpe-ci-lower) adj-sharpe)))
+                                              (trades (or (getf metrics :trades) 0))
+                                              (evidence-sharpe (if (fboundp 'swimmy.school::evidence-adjusted-sharpe)
+                                                                   (swimmy.school::evidence-adjusted-sharpe adj-sharpe trades)
+                                                                   adj-sharpe)))
+                                         ;; Priority: evidence-adjusted Sharpe, tie-break by CI lower bound.
+                                         (+ (* 0.85 evidence-sharpe) (* 0.15 ci-lower))))))
                   (top-count (min 10 (length results))))
               (setf report-msg (concatenate 'string report-msg (format nil "~%🌟 **Top Strategy Results (Latest):**~%")))
               (loop for i from 0 below top-count
                     for s = (nth i sorted)
                     for metrics = (cdr s)
-                    for sharpe = (or (getf metrics :sharpe) 0.0)
+                    for raw-sharpe = (float (or (getf metrics :sharpe) 0.0))
+                    for adj-sharpe = (float (or (getf metrics :adjusted-sharpe) raw-sharpe))
+                    for trades = (or (getf metrics :trades) 0)
+                    for sharpe = (if (fboundp 'swimmy.school::evidence-adjusted-sharpe)
+                                     (swimmy.school::evidence-adjusted-sharpe adj-sharpe trades)
+                                     adj-sharpe)
                   for pf = (or (getf metrics :profit-factor) (getf metrics :pf) 0.0)
                   for wr = (or (getf metrics :win-rate) (getf metrics :wr) 0.0)
                   for maxdd = (or (getf metrics :max-dd) (getf metrics :max_dd) 0.0)
-                  for trades = (or (getf metrics :trades) 0)
                   do (setf report-msg (concatenate 'string report-msg
                                                    (format nil
-                                                           "  • `~a`: S=~,2f PF=~,2f WR=~,1f% DD=~,2f% (~d trades)~%"
+                                                           "  • `~a`: S=~,2f (raw ~,2f) PF=~,2f WR=~,1f% DD=~,2f% (~d trades)~%"
                                                            (car s)
                                                            sharpe
+                                                           raw-sharpe
                                                            pf
                                                            (* 100.0 wr)
                                                            (* 100.0 maxdd)
