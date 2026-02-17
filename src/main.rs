@@ -872,6 +872,33 @@ lazy_static::lazy_static! {
     };
 }
 
+fn should_trigger_brain_timeout(
+    last_brain_msg: std::time::Instant,
+    timeout_secs: u64,
+    brain_signal_ready: bool,
+    brain_signal_seen: bool,
+    guardian_started_at: std::time::Instant,
+    startup_grace_secs: u64,
+) -> bool {
+    if brain_signal_ready {
+        return false;
+    }
+
+    if !brain_signal_seen && guardian_started_at.elapsed().as_secs() < startup_grace_secs {
+        return false;
+    }
+
+    last_brain_msg.elapsed().as_secs() > timeout_secs
+}
+
+fn env_u64_or(default: u64, key: &str) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(default)
+}
+
 fn main() {
     // V9.0: Naval's Modularization - Standalone Backtest Mode
     let args: Vec<String> = std::env::args().collect();
@@ -930,9 +957,19 @@ fn main() {
     const HEARTBEAT_INTERVAL_SECS: u64 = 10;
     
     // V7.1: Dead Man's Switch (Fail-safe)
+    // Canonical timeout is 300s (SPEC/INTERFACES). Startup grace suppresses
+    // false positives before first Brain motor signal on cold boot.
     let mut last_brain_msg = std::time::Instant::now();
-    const BRAIN_TIMEOUT_SECS: u64 = 120;
+    let brain_timeout_secs = env_u64_or(300, "SWIMMY_GUARDIAN_BRAIN_TIMEOUT_SECS");
+    let brain_startup_grace_secs =
+        env_u64_or(900, "SWIMMY_GUARDIAN_BRAIN_STARTUP_GRACE_SECS");
+    let guardian_started_at = std::time::Instant::now();
+    let mut brain_signal_seen = false;
     let mut brain_connected = true;
+    println!(
+        "🫀 Dead-Man config: timeout={}s startup_grace={}s",
+        brain_timeout_secs, brain_startup_grace_secs
+    );
 
     // V7.2: Reflex Arc (Taleb's Spinal Cord)
     // Autonomous reaction to extreme volatility
@@ -1032,6 +1069,7 @@ fn main() {
         ];
 
         zmq::poll(&mut items, 10).unwrap();
+        let brain_signal_ready = items[2].is_readable();
 
         // V8.0: Saturday Auto-Close (Taleb)
         // Close all positions before weekend (06:50 JST Saturday)
@@ -1070,9 +1108,19 @@ fn main() {
         }
 
         // 0. Fail-safe Check (Taleb) - V8.0 Enhanced with Auto-Close
-        if last_brain_msg.elapsed().as_secs() > BRAIN_TIMEOUT_SECS {
+        if should_trigger_brain_timeout(
+            last_brain_msg,
+            brain_timeout_secs,
+            brain_signal_ready,
+            brain_signal_seen,
+            guardian_started_at,
+            brain_startup_grace_secs,
+        ) {
             if brain_connected {
-                println!("💀 CRITICAL: Brain Silence Detected (>{}s). Engaging Dead Man's Switch.", BRAIN_TIMEOUT_SECS);
+                println!(
+                    "💀 CRITICAL: Brain Silence Detected (>{}s). Engaging Dead Man's Switch.",
+                    brain_timeout_secs
+                );
                 println!("🛑 SYSTEM STATUS: EMERGENCY MODE (New Entries Blocked)");
                 brain_connected = false;
                 risk_gate.brain_connected = false;
@@ -1084,7 +1132,7 @@ fn main() {
                         "content": "@here",
                         "embeds": [{
                             "title": "💀 BRAIN DEAD DETECTED 💀",
-                            "description": format!("Brain silence > {}s. Engaging Emergency Protocols.", BRAIN_TIMEOUT_SECS),
+                            "description": format!("Brain silence > {}s. Engaging Emergency Protocols.", brain_timeout_secs),
                             "color": 16711680 // Red
                         }]
                     });
@@ -1843,9 +1891,10 @@ fn main() {
 
 
         // 3. Brain Signals (Lisp -> Rust) - Port 5556
-        if items[2].is_readable() {
+        if brain_signal_ready {
             // Heartbeat received or command received
             last_brain_msg = std::time::Instant::now();
+            brain_signal_seen = true;
             
             if let Ok(Ok(msg)) = sub_from_brain.recv_string(0) {
                 // V7.13: S-Expression Support for Brain Commands
@@ -2498,6 +2547,83 @@ mod tests {
             Ok(_) => assert!(true, "Order passes when Brain reconnected"),
             Err(e) => panic!("Should allow order after Brain reconnects: {}", e),
         }
+    }
+
+    #[test]
+    fn test_brain_timeout_guard_skips_when_brain_signal_ready() {
+        let now = std::time::Instant::now();
+        let last_brain_msg = std::time::Instant::now() - std::time::Duration::from_secs(121);
+        let guardian_started_at = now - std::time::Duration::from_secs(121);
+        let timed_out = should_trigger_brain_timeout(
+            last_brain_msg,
+            120,
+            true,
+            true,
+            guardian_started_at,
+            900,
+        );
+        assert!(
+            !timed_out,
+            "must not trigger timeout while brain message is already readable"
+        );
+    }
+
+    #[test]
+    fn test_brain_timeout_guard_triggers_without_brain_signal() {
+        let now = std::time::Instant::now();
+        let last_brain_msg = now - std::time::Duration::from_secs(121);
+        let guardian_started_at = now - std::time::Duration::from_secs(121);
+        let timed_out = should_trigger_brain_timeout(
+            last_brain_msg,
+            120,
+            false,
+            true,
+            guardian_started_at,
+            900,
+        );
+        assert!(timed_out, "must trigger timeout when silence exceeds threshold");
+    }
+
+    #[test]
+    fn test_brain_timeout_guard_skips_before_first_signal_during_startup_grace() {
+        let now = std::time::Instant::now();
+        let last_brain_msg = now - std::time::Duration::from_secs(301);
+        let guardian_started_at = now - std::time::Duration::from_secs(301);
+
+        let timed_out = should_trigger_brain_timeout(
+            last_brain_msg,
+            300,
+            false,
+            false,
+            guardian_started_at,
+            900,
+        );
+
+        assert!(
+            !timed_out,
+            "must not timeout before first brain signal while startup grace is active"
+        );
+    }
+
+    #[test]
+    fn test_brain_timeout_guard_triggers_after_startup_grace_without_first_signal() {
+        let now = std::time::Instant::now();
+        let last_brain_msg = now - std::time::Duration::from_secs(901);
+        let guardian_started_at = now - std::time::Duration::from_secs(901);
+
+        let timed_out = should_trigger_brain_timeout(
+            last_brain_msg,
+            300,
+            false,
+            false,
+            guardian_started_at,
+            900,
+        );
+
+        assert!(
+            timed_out,
+            "must timeout if startup grace elapsed and no brain signal has arrived"
+        );
     }
 
     #[test]

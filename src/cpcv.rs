@@ -8,8 +8,7 @@
 // and applies Purging + Embargo to prevent information leakage.
 // ============================================================================
 
-use crate::backtester::BacktestResult;
-use crate::strategy_ast::StrategyNode; // Phase 23
+use crate::backtester::{BacktestResult, Candle};
 use rayon::prelude::*;
 
 /// Default number of blocks to divide data into (Expert Panel V48.2)
@@ -243,8 +242,17 @@ pub fn run_cpcv_validation(
     candles_path: &str,
     strategy_params: &serde_json::Value,
 ) -> Result<CpcvAggregateResult, String> {
-    // Count total rows in CSV
-    let total_rows = count_csv_rows(candles_path)?;
+    let all_candles = crate::backtester::load_candles_from_csv(candles_path)
+        .map_err(|e| format!("Failed to load candles: {}", e))?;
+    run_cpcv_validation_with_loaded_candles(strategy_name, &all_candles, strategy_params)
+}
+
+fn run_cpcv_validation_with_loaded_candles(
+    strategy_name: &str,
+    all_candles: &[Candle],
+    strategy_params: &serde_json::Value,
+) -> Result<CpcvAggregateResult, String> {
+    let total_rows = all_candles.len();
     
     // V48.2: Dynamic Block count based on data length (Expert Panel mandate)
     let num_blocks = if total_rows > 2_000_000 { 10 }
@@ -294,9 +302,9 @@ pub fn run_cpcv_validation(
             }
 
             let mut test_results = Vec::new();
-            for (start, end) in &test_ranges {
-                let bars = end.saturating_sub(*start);
-                if bars < MIN_RANGE_BARS {
+                for (start, end) in &test_ranges {
+                    let bars = end.saturating_sub(*start);
+                    if bars < MIN_RANGE_BARS {
                     eprintln!(
                         "[CPCV] Path {:?}/{:?} skipped: test range too small ({} bars)",
                         train_idx,
@@ -304,8 +312,8 @@ pub fn run_cpcv_validation(
                         bars
                     );
                     return None;
-                }
-                match run_backtest_range(candles_path, strategy_params, *start, *end) {
+                    }
+                match run_backtest_range_from_loaded_candles(all_candles, strategy_params, *start, *end) {
                     Ok(bt) => test_results.push(bt),
                     Err(e) => {
                         eprintln!("[CPCV] Path {:?}/{:?} failed: {}", train_idx, test_idx, e);
@@ -335,15 +343,7 @@ pub fn run_cpcv_validation(
         return Err("All CPCV paths failed".to_string());
     }
     
-    // Calculate aggregate statistics
     Ok(calculate_aggregate(&results))
-}
-
-fn count_csv_rows(path: &str) -> Result<usize, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let reader = std::io::BufReader::new(file);
-    use std::io::BufRead;
-    Ok(reader.lines().count().saturating_sub(1)) // Subtract header
 }
 
 fn run_backtest_range(
@@ -352,13 +352,20 @@ fn run_backtest_range(
     start_row: usize,
     end_row: usize,
 ) -> Result<BacktestResult, String> {
-    // V47.1: Implement range-based backtest
-    use crate::backtester::{load_candles_from_csv, run_backtest, resample_candles, Strategy, IndicatorType};
-    
-    // Load candles
-    let all_candles = load_candles_from_csv(candles_path)
+    let all_candles = crate::backtester::load_candles_from_csv(candles_path)
         .map_err(|e| format!("Failed to load candles: {}", e))?;
-    
+    run_backtest_range_from_loaded_candles(&all_candles, strategy_params, start_row, end_row)
+}
+
+fn run_backtest_range_from_loaded_candles(
+    all_candles: &[Candle],
+    strategy_params: &serde_json::Value,
+    start_row: usize,
+    end_row: usize,
+) -> Result<BacktestResult, String> {
+    // V47.1: Implement range-based backtest
+    use crate::backtester::{run_backtest, resample_candles, Strategy, IndicatorType};
+
     // Slice to range
     let end_clamped = end_row.min(all_candles.len());
     let start_clamped = start_row.min(end_clamped);
@@ -417,30 +424,12 @@ fn run_backtest_range(
         .unwrap_or(1);
 
     // Align CPCV evaluation with normal BACKTEST behavior: optional resampling to strategy timeframe.
-    let working_candles: Vec<_> = if timeframe_min > 1 {
-        resample_candles(range_slice, timeframe_min.saturating_mul(60))
-    } else {
-        range_slice.to_vec()
-    };
-
     // If the strategy uses MTF filter, derive aux candles from the same M1 slice via resampling.
     let mut aux: std::collections::HashMap<String, Vec<crate::backtester::Candle>> =
         std::collections::HashMap::new();
     if filter_enabled && !filter_tf.trim().is_empty() {
         let tf = filter_tf.trim().to_ascii_uppercase();
-        let tf_seconds: i64 = match tf.as_str() {
-            "M1" => 60,
-            "M5" => 300,
-            "M15" => 900,
-            "M30" => 1800,
-            "H1" => 3600,
-            "H4" => 14400,
-            "D1" => 86400,
-            "W1" => 604800,
-            // Accept MN/MN1 but keep defaults conservative.
-            "MN" | "MN1" => 2592000,
-            _ => 3600,
-        };
+        let tf_seconds = crate::backtester::tf_to_seconds(&tf);
         aux.insert(tf.clone(), resample_candles(range_slice, tf_seconds));
     }
     
@@ -465,7 +454,12 @@ fn run_backtest_range(
     };
     
     // Run backtest on the range
-    let result = run_backtest(&strategy, &working_candles, &aux, &[]);
+    let result = if timeframe_min > 1 {
+        let working_candles = resample_candles(range_slice, timeframe_min.saturating_mul(60));
+        run_backtest(&strategy, &working_candles, &aux, &[])
+    } else {
+        run_backtest(&strategy, range_slice, &aux, &[])
+    };
     
     Ok(result)
 }
@@ -585,6 +579,50 @@ mod tests {
 
         let bt = run_backtest_range(path.to_str().unwrap(), &params, 0, 1200)
             .expect("backtest range should succeed");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(bt.trades > 0, "expected RSI strategy to close trades; got {}", bt.trades);
+    }
+
+    #[test]
+    fn test_run_backtest_range_from_loaded_candles_respects_indicator_type() {
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_nanos();
+        path.push(format!("swimmy-ut-cpcv-preloaded-{}.csv", nanos));
+
+        let mut f = std::fs::File::create(&path).expect("create temp csv");
+        writeln!(f, "timestamp,open,high,low,close,volume").unwrap();
+
+        let start = 1000.0_f64;
+        for i in 0..600 {
+            let close = start - i as f64;
+            writeln!(f, "{},{},{},{},{},{}", (i as i64) * 60, close, close, close, close, 1.0).unwrap();
+        }
+        let bottom = start - 599.0;
+        for j in 0..600 {
+            let i = 600 + j;
+            let close = bottom + j as f64;
+            writeln!(f, "{},{},{},{},{},{}", (i as i64) * 60, close, close, close, close, 1.0).unwrap();
+        }
+        drop(f);
+
+        let params = serde_json::json!({
+            "name": "UT-CPCV-IND-PRELOADED",
+            "sma_short": 7,
+            "sma_long": 5000,
+            "sl": 1.0,
+            "tp": 1.0,
+            "volume": 0.01,
+            "indicator_type": "rsi"
+        });
+
+        let candles = crate::backtester::load_candles_from_csv(path.to_str().unwrap())
+            .expect("load candles from csv");
+        let bt = run_backtest_range_from_loaded_candles(&candles, &params, 0, 1200)
+            .expect("preloaded range backtest should succeed");
         let _ = std::fs::remove_file(&path);
 
         assert!(bt.trades > 0, "expected RSI strategy to close trades; got {}", bt.trades);

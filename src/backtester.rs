@@ -397,19 +397,47 @@ fn calculate_bollinger(candles: &[Candle], period: usize, std_dev: f64, end_idx:
     Some((upper, mean, lower))
 }
 
+fn parse_tf_minutes(tf: &str) -> Option<i64> {
+    let up = tf.trim().to_ascii_uppercase();
+    if up.is_empty() {
+        return None;
+    }
+
+    let parse_positive = |s: &str| -> Option<i64> {
+        s.parse::<i64>().ok().filter(|v| *v > 0)
+    };
+
+    if up == "MN" || up == "MN1" {
+        return Some(43_200);
+    }
+    if let Some(rest) = up.strip_prefix('M') {
+        return parse_positive(rest);
+    }
+    if let Some(rest) = up.strip_prefix('H') {
+        return parse_positive(rest).map(|v| v.saturating_mul(60));
+    }
+    if let Some(rest) = up.strip_prefix('D') {
+        return parse_positive(rest).map(|v| v.saturating_mul(1_440));
+    }
+    if let Some(rest) = up.strip_prefix('W') {
+        return parse_positive(rest).map(|v| v.saturating_mul(10_080));
+    }
+    if up.chars().all(|c| c.is_ascii_digit()) {
+        return parse_positive(&up);
+    }
+    None
+}
+
+pub fn tf_to_seconds(tf: &str) -> i64 {
+    // Fail-safe default: M1. Unknown labels should not silently become H1.
+    parse_tf_minutes(tf)
+        .map(|m| m.saturating_mul(60))
+        .unwrap_or(60)
+}
+
 // Helper to get timeframe duration in seconds
 fn get_tf_duration(tf: &str) -> i64 {
-    match tf {
-        "M1" => 60,
-        "M5" => 300,
-        "M15" => 900,
-        "M30" => 1800,
-        "H1" => 3600,
-        "H4" => 14400,
-        "D1" => 86400,
-        "W1" => 604800,
-        _ => 3600, // Default to H1 if unknown
-    }
+    tf_to_seconds(tf)
 }
 
 // V9.0: MTF Filter Helper
@@ -1220,6 +1248,14 @@ mod tests {
         // If you drop 0-return days, Sharpe gets artificially inflated for sparse strategies.
         // This assertion locks in the "include zeros" behavior to prevent regressions.
         assert!((sharpe - 14.359032633914383).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_get_tf_duration_supports_custom_timeframes() {
+        assert_eq!(get_tf_duration("H5"), 18_000);
+        assert_eq!(get_tf_duration("M36"), 2_160);
+        assert_eq!(get_tf_duration("300"), 18_000);
+        assert_eq!(get_tf_duration("MN1"), 2_592_000);
     }
     
     #[test]
