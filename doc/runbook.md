@@ -22,7 +22,7 @@ sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-kee
 ### 1.2 開発モード起動
 ```bash
 cd /home/swimmy/swimmy
-make run  # Brain + Guardian を tmux で起動
+SWIMMY_FORCE_DISABLE_DISCORD=1 SWIMMY_DISABLE_DISCORD=1 ./run.sh
 ```
 
 ### 1.3 起動確認チェックリスト
@@ -196,7 +196,7 @@ sudo systemctl start swimmy-brain swimmy-backtest
 
 | コマンド | 説明 |
 |:---|:---|
-| `make run` | 開発モード起動 |
+| `SWIMMY_FORCE_DISABLE_DISCORD=1 SWIMMY_DISABLE_DISCORD=1 ./run.sh` | 開発/検証起動（Discord通知を強制無効化） |
 | `./tools/quality_gate.sh` | テスト＆整合性チェック |
 | `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode runtime` | CPCV runtime(ERROR) 経路の確認 |
 | `.venv/bin/python3 tools/ops/cpcv_smoke.py --mode criteria --send-count 3` | CPCV criteria(FAILED) 経路の確認 |

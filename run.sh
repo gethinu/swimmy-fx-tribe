@@ -13,6 +13,11 @@ if [ -f .env ]; then
     set +a
 fi
 
+# Dev safety: force-disable Discord notifications after .env is loaded.
+if [ "${SWIMMY_FORCE_DISABLE_DISCORD:-0}" = "1" ]; then
+    export SWIMMY_DISABLE_DISCORD=1
+fi
+
 # Create log directory
 mkdir -p logs
 
