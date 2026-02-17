@@ -13,6 +13,7 @@ This directory contains operator-facing scripts for backtest, reporting, and mai
 | `reconcile_archive_db.py` | Reconcile archive folders and DB rank/state mismatches. |
 | `reseed_active_b.py` | Reseed `:B` from archive (`:GRAVEYARD/:RETIRED`) by top-N per category. |
 | `cpcv_smoke.py` | Send one-off CPCV smoke messages (`runtime` / `criteria`). |
+| `order_open_smoke.py` | Send ORDER_OPEN sink-guard smoke cases (`INVALID_INSTRUMENT`, `MISSING_INSTRUMENT`, `INVALID_COMMENT_FORMAT`). |
 
 ## CPCV smoke checks
 
@@ -49,6 +50,24 @@ Useful flags:
 ```bash
 watch -n 2 "sed -n '1,2p' data/reports/cpcv_status.txt"
 rg -n "CPCV Validation: ERROR|CPCV Validation: FAILED" logs/notifier.log | tail -n 20
+```
+
+## ORDER_OPEN smoke checks
+
+Use `order_open_smoke.py` to validate MT5 ORDER_OPEN sink-guard behavior end-to-end through Guardian.
+By default it sends only reject-path cases and skips live order placement.
+
+```bash
+# Print payloads only
+.venv/bin/python3 tools/ops/order_open_smoke.py --dry-run
+
+# Send reject-path cases (safe by default)
+.venv/bin/python3 tools/ops/order_open_smoke.py \
+  --cases invalid-all missing-instrument invalid-comment
+
+# Include valid-order case (may open a real position)
+.venv/bin/python3 tools/ops/order_open_smoke.py \
+  --cases all --allow-live-order --send-count 5
 ```
 
 ## Finalize report (safe default)

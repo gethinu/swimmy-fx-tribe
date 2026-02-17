@@ -108,6 +108,46 @@ string ToUpperCopy(string value) {
    return out;
 }
 
+bool IsIndexInsideQuotedString(string text, int index) {
+   if(index <= 0) return false;
+
+   bool in_string = false;
+   bool escaped = false;
+   int limit = MathMin(index, StringLen(text));
+   for(int i = 0; i < limit; i++) {
+      int ch = StringGetCharacter(text, i);
+      if(in_string) {
+         if(!escaped && ch == 92) { // \
+            escaped = true;
+            continue;
+         }
+         if(!escaped && ch == 34) { // "
+            in_string = false;
+         }
+         escaped = false;
+      } else {
+         if(ch == 34) { // "
+            in_string = true;
+            escaped = false;
+         }
+      }
+   }
+   return in_string;
+}
+
+int FindPatternOutsideQuotedStrings(string text, string pattern) {
+   if(pattern == "") return -1;
+   int search_from = 0;
+   while(true) {
+      int hit = StringFind(text, pattern, search_from);
+      if(hit < 0) return -1;
+      if(!IsIndexInsideQuotedString(text, hit)) {
+         return hit;
+      }
+      search_from = hit + 1;
+   }
+}
+
 bool FindSexpValue(string sexp, string key, string &value, bool &is_string) {
    string normalized = ToLowerCopy(sexp);
    string key_lc = ToLowerCopy(key);
@@ -142,10 +182,13 @@ bool FindSexpValue(string sexp, string key, string &value, bool &is_string) {
    int start = -1;
    int matched_len = 0;
    for(int i = 0; i < ArraySize(patterns); i++) {
-      start = StringFind(normalized, patterns[i]);
-      if(start >= 0) {
-         matched_len = StringLen(patterns[i]);
-         break;
+      int hit = FindPatternOutsideQuotedStrings(normalized, patterns[i]);
+      if(hit < 0) continue;
+
+      int hit_len = StringLen(patterns[i]);
+      if(start < 0 || hit < start || (hit == start && hit_len > matched_len)) {
+         start = hit;
+         matched_len = hit_len;
       }
    }
    if(start < 0) return false;
