@@ -340,6 +340,12 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       ON strategies(timeframe, direction, symbol, rank)")
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
   (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_backtest_trade_strategy
+      ON backtest_trade_logs(strategy_name)")
+  (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_backtest_trade_strategy_kind
+      ON backtest_trade_logs(strategy_name, oos_kind)")
+  (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
       ON dryrun_slippage_samples(strategy_name, id DESC)")
 
@@ -644,9 +650,53 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
                     (return-from found (cdr cell))))))
             nil)))))))
 
+(defparameter *backtest-strategy-legacy-suffixes*
+  '("-OOS" "_OOS" "-QUAL" "_QUAL" "-RR" "_RR" "_P1" "-P1")
+  "Legacy/generated suffixes that should map to the same base strategy for evidence counting.")
+
+(defun %string-suffix-ci-p (suffix value)
+  "Case-insensitive suffix predicate."
+  (let* ((s (or suffix ""))
+         (v (or value ""))
+         (slen (length s))
+         (vlen (length v)))
+    (and (> slen 0)
+         (> vlen slen)
+         (string-equal s v :start1 0 :end1 slen :start2 (- vlen slen) :end2 vlen))))
+
+(defun %canonicalize-backtest-strategy-name (strategy-name)
+  "Normalize strategy name by stripping one known legacy suffix."
+  (let* ((raw (and strategy-name (format nil "~a" strategy-name)))
+         (name (and raw (string-trim '(#\Space #\Tab #\Newline #\Return) raw))))
+    (when (and name (> (length name) 0))
+      (or (loop for suffix in *backtest-strategy-legacy-suffixes*
+                when (%string-suffix-ci-p suffix name)
+                do (return (subseq name 0 (- (length name) (length suffix)))))
+          name))))
+
+(defun %backtest-strategy-name-aliases (strategy-name)
+  "Return base + known legacy suffix aliases for STRATEGY-NAME."
+  (let ((base (%canonicalize-backtest-strategy-name strategy-name)))
+    (when base
+      (remove-duplicates
+       (cons base
+             (mapcar (lambda (suffix)
+                       (concatenate 'string base suffix))
+                     *backtest-strategy-legacy-suffixes*))
+       :test #'string=))))
+
+(defun %sql-placeholders (n)
+  "Return comma-separated SQL placeholder list with N question marks."
+  (with-output-to-string (s)
+    (loop for i from 0 below n do
+          (when (> i 0) (write-string "," s))
+          (write-char #\? s))))
+
 (defun record-backtest-trades (request-id strategy-name oos-kind trade-list)
   "Persist trade_list entries for backtest/OOS/CPCV."
-  (dolist (entry trade-list)
+  (let ((canonical-name (or (%canonicalize-backtest-strategy-name strategy-name)
+                            strategy-name)))
+    (dolist (entry trade-list)
     (let* ((timestamp (%backtest-entry-val entry '(timestamp t)))
            (pnl (%backtest-entry-val entry '(pnl)))
            (symbol (%backtest-entry-val entry '(symbol)))
@@ -668,7 +718,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
           rank, timeframe, category, regime, oos_kind
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
        request-id
-       strategy-name
+       canonical-name
        timestamp
        pnl
        symbol
@@ -683,28 +733,46 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
        timeframe
        (when category (format nil "~a" category))
        (when regime (format nil "~a" regime))
-       oos-kind))))
+       oos-kind)))))
+
+(defun count-backtest-trades-for-strategy (strategy-name &key oos-kind)
+  "Count persisted backtest trades for STRATEGY-NAME including legacy suffix aliases."
+  (let* ((aliases (%backtest-strategy-name-aliases strategy-name))
+         (alias-count (length aliases)))
+    (if (<= alias-count 0)
+        0
+        (let* ((placeholders (%sql-placeholders alias-count))
+               (base-query (format nil "SELECT count(*) FROM backtest_trade_logs WHERE strategy_name IN (~a)"
+                                   placeholders)))
+          (if oos-kind
+              (or (apply #'execute-single
+                         (concatenate 'string base-query " AND oos_kind = ?")
+                         (append aliases (list oos-kind)))
+                  0)
+              (or (apply #'execute-single base-query aliases) 0))))))
 
 (defun fetch-backtest-trades (strategy-name &key oos-kind)
-  "Fetch persisted backtest trades for STRATEGY-NAME, optionally filtered by OOS-KIND."
-  (if oos-kind
-      (execute-to-list
-       "SELECT request_id, strategy_name, timestamp, pnl, symbol, direction,
-               entry_price, exit_price, sl, tp, volume, hold_time,
-               rank, timeframe, category, regime, oos_kind
-        FROM backtest_trade_logs
-        WHERE strategy_name = ? AND oos_kind = ?
-        ORDER BY timestamp"
-       strategy-name
-       oos-kind)
-      (execute-to-list
-       "SELECT request_id, strategy_name, timestamp, pnl, symbol, direction,
-               entry_price, exit_price, sl, tp, volume, hold_time,
-               rank, timeframe, category, regime, oos_kind
-        FROM backtest_trade_logs
-        WHERE strategy_name = ?
-        ORDER BY timestamp"
-       strategy-name)))
+  "Fetch persisted backtest trades for STRATEGY-NAME including legacy suffix aliases."
+  (let* ((aliases (%backtest-strategy-name-aliases strategy-name))
+         (alias-count (length aliases)))
+    (if (<= alias-count 0)
+        '()
+        (let* ((placeholders (%sql-placeholders alias-count))
+               (base-query
+                 (format nil
+                         "SELECT request_id, strategy_name, timestamp, pnl, symbol, direction,
+                                 entry_price, exit_price, sl, tp, volume, hold_time,
+                                 rank, timeframe, category, regime, oos_kind
+                          FROM backtest_trade_logs
+                          WHERE strategy_name IN (~a)"
+                         placeholders)))
+          (if oos-kind
+              (apply #'execute-to-list
+                     (concatenate 'string base-query " AND oos_kind = ? ORDER BY timestamp")
+                     (append aliases (list oos-kind)))
+              (apply #'execute-to-list
+                     (concatenate 'string base-query " ORDER BY timestamp")
+                     aliases))))))
 
 (defun backtest-rows->trade-list (rows)
   "Convert backtest_trade_logs rows into trade_list alists."

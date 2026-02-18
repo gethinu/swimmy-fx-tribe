@@ -224,9 +224,19 @@ Low trade counts are softly shrunk instead of hard-blocked."
 
 (defun strategy-trade-evidence-count (strategy)
   "Best-effort trade evidence count for staged S-rank gates."
-  (let ((history-count (length (remove-if-not #'numberp (or (strategy-pnl-history strategy) '()))))
-        (trade-count (or (strategy-trades strategy) 0)))
-    (max history-count trade-count)))
+  (let* ((history-count (length (remove-if-not #'numberp (or (strategy-pnl-history strategy) '()))))
+         (trade-count (or (strategy-trades strategy) 0))
+         (local-count (max history-count trade-count))
+         ;; Query persisted backtest evidence only when local evidence is still sparse.
+         (query-threshold (max *a-rank-min-trade-evidence* *s-rank-min-trade-evidence*))
+         (name (strategy-name strategy))
+         (db-count (if (and name
+                            (stringp name)
+                            (< local-count query-threshold)
+                            (fboundp 'count-backtest-trades-for-strategy))
+                       (or (ignore-errors (count-backtest-trades-for-strategy name)) 0)
+                       0)))
+    (max local-count db-count)))
 
 (defun min-trade-evidence-for-rank (rank)
   "Return minimum trade evidence required for rank gate."

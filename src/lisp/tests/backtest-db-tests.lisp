@@ -946,6 +946,67 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-fetch-backtest-trades-includes-legacy-suffix-aliases
+  "fetch-backtest-trades should include legacy suffixed rows for the same base strategy."
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-fetch-legacy-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school:record-backtest-trades
+             "RID-BASE" "STRAT-LEGACY" "BACKTEST"
+             (list (list :timestamp 1 :pnl 1.0 :symbol "USDJPY")))
+            ;; Simulate rows persisted by older naming conventions.
+            (swimmy.school:record-backtest-trades
+             "RID-OOS" "STRAT-LEGACY-OOS" "OOS"
+             (list (list :timestamp 2 :pnl 2.0 :symbol "USDJPY")))
+            (swimmy.school:record-backtest-trades
+             "RID-P1" "STRAT-LEGACY_P1" "BACKTEST"
+             (list (list :timestamp 3 :pnl 3.0 :symbol "USDJPY")))
+            (let ((rows-all (swimmy.school:fetch-backtest-trades "STRAT-LEGACY"))
+                  (rows-oos (swimmy.school:fetch-backtest-trades "STRAT-LEGACY" :oos-kind "OOS")))
+              (assert-equal 3 (length rows-all)
+                            "Expected base + suffixed legacy rows")
+              (assert-equal 1 (length rows-oos)
+                            "Expected OOS filter to still work with aliases")
+              (assert-equal "RID-OOS" (first (first rows-oos))
+                            "Alias OOS row should be retrievable from base name")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-count-backtest-trades-for-strategy-includes-legacy-suffix-aliases
+  "count-backtest-trades-for-strategy should aggregate base + legacy suffixed names."
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-count-legacy-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school:record-backtest-trades
+             "RID-1" "STRAT-COUNT" "BACKTEST"
+             (list (list :timestamp 1 :pnl 1.0 :symbol "USDJPY")))
+            (swimmy.school:record-backtest-trades
+             "RID-2" "STRAT-COUNT-OOS" "OOS"
+             (list (list :timestamp 2 :pnl 2.0 :symbol "USDJPY")))
+            (swimmy.school:record-backtest-trades
+             "RID-3" "STRAT-COUNT_P1" "BACKTEST"
+             (list (list :timestamp 3 :pnl 3.0 :symbol "USDJPY")))
+            ;; Unrelated strategy should not be counted.
+            (swimmy.school:record-backtest-trades
+             "RID-X" "STRAT-COUNT-X" "OOS"
+             (list (list :timestamp 4 :pnl 4.0 :symbol "USDJPY")))
+            (assert-equal 3
+                          (swimmy.school::count-backtest-trades-for-strategy "STRAT-COUNT")
+                          "Expected base + suffix aliases only")
+            (assert-equal 1
+                          (swimmy.school::count-backtest-trades-for-strategy "STRAT-COUNT" :oos-kind "OOS")
+                          "Expected oos-kind filter to remain accurate"))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-pair-strategy-upsert-fetch
   "pair_strategies should upsert and fetch records"
   (let* ((tmp-db (format nil "/tmp/swimmy-pair-strat-~a.db" (get-universal-time))))
