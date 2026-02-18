@@ -35,6 +35,7 @@ DISCORD_WEBHOOK_ENV_KEYS: Tuple[str, ...] = (
     "SWIMMY_DISCORD_APEX",
 )
 JST = timezone(timedelta(hours=9))
+WAIT_ACTIONS = {"SKIP", "BLOCKED", "HOLD"}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -94,6 +95,34 @@ def should_send_session_block_notification(
     return (now_unix - last_sent_unix) >= cooldown_sec
 
 
+def wait_reason_key(payload: Dict[str, Any]) -> str:
+    action = str(payload.get("action", "")).upper()
+    if action not in WAIT_ACTIONS:
+        return ""
+    reason = str(payload.get("reason", "")).lower().strip()
+    if action == "HOLD":
+        reason = "hold"
+    if reason == "":
+        reason = "unknown"
+    return f"{action.lower()}:{reason}"
+
+
+def should_send_wait_summary_notification(
+    *,
+    wait_streak_total: int,
+    last_sent_unix: int,
+    now_unix: int,
+    cooldown_sec: int,
+) -> bool:
+    if wait_streak_total <= 0:
+        return False
+    if cooldown_sec <= 0:
+        return True
+    if last_sent_unix <= 0:
+        return True
+    return (now_unix - last_sent_unix) >= cooldown_sec
+
+
 def _build_discord_headers() -> Dict[str, str]:
     return {
         "Content-Type": "application/json",
@@ -107,19 +136,111 @@ class SessionBlockNotifier:
         self.enabled = enabled and bool(self.webhook_url)
         self.cooldown_sec = max(0, cooldown_sec)
         self._last_sent_unix = 0
+        self.wait_enabled = bool(self.webhook_url)
+        self.wait_cooldown_sec = 1800
+        self._last_wait_sent_unix = 0
+        self._wait_streak_total = 0
+        self._wait_streak_by_reason: Dict[str, int] = {}
+        self._wait_streak_started_unix = 0
 
     @classmethod
     def from_env(cls) -> "SessionBlockNotifier":
-        return cls(
+        out = cls(
             webhook_url=resolve_discord_webhook_from_env(),
             enabled=_env_bool("XAU_AUTOBOT_NOTIFY_SESSION_BLOCK", True),
             cooldown_sec=_env_int("XAU_AUTOBOT_SESSION_NOTIFY_COOLDOWN_SEC", 1800),
         )
+        out.wait_enabled = _env_bool("XAU_AUTOBOT_NOTIFY_WAIT_SUMMARY", True) and bool(out.webhook_url)
+        out.wait_cooldown_sec = _env_int("XAU_AUTOBOT_WAIT_SUMMARY_COOLDOWN_SEC", 1800)
+        return out
+
+    def _record_wait_state(self, payload: Dict[str, Any], *, now_unix: int) -> None:
+        action = str(payload.get("action", "")).upper()
+        if action in WAIT_ACTIONS:
+            key = wait_reason_key(payload)
+            if self._wait_streak_total == 0:
+                self._wait_streak_started_unix = now_unix
+            self._wait_streak_total += 1
+            if key:
+                self._wait_streak_by_reason[key] = self._wait_streak_by_reason.get(key, 0) + 1
+            return
+
+        self._wait_streak_total = 0
+        self._wait_streak_by_reason = {}
+        self._wait_streak_started_unix = 0
+
+    def _notify_wait_summary(self, *, payload: Dict[str, Any], config: "BotConfig", now_unix: int) -> None:
+        if not self.wait_enabled:
+            return
+        if not should_send_wait_summary_notification(
+            wait_streak_total=self._wait_streak_total,
+            last_sent_unix=self._last_wait_sent_unix,
+            now_unix=now_unix,
+            cooldown_sec=self.wait_cooldown_sec,
+        ):
+            return
+        self._last_wait_sent_unix = now_unix
+
+        now_utc = datetime.fromtimestamp(now_unix, tz=timezone.utc)
+        now_jst = now_utc.astimezone(JST)
+        streak_from = (
+            datetime.fromtimestamp(self._wait_streak_started_unix, tz=timezone.utc).astimezone(JST)
+            if self._wait_streak_started_unix > 0
+            else None
+        )
+        reason_counts = ", ".join(
+            f"{key}={count}" for key, count in sorted(self._wait_streak_by_reason.items(), key=lambda kv: kv[0])
+        )
+        if not reason_counts:
+            reason_counts = "none"
+
+        last_reason = str(payload.get("reason", ""))
+        title = "XAU AutoBot Wait Summary"
+        lines = [
+            f"symbol={config.symbol} wait_streak_total={self._wait_streak_total}",
+            f"reason_counts={reason_counts}",
+            f"last_action={payload.get('action')} last_reason={last_reason}",
+            f"jst_now={now_jst:%Y-%m-%d %H:%M}",
+        ]
+        if streak_from is not None:
+            lines.append(f"streak_started_jst={streak_from:%Y-%m-%d %H:%M}")
+        body = json.dumps(
+            {
+                "embeds": [
+                    {
+                        "title": title,
+                        "description": "\n".join(lines),
+                        "color": 15158332,
+                    }
+                ]
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            self.webhook_url,
+            data=body,
+            method="POST",
+            headers=_build_discord_headers(),
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10):
+                return
+        except urllib.error.URLError as exc:
+            print(
+                json.dumps(
+                    {"action": "WARN", "reason": "wait_summary_notify_failed", "error": str(exc)},
+                    ensure_ascii=True,
+                )
+            )
 
     def maybe_notify(self, payload: Dict[str, Any], *, config: "BotConfig", bar_time: int) -> None:
-        if not self.enabled:
+        if not self.webhook_url:
             return
         now_unix = int(bar_time if bar_time > 0 else time.time())
+        self._record_wait_state(payload, now_unix=now_unix)
+        self._notify_wait_summary(payload=payload, config=config, now_unix=now_unix)
+
+        if not self.enabled:
+            return
         if not should_send_session_block_notification(
             payload,
             last_sent_unix=self._last_sent_unix,

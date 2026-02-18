@@ -17,6 +17,8 @@ from tools.xau_autobot import (
     resolve_config_path,
     session_window_jst_label,
     should_send_session_block_notification,
+    should_send_wait_summary_notification,
+    wait_reason_key,
     volatility_filter_pass,
 )
 
@@ -171,6 +173,38 @@ class TestXauAutoBotMath(unittest.TestCase):
         self.assertFalse(
             should_send_session_block_notification(
                 {"action": "HOLD"}, last_sent_unix=0, now_unix=1000, cooldown_sec=3600
+            )
+        )
+
+    def test_wait_reason_key(self):
+        self.assertEqual(wait_reason_key({"action": "SKIP", "reason": "no_new_bar"}), "skip:no_new_bar")
+        self.assertEqual(wait_reason_key({"action": "BLOCKED", "reason": "volatility"}), "blocked:volatility")
+        self.assertEqual(wait_reason_key({"action": "HOLD"}), "hold:hold")
+        self.assertEqual(wait_reason_key({"action": "ORDER"}), "")
+
+    def test_should_send_wait_summary_notification(self):
+        self.assertFalse(
+            should_send_wait_summary_notification(
+                wait_streak_total=0,
+                last_sent_unix=0,
+                now_unix=1000,
+                cooldown_sec=1800,
+            )
+        )
+        self.assertTrue(
+            should_send_wait_summary_notification(
+                wait_streak_total=5,
+                last_sent_unix=0,
+                now_unix=1000,
+                cooldown_sec=1800,
+            )
+        )
+        self.assertFalse(
+            should_send_wait_summary_notification(
+                wait_streak_total=5,
+                last_sent_unix=900,
+                now_unix=1000,
+                cooldown_sec=1800,
             )
         )
 
