@@ -160,6 +160,46 @@ def _knob_alignment_warnings(knobs: dict):
         )
     return warnings
 
+
+def _resolve_heartbeat_interval() -> int:
+    """Heartbeat emission interval in seconds (0 disables heartbeat logs)."""
+    return max(0, _env_int("SWIMMY_BACKTEST_HEARTBEAT_SEC", 60))
+
+
+def _format_age_seconds(now_ts: float, at_ts) -> str:
+    if at_ts is None:
+        return "-"
+    try:
+        delta = float(now_ts) - float(at_ts)
+    except (TypeError, ValueError):
+        return "-"
+    if delta < 0:
+        delta = 0.0
+    return f"{int(delta)}s"
+
+
+def _format_heartbeat_line(
+    *,
+    now_ts: float,
+    inflight_count: int,
+    max_inflight: int,
+    received_count: int,
+    submitted_count: int,
+    completed_count: int,
+    sent_count: int,
+    last_rx_ts=None,
+    last_tx_ts=None,
+) -> str:
+    rx_age = _format_age_seconds(now_ts, last_rx_ts)
+    tx_age = _format_age_seconds(now_ts, last_tx_ts)
+    return (
+        "[BACKTEST-SVC] ❤️ HEARTBEAT "
+        f"inflight={inflight_count}/{max_inflight} "
+        f"recv={received_count} submit={submitted_count} "
+        f"done={completed_count} sent={sent_count} "
+        f"rx_age={rx_age} tx_age={tx_age}"
+    )
+
 # Force unbuffered output for debugging
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -520,6 +560,7 @@ class BacktestService:
         self.worker_count = _resolve_worker_count()
         self.runtime_knobs = _resolve_runtime_knobs(worker_count=self.worker_count)
         self.max_inflight = int(self.runtime_knobs["max_inflight"])
+        self.heartbeat_interval_sec = _resolve_heartbeat_interval()
         self._error_dumped = 0
         self._guardian_missing_logged_at = 0.0
         self._guardian_missing_log_interval = 60.0
@@ -889,6 +930,10 @@ class BacktestService:
             f"MAX_PENDING={self.runtime_knobs['max_pending']} "
             f"| RATE_LIMIT={self.runtime_knobs['rate_limit']}/s"
         )
+        print(
+            f"[BACKTEST-SVC] Heartbeat: every {self.heartbeat_interval_sec}s "
+            "(set SWIMMY_BACKTEST_HEARTBEAT_SEC=0 to disable)"
+        )
         for warning in _knob_alignment_warnings(self.runtime_knobs):
             print(warning)
         print("[BACKTEST-SVC] ═══════════════════════════════════════")
@@ -900,6 +945,37 @@ class BacktestService:
         poller = zmq.Poller()
         poller.register(self.receiver, zmq.POLLIN)
         inflight = set()
+        heartbeat_stats = {
+            "received": 0,
+            "submitted": 0,
+            "completed": 0,
+            "sent": 0,
+            "last_rx_at": None,
+            "last_tx_at": None,
+        }
+        last_heartbeat_at = time.time()
+
+        def _maybe_emit_heartbeat():
+            nonlocal last_heartbeat_at
+            if self.heartbeat_interval_sec <= 0:
+                return
+            now = time.time()
+            if (now - last_heartbeat_at) < self.heartbeat_interval_sec:
+                return
+            print(
+                _format_heartbeat_line(
+                    now_ts=now,
+                    inflight_count=len(inflight),
+                    max_inflight=self.max_inflight,
+                    received_count=int(heartbeat_stats["received"]),
+                    submitted_count=int(heartbeat_stats["submitted"]),
+                    completed_count=int(heartbeat_stats["completed"]),
+                    sent_count=int(heartbeat_stats["sent"]),
+                    last_rx_ts=heartbeat_stats["last_rx_at"],
+                    last_tx_ts=heartbeat_stats["last_tx_at"],
+                )
+            )
+            last_heartbeat_at = now
 
         def _send_result(result):
             if result is None:
@@ -916,11 +992,14 @@ class BacktestService:
                 self.sender.send_string(out)
             else:
                 self.sender.send_string(_sexp_serialize(result))
+            heartbeat_stats["sent"] = int(heartbeat_stats["sent"]) + 1
+            heartbeat_stats["last_tx_at"] = time.time()
 
         def _drain_done_futures():
             done = [f for f in list(inflight) if f.done()]
             for fut in done:
                 inflight.discard(fut)
+                heartbeat_stats["completed"] = int(heartbeat_stats["completed"]) + 1
                 try:
                     _send_result(fut.result())
                 except Exception as e:
@@ -933,6 +1012,7 @@ class BacktestService:
                 while True:
                     try:
                         _drain_done_futures()
+                        _maybe_emit_heartbeat()
                         timeout_ms = 25 if inflight else 250
                         events = dict(poller.poll(timeout_ms))
                         if self.receiver not in events:
@@ -944,6 +1024,8 @@ class BacktestService:
                                 msg = self.receiver.recv_string(flags=zmq.NOBLOCK)
                             except zmq.Again:
                                 break
+                            heartbeat_stats["received"] = int(heartbeat_stats["received"]) + 1
+                            heartbeat_stats["last_rx_at"] = time.time()
                             kind, payload = _parse_incoming_message(msg)
 
                             if dump_incoming:
@@ -955,10 +1037,12 @@ class BacktestService:
 
                             if kind == "sexpr":
                                 inflight.add(executor.submit(self._handle_sexpr, payload))
+                                heartbeat_stats["submitted"] = int(heartbeat_stats["submitted"]) + 1
                                 continue
 
                             if msg.strip():
                                 print("[BACKTEST-SVC] ⚠️ Ignoring non-S-expression message")
+                        _maybe_emit_heartbeat()
                     except Exception as e:
                         print(f"[BACKTEST-SVC] Error in loop: {e}")
         except KeyboardInterrupt:

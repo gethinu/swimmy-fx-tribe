@@ -66,8 +66,21 @@ const int HEARTBEAT_TIMEOUT = 300; // V15.2: Extended from 60s to 300s to avoid 
 const int MAX_COMMANDS_PER_TIMER = 64; // Drain execution queue in bursts to avoid command backlog.
 const int ORDER_REPLY_MAX_ATTEMPTS = 3; // ACK/REJECT delivery is at-least-once with short retries.
 const int ORDER_REPLY_RETRY_DELAY_MS = 20;
+#define ORDER_RESULT_CACHE_SIZE 256 // Recent ORDER_OPEN outcomes for idempotency.
+const int ORDER_RESULT_TTL_SEC = 3600;   // Keep dedupe outcomes for 1 hour.
 datetime g_last_symbol_mismatch_log = 0;
 int g_symbol_mismatch_count = 0;
+
+struct OrderResultRecord {
+   string id;
+   bool success;
+   ulong ticket;
+   string reason;
+   long retcode;
+   datetime timestamp;
+   bool active;
+};
+OrderResultRecord g_order_results[ORDER_RESULT_CACHE_SIZE];
 
 //+------------------------------------------------------------------+
 //| Logging functions with level control                              |
@@ -537,6 +550,9 @@ int OnInit() {
       g_warriors[i].entry_price = 0.0;
       g_warriors[i].active = false;
    }
+   for(int i = 0; i < ORDER_RESULT_CACHE_SIZE; i++) {
+      ClearOrderResultRecord(i);
+   }
    
    g_context = zmq_ctx_new();
    if(g_context == 0) {
@@ -579,6 +595,75 @@ int FindWarriorByMagic(ulong magic) {
       }
    }
    return -1;
+}
+
+void ClearOrderResultRecord(int index) {
+   if(index < 0 || index >= ORDER_RESULT_CACHE_SIZE) return;
+   g_order_results[index].id = "";
+   g_order_results[index].success = false;
+   g_order_results[index].ticket = 0;
+   g_order_results[index].reason = "";
+   g_order_results[index].retcode = 0;
+   g_order_results[index].timestamp = 0;
+   g_order_results[index].active = false;
+}
+
+void PruneOrderResultCache() {
+   datetime now = TimeCurrent();
+   for(int i = 0; i < ORDER_RESULT_CACHE_SIZE; i++) {
+      if(!g_order_results[i].active) continue;
+      if((now - g_order_results[i].timestamp) > ORDER_RESULT_TTL_SEC) {
+         ClearOrderResultRecord(i);
+      }
+   }
+}
+
+int FindOrderResultById(string id) {
+   if(id == "") return -1;
+   PruneOrderResultCache();
+   for(int i = 0; i < ORDER_RESULT_CACHE_SIZE; i++) {
+      if(g_order_results[i].active && g_order_results[i].id == id) {
+         return i;
+      }
+   }
+   return -1;
+}
+
+int FindOrderResultWriteSlot() {
+   int free_slot = -1;
+   int oldest_slot = -1;
+   datetime oldest_ts = 0;
+
+   for(int i = 0; i < ORDER_RESULT_CACHE_SIZE; i++) {
+      if(!g_order_results[i].active) {
+         free_slot = i;
+         break;
+      }
+      if(oldest_slot < 0 || g_order_results[i].timestamp < oldest_ts) {
+         oldest_slot = i;
+         oldest_ts = g_order_results[i].timestamp;
+      }
+   }
+
+   if(free_slot >= 0) return free_slot;
+   if(oldest_slot >= 0) return oldest_slot;
+   return 0;
+}
+
+void RecordOrderResult(string id, bool success, ulong ticket, string reason, long retcode) {
+   if(id == "") return;
+   int slot = FindOrderResultById(id);
+   if(slot < 0) {
+      slot = FindOrderResultWriteSlot();
+   }
+
+   g_order_results[slot].id = id;
+   g_order_results[slot].success = success;
+   g_order_results[slot].ticket = ticket;
+   g_order_results[slot].reason = reason;
+   g_order_results[slot].retcode = retcode;
+   g_order_results[slot].timestamp = TimeCurrent();
+   g_order_results[slot].active = true;
 }
 
 void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic, double entry_price, double exit_price) {
@@ -890,20 +975,40 @@ void ExecuteCommand(string cmd) {
 
    // ORDER_OPEN (Protocol V2)
    if(type == "ORDER_OPEN") {
+      string cmd_id = GetStringFromSexp(cmd, "id");
+      StringTrimLeft(cmd_id);
+      StringTrimRight(cmd_id);
+      if(cmd_id != "") {
+         int dedup_index = FindOrderResultById(cmd_id);
+         if(dedup_index >= 0) {
+            if(g_order_results[dedup_index].success) {
+               LogInfo("🔁 Duplicate ORDER_OPEN id=" + cmd_id + " -> replay ORDER_ACK");
+               SendTradeAckById(cmd_id, g_order_results[dedup_index].ticket);
+            } else {
+               LogInfo("🔁 Duplicate ORDER_OPEN id=" + cmd_id + " -> replay ORDER_REJECT");
+               SendTradeRejectById(cmd_id, g_order_results[dedup_index].reason, g_order_results[dedup_index].retcode);
+            }
+            return;
+         }
+      }
+
       if(cmd_symbol == "ALL") {
          LogError("ORDER_OPEN does not support symbol=ALL");
-         SendTradeReject(cmd, "INVALID_INSTRUMENT", 0);
+         RecordOrderResult(cmd_id, false, 0, "INVALID_INSTRUMENT", 0);
+         SendTradeRejectById(cmd_id, "INVALID_INSTRUMENT", 0);
          return;
       }
       if(cmd_symbol == "") {
          LogError("ORDER_OPEN missing instrument/symbol");
-         SendTradeReject(cmd, "MISSING_INSTRUMENT", 0);
+         RecordOrderResult(cmd_id, false, 0, "MISSING_INSTRUMENT", 0);
+         SendTradeRejectById(cmd_id, "MISSING_INSTRUMENT", 0);
          return;
       }
       string side = ToUpperCopy(GetStringFromSexp(cmd, "side"));
       if(side != "BUY" && side != "SELL") {
          LogError("ORDER_OPEN invalid side: " + side);
-         SendTradeReject(cmd, "INVALID_SIDE", 0);
+         RecordOrderResult(cmd_id, false, 0, "INVALID_SIDE", 0);
+         SendTradeRejectById(cmd_id, "INVALID_SIDE", 0);
          return;
       }
       double sl = GetValueFromSexp(cmd, "sl");
@@ -915,7 +1020,8 @@ void ExecuteCommand(string cmd) {
       string comment_reason = "";
       if(!ValidateOrderComment(comment, comment_reason)) {
          LogError("ORDER_OPEN invalid comment: " + comment + " reason=" + comment_reason);
-         SendTradeReject(cmd, comment_reason, 0);
+         RecordOrderResult(cmd_id, false, 0, comment_reason, 0);
+         SendTradeRejectById(cmd_id, comment_reason, 0);
          return;
       }
       StringTrimLeft(comment);
@@ -926,26 +1032,32 @@ void ExecuteCommand(string cmd) {
       if(side == "BUY") {
          LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
          if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
-            RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
-            SendTradeAck(cmd, g_trade.ResultOrder());
+            ulong ticket = g_trade.ResultOrder();
+            RegisterWarrior(cmd_magic, ticket, _Symbol);
+            RecordOrderResult(cmd_id, true, ticket, "", 0);
+            SendTradeAckById(cmd_id, ticket);
          } else {
             long rc = g_trade.ResultRetcode();
             string reason = g_trade.ResultRetcodeDescription();
             if(reason == "") reason = "BUY_FAILED";
             LogError("ORDER_OPEN BUY failed: " + reason + " (retcode=" + IntegerToString((int)rc) + ")");
-            SendTradeReject(cmd, reason, rc);
+            RecordOrderResult(cmd_id, false, 0, reason, rc);
+            SendTradeRejectById(cmd_id, reason, rc);
          }
       } else if(side == "SELL") {
          LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
          if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
-            RegisterWarrior(cmd_magic, g_trade.ResultOrder(), _Symbol);
-            SendTradeAck(cmd, g_trade.ResultOrder());
+            ulong ticket = g_trade.ResultOrder();
+            RegisterWarrior(cmd_magic, ticket, _Symbol);
+            RecordOrderResult(cmd_id, true, ticket, "", 0);
+            SendTradeAckById(cmd_id, ticket);
          } else {
             long rc = g_trade.ResultRetcode();
             string reason = g_trade.ResultRetcodeDescription();
             if(reason == "") reason = "SELL_FAILED";
             LogError("ORDER_OPEN SELL failed: " + reason + " (retcode=" + IntegerToString((int)rc) + ")");
-            SendTradeReject(cmd, reason, rc);
+            RecordOrderResult(cmd_id, false, 0, reason, rc);
+            SendTradeRejectById(cmd_id, reason, rc);
          }
       }
    }
@@ -1040,9 +1152,8 @@ bool SendPubWithRetry(string sexp, int max_attempts, int retry_delay_ms, int &at
 }
 
 // Helper to send ACK
-void SendTradeAck(string orig_cmd, ulong ticket) {
+void SendTradeAckById(string id, ulong ticket) {
    if(!g_pub_connected) return;
-   string id = GetStringFromSexp(orig_cmd, "id");
    string sexp = StringFormat("((type . \"ORDER_ACK\") (id . \"%s\") (ticket . %I64u) (symbol . \"%s\"))", 
                               EscapeSexpString(id), ticket, EscapeSexpString(_Symbol));
    int attempts_used = 0;
@@ -1058,9 +1169,13 @@ void SendTradeAck(string orig_cmd, ulong ticket) {
    }
 }
 
-void SendTradeReject(string orig_cmd, string reason, long retcode) {
-   if(!g_pub_connected) return;
+void SendTradeAck(string orig_cmd, ulong ticket) {
    string id = GetStringFromSexp(orig_cmd, "id");
+   SendTradeAckById(id, ticket);
+}
+
+void SendTradeRejectById(string id, string reason, long retcode) {
+   if(!g_pub_connected) return;
    string norm_reason = reason;
    if(norm_reason == "") norm_reason = "ORDER_REJECT";
    string sexp = StringFormat("((type . \"ORDER_REJECT\") (id . \"%s\") (symbol . \"%s\") (reason . \"%s\") (retcode . %d))",
@@ -1080,6 +1195,11 @@ void SendTradeReject(string orig_cmd, string reason, long retcode) {
               " retcode=" + IntegerToString((int)retcode) +
               " attempts=" + IntegerToString(attempts_used));
    }
+}
+
+void SendTradeReject(string orig_cmd, string reason, long retcode) {
+   string id = GetStringFromSexp(orig_cmd, "id");
+   SendTradeRejectById(id, reason, retcode);
 }
 
 //+------------------------------------------------------------------+

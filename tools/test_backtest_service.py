@@ -141,6 +141,57 @@ def main():
         else:
             os.environ["SWIMMY_BACKTEST_RATE_LIMIT"] = saved_rate_limit
 
+    # Heartbeat interval and message formatting helpers.
+    saved_heartbeat = os.environ.get("SWIMMY_BACKTEST_HEARTBEAT_SEC")
+    try:
+        os.environ.pop("SWIMMY_BACKTEST_HEARTBEAT_SEC", None)
+        assert svc._resolve_heartbeat_interval() == 60
+
+        os.environ["SWIMMY_BACKTEST_HEARTBEAT_SEC"] = "15"
+        assert svc._resolve_heartbeat_interval() == 15
+
+        os.environ["SWIMMY_BACKTEST_HEARTBEAT_SEC"] = "-2"
+        assert svc._resolve_heartbeat_interval() == 0
+
+        hb = svc._format_heartbeat_line(
+            now_ts=100.0,
+            inflight_count=2,
+            max_inflight=6,
+            received_count=20,
+            submitted_count=18,
+            completed_count=17,
+            sent_count=17,
+            last_rx_ts=98.0,
+            last_tx_ts=99.0,
+        )
+        _assert_in("HEARTBEAT", hb, "heartbeat marker")
+        _assert_in("inflight=2/6", hb, "inflight summary")
+        _assert_in("recv=20", hb, "received summary")
+        _assert_in("submit=18", hb, "submitted summary")
+        _assert_in("done=17", hb, "completed summary")
+        _assert_in("sent=17", hb, "sent summary")
+        _assert_in("rx_age=2s", hb, "rx age summary")
+        _assert_in("tx_age=1s", hb, "tx age summary")
+
+        hb_missing = svc._format_heartbeat_line(
+            now_ts=100.0,
+            inflight_count=0,
+            max_inflight=6,
+            received_count=0,
+            submitted_count=0,
+            completed_count=0,
+            sent_count=0,
+            last_rx_ts=None,
+            last_tx_ts=None,
+        )
+        _assert_in("rx_age=-", hb_missing, "missing rx age")
+        _assert_in("tx_age=-", hb_missing, "missing tx age")
+    finally:
+        if saved_heartbeat is None:
+            os.environ.pop("SWIMMY_BACKTEST_HEARTBEAT_SEC", None)
+        else:
+            os.environ["SWIMMY_BACKTEST_HEARTBEAT_SEC"] = saved_heartbeat
+
     # Inject request_id into guardian result without dotted (result .) form
     sexp = '((type . "BACKTEST_RESULT") (result ((strategy_name . "UT") (sharpe . 0.1))))'
     injected = svc.BacktestService._inject_request_id_into_sexpr(sexp, "RID-LIST")

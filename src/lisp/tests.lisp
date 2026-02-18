@@ -2014,6 +2014,23 @@
     (assert-false (search "action" payload) "Should not contain action key")
     (assert-false (search "symbol" payload) "Should not contain symbol key")))
 
+(deftest test-mt5-bridge-order-open-idempotency-guards
+  "MT5 bridge should dedupe duplicate ORDER_OPEN by id and replay prior outcome."
+  (let* ((path "src/mt5/SwimmyBridge.mq5")
+         (content (with-open-file (in path :direction :input)
+                    (let ((out (make-string-output-stream)))
+                      (loop for line = (read-line in nil nil)
+                            while line do (write-line line out))
+                      (get-output-stream-string out)))))
+    (assert-true (search "FindOrderResultById(cmd_id)" content)
+                 "Expected ORDER_OPEN to check already-processed id before sending trade")
+    (assert-true (search "RecordOrderResult(cmd_id, true" content)
+                 "Expected successful ORDER_OPEN to record idempotent ACK result")
+    (assert-true (search "RecordOrderResult(cmd_id, false" content)
+                 "Expected failed ORDER_OPEN to record idempotent REJECT result")
+    (assert-true (search "Duplicate ORDER_OPEN id=" content)
+                 "Expected explicit duplicate ORDER_OPEN replay log")))
+
 (deftest test-invalid-order-comment-reason-detects-context-gaps
   "invalid-order-comment-reason should reject NIL/format-missing execution comments."
   (assert-equal :missing-comment (swimmy.core::invalid-order-comment-reason nil))
@@ -10365,6 +10382,7 @@
 	                  test-safe-read-used-for-db-rank
 	                  test-req-history-uses-count
 	                  test-order-open-sexp-keys
+	                  test-mt5-bridge-order-open-idempotency-guards
 	                  test-invalid-order-comment-reason-detects-context-gaps
 	                  test-make-order-message-rejects-invalid-comment
 	                  test-safe-order-fails-closed-on-invalid-comment
