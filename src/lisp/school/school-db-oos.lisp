@@ -2,7 +2,7 @@
 
 (in-package :swimmy.school)
 
-(declaim (special *oos-min-sharpe*))
+(declaim (special *oos-min-sharpe* *oos-request-interval*))
 
 (defun enqueue-oos-request (name request-id &key (status "sent") (requested-at (get-universal-time)))
   "Insert or replace an OOS request. Keeps the latest row per strategy name."
@@ -65,15 +65,31 @@
            error-msg (get-universal-time) (rest target))))
 
 (defun cleanup-oos-queue-on-startup ()
-  "Clear all OOS queue rows on startup to avoid stale requests."
+  "Prune stale OOS queue rows on startup while preserving fresh in-flight requests."
   (handler-case
       (progn
         (ignore-errors (init-db))
-        (execute-non-query "DELETE FROM oos_queue")
-        (format t "[OOS] 🧹 Cleared oos_queue on startup.~%")
+        (let* ((now (get-universal-time))
+               (max-age (let ((interval (and (boundp '*oos-request-interval*)
+                                             (numberp *oos-request-interval*)
+                                             *oos-request-interval*)))
+                          ;; Keep a few dispatch windows so valid inflight results survive restarts.
+                          (max 1 (or (and interval (* 3 interval)) 1800))))
+               (cutoff (- now max-age))
+               (before (or (execute-single "SELECT count(*) FROM oos_queue") 0)))
+          (execute-non-query
+           "DELETE FROM oos_queue
+             WHERE status='error'
+                OR requested_at IS NULL
+                OR requested_at < ?"
+           cutoff)
+          (let* ((after (or (execute-single "SELECT count(*) FROM oos_queue") 0))
+                 (removed (max 0 (- before after))))
+            (format t "[OOS] 🧹 Pruned stale oos_queue rows on startup (~d removed, ~d kept, max_age=~ds).~%"
+                    removed after max-age)))
         t)
     (error (e)
-      (format t "[OOS] ⚠️ Failed to clear oos_queue: ~a~%" e)
+      (format t "[OOS] ⚠️ Failed to prune oos_queue on startup: ~a~%" e)
       nil)))
 
 (defun %coerce-int (v)

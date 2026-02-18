@@ -1612,8 +1612,8 @@
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
-(deftest test-oos-queue-clear-on-startup
-  "startup cleanup should clear oos_queue"
+(deftest test-oos-queue-prune-on-startup
+  "startup cleanup should prune stale rows and preserve fresh inflight rows"
   (let* ((tmp-db (format nil "data/memory/test-oos-startup-~a.db" (get-universal-time)))
          (orig-db swimmy.core::*db-path-default*))
     (unwind-protect
@@ -1621,11 +1621,22 @@
            (setf swimmy.core::*db-path-default* tmp-db)
            (swimmy.core:close-db-connection)
            (swimmy.school::init-db)
-           (swimmy.school::enqueue-oos-request "UT-OOS" "RID-X" :status "sent")
+           (let* ((now (get-universal-time))
+                  (fresh-name "UT-OOS-FRESH")
+                  (stale-name "UT-OOS-STALE"))
+             (swimmy.school::enqueue-oos-request stale-name "RID-OLD" :status "sent"
+                                                 :requested-at (- now 9999))
+             (swimmy.school::enqueue-oos-request fresh-name "RID-NEW" :status "sent"
+                                                 :requested-at now))
            (swimmy.school::cleanup-oos-queue-on-startup)
-           (multiple-value-bind (rid _ status) (swimmy.school::lookup-oos-request "UT-OOS")
-             (declare (ignore _ status))
-             (assert-true (null rid) "oos_queue should be cleared")))
+           (multiple-value-bind (fresh-rid _fresh-at _fresh-status)
+               (swimmy.school::lookup-oos-request "UT-OOS-FRESH")
+             (declare (ignore _fresh-at _fresh-status))
+             (assert-equal "RID-NEW" fresh-rid "fresh inflight OOS row should remain"))
+           (multiple-value-bind (stale-rid _stale-at _stale-status)
+               (swimmy.school::lookup-oos-request "UT-OOS-STALE")
+             (declare (ignore _stale-at _stale-status))
+             (assert-true (null stale-rid) "stale OOS row should be pruned")))
       (setf swimmy.core::*db-path-default* orig-db)
       (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
@@ -10365,7 +10376,7 @@
                   test-oos-retry-uses-new-request-id
                   test-maybe-request-oos-throttles-with-memory-fallback
                   test-oos-stale-result-ignored
-                  test-oos-queue-clear-on-startup
+                  test-oos-queue-prune-on-startup
                   test-strategy-to-alist-omits-filter-enabled-when-false
                   test-strategy-to-alist-includes-filter-enabled-when-true
                   test-order-open-uses-instrument-side
