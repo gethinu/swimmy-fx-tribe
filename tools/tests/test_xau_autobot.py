@@ -1,6 +1,7 @@
 import unittest
 import tempfile
 from pathlib import Path
+from datetime import datetime, timezone
 
 from tools.xau_autobot import (
     BotConfig,
@@ -12,7 +13,10 @@ from tools.xau_autobot import (
     ema_last,
     evaluate_once,
     is_session_allowed,
+    next_session_open_utc,
     resolve_config_path,
+    session_window_jst_label,
+    should_send_session_block_notification,
     volatility_filter_pass,
 )
 
@@ -140,6 +144,35 @@ class TestXauAutoBotMath(unittest.TestCase):
         self.assertAlmostEqual(result[0], 0.001, places=8)
         self.assertAlmostEqual(result[1], 0.001, places=8)
         self.assertAlmostEqual(result[2], 0.0, places=8)
+
+    def test_session_window_jst_label(self):
+        self.assertEqual(session_window_jst_label(7, 19), "16:00-04:00 JST")
+        self.assertEqual(session_window_jst_label(0, 23), "09:00-08:00 JST")
+
+    def test_next_session_open_utc(self):
+        now = datetime(2026, 2, 18, 5, 0, 0, tzinfo=timezone.utc)
+        next_open = next_session_open_utc(now, session_start=7)
+        self.assertEqual(next_open.hour, 7)
+        self.assertEqual(next_open.day, 18)
+
+        now_late = datetime(2026, 2, 18, 22, 0, 0, tzinfo=timezone.utc)
+        next_open_late = next_session_open_utc(now_late, session_start=7)
+        self.assertEqual(next_open_late.hour, 7)
+        self.assertEqual(next_open_late.day, 19)
+
+    def test_should_send_session_block_notification(self):
+        payload = {"action": "BLOCKED", "reason": "session"}
+        self.assertTrue(
+            should_send_session_block_notification(payload, last_sent_unix=0, now_unix=1000, cooldown_sec=3600)
+        )
+        self.assertFalse(
+            should_send_session_block_notification(payload, last_sent_unix=900, now_unix=1000, cooldown_sec=3600)
+        )
+        self.assertFalse(
+            should_send_session_block_notification(
+                {"action": "HOLD"}, last_sent_unix=0, now_unix=1000, cooldown_sec=3600
+            )
+        )
 
 
 class TestXauAutoBotConfig(unittest.TestCase):

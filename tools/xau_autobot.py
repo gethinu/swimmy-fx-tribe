@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
-from datetime import datetime, timezone
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,6 +27,148 @@ DEFAULT_CONFIG_CANDIDATES: Tuple[str, ...] = (
     "tools/configs/xau_autobot.tuned_gc_m5.json",
     "tools/configs/xau_autobot.example.json",
 )
+DISCORD_WEBHOOK_ENV_KEYS: Tuple[str, ...] = (
+    "SWIMMY_XAU_NOTIFY_WEBHOOK",
+    "SWIMMY_DISCORD_REPORTS",
+    "SWIMMY_DISCORD_SYSTEM_LOGS",
+    "SWIMMY_DISCORD_ALERTS",
+    "SWIMMY_DISCORD_APEX",
+)
+JST = timezone(timedelta(hours=9))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name, "")
+    if raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "")
+    if raw == "":
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+def resolve_discord_webhook_from_env() -> str:
+    for key in DISCORD_WEBHOOK_ENV_KEYS:
+        val = os.getenv(key, "").strip()
+        if val:
+            return val
+    return ""
+
+
+def session_window_jst_label(session_start_utc: int, session_end_utc: int) -> str:
+    start_jst = (session_start_utc + 9) % 24
+    end_jst = (session_end_utc + 9) % 24
+    return f"{start_jst:02d}:00-{end_jst:02d}:00 JST"
+
+
+def next_session_open_utc(now_utc: datetime, session_start: int) -> datetime:
+    base = now_utc.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    open_today = base.replace(hour=session_start)
+    if now_utc < open_today:
+        return open_today
+    return open_today + timedelta(days=1)
+
+
+def should_send_session_block_notification(
+    payload: Dict[str, Any],
+    *,
+    last_sent_unix: int,
+    now_unix: int,
+    cooldown_sec: int,
+) -> bool:
+    action = str(payload.get("action", "")).upper()
+    reason = str(payload.get("reason", "")).lower()
+    if action != "BLOCKED" or reason != "session":
+        return False
+    if cooldown_sec <= 0:
+        return True
+    if last_sent_unix <= 0:
+        return True
+    return (now_unix - last_sent_unix) >= cooldown_sec
+
+
+def _build_discord_headers() -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; xau-autobot-live/1.0)",
+    }
+
+
+class SessionBlockNotifier:
+    def __init__(self, *, webhook_url: str, enabled: bool, cooldown_sec: int):
+        self.webhook_url = webhook_url.strip()
+        self.enabled = enabled and bool(self.webhook_url)
+        self.cooldown_sec = max(0, cooldown_sec)
+        self._last_sent_unix = 0
+
+    @classmethod
+    def from_env(cls) -> "SessionBlockNotifier":
+        return cls(
+            webhook_url=resolve_discord_webhook_from_env(),
+            enabled=_env_bool("XAU_AUTOBOT_NOTIFY_SESSION_BLOCK", True),
+            cooldown_sec=_env_int("XAU_AUTOBOT_SESSION_NOTIFY_COOLDOWN_SEC", 1800),
+        )
+
+    def maybe_notify(self, payload: Dict[str, Any], *, config: "BotConfig", bar_time: int) -> None:
+        if not self.enabled:
+            return
+        now_unix = int(bar_time if bar_time > 0 else time.time())
+        if not should_send_session_block_notification(
+            payload,
+            last_sent_unix=self._last_sent_unix,
+            now_unix=now_unix,
+            cooldown_sec=self.cooldown_sec,
+        ):
+            return
+        self._last_sent_unix = now_unix
+
+        start_utc = int(payload.get("session_start_hour_utc", config.session_start_hour_utc))
+        end_utc = int(payload.get("session_end_hour_utc", config.session_end_hour_utc))
+        now_utc = datetime.fromtimestamp(now_unix, tz=timezone.utc)
+        now_jst = now_utc.astimezone(JST)
+        next_open_utc = next_session_open_utc(now_utc, session_start=start_utc)
+        next_open_jst = next_open_utc.astimezone(JST)
+        title = "XAU AutoBot Session Blocked"
+        lines = [
+            f"symbol={config.symbol} reason=session",
+            f"utc_now={now_utc:%Y-%m-%d %H:%M} utc_window={start_utc:02d}:00-{end_utc:02d}:00",
+            f"jst_now={now_jst:%Y-%m-%d %H:%M} jst_window={session_window_jst_label(start_utc, end_utc)}",
+            f"next_open_jst={next_open_jst:%Y-%m-%d %H:%M}",
+        ]
+        body = json.dumps(
+            {
+                "embeds": [
+                    {
+                        "title": title,
+                        "description": "\n".join(lines),
+                        "color": 15158332,
+                    }
+                ]
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            self.webhook_url,
+            data=body,
+            method="POST",
+            headers=_build_discord_headers(),
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10):
+                return
+        except urllib.error.URLError as exc:
+            print(
+                json.dumps(
+                    {"action": "WARN", "reason": "session_notify_failed", "error": str(exc)},
+                    ensure_ascii=True,
+                )
+            )
 
 
 def ema_last(values: List[float], period: int) -> float:
@@ -556,6 +701,7 @@ def resolve_config_path(path: str, default_candidates: Tuple[str, ...] = DEFAULT
 
 
 def run(config: BotConfig) -> None:
+    notifier = SessionBlockNotifier.from_env()
     gateway = Mt5Gateway(config)
     gateway.connect()
     try:
@@ -564,6 +710,7 @@ def run(config: BotConfig) -> None:
         while True:
             payload, last_bar_time = evaluate_once(config, gateway, last_bar_time)
             print(json.dumps(payload, ensure_ascii=True))
+            notifier.maybe_notify(payload, config=config, bar_time=last_bar_time)
             cycles += 1
             if config.once:
                 break
