@@ -1,9 +1,51 @@
 # 🏛️ Strategy Lifecycle Implementation Plan V50.6
 
-**更新日:** 2026-02-17 JST
+**更新日:** 2026-02-18 JST
 **バージョン:** V50.6 (Structured Telemetry & Retired Rank)
 
 ---
+
+## 2026-02-18 運用追補: systemdスコープ整合 + Backtest Heartbeat可観測性
+
+- 背景:
+  - `systemctl --user status swimmy-*` は `unit not found` だが、実プロセス/ポートは稼働しているように見える状態が継続。
+  - `logs/backtest.log` の更新停滞により、Backtest停止と誤認しやすい観測ギャップが発生。
+- 原因:
+  - Swimmyコア（`swimmy-brain/school/backtest/guardian/data-keeper/notifier/risk`）は user scope ではなく system scope で稼働。
+  - PID `cgroup` は `/system.slice/swimmy-*.service` を指しており、`journalctl -u`（system）が正本、`journalctl --user` は空でも異常とは限らない。
+
+### 対応
+
+- 診断手順を更新:
+  - `pipeline-diagnosis` スキルを更新し、確認順を `systemctl status`（system）優先へ変更。
+  - `journalctl -u`（system）→ `journalctl --user -u`（user）の順で確認する手順へ変更。
+  - `/proc/<pid>/cgroup` による system/user scope 判定を手順に追加。
+  - 反映先:
+    - `/home/swimmy/swimmy/.codex/skills/pipeline-diagnosis/SKILL.md`
+    - `/home/swimmy/.codex/skills/pipeline-diagnosis/SKILL.md`
+- Backtest可観測性を改善:
+  - `tools/backtest_service.py` に heartbeat を実装（既定60秒、`SWIMMY_BACKTEST_HEARTBEAT_SEC=0` で無効化）。
+  - 出力内容: `inflight/recv/submit/done/sent/rx_age/tx_age`。
+  - テスト追加: `tools/test_backtest_service.py`。
+
+### 検証（2026-02-18 JST）
+
+- テスト:
+  - `python3 tools/test_backtest_service.py` → `ok`
+  - `PYTHONPATH=/home/swimmy/swimmy python3 tools/tests/test_systemd_drift_probe.py` → `OK`
+- サービス:
+  - `sudo -n systemctl restart swimmy-backtest` 実行後、`swimmy-backtest.service` は `active (running)`。
+  - `logs/backtest.log` に heartbeat 行を確認:
+    - 例: `[BACKTEST-SVC] ❤️ HEARTBEAT inflight=0/6 recv=... tx_age=...`
+- パイプライン:
+  - `oos_queue` は空（`[]`）を確認。
+
+### 取り込み状況（2026-02-18 JST）
+
+- master へ反映済み・push済み（`origin/master`）。
+- worktree先行コミット（`d083399`, `c559885`, `85d5297`）は `cherry-pick` 検証で空コミット化（同等内容が master 済み）を確認。
+  - `git cherry -v master feat-polyclaw-safety-weather` → `- d083399 ...`
+  - `git cherry -v master feat-weather-open-meteo` → `- c559885 ...`, `- 85d5297 ...`
 
 ## 2026-02-17 運用追補: Live実行TFコンテキストの fail-close 強化
 
