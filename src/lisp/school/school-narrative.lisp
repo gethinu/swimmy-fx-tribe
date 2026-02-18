@@ -222,22 +222,24 @@ REVERSION : ~a"
   (handler-case
       (let* ((rows (execute-to-list
                     (concatenate 'string
-                                 "SELECT s.name, s.sharpe, s.rank, s.trades, "
-                                 "       COALESCE(bt.trade_count, 0) AS composite_trades "
+                                 "SELECT s.name, s.sharpe, s.rank, s.trades "
                                  "FROM strategies s "
-                                 "LEFT JOIN ("
-                                 "  SELECT strategy_name, COUNT(*) AS trade_count "
-                                 "  FROM backtest_trade_logs "
-                                 "  GROUP BY strategy_name"
-                                 ") bt ON bt.strategy_name = s.name "
                                  "WHERE s.rank IS NULL OR (UPPER(s.rank) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')) ")))
+             (composite-counts (if (fboundp 'fetch-backtest-trade-count-map)
+                                   (or (ignore-errors (fetch-backtest-trade-count-map))
+                                       (make-hash-table :test 'equal))
+                                   (make-hash-table :test 'equal)))
              (sorted (sort (copy-list rows)
                            #'>
                            :key (lambda (row)
-                                  (destructuring-bind (_name sharpe _rank trades composite-trades) row
-                                    (declare (ignore _name _rank))
+                                  (destructuring-bind (name sharpe _rank trades) row
+                                    (declare (ignore _rank))
                                     (let* ((official (if (numberp trades) (round trades) 0))
-                                           (composite (if (numberp composite-trades) (round composite-trades) 0))
+                                           (safe-name (or name ""))
+                                           (canonical-name (if (fboundp '%canonicalize-backtest-strategy-name)
+                                                               (%canonicalize-backtest-strategy-name safe-name)
+                                                               safe-name))
+                                           (composite (or (gethash canonical-name composite-counts 0) 0))
                                            (effective (max official composite)))
                                       (evidence-adjusted-sharpe
                                        (if (numberp sharpe) (float sharpe 1.0) 0.0)
@@ -246,12 +248,15 @@ REVERSION : ~a"
         (with-output-to-string (s)
           (format s "~%🌟 **Top Candidates:**~%")
           (dolist (row top)
-            (destructuring-bind (name sharpe rank trades composite-trades) row
+            (destructuring-bind (name sharpe rank trades) row
               (let* ((safe-name (or name ""))
                      (label (%format-db-rank-label rank))
                      (raw-sharpe (if (numberp sharpe) (float sharpe 1.0) 0.0))
                      (official-trades (if (numberp trades) (round trades) 0))
-                     (composite-count (if (numberp composite-trades) (round composite-trades) 0))
+                     (canonical-name (if (fboundp '%canonicalize-backtest-strategy-name)
+                                         (%canonicalize-backtest-strategy-name safe-name)
+                                         safe-name))
+                     (composite-count (or (gethash canonical-name composite-counts 0) 0))
                      (effective-trades (max official-trades composite-count))
                      (adjusted-sharpe (evidence-adjusted-sharpe raw-sharpe effective-trades)))
                 (format s "- `~a` (S=~,2f (raw ~,2f), ~a, TE official/composite=~d/~d)~%"

@@ -70,6 +70,9 @@
 (defparameter *enforce-s-rank-criteria-conformance* t
   "When T, rank evaluation demotes existing S strategies that no longer satisfy S criteria.")
 
+(defvar *trade-evidence-count-cache* nil
+  "Optional preloaded hash-table of canonical strategy-name -> persisted backtest trade count.")
+
 ;;; ---------------------------------------------------------------------------
 ;;; COMPOSITE SCORE (Multi-Metric)
 ;;; ---------------------------------------------------------------------------
@@ -230,12 +233,31 @@ Low trade counts are softly shrunk instead of hard-blocked."
          ;; Query persisted backtest evidence only when local evidence is still sparse.
          (query-threshold (max *a-rank-min-trade-evidence* *s-rank-min-trade-evidence*))
          (name (strategy-name strategy))
-         (db-count (if (and name
-                            (stringp name)
-                            (< local-count query-threshold)
-                            (fboundp 'count-backtest-trades-for-strategy))
-                       (or (ignore-errors (count-backtest-trades-for-strategy name)) 0)
-                       0)))
+         (canonical-name (if (and name (stringp name) (fboundp '%canonicalize-backtest-strategy-name))
+                             (%canonicalize-backtest-strategy-name name)
+                             name))
+         (db-count
+           (if (and canonical-name
+                    (stringp canonical-name)
+                    (< local-count query-threshold))
+               (cond
+                 ((hash-table-p *trade-evidence-count-cache*)
+                  (or (gethash canonical-name *trade-evidence-count-cache* 0) 0))
+                 ((fboundp 'count-backtest-trades-for-strategy)
+                  (handler-case
+                      (or (count-backtest-trades-for-strategy canonical-name) 0)
+                    (error (e)
+                      (when (fboundp 'swimmy.core::emit-telemetry-event)
+                        (swimmy.core::emit-telemetry-event
+                         "rank.trade_evidence_db_error"
+                         :service "school"
+                         :severity :warn
+                         :data (list :strategy canonical-name
+                                     :local-count local-count
+                                     :error (format nil "~a" e))))
+                      0)))
+                 (t 0))
+               0)))
     (max local-count db-count)))
 
 (defun min-trade-evidence-for-rank (rank)
@@ -951,48 +973,61 @@ Returns plist summary:
    3. Cull B-RANK if threshold reached (Dynamic Categories)
    4. Validate A-RANK via CPCV (→ S or back)
    V49.3: Added missing A-Rank evaluation loop."
-  (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
-  (reset-oos-failure-stats)
-  ;; Normalize legacy OOS defaults so validation is re-triggered
-  (normalize-oos-defaults)
+  (let ((*trade-evidence-count-cache*
+          (if (fboundp 'fetch-backtest-trade-count-map)
+              (handler-case
+                  (fetch-backtest-trade-count-map)
+                (error (e)
+                  (when (fboundp 'swimmy.core::emit-telemetry-event)
+                    (swimmy.core::emit-telemetry-event
+                     "rank.trade_evidence_cache_error"
+                     :service "school"
+                     :severity :warn
+                     :data (list :error (format nil "~a" e))))
+                  nil))
+              nil)))
+    (format t "[RANK] 🏛️ Starting Rank Evaluation Cycle (V49.3 Fixed)~%")
+    (reset-oos-failure-stats)
+    ;; Normalize legacy OOS defaults so validation is re-triggered
+    (normalize-oos-defaults)
 
-  ;; 0. Enforce trade-evidence floors on existing A/S ranks
-  (when *enforce-rank-trade-evidence-floors*
-    (enforce-rank-trade-evidence-floors))
+    ;; 0. Enforce trade-evidence floors on existing A/S ranks
+    (when *enforce-rank-trade-evidence-floors*
+      (enforce-rank-trade-evidence-floors))
 
-  ;; 0.5 Enforce S-rank criteria conformance on existing S ranks
-  (when *enforce-s-rank-criteria-conformance*
-    (enforce-s-rank-criteria-conformance))
-  
-  ;; 1. Culling
-  (run-b-rank-culling)
-  
-  ;; 2. A-Rank Promotion (V49.3: THE MISSING LINK)
-  (let ((a-ranks (get-strategies-by-rank :A)))
-    (format t "[RANK] 🧐 Evaluating ~d A-Rank strategies for promotion...~%" (length a-ranks))
-    (dolist (s a-ranks)
-      (evaluate-a-rank-strategy s)))
-  
-  ;; Report status
-  (let ((b-count (length (get-strategies-by-rank :B)))
-        (a-count (length (get-strategies-by-rank :A)))
-        (s-count (length (get-strategies-by-rank :S)))
-        (g-count (length (get-strategies-by-rank :graveyard)))
-        (l-count (length (get-strategies-by-rank :legend))))
+    ;; 0.5 Enforce S-rank criteria conformance on existing S ranks
+    (when *enforce-s-rank-criteria-conformance*
+      (enforce-s-rank-criteria-conformance))
     
-    (format t "[RANK] 📊 Status: B=~d A=~d S=~d Graveyard=~d Legend=~d~%"
-            b-count a-count s-count g-count l-count)
-            
-    ;; Audit Alert
-    (when (> b-count 5000)
-      (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))
+    ;; 1. Culling
+    (run-b-rank-culling)
     
-    ;; 4. Global Portfolio Construction (The Draft) - Moved to school-portfolio.lisp
-    ;; NOTE: This draft can be CPU/DB heavy (N^2 correlation checks). During startup mode we
-    ;; defer it so Brain can finish initialization and bind ZMQ ports quickly.
-    (if (and (boundp '*startup-mode*) *startup-mode*)
-        (format t "[PORTFOLIO] ⏳ Startup mode: deferring global draft.~%")
-        (construct-global-portfolio))))
+    ;; 2. A-Rank Promotion (V49.3: THE MISSING LINK)
+    (let ((a-ranks (get-strategies-by-rank :A)))
+      (format t "[RANK] 🧐 Evaluating ~d A-Rank strategies for promotion...~%" (length a-ranks))
+      (dolist (s a-ranks)
+        (evaluate-a-rank-strategy s)))
+    
+    ;; Report status
+    (let ((b-count (length (get-strategies-by-rank :B)))
+          (a-count (length (get-strategies-by-rank :A)))
+          (s-count (length (get-strategies-by-rank :S)))
+          (g-count (length (get-strategies-by-rank :graveyard)))
+          (l-count (length (get-strategies-by-rank :legend))))
+      
+      (format t "[RANK] 📊 Status: B=~d A=~d S=~d Graveyard=~d Legend=~d~%"
+              b-count a-count s-count g-count l-count)
+              
+      ;; Audit Alert
+      (when (> b-count 5000)
+        (format t "[RANK] ⚠️ B-Rank bloat detected (~d). Check culling logic.~%" b-count))
+      
+      ;; 4. Global Portfolio Construction (The Draft) - Moved to school-portfolio.lisp
+      ;; NOTE: This draft can be CPU/DB heavy (N^2 correlation checks). During startup mode we
+      ;; defer it so Brain can finish initialization and bind ZMQ ports quickly.
+      (if (and (boundp '*startup-mode*) *startup-mode*)
+          (format t "[PORTFOLIO] ⏳ Startup mode: deferring global draft.~%")
+          (construct-global-portfolio)))))
 
 
 ;;; ---------------------------------------------------------------------------

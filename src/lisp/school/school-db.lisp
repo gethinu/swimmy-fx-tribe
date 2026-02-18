@@ -345,6 +345,13 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_backtest_trade_strategy_kind
       ON backtest_trade_logs(strategy_name, oos_kind)")
+  (handler-case
+      (execute-non-query
+       "CREATE UNIQUE INDEX IF NOT EXISTS idx_backtest_trade_dedupe
+          ON backtest_trade_logs(request_id, strategy_name, timestamp, oos_kind)")
+    (error (e)
+      ;; If existing data has duplicates, keep runtime alive and rely on INSERT guard.
+      (format t "[DB] ⚠️ backtest_trade_logs dedupe index skipped: ~a~%" e)))
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
       ON dryrun_slippage_samples(strategy_name, id DESC)")
@@ -694,9 +701,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
 
 (defun record-backtest-trades (request-id strategy-name oos-kind trade-list)
   "Persist trade_list entries for backtest/OOS/CPCV."
-  (let ((canonical-name (or (%canonicalize-backtest-strategy-name strategy-name)
-                            strategy-name)))
-    (dolist (entry trade-list)
+  (dolist (entry trade-list)
     (let* ((timestamp (%backtest-entry-val entry '(timestamp t)))
            (pnl (%backtest-entry-val entry '(pnl)))
            (symbol (%backtest-entry-val entry '(symbol)))
@@ -711,14 +716,15 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
            (timeframe (%backtest-entry-val entry '(timeframe tf)))
            (category (%backtest-entry-val entry '(category)))
            (regime (%backtest-entry-val entry '(regime))))
+      ;; Guard against duplicate replay of the same trade row.
       (execute-non-query
-       "INSERT INTO backtest_trade_logs (
+       "INSERT OR IGNORE INTO backtest_trade_logs (
           request_id, strategy_name, timestamp, pnl, symbol, direction,
           entry_price, exit_price, sl, tp, volume, hold_time,
           rank, timeframe, category, regime, oos_kind
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
        request-id
-       canonical-name
+       strategy-name
        timestamp
        pnl
        symbol
@@ -733,7 +739,31 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
        timeframe
        (when category (format nil "~a" category))
        (when regime (format nil "~a" regime))
-       oos-kind)))))
+       oos-kind))))
+
+(defun fetch-backtest-trade-count-map (&key oos-kind)
+  "Return hash-table of canonical strategy-name -> persisted trade count.
+Counts aggregate legacy suffix aliases to the same canonical key."
+  (let* ((rows (if oos-kind
+                   (execute-to-list
+                    "SELECT strategy_name, COUNT(*)
+                     FROM backtest_trade_logs
+                     WHERE oos_kind = ?
+                     GROUP BY strategy_name"
+                    oos-kind)
+                   (execute-to-list
+                    "SELECT strategy_name, COUNT(*)
+                     FROM backtest_trade_logs
+                     GROUP BY strategy_name")))
+         (counts (make-hash-table :test 'equal)))
+    (dolist (row rows)
+      (destructuring-bind (strategy-name count) row
+        (let* ((base (or (%canonicalize-backtest-strategy-name strategy-name)
+                         strategy-name))
+               (n (if (numberp count) (round count) 0)))
+          (when base
+            (incf (gethash base counts 0) n)))))
+    counts))
 
 (defun count-backtest-trades-for-strategy (strategy-name &key oos-kind)
   "Count persisted backtest trades for STRATEGY-NAME including legacy suffix aliases."

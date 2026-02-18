@@ -1007,6 +1007,127 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-record-backtest-trades-is-idempotent-per-request-ts-kind
+  "record-backtest-trades should not duplicate identical request_id/strategy/timestamp/oos_kind rows."
+  (let* ((tmp-db (format nil "/tmp/swimmy-bt-idempotent-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((trades (list (list :timestamp 1700000001 :pnl 1.0 :symbol "USDJPY"))))
+              (swimmy.school:record-backtest-trades "RID-IDEM" "STRAT-IDEM" "OOS" trades)
+              (swimmy.school:record-backtest-trades "RID-IDEM" "STRAT-IDEM" "OOS" trades))
+            (assert-equal 1
+                          (swimmy.school::execute-single
+                           "SELECT count(*) FROM backtest_trade_logs
+                            WHERE request_id = ? AND strategy_name = ? AND timestamp = ? AND oos_kind = ?"
+                           "RID-IDEM" "STRAT-IDEM" 1700000001 "OOS")
+                          "Expected duplicate insert to be ignored"))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-top-candidates-composite-includes-legacy-suffix-aliases
+  "Top candidates composite evidence should include legacy suffixed backtest rows."
+  (let* ((tmp-db (format nil "/tmp/swimmy-topcand-legacy-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-topcand-legacy-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (swimmy.persistence:init-library)
+             (swimmy.school::upsert-strategy
+              (make-strategy :name "TC-LEGACY-COMP"
+                             :sharpe 5.0
+                             :trades 10
+                             :symbol "USDJPY"
+                             :rank :B))
+             (swimmy.school::upsert-strategy
+              (make-strategy :name "TC-LEGACY-OFFICIAL"
+                             :sharpe 4.8
+                             :trades 100
+                             :symbol "USDJPY"
+                             :rank :B))
+             ;; Inject legacy suffixed rows directly to simulate historical data.
+             (loop for i from 1 to 120 do
+                   (swimmy.school::execute-non-query
+                    "INSERT INTO backtest_trade_logs
+                       (request_id, strategy_name, timestamp, pnl, symbol, oos_kind)
+                     VALUES (?, ?, ?, ?, ?, ?)"
+                    "RID-TC-LEGACY"
+                    "TC-LEGACY-COMP-OOS"
+                    (+ 1700000000 i)
+                    1.0
+                    "USDJPY"
+                    "OOS"))
+             (let* ((snippet (swimmy.school::build-top-candidates-snippet-from-db))
+                    (pos-comp (search "TC-LEGACY-COMP" snippet))
+                    (pos-official (search "TC-LEGACY-OFFICIAL" snippet)))
+               (assert-not-nil pos-comp "Legacy composite candidate should appear")
+               (assert-not-nil pos-official "Official candidate should appear")
+               (assert-true (search "TE official/composite=10/120" snippet)
+                            "Expected legacy-suffix rows to be counted in composite evidence")
+               (assert-true (< pos-comp pos-official)
+                            "Composite-adjusted ordering should prioritize TC-LEGACY-COMP")))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-strategy-trade-evidence-count-uses-preloaded-cache
+  "strategy-trade-evidence-count should use preloaded cache and avoid per-strategy DB query."
+  (let* ((strategy (make-strategy :name "TC-CACHE-EVIDENCE" :trades 10))
+         (cache (make-hash-table :test 'equal))
+         (calls 0)
+         (orig-counter (symbol-function 'swimmy.school::count-backtest-trades-for-strategy)))
+    (setf (gethash "TC-CACHE-EVIDENCE" cache) 123)
+    (unwind-protect
+         (progn
+      (setf (symbol-function 'swimmy.school::count-backtest-trades-for-strategy)
+                 (lambda (&rest _args)
+                   (declare (ignore _args))
+                   (incf calls)
+                   77))
+           (let ((swimmy.school::*trade-evidence-count-cache* cache))
+             (assert-equal 123
+                           (swimmy.school::strategy-trade-evidence-count strategy)
+                           "Expected preloaded cache to override per-strategy DB lookup")
+             (assert-equal 0 calls
+                           "Expected no per-strategy DB counter call when cache is present"))))
+      (setf (symbol-function 'swimmy.school::count-backtest-trades-for-strategy) orig-counter)))
+
+(deftest test-strategy-trade-evidence-count-emits-telemetry-on-db-error
+  "strategy-trade-evidence-count should emit telemetry when DB fallback query fails."
+  (let* ((strategy (make-strategy :name "TC-EVIDENCE-ERR" :trades 8))
+         (events nil)
+         (orig-counter (symbol-function 'swimmy.school::count-backtest-trades-for-strategy))
+         (orig-emit (and (fboundp 'swimmy.core::emit-telemetry-event)
+                         (symbol-function 'swimmy.core::emit-telemetry-event))))
+    (unwind-protect
+         (progn
+           (setf (symbol-function 'swimmy.school::count-backtest-trades-for-strategy)
+                 (lambda (&rest _args)
+                   (declare (ignore _args))
+                   (error "db-failed")))
+           (when orig-emit
+             (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                   (lambda (event-type &key service severity correlation-id data)
+                     (declare (ignore service severity correlation-id))
+                     (push (list event-type data) events))))
+           (let ((swimmy.school::*trade-evidence-count-cache* nil))
+             (assert-equal 8
+                           (swimmy.school::strategy-trade-evidence-count strategy)
+                           "Expected local evidence fallback on DB error")
+             (assert-true (find-if (lambda (evt) (string= (first evt) "rank.trade_evidence_db_error"))
+                                   events)
+                          "Expected telemetry event when DB evidence query fails")))
+      (setf (symbol-function 'swimmy.school::count-backtest-trades-for-strategy) orig-counter)
+      (when orig-emit
+        (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)))))
+
 (deftest test-pair-strategy-upsert-fetch
   "pair_strategies should upsert and fetch records"
   (let* ((tmp-db (format nil "/tmp/swimmy-pair-strat-~a.db" (get-universal-time))))
