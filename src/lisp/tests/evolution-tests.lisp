@@ -95,6 +95,125 @@
       (when (probe-file gy-path) (ignore-errors (delete-file gy-path)))
       (when (probe-file retired-path) (ignore-errors (delete-file retired-path))))))
 
+(deftest test-breed-strategies-timeframe-crossover-can-use-parent2
+  "Breeder should allow TF crossover so child can inherit parent2 timeframe."
+  (let* ((p1 (swimmy.school:make-strategy
+              :name "UT-TF-XOVER-P1"
+              :category :trend
+              :timeframe 60
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 10
+              :sl 0.8
+              :tp 1.6
+              :indicators '((sma 20))
+              :entry '(> close sma-20)
+              :exit '(< close sma-20)))
+         (p2 (swimmy.school:make-strategy
+              :name "UT-TF-XOVER-P2"
+              :category :trend
+              :timeframe 240
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 9
+              :sl 0.9
+              :tp 1.8
+              :indicators '((sma 50))
+              :entry '(> close sma-50)
+              :exit '(< close sma-50)))
+         (crossover-rate-sym 'swimmy.school::*breeder-timeframe-crossover-rate*)
+         (mutation-rate-sym 'swimmy.school::*breeder-timeframe-mutation-rate*)
+         (has-crossover-rate (boundp crossover-rate-sym))
+         (has-mutation-rate (boundp mutation-rate-sym))
+         (orig-crossover-rate (and has-crossover-rate (symbol-value crossover-rate-sym)))
+         (orig-mutation-rate (and has-mutation-rate (symbol-value mutation-rate-sym)))
+         (orig-q (and (fboundp 'swimmy.school::select-sltp-with-q)
+                      (symbol-function 'swimmy.school::select-sltp-with-q))))
+    (unwind-protect
+        (progn
+          (when has-crossover-rate
+            (setf (symbol-value crossover-rate-sym) 1.0))
+          (when has-mutation-rate
+            (setf (symbol-value mutation-rate-sym) 0.0))
+          (when (fboundp 'swimmy.school::select-sltp-with-q)
+            (setf (symbol-function 'swimmy.school::select-sltp-with-q)
+                  (lambda (_tf _dir _sym fallback-sl fallback-tp)
+                    (declare (ignore _tf _dir _sym))
+                    (values fallback-sl fallback-tp))))
+          (let ((child (swimmy.school::breed-strategies p1 p2)))
+            (assert-equal 240
+                          (swimmy.school:strategy-timeframe child)
+                          "Expected child timeframe to crossover from parent2")))
+      (when has-crossover-rate
+        (setf (symbol-value crossover-rate-sym) orig-crossover-rate))
+      (when has-mutation-rate
+        (setf (symbol-value mutation-rate-sym) orig-mutation-rate))
+      (when orig-q
+        (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-q)))))
+
+(deftest test-breed-strategies-timeframe-mutation-diversifies-same-parent-tf
+  "Breeder TF mutation should diversify child timeframe even when both parents share same TF."
+  (let* ((p1 (swimmy.school:make-strategy
+              :name "UT-TF-MUT-P1"
+              :category :trend
+              :timeframe 60
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 10
+              :sl 0.8
+              :tp 1.6
+              :indicators '((sma 20))
+              :entry '(> close sma-20)
+              :exit '(< close sma-20)))
+         (p2 (swimmy.school:make-strategy
+              :name "UT-TF-MUT-P2"
+              :category :trend
+              :timeframe 60
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 9
+              :sl 0.9
+              :tp 1.8
+              :indicators '((sma 50))
+              :entry '(> close sma-50)
+              :exit '(< close sma-50)))
+         (crossover-rate-sym 'swimmy.school::*breeder-timeframe-crossover-rate*)
+         (mutation-rate-sym 'swimmy.school::*breeder-timeframe-mutation-rate*)
+         (has-crossover-rate (boundp crossover-rate-sym))
+         (has-mutation-rate (boundp mutation-rate-sym))
+         (orig-crossover-rate (and has-crossover-rate (symbol-value crossover-rate-sym)))
+         (orig-mutation-rate (and has-mutation-rate (symbol-value mutation-rate-sym)))
+         (orig-options (and (fboundp 'swimmy.school::get-tf-mutation-options)
+                            (symbol-function 'swimmy.school::get-tf-mutation-options)))
+         (orig-q (and (fboundp 'swimmy.school::select-sltp-with-q)
+                      (symbol-function 'swimmy.school::select-sltp-with-q))))
+    (unwind-protect
+        (progn
+          (when has-crossover-rate
+            (setf (symbol-value crossover-rate-sym) 0.0))
+          (when has-mutation-rate
+            (setf (symbol-value mutation-rate-sym) 1.0))
+          (when (fboundp 'swimmy.school::get-tf-mutation-options)
+            (setf (symbol-function 'swimmy.school::get-tf-mutation-options)
+                  (lambda () '(60 240))))
+          (when (fboundp 'swimmy.school::select-sltp-with-q)
+            (setf (symbol-function 'swimmy.school::select-sltp-with-q)
+                  (lambda (_tf _dir _sym fallback-sl fallback-tp)
+                    (declare (ignore _tf _dir _sym))
+                    (values fallback-sl fallback-tp))))
+          (let ((child (swimmy.school::breed-strategies p1 p2)))
+            (assert-equal 240
+                          (swimmy.school:strategy-timeframe child)
+                          "Expected TF mutation to move child away from shared parent TF")))
+      (when has-crossover-rate
+        (setf (symbol-value crossover-rate-sym) orig-crossover-rate))
+      (when has-mutation-rate
+        (setf (symbol-value mutation-rate-sym) orig-mutation-rate))
+      (when orig-options
+        (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options))
+      (when orig-q
+        (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-q)))))
+
 (deftest test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
   "PF/WR mutation bias should adjust RR toward better parent profile when parents underperform."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-P1"

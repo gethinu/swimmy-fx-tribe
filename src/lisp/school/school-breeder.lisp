@@ -200,6 +200,12 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "Dynamically scoped per-pair min-distance override for correlation gate.")
 (defparameter *breeder-name-seq* 0
   "Monotonic per-process sequence for collision-resistant child naming.")
+(defparameter *breeder-timeframe-crossover-rate* 0.5
+  "Chance (0..1) to inherit parent2 timeframe when parents differ.")
+(defparameter *breeder-timeframe-mutation-rate* 0.15
+  "Low-frequency chance (0..1) to mutate child timeframe after crossover.")
+(defparameter *breeder-timeframe-fallback-minutes* 60
+  "Fallback timeframe (minutes) when parent timeframe is missing/invalid.")
 
 (defun breeder-name-entropy ()
   "Generate high-entropy suffix for child strategy names."
@@ -207,6 +213,61 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
 
 (defun clamp-breeder-float (value low high)
   (max low (min high value)))
+
+(defun normalize-breeder-timeframe (tf &optional (fallback *breeder-timeframe-fallback-minutes*))
+  "Normalize timeframe to positive minute integer."
+  (let* ((resolved (cond
+                     ((and (fboundp 'get-tf-minutes))
+                      (ignore-errors (get-tf-minutes tf)))
+                     ((numberp tf) tf)
+                     (t nil)))
+         (candidate (if (and (numberp resolved) (> resolved 0))
+                        resolved
+                        fallback)))
+    (max 1 (round (or candidate 60)))))
+
+(defun breeder-timeframe-mutation-options ()
+  "Return bounded TF mutation candidates in minutes."
+  (let ((raw-options (if (fboundp 'get-tf-mutation-options)
+                         (ignore-errors (get-tf-mutation-options))
+                         nil)))
+    (remove-duplicates
+     (mapcar #'normalize-breeder-timeframe
+             (or (and (listp raw-options) raw-options)
+                 '(5 15 30 60 240 1440 10080 43200)))
+     :test #'eql)))
+
+(defun select-breeder-child-timeframe (parent1 parent2)
+  "Select child timeframe with crossover + low-frequency mutation for TF diversity."
+  (let* ((p1-tf (normalize-breeder-timeframe (strategy-timeframe parent1)))
+         (p2-tf (normalize-breeder-timeframe (strategy-timeframe parent2) p1-tf))
+         (crossover-rate (clamp-breeder-float
+                          (float (or *breeder-timeframe-crossover-rate* 0.0))
+                          0.0
+                          1.0))
+         (mutation-rate (clamp-breeder-float
+                         (float (or *breeder-timeframe-mutation-rate* 0.0))
+                         0.0
+                         1.0))
+         (crossover-p (and (/= p1-tf p2-tf)
+                           (< (random 1.0) crossover-rate)))
+         (base-tf (if crossover-p p2-tf p1-tf))
+         (mutation-p (< (random 1.0) mutation-rate))
+         (pool (remove-duplicates
+                (append (list p1-tf p2-tf)
+                        (breeder-timeframe-mutation-options))
+                :test #'eql))
+         (mutation-candidates (remove base-tf pool :test #'eql)))
+    (cond
+      ((and mutation-p mutation-candidates)
+       (values (nth (random (length mutation-candidates)) mutation-candidates)
+               :mutation
+               p1-tf
+               p2-tf))
+      (crossover-p
+       (values base-tf :crossover p1-tf p2-tf))
+      (t
+       (values base-tf :inherit p1-tf p2-tf)))))
 
 (defun strategy-a-or-above-p (strategy)
   "Return T when STRATEGY is rank A/S/LEGEND (or higher)."
@@ -700,15 +761,19 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                   (if (fboundp 'can-breed-p)
                       (can-breed-p s)
                       t)))
+           (regime-class (s)
+             (if (fboundp 'strategy-regime-class)
+                 (strategy-regime-class s)
+                 (strategy-category s)))
            (match-exact-p (s)
-             (and (eq (strategy-category s) category)
+             (and (eq (regime-class s) category)
                   (equal (or (strategy-timeframe s) timeframe) timeframe)
                   (string= (or (strategy-symbol s) symbol) symbol)))
            (match-symbol-p (s)
-             (and (eq (strategy-category s) category)
+             (and (eq (regime-class s) category)
                   (string= (or (strategy-symbol s) symbol) symbol)))
            (match-category-p (s)
-             (eq (strategy-category s) category)))
+             (eq (regime-class s) category)))
     (or (find-if (lambda (s) (and (usable-p s) (match-exact-p s))) *strategy-knowledge-base*)
         (find-if (lambda (s) (and (usable-p s) (match-symbol-p s))) *strategy-knowledge-base*)
         (find-if (lambda (s) (and (usable-p s) (match-category-p s))) *strategy-knowledge-base*))))
@@ -775,7 +840,7 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                              (random 1000)
                              next-gen
                              (breeder-name-entropy)))
-         (tf (strategy-timeframe parent1))
+         (tf (normalize-breeder-timeframe (strategy-timeframe parent1)))
          (dir (or (strategy-direction parent1) :BOTH))
          (sym (or (strategy-symbol parent1) "USDJPY"))
          (logic-anchor-parent (select-logic-anchor-parent parent1 parent2))
@@ -792,10 +857,13 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
          ;; V49.0: Aggressive Mutation (0.1 -> 0.3)
          (initial-sl (mutate-value (/ (+ (strategy-sl parent1) (strategy-sl parent2)) 2.0) 0.3))
          (initial-tp (mutate-value (/ (+ (strategy-tp parent1) (strategy-tp parent2)) 2.0) 0.3))
+         (parent-regime-class (if (fboundp 'strategy-regime-class)
+                                  (strategy-regime-class parent1)
+                                  (strategy-category parent1)))
          ;; V49.5: Smart Mutation for Indicators (Regime-Aware)
          (child-is (mutate-indicators-with-library 
                     (mutate-indicator-params (crossover-indicators parent1 parent2))
-                    (strategy-category parent1)))
+                    parent-regime-class))
          ;; V47.5: Get avoid regions from graveyard analysis
          (avoid-regions (when (fboundp 'analyze-graveyard-for-avoidance)
                           (analyze-graveyard-for-avoidance)))
@@ -803,12 +871,19 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
          (child-sl initial-sl)
          (child-tp initial-tp))
 
+    (multiple-value-bind (selected-tf tf-mode p1-tf p2-tf)
+        (select-breeder-child-timeframe parent1 parent2)
+      (setf tf selected-tf)
+      (when (member tf-mode '(:crossover :mutation) :test #'eq)
+        (format t "[BREEDER] 🕰️ TF ~a: ~a -> ~a (P1=~a P2=~a)~%"
+                tf-mode p1-tf tf p1-tf p2-tf)))
+
     ;; Recover missing logic genes from a compatible donor when both parents are empty.
     (multiple-value-bind (resolved-entry resolved-exit resolved-indicators)
         (ensure-breeder-logic-availability logic-entry
                                            logic-exit
                                            child-is
-                                           (strategy-category parent1)
+                                           parent-regime-class
                                            tf
                                            sym)
       (setf logic-entry resolved-entry
@@ -852,7 +927,7 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
     
     (make-strategy
       :name child-name
-      :category (strategy-category parent1) ;; Inherit from P1
+      :category parent-regime-class ;; Inherit regime class from P1
       :timeframe tf
       :direction dir
       :symbol sym
@@ -941,7 +1016,10 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
     (dolist (cat categories)
       (let* ((all-warriors (remove-if-not
                             (lambda (s)
-                              (and (eq (strategy-category s) cat)
+                              (and (eq (if (fboundp 'strategy-regime-class)
+                                           (strategy-regime-class s)
+                                           (strategy-category s))
+                                       cat)
                                    (not (eq (strategy-rank s) :graveyard))))
                             *strategy-knowledge-base*))
              ;; V48.7: Rank-aware and composite score priority. 
@@ -996,10 +1074,18 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 (defun cull-pool-overflow (category)
   "Enforce Musk's '20 or Die' rule. 
    If pool size > *b-rank-pool-size*, kill the weakest."
-  (let* ((pool (gethash category *category-pools*))
+  (let* ((regime-pool nil)
+         (regime-foundp nil)
+         (_unused (when (boundp '*regime-pools*)
+                    (multiple-value-setq (regime-pool regime-foundp)
+                      (gethash category *regime-pools*))))
+         (pool (if regime-foundp
+                   regime-pool
+                   (gethash category *category-pools*)))
          (limit (if (boundp '*b-rank-pool-size*) *b-rank-pool-size* 20))
          (survivors nil)
          (victims nil))
+    (declare (ignore _unused))
     (when (> (length pool) limit)
       ;; Sort by composite score (High to Low)
       (let ((sorted (sort (copy-list pool) #'>
@@ -1012,13 +1098,19 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
         (setf survivors (subseq sorted 0 limit))
         (setf victims (subseq sorted limit))
         
-        ;; Update Pool
-        (setf (gethash category *category-pools*) survivors)
+        ;; Update the source pool used for culling.
+        (if regime-foundp
+            (setf (gethash category *regime-pools*) survivors)
+          (setf (gethash category *category-pools*) survivors))
         
         ;; Kill Victims
         (dolist (victim victims)
           (format t "[DEATHMATCH] 💀 Killing Weakest: ~a (Sharpe: ~,2f)~%" 
                   (strategy-name victim) (strategy-sharpe victim))
+          ;; Also evict from scope pool.
+          (let ((scope-key (categorize-strategy victim)))
+            (setf (gethash scope-key *category-pools*)
+                  (remove victim (gethash scope-key *category-pools*) :test #'eq)))
           ;; Notify Discord (Musk Requirement)
           (notify-death victim "Pool Overflow (Weakest Link)")
           ;; Remove from KB (Graveyard logic could be added here)
