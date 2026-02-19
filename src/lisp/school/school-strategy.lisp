@@ -151,6 +151,37 @@
 ;; *category-pools* moved to school-state.lisp for early initialization
 (defparameter *active-team* (make-hash-table :test 'equal))
 
+(defparameter *semantic-strategy-categories*
+  '(:trend :reversion :breakout :scalp :legend)
+  "Allowed semantic categories stored in strategy-category.")
+
+(defun normalize-strategy-regime-class-token (category)
+  "Normalize CATEGORY token to one semantic regime class keyword."
+  (let ((candidate (cond
+                     ((keywordp category) category)
+                     ((symbolp category)
+                      (intern (string-upcase (symbol-name category)) :keyword))
+                     ((stringp category)
+                      (intern (string-upcase category) :keyword))
+                     (t nil))))
+    (when (and candidate
+               (member candidate *semantic-strategy-categories* :test #'eq))
+      candidate)))
+
+(defun normalize-semantic-category-token (category)
+  "Backward-compatible alias for regime class normalization."
+  (normalize-strategy-regime-class-token category))
+
+(defun strategy-regime-class (strat)
+  "Return semantic regime class for STRAT.
+Primary source is explicit semantic category; otherwise infer from strategy traits."
+  (or (and strat
+           (strategy-p strat)
+           (normalize-strategy-regime-class-token (strategy-category strat)))
+      (and (fboundp 'infer-strategy-category)
+           (normalize-strategy-regime-class-token (infer-strategy-category strat)))
+      :trend))
+
 (defun make-category-key (strat)
   "V47.8: Category Key = (Timeframe Direction Symbol)"
   (let* ((tf (or (strategy-timeframe strat) 1))
@@ -177,7 +208,12 @@
   (clrhash *category-pools*)
   (dolist (strat *strategy-knowledge-base*)
     (let ((cat (categorize-strategy strat)))
-      (push strat (gethash cat *category-pools* nil)))))
+      (push strat (gethash cat *category-pools* nil))))
+  (when (boundp '*regime-pools*)
+    (clrhash *regime-pools*)
+    (dolist (strat *strategy-knowledge-base*)
+      (let ((regime-class (strategy-regime-class strat)))
+        (push strat (gethash regime-class *regime-pools* nil))))))
 
 ;;; ============================================================================
 ;;; TEAM SELECTION & RECRUITMENT (Moved from school-execution.lisp for SRP)
@@ -238,7 +274,9 @@
     (cdr (assoc r *regime-tactics*))))
 
 (defun select-best-from-pool (category n)
-  (let* ((pool (gethash category *category-pools*))
+  (let* ((pool (if (boundp '*regime-pools*)
+                   (gethash category *regime-pools*)
+                   nil))
          (sorted (sort (copy-list pool) #'> 
                        :key (lambda (s) (or (strategy-sharpe s) -999)))))
     (subseq sorted 0 (min n (length sorted)))))

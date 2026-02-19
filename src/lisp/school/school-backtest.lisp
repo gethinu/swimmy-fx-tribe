@@ -695,6 +695,12 @@ Budget is auto-shrunk under backtest pending pressure."
       (let ((cat (categorize-strategy strat)))
         (setf (gethash cat *category-pools*) 
               (remove name (gethash cat *category-pools*) :key #'strategy-name :test #'string=)))
+      (when (boundp '*regime-pools*)
+        (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                (strategy-regime-class strat)
+                                (strategy-category strat))))
+          (setf (gethash regime-class *regime-pools*)
+                (remove name (gethash regime-class *regime-pools*) :key #'strategy-name :test #'string=))))
       (setf *strategy-knowledge-base* 
             (remove name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
 

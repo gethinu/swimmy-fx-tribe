@@ -70,7 +70,7 @@
         (unless (find (strategy-name fs) kb :key #'strategy-name :test #'string=)
           (push fs kb)))
       (setf *strategy-knowledge-base* kb)))
-  
+
   ;; P8: P7 Recruit Strategies Injection DELETED - use add-to-kb
 
   (format t "[L] 📚 Knowledge base loaded: ~d strategies from Library~%" 

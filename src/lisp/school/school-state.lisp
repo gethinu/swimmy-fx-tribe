@@ -68,6 +68,9 @@
 (defparameter *category-pools* (make-hash-table :test 'equal)
   "Strategies grouped by category (TF x Direction x Symbol).")
 
+(defparameter *regime-pools* (make-hash-table :test 'equal)
+  "Strategies grouped by inferred semantic regime class (:trend/:reversion/:breakout/:scalp).")
+
 ;; Global Analytics State (Legacy or and specifics)
 (defvar *total-wins* 0 "Total winning trades count")
 (defvar *total-trades-count* 0 "Total trades count")

@@ -7394,6 +7394,7 @@
          (s3 (funcall mk "S3" 0.6 1.4 0.50 0.10))
          (orig-kb swimmy.school::*strategy-knowledge-base*)
          (orig-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
          (orig-limit swimmy.school::*b-rank-pool-size*)
          (orig-notify (symbol-function 'swimmy.school::notify-death))
          (orig-init (symbol-function 'swimmy.school::init-db))
@@ -7404,6 +7405,8 @@
           (setf swimmy.school::*strategy-knowledge-base* (list s1 s2 s3))
           (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
           (setf (gethash :trend swimmy.school::*category-pools*) (list s1 s2 s3))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf (gethash :trend swimmy.school::*regime-pools*) (list s1 s2 s3))
           (setf swimmy.school::*b-rank-pool-size* 2)
           (setf (symbol-function 'swimmy.school::notify-death)
                 (lambda (strategy reason)
@@ -7418,6 +7421,7 @@
                        "low composite should be culled"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools)
       (setf swimmy.school::*b-rank-pool-size* orig-limit)
       (setf (symbol-function 'swimmy.school::notify-death) orig-notify)
       (setf (symbol-function 'swimmy.school::init-db) orig-init)
@@ -9735,6 +9739,42 @@
       (assert-true (find s-rev selected-ranging :test #'eq)
                    "Expected :reversion strategy included for :ranging"))))
 
+(deftest test-strategy-regime-class-prefers-semantic-and-infers-scope-keys
+  "strategy-regime-class should use explicit semantic categories and infer when category stores scope keys."
+  (let* ((s-explicit (swimmy.school:make-strategy :name "UT-EXPLICIT-BREAKOUT"
+                                                  :category :breakout
+                                                  :tp 1.0))
+         (s-inferred (swimmy.school:make-strategy :name "UT-REVERSION-KEY"
+                                                  :category '(60 :BOTH "USDJPY")
+                                                  :tp 1.0)))
+    (assert-equal :breakout (swimmy.school::strategy-regime-class s-explicit)
+                  "Expected explicit semantic category to be preserved")
+    (assert-equal :reversion (swimmy.school::strategy-regime-class s-inferred)
+                  "Expected scope-key category to infer semantic regime class")))
+
+(deftest test-select-strategies-for-regime-supports-tf-direction-category-keys
+  "select-strategies-for-regime should work when strategy-category stores scope keys."
+  (let* ((s-trend (swimmy.school:make-strategy :name "UT-TREND-KEY"
+                                               :category '(60 :BOTH "USDJPY")
+                                               :tp 1.0))
+         (s-rev (swimmy.school:make-strategy :name "UT-REVERSION-KEY"
+                                             :category '(60 :BOTH "USDJPY")
+                                             :tp 1.0))
+         (s-scalp (swimmy.school:make-strategy :name "UT-SCALP-KEY"
+                                               :category '(5 :BOTH "USDJPY")
+                                               :tp 0.2))
+         (pool (list s-trend s-rev s-scalp)))
+    (let ((selected-exhausted (swimmy.school::select-strategies-for-regime :trend-exhausted pool))
+          (selected-ranging (swimmy.school::select-strategies-for-regime :ranging pool)))
+      (assert-true (> (length selected-exhausted) 0)
+                   "Expected non-empty selection for :trend-exhausted with scope keys")
+      (assert-true (> (length selected-ranging) 0)
+                   "Expected non-empty selection for :ranging with scope keys")
+      (assert-true (find s-rev selected-exhausted :test #'eq)
+                   "Expected :reversion strategy included for :trend-exhausted")
+      (assert-true (find s-scalp selected-ranging :test #'eq)
+                   "Expected :scalp strategy included for :ranging"))))
+
 (deftest test-collect-strategy-signals-skips-inactive-ranks
   "collect-strategy-signals should evaluate only active ranks (B/A/S/LEGEND)."
   (let* ((history
@@ -10484,6 +10524,8 @@
 	                  test-max-age-retire-daily-guard
 	                  test-process-breeding-cycle-increments-age-once-per-day
 	                  test-select-strategies-for-regime-uses-real-categories
+	                  test-strategy-regime-class-prefers-semantic-and-infers-scope-keys
+	                  test-select-strategies-for-regime-supports-tf-direction-category-keys
 	                  test-evaluate-strategy-signal-supports-williams-indicator
 	                  test-evaluate-strategy-signal-bb-default-dev
 	                  test-evaluate-strategy-signal-supports-keyword-indicator-types

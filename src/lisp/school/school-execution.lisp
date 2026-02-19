@@ -893,6 +893,16 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
           (let ((cat (categorize-strategy strat)))
             (setf (gethash cat *category-pools*) 
                   (cons strat (remove (strategy-name strat) (gethash cat *category-pools*) :key #'strategy-name :test #'string=))))
+          (when (boundp '*regime-pools*)
+            (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                    (strategy-regime-class strat)
+                                    (strategy-category strat))))
+              (setf (gethash regime-class *regime-pools*)
+                    (cons strat
+                          (remove (strategy-name strat)
+                                  (gethash regime-class *regime-pools*)
+                                  :key #'strategy-name
+                                  :test #'string=)))))
           (format t "[L] 🎖️ Special Force Recruited: ~a~%" name)
           t)
         (format t "[L] ⚠️ Special Force NOT FOUND: ~a~%" name))))

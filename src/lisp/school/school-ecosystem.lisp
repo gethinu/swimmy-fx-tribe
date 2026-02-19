@@ -32,7 +32,9 @@
   "Calculate Shannon diversity index of strategy population"
   (let* ((categories '(:trend :reversion :breakout :scalp))
          (counts (mapcar (lambda (cat) 
-                          (length (gethash cat *category-pools*)))
+                          (if (boundp '*regime-pools*)
+                              (length (gethash cat *regime-pools*))
+                              0))
                         categories))
          (total (reduce #'+ counts)))
     (if (> total 0)
@@ -47,7 +49,9 @@
   "Calculate how balanced the niches (categories) are"
   (let* ((categories '(:trend :reversion :breakout :scalp))
          (counts (mapcar (lambda (cat) 
-                          (length (gethash cat *category-pools*)))
+                          (if (boundp '*regime-pools*)
+                              (length (gethash cat *regime-pools*))
+                              0))
                         categories))
          (total (max 1 (reduce #'+ counts)))
          (ideal (/ total 4.0))
@@ -112,7 +116,9 @@
   "Find the category with fewest strategies"
   (let* ((categories '(:trend :reversion :breakout :scalp))
          (counts (mapcar (lambda (cat) 
-                          (cons cat (length (gethash cat *category-pools*))))
+                          (cons cat (if (boundp '*regime-pools*)
+                                        (length (gethash cat *regime-pools*))
+                                        0)))
                         categories))
          (sorted (sort counts #'< :key #'cdr)))
     (car (first sorted))))

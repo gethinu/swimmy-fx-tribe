@@ -488,11 +488,13 @@ When deviation is omitted, use dev=2.0."
             (format t "[L] ⚠️ MARKET CAUTION (~a). Limiting to LEGEND/scalp strategies.~%" regime)
             '(:scalp :legend))  ;; Allow defensive trading
            (t '(:trend :reversion))))) ;; Default generic
-    
+
     (remove-if-not 
      (lambda (s) 
-       (let ((cat (strategy-category s)))
-         (or (member cat target-categories)
+       (let ((regime-class (if (fboundp 'strategy-regime-class)
+                               (strategy-regime-class s)
+                               (strategy-category s))))
+         (or (member regime-class target-categories)
              (search "LEGEND" (strategy-name s))))) ;; Always check legends
      strategies)))
 

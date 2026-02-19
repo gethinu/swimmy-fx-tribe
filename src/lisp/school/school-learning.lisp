@@ -287,7 +287,9 @@
   "V49.7: Refine penalty based on strategy convexity (Taleb).
    Convex (Trend): Higher payoff potential, more lenient sizing.
    Concave (Scalp/Rev): Higher ruin risk in tails, strict sizing."
-  (let* ((cat (strategy-category strategy))
+  (let* ((cat (if (fboundp 'strategy-regime-class)
+                  (strategy-regime-class strategy)
+                  (strategy-category strategy)))
          (convex-rank (> (or (strategy-sharpe strategy) 0) 1.5)) ; Elite Sharpe is often convex
          (is-convex (or (eq cat :trend) (eq cat :breakout) convex-rank)))
     (cond

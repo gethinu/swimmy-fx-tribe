@@ -321,7 +321,7 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
                ;; We continue to add it as :incubator.
                ;; NOTE: It will fall through to Step 3.
                )))))
-      
+
       ;; 3. Add to KB
       (push strategy *strategy-knowledge-base*)
       ;; V50.4: Only assign :B rank if it actually meets the criteria.
@@ -335,6 +335,9 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
       (let ((cat (categorize-strategy strategy)))
         (when (boundp '*category-pools*)
           (push strategy (gethash cat *category-pools*))))
+      (when (boundp '*regime-pools*)
+        (let ((regime-class (strategy-regime-class strategy)))
+          (push strategy (gethash regime-class *regime-pools*))))
       
       ;; 5. Persist to SQL (V49.8)
       (upsert-strategy strategy)

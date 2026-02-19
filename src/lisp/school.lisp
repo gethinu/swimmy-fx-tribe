@@ -63,8 +63,10 @@
   (when (boundp '*evolved-strategies*)
     (dolist (strat *evolved-strategies*)
       (let ((cat (categorize-strategy strat)))
-        (setf (strategy-category strat) cat) ; Update the slot permanently
-        (push strat (gethash cat *category-pools* nil)))))
+        (push strat (gethash cat *category-pools* nil)))
+      (when (boundp '*regime-pools*)
+        (let ((regime-class (strategy-regime-class strat)))
+          (push strat (gethash regime-class *regime-pools* nil))))))
         
   (recruit-special-forces) ; V7.0: Inject special forces
   (clrhash *category-positions*)

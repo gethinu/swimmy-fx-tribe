@@ -1,7 +1,35 @@
 # 🏛️ Strategy Lifecycle Implementation Plan V50.6
 
-**更新日:** 2026-02-18 JST
+**更新日:** 2026-02-19 JST
 **バージョン:** V50.6 (Structured Telemetry & Retired Rank)
+
+---
+
+## 2026-02-19 実装追補: TF正本化の徹底（意味カテゴリは補助タグ）
+
+- 方針:
+  - `strategy-category` は新形式 `TF DIRECTION SYMBOL` を正本として扱う。
+  - 旧来の意味カテゴリ（`trend/reversion/scalp/breakout`）は主キーとしては使わず、`strategy-regime-class` で補助的に推定・参照する。
+- 実装:
+  - `*regime-pools*` を導入し、意味カテゴリ系の集計・レジーム選抜・生態系評価はこのプールを参照。
+  - `*category-pools*` は TFスコープ（`TF DIRECTION SYMBOL`）用途として維持。
+  - KB追加/除去・実行系・ランク遷移時に `*category-pools*` と `*regime-pools*` を同時同期。
+  - `cull-pool-overflow` は regime pool 優先で処理し、victim の scope pool 側も明示的に除去。
+  - 旧「意味カテゴリへ移行（migrate）」前提の処理は除去し、新方式に一本化。
+
+### 追加/更新テスト（2026-02-19 実行）
+
+- `test-strategy-regime-class-prefers-semantic-and-infers-scope-keys` → pass
+- `test-select-strategies-for-regime-supports-tf-direction-category-keys` → pass
+- `test-select-strategies-for-regime-uses-real-categories` → pass
+- `test-breeder-cull-uses-composite-score` → pass（`*regime-pools*` 前提へテスト更新）
+
+### 検証（2026-02-19 JST）
+
+- ターゲット回帰:
+  - `sbcl --non-interactive --eval ... (swimmy.tests::test-...)` 群 → **all pass**
+- フル回帰:
+  - `SWIMMY_DISABLE_DISCORD=1 sbcl --script tests/test_runner.lisp` → **462 passed / 0 failed**
 
 ---
 

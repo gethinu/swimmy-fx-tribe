@@ -82,7 +82,12 @@
   (let ((immigrant-count 0))
     (when (ecosystem-needs-diversity-p)
       (let* ((weak-niche (get-underpopulated-niche))
-             (candidates (remove-if-not (lambda (s) (eq (strategy-category s) weak-niche))
+             (candidates (remove-if-not
+                          (lambda (s)
+                            (eq (if (fboundp 'strategy-regime-class)
+                                    (strategy-regime-class s)
+                                    (strategy-category s))
+                                weak-niche))
                                       *evolved-strategies*)))
         (when candidates
           (let ((parent (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))

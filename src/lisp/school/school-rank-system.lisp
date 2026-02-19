@@ -572,6 +572,12 @@ Low trade counts are softly shrunk instead of hard-blocked."
         (let ((cat (categorize-strategy strategy)))
           (setf (gethash cat *category-pools*)
                 (remove strategy (gethash cat *category-pools*) :test #'eq)))
+        (when (boundp '*regime-pools*)
+          (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                  (strategy-regime-class strategy)
+                                  (strategy-category strategy))))
+            (setf (gethash regime-class *regime-pools*)
+                  (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
         
         ;; P13: Synchronize with File System
         (handler-case
@@ -589,6 +595,12 @@ Low trade counts are softly shrunk instead of hard-blocked."
         (let ((cat (categorize-strategy strategy)))
           (setf (gethash cat *category-pools*)
                 (remove strategy (gethash cat *category-pools*) :test #'eq)))
+        (when (boundp '*regime-pools*)
+          (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                  (strategy-regime-class strategy)
+                                  (strategy-category strategy))))
+            (setf (gethash regime-class *regime-pools*)
+                  (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
         ;; Persist to archive
         (handler-case
             (swimmy.persistence:move-strategy strategy :retired :from-rank old-rank)
