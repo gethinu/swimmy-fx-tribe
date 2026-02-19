@@ -22,6 +22,10 @@
       (progn
         (asdf:load-system :swimmy)
         (format t "[HOT-RELOAD] ✅ System reloaded successfully at ~a~%" (get-jst-str))
+        ;; Keep in-memory rank/metrics aligned after reload when DB was changed externally.
+        (when (fboundp 'swimmy.school::refresh-strategy-metrics-from-db)
+          (ignore-errors
+            (swimmy.school::refresh-strategy-metrics-from-db :force t)))
         ;; V50.5: Force End Startup Mode (to re-enable backtesting/notifications immediately)
         (when (fboundp 'swimmy.school::end-startup-mode)
           (swimmy.school::end-startup-mode))

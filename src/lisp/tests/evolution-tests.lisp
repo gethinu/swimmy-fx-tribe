@@ -214,6 +214,65 @@
       (when orig-q
         (setf (symbol-function 'swimmy.school::select-sltp-with-q) orig-q)))))
 
+(deftest test-select-breeder-child-timeframe-boosts-mutation-when-parents-share-tf
+  "When parents share TF, breeder should use the dedicated mutation-rate boost for diversification."
+  (let* ((p1 (swimmy.school:make-strategy
+              :name "UT-TF-BOOST-P1"
+              :category :trend
+              :timeframe 60
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 10
+              :sl 0.8
+              :tp 1.6
+              :indicators '((sma 20))
+              :entry '(> close sma-20)
+              :exit '(< close sma-20)))
+         (p2 (swimmy.school:make-strategy
+              :name "UT-TF-BOOST-P2"
+              :category :trend
+              :timeframe 60
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 9
+              :sl 0.9
+              :tp 1.8
+              :indicators '((sma 50))
+              :entry '(> close sma-50)
+              :exit '(< close sma-50)))
+         (mutation-rate-sym 'swimmy.school::*breeder-timeframe-mutation-rate*)
+         (same-tf-rate-sym 'swimmy.school::*breeder-timeframe-mutation-same-parent-rate*)
+         (has-mutation-rate (boundp mutation-rate-sym))
+         (has-same-tf-rate (boundp same-tf-rate-sym))
+         (orig-mutation-rate (and has-mutation-rate (symbol-value mutation-rate-sym)))
+         (orig-same-tf-rate (and has-same-tf-rate (symbol-value same-tf-rate-sym)))
+         (orig-options (and (fboundp 'swimmy.school::get-tf-mutation-options)
+                            (symbol-function 'swimmy.school::get-tf-mutation-options))))
+    (unwind-protect
+        (progn
+          (assert-true has-same-tf-rate
+                       "Expected dedicated same-parent TF mutation-rate parameter")
+          (when has-mutation-rate
+            (setf (symbol-value mutation-rate-sym) 0.0))
+          (when has-same-tf-rate
+            (setf (symbol-value same-tf-rate-sym) 1.0))
+          (when (fboundp 'swimmy.school::get-tf-mutation-options)
+            (setf (symbol-function 'swimmy.school::get-tf-mutation-options)
+                  (lambda () '(60 240))))
+          (multiple-value-bind (tf mode _p1 _p2)
+              (swimmy.school::select-breeder-child-timeframe p1 p2)
+            (declare (ignore _p1 _p2))
+            (assert-equal :mutation mode
+                          "Expected same-parent TF boost to force mutation path")
+            (assert-equal 240 tf
+                          "Expected same-parent TF boost to diversify away from shared TF")))
+      (when has-mutation-rate
+        (setf (symbol-value mutation-rate-sym) orig-mutation-rate))
+      (when has-same-tf-rate
+        (setf (symbol-value same-tf-rate-sym) orig-same-tf-rate))
+      (when orig-options
+        (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options)))))
+
 (deftest test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
   "PF/WR mutation bias should adjust RR toward better parent profile when parents underperform."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-P1"
@@ -990,6 +1049,52 @@
             (assert-true (eq picked p3)
                          (format nil "Expected fallback partner UT-P3, got ~a"
                                  (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
+
+(deftest test-find-diverse-breeding-partner-prefers-different-timeframe-when-scores-close
+  "When quality is similar, breeder should prioritize partner with different timeframe."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-TF-DIV-PARENT"
+                                              :rank :B :generation 100
+                                              :timeframe 60
+                                              :sl 20.0 :tp 60.0
+                                              :trades 80
+                                              :profit-factor 1.45 :win-rate 0.50
+                                              :sharpe 1.20))
+         (cand-same (swimmy.school:make-strategy :name "UT-TF-DIV-SAME"
+                                                 :rank :B :generation 20
+                                                 :timeframe 60
+                                                 :sl 20.0 :tp 62.0
+                                                 :trades 80
+                                                 :profit-factor 1.40 :win-rate 0.48
+                                                 :sharpe 1.10))
+         (cand-diff (swimmy.school:make-strategy :name "UT-TF-DIV-DIFF"
+                                                 :rank :B :generation 20
+                                                 :timeframe 240
+                                                 :sl 20.0 :tp 62.0
+                                                 :trades 80
+                                                 :profit-factor 1.40 :win-rate 0.48
+                                                 :sharpe 1.10))
+         (diversity-bonus-sym 'swimmy.school::*breeder-timeframe-diversity-bonus*)
+         (has-diversity-bonus (boundp diversity-bonus-sym))
+         (orig-diversity-bonus (and has-diversity-bonus (symbol-value diversity-bonus-sym)))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
+    (unwind-protect
+        (progn
+          (assert-true has-diversity-bonus
+                       "Expected breeder timeframe-diversity bonus parameter")
+          (when has-diversity-bonus
+            (setf (symbol-value diversity-bonus-sym) 1.0))
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent (list parent cand-same cand-diff) :start-index 1)))
+            (assert-true (eq picked cand-diff)
+                         (format nil "Expected different-timeframe partner UT-TF-DIV-DIFF, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (when has-diversity-bonus
+        (setf (symbol-value diversity-bonus-sym) orig-diversity-bonus))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
 (deftest test-can-breed-p-rejects-retired-rank

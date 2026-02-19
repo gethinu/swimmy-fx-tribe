@@ -204,6 +204,10 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "Chance (0..1) to inherit parent2 timeframe when parents differ.")
 (defparameter *breeder-timeframe-mutation-rate* 0.15
   "Low-frequency chance (0..1) to mutate child timeframe after crossover.")
+(defparameter *breeder-timeframe-mutation-same-parent-rate* 0.35
+  "Minimum mutation rate (0..1) when both parents share the same timeframe.")
+(defparameter *breeder-timeframe-diversity-bonus* 1.0
+  "Additive partner score bonus when candidate timeframe differs from parent.")
 (defparameter *breeder-timeframe-fallback-minutes* 60
   "Fallback timeframe (minutes) when parent timeframe is missing/invalid.")
 
@@ -245,10 +249,17 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                           (float (or *breeder-timeframe-crossover-rate* 0.0))
                           0.0
                           1.0))
-         (mutation-rate (clamp-breeder-float
-                         (float (or *breeder-timeframe-mutation-rate* 0.0))
-                         0.0
-                         1.0))
+         (base-mutation-rate (clamp-breeder-float
+                              (float (or *breeder-timeframe-mutation-rate* 0.0))
+                              0.0
+                              1.0))
+         (same-parent-rate (clamp-breeder-float
+                            (float (or *breeder-timeframe-mutation-same-parent-rate* 0.0))
+                            0.0
+                            1.0))
+         (mutation-rate (if (= p1-tf p2-tf)
+                            (max base-mutation-rate same-parent-rate)
+                            base-mutation-rate))
          (crossover-p (and (/= p1-tf p2-tf)
                            (< (random 1.0) crossover-rate)))
          (base-tf (if crossover-p p2-tf p1-tf))
@@ -268,6 +279,15 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
        (values base-tf :crossover p1-tf p2-tf))
       (t
        (values base-tf :inherit p1-tf p2-tf)))))
+
+(defun breeding-timeframe-diversity-bonus (parent candidate)
+  "Return additive partner score bonus when candidate timeframe differs from parent."
+  (let* ((bonus (float (or *breeder-timeframe-diversity-bonus* 0.0) 1.0))
+         (parent-tf (normalize-breeder-timeframe (strategy-timeframe parent)))
+         (candidate-tf (normalize-breeder-timeframe (strategy-timeframe candidate) parent-tf)))
+    (if (and (> bonus 0.0) (/= parent-tf candidate-tf))
+        bonus
+        0.0)))
 
 (defun strategy-a-or-above-p (strategy)
   "Return T when STRATEGY is rank A/S/LEGEND (or higher)."
@@ -575,7 +595,8 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 (defun breeding-partner-score (parent candidate)
   "Rank candidate partner by base quality + PF/WR complement bonus."
   (+ (strategy-breeding-priority-score candidate)
-     (breeding-partner-complement-bonus parent candidate)))
+     (breeding-partner-complement-bonus parent candidate)
+     (breeding-timeframe-diversity-bonus parent candidate)))
 
 (defun candidate-complements-parent-p (parent candidate)
   "True when candidate satisfies at least one PF/WR side parent is missing."

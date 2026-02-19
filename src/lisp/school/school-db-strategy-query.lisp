@@ -2,39 +2,54 @@
 
 (in-package :swimmy.school)
 
+(defun %db-rank->keyword (rank)
+  "Normalize DB rank cell into keyword rank (or NIL)."
+  (let* ((raw (cond
+                ((null rank) nil)
+                ((stringp rank) rank)
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (token (and raw
+                     (string-upcase
+                      (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
+    (cond
+      ((or (null token) (string= token "") (string= token "NIL")) nil)
+      (t (let ((name (if (char= (char token 0) #\:)
+                         (subseq token 1)
+                         token)))
+           (intern name :keyword))))))
+
+(defun %deserialize-strategy-row (row)
+  "Decode DB row containing data_sexp and optional rank."
+  (let* ((sexp-str (first row))
+         (has-rank-col (and (consp row) (consp (cdr row))))
+         (db-rank (when has-rank-col (second row)))
+         (obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+    (if (strategy-p obj)
+        (progn
+          ;; rank column is authoritative when present (data_sexp can be stale).
+          (when has-rank-col
+            (setf (strategy-rank obj) (%db-rank->keyword db-rank)))
+          obj)
+        (progn
+          (when (and sexp-str (> (length sexp-str) 0))
+            (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
+                    (subseq sexp-str 0 (min 30 (length sexp-str)))))
+          nil))))
+
 (defun fetch-candidate-strategies (&key (min-sharpe 0.1) (ranks '(":B" ":A" ":S")))
   "Fetch strategies from DB matching criteria for the global draft."
-  (let ((query (format nil "SELECT data_sexp FROM strategies WHERE sharpe >= ? AND rank IN (~{~a~^,~})"
+  (let ((query (format nil "SELECT data_sexp, rank FROM strategies WHERE sharpe >= ? AND rank IN (~{~a~^,~})"
                        (mapcar (lambda (r) (format nil "'~a'" r)) ranks))))
     (let ((rows (execute-to-list query min-sharpe)))
       (remove-if #'null
-                 (mapcar (lambda (row)
-                           (let ((sexp-str (first row)))
-                             (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
-                               (if (strategy-p obj)
-                                   obj
-                                   (progn
-                                     (when (and sexp-str (> (length sexp-str) 0))
-                                       (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
-                                               (subseq sexp-str 0 (min 30 (length sexp-str)))))
-                                     nil)))))
-                         rows)))))
+                 (mapcar #'%deserialize-strategy-row rows)))))
 
 (defun fetch-all-strategies-from-db ()
   "Fetch EVERY strategy from the DB, including unranked and legends."
-  (let ((rows (execute-to-list "SELECT data_sexp FROM strategies")))
+  (let ((rows (execute-to-list "SELECT data_sexp, rank FROM strategies")))
     (remove-if #'null
-               (mapcar (lambda (row)
-                         (let ((sexp-str (first row)))
-                           (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
-                             (if (strategy-p obj)
-                                 obj
-                                 (progn
-                                   (when (and sexp-str (> (length sexp-str) 0))
-                                     (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
-                                             (subseq sexp-str 0 (min 30 (length sexp-str)))))
-                                   nil)))))
-                       rows))))
+               (mapcar #'%deserialize-strategy-row rows))))
 
 (defun collect-all-strategies-unpruned ()
   "Return all strategies from DB + Library without pruning."
@@ -63,7 +78,8 @@
       (loop
         (when (and limit (>= processed limit))
           (return-from done processed))
-        (let ((rows (execute-to-list "SELECT data_sexp FROM strategies LIMIT ? OFFSET ?" batch-size offset)))
+        (let ((rows (execute-to-list "SELECT data_sexp, rank FROM strategies LIMIT ? OFFSET ?"
+                                     batch-size offset)))
           (when (null rows)
             (return-from done processed))
           (dolist (row rows)
@@ -71,14 +87,10 @@
               (return-from done processed))
             (let ((sexp-str (first row)))
               (handler-case
-                  (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
-                    (if (strategy-p obj)
-                        (progn
-                          (funcall fn obj)
-                          (incf processed))
-                        (when (and sexp-str (> (length sexp-str) 0))
-                          (format t "[DB] 💥 Corrupted Strategy SEXP (safe-read): ~a...~%"
-                                  (subseq sexp-str 0 (min 30 (length sexp-str)))))))
+                  (let ((obj (%deserialize-strategy-row row)))
+                    (when obj
+                      (funcall fn obj)
+                      (incf processed)))
                 (error (e)
                   (format t "[DB] 💥 Corrupted Strategy SEXP: ~a... Error: ~a~%"
                           (subseq sexp-str 0 (min 30 (length sexp-str))) e))))))

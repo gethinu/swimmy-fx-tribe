@@ -70,6 +70,51 @@
     (assert-true (member global shadowed :test #'eq)
                  "Expected *last-new-day* to be shadowed in swimmy.main")))
 
+(deftest test-hot-reload-school-refreshes-db-metrics-when-available
+  "hot-reload-school should refresh in-memory DB metrics after ASDF reload."
+  (let* ((orig-load (symbol-function 'asdf:load-system))
+         (orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db))
+         (orig-end (and (fboundp 'swimmy.school::end-startup-mode)
+                        (symbol-function 'swimmy.school::end-startup-mode)))
+         (orig-flush (and (fboundp 'swimmy.school::flush-deferred-founders)
+                          (symbol-function 'swimmy.school::flush-deferred-founders)))
+         (orig-notify (and (fboundp 'swimmy.core:notify-apex)
+                           (symbol-function 'swimmy.core:notify-apex)))
+         (load-called nil)
+         (refresh-called nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'asdf:load-system)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf load-called t)
+                  t))
+          (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                (lambda (&key force since-timestamp)
+                  (declare (ignore since-timestamp))
+                  (setf refresh-called force)
+                  t))
+          (when orig-end
+            (setf (symbol-function 'swimmy.school::end-startup-mode)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-flush
+            (setf (symbol-function 'swimmy.school::flush-deferred-founders)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-notify
+            (setf (symbol-function 'swimmy.core:notify-apex)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (assert-true (swimmy.main::hot-reload-school) "Expected hot reload to succeed")
+          (assert-true load-called "Expected ASDF reload to be called")
+          (assert-true refresh-called "Expected DB metric refresh to be called with force=T"))
+      (setf (symbol-function 'asdf:load-system) orig-load)
+      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh)
+      (when orig-end
+        (setf (symbol-function 'swimmy.school::end-startup-mode) orig-end))
+      (when orig-flush
+        (setf (symbol-function 'swimmy.school::flush-deferred-founders) orig-flush))
+      (when orig-notify
+        (setf (symbol-function 'swimmy.core:notify-apex) orig-notify)))))
+
 ;;; ─────────────────────────────────────────
 ;;; STRATEGY ACTIVE FILTER TESTS
 ;;; ─────────────────────────────────────────
@@ -6800,6 +6845,42 @@
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
       (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file))))
+
+(deftest test-fetch-all-strategies-from-db-prefers-rank-column-over-stale-data-sexp
+  "DB fetch should trust rank column when serialized rank in data_sexp is stale."
+  (let* ((orig-exec (symbol-function 'swimmy.school::execute-to-list))
+         (stale (swimmy.school:make-strategy :name "UT-STALE-ALL" :rank :graveyard))
+         (sexp (format nil "~s" stale)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::execute-to-list)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list (list sexp ":B"))))
+          (let* ((rows (swimmy.school::fetch-all-strategies-from-db))
+                 (obj (first rows)))
+            (assert-not-nil obj "Expected one strategy row")
+            (assert-equal :B (swimmy.school:strategy-rank obj)
+                          "Expected rank column (:B) to override stale data_sexp rank")))
+      (setf (symbol-function 'swimmy.school::execute-to-list) orig-exec))))
+
+(deftest test-fetch-candidate-strategies-prefers-rank-column-over-stale-data-sexp
+  "Candidate fetch should trust rank column when serialized rank in data_sexp is stale."
+  (let* ((orig-exec (symbol-function 'swimmy.school::execute-to-list))
+         (stale (swimmy.school:make-strategy :name "UT-STALE-CAND" :rank :graveyard))
+         (sexp (format nil "~s" stale)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::execute-to-list)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list (list sexp ":A"))))
+          (let* ((rows (swimmy.school::fetch-candidate-strategies :min-sharpe 0.0 :ranks '(":A")))
+                 (obj (first rows)))
+            (assert-not-nil obj "Expected one candidate row")
+            (assert-equal :A (swimmy.school:strategy-rank obj)
+                          "Expected rank column (:A) to override stale data_sexp rank")))
+      (setf (symbol-function 'swimmy.school::execute-to-list) orig-exec))))
 
 (deftest test-add-to-kb-allows-breeder-logic-variant-when-sltp-differs
   "Breeder child with same logic should be accepted when SL/TP is materially different."
