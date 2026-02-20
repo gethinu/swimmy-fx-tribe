@@ -1188,6 +1188,36 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-report-source-drift-kb-active-count-ignores-archived-ranks
+  "KB active mismatch should compare only active KB ranks (exclude RETIRED/GRAVEYARD)."
+  (let* ((tmp-db (format nil "/tmp/swimmy-drift-kb-active-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-lib-drift-kb-active-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            ;; DB active count = 1
+            (swimmy.school::upsert-strategy
+             (make-strategy :name "KB-ACTIVE-DB" :sharpe 0.2 :symbol "USDJPY" :rank :B))
+            (swimmy.school::upsert-strategy
+             (make-strategy :name "KB-ARCHIVE-DB" :sharpe -0.2 :symbol "USDJPY" :rank :graveyard))
+            ;; KB has 1 active + archived entries. Active count should still be 1.
+            (setf *strategy-knowledge-base*
+                  (list (make-strategy :name "KB-ACTIVE-MEM" :rank :B)
+                        (make-strategy :name "KB-RETIRED-MEM" :rank :retired)
+                        (make-strategy :name "KB-GRAVE-MEM" :rank :graveyard)))
+            (let ((warnings (swimmy.school::report-source-drift)))
+              (assert-false
+               (find-if (lambda (w) (search "KB active mismatch" w)) warnings)
+               "Archived KB ranks should not inflate KB active mismatch")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-report-source-drift-detects-canonical-archive-mismatch
   "Drift check should include canonical archive mismatch for DB/LIB unique-name delta."
   (let* ((tmp-db (format nil "/tmp/swimmy-drift-canon-~a.db" (get-universal-time)))

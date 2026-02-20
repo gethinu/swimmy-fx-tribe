@@ -10747,6 +10747,7 @@
                   test-pair-strategy-upsert-fetch
                   test-db-rank-counts
                   test-report-source-drift-detects-mismatch
+                  test-report-source-drift-kb-active-count-ignores-archived-ranks
                   test-report-source-drift-detects-canonical-archive-mismatch
                   test-report-source-drift-includes-canonical-line-even-when-delta-zero
                   test-evolution-report-uses-db-counts

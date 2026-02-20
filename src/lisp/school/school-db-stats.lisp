@@ -107,10 +107,19 @@
 
 (defun report-source-drift ()
   "Return list of warning strings when DB/KB/Library counts drift."
-  (let* ((db (get-db-rank-counts))
+  (labels ((kb-rank-active-p (rank)
+             (not (member (%normalize-db-rank-key rank)
+                          '("GRAVEYARD" "RETIRED" "ARCHIVED" "ARCHIVE" "LEGEND-ARCHIVE")
+                          :test #'string=)))
+           (kb-active-count ()
+             (count-if (lambda (strat)
+                         (and (strategy-p strat)
+                              (kb-rank-active-p (strategy-rank strat))))
+                       *strategy-knowledge-base*)))
+    (let* ((db (get-db-rank-counts))
          (lib (get-library-rank-counts))
          (lib-canonical (get-library-archive-canonical-count))
-         (kb-active (length *strategy-knowledge-base*))
+         (kb-active (kb-active-count))
          (db-active (getf db :active 0))
          (db-grave (getf db :graveyard 0))
          (lib-grave (getf lib :graveyard 0))
@@ -130,4 +139,4 @@
                     db-archive-total lib-canonical delta-archive
                     lib-grave lib-retired (max 0 lib-overlap))
             warnings))
-    (nreverse warnings)))
+      (nreverse warnings))))
