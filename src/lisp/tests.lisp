@@ -10916,6 +10916,7 @@
 	                  test-breeding-pair-blacklist-blocks-candidate-before-cooldown
 	                  test-breeding-pair-blacklist-expires-after-cooldown
 	                  test-find-diverse-breeding-partner-skips-blacklisted-pair
+	                  test-pick-breeder-timeframe-mutation-candidate-prefers-underrepresented-tf
 	                  test-select-logic-anchor-parent-prefers-high-wr-under-wr-deficit
 	                  test-select-logic-anchor-parent-prefers-high-pf-under-pf-deficit
 	                  test-breed-strategies-combines-high-wr-entry-and-high-pf-exit

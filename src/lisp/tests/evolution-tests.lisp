@@ -273,6 +273,18 @@
       (when orig-options
         (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options)))))
 
+(deftest test-pick-breeder-timeframe-mutation-candidate-prefers-underrepresented-tf
+  "TF mutation picker should favor underrepresented timeframe among candidates."
+  (let ((counts (make-hash-table :test #'eql)))
+    (setf (gethash 60 counts) 30
+          (gethash 240 counts) 4
+          (gethash 1440 counts) 12)
+    (assert-equal 240
+                  (swimmy.school::pick-breeder-timeframe-mutation-candidate
+                   '(60 240 1440)
+                   counts)
+                  "Expected mutation picker to prioritize least-populated TF")))
+
 (deftest test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
   "PF/WR mutation bias should adjust RR toward better parent profile when parents underperform."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-P1"

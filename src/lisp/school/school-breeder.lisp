@@ -210,6 +210,10 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "Additive partner score bonus when candidate timeframe differs from parent.")
 (defparameter *breeder-timeframe-fallback-minutes* 60
   "Fallback timeframe (minutes) when parent timeframe is missing/invalid.")
+(defparameter *breeder-timeframe-prioritize-underrepresented* t
+  "When T, TF mutation prefers the least-populated timeframe among candidates.")
+(defvar *breeder-active-timeframe-counts-cache* nil
+  "Dynamically bound cache of active timeframe counts for current breeding cycle.")
 
 (defun breeder-name-entropy ()
   "Generate high-entropy suffix for child strategy names."
@@ -241,6 +245,48 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                  '(5 15 30 60 240 1440 10080 43200)))
      :test #'eql)))
 
+(defun breeder-active-rank-p (rank)
+  "Return T when rank is considered active for breeder TF balancing."
+  (member rank '(:B :A :S :SCOUT :LEGEND) :test #'eq))
+
+(defun collect-breeder-active-timeframe-counts ()
+  "Count active strategy timeframes from in-memory KB."
+  (let ((counts (make-hash-table :test #'eql)))
+    (dolist (strategy *strategy-knowledge-base* counts)
+      (when (and (strategy-p strategy)
+                 (breeder-active-rank-p (strategy-rank strategy)))
+        (incf (gethash (normalize-breeder-timeframe (strategy-timeframe strategy))
+                       counts
+                       0))))))
+
+(defun pick-breeder-timeframe-mutation-candidate (candidates &optional counts)
+  "Pick mutation timeframe, preferring least-populated candidates when enabled."
+  (let ((pool (remove-duplicates (or candidates '()) :test #'eql)))
+    (cond
+      ((null pool) nil)
+      ((or (not *breeder-timeframe-prioritize-underrepresented*)
+           (= (length pool) 1))
+       (nth (random (length pool)) pool))
+      (t
+       (let* ((resolved-counts (or counts
+                                   *breeder-active-timeframe-counts-cache*
+                                   (collect-breeder-active-timeframe-counts)))
+              (min-count most-positive-fixnum)
+              (best nil))
+         (dolist (tf pool)
+           (let ((n (if (hash-table-p resolved-counts)
+                        (gethash tf resolved-counts 0)
+                        0)))
+             (cond
+               ((< n min-count)
+                (setf min-count n
+                      best (list tf)))
+               ((= n min-count)
+                (push tf best)))))
+         (if (and best (> (length best) 1))
+             (nth (random (length best)) best)
+             (car best)))))))
+
 (defun select-breeder-child-timeframe (parent1 parent2)
   "Select child timeframe with crossover + low-frequency mutation for TF diversity."
   (let* ((p1-tf (normalize-breeder-timeframe (strategy-timeframe parent1)))
@@ -271,7 +317,8 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
          (mutation-candidates (remove base-tf pool :test #'eql)))
     (cond
       ((and mutation-p mutation-candidates)
-       (values (nth (random (length mutation-candidates)) mutation-candidates)
+       (values (or (pick-breeder-timeframe-mutation-candidate mutation-candidates)
+                   base-tf)
                :mutation
                p1-tf
                p2-tf))
@@ -1034,63 +1081,70 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
   (format t "[BREEDER] 🧬 Starting Breeding Cycle (V49.0 INTENSIFIED)...~%")
   (let ((categories '(:trend :reversion :breakout :scalp))
         (max-pairs-per-category 20)) ;; EXPLOSION: 4x throughput
-    (dolist (cat categories)
-      (let* ((all-warriors (remove-if-not
-                            (lambda (s)
-                              (and (eq (if (fboundp 'strategy-regime-class)
-                                           (strategy-regime-class s)
-                                           (strategy-category s))
-                                       cat)
-                                   (not (eq (strategy-rank s) :graveyard))))
-                            *strategy-knowledge-base*))
-             ;; V48.7: Rank-aware and composite score priority. 
-             (sorted (sort (copy-list all-warriors) #'>
-                           :key #'strategy-breeding-priority-score)))
-        
-        ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
-        (cull-pool-overflow cat)
+    (let ((*breeder-active-timeframe-counts-cache*
+            (collect-breeder-active-timeframe-counts)))
+      (dolist (cat categories)
+        (let* ((all-warriors (remove-if-not
+                              (lambda (s)
+                                (and (eq (if (fboundp 'strategy-regime-class)
+                                             (strategy-regime-class s)
+                                             (strategy-category s))
+                                         cat)
+                                     (not (eq (strategy-rank s) :graveyard))))
+                              *strategy-knowledge-base*))
+               ;; V48.7: Rank-aware and composite score priority.
+               (sorted (sort (copy-list all-warriors) #'>
+                             :key #'strategy-breeding-priority-score)))
 
-        (let ((used-names (make-hash-table :test 'equal))
-              (pair-index 0))
-          (loop for i from 0 below (length sorted)
-                while (< pair-index max-pairs-per-category)
-                for p1 = (nth i sorted)
-                do (when (and p1
-                              (null (gethash (strategy-name p1) used-names))
-                              (can-breed-p p1))
-                     (let ((p2 (find-diverse-breeding-partner
-                                p1 sorted
-                                :start-index (1+ i)
-                                :used-names used-names)))
-                       (when p2
-                         (incf pair-index)
-                         (setf (gethash (strategy-name p1) used-names) t
-                               (gethash (strategy-name p2) used-names) t)
-                         (format t "[BREEDER] 💕 Breeding Pair ~d (~a): Gen~d ~a (S=~,2f) + Gen~d ~a (S=~,2f)~%"
-                                 pair-index cat
-                                 (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
-                                 (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
-                         (let ((child (breed-strategies p1 p2)))
-                           (increment-breeding-count p1)
-                           (increment-breeding-count p2)
+          ;; V50.2: Enforce Pool Size (Musk's "20 or Die")
+          (cull-pool-overflow cat)
 
-                           ;; V49.2: Inherit Regime Intent
-                           (setf (strategy-regime-intent child)
-                                 (or (when (boundp '*current-regime*) *current-regime*)
-                                     :unknown))
+          (let ((used-names (make-hash-table :test 'equal))
+                (pair-index 0))
+            (loop for i from 0 below (length sorted)
+                  while (< pair-index max-pairs-per-category)
+                  for p1 = (nth i sorted)
+                  do (when (and p1
+                                (null (gethash (strategy-name p1) used-names))
+                                (can-breed-p p1))
+                       (let ((p2 (find-diverse-breeding-partner
+                                  p1 sorted
+                                  :start-index (1+ i)
+                                  :used-names used-names)))
+                         (when p2
+                           (incf pair-index)
+                           (setf (gethash (strategy-name p1) used-names) t
+                                 (gethash (strategy-name p2) used-names) t)
+                           (format t "[BREEDER] 💕 Breeding Pair ~d (~a): Gen~d ~a (S=~,2f) + Gen~d ~a (S=~,2f)~%"
+                                   pair-index cat
+                                   (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
+                                   (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
+                           (let ((child (breed-strategies p1 p2)))
+                             (increment-breeding-count p1)
+                             (increment-breeding-count p2)
 
-                           ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
-                           (if (add-to-kb child :breeder :require-bt t :notify nil)
-                               (progn
-                                 (note-breeding-pair-success p1 p2)
-                                 (save-recruit-to-lisp child)
-                                 (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
-                                         (strategy-name child) (strategy-generation child))
+                             ;; V49.2: Inherit Regime Intent
+                             (setf (strategy-regime-intent child)
+                                   (or (when (boundp '*current-regime*) *current-regime*)
+                                       :unknown))
 
-                                 ;; V50.2: Immediate Culling (Survival of the Fittest)
-                                 ;; If pool > 20, kill the weakest B-Rank to make room
-                                 (cull-pool-overflow cat))
-                               (note-breeding-pair-failure p1 p2 "add-to-kb rejected"))))))))))))
+                             ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
+                             (if (add-to-kb child :breeder :require-bt t :notify nil)
+                                 (progn
+                                   (note-breeding-pair-success p1 p2)
+                                   (when (hash-table-p *breeder-active-timeframe-counts-cache*)
+                                     (incf (gethash (normalize-breeder-timeframe
+                                                     (strategy-timeframe child))
+                                                    *breeder-active-timeframe-counts-cache*
+                                                    0)))
+                                   (save-recruit-to-lisp child)
+                                   (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
+                                           (strategy-name child) (strategy-generation child))
+
+                                   ;; V50.2: Immediate Culling (Survival of the Fittest)
+                                   ;; If pool > 20, kill the weakest B-Rank to make room
+                                   (cull-pool-overflow cat))
+                                 (note-breeding-pair-failure p1 p2 "add-to-kb rejected")))))))))))))
 
 (defun cull-pool-overflow (category)
   "Enforce Musk's '20 or Die' rule. 
