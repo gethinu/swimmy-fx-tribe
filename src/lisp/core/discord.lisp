@@ -108,6 +108,16 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
 (defparameter *stagnant-crank-telemetry-interval* 60 "Seconds between stagnant C-Rank buffer telemetry emits")
 (defvar *stagnant-crank-telemetry-last* 0 "Last timestamp for stagnant C-Rank buffer telemetry")
 
+;;; ==========================================
+;;; BATCHED ALERTS (Pool Overflow Cull)
+;;; ==========================================
+(defparameter *pool-overflow-retire-batch-interval* 3600
+  "Seconds to batch Pool Overflow retirement alerts.")
+(defvar *pool-overflow-retire-buffer* nil
+  "Buffered strategy names for Pool Overflow retirement alerts.")
+(defvar *pool-overflow-retire-first-seen* 0
+  "Timestamp when current Pool Overflow retirement batch started.")
+
 (defun queue-max-age-retire (strategy-name &key (now (get-universal-time)))
   "Queue a Max Age Retirement alert for hourly batching."
   (unless (and (stringp strategy-name) (> (length strategy-name) 0))
@@ -167,6 +177,28 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
                         total top)))
       (setf *stagnant-crank-retire-buffer* nil)
       (setf *stagnant-crank-retire-first-seen* 0)
+      (notify-discord-alert msg :color +color-alert+))))
+
+(defun queue-pool-overflow-retire (strategy-name &key (now (get-universal-time)))
+  "Queue a Pool Overflow cull alert for hourly batching."
+  (unless (and (stringp strategy-name) (> (length strategy-name) 0))
+    (return-from queue-pool-overflow-retire nil))
+  (push strategy-name *pool-overflow-retire-buffer*)
+  (when (<= *pool-overflow-retire-first-seen* 0)
+    (setf *pool-overflow-retire-first-seen* now))
+  t)
+
+(defun maybe-flush-pool-overflow-retire (&optional (now (get-universal-time)))
+  "Flush Pool Overflow cull summary if the batch interval has elapsed."
+  (when (and *pool-overflow-retire-buffer*
+             (> (- now *pool-overflow-retire-first-seen*) *pool-overflow-retire-batch-interval*))
+    (let* ((total (length *pool-overflow-retire-buffer*))
+           (ordered (reverse *pool-overflow-retire-buffer*))
+           (top (subseq ordered 0 (min 5 (length ordered))))
+           (msg (format nil "💀 **Pool Overflow Summary (Last 1h)**~%Total: ~d~%Top: ~{`~a`~^, ~}~%Action: Individual alerts suppressed."
+                        total top)))
+      (setf *pool-overflow-retire-buffer* nil)
+      (setf *pool-overflow-retire-first-seen* 0)
       (notify-discord-alert msg :color +color-alert+))))
 
 
@@ -652,7 +684,10 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
     (maybe-flush-max-age-retire now)
 
     ;; 5. Stagnant C-Rank (Hourly batch)
-    (maybe-flush-stagnant-crank-retire now)))
+    (maybe-flush-stagnant-crank-retire now)
+
+    ;; 6. Pool Overflow culls (Hourly batch)
+    (maybe-flush-pool-overflow-retire now)))
 
 
 

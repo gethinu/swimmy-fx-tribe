@@ -225,6 +225,27 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-upsert-allows-explicit-archive-rank-resurrection
+  "Upsert should allow explicit archived->active resurrection with override enabled."
+  (let* ((name "TEST-ARCHIVE-RANK-RESURRECT")
+         (tmp-db (format nil "/tmp/swimmy-archive-rank-resurrect-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :graveyard))
+            (let ((swimmy.school::*allow-archived-rank-resurrection-write* t))
+              (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :B)))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":B" rank "Explicit resurrection should persist active rank")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-upsert-preserves-active-rank-when-incoming-nil
   "Upsert should keep existing active rank when incoming strategy rank is NIL."
   (let* ((name "TEST-ACTIVE-RANK-LOCK")
@@ -433,6 +454,169 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-refresh-strategy-metrics-reconciles-missing-active-kb
+  "refresh-strategy-metrics-from-db should hydrate missing active DB strategies into KB."
+  (let* ((name-a "TEST-REFRESH-RECON-A")
+         (name-b "TEST-REFRESH-RECON-B")
+         (tmp-db (format nil "/tmp/swimmy-refresh-reconcile-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*db-active-kb-reconcile-enabled* t)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((strat-a (make-strategy :name name-a :symbol "USDJPY" :direction :BOTH :rank :B :sharpe 0.2))
+                  (strat-b (make-strategy :name name-b :symbol "USDJPY" :direction :BOTH :rank :A :sharpe 0.3)))
+              (upsert-strategy strat-a)
+              (upsert-strategy strat-b)
+              (setf *strategy-knowledge-base* (list strat-a))
+              (swimmy.school::refresh-strategy-metrics-from-db :force t)
+              (assert-true
+               (find name-b *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+               "Expected missing active DB strategy to be reconciled into KB")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-refresh-strategy-metrics-reconciles-missing-active-db
+  "refresh-strategy-metrics-from-db should upsert missing active KB strategies into DB."
+  (let* ((name-a "TEST-REFRESH-RECON-DB-A")
+         (name-b "TEST-REFRESH-RECON-DB-B")
+         (tmp-db (format nil "/tmp/swimmy-refresh-reconcile-db-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*db-active-kb-reconcile-enabled* nil)
+          (swimmy.school::*kb-active-db-reconcile-enabled* t)
+          (swimmy.school::*db-active-kb-reconcile-max-additions* 10)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((strat-a (make-strategy :name name-a :symbol "USDJPY" :direction :BOTH :rank :B :sharpe 0.2))
+                  (strat-b (make-strategy :name name-b :symbol "USDJPY" :direction :BOTH :rank :A :sharpe 0.3)))
+              (upsert-strategy strat-a)
+              (setf *strategy-knowledge-base* (list strat-a strat-b))
+              (swimmy.school::refresh-strategy-metrics-from-db :force t)
+              (assert-equal 1
+                            (or (execute-single "SELECT count(*) FROM strategies WHERE name = ?" name-b) 0)
+                            "Expected missing active KB strategy to be reconciled into DB")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-refresh-strategy-metrics-reconcile-ignores-unevaluated-db-ranks
+  "refresh-strategy-metrics-from-db should not hydrate NIL/INCUBATOR/SCOUT DB ranks into active KB."
+  (let* ((name-active "TEST-REFRESH-ACTIVE-B")
+         (name-nil "TEST-REFRESH-NIL")
+         (name-inc "TEST-REFRESH-INCUBATOR")
+         (name-scout "TEST-REFRESH-SCOUT")
+         (tmp-db (format nil "/tmp/swimmy-refresh-reconcile-filter-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*db-active-kb-reconcile-enabled* t)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((active (make-strategy :name name-active :symbol "USDJPY" :direction :BOTH :rank :B :sharpe 0.2))
+                  (nil-rank (make-strategy :name name-nil :symbol "USDJPY" :direction :BOTH :rank nil :sharpe 0.0))
+                  (inc (make-strategy :name name-inc :symbol "USDJPY" :direction :BOTH :rank :incubator :sharpe 0.0))
+                  (scout (make-strategy :name name-scout :symbol "USDJPY" :direction :BOTH :rank :scout :sharpe 0.0)))
+              (upsert-strategy active)
+              (upsert-strategy nil-rank)
+              (upsert-strategy inc)
+              (upsert-strategy scout)
+              (swimmy.school::refresh-strategy-metrics-from-db :force t)
+              (assert-true (find name-active *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                           "Expected active B-rank row to reconcile into KB")
+              (assert-false (find name-nil *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                            "Expected NIL-rank row to stay out of active KB")
+              (assert-false (find name-inc *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                            "Expected INCUBATOR row to stay out of active KB")
+              (assert-false (find name-scout *strategy-knowledge-base* :key #'strategy-name :test #'string=)
+                            "Expected SCOUT row to stay out of active KB")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-reconcile-archive-library-with-db-hydrates-missing-files
+  "reconcile-archive-library-with-db should create missing archive files from DB rows."
+  (let* ((grave-name "TEST-ARCHIVE-GRAVE-RECON")
+         (retired-name "TEST-ARCHIVE-RETIRED-RECON")
+         (tmp-db (format nil "/tmp/swimmy-archive-lib-reconcile-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-archive-lib-reconcile-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*last-db-archive-library-reconcile-time* 0)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            (let ((grave (make-strategy :name grave-name :symbol "USDJPY" :direction :BOTH :rank :graveyard :sharpe -0.1))
+                  (retired (make-strategy :name retired-name :symbol "USDJPY" :direction :BOTH :rank :retired :sharpe 0.1)))
+              (upsert-strategy grave)
+              (upsert-strategy retired)
+              ;; Pre-create only one archive file so exactly one row is hydrated.
+              (swimmy.persistence:save-strategy grave)
+              (let ((summary (swimmy.school::reconcile-archive-library-with-db
+                              :max-additions 10
+                              :interval 0
+                              :now (get-universal-time))))
+                (assert-equal 1 (or (getf summary :added) 0)
+                              "Expected one missing archive file to be hydrated")
+                (assert-true
+                 (probe-file (merge-pathnames
+                              (format nil "RETIRED/~a.lisp" retired-name)
+                              swimmy.persistence::*library-path*))
+                 "Expected missing RETIRED file to be created from DB"))))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-reconcile-archive-library-with-db-purges-stale-active-files
+  "reconcile-archive-library-with-db should delete stale archive files for active DB rows."
+  (let* ((name "TEST-ARCHIVE-STale-ACTIVE")
+         (tmp-db (format nil "/tmp/swimmy-archive-stale-purge-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-archive-stale-purge-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*last-db-archive-library-reconcile-time* 0)
+          (*strategy-knowledge-base* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.persistence:init-library)
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :direction :BOTH :rank :B :sharpe 0.2))
+            (let ((stale-path (merge-pathnames (format nil "GRAVEYARD/~a.lisp" name)
+                                               swimmy.persistence::*library-path*)))
+              (ensure-directories-exist stale-path)
+              (with-open-file (out stale-path :direction :output :if-exists :supersede :if-does-not-exist :create)
+                (write-string "(placeholder strategy sexp)" out)
+                (terpri out))
+              (assert-true (probe-file stale-path) "Expected stale archive file fixture")
+              (let ((summary (swimmy.school::reconcile-archive-library-with-db
+                              :max-additions 0
+                              :max-removals 10
+                              :interval 0
+                              :now (get-universal-time))))
+                (assert-equal 1 (or (getf summary :removed-names) 0)
+                              "Expected one stale archive name to be removed")
+                (assert-false (probe-file stale-path)
+                              "Expected stale archive file to be deleted"))))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-stagnant-crank-batched-notification
   "Stagnant C-Rank soft-kill should batch notifications and flush hourly."
   (let* ((name "TEST-STAGNANT-C-RANK")
@@ -515,6 +699,65 @@
           (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
+
+(deftest test-pool-overflow-retire-batched-notification
+  "Pool Overflow retire alerts should batch notifications and flush hourly."
+  (let ((sent-messages nil)
+        (now (get-universal-time))
+        (orig-notify (symbol-function 'swimmy.school::notify-discord-alert)))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*pool-overflow-retire-buffer* nil)
+          (setf swimmy.core::*pool-overflow-retire-first-seen* 0)
+          (setf (symbol-function 'swimmy.school::notify-discord-alert)
+                (lambda (msg &key color)
+                  (declare (ignore color))
+                  (push msg sent-messages)
+                  t))
+          (swimmy.core::queue-pool-overflow-retire "TEST-POOL-OVERFLOW-A" :now now)
+          (swimmy.core::queue-pool-overflow-retire "TEST-POOL-OVERFLOW-B" :now (+ now 5))
+          (assert-equal 0 (length sent-messages) "Should suppress individual alert")
+          (assert-equal 2 (length swimmy.core::*pool-overflow-retire-buffer*)
+                        "Should buffer pool-overflow notifications")
+          (swimmy.core::maybe-flush-pool-overflow-retire (+ now 3601))
+          (assert-equal 1 (length sent-messages) "Should flush summary after 1 hour")
+          (assert-true (search "Pool Overflow Summary" (car sent-messages))
+                       "Summary title should be included")
+          (assert-true (search "TEST-POOL-OVERFLOW-A" (car sent-messages))
+                       "Summary should include first strategy name")
+          (assert-true (search "TEST-POOL-OVERFLOW-B" (car sent-messages))
+                       "Summary should include second strategy name"))
+      (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify)
+      (setf swimmy.core::*pool-overflow-retire-buffer* nil)
+      (setf swimmy.core::*pool-overflow-retire-first-seen* 0))))
+
+(deftest test-notify-death-routes-pool-overflow-to-batch
+  "notify-death should batch Pool Overflow alerts instead of sending immediate per-victim alerts."
+  (let* ((strat (make-strategy :name "TEST-POOL-DEATH" :sharpe 0.0))
+         (queued nil)
+         (immediate nil)
+         (orig-queue (and (fboundp 'swimmy.core::queue-pool-overflow-retire)
+                          (symbol-function 'swimmy.core::queue-pool-overflow-retire)))
+         (orig-recruit (symbol-function 'swimmy.core:notify-discord-recruit)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::queue-pool-overflow-retire)
+                (lambda (name &key now)
+                  (declare (ignore now))
+                  (setf queued name)
+                  t))
+          (setf (symbol-function 'swimmy.core:notify-discord-recruit)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf immediate t)
+                  t))
+          (swimmy.school::notify-death strat "Pool Overflow (Weakest Link)")
+          (assert-equal "TEST-POOL-DEATH" queued "Pool overflow victim should be queued")
+          (assert-false immediate "Individual recruit alert should be suppressed for pool overflow"))
+      (if orig-queue
+          (setf (symbol-function 'swimmy.core::queue-pool-overflow-retire) orig-queue)
+          (fmakunbound 'swimmy.core::queue-pool-overflow-retire))
+      (setf (symbol-function 'swimmy.core:notify-discord-recruit) orig-recruit))))
 
 (deftest test-sqlite-wal-mode-enabled
   "Ensure init-db sets SQLite to WAL mode for concurrency."

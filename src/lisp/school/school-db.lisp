@@ -410,6 +410,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
 
 (defparameter *allow-rank-regression-write* nil
   "When T, upsert can persist explicit active-rank regression (e.g., A->B).")
+(defparameter *allow-archived-rank-resurrection-write* nil
+  "When T, upsert can persist explicit archived->active rank resurrection writes.")
 
 (defun upsert-strategy (strat)
   "Save or update strategy in SQL."
@@ -484,7 +486,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       ;; Guard against accidental resurrection: keep archived rank unless an archived rank is explicitly provided.
       (when (and existing-row
                  (archive-rank-p db-rank-raw)
-                 (not (archive-rank-p incoming-rank)))
+                 (not (archive-rank-p incoming-rank))
+                 (not *allow-archived-rank-resurrection-write*))
         (setf incoming-rank (swimmy.core:safe-read-sexp (rank->db-string db-rank-raw) :package :swimmy.school))
         (setf (strategy-rank strat) incoming-rank))
       ;; Guard against stale active-rank regression from old in-memory objects.
@@ -1126,8 +1129,26 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
   "Minimum seconds between DB syncs for strategy metrics.")
 (defparameter *db-active-kb-reconcile-enabled* t
   "When T, hydrate missing active DB strategies into in-memory KB during DB refresh.")
-(defparameter *db-active-kb-reconcile-max-additions* 2000
-  "Safety cap for active DB->KB hydration additions per refresh cycle.")
+(defparameter *kb-active-db-reconcile-enabled* t
+  "When T, hydrate missing active KB strategies into DB during DB refresh.")
+(defparameter *db-active-kb-reconcile-max-additions* 5000
+  "Safety cap for active DB<->KB reconciliation additions per refresh cycle.")
+(defparameter *active-rank-db-where-clause*
+  "UPPER(TRIM(COALESCE(rank,''))) IN (':B','B',':A','A',':S','S',':LEGEND','LEGEND')"
+  "SQL WHERE clause for active (B/A/S/LEGEND) rank rows.")
+(defparameter *db-archive-library-reconcile-enabled* t
+  "When T, hydrate missing archived DB strategies into Library archive dirs.")
+(defparameter *db-archive-library-reconcile-interval* 60
+  "Minimum seconds between archive DB->Library reconciliation runs.")
+(defparameter *db-archive-library-reconcile-max-additions* 2000
+  "Safety cap for archive DB->Library hydration additions per reconciliation.")
+(defparameter *db-archive-library-reconcile-max-removals* 2000
+  "Safety cap for stale Library archive removals per reconciliation.")
+(defparameter *last-db-archive-library-reconcile-time* 0
+  "Timestamp of last archive DB->Library reconciliation run.")
+(defparameter *archive-rank-db-where-clause*
+  "UPPER(TRIM(rank)) IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')"
+  "SQL WHERE clause for archive ranks tracked in Library canonical drift.")
 
 (defun %normalize-rank-token-for-kb-sync (rank)
   "Normalize rank cell/symbol into uppercase token without leading colon."
@@ -1144,9 +1165,9 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
 
 (defun %active-rank-for-kb-sync-p (rank)
   "Return T when rank should be considered active for KB reconciliation."
-  (not (member (%normalize-rank-token-for-kb-sync rank)
-               '("GRAVEYARD" "RETIRED" "ARCHIVED" "ARCHIVE" "LEGEND-ARCHIVE")
-               :test #'string=)))
+  (member (%normalize-rank-token-for-kb-sync rank)
+          '("B" "A" "S" "LEGEND")
+          :test #'string=))
 
 (defun %db-rank-cell->keyword-for-kb-sync (rank-cell)
   "Convert DB rank cell into keyword rank (or NIL)."
@@ -1155,12 +1176,252 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
         nil
         (intern token :keyword))))
 
+(defun %archive-rank-token-for-library-sync (rank-cell)
+  "Normalize archive rank token for Library sync (GRAVEYARD fallback)."
+  (let ((token (%normalize-rank-token-for-kb-sync rank-cell)))
+    (if (string= token "RETIRED") "RETIRED" "GRAVEYARD")))
+
+(defun %filename-strip-lisp-extension (filename)
+  "Return FILENAME without trailing .lisp (case-insensitive)."
+  (let* ((raw (or filename ""))
+         (len (length raw)))
+    (if (and (> len 5)
+             (string-equal ".lisp" raw :start1 0 :end1 5 :start2 (- len 5) :end2 len))
+        (subseq raw 0 (- len 5))
+        raw)))
+
+(defun %library-archive-name-index (&optional (root swimmy.persistence:*library-path*))
+  "Return hash-table of canonical strategy names present in Library GRAVEYARD/RETIRED."
+  (let ((idx (make-hash-table :test 'equal)))
+    (dolist (dir '("GRAVEYARD" "RETIRED"))
+      (let* ((dirpath (merge-pathnames (format nil "~a/" dir) root))
+             (exists-p (or (not (fboundp 'uiop:directory-exists-p))
+                           (uiop:directory-exists-p dirpath))))
+        (when exists-p
+          (let ((raw (ignore-errors
+                       (uiop:run-program
+                        (list "find" (namestring dirpath)
+                              "-maxdepth" "1"
+                              "-type" "f"
+                              "-name" "*.lisp"
+                              "-print")
+                        :output :string
+                        :ignore-error-status t))))
+            (when (and raw (> (length raw) 0))
+              (with-input-from-string (in raw)
+                (loop for line = (read-line in nil nil)
+                      while line
+                      for trimmed = (string-trim '(#\Space #\Tab #\Newline #\Return) line)
+                      unless (string= trimmed "")
+                        do
+                           (let* ((filename (file-namestring trimmed))
+                                  (base (%filename-strip-lisp-extension filename)))
+                             (setf (gethash base idx) t)))))))))
+    idx))
+
+(defun %shell-quote-single-for-db-reconcile (s)
+  "Return shell-safe single-quoted string for archive count command."
+  (format nil "'~a'"
+          (with-output-to-string (out)
+            (loop for ch across (or s "")
+                  do (if (char= ch #\')
+                         (write-string "'\"'\"'" out)
+                         (write-char ch out))))))
+
+(defun %library-archive-canonical-count-for-reconcile (&optional (root swimmy.persistence:*library-path*))
+  "Return unique strategy-name count across Library GRAVEYARD+RETIRED dirs."
+  (labels ((path-str (dir)
+             (namestring (merge-pathnames (format nil "~a/" dir) root))))
+    (let* ((grave (%shell-quote-single-for-db-reconcile (path-str "GRAVEYARD")))
+           (retired (%shell-quote-single-for-db-reconcile (path-str "RETIRED")))
+           (cmd (format nil
+                        "{ find ~a -maxdepth 1 -type f -name '*.lisp' -printf '%f\\n' 2>/dev/null; find ~a -maxdepth 1 -type f -name '*.lisp' -printf '%f\\n' 2>/dev/null; } | sed 's/\\.lisp$//' | LC_ALL=C sort -u | wc -l"
+                        grave retired))
+           (raw (ignore-errors (uiop:run-program cmd :output :string :ignore-error-status t :force-shell t)))
+           (trimmed (and raw (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))
+           (n (and trimmed (> (length trimmed) 0) (parse-integer trimmed :junk-allowed t))))
+      (or n 0))))
+
+(defun %library-archive-has-name-p (name &optional (root swimmy.persistence:*library-path*))
+  "Return T when archive file for NAME exists in GRAVEYARD or RETIRED."
+  (let ((safe-name (swimmy.persistence::sanitize-filename name)))
+    (or (probe-file (merge-pathnames (format nil "GRAVEYARD/~a.lisp" safe-name) root))
+        (probe-file (merge-pathnames (format nil "RETIRED/~a.lisp" safe-name) root)))))
+
+(defun %purge-stale-archive-files-from-library
+    (&key (max-removals *db-archive-library-reconcile-max-removals*)
+          (root swimmy.persistence:*library-path*))
+  "Delete Library archive files whose names no longer exist in DB archive ranks.
+Returns plist: :removed-names :removed-files :truncated."
+  (let ((removed-names 0)
+        (removed-files 0)
+        (truncated nil)
+        (db-archive-name-index (make-hash-table :test 'equal))
+        (library-name-index (%library-archive-name-index root)))
+    (dolist (row (execute-to-list
+                  (format nil "SELECT name FROM strategies WHERE ~a"
+                          *archive-rank-db-where-clause*)))
+      (let ((name (first row)))
+        (when name
+          (setf (gethash name db-archive-name-index) t))))
+    (maphash
+     (lambda (name _present)
+       (declare (ignore _present))
+       (when (and max-removals (>= removed-names max-removals))
+         (setf truncated t)
+         (return-from %purge-stale-archive-files-from-library
+           (list :removed-names removed-names
+                 :removed-files removed-files
+                 :truncated truncated)))
+       (unless (gethash name db-archive-name-index)
+         (let* ((safe-name (swimmy.persistence::sanitize-filename name))
+                (grave (merge-pathnames (format nil "GRAVEYARD/~a.lisp" safe-name) root))
+                (retired (merge-pathnames (format nil "RETIRED/~a.lisp" safe-name) root))
+                (name-removed nil))
+           (dolist (path (list grave retired))
+             (when (probe-file path)
+               (ignore-errors
+                 (delete-file path)
+                 (incf removed-files)
+                 (setf name-removed t))))
+           (when name-removed
+             (incf removed-names)))))
+     library-name-index)
+    (list :removed-names removed-names
+          :removed-files removed-files
+          :truncated truncated)))
+
+(defun %archive-library-file-path (name rank-cell &optional (root swimmy.persistence:*library-path*))
+  "Build Library archive file path for strategy NAME and archive rank cell."
+  (let* ((dir (%archive-rank-token-for-library-sync rank-cell))
+         (safe-name (swimmy.persistence::sanitize-filename name)))
+    (merge-pathnames (format nil "~a/~a.lisp" dir safe-name) root)))
+
+(defun %persist-db-archive-row-into-library (name rank-cell data-sexp)
+  "Persist one DB archive row into Library archive dirs. Returns T on success."
+  (handler-case
+      (let* ((parsed (and (stringp data-sexp)
+                          (> (length data-sexp) 0)
+                          (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school)))
+             (rank-token (%archive-rank-token-for-library-sync rank-cell))
+             (rank-keyword (if (string= rank-token "RETIRED") :RETIRED :GRAVEYARD)))
+        (cond
+          ((strategy-p parsed)
+           (setf (strategy-rank parsed) rank-keyword)
+           (swimmy.persistence:save-strategy parsed)
+           t)
+          ((and (stringp data-sexp) (> (length data-sexp) 0))
+           (let ((path (%archive-library-file-path name rank-cell)))
+             (ensure-directories-exist path)
+             (with-open-file (out path :direction :output :if-exists :supersede :if-does-not-exist :create)
+               (write-string data-sexp out)
+               (terpri out))
+             t))
+          (t nil)))
+    (error ()
+      nil)))
+
+(defun reconcile-archive-library-with-db
+    (&key (max-additions *db-archive-library-reconcile-max-additions*)
+          (max-removals *db-archive-library-reconcile-max-removals*)
+          (interval *db-archive-library-reconcile-interval*)
+          (now (get-universal-time)))
+  "Ensure archive DB rows (:GRAVEYARD/:RETIRED) exist in Library archive dirs.
+Returns plist with :db-archive :library-canonical :added :removed-names :removed-files :write-failed :truncated :skipped."
+  (when (and (numberp interval)
+             (> interval 0)
+             (< (- now *last-db-archive-library-reconcile-time*) interval))
+    (return-from reconcile-archive-library-with-db
+      (list :skipped :cooldown
+            :db-archive nil
+            :library-canonical nil
+            :added 0
+            :removed-names 0
+            :removed-files 0
+            :write-failed 0
+            :truncated nil)))
+  (setf *last-db-archive-library-reconcile-time* now)
+  (let* ((db-archive (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a"
+                                                  *archive-rank-db-where-clause*))
+                         0))
+         (lib-canonical (%library-archive-canonical-count-for-reconcile))
+         (added 0)
+         (removed-names 0)
+         (removed-files 0)
+         (write-failed 0)
+         (truncated nil))
+    ;; If Library archive has more canonical names than DB archive,
+    ;; purge stale names that no longer exist as archived rows in DB.
+    (when (> lib-canonical db-archive)
+      (let* ((gap (- lib-canonical db-archive))
+             (purge-summary (%purge-stale-archive-files-from-library
+                             :max-removals (if max-removals
+                                               (min max-removals gap)
+                                               gap)))
+             (p-removed-names (or (getf purge-summary :removed-names) 0))
+             (p-removed-files (or (getf purge-summary :removed-files) 0)))
+        (setf removed-names p-removed-names
+              removed-files p-removed-files
+              truncated (or truncated (getf purge-summary :truncated)))
+        (when (> p-removed-names 0)
+          (format t "[DB] 🧹 Library archive stale cleanup: removed_names=~d removed_files=~d~%"
+                  p-removed-names p-removed-files))
+        ;; Refresh canonical count after cleanup to decide DB->Library hydration.
+        (setf lib-canonical (%library-archive-canonical-count-for-reconcile))))
+    ;; If DB archive still exceeds Library canonical, hydrate missing files from DB.
+    (when (> db-archive lib-canonical)
+      (let ((batch-size 10000)
+            (offset 0)
+            (gap (max 0 (- db-archive lib-canonical))))
+        (loop
+          (let ((rows (execute-to-list
+                       (format nil
+                               "SELECT rowid, name, rank
+                                  FROM strategies
+                                 WHERE ~a
+                                 ORDER BY rowid
+                                 LIMIT ? OFFSET ?"
+                               *archive-rank-db-where-clause*)
+                       batch-size
+                       offset)))
+            (when (or (null rows) (zerop (length rows)))
+              (return))
+            (incf offset (length rows))
+            (dolist (row rows)
+              (when (and max-additions (>= added max-additions))
+                (setf truncated t)
+                (return))
+              (when (>= added gap)
+                (return))
+              (destructuring-bind (rowid name rank-cell) row
+                (when (and name (not (%library-archive-has-name-p name)))
+                  (let ((data-sexp (execute-single
+                                    "SELECT data_sexp FROM strategies WHERE rowid = ? LIMIT 1"
+                                    rowid)))
+                    (if (%persist-db-archive-row-into-library name rank-cell data-sexp)
+                        (incf added)
+                        (incf write-failed))))))
+            (when (or truncated (>= added gap))
+              (return)))))
+      (when (> added 0)
+        (format t "[DB] 🧩 Library archive reconciled from DB: added=~d write_failed=~d~%"
+                added write-failed))
+      (setf lib-canonical (%library-archive-canonical-count-for-reconcile)))
+    (list :skipped nil
+          :db-archive db-archive
+          :library-canonical lib-canonical
+          :added added
+          :removed-names removed-names
+          :removed-files removed-files
+          :write-failed write-failed
+          :truncated truncated)))
+
 (defun reconcile-active-kb-with-db (&key (max-additions *db-active-kb-reconcile-max-additions*))
   "Ensure active strategies present in DB are loaded into in-memory KB.
 Returns a plist summary with :db-active :kb-active :added :parse-failed :truncated."
-  (let* ((active-where
-           "rank IS NULL OR UPPER(TRIM(rank)) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED',':ARCHIVED','ARCHIVED',':ARCHIVE','ARCHIVE',':LEGEND-ARCHIVE','LEGEND-ARCHIVE')")
-         (db-active (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a" active-where)) 0))
+  (let* ((db-active (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a"
+                                                 *active-rank-db-where-clause*))
+                        0))
          (kb-active (count-if (lambda (s)
                                 (and (strategy-p s)
                                      (%active-rank-for-kb-sync-p (strategy-rank s))))
@@ -1168,7 +1429,8 @@ Returns a plist summary with :db-active :kb-active :added :parse-failed :truncat
     (if (<= db-active kb-active)
         (list :db-active db-active :kb-active kb-active :added 0 :parse-failed 0 :truncated nil)
         (let* ((rows (execute-to-list
-                      (format nil "SELECT name, data_sexp, rank FROM strategies WHERE ~a" active-where)))
+                      (format nil "SELECT name, data_sexp, rank FROM strategies WHERE ~a"
+                              *active-rank-db-where-clause*)))
                (added 0)
                (parse-failed 0)
                (truncated nil))
@@ -1188,18 +1450,21 @@ Returns a plist summary with :db-active :kb-active :added :parse-failed :truncat
                         (let ((obj (and (stringp data-sexp)
                                         (> (length data-sexp) 0)
                                         (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school))))
-                          (if (strategy-p obj)
-                              (progn
-                                (setf (strategy-rank obj) (%db-rank-cell->keyword-for-kb-sync rank-cell))
-                                (push obj *strategy-knowledge-base*)
-                                (setf (gethash name kb-index) obj)
-                                (incf added))
-                              (incf parse-failed)))
+                          (let ((rank-keyword (%db-rank-cell->keyword-for-kb-sync rank-cell)))
+                            (if (and (strategy-p obj)
+                                     (%active-rank-for-kb-sync-p rank-keyword))
+                                (progn
+                                  (setf (strategy-rank obj) rank-keyword)
+                                  (push obj *strategy-knowledge-base*)
+                                  (setf (gethash name kb-index) obj)
+                                  (incf added))
+                                (unless (strategy-p obj)
+                                  (incf parse-failed)))))
                       (error ()
                         (incf parse-failed))))))
               (when (and (> added 0)
                          (fboundp 'build-category-pools))
-                (build-category-pools))))
+                (build-category-pools)))
           (when (> added 0)
             (format t "[DB] 🧩 KB reconciled from DB active set: added=~d parse_failed=~d~%"
                     added parse-failed))
@@ -1207,6 +1472,51 @@ Returns a plist summary with :db-active :kb-active :added :parse-failed :truncat
                 :kb-active kb-active
                 :added added
                 :parse-failed parse-failed
+                :truncated truncated))))))
+(defun reconcile-active-db-with-kb (&key (max-additions *db-active-kb-reconcile-max-additions*))
+  "Ensure active strategies present in KB are persisted in DB.
+Returns a plist summary with :db-active :kb-active :added :upsert-failed :truncated."
+  (let* ((db-active (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a"
+                                                 *active-rank-db-where-clause*))
+                        0))
+         (kb-active (count-if (lambda (s)
+                                (and (strategy-p s)
+                                     (%active-rank-for-kb-sync-p (strategy-rank s))))
+                              *strategy-knowledge-base*)))
+    (if (<= kb-active db-active)
+        (list :db-active db-active :kb-active kb-active :added 0 :upsert-failed 0 :truncated nil)
+        (let ((added 0)
+              (upsert-failed 0)
+              (truncated nil)
+              (db-index (make-hash-table :test 'equal)))
+          (dolist (row (execute-to-list (format nil "SELECT name FROM strategies WHERE ~a"
+                                                *active-rank-db-where-clause*)))
+            (let ((name (first row)))
+              (when name
+                (setf (gethash name db-index) t))))
+          (with-transaction
+            (dolist (strat *strategy-knowledge-base*)
+              (when (and max-additions (>= added max-additions))
+                (setf truncated t)
+                (return))
+              (let ((name (and (strategy-p strat) (strategy-name strat))))
+                (when (and name
+                           (%active-rank-for-kb-sync-p (strategy-rank strat))
+                           (not (gethash name db-index)))
+                  (handler-case
+                      (progn
+                        (upsert-strategy strat)
+                        (setf (gethash name db-index) t)
+                        (incf added))
+                    (error ()
+                      (incf upsert-failed)))))))
+          (when (> added 0)
+            (format t "[DB] 🧩 DB reconciled from KB active set: added=~d upsert_failed=~d~%"
+                    added upsert-failed))
+          (list :db-active db-active
+                :kb-active kb-active
+                :added added
+                :upsert-failed upsert-failed
                 :truncated truncated)))))
 
 (defun refresh-strategy-metrics-from-db (&key (force nil) since-timestamp)
@@ -1302,7 +1612,17 @@ Returns a plist summary with :db-active :kb-active :added :parse-failed :truncat
         (when *db-active-kb-reconcile-enabled*
           (ignore-errors
             (reconcile-active-kb-with-db
-             :max-additions *db-active-kb-reconcile-max-additions*)))))))
+             :max-additions *db-active-kb-reconcile-max-additions*)))
+        (when *kb-active-db-reconcile-enabled*
+          (ignore-errors
+            (reconcile-active-db-with-kb
+             :max-additions *db-active-kb-reconcile-max-additions*)))
+        (when *db-archive-library-reconcile-enabled*
+          (ignore-errors
+            (reconcile-archive-library-with-db
+             :max-additions *db-archive-library-reconcile-max-additions*
+             :interval *db-archive-library-reconcile-interval*
+             :now now)))))))
 
 (defun %migrate-graveyard-patterns (graveyard-path)
   "Migrate graveyard.sexp patterns into SQL and continue on malformed lines."

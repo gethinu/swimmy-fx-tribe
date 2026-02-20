@@ -1129,22 +1129,28 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                        :unknown))
 
                              ;; Add to KB (Breeder path requires Phase 1 screening before B-rank)
-                             (if (add-to-kb child :breeder :require-bt t :notify nil)
-                                 (progn
-                                   (note-breeding-pair-success p1 p2)
-                                   (when (hash-table-p *breeder-active-timeframe-counts-cache*)
-                                     (incf (gethash (normalize-breeder-timeframe
-                                                     (strategy-timeframe child))
-                                                    *breeder-active-timeframe-counts-cache*
-                                                    0)))
-                                   (save-recruit-to-lisp child)
-                                   (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
-                                           (strategy-name child) (strategy-generation child))
+                             (multiple-value-bind (accepted status)
+                                 (add-to-kb child :breeder :require-bt t :notify nil)
+                               (if accepted
+                                   (let ((effective-status (or status :added)))
+                                     (note-breeding-pair-success p1 p2)
+                                     (if (eq effective-status :queued-phase1)
+                                         (format t "[BREEDER] ⏳ Candidate queued for Phase1: ~a (Gen~d)~%"
+                                                 (strategy-name child) (strategy-generation child))
+                                         (progn
+                                           (when (hash-table-p *breeder-active-timeframe-counts-cache*)
+                                             (incf (gethash (normalize-breeder-timeframe
+                                                             (strategy-timeframe child))
+                                                            *breeder-active-timeframe-counts-cache*
+                                                            0)))
+                                           (save-recruit-to-lisp child)
+                                           (format t "[BREEDER] 👶 Born: ~a (Gen~d)~%"
+                                                   (strategy-name child) (strategy-generation child))
 
-                                   ;; V50.2: Immediate Culling (Survival of the Fittest)
-                                   ;; If pool > 20, kill the weakest B-Rank to make room
-                                   (cull-pool-overflow cat))
-                                 (note-breeding-pair-failure p1 p2 "add-to-kb rejected")))))))))))))
+                                           ;; V50.2: Immediate Culling (Survival of the Fittest)
+                                           ;; If pool > 20, kill the weakest B-Rank to make room
+                                           (cull-pool-overflow cat))))
+                                   (note-breeding-pair-failure p1 p2 "add-to-kb rejected"))))))))))))))
 
 (defun cull-pool-overflow (category)
   "Enforce Musk's '20 or Die' rule. 
@@ -1154,13 +1160,21 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
          (_unused (when (boundp '*regime-pools*)
                     (multiple-value-setq (regime-pool regime-foundp)
                       (gethash category *regime-pools*))))
-         (pool (if regime-foundp
-                   regime-pool
-                   (gethash category *category-pools*)))
+         (raw-pool (if regime-foundp
+                       regime-pool
+                       (gethash category *category-pools*)))
+         (pool (if (fboundp 'strategy-active-pool-eligible-p)
+                   (remove-if-not #'strategy-active-pool-eligible-p raw-pool)
+                   raw-pool))
          (limit (if (boundp '*b-rank-pool-size*) *b-rank-pool-size* 20))
          (survivors nil)
          (victims nil))
-    (declare (ignore _unused))
+  (declare (ignore _unused))
+    ;; Defensive scrub: never let unevaluated members participate in overflow culling.
+    (when (/= (length pool) (length raw-pool))
+      (if regime-foundp
+          (setf (gethash category *regime-pools*) pool)
+        (setf (gethash category *category-pools*) pool)))
     (when (> (length pool) limit)
       ;; Sort by composite score (High to Low)
       (let ((sorted (sort (copy-list pool) #'>
@@ -1199,15 +1213,21 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 
 (defun notify-death (strat reason)
   "Musk: 'I want to see Death.'"
-  (swimmy.core:notify-discord-recruit
-   (format nil "💀 **STRATEGY EXECUTION**
+  (let ((name (strategy-name strat)))
+    (if (and (stringp reason)
+             (search "Pool Overflow" reason :test #'char-equal)
+             (stringp name)
+             (> (length name) 0))
+        (swimmy.core::queue-pool-overflow-retire name)
+        (swimmy.core:notify-discord-recruit
+         (format nil "💀 **STRATEGY EXECUTION**
 ━━━━━━━━━━━━━━━━━━━━━━
 ⚰️ Victim: `~a`
 📉 Sharpe: ~,2f
 ⚖️ Verdict: ~a
 🛑 Status: TERMINATED"
-           (strategy-name strat) (or (strategy-sharpe strat) 0) reason)
-   :color 0)) ; Black/Dark for Death
+                 name (or (strategy-sharpe strat) 0) reason)
+         :color 0)))) ; Black/Dark for Death
 
 ;;; ----------------------------------------------------------------------------
 ;;; Phase 6b: Persistence Implementation

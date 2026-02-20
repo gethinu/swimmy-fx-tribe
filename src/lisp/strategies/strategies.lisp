@@ -50,6 +50,77 @@
           (%normalize-timeframe-minutes (strategy-timeframe strat))))
   strat)
 
+(defvar *allow-archived-rank-resurrection-write* nil
+  "When T, upsert can intentionally revive archived DB rows to active ranks.")
+(defparameter *kb-init-max-archived-duplicate-revives* 1000
+  "Maximum archived DB duplicate revives during one KB init pass. NIL means unlimited.")
+(defparameter *kb-init-revive-source-dirs* '("B" "A" "S" "LEGEND")
+  "Library directories considered authoritative sources for archived->active revive.")
+(defparameter *kb-init-revive-require-active-library-file* t
+  "When T, archived->active revive requires the strategy file to exist under active source dirs.")
+
+(defun %normalize-rank-token-for-kb-init (rank)
+  "Normalize rank token into uppercase string without leading colon."
+  (let* ((raw (cond
+                ((null rank) "NIL")
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun %archived-rank-for-kb-init-p (rank)
+  "Return T when rank is archived and should not shadow active file strategy."
+  (member (%normalize-rank-token-for-kb-init rank)
+          '("GRAVEYARD" "RETIRED" "ARCHIVE" "ARCHIVED" "LEGEND-ARCHIVE")
+          :test #'string=))
+
+(defun %active-rank-for-kb-init-p (rank)
+  "Return T when rank is explicitly active (B/A/S/LEGEND)."
+  (let ((token (%normalize-rank-token-for-kb-init rank)))
+    (member token '("B" "A" "S" "LEGEND") :test #'string=)))
+
+(defun %unevaluated-rank-for-kb-init-p (rank)
+  "Return T when rank should be treated as unevaluated at KB init."
+  (member (%normalize-rank-token-for-kb-init rank)
+          '("NIL" "INCUBATOR" "SCOUT" "")
+          :test #'string=))
+
+(defun %purge-revived-strategy-archive-files (name
+                                              &optional (root swimmy.persistence::*library-path*))
+  "Delete stale GRAVEYARD/RETIRED files for a strategy revived to active rank."
+  (let* ((safe-name (swimmy.persistence::sanitize-filename name))
+         (removed 0))
+    (dolist (dir '("GRAVEYARD" "RETIRED"))
+      (let ((path (merge-pathnames (format nil "~a/~a.lisp" dir safe-name) root)))
+        (when (probe-file path)
+          (ignore-errors
+            (delete-file path)
+            (incf removed)))))
+    removed))
+
+(defun %basename-without-lisp (filename)
+  "Return FILENAME without trailing .lisp."
+  (let* ((name (or filename ""))
+         (len (length name)))
+    (if (and (> len 5)
+             (string-equal ".lisp" name :start1 0 :end1 5 :start2 (- len 5) :end2 len))
+        (subseq name 0 (- len 5))
+        name)))
+
+(defun %build-kb-init-revive-source-index (&optional (root swimmy.persistence::*library-path*))
+  "Build hash-table of strategy names that physically exist under active source dirs."
+  (let ((idx (make-hash-table :test 'equal)))
+    (dolist (dir *kb-init-revive-source-dirs*)
+      (let ((pattern (merge-pathnames (format nil "~a/*.lisp" dir) root)))
+        (dolist (path (ignore-errors (directory pattern)))
+          (let ((name (%basename-without-lisp (file-namestring path))))
+            (when (> (length name) 0)
+              (setf (gethash name idx) t))))))
+    idx))
+
 (defun init-knowledge-base ()
   "Initialize with strategies from The Great Library + SQL database."
   (let* ((raw-file-strats (or (swimmy.persistence:load-all-strategies) '()))
@@ -64,12 +135,67 @@
     (dolist (s file-strats) (%normalize-strategy-timeframe! s))
     (dolist (s db-strats) (%normalize-strategy-timeframe! s))
 
-    ;; Merge lists, prioritizing DB records if duplicates exist (Name based)
-    (let ((kb (copy-list db-strats)))
+    ;; Merge lists, prioritizing DB records except archived DB collisions
+    ;; where file has active rank (explicit revive path).
+    (let ((kb (copy-list db-strats))
+          (kb-index (make-hash-table :test 'equal))
+          (revived-db-entries (make-hash-table :test 'eq))
+          (revive-source-index (and *kb-init-revive-require-active-library-file*
+                                    (%build-kb-init-revive-source-index)))
+          (revive-limit *kb-init-max-archived-duplicate-revives*)
+          (revive-targets '())
+          (replaced-archived-duplicates 0)
+          (revive-skipped-by-cap 0)
+          (purged-archive-files 0))
+      (dolist (dbs kb)
+        (let ((name (and (strategy-p dbs) (strategy-name dbs))))
+          (when name
+            (setf (gethash name kb-index) dbs))))
       (dolist (fs file-strats)
-        (unless (find (strategy-name fs) kb :key #'strategy-name :test #'string=)
-          (push fs kb)))
-      (setf *strategy-knowledge-base* kb)))
+        (let* ((name (and (strategy-p fs) (strategy-name fs)))
+               (existing (and name (gethash name kb-index))))
+          (cond
+            ((null existing)
+             (push fs kb)
+             (when name
+               (setf (gethash name kb-index) fs)))
+            ((and (%archived-rank-for-kb-init-p (strategy-rank existing))
+                  (%active-rank-for-kb-init-p (strategy-rank fs))
+                  (or (not *kb-init-revive-require-active-library-file*)
+                      (and name (gethash name revive-source-index))))
+             (if (or (null revive-limit)
+                     (< replaced-archived-duplicates revive-limit))
+                 (progn
+                   (setf (gethash existing revived-db-entries) t)
+                   (push fs kb)
+                   (setf (gethash name kb-index) fs)
+                   (unless (find name revive-targets
+                                 :key #'strategy-name :test #'string=)
+                     (push fs revive-targets))
+                   (incf replaced-archived-duplicates))
+                 (incf revive-skipped-by-cap))))))
+      (when (> (hash-table-count revived-db-entries) 0)
+        (setf kb (remove-if (lambda (s) (gethash s revived-db-entries)) kb)))
+      (setf *strategy-knowledge-base* kb)
+      (when (> replaced-archived-duplicates 0)
+        (format t "[KB] ♻️ Revived ~d archived DB duplicates from active Library entries.~%"
+                replaced-archived-duplicates))
+      (when (> revive-skipped-by-cap 0)
+        (format t "[KB] ⏳ Deferred ~d archived duplicate revives (cap=~a).~%"
+                revive-skipped-by-cap
+                (or revive-limit "NIL")))
+      (dolist (target revive-targets)
+        (handler-case
+            (let ((*allow-archived-rank-resurrection-write* t))
+              (upsert-strategy target)
+              (incf purged-archive-files
+                    (%purge-revived-strategy-archive-files (strategy-name target))))
+          (error (e)
+            (format t "[KB] ⚠️ Failed to persist revived strategy ~a: ~a~%"
+                    (strategy-name target) e))))
+      (when (> purged-archive-files 0)
+        (format t "[KB] 🧹 Purged ~d stale archive files for revived strategies.~%"
+                purged-archive-files))))
 
   ;; P8: P7 Recruit Strategies Injection DELETED - use add-to-kb
 
@@ -101,6 +227,17 @@
     ;; Physically remove graveyard ones once after processing
     (setf *strategy-knowledge-base* 
           (remove-if (lambda (s) (eq (strategy-rank s) :graveyard)) strats))
+
+    ;; V50.6 hardening: never keep unevaluated entries in KB population.
+    (let* ((before (length *strategy-knowledge-base*)))
+      (setf *strategy-knowledge-base*
+            (remove-if (lambda (s)
+                         (%unevaluated-rank-for-kb-init-p (strategy-rank s)))
+                       *strategy-knowledge-base*))
+      (let ((pruned (- before (length *strategy-knowledge-base*))))
+        (when (> pruned 0)
+          (format t "[KB] 🧹 Pruned ~d unevaluated strategies (NIL/INCUBATOR/SCOUT) during init.~%"
+                  pruned))))
     
     (format t "[L] 🔓 Alpha Unlocked: ~d strategies survivors (~d purged from memory)~%" 
             (length *strategy-knowledge-base*)

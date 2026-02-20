@@ -2363,6 +2363,124 @@
           (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify)
           (fmakunbound 'swimmy.core:notify-discord-alert)))))
 
+(deftest test-armada-kill-switch-pauses-on-hard-dd
+  "Armada kill switch should pause system when hard drawdown cap is breached."
+  (let* ((had-enabled (boundp 'swimmy.school::*armada-kill-switch-enabled*))
+         (orig-enabled (and had-enabled swimmy.school::*armada-kill-switch-enabled*))
+         (had-dd-cap (boundp 'swimmy.school::*armada-hard-dd-percent*))
+         (orig-dd-cap (and had-dd-cap swimmy.school::*armada-hard-dd-percent*))
+         (orig-state swimmy.globals::*system-state*)
+         (orig-dd swimmy.globals::*current-drawdown*)
+         (orig-monitor-dd swimmy.globals::*monitoring-drawdown*)
+         (orig-cooldown swimmy.globals::*danger-cooldown-until*))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*armada-kill-switch-enabled* t)
+          (setf swimmy.school::*armada-hard-dd-percent* 12.0)
+          (setf swimmy.globals::*system-state* :trading)
+          (setf swimmy.globals::*current-drawdown* 13.5)
+          (setf swimmy.globals::*monitoring-drawdown* 13.5)
+          (setf swimmy.globals::*danger-cooldown-until* 0)
+          (let ((reason (swimmy.school::enforce-armada-kill-switch)))
+            (assert-equal :hard-dd reason "Expected hard-dd reason")
+            (assert-equal :paused swimmy.globals::*system-state*
+                          "Kill switch should pause trading state")
+            (assert-true (> swimmy.globals::*danger-cooldown-until* (get-universal-time))
+                         "Kill switch should set cooldown")))
+      (if had-enabled
+          (setf swimmy.school::*armada-kill-switch-enabled* orig-enabled)
+          (makunbound 'swimmy.school::*armada-kill-switch-enabled*))
+      (if had-dd-cap
+          (setf swimmy.school::*armada-hard-dd-percent* orig-dd-cap)
+          (makunbound 'swimmy.school::*armada-hard-dd-percent*))
+      (setf swimmy.globals::*system-state* orig-state)
+      (setf swimmy.globals::*current-drawdown* orig-dd)
+      (setf swimmy.globals::*monitoring-drawdown* orig-monitor-dd)
+      (setf swimmy.globals::*danger-cooldown-until* orig-cooldown))))
+
+(deftest test-enable-armada-kill-switch-canary-mode-activates-guardrails
+  "Canary helper should enable Armada kill switch and reset key thresholds."
+  (let* ((had-enabled (boundp 'swimmy.school::*armada-kill-switch-enabled*))
+         (orig-enabled (and had-enabled swimmy.school::*armada-kill-switch-enabled*))
+         (had-hard-dd (boundp 'swimmy.school::*armada-hard-dd-percent*))
+         (orig-hard-dd (and had-hard-dd swimmy.school::*armada-hard-dd-percent*))
+         (had-weekly-dd (boundp 'swimmy.school::*armada-weekly-dd-percent*))
+         (orig-weekly-dd (and had-weekly-dd swimmy.school::*armada-weekly-dd-percent*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*armada-kill-switch-enabled* nil)
+          (setf swimmy.school::*armada-hard-dd-percent* 99.0)
+          (setf swimmy.school::*armada-weekly-dd-percent* 99.0)
+          (assert-true (swimmy.school::enable-armada-kill-switch-canary-mode))
+          (assert-true swimmy.school::*armada-kill-switch-enabled*
+                       "Canary mode should enable kill switch")
+          (assert-equal 12.0 swimmy.school::*armada-hard-dd-percent*
+                        "Canary mode should use hard DD 12%")
+          (assert-equal 4.0 swimmy.school::*armada-weekly-dd-percent*
+                        "Canary mode should use weekly DD 4%"))
+      (if had-enabled
+          (setf swimmy.school::*armada-kill-switch-enabled* orig-enabled)
+          (makunbound 'swimmy.school::*armada-kill-switch-enabled*))
+      (if had-hard-dd
+          (setf swimmy.school::*armada-hard-dd-percent* orig-hard-dd)
+          (makunbound 'swimmy.school::*armada-hard-dd-percent*))
+      (if had-weekly-dd
+          (setf swimmy.school::*armada-weekly-dd-percent* orig-weekly-dd)
+          (makunbound 'swimmy.school::*armada-weekly-dd-percent*)))))
+
+(deftest test-guard-execution-status-blocks-when-armada-kill-switch-trips
+  "Execution guard should fail-close when Armada kill switch is active."
+  (let* ((had-enabled (boundp 'swimmy.school::*armada-kill-switch-enabled*))
+         (orig-enabled (and had-enabled swimmy.school::*armada-kill-switch-enabled*))
+         (had-dd-cap (boundp 'swimmy.school::*armada-hard-dd-percent*))
+         (orig-dd-cap (and had-dd-cap swimmy.school::*armada-hard-dd-percent*))
+         (orig-state swimmy.school::*system-state*)
+         (orig-last-entry swimmy.school::*last-entry-time*)
+         (orig-warmup-end swimmy.school::*warmup-end-time*)
+         (orig-breaker swimmy.school::*circuit-breaker-active*)
+         (orig-breaker-end swimmy.school::*breaker-cooldown-end*)
+         (orig-recent swimmy.school::*recent-losses*)
+         (orig-dd swimmy.globals::*current-drawdown*)
+         (orig-monitor-dd swimmy.globals::*monitoring-drawdown*)
+         (orig-market-open (and (fboundp 'swimmy.school::market-open-p)
+                                (symbol-function 'swimmy.school::market-open-p)))
+         (now (get-universal-time)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*armada-kill-switch-enabled* t)
+          (setf swimmy.school::*armada-hard-dd-percent* 12.0)
+          (setf swimmy.school::*system-state* :trading)
+          (setf swimmy.school::*last-entry-time* (- now 100))
+          (setf swimmy.school::*warmup-end-time* (- now 120))
+          (setf swimmy.school::*circuit-breaker-active* nil)
+          (setf swimmy.school::*breaker-cooldown-end* 0)
+          (setf swimmy.school::*recent-losses* nil)
+          (setf swimmy.globals::*current-drawdown* 13.1)
+          (setf swimmy.globals::*monitoring-drawdown* 13.1)
+          (when orig-market-open
+            (setf (symbol-function 'swimmy.school::market-open-p)
+                  (lambda () t)))
+          (assert-false (swimmy.school::guard-execution-status "USDJPY" now)
+                        "Guard should block when kill switch trips")
+          (assert-equal :paused swimmy.school::*system-state*
+                        "System state should move to :paused"))
+      (if had-enabled
+          (setf swimmy.school::*armada-kill-switch-enabled* orig-enabled)
+          (makunbound 'swimmy.school::*armada-kill-switch-enabled*))
+      (if had-dd-cap
+          (setf swimmy.school::*armada-hard-dd-percent* orig-dd-cap)
+          (makunbound 'swimmy.school::*armada-hard-dd-percent*))
+      (setf swimmy.school::*system-state* orig-state)
+      (setf swimmy.school::*last-entry-time* orig-last-entry)
+      (setf swimmy.school::*warmup-end-time* orig-warmup-end)
+      (setf swimmy.school::*circuit-breaker-active* orig-breaker)
+      (setf swimmy.school::*breaker-cooldown-end* orig-breaker-end)
+      (setf swimmy.school::*recent-losses* orig-recent)
+      (setf swimmy.globals::*current-drawdown* orig-dd)
+      (setf swimmy.globals::*monitoring-drawdown* orig-monitor-dd)
+      (when orig-market-open
+        (setf (symbol-function 'swimmy.school::market-open-p) orig-market-open)))))
+
 (deftest test-sexp-string-avoids-array-syntax
   "sexp->string should not emit #A for base strings (lexpr compatibility)"
   (let* ((base-str (make-array 3 :element-type 'base-char :initial-contents "abc"))
@@ -2901,7 +3019,7 @@
 (deftest test-reconcile-with-mt5-positions-records-dryrun-slippage-on-promotion
   "reconcile-with-mt5-positions should record DryRun slippage when entry_price is available."
   (let ((orig-pending swimmy.school::*allocation-pending-orders*)
-        (orig-warriors swimmy.school::*warrior-allocation*)
+        (orig-slots swimmy.school::*slot-allocation*)
         (orig-record (and (fboundp 'swimmy.school::record-dryrun-slippage)
                           (symbol-function 'swimmy.school::record-dryrun-slippage)))
         (magic 110012345)
@@ -2909,7 +3027,7 @@
     (unwind-protect
         (progn
           (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
-          (setf swimmy.school::*warrior-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
           (setf (gethash magic swimmy.school::*allocation-pending-orders*)
                 (list :timestamp (get-universal-time)
                       :strategy "UT-SLIP"
@@ -2938,7 +3056,7 @@
           (assert-true (< (abs (- (second captured) 1.0)) 1.0e-3)
                        (format nil "Expected slippage about 1.0 pips; got ~a" (second captured))))
       (setf swimmy.school::*allocation-pending-orders* orig-pending)
-      (setf swimmy.school::*warrior-allocation* orig-warriors)
+      (setf swimmy.school::*slot-allocation* orig-slots)
       (when orig-record
         (setf (symbol-function 'swimmy.school::record-dryrun-slippage) orig-record)))))
 
@@ -3611,7 +3729,7 @@
       (setf swimmy.executor::*processed-tickets* orig-processed))))
 
 (deftest test-process-trade-closed-uses-payload-context-for-learning
-  "process-trade-closed should use payload context keys for learning without warrior entry-context lookup."
+  "process-trade-closed should use payload context keys for learning without slot entry-context lookup."
   (let* ((fn (find-symbol "PROCESS-TRADE-CLOSED" :swimmy.executor))
          (orig-record-result (and (fboundp 'swimmy.school:record-trade-result)
                                   (symbol-function 'swimmy.school:record-trade-result)))
@@ -4356,7 +4474,7 @@
 
 (deftest test-execute-order-sequence-fails-closed-on-missing-context
   "execute-order-sequence should reject NIL strategy/timeframe context before reservation."
-  (let ((orig-try-reserve (symbol-function 'swimmy.school::try-reserve-warrior-slot))
+  (let ((orig-try-reserve (symbol-function 'swimmy.school::try-reserve-slot))
         (orig-notify-alert (symbol-function 'swimmy.core:notify-discord-alert))
         (orig-emit-telemetry (symbol-function 'swimmy.core::emit-telemetry-event))
         (reserve-called nil)
@@ -4365,7 +4483,7 @@
         (telemetry-event nil))
     (unwind-protect
         (progn
-          (setf (symbol-function 'swimmy.school::try-reserve-warrior-slot)
+          (setf (symbol-function 'swimmy.school::try-reserve-slot)
                 (lambda (&rest _args)
                   (declare (ignore _args))
                   (setf reserve-called t)
@@ -4389,7 +4507,7 @@
             (assert-true telemetry-called "Expected telemetry on fail-closed reservation skip")
             (assert-equal "execution.context_missing" telemetry-event
                           "Expected execution.context_missing telemetry event")))
-      (setf (symbol-function 'swimmy.school::try-reserve-warrior-slot) orig-try-reserve)
+      (setf (symbol-function 'swimmy.school::try-reserve-slot) orig-try-reserve)
       (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit-telemetry))))
 
@@ -6605,6 +6723,62 @@
       (setf swimmy.school::*founder-preflight-screen-enabled* orig-preflight)
       (setf swimmy.school::*startup-mode* orig-startup))))
 
+(deftest test-recruit-founder-queues-phase1-before-admission
+  "recruit-founder should require Phase1 gating and avoid duplicate request-backtest when queued."
+  (let* ((orig-registry swimmy.school::*founder-registry*)
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-request (symbol-function 'swimmy.school::request-backtest))
+         (orig-preflight (and (boundp 'swimmy.school::*founder-preflight-screen-enabled*)
+                              swimmy.school::*founder-preflight-screen-enabled*))
+         (orig-startup (and (boundp 'swimmy.school::*startup-mode*)
+                            swimmy.school::*startup-mode*))
+         (captured-require-bt nil)
+         (captured-source nil)
+         (request-called 0)
+         (key :ut-founder-phase1-queue)
+         (maker (lambda ()
+                  (swimmy.school:make-strategy
+                   :name "UT-FOUNDER-P1-QUEUE"
+                   :category :trend
+                   :timeframe 60
+                   :symbol "USDJPY"
+                   :rank nil
+                   :sl 0.22
+                   :tp 0.31
+                   :indicators '((sma 20))
+                   :entry '(> close sma-20)
+                   :exit '(< close sma-20)))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*founder-registry* (make-hash-table :test 'equal))
+          (setf (gethash key swimmy.school::*founder-registry*) maker)
+          ;; Isolate this test from preflight/correlation behavior.
+          (setf swimmy.school::*founder-preflight-screen-enabled* nil)
+          (setf swimmy.school::*startup-mode* nil)
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (_strategy source &key require-bt &allow-other-keys)
+                  (setf captured-source source
+                        captured-require-bt require-bt)
+                  (values t :queued-phase1)))
+          (setf (symbol-function 'swimmy.school::request-backtest)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf request-called)
+                  t))
+          (assert-true (swimmy.school::recruit-founder key)
+                       "Expected recruit-founder success when add-to-kb queues Phase1")
+          (assert-equal :founder captured-source
+                        "Expected founder source to be propagated into add-to-kb")
+          (assert-true captured-require-bt
+                       "Founder intake should require BT/Phase1 gating")
+          (assert-equal 0 request-called
+                        "Queued Phase1 path must not emit duplicate request-backtest"))
+      (setf swimmy.school::*founder-registry* orig-registry)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
+      (setf swimmy.school::*founder-preflight-screen-enabled* orig-preflight)
+      (setf swimmy.school::*startup-mode* orig-startup))))
+
 (deftest test-recruit-special-forces-recruits-founders-per-supported-symbol
   "recruit-special-forces should attempt founder recruitment per supported symbol (USDJPY/EURUSD/GBPUSD)."
   (let* ((orig-registry swimmy.school::*founder-registry*)
@@ -7003,10 +7177,10 @@
         (progn
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
                 (lambda ()
-                  (list (swimmy.school:make-strategy :name "UT-DB-TF-MN" :timeframe "MN1"))))
+                  (list (swimmy.school:make-strategy :name "UT-DB-TF-MN" :timeframe "MN1" :rank :B))))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda ()
-                  (list (swimmy.school:make-strategy :name "UT-FILE-TF-H5" :timeframe "H5"))))
+                  (list (swimmy.school:make-strategy :name "UT-FILE-TF-H5" :timeframe "H5" :rank :B))))
           (swimmy.school::init-knowledge-base)
           (let ((db (find "UT-DB-TF-MN" swimmy.school::*strategy-knowledge-base*
                           :key #'swimmy.school:strategy-name :test #'string=))
@@ -7019,6 +7193,174 @@
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
       (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file))))
+
+(deftest test-init-knowledge-base-prunes-unevaluated-ranks
+  "init-knowledge-base should remove unevaluated NIL/INCUBATOR/SCOUT strategies from KB."
+  (let* ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+         (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (active (swimmy.school:make-strategy :name "UT-KB-ACTIVE-B"
+                                              :rank :B
+                                              :symbol "USDJPY"
+                                              :timeframe 300
+                                              :sharpe 0.7
+                                              :trades 50))
+         (nil-rank (swimmy.school:make-strategy :name "UT-KB-NIL-RANK"
+                                                :rank nil
+                                                :symbol "USDJPY"
+                                                :timeframe 300
+                                                :sharpe 0.0
+                                                :trades 0))
+         (incubator (swimmy.school:make-strategy :name "UT-KB-INCUBATOR"
+                                                 :rank :incubator
+                                                 :symbol "USDJPY"
+                                                 :timeframe 300
+                                                 :sharpe 0.0
+                                                 :trades 0))
+         (scout (swimmy.school:make-strategy :name "UT-KB-SCOUT"
+                                             :rank :scout
+                                             :symbol "USDJPY"
+                                             :timeframe 300
+                                             :sharpe 0.0
+                                             :trades 0)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda () (list active nil-rank)))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda () (list incubator scout)))
+          (swimmy.school::init-knowledge-base)
+          (assert-true (find "UT-KB-ACTIVE-B" swimmy.school::*strategy-knowledge-base*
+                             :key #'swimmy.school:strategy-name :test #'string=)
+                       "Expected active B-rank strategy to remain in KB")
+          (assert-false (find "UT-KB-NIL-RANK" swimmy.school::*strategy-knowledge-base*
+                              :key #'swimmy.school:strategy-name :test #'string=)
+                        "Expected NIL-rank strategy to be removed from KB")
+          (assert-false (find "UT-KB-INCUBATOR" swimmy.school::*strategy-knowledge-base*
+                              :key #'swimmy.school:strategy-name :test #'string=)
+                        "Expected INCUBATOR strategy to be removed from KB")
+          (assert-false (find "UT-KB-SCOUT" swimmy.school::*strategy-knowledge-base*
+                              :key #'swimmy.school:strategy-name :test #'string=)
+                        "Expected SCOUT strategy to be removed from KB"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file))))
+
+(deftest test-init-knowledge-base-revives-active-file-strategy-over-archived-db-duplicate
+  "init-knowledge-base should prefer active file strategy when DB duplicate is archived."
+  (let* ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+         (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-purge (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files))
+         (orig-require-file swimmy.school::*kb-init-revive-require-active-library-file*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (db-strat (swimmy.school:make-strategy :name "UT-KB-ARCHIVE-COLLIDE"
+                                                :rank :graveyard
+                                                :symbol "USDJPY"
+                                                :timeframe 300
+                                                :sharpe 0.10))
+         (file-strat (swimmy.school:make-strategy :name "UT-KB-ARCHIVE-COLLIDE"
+                                                  :rank :B
+                                                  :symbol "USDJPY"
+                                                  :timeframe 300
+                                                  :sharpe 1.10))
+         (revived nil)
+         (purged nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*kb-init-revive-require-active-library-file* nil)
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda () (list db-strat)))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda () (list file-strat)))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (s)
+                  (push (list (swimmy.school:strategy-name s)
+                              swimmy.school::*allow-archived-rank-resurrection-write*)
+                        revived)
+                  t))
+          (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files)
+                (lambda (name &optional _root)
+                  (declare (ignore _root))
+                  (push name purged)
+                  1))
+          (swimmy.school::init-knowledge-base)
+          (let ((picked (find "UT-KB-ARCHIVE-COLLIDE"
+                              swimmy.school::*strategy-knowledge-base*
+                              :key #'swimmy.school:strategy-name
+                              :test #'string=)))
+            (assert-not-nil picked "Expected collided strategy to survive KB init")
+            (assert-equal :B (swimmy.school:strategy-rank picked)
+                          "Expected active file rank to replace archived DB duplicate")
+            (assert-true (> (swimmy.school:strategy-sharpe picked) 1.0)
+                         "Expected active file metrics to be used"))
+          (assert-equal 1 (length revived)
+                        "Expected one archived->active DB revive write")
+          (assert-true (second (first revived))
+                       "Revive write should enable archived resurrection override")
+          (assert-equal 1 (length purged)
+                        "Expected stale archive purge to run once")
+          (assert-equal "UT-KB-ARCHIVE-COLLIDE" (first purged)
+                        "Expected stale archive purge for revived strategy"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*kb-init-revive-require-active-library-file* orig-require-file)
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files) orig-purge))))
+
+(deftest test-init-knowledge-base-revive-requires-active-library-file-by-default
+  "init-knowledge-base should skip archived->active revive when strategy is not in active Library dirs."
+  (let* ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+         (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-purge (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files))
+         (orig-require-file swimmy.school::*kb-init-revive-require-active-library-file*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (db-strat (swimmy.school:make-strategy :name "UT-KB-ARCHIVE-NO-ACTIVE-FILE"
+                                                :rank :graveyard
+                                                :symbol "USDJPY"
+                                                :timeframe 300))
+         (file-strat (swimmy.school:make-strategy :name "UT-KB-ARCHIVE-NO-ACTIVE-FILE"
+                                                  :rank :B
+                                                  :symbol "USDJPY"
+                                                  :timeframe 300
+                                                  :sharpe 1.20))
+         (upsert-called 0)
+         (purge-called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*kb-init-revive-require-active-library-file* t)
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda () (list db-strat)))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda () (list file-strat)))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf upsert-called)
+                  t))
+          (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf purge-called)
+                  1))
+          (swimmy.school::init-knowledge-base)
+          (assert-equal 0 upsert-called
+                        "Expected no revive upsert when active Library file is missing")
+          (assert-equal 0 purge-called
+                        "Expected no archive purge when revive is skipped")
+          (assert-false (find "UT-KB-ARCHIVE-NO-ACTIVE-FILE"
+                              swimmy.school::*strategy-knowledge-base*
+                              :key #'swimmy.school:strategy-name
+                              :test #'string=)
+                        "Archived DB duplicate should remain pruned from KB"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*kb-init-revive-require-active-library-file* orig-require-file)
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files) orig-purge))))
 
 (deftest test-fetch-all-strategies-from-db-prefers-rank-column-over-stale-data-sexp
   "DB fetch should trust rank column when serialized rank in data_sexp is stale."
@@ -7292,6 +7634,7 @@
 (deftest test-add-to-kb-breeder-phase1-bypasses-graveyard-pattern
   "Breeder entries requiring Phase1 should bypass graveyard rejection when bypass flag is enabled."
   (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
          (orig-pools swimmy.school::*category-pools*)
          (orig-startup swimmy.school::*startup-mode*)
          (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
@@ -7317,6 +7660,7 @@
     (unwind-protect
         (progn
           (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
           (setf swimmy.school::*category-pools* (make-hash-table))
           (setf swimmy.school::*startup-mode* nil)
           (setf swimmy.school::*breeder-graveyard-bypass-for-phase1-enabled* t)
@@ -7334,9 +7678,12 @@
           (assert-true (swimmy.school:add-to-kb child :breeder :notify nil :require-bt t)
                        "Expected breeder Phase1 path to bypass graveyard rejection")
           (assert-equal 1 phase1-called "Expected Phase1 screening queue for bypassed breeder child")
-          (assert-equal :incubator (swimmy.school:strategy-rank child)
-                        "Bypassed breeder child should stay in incubator"))
+          (assert-false (find child swimmy.school::*strategy-knowledge-base* :test #'eq)
+                        "Bypassed breeder child must not enter KB before Phase1 result")
+          (assert-not-nil (gethash (swimmy.school:strategy-name child) swimmy.school::*phase1-pending-candidates*)
+                          "Bypassed breeder child should be staged in pending queue"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
       (setf swimmy.school::*category-pools* orig-pools)
       (setf swimmy.school::*startup-mode* orig-startup)
       (setf swimmy.school::*breeder-graveyard-bypass-for-phase1-enabled* orig-bypass)
@@ -7400,8 +7747,9 @@
       (setf (symbol-function 'swimmy.school::run-phase-1-screening) orig-phase1))))
 
 (deftest test-add-to-kb-breeder-requires-phase1-screening-when-require-bt
-  "Breeder entry with require-bt should always queue Phase1 screening and remain incubator."
+  "Breeder entry with require-bt should queue Phase1 screening without entering KB."
   (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
          (orig-pools swimmy.school::*category-pools*)
          (orig-startup swimmy.school::*startup-mode*)
          (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
@@ -7426,6 +7774,7 @@
     (unwind-protect
         (progn
           (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
           (setf swimmy.school::*category-pools* (make-hash-table))
           (setf swimmy.school::*startup-mode* nil)
           (setf (symbol-function 'swimmy.school:upsert-strategy)
@@ -7440,17 +7789,341 @@
                   (incf phase1-called)
                   t))
           (assert-true (swimmy.school:add-to-kb child :breeder :notify nil :require-bt t)
-                       "Expected breeder child to be admitted as incubator pending Phase1")
+                       "Expected breeder child to be accepted for pending Phase1")
           (assert-equal 1 phase1-called "Expected Phase1 screening to be queued once")
-          (assert-equal :incubator (swimmy.school:strategy-rank child)
-                        "Breeder child should remain incubator until Phase1 result"))
+          (assert-false (find child swimmy.school::*strategy-knowledge-base* :test #'eq)
+                        "Breeder child must not enter KB before Phase1 result")
+          (assert-not-nil (gethash (swimmy.school:strategy-name child) swimmy.school::*phase1-pending-candidates*)
+                          "Breeder child should be held in pending Phase1 queue"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
       (setf swimmy.school::*category-pools* orig-pools)
       (setf swimmy.school::*startup-mode* orig-startup)
       (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
       (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify)
       (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p) orig-graveyard)
       (setf (symbol-function 'swimmy.school::run-phase-1-screening) orig-phase1))))
+
+(deftest test-add-to-kb-phase1-pending-skips-pool-membership
+  "Phase1-pending candidate must not be inserted into KB active pools."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
+         (orig-startup swimmy.school::*startup-mode*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (symbol-function 'swimmy.school::notify-recruit-unified))
+         (orig-graveyard (symbol-function 'swimmy.school::is-graveyard-pattern-p))
+         (orig-phase1 (symbol-function 'swimmy.school::run-phase-1-screening))
+         (phase1-called 0)
+         (child (swimmy.school:make-strategy :name "UT-BREEDER-PENDING-NO-POOL"
+                                             :symbol "USDJPY"
+                                             :timeframe 300
+                                             :direction :BOTH
+                                             :rank nil
+                                             :sl 10.0
+                                             :tp 20.0
+                                             :sharpe 0.0
+                                             :profit-factor 0.0
+                                             :win-rate 0.0
+                                             :max-dd 0.0
+                                             :trades 0
+                                             :indicators '((ema 20))
+                                             :entry '(> close ema-20)
+                                             :exit '(< close ema-20))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*startup-mode* nil)
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::notify-recruit-unified)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::run-phase-1-screening)
+                (lambda (&rest args)
+                  (declare (ignore args))
+                  (incf phase1-called)
+                  t))
+          (assert-true (swimmy.school:add-to-kb child :breeder :notify nil :require-bt t)
+                       "Expected candidate admission for phase1 queue")
+          (assert-equal 1 phase1-called "Expected one Phase1 queue call")
+          (assert-false (find child swimmy.school::*strategy-knowledge-base* :test #'eq)
+                        "Pending candidate should not enter KB before Phase1 result")
+          (assert-not-nil (gethash (swimmy.school:strategy-name child) swimmy.school::*phase1-pending-candidates*)
+                          "Pending candidate should be tracked in pending queue")
+          (let* ((cat (swimmy.school::categorize-strategy child))
+                 (regime (swimmy.school::strategy-regime-class child))
+                 (cat-pool (gethash cat swimmy.school::*category-pools*))
+                 (regime-pool (gethash regime swimmy.school::*regime-pools*)))
+            (assert-false (find child cat-pool :test #'eq)
+                          "Pending incubator should not enter category pool")
+            (assert-false (find child regime-pool :test #'eq)
+                          "Pending incubator should not enter regime pool")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools)
+      (setf swimmy.school::*startup-mode* orig-startup)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify)
+      (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p) orig-graveyard)
+      (setf (symbol-function 'swimmy.school::run-phase-1-screening) orig-phase1))))
+
+(deftest test-handle-v2-result-admits-pending-phase1-candidate
+  "Phase1 result should resolve pending candidate, evaluate, and clear pending queue."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-ensure (symbol-function 'swimmy.school::ensure-rank))
+         (child (swimmy.school:make-strategy :name "UT-PENDING-P1-PASS"
+                                             :symbol "USDJPY"
+                                             :timeframe 300
+                                             :direction :BOTH
+                                             :rank nil
+                                             :sl 10.0
+                                             :tp 20.0
+                                             :sharpe 0.0
+                                             :profit-factor 0.0
+                                             :win-rate 0.0
+                                             :max-dd 1.0
+                                             :trades 0
+                                             :indicators '((ema 20))
+                                             :entry '(> close ema-20)
+                                             :exit '(< close ema-20)))
+         (ensure-called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
+          (setf (gethash (swimmy.school:strategy-name child) swimmy.school::*phase1-pending-candidates*) child)
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::ensure-rank)
+                (lambda (strategy new-rank &optional reason)
+                  (declare (ignore reason))
+                  (incf ensure-called)
+                  (setf (swimmy.school:strategy-rank strategy) new-rank)
+                  new-rank))
+          (swimmy.school::handle-v2-result
+           "UT-PENDING-P1-PASS_P1"
+           '(:sharpe 0.8 :profit-factor 1.2 :win-rate 0.5 :trades 10 :max-dd 0.1))
+          (assert-equal 1 ensure-called "Expected pending candidate to be rank-evaluated on Phase1 result")
+          (assert-equal :B (swimmy.school:strategy-rank child))
+          (assert-not-nil (find child swimmy.school::*strategy-knowledge-base* :test #'eq)
+                          "Resolved pending candidate should be admitted to KB")
+          (assert-false (gethash (swimmy.school:strategy-name child) swimmy.school::*phase1-pending-candidates*)
+                        "Pending queue entry should be cleared after Phase1 result"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::ensure-rank) orig-ensure))))
+
+(deftest test-build-category-pools-excludes-unevaluated-incubator
+  "build-category-pools should exclude unevaluated incubators from active pools."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
+         (evaluated (swimmy.school:make-strategy :name "UT-EVAL-ACTIVE"
+                                                 :symbol "USDJPY"
+                                                 :timeframe 300
+                                                 :direction :BOTH
+                                                 :rank :B
+                                                 :sharpe 0.8
+                                                 :profit-factor 1.4
+                                                 :win-rate 0.45
+                                                 :max-dd 0.12
+                                                 :trades 42))
+         (pending (swimmy.school:make-strategy :name "UT-INCUBATOR-PENDING"
+                                               :symbol "USDJPY"
+                                               :timeframe 300
+                                               :direction :BOTH
+                                               :rank :incubator
+                                               :sharpe 0.0
+                                               :profit-factor 0.0
+                                               :win-rate 0.0
+                                               :max-dd 0.0
+                                               :trades 0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list evaluated pending))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (swimmy.school::build-category-pools)
+          (let* ((cat (swimmy.school::categorize-strategy evaluated))
+                 (pool (gethash cat swimmy.school::*category-pools*)))
+            (assert-true (find evaluated pool :test #'eq)
+                         "Evaluated strategy should remain in active pool")
+            (assert-false (find pending pool :test #'eq)
+                          "Pending incubator must be excluded from active pool")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools))))
+
+(deftest test-build-category-pools-excludes-zero-evidence-active-rank
+  "build-category-pools should exclude active-rank entries that still have zero-evidence metrics."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
+         (evaluated (swimmy.school:make-strategy :name "UT-EVAL-B-ACTIVE"
+                                                 :symbol "USDJPY"
+                                                 :timeframe 300
+                                                 :direction :BOTH
+                                                 :rank :B
+                                                 :sharpe 0.7
+                                                 :profit-factor 1.3
+                                                 :win-rate 0.42
+                                                 :max-dd 0.10
+                                                 :trades 55))
+         (zero-evidence (swimmy.school:make-strategy :name "UT-ZERO-EVIDENCE-B"
+                                                      :symbol "USDJPY"
+                                                      :timeframe 300
+                                                      :direction :BOTH
+                                                      :rank :B
+                                                      :sharpe 0.0
+                                                      :profit-factor 0.0
+                                                      :win-rate 0.0
+                                                      :max-dd 0.0
+                                                      :trades 0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list evaluated zero-evidence))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (swimmy.school::build-category-pools)
+          (let* ((cat (swimmy.school::categorize-strategy evaluated))
+                 (pool (gethash cat swimmy.school::*category-pools*)))
+            (assert-true (find evaluated pool :test #'eq)
+                         "Evaluated active-rank strategy should remain in active pool")
+            (assert-false (find zero-evidence pool :test #'eq)
+                          "Zero-evidence active-rank strategy must be excluded from active pool")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools))))
+
+(deftest test-build-category-pools-excludes-revalidation-pending-legend
+  "build-category-pools should exclude legends while revalidation-pending is true."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
+         (legend-ready (swimmy.school:make-strategy :name "UT-LEGEND-READY"
+                                                     :symbol "USDJPY"
+                                                     :timeframe 3600
+                                                     :direction :BOTH
+                                                     :rank :legend
+                                                     :revalidation-pending nil
+                                                     :sharpe 1.1
+                                                     :profit-factor 1.6
+                                                     :win-rate 0.51
+                                                     :max-dd 0.11
+                                                     :trades 180))
+         (legend-pending (swimmy.school:make-strategy :name "UT-LEGEND-PENDING"
+                                                       :symbol "USDJPY"
+                                                       :timeframe 3600
+                                                       :direction :BOTH
+                                                       :rank :legend
+                                                       :revalidation-pending t
+                                                       :sharpe 1.2
+                                                       :profit-factor 1.7
+                                                       :win-rate 0.52
+                                                       :max-dd 0.12
+                                                       :trades 190)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list legend-ready legend-pending))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (swimmy.school::build-category-pools)
+          (let* ((cat (swimmy.school::categorize-strategy legend-ready))
+                 (pool (gethash cat swimmy.school::*category-pools*)))
+            (assert-true (find legend-ready pool :test #'eq)
+                         "Legend should be active once revalidation pending is cleared")
+            (assert-false (find legend-pending pool :test #'eq)
+                          "Revalidation-pending legend must be excluded from active pool")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools))))
+
+(deftest test-select-best-from-pool-excludes-unevaluated-incubator
+  "select-best-from-pool should defensively filter incubator/unranked entries."
+  (let* ((orig-regime-pools swimmy.school::*regime-pools*)
+         (evaluated (swimmy.school:make-strategy :name "UT-POOL-EVAL"
+                                                 :symbol "USDJPY"
+                                                 :timeframe 300
+                                                 :direction :BOTH
+                                                 :category :trend
+                                                 :rank :B
+                                                 :sharpe 0.9
+                                                 :profit-factor 1.4
+                                                 :win-rate 0.5
+                                                 :max-dd 0.1
+                                                 :trades 80))
+         (pending (swimmy.school:make-strategy :name "UT-POOL-PENDING"
+                                               :symbol "USDJPY"
+                                               :timeframe 300
+                                               :direction :BOTH
+                                               :category :trend
+                                               :rank :incubator
+                                               :sharpe 0.0
+                                               :profit-factor 0.0
+                                               :win-rate 0.0
+                                               :max-dd 0.0
+                                               :trades 0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf (gethash :trend swimmy.school::*regime-pools*) (list pending evaluated))
+          (let ((picked (swimmy.school::select-best-from-pool :trend 5))
+                (pool-after (gethash :trend swimmy.school::*regime-pools*)))
+            (assert-true (find evaluated picked :test #'eq)
+                         "Evaluated strategy should remain selectable")
+            (assert-false (find pending picked :test #'eq)
+                          "Unevaluated incubator must be filtered out from selection")
+            (assert-false (find pending pool-after :test #'eq)
+                          "Defensive scrub should remove pending incubator from regime pool")))
+      (setf swimmy.school::*regime-pools* orig-regime-pools))))
+
+(deftest test-force-recruit-strategy-skips-unevaluated-active-pools
+  "force-recruit-strategy should not inject incubator/unranked strategies into active pools."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-evolved swimmy.school::*evolved-strategies*)
+         (orig-category-pools swimmy.school::*category-pools*)
+         (orig-regime-pools swimmy.school::*regime-pools*)
+         (pending (swimmy.school:make-strategy :name "UT-SF-PENDING"
+                                               :symbol "USDJPY"
+                                               :timeframe 300
+                                               :direction :BOTH
+                                               :category :trend
+                                               :rank :incubator
+                                               :sharpe 0.0
+                                               :profit-factor 0.0
+                                               :win-rate 0.0
+                                               :max-dd 0.0
+                                               :trades 0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list pending))
+          (setf swimmy.school::*evolved-strategies* nil)
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (assert-true (swimmy.school::force-recruit-strategy "UT-SF-PENDING")
+                       "Expected force-recruit to find strategy in KB")
+          (let* ((cat (swimmy.school::categorize-strategy pending))
+                 (regime (swimmy.school::strategy-regime-class pending)))
+            (assert-false (find pending (gethash cat swimmy.school::*category-pools*) :test #'eq)
+                          "Unevaluated strategy must not enter category pool")
+            (assert-false (find pending (gethash regime swimmy.school::*regime-pools*) :test #'eq)
+                          "Unevaluated strategy must not enter regime pool")
+            (assert-true (find pending swimmy.school::*evolved-strategies* :test #'eq)
+                         "force-recruit should still track strategy in evolved registry")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*evolved-strategies* orig-evolved)
+      (setf swimmy.school::*category-pools* orig-category-pools)
+      (setf swimmy.school::*regime-pools* orig-regime-pools))))
 
 (deftest test-run-legend-breeding-routes-child-through-add-to-kb
   "Legend breeding should route child admission through add-to-kb with breeder BT requirements."
@@ -7960,6 +8633,75 @@
                                             :cpcv-median-maxdd 0.10)))
     (assert-false (swimmy.school::check-rank-criteria strat :S)
                   "S criteria should fail when trade evidence is below floor")))
+
+(deftest test-armada-core-profile-gate-requires-pf-dd-trades
+  "Armada Core profile gate should reject candidates that fail PF/DD/Trades floors."
+  (let* ((strat (swimmy.school:make-strategy :name "UT-ARMADA-CORE-PFDD"
+                                             :rank :B
+                                             :sharpe 1.20
+                                             :profit-factor 1.45
+                                             :win-rate 0.52
+                                             :trades 320
+                                             :max-dd 0.10
+                                             :oos-sharpe 0.50)))
+    (assert-false (swimmy.school::armada-core-profile-passed-p strat)
+                  "PF<1.60 should fail Armada Core profile gate")))
+
+(deftest test-armada-core-profile-gate-requires-hold-time-band
+  "Armada Core profile gate should enforce average hold-time band and side-bias cap."
+  (let ((strat (swimmy.school:make-strategy :name "UT-ARMADA-CORE-HOLD"
+                                            :rank :B
+                                            :sharpe 1.20
+                                            :profit-factor 1.90
+                                            :win-rate 0.52
+                                            :trades 500
+                                            :max-dd 0.08
+                                            :oos-sharpe 0.60)))
+    (assert-false (swimmy.school::armada-core-profile-passed-p
+                   strat
+                   :trade-profile (list :avg-hold-seconds 1200
+                                        :max-side-share 0.60))
+                  "Average hold below 3h should fail")
+    (assert-false (swimmy.school::armada-core-profile-passed-p
+                   strat
+                   :trade-profile (list :avg-hold-seconds 21600
+                                        :max-side-share 0.90))
+                  "Side share above 80% should fail")
+    (assert-true (swimmy.school::armada-core-profile-passed-p
+                  strat
+                  :trade-profile (list :avg-hold-seconds 21600
+                                       :max-side-share 0.62))
+                 "Balanced hold-time and side-share should pass")))
+
+(deftest test-enable-armada-core-canary-mode-limits-gate-to-a-rank
+  "Canary helper should enable Armada gate only for A-rank and require trade profile."
+  (let* ((had-enabled (boundp 'swimmy.school::*armada-core-profile-enabled*))
+         (orig-enabled (and had-enabled swimmy.school::*armada-core-profile-enabled*))
+         (had-ranks (boundp 'swimmy.school::*armada-core-apply-ranks*))
+         (orig-ranks (and had-ranks swimmy.school::*armada-core-apply-ranks*))
+         (had-require (boundp 'swimmy.school::*armada-core-require-trade-profile*))
+         (orig-require (and had-require swimmy.school::*armada-core-require-trade-profile*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*armada-core-profile-enabled* nil)
+          (setf swimmy.school::*armada-core-apply-ranks* '(:A :S))
+          (setf swimmy.school::*armada-core-require-trade-profile* nil)
+          (assert-true (swimmy.school::enable-armada-core-canary-mode))
+          (assert-true swimmy.school::*armada-core-profile-enabled*
+                       "Canary mode should enable Armada profile")
+          (assert-equal '(:A) swimmy.school::*armada-core-apply-ranks*
+                        "Canary mode should apply gate to A-rank only")
+          (assert-true swimmy.school::*armada-core-require-trade-profile*
+                       "Canary mode should require trade profile")))
+      (if had-enabled
+          (setf swimmy.school::*armada-core-profile-enabled* orig-enabled)
+          (makunbound 'swimmy.school::*armada-core-profile-enabled*))
+      (if had-ranks
+          (setf swimmy.school::*armada-core-apply-ranks* orig-ranks)
+          (makunbound 'swimmy.school::*armada-core-apply-ranks*))
+      (if had-require
+          (setf swimmy.school::*armada-core-require-trade-profile* orig-require)
+          (makunbound 'swimmy.school::*armada-core-require-trade-profile*))))
 
 (deftest test-check-rank-criteria-vnext-a-oos-threshold
   "A-RANK OOS gate should require OOS Sharpe >= 0.35"
@@ -10697,6 +11439,9 @@
 	                  test-safe-order-fails-closed-when-account-info-stale
 	                  test-check-pending-orders-pauses-when-guardian-heartbeat-stale
 	                  test-check-pending-orders-pauses-when-account-info-stale
+	                  test-armada-kill-switch-pauses-on-hard-dd
+	                  test-enable-armada-kill-switch-canary-mode-activates-guardrails
+	                  test-guard-execution-status-blocks-when-armada-kill-switch-trips
 	                  test-sexp-string-avoids-array-syntax
 	                  test-heartbeat-message-is-sexp
                   test-heartbeat-now-trigger-file
@@ -10749,7 +11494,10 @@
                   test-load-strategy-recovers-struct-sexp
                   test-init-knowledge-base-skips-nil-strategies
                   test-init-knowledge-base-normalizes-timeframe-to-minutes
-                  test-backtest-cache-sexp
+	                  test-init-knowledge-base-prunes-unevaluated-ranks
+	                  test-init-knowledge-base-revives-active-file-strategy-over-archived-db-duplicate
+	                  test-init-knowledge-base-revive-requires-active-library-file-by-default
+	                  test-backtest-cache-sexp
 	                  test-trade-logs-supports-pair-id
 	                  test-strategy-daily-pnl-aggregation
 	                  test-add-to-kb-allows-breeder-logic-variant-when-sltp-differs
@@ -10760,6 +11508,13 @@
 	                  test-add-to-kb-breeder-phase1-bypasses-graveyard-pattern
 	                  test-add-to-kb-breeder-phase1-graveyard-bypass-can-be-disabled
 	                  test-add-to-kb-breeder-requires-phase1-screening-when-require-bt
+	                  test-add-to-kb-phase1-pending-skips-pool-membership
+	                  test-handle-v2-result-admits-pending-phase1-candidate
+	                  test-build-category-pools-excludes-unevaluated-incubator
+	                  test-build-category-pools-excludes-zero-evidence-active-rank
+	                  test-build-category-pools-excludes-revalidation-pending-legend
+	                  test-select-best-from-pool-excludes-unevaluated-incubator
+	                  test-force-recruit-strategy-skips-unevaluated-active-pools
 	                  test-run-legend-breeding-routes-child-through-add-to-kb
 	                  test-increment-breeding-count-does-not-graveyard-on-limit
 	                  test-daily-pnl-correlation
@@ -10805,9 +11560,12 @@
 		                  test-enforce-s-rank-criteria-conformance-demotes-noncompliant-s
 		                  test-check-rank-criteria-requires-cpcv-pass-rate
 		                  test-check-rank-criteria-s-allows-staged-pf-wr-for-high-trade-evidence
-		                  test-check-rank-criteria-s-keeps-strict-pf-wr-for-low-trade-evidence
+	                  test-check-rank-criteria-s-keeps-strict-pf-wr-for-low-trade-evidence
 	                  test-check-rank-criteria-a-requires-min-trade-evidence
 	                  test-check-rank-criteria-s-requires-min-trade-evidence
+	                  test-armada-core-profile-gate-requires-pf-dd-trades
+	                  test-armada-core-profile-gate-requires-hold-time-band
+	                  test-enable-armada-core-canary-mode-limits-gate-to-a-rank
 	                  test-check-rank-criteria-vnext-a-oos-threshold
 	                  test-check-rank-criteria-vnext-a-wr-floor-is-43pct
 	                  test-meets-a-rank-criteria-aligns-with-check-rank-criteria
@@ -10908,10 +11666,14 @@
 	                  ;; Backtest DB sync regression
 		                  test-apply-backtest-result-updates-data-sexp
 		                  test-apply-backtest-result-evaluates-incubator-strategy
-		                  test-apply-backtest-result-evaluates-incubator-string-rank
-		                  test-apply-backtest-result-fallback-evaluates-incubator
-		                  test-refresh-strategy-metrics-reconciles-missing-active-kb
-		                  test-kill-strategy-persists-status
+	                  test-apply-backtest-result-evaluates-incubator-string-rank
+	                  test-apply-backtest-result-fallback-evaluates-incubator
+	                  test-refresh-strategy-metrics-reconciles-missing-active-kb
+	                  test-refresh-strategy-metrics-reconciles-missing-active-db
+	                  test-refresh-strategy-metrics-reconcile-ignores-unevaluated-db-ranks
+	                  test-reconcile-archive-library-with-db-hydrates-missing-files
+	                  test-reconcile-archive-library-with-db-purges-stale-active-files
+	                  test-kill-strategy-persists-status
 	                  test-max-age-retire-batched-notification
 	                  test-stagnant-crank-batched-notification
 	                  test-kill-strategy-reason-code-stagnant-crank
@@ -11032,6 +11794,7 @@
 	                  test-recruit-founder-preflight-skips-logic-duplicate-before-add-to-kb
 	                  test-recruit-founder-preflight-cooldown-skips-second-retry-after-reject
 	                  test-recruit-founder-applies-symbol-override-and-rewrites-name
+	                  test-recruit-founder-queues-phase1-before-admission
 	                  test-recruit-special-forces-recruits-founders-per-supported-symbol
 	                  test-backtest-uses-csv-override
 	                  test-heartbeat-webhook-prefers-env

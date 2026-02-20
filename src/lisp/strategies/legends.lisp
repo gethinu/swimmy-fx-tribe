@@ -50,6 +50,9 @@
       (unless (find (strategy-name l) *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         ;; V48.7: Set explicit legend rank
         (setf (strategy-rank l) :legend)
+        ;; Keep newly summoned legends quarantined until revalidation completes.
+        (when (slot-exists-p l 'revalidation-pending)
+          (setf (strategy-revalidation-pending l) t))
         (push l *strategy-knowledge-base*)
         (format t "[LEGENDS] 🆕 Summoned: ~a (Rank=~a)~%" 
                 (strategy-name l) (strategy-rank l))))

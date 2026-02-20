@@ -204,16 +204,69 @@ Primary source is explicit semantic category; otherwise infer from strategy trai
         (format t "⚠️ Legacy Strategy found: ~a. Defaulting to (60 :BOTH \"USDJPY\")~%" (strategy-name strat))
         (list 60 :BOTH "USDJPY"))))
 
+(defun %normalize-rank-token-for-pool (rank)
+  "Normalize rank token for active-pool eligibility checks."
+  (let* ((raw (cond
+                ((null rank) "")
+                ((stringp rank) rank)
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline) raw))))
+    (if (and (> (length trimmed) 0)
+             (char= (char trimmed 0) #\:))
+        (subseq trimmed 1)
+        trimmed)))
+
+(defun strategy-has-evaluation-evidence-p (strat)
+  "Return T when STRAT has non-default metrics evidence from evaluation."
+  (let ((trades (or (strategy-trades strat) 0))
+        (sharpe (float (or (strategy-sharpe strat) 0.0) 0.0))
+        (pf (float (or (strategy-profit-factor strat) 0.0) 0.0))
+        (wr (float (or (strategy-win-rate strat) 0.0) 0.0))
+        (max-dd (float (or (strategy-max-dd strat) 0.0) 0.0)))
+    (or (> trades 0)
+        (> (abs sharpe) 1d-9)
+        (> (abs pf) 1d-9)
+        (> (abs wr) 1d-9)
+        (> (abs max-dd) 1d-9))))
+
+(defun strategy-active-pool-eligible-p (strat)
+  "Return T when STRAT is eligible for active category/regime pools.
+Unevaluated Phase1 candidates (INCUBATOR/SCOUT/NIL rank) must not enter active pools."
+  (let ((rank-token (%normalize-rank-token-for-pool (and strat (strategy-rank strat)))))
+    (and strat
+         (strategy-has-evaluation-evidence-p strat)
+         (not (and (slot-exists-p strat 'revalidation-pending)
+                   (strategy-revalidation-pending strat)))
+         (not (member rank-token
+                      '("" "NIL" "INCUBATOR" "SCOUT"
+                        "GRAVEYARD" "RETIRED" "ARCHIVE" "ARCHIVED" "LEGEND-ARCHIVE")
+                      :test #'string=))
+         (not (eq (strategy-status strat) :killed)))))
+
+(defun add-strategy-to-active-pools (strat)
+  "Insert STRAT into active category/regime pools if it is eligible."
+  (when (strategy-active-pool-eligible-p strat)
+    (let ((cat (categorize-strategy strat)))
+      (when (boundp '*category-pools*)
+        (pushnew strat (gethash cat *category-pools* nil) :test #'eq)))
+    (when (boundp '*regime-pools*)
+      (let ((regime-class (strategy-regime-class strat)))
+        (pushnew strat (gethash regime-class *regime-pools* nil) :test #'eq))))
+  strat)
+
 (defun build-category-pools ()
   (clrhash *category-pools*)
   (dolist (strat *strategy-knowledge-base*)
-    (let ((cat (categorize-strategy strat)))
-      (push strat (gethash cat *category-pools* nil))))
+    (when (strategy-active-pool-eligible-p strat)
+      (let ((cat (categorize-strategy strat)))
+        (push strat (gethash cat *category-pools* nil)))))
   (when (boundp '*regime-pools*)
     (clrhash *regime-pools*)
     (dolist (strat *strategy-knowledge-base*)
-      (let ((regime-class (strategy-regime-class strat)))
-        (push strat (gethash regime-class *regime-pools* nil))))))
+      (when (strategy-active-pool-eligible-p strat)
+        (let ((regime-class (strategy-regime-class strat)))
+          (push strat (gethash regime-class *regime-pools* nil)))))))
 
 ;;; ============================================================================
 ;;; TEAM SELECTION & RECRUITMENT (Moved from school-execution.lisp for SRP)
@@ -274,12 +327,19 @@ Primary source is explicit semantic category; otherwise infer from strategy trai
     (cdr (assoc r *regime-tactics*))))
 
 (defun select-best-from-pool (category n)
-  (let* ((pool (if (boundp '*regime-pools*)
-                   (gethash category *regime-pools*)
-                   nil))
-         (sorted (sort (copy-list pool) #'> 
-                       :key (lambda (s) (or (strategy-sharpe s) -999)))))
-    (subseq sorted 0 (min n (length sorted)))))
+  (let* ((raw-pool (if (boundp '*regime-pools*)
+                       (gethash category *regime-pools*)
+                       nil))
+         (pool (if (fboundp 'strategy-active-pool-eligible-p)
+                   (remove-if-not #'strategy-active-pool-eligible-p raw-pool)
+                   raw-pool)))
+    ;; Defensive scrub for legacy/stale pool entries loaded before strict gating.
+    (when (/= (length pool) (length raw-pool))
+      (when (boundp '*regime-pools*)
+        (setf (gethash category *regime-pools*) pool)))
+    (let ((sorted (sort (copy-list pool) #'>
+                        :key (lambda (s) (or (strategy-sharpe s) -999)))))
+      (subseq sorted 0 (min n (length sorted))))))
 
 (defun infer-strategy-category (strat)
   "Infer strategy category from name/indicators AND TP/SL values"
