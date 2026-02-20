@@ -4,13 +4,16 @@
 ;;; Extracted from school-backtest.lisp for SRP compliance
 ;;; ============================================================================
 ;;; Purpose: Validate strategy on unseen data before A-RANK promotion
-;;; Method: Split CSV data into 70% train / 30% test, run backtest on test portion
+;;; Method: Use fixed OOS window (default 180 days) and run backtest on that range
 ;;; ============================================================================
 
 (in-package :swimmy.school)
 
 (defparameter *oos-test-ratio* 0.3
-  "Ratio of data to use for out-of-sample testing (30%)")
+  "Legacy OOS ratio split (kept only for backward compatibility).")
+
+(defparameter *oos-fixed-window-days* 180
+  "Fixed OOS window length in days for dispatch range derivation.")
 
 (defparameter *oos-min-sharpe* 0.35
   "Minimum Sharpe ratio required to pass OOS validation for A-RANK")
@@ -32,6 +35,21 @@
 
 (defparameter *oos-status-path* (swimmy.core::swimmy-path "data/reports/oos_status.txt")
   "Path for OOS status summary report.")
+
+(defparameter *forward-min-days* 30
+  "Minimum forward paper period (days) for deployment gate.")
+
+(defparameter *forward-min-trades* 300
+  "Minimum forward trades required for deployment gate.")
+
+(defparameter *forward-min-sharpe* 0.70
+  "Minimum forward Sharpe required for deployment gate.")
+
+(defparameter *forward-min-pf* 1.50
+  "Minimum forward PF required for deployment gate.")
+
+(defparameter *forward-status-path* (swimmy.core::swimmy-path "data/reports/forward_status.txt")
+  "Path for forward/deployment gate status summary report.")
 
 ;; vNext Stage2 Gates
 (defparameter *mc-prob-ruin-threshold* 0.02
@@ -529,6 +547,191 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
       (format t "[OOS] ⚠️ Failed to write oos_status.txt: ~a~%" e)
       nil)))
 
+(defun %forward-pnl-sharpe (pnls)
+  "Return simple sample Sharpe from PNLS, or NIL when insufficient evidence."
+  (let ((n (length pnls)))
+    (when (>= n 2)
+      (let* ((sum (reduce #'+ pnls :initial-value 0.0))
+             (mean (/ sum n))
+             (variance (/ (reduce #'+
+                                  (mapcar (lambda (x)
+                                            (let ((d (- (float x 0.0) mean)))
+                                              (* d d)))
+                                          pnls)
+                                  :initial-value 0.0)
+                          n))
+             (std (sqrt (max variance 0.0))))
+        (if (> std 1e-9)
+            (/ mean std)
+            0.0)))))
+
+(defun %forward-pnl-pf (pnls)
+  "Return profit factor from PNLS."
+  (let ((gross-profit 0.0)
+        (gross-loss 0.0))
+    (dolist (p pnls)
+      (cond
+        ((> p 0.0) (incf gross-profit (float p 0.0)))
+        ((< p 0.0) (incf gross-loss (abs (float p 0.0))))))
+    (cond
+      ((> gross-loss 0.0) (/ gross-profit gross-loss))
+      ((> gross-profit 0.0) 99.0)
+      (t 0.0))))
+
+(defun %fetch-forward-pnls (strategy-name forward-start)
+  "Fetch pnl list from trade_logs for STRATEGY-NAME since FORWARD-START."
+  (if (or (null strategy-name)
+          (not (stringp strategy-name))
+          (not (numberp forward-start))
+          (<= forward-start 0))
+      '()
+      (let* ((rows (execute-to-list
+                    "SELECT pnl
+                       FROM trade_logs
+                      WHERE strategy_name = ?
+                        AND timestamp >= ?
+                      ORDER BY timestamp"
+                    strategy-name
+                    forward-start))
+             (pnls (mapcar #'first rows)))
+        (remove-if-not #'numberp pnls))))
+
+(defun refresh-deployment-gate-status-for-strategy (strategy-name &key (now (get-universal-time)))
+  "Refresh deployment gate status row for STRATEGY-NAME from DB metrics/trades."
+  (when (and strategy-name (stringp strategy-name) (> (length strategy-name) 0))
+    (let ((row (first (execute-to-list
+                       "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, oos_sharpe
+                          FROM strategies
+                         WHERE name = ?"
+                       strategy-name))))
+      (when row
+        (destructuring-bind (name sharpe pf wr trades maxdd oos-sharpe) row
+          (let* ((criteria (if (fboundp 'get-rank-criteria)
+                               (get-rank-criteria :A)
+                               '()))
+                 (min-sh (getf criteria :sharpe-min 0.45))
+                 (min-pf (getf criteria :pf-min 1.30))
+                 (min-wr (getf criteria :wr-min 0.43))
+                 (max-dd (getf criteria :maxdd-max 0.16))
+                 (min-trades (if (fboundp 'min-trade-evidence-for-rank)
+                                 (min-trade-evidence-for-rank :A)
+                                 50))
+                 (research-passed
+                   (and (numberp sharpe) (>= sharpe min-sh)
+                        (numberp pf) (>= pf min-pf)
+                        (numberp wr) (>= wr min-wr)
+                        (numberp maxdd) (< maxdd max-dd)
+                        (numberp trades) (>= trades min-trades)))
+                 (oos-passed (and (numberp oos-sharpe) (>= oos-sharpe *oos-min-sharpe*)))
+                 (current (or (fetch-deployment-gate-status name) '()))
+                 (existing-start (getf current :forward-start nil))
+                 (forward-start
+                   (cond
+                     ((and (numberp existing-start) (> existing-start 0)) existing-start)
+                     (oos-passed now)
+                     (t nil)))
+                 (forward-days
+                   (let ((d (getf current :forward-days nil)))
+                     (if (and (numberp d) (> d 0))
+                         (round d)
+                         (max 1 (round *forward-min-days*)))))
+                 (pnls (%fetch-forward-pnls name forward-start))
+                 (forward-trades (length pnls))
+                 (forward-sharpe (%forward-pnl-sharpe pnls))
+                 (forward-pf (%forward-pnl-pf pnls))
+                 (elapsed-days
+                   (if (and (numberp forward-start) (> forward-start 0))
+                       (/ (max 0 (- now forward-start)) 86400.0)
+                       0.0)))
+            (multiple-value-bind (decision reason)
+                (cond
+                  ((not oos-passed)
+                   (values "BLOCKED_OOS"
+                           (format nil "oos_sharpe<~,2f" *oos-min-sharpe*)))
+                  ((< elapsed-days forward-days)
+                   (values "FORWARD_RUNNING"
+                           (format nil "elapsed=~d/~d days"
+                                   (floor elapsed-days)
+                                   forward-days)))
+                  ((< forward-trades *forward-min-trades*)
+                   (values "FORWARD_FAIL"
+                           (format nil "insufficient trades (~d < ~d)"
+                                   forward-trades
+                                   *forward-min-trades*)))
+                  ((or (null forward-sharpe) (< forward-sharpe *forward-min-sharpe*))
+                   (values "FORWARD_FAIL"
+                           (format nil "forward sharpe < ~,2f (actual ~a)"
+                                   *forward-min-sharpe*
+                                   (if (numberp forward-sharpe)
+                                       (format nil "~,2f" forward-sharpe)
+                                       "N/A"))))
+                  ((or (null forward-pf) (< forward-pf *forward-min-pf*))
+                   (values "FORWARD_FAIL"
+                           (format nil "forward pf < ~,2f (actual ~a)"
+                                   *forward-min-pf*
+                                   (if (numberp forward-pf)
+                                       (format nil "~,2f" forward-pf)
+                                       "N/A"))))
+                  (t
+                   (values "LIVE_READY" "forward gate passed")))
+              (upsert-deployment-gate-status
+               name
+               :research-passed research-passed
+               :oos-passed oos-passed
+               :oos-window-days *oos-fixed-window-days*
+               :forward-start forward-start
+               :forward-days forward-days
+               :forward-trades forward-trades
+               :forward-sharpe forward-sharpe
+               :forward-pf forward-pf
+               :decision decision
+               :reason reason
+               :updated-at now))))))))
+
+(defun refresh-deployment-gate-statuses (&key (now (get-universal-time)))
+  "Refresh deployment gate rows for active strategies that reached OOS stage."
+  (let ((rows (execute-to-list
+               "SELECT name
+                  FROM strategies
+                 WHERE UPPER(COALESCE(rank, '')) IN (':A','A',':S','S')
+                    OR ABS(COALESCE(oos_sharpe, 0.0)) > 1e-6"))
+        (updated 0))
+    (dolist (row rows updated)
+      (let ((name (first row)))
+        (when (refresh-deployment-gate-status-for-strategy name :now now)
+          (incf updated))))))
+
+(defun forward-deployment-summary-line (&key (refresh t) (now (get-universal-time)))
+  "Build one-line summary for forward deployment Go/No-Go."
+  (when refresh
+    (ignore-errors (refresh-deployment-gate-statuses :now now)))
+  (let* ((summary (or (ignore-errors (fetch-deployment-gate-summary)) '()))
+         (ready (getf summary :live-ready 0))
+         (running (getf summary :forward-running 0))
+         (fail (getf summary :forward-fail 0))
+         (blocked (getf summary :blocked-oos 0))
+         (total (getf summary :total 0)))
+    (format nil "Forward Go/No-Go: LIVE_READY=~d RUNNING=~d FAIL=~d BLOCKED_OOS=~d total=~d | min_days=~d min_trades=~d min_sharpe=~,2f min_pf=~,2f"
+            ready running fail blocked total
+            *forward-min-days* *forward-min-trades* *forward-min-sharpe* *forward-min-pf*)))
+
+(defun write-forward-status-file (&key (reason "event"))
+  "Persist forward/deployment status summary to file."
+  (handler-case
+      (let* ((line (forward-deployment-summary-line :refresh t))
+             (ts (get-universal-time))
+             (stamp (if (fboundp 'format-timestamp)
+                        (format-timestamp ts)
+                        (format nil "~a" ts)))
+             (content (format nil "~a~%updated: ~a reason: ~a" line stamp reason)))
+        (ensure-directories-exist *forward-status-path*)
+        (with-open-file (out *forward-status-path* :direction :output :if-exists :supersede :if-does-not-exist :create)
+          (write-string content out))
+        t)
+    (error (e)
+      (format t "[FORWARD] ⚠️ Failed to write forward_status.txt: ~a~%" e)
+      nil)))
+
 (defun %numeric-string-p (s)
   "Return T if S cleanly parses to a number without trailing junk."
   (not (null (swimmy.core:safe-parse-number s))))
@@ -563,8 +766,9 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
     (error (e) (values nil (format nil "validation error: ~a" e)))))
 
 (defun %derive-oos-dispatch-range (path)
-  "Derive OOS [start,end] unix timestamps from PATH using *oos-test-ratio* split.
-CSV is assumed ascending by timestamp in historical files."
+  "Derive OOS [start,end] unix timestamps from PATH.
+Primary mode uses fixed-day window (`*oos-fixed-window-days*`) against the newest timestamp.
+Fallback mode uses legacy *oos-test-ratio* split when fixed window is disabled/invalid."
   (handler-case
       (progn
         (unless (probe-file path)
@@ -588,10 +792,25 @@ CSV is assumed ascending by timestamp in historical files."
                      (n (length ordered)))
                 (when (<= n 0)
                   (return-from %derive-oos-dispatch-range (values nil nil)))
-                (let* ((ratio (min 1.0 (max 0.0 (float *oos-test-ratio* 1.0))))
-                       (oos-start-idx (min (1- n) (max 0 (floor (* n (- 1.0 ratio))))))
-                       (start-ts (nth oos-start-idx ordered))
-                       (end-ts (nth (1- n) ordered)))
+                (let* ((end-ts (nth (1- n) ordered))
+                       (window-days (if (and (numberp *oos-fixed-window-days*)
+                                             (> *oos-fixed-window-days* 0))
+                                        (round *oos-fixed-window-days*)
+                                        0))
+                       (window-sec (* window-days 86400))
+                       (start-ts
+                         (cond
+                           ((> window-sec 0)
+                            (let* ((target-start (- end-ts window-sec))
+                                   (first-in-window
+                                     (find-if (lambda (ts) (>= ts target-start)) ordered)))
+                              (or first-in-window (first ordered))))
+                           (t
+                            ;; Legacy ratio fallback.
+                            (let* ((ratio (min 1.0 (max 0.0 (float *oos-test-ratio* 1.0))))
+                                   (oos-start-idx (min (1- n)
+                                                       (max 0 (floor (* n (- 1.0 ratio)))))))
+                              (nth oos-start-idx ordered))))))
                   (values start-ts end-ts)))))))
     (error ()
       (values nil nil))))
@@ -759,6 +978,7 @@ CSV is assumed ascending by timestamp in historical files."
         (when (getf metrics :oos-latency)
           (%oos-latency-record (getf metrics :oos-latency)))
         (upsert-strategy strat)
+        (ignore-errors (refresh-deployment-gate-status-for-strategy name))
         (format t "[OOS] 📥 ~a OOS Sharpe=~,2f (req ~a)~%" name sharpe req-id)
         (let* ((latency (getf metrics :oos-latency))
                (data (jsown:new-js
@@ -777,7 +997,8 @@ CSV is assumed ascending by timestamp in historical files."
           (if (>= sharpe *oos-min-sharpe*)
               (validate-for-a-rank-promotion strat)
               (format t "[OOS] ❌ ~a failed OOS Sharpe (~,2f < ~,2f)~%" name sharpe *oos-min-sharpe*)))
-        (ignore-errors (write-oos-status-file :reason "result"))))))
+        (ignore-errors (write-oos-status-file :reason "result"))
+        (ignore-errors (write-forward-status-file :reason "result"))))))
 
 (defun report-oos-metrics ()
   "Snapshot of OOS counters and latency stats (for narrative/reporting)."

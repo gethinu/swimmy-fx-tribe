@@ -331,6 +331,23 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       observed_at INTEGER NOT NULL
     )")
 
+  ;; Table: Deployment Gate Status (Go/No-Go for live deployment)
+  (execute-non-query
+   "CREATE TABLE IF NOT EXISTS deployment_gate_status (
+      strategy_name TEXT PRIMARY KEY,
+      research_passed INTEGER NOT NULL DEFAULT 0,
+      oos_passed INTEGER NOT NULL DEFAULT 0,
+      oos_window_days INTEGER,
+      forward_start INTEGER,
+      forward_days INTEGER,
+      forward_trades INTEGER,
+      forward_sharpe REAL,
+      forward_pf REAL,
+      decision TEXT,
+      reason TEXT,
+      updated_at INTEGER NOT NULL
+    )")
+
   ;; Indices for fast draft/selection
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_strategies_rank_sharpe
@@ -355,6 +372,9 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_dryrun_slippage_strategy_id
       ON dryrun_slippage_samples(strategy_name, id DESC)")
+  (execute-non-query
+   "CREATE INDEX IF NOT EXISTS idx_deployment_gate_decision
+      ON deployment_gate_status(decision)")
 
   (setf *db-initialized* t)
   (format t "[DB] 🗄️ SQLite tables ensured.~%")
@@ -974,9 +994,220 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
                   strategy-name e)
           '()))))
 
+(defun %truthy->int (value)
+  "Normalize VALUE into SQLite boolean integer 0/1."
+  (if value 1 0))
+
+(defparameter *deployment-gate-unset* (list :unset)
+  "Sentinel used for upsert-deployment-gate-status optional keys.")
+
+(defun fetch-deployment-gate-status (strategy-name)
+  "Fetch deployment gate status for STRATEGY-NAME as plist, or NIL."
+  (when (and strategy-name (stringp strategy-name) (> (length strategy-name) 0))
+    (let ((row (first (execute-to-list
+                       "SELECT strategy_name, research_passed, oos_passed,
+                               oos_window_days, forward_start, forward_days,
+                               forward_trades, forward_sharpe, forward_pf,
+                               decision, reason, updated_at
+                          FROM deployment_gate_status
+                         WHERE strategy_name = ?"
+                       strategy-name))))
+      (when row
+        (destructuring-bind (name research-passed oos-passed
+                             oos-window-days forward-start forward-days
+                             forward-trades forward-sharpe forward-pf
+                             decision reason updated-at)
+            row
+          (list :strategy-name name
+                :research-passed (and (numberp research-passed) (> research-passed 0))
+                :oos-passed (and (numberp oos-passed) (> oos-passed 0))
+                :oos-window-days oos-window-days
+                :forward-start forward-start
+                :forward-days forward-days
+                :forward-trades forward-trades
+                :forward-sharpe forward-sharpe
+                :forward-pf forward-pf
+                :decision decision
+                :reason reason
+                :updated-at updated-at))))))
+
+(defun upsert-deployment-gate-status (strategy-name
+                                      &key
+                                        (research-passed *deployment-gate-unset*)
+                                        (oos-passed *deployment-gate-unset*)
+                                        (oos-window-days *deployment-gate-unset*)
+                                        (forward-start *deployment-gate-unset*)
+                                        (forward-days *deployment-gate-unset*)
+                                        (forward-trades *deployment-gate-unset*)
+                                        (forward-sharpe *deployment-gate-unset*)
+                                        (forward-pf *deployment-gate-unset*)
+                                        (decision *deployment-gate-unset*)
+                                        (reason *deployment-gate-unset*)
+                                        updated-at)
+  "Insert or update deployment Go/No-Go state for STRATEGY-NAME.
+Omitted keys preserve existing values; NIL is treated as an explicit value."
+  (when (and strategy-name (stringp strategy-name) (> (length strategy-name) 0))
+    (let* ((current (or (fetch-deployment-gate-status strategy-name) '()))
+           (resolved-research (if (eq research-passed *deployment-gate-unset*)
+                                  (getf current :research-passed nil)
+                                  research-passed))
+           (resolved-oos (if (eq oos-passed *deployment-gate-unset*)
+                             (getf current :oos-passed nil)
+                             oos-passed))
+           (resolved-oos-window (if (eq oos-window-days *deployment-gate-unset*)
+                                    (getf current :oos-window-days nil)
+                                    oos-window-days))
+           (resolved-forward-start (if (eq forward-start *deployment-gate-unset*)
+                                       (getf current :forward-start nil)
+                                       forward-start))
+           (resolved-forward-days (if (eq forward-days *deployment-gate-unset*)
+                                      (getf current :forward-days nil)
+                                      forward-days))
+           (resolved-forward-trades (if (eq forward-trades *deployment-gate-unset*)
+                                        (getf current :forward-trades nil)
+                                        forward-trades))
+           (resolved-forward-sharpe (if (eq forward-sharpe *deployment-gate-unset*)
+                                        (getf current :forward-sharpe nil)
+                                        forward-sharpe))
+           (resolved-forward-pf (if (eq forward-pf *deployment-gate-unset*)
+                                    (getf current :forward-pf nil)
+                                    forward-pf))
+           (resolved-decision (if (eq decision *deployment-gate-unset*)
+                                  (getf current :decision nil)
+                                  decision))
+           (resolved-reason (if (eq reason *deployment-gate-unset*)
+                                (getf current :reason nil)
+                                reason))
+           (resolved-updated-at (if (numberp updated-at) updated-at (get-universal-time))))
+      (execute-non-query
+       "INSERT OR REPLACE INTO deployment_gate_status (
+          strategy_name, research_passed, oos_passed,
+          oos_window_days, forward_start, forward_days,
+          forward_trades, forward_sharpe, forward_pf,
+          decision, reason, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+       strategy-name
+       (%truthy->int resolved-research)
+       (%truthy->int resolved-oos)
+       resolved-oos-window
+       resolved-forward-start
+       resolved-forward-days
+       resolved-forward-trades
+       resolved-forward-sharpe
+       resolved-forward-pf
+       resolved-decision
+       resolved-reason
+       resolved-updated-at)
+      (fetch-deployment-gate-status strategy-name))))
+
+(defun fetch-deployment-gate-summary ()
+  "Return aggregate counts for deployment gate decisions."
+  (let* ((ready (or (execute-single
+                     "SELECT count(*) FROM deployment_gate_status WHERE decision = 'LIVE_READY'")
+                    0))
+         (running (or (execute-single
+                       "SELECT count(*) FROM deployment_gate_status WHERE decision = 'FORWARD_RUNNING'")
+                      0))
+         (failed (or (execute-single
+                      "SELECT count(*) FROM deployment_gate_status WHERE decision = 'FORWARD_FAIL'")
+                     0))
+         (blocked (or (execute-single
+                       "SELECT count(*) FROM deployment_gate_status WHERE decision = 'BLOCKED_OOS'")
+                      0))
+         (total (or (execute-single "SELECT count(*) FROM deployment_gate_status") 0)))
+    (list :total total
+          :live-ready ready
+          :forward-running running
+          :forward-fail failed
+          :blocked-oos blocked)))
+
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60
   "Minimum seconds between DB syncs for strategy metrics.")
+(defparameter *db-active-kb-reconcile-enabled* t
+  "When T, hydrate missing active DB strategies into in-memory KB during DB refresh.")
+(defparameter *db-active-kb-reconcile-max-additions* 2000
+  "Safety cap for active DB->KB hydration additions per refresh cycle.")
+
+(defun %normalize-rank-token-for-kb-sync (rank)
+  "Normalize rank cell/symbol into uppercase token without leading colon."
+  (labels ((normalize (value)
+             (let* ((trimmed (string-upcase (string-trim '(#\Space #\Newline #\Tab) value))))
+               (if (and (> (length trimmed) 0) (char= (char trimmed 0) #\:))
+                   (subseq trimmed 1)
+                   trimmed))))
+    (cond
+      ((null rank) "NIL")
+      ((stringp rank) (normalize rank))
+      ((symbolp rank) (normalize (symbol-name rank)))
+      (t (normalize (format nil "~a" rank))))))
+
+(defun %active-rank-for-kb-sync-p (rank)
+  "Return T when rank should be considered active for KB reconciliation."
+  (not (member (%normalize-rank-token-for-kb-sync rank)
+               '("GRAVEYARD" "RETIRED" "ARCHIVED" "ARCHIVE" "LEGEND-ARCHIVE")
+               :test #'string=)))
+
+(defun %db-rank-cell->keyword-for-kb-sync (rank-cell)
+  "Convert DB rank cell into keyword rank (or NIL)."
+  (let ((token (%normalize-rank-token-for-kb-sync rank-cell)))
+    (if (string= token "NIL")
+        nil
+        (intern token :keyword))))
+
+(defun reconcile-active-kb-with-db (&key (max-additions *db-active-kb-reconcile-max-additions*))
+  "Ensure active strategies present in DB are loaded into in-memory KB.
+Returns a plist summary with :db-active :kb-active :added :parse-failed :truncated."
+  (let* ((active-where
+           "rank IS NULL OR UPPER(TRIM(rank)) NOT IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED',':ARCHIVED','ARCHIVED',':ARCHIVE','ARCHIVE',':LEGEND-ARCHIVE','LEGEND-ARCHIVE')")
+         (db-active (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a" active-where)) 0))
+         (kb-active (count-if (lambda (s)
+                                (and (strategy-p s)
+                                     (%active-rank-for-kb-sync-p (strategy-rank s))))
+                              *strategy-knowledge-base*)))
+    (if (<= db-active kb-active)
+        (list :db-active db-active :kb-active kb-active :added 0 :parse-failed 0 :truncated nil)
+        (let* ((rows (execute-to-list
+                      (format nil "SELECT name, data_sexp, rank FROM strategies WHERE ~a" active-where)))
+               (added 0)
+               (parse-failed 0)
+               (truncated nil))
+          (bt:with-lock-held (*kb-lock*)
+            (let ((kb-index (make-hash-table :test 'equal)))
+              (dolist (strat *strategy-knowledge-base*)
+                (when (and (strategy-p strat)
+                           (strategy-name strat))
+                  (setf (gethash (strategy-name strat) kb-index) strat)))
+              (loop for row in rows do
+                (when (and max-additions (>= added max-additions))
+                  (setf truncated t)
+                  (return))
+                (destructuring-bind (name data-sexp rank-cell) row
+                  (unless (or (null name) (gethash name kb-index))
+                    (handler-case
+                        (let ((obj (and (stringp data-sexp)
+                                        (> (length data-sexp) 0)
+                                        (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school))))
+                          (if (strategy-p obj)
+                              (progn
+                                (setf (strategy-rank obj) (%db-rank-cell->keyword-for-kb-sync rank-cell))
+                                (push obj *strategy-knowledge-base*)
+                                (setf (gethash name kb-index) obj)
+                                (incf added))
+                              (incf parse-failed)))
+                      (error ()
+                        (incf parse-failed))))))
+              (when (and (> added 0)
+                         (fboundp 'build-category-pools))
+                (build-category-pools))))
+          (when (> added 0)
+            (format t "[DB] 🧩 KB reconciled from DB active set: added=~d parse_failed=~d~%"
+                    added parse-failed))
+          (list :db-active db-active
+                :kb-active kb-active
+                :added added
+                :parse-failed parse-failed
+                :truncated truncated)))))
 
 (defun refresh-strategy-metrics-from-db (&key (force nil) since-timestamp)
   "Refresh in-memory strategy metrics from the DB (for multi-process coherence).
@@ -999,7 +1230,7 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
             (when (and strat (strategy-name strat))
               (setf (gethash (strategy-name strat) strategy-index) strat))))
         (labels ((apply-row (row)
-                 (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-median-pf cpcv-median-wr cpcv-median-maxdd cpcv-pass &optional updated-at) row
+                   (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-median-pf cpcv-median-wr cpcv-median-maxdd cpcv-pass &optional updated-at) row
                      (setf max-updated (max max-updated (or updated-at 0)))
                      (let ((strat (gethash name strategy-index)))
                        (when strat
@@ -1067,7 +1298,11 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
                       (format t "[DB] 🔍 Sync progress: ~d rows (~,2fs)~%" processed p-elapsed)
                       (finish-output)))))
               (when (> updated 0)
-                (format t "[DB] 🔄 Synced metrics for ~d strategies (full scan fallback)~%" updated)))))))))
+                (format t "[DB] 🔄 Synced metrics for ~d strategies (full scan fallback)~%" updated)))))
+        (when *db-active-kb-reconcile-enabled*
+          (ignore-errors
+            (reconcile-active-kb-with-db
+             :max-additions *db-active-kb-reconcile-max-additions*)))))))
 
 (defun %migrate-graveyard-patterns (graveyard-path)
   "Migrate graveyard.sexp patterns into SQL and continue on malformed lines."

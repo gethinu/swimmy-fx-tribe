@@ -278,7 +278,7 @@
 ;;; ==========================================
 ;;; WFV SCHEDULING (Config)
 ;;; ==========================================
-(defparameter *wfv-enabled* t)
+(defparameter *wfv-enabled* nil)
 (defparameter *wfv-interval-sec* (* 60 60)) ; default 1h
 (defparameter *wfv-max-pending* 2)
 (defparameter *wfv-max-per-run* 1)

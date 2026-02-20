@@ -20,6 +20,8 @@
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
+- **TRADE_CLOSED 文脈契約**: `TRADE_CLOSED` は最小学習キー（`direction/strategy_name/category`）を同梱する。受信側（Executor）は payload を正本として処理し、warrior allocation キャッシュ補完に依存しない。
+- **Trade Close Notification 契約**: 約定クローズ通知は fixed template（構造化テキスト）を正本とし、`generate-trade-result-narrative` 依存の物語通知は live 経路で使用しない。
 - **ORDER_OPEN コメント契約**: `comment` はトップシグナル戦略の実行文脈（`strategy_name|tf_key`）を送る。`NIL` 名や「文脈欠落による `M1` フォールバック」をコメントへ出さない。`M1` は戦略TFが実際に1分足のときのみ許容する。
 - **Execution Fail-Closed 契約**: 実行文脈（`strategy_name` / `timeframe`）が欠落・不正な場合は、`NIL` や既定TFへ丸めずに**発注を中止**する。`NIL` で先に進むフォールバックを禁止する。`timeframe="NIL"` / 空文字 / 不正ラベル（例: `"UNKNOWN"`）は「不正な時間足」として fail-closed 対象にする。
 - **ORDER_OPEN Sink Guard 契約**: `safe-order` / `make-order-message`（Sender）と `SwimmyBridge ORDER_OPEN`（Receiver）は `comment` を厳格検証し、`strategy|tf` 形式不正（区切り欠落、strategy/timeframe 欠落、`NIL` 含有）を検知した場合は `SW-<magic>` 等へフォールバックせず fail-closed で中止する。
@@ -51,6 +53,10 @@
 - **CPCV Validate (S式キー解釈)**: Guardian は `CPCV_VALIDATE` のトップレベルキーを正規化して解釈する（`action` だけでなく `swimmy.school::action` / `swimmy.school:action` など package 修飾キーも受理）。
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
+- **OOS 固定期間契約**: A向け OOS dispatch は `*oos-test-ratio*` の可変比率を正本にせず、`*oos-fixed-window-days*`（既定180日）で `end_ts - window` を基準に算出する。データが短い場合は利用可能な最古timestampまでを OOS 開始とし、範囲欠落で dispatch 失敗にしない。
+- **実運用 Go/No-Go 契約（Rankと分離）**: Rank（B/A/S）は研究評価、ライブ投入可否は `deployment_gate_status` を正本として判定する。最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。判定は `BLOCKED_OOS` / `FORWARD_RUNNING` / `FORWARD_FAIL` / `LIVE_READY` を使う。
+- **Forward Status 表示**: `data/reports/forward_status.txt` を正本として保持し、Evolution Report に Forward Go/No-Go 集計（LIVE_READY件数、FORWARD_RUNNING件数、失敗理由）を表示する。
+- **Legacy WFV 隔離契約**: WFV（`_IS/_OOS`）は分析専用とし、`move-strategy` / Rank遷移 / archive移動に関与させない。既定は `*wfv-enabled*=nil` で、明示有効化時も「分析テレメトリの記録」のみ許可する。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 - **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
 - **School Wisdom Cadence**: `phase-7-wisdom-update` は毎サイクル実行しない。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）で間隔制御し、重い `analyze-veterans` を常時経路から外す。
@@ -84,6 +90,7 @@
 - **運用（systemd正本）**: Swimmy FX コアは systemd(system) を正本とし、systemctl --user は診断用途のみ。Polymarket OpenClaw は user systemd（`systemctl --user`）を正本（cycle/signal-sync）とし、status/notifier は systemd(system) で監査する。
 - **Evolution Loop 排他契約**: `tools/evolution_daemon.py` は `school-daemon.lisp` の稼働を監視し、後発で school が起動した場合は自身の SBCL 子プロセス（`run_lisp_evolution.lisp`）を停止して待機へ戻る。`SWIMMY_ALLOW_PARALLEL_EVOLUTION=1` 指定時のみ並列実行を許可する。
 - **Rank一本化**: ライフサイクル判断は Rank のみ。Tierは判断ロジックから除外（ディレクトリもRankへ移行）。
+- **研究評価と実運用判定の分離**: Rank（B/A/S）は研究の評価指標として維持し、ライブ投入可否は `deployment_gate_status` の Go/No-Go 判定を正本とする。S-Rank 単独では自動的に live-ready とみなさない。
 - **Rank閾値（vNext / Balanced）**: Stage 1 固定閾値を `B: Sharpe>=0.15 PF>=1.05 WR>=35% MaxDD<25%`、`A: Sharpe>=0.45 PF>=1.30 WR>=43% MaxDD<16%`、`S: Sharpe>=0.75 PF>=1.70 WR>=50% MaxDD<10%` に更新する。
 - **Rank TradeEvidence Floor**: Aは `trade evidence >= 50`、Sは `trade evidence >= 100` を必須とする。`run-rank-evaluation` で既存A/Sにも floor sweep を適用し、`evaluate-a-rank-strategy` は floor 未達を即時 `:B` へ降格して先へ進めない。
 - **S Rank Conformance Sweep**: `run-rank-evaluation` は既存 `:S` 戦略に対しても `check-rank-criteria :S` を再評価し、基準逸脱した戦略を `:A`（A基準通過時）または `:B` へ降格する。trade floor のみ満たす S を残留させない。
@@ -118,6 +125,7 @@
 - **MT5 Bridge ACK/REJECT 到達性契約**: `SwimmyBridge` は `ORDER_ACK` / `ORDER_REJECT` 送信で短時間再送を行い、送達を at-least-once とする。受信側（Dispatcher）は同一 `id` の重複受信を idempotent に処理する。
 - **MT5 Bridge ORDER_OPEN Sink Guard契約**: `SwimmyBridge` は受信 `ORDER_OPEN` の `comment` を `strategy|tf` 形式で検証し、欠落/形式不正/`NIL`/不正TFは `ORDER_REJECT` で fail-closed する。`SW-<magic>` などへのフォールバックを禁止する。
 - **MT5 Bridge ORDER_OPEN Instrument契約**: `SwimmyBridge` は `ORDER_OPEN` の `instrument/symbol` に具体シンボルを要求し、`ALL` は `INVALID_INSTRUMENT`、空値と nil-like（`NIL/NULL/NONE`）は `MISSING_INSTRUMENT` として `ORDER_REJECT` で fail-closed する。
+- **MT5 Bridge POSITIONS S式整合契約**: `SwimmyBridge` が送る `POSITIONS` は `(data . (...))` を含む整形式 alist とし、0件でも `(data . ())` を返す。括弧不整合メッセージを禁止する（Dispatcher の `Unsafe/invalid SEXP` 誤棄却を防ぐ）。
 - **MT5 ORDER_REJECT 可観測化契約**: Dispatcher は `ORDER_REJECT` を受信したら pending UUID を即時除去する。さらに `reason` が `MISSING_INSTRUMENT/INVALID_INSTRUMENT/MISSING_COMMENT/INVALID_COMMENT_FORMAT/MISSING_STRATEGY/MISSING_TIMEFRAME/INVALID_COMMENT_TF` の場合は運用異常として Discord alert を発火し、受信側 fail-closed を見逃さない。送信側再送（at-least-once）による同一 `id+reason` の短時間重複受信では alert を重複発火しない（idempotent alert）。
 - **MT5 Bridge REQ_HISTORY TF正規化契約**: `SwimmyBridge` は `REQ_HISTORY.tf` を大文字小文字非依存で正規化し、`MN/MN1` および minutes文字列（例: `60/240/1440/10080/43200`）を標準TFへ変換する。非標準minutes（例: `300`）は `M1` 配信へフォールバックし、上位層のresampleを前提とする。
 - **MT5 Bridge CLOSE_SHORT_TF 保護契約**: `SwimmyBridge` は `POSITION_COMMENT` の `tf_key` を minutes に正規化して `>=1440m`（D1以上）を保護する。旧コメント形式互換のため `|D1`/`|W1`/`|MN`/`|MN1` サフィックス判定も維持する。
@@ -203,6 +211,13 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-20**: Trade close 経路の narrative 依存を廃止。`generate-trade-result-narrative` ではなく fixed template 通知を正本化。
+- **2026-02-20**: `TRADE_CLOSED` 学習文脈の正本を payload に統一し、Executor の warrior allocation 補完依存を削減する方針を正本化。
+- **2026-02-20**: MT5 `POSITIONS` S式整合契約を追加。`(data . (...))` を含む整形式 alist（0件時は `(data . ())`）を必須化し、括弧不整合メッセージで Dispatcher が `Unsafe/invalid SEXP` 棄却する事象を防ぐ方針を正本化。
+- **2026-02-20**: OOS dispatch の範囲算出契約を更新。`70/30 split` ではなく `*oos-fixed-window-days*`（既定180日）を正本として `start_time/end_time` を算出する方針を追加。
+- **2026-02-20**: 実運用 Go/No-Go 契約を追加。`deployment_gate_status` を新設し、`BLOCKED_OOS/FORWARD_RUNNING/FORWARD_FAIL/LIVE_READY` を strategy 単位で永続化する方針を正本化。
+- **2026-02-20**: Forward Go/No-Go のレポート契約を追加。`data/reports/forward_status.txt` と Evolution Report の Forward行を正本化し、`LIVE_READY` 件数と失敗理由を可視化する方針を追記。
+- **2026-02-20**: Legacy WFV の運用契約を更新。WFV は分析専用（テレメトリ用途）とし、`move-strategy`/rank遷移/アーカイブ移動を禁止する方針を正本化。既定値 `*wfv-enabled*` は `nil` とする。
 - **2026-02-17**: Dispatcher の S式 bool互換契約を追加。`safe-read-sexp` は `#t/#f` を `t/nil` 相当として受理し、`serde_lexpr` 由来メッセージの誤 `Unsafe/invalid SEXP` を抑止する方針を正本化。
 - **2026-02-17**: Dispatcher の invalid S式可観測性契約を追加。`Unsafe/invalid SEXP` ログに payload 先頭（`head`）を併記し、再現時に原因メッセージを即時特定できる方針を正本化。
 - **2026-02-17**: MT5 `ORDER_REJECT` 可観測化契約を更新。sink-guard fail-closed の Discord alert は維持しつつ、送信側再送による同一 `id+reason` の短時間重複をデデュープして通知スパムを抑止する方針を正本化。

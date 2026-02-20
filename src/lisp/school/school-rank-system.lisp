@@ -7,7 +7,8 @@
 ;;; RANKS:
 ;;; 1. :B - Phase 1 Backtest passed (Sharpe>=0.15, PF>=1.05, WR>=35%, MaxDD<25%)
 ;;; 2. :A - OOS validated (Sharpe>=0.45, PF>=1.30, WR>=43%, MaxDD<16%, OOS>=0.35)
-;;; 3. :S - Live trading permitted (Sharpe>=0.75, PF>=1.70, WR>=50%, MaxDD<10%, CPCV pass>=70%, CPCV median MaxDD<12%)
+;;; 3. :S - Research elite rank (live deployment is decided by deployment_gate_status)
+;;;          (Sharpe>=0.75, PF>=1.70, WR>=50%, MaxDD<10%, CPCV pass>=70%, CPCV median MaxDD<12%)
 ;;; 4. :graveyard - Failed strategies (learning data)
 ;;; 5. :retired - Max Age archive (low-weight learning)
 ;;; 6. :legend - Protected strategies (61 total, never discarded)

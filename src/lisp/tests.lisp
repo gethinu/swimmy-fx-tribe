@@ -3538,8 +3538,8 @@
       (setf swimmy.executor::*total-trades* orig-total)
       (setf swimmy.executor::*success-count* orig-success))))
 
-(deftest test-process-trade-closed-fallback-message-format-no-trailing-dot
-  "Trade close fallback message should not include trailing decimal point in yen"
+(deftest test-process-trade-closed-fixed-template-message-no-narrative
+  "Trade close notification should use fixed template and not call legacy narrative generator."
   (let* ((fn (find-symbol "PROCESS-TRADE-CLOSED" :swimmy.executor))
          (orig-gen (and (fboundp 'swimmy.school:generate-trade-result-narrative)
                         (symbol-function 'swimmy.school:generate-trade-result-narrative)))
@@ -3552,7 +3552,8 @@
          (orig-save (and (fboundp 'swimmy.engine:save-state)
                          (symbol-function 'swimmy.engine:save-state)))
          (orig-processed swimmy.executor::*processed-tickets*)
-         (captured nil))
+         (captured nil)
+         (narrative-called nil))
     (assert-true (and fn (fboundp fn)) "process-trade-closed exists")
     (unwind-protect
         (progn
@@ -3561,7 +3562,8 @@
             (setf (symbol-function 'swimmy.school:generate-trade-result-narrative)
                   (lambda (&rest _args)
                     (declare (ignore _args))
-                    (error "force fallback"))))
+                    (setf narrative-called t)
+                    "legacy-narrative")))
           (when orig-queue
             (setf (symbol-function 'swimmy.core:queue-discord-notification)
                   (lambda (_webhook msg &key color title)
@@ -3576,13 +3578,26 @@
           (when orig-save
             (setf (symbol-function 'swimmy.engine:save-state)
                   (lambda () nil)))
-          (funcall fn '((ticket . 98765) (symbol . "USDJPY") (pnl . 1000.0) (won . t) (magic . 321)) "")
-          (assert-true (search "🎉 WIN: USDJPY" captured)
-                       "Expected fallback win notification")
-          (assert-true (search "+¥1000" captured)
+          (funcall fn '((ticket . 98765)
+                        (symbol . "USDJPY")
+                        (pnl . 1000.0)
+                        (won . t)
+                        (magic . 321)
+                        (direction . "BUY")
+                        (strategy_name . "UT-FIXED")
+                        (category . "trend")
+                        (entry_price . 153.123)
+                        (exit_price . 153.223))
+                  "")
+          (assert-false narrative-called
+                        "Legacy narrative generator must not be called in trade-close path")
+          (assert-not-nil captured "Expected trade-close notification message")
+          (assert-true (search "Trade Closed" captured)
+                       "Expected fixed-template title in notification")
+          (assert-true (search "PnL: +¥1000" captured)
                        "Expected yen amount without decimal suffix")
           (assert-false (search "+¥1000." captured)
-                        "Fallback yen value must not include trailing decimal point"))
+                        "Yen value must not include trailing decimal point"))
       (when orig-gen
         (setf (symbol-function 'swimmy.school:generate-trade-result-narrative) orig-gen))
       (when orig-queue
@@ -3591,6 +3606,165 @@
         (setf (symbol-function 'swimmy.school:record-trade-result) orig-trade-result))
       (when orig-trade-outcome
         (setf (symbol-function 'swimmy.school:record-trade-outcome) orig-trade-outcome))
+      (when orig-save
+        (setf (symbol-function 'swimmy.engine:save-state) orig-save))
+      (setf swimmy.executor::*processed-tickets* orig-processed))))
+
+(deftest test-process-trade-closed-uses-payload-context-for-learning
+  "process-trade-closed should use payload context keys for learning without warrior entry-context lookup."
+  (let* ((fn (find-symbol "PROCESS-TRADE-CLOSED" :swimmy.executor))
+         (orig-record-result (and (fboundp 'swimmy.school:record-trade-result)
+                                  (symbol-function 'swimmy.school:record-trade-result)))
+         (orig-record-outcome (and (fboundp 'swimmy.school:record-trade-outcome)
+                                   (symbol-function 'swimmy.school:record-trade-outcome)))
+         (orig-lookup-entry (and (fboundp 'swimmy.school:lookup-entry-context-by-magic)
+                                 (symbol-function 'swimmy.school:lookup-entry-context-by-magic)))
+         (orig-lookup-pair (and (fboundp 'swimmy.school:lookup-pair-id-by-magic)
+                                (symbol-function 'swimmy.school:lookup-pair-id-by-magic)))
+         (orig-generate (and (fboundp 'swimmy.school:generate-trade-result-narrative)
+                             (symbol-function 'swimmy.school:generate-trade-result-narrative)))
+         (orig-queue (and (fboundp 'swimmy.core:queue-discord-notification)
+                          (symbol-function 'swimmy.core:queue-discord-notification)))
+         (orig-save (and (fboundp 'swimmy.engine:save-state)
+                         (symbol-function 'swimmy.engine:save-state)))
+         (orig-processed swimmy.executor::*processed-tickets*)
+         (captured nil))
+    (assert-true (and fn (fboundp fn)) "process-trade-closed exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.executor::*processed-tickets* (make-hash-table :test 'equal))
+          (when orig-record-result
+            (setf (symbol-function 'swimmy.school:record-trade-result)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-record-outcome
+            (setf (symbol-function 'swimmy.school:record-trade-outcome)
+                  (lambda (symbol direction category strategy-name pnl &key hit hold-time pair-id)
+                    (declare (ignore hit hold-time pair-id))
+                    (setf captured (list symbol direction category strategy-name pnl))
+                    nil)))
+          (when orig-lookup-entry
+            (setf (symbol-function 'swimmy.school:lookup-entry-context-by-magic)
+                  (lambda (magic)
+                    (declare (ignore magic))
+                    (list :strategy "CTX-STRAT"
+                          :category :scalp
+                          :direction :buy
+                          :entry-bid 150.123
+                          :entry-ask 150.133
+                          :entry-spread-pips 1.0
+                          :entry-cost-pips 1.0))))
+          (when orig-lookup-pair
+            (setf (symbol-function 'swimmy.school:lookup-pair-id-by-magic)
+                  (lambda (_magic) (declare (ignore _magic)) "PAIR-CTX")))
+          (when orig-generate
+            (setf (symbol-function 'swimmy.school:generate-trade-result-narrative)
+                  (lambda (&rest _args) (declare (ignore _args)) "narrative")))
+          (when orig-queue
+            (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-save
+            (setf (symbol-function 'swimmy.engine:save-state) (lambda () nil)))
+          (funcall fn
+                   '((ticket . 24680)
+                     (symbol . "USDJPY")
+                     (pnl . -12.5)
+                     (won . nil)
+                     (magic . 110012345)
+                     (direction . "SELL")
+                     (strategy_name . "PAYLOAD-STRAT")
+                     (category . "breakout"))
+                   "")
+          (assert-not-nil captured "Expected record-trade-outcome to be called")
+          (assert-equal "USDJPY" (first captured))
+          (assert-equal :sell (second captured))
+          (assert-equal :breakout (third captured))
+          (assert-equal "PAYLOAD-STRAT" (fourth captured))
+          (assert-true (< (abs (+ 12.5 (fifth captured))) 1.0e-6)
+                       (format nil "Expected pnl -12.5, got ~a" (fifth captured))))
+      (when orig-record-result
+        (setf (symbol-function 'swimmy.school:record-trade-result) orig-record-result))
+      (when orig-record-outcome
+        (setf (symbol-function 'swimmy.school:record-trade-outcome) orig-record-outcome))
+      (when orig-lookup-entry
+        (setf (symbol-function 'swimmy.school:lookup-entry-context-by-magic) orig-lookup-entry))
+      (when orig-lookup-pair
+        (setf (symbol-function 'swimmy.school:lookup-pair-id-by-magic) orig-lookup-pair))
+      (when orig-generate
+        (setf (symbol-function 'swimmy.school:generate-trade-result-narrative) orig-generate))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))
+      (when orig-save
+        (setf (symbol-function 'swimmy.engine:save-state) orig-save))
+      (setf swimmy.executor::*processed-tickets* orig-processed))))
+
+(deftest test-process-trade-closed-normalizes-nil-category-from-magic
+  "process-trade-closed should treat category=NIL as missing and recover category from magic without entry-context."
+  (let* ((fn (find-symbol "PROCESS-TRADE-CLOSED" :swimmy.executor))
+         (orig-record-result (and (fboundp 'swimmy.school:record-trade-result)
+                                  (symbol-function 'swimmy.school:record-trade-result)))
+         (orig-record-outcome (and (fboundp 'swimmy.school:record-trade-outcome)
+                                   (symbol-function 'swimmy.school:record-trade-outcome)))
+         (orig-lookup-entry (and (fboundp 'swimmy.school:lookup-entry-context-by-magic)
+                                 (symbol-function 'swimmy.school:lookup-entry-context-by-magic)))
+         (orig-generate (and (fboundp 'swimmy.school:generate-trade-result-narrative)
+                             (symbol-function 'swimmy.school:generate-trade-result-narrative)))
+         (orig-queue (and (fboundp 'swimmy.core:queue-discord-notification)
+                          (symbol-function 'swimmy.core:queue-discord-notification)))
+         (orig-save (and (fboundp 'swimmy.engine:save-state)
+                         (symbol-function 'swimmy.engine:save-state)))
+         (orig-processed swimmy.executor::*processed-tickets*)
+         (captured nil))
+    (assert-true (and fn (fboundp fn)) "process-trade-closed exists")
+    (unwind-protect
+        (progn
+          (setf swimmy.executor::*processed-tickets* (make-hash-table :test 'equal))
+          (when orig-record-result
+            (setf (symbol-function 'swimmy.school:record-trade-result)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-record-outcome
+            (setf (symbol-function 'swimmy.school:record-trade-outcome)
+                  (lambda (symbol direction category strategy-name pnl &key hit hold-time pair-id)
+                    (declare (ignore hit hold-time pair-id pnl))
+                    (setf captured (list symbol direction category strategy-name))
+                    nil)))
+          (when orig-lookup-entry
+            (setf (symbol-function 'swimmy.school:lookup-entry-context-by-magic)
+                  (lambda (magic)
+                    (declare (ignore magic))
+                    (list :category :scalp :direction :buy))))
+          (when orig-generate
+            (setf (symbol-function 'swimmy.school:generate-trade-result-narrative)
+                  (lambda (&rest _args) (declare (ignore _args)) "narrative")))
+          (when orig-queue
+            (setf (symbol-function 'swimmy.core:queue-discord-notification)
+                  (lambda (&rest _args) (declare (ignore _args)) nil)))
+          (when orig-save
+            (setf (symbol-function 'swimmy.engine:save-state) (lambda () nil)))
+          (funcall fn
+                   '((ticket . 13579)
+                     (symbol . "USDJPY")
+                     (pnl . 5.0)
+                     (won . t)
+                     (magic . 130022233)
+                     (direction . "BUY")
+                     (strategy_name . "UT-SNAME")
+                     (category . "NIL"))
+                   "")
+          (assert-not-nil captured "Expected record-trade-outcome to be called")
+          (assert-equal "USDJPY" (first captured))
+          (assert-equal :buy (second captured))
+          (assert-equal :breakout (third captured))
+          (assert-equal "UT-SNAME" (fourth captured)))
+      (when orig-record-result
+        (setf (symbol-function 'swimmy.school:record-trade-result) orig-record-result))
+      (when orig-record-outcome
+        (setf (symbol-function 'swimmy.school:record-trade-outcome) orig-record-outcome))
+      (when orig-lookup-entry
+        (setf (symbol-function 'swimmy.school:lookup-entry-context-by-magic) orig-lookup-entry))
+      (when orig-generate
+        (setf (symbol-function 'swimmy.school:generate-trade-result-narrative) orig-generate))
+      (when orig-queue
+        (setf (symbol-function 'swimmy.core:queue-discord-notification) orig-queue))
       (when orig-save
         (setf (symbol-function 'swimmy.engine:save-state) orig-save))
       (setf swimmy.executor::*processed-tickets* orig-processed))))
@@ -10563,10 +10737,12 @@
 		                  test-process-account-info-drawdown-alert-peak-format
 		                  test-process-account-info-sync-log-format-no-trailing-dot
 		                  test-process-account-info-rebases-stale-monitoring-peak-after-restart
-		                  test-s-rank-gate-uses-configurable-minimum
-		                  test-process-trade-closed-sexp
-		                  test-process-trade-closed-fallback-message-format-no-trailing-dot
-		                  test-normalize-legacy-plist->strategy
+	                  test-s-rank-gate-uses-configurable-minimum
+	                  test-process-trade-closed-sexp
+	                  test-process-trade-closed-fixed-template-message-no-narrative
+	                  test-process-trade-closed-uses-payload-context-for-learning
+	                  test-process-trade-closed-normalizes-nil-category-from-magic
+	                  test-normalize-legacy-plist->strategy
                   test-normalize-struct-roundtrip
                   test-sexp-io-roundtrip
                   test-write-sexp-atomic-stable-defaults
@@ -10730,14 +10906,17 @@
                   test-update-global-stats-pnl-format-no-trailing-dot
                   test-should-unlearn-p-daily-pnl-format-no-trailing-dot
 	                  ;; Backtest DB sync regression
-	                  test-apply-backtest-result-updates-data-sexp
-	                  test-apply-backtest-result-evaluates-incubator-strategy
-	                  test-apply-backtest-result-evaluates-incubator-string-rank
-	                  test-apply-backtest-result-fallback-evaluates-incubator
-	                  test-kill-strategy-persists-status
-                  test-max-age-retire-batched-notification
-                  test-stagnant-crank-batched-notification
+		                  test-apply-backtest-result-updates-data-sexp
+		                  test-apply-backtest-result-evaluates-incubator-strategy
+		                  test-apply-backtest-result-evaluates-incubator-string-rank
+		                  test-apply-backtest-result-fallback-evaluates-incubator
+		                  test-refresh-strategy-metrics-reconciles-missing-active-kb
+		                  test-kill-strategy-persists-status
+	                  test-max-age-retire-batched-notification
+	                  test-stagnant-crank-batched-notification
 	                  test-kill-strategy-reason-code-stagnant-crank
+	                  test-pool-overflow-retire-batched-notification
+	                  test-notify-death-routes-pool-overflow-to-batch
 	                  test-init-db-creates-strategy-lookup-indexes
 	                  test-backfill-strategy-timeframes-to-minutes-normalizes-mixed-values
 	                  test-migrate-existing-data-skips-corrupted-graveyard-lines
@@ -10787,13 +10966,16 @@
                   test-wfv-logic-overfit-strategy
 	                  test-wfv-scheduling-respects-interval-and-pending
 	                  test-wfv-pending-stats-oldest-age
+                  test-wfv-analysis-mode-does-not-move-strategy-rank
 	                  test-oos-validation-dispatches-when-unset
-	                  test-qualification-candidate-renames-when-db-rank-archived
+                  test-qualification-candidate-renames-when-db-rank-archived
 	                  test-qualification-candidate-keeps-name-when-db-rank-active
 	                  test-run-qualification-cycle-prioritizes-incubator-candidates
 	                  test-run-qualification-cycle-reconciles-scored-incubator-backlog
 	                  test-oos-status-updated-on-dispatch
+                  test-handle-oos-result-upserts-deployment-gate-status
 	                  test-evolution-report-includes-oos-status
+                  test-evolution-report-includes-forward-status
                   test-evolution-report-reflects-evolution-daemon-status
                   test-evolution-report-includes-cpcv-gate-failures
                   test-display-candidate-name-preserves-suffix-for-long-names

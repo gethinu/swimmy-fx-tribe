@@ -35,6 +35,10 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - **Engine of Life**: 親子対決(Deathmatch)による世代交代。
   - **選抜スコア (Selection Score)**: Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。
   - **投票ウェイト**: `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
+- **実運用 Go/No-Go（Rankと分離）**:
+  - Rank（B/A/S）は研究評価を担い、ライブ投入可否は `deployment_gate_status` で別管理する。
+  - 最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。
+  - これにより `S-Rank` は「研究上の上位評価」であり、単独では `live-ready` を意味しない。
 
 ## 4.5. Pattern Similarity Gate (Regime/Gate)
 - **目的**: 類似チャートパターンの集合意識をレジーム/ゲートとして利用（既存戦略の前段フィルタ）。

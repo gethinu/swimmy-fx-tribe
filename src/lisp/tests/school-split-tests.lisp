@@ -272,6 +272,31 @@
       (assert-equal 2 count)
       (assert-equal 100 oldest-age))))
 
+(deftest test-wfv-analysis-mode-does-not-move-strategy-rank
+  "WFV completion should remain analysis-only and must not call move-strategy."
+  (let ((events nil)
+        (orig-move (symbol-function 'swimmy.persistence:move-strategy))
+        (orig-notify (symbol-function 'cl-user::notify-discord-alert)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.persistence:move-strategy)
+                (lambda (&rest args)
+                  (push args events)
+                  nil))
+          (setf (symbol-function 'cl-user::notify-discord-alert)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (let ((swimmy.school::*wfv-pending-strategies* (make-hash-table :test 'equal)))
+            (setf (gethash "WFV-ANALYSIS" swimmy.school::*wfv-pending-strategies*)
+                  (list :is-result nil :oos-result nil
+                        :strategy (swimmy.school:make-strategy :name "WFV-ANALYSIS" :generation 2)
+                        :wfv-id "WFV-ANALYSIS-1" :split-ratio 0.2))
+            (swimmy.school::process-wfv-result "WFV-ANALYSIS_IS" (list :sharpe 1.2))
+            (swimmy.school::process-wfv-result "WFV-ANALYSIS_OOS" (list :sharpe 0.9)))
+          (assert-equal 0 (length events)
+                        "WFV must not move strategy rank/storage in analysis-only mode"))
+      (setf (symbol-function 'swimmy.persistence:move-strategy) orig-move)
+      (setf (symbol-function 'cl-user::notify-discord-alert) orig-notify))))
+
 ;;; ==========================================
 ;;; OOS VALIDATION TESTS
 ;;; ==========================================
@@ -291,7 +316,8 @@
       (setf created-file t))
 
     (let ((swimmy.core::*db-path-default* tmp-db)
-          (swimmy.core::*sqlite-conn* nil))
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
       (unwind-protect
            (progn
              ;; Ensure DB schema exists for oos_queue
@@ -325,13 +351,15 @@
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
 (deftest test-maybe-request-oos-backtest-includes-explicit-range
-  "OOS dispatch should include explicit start/end range derived from CSV."
+  "OOS dispatch should include explicit start/end range derived from fixed-day window."
   (let* ((symbol "UT-OOS-RANGE")
          (data-path (swimmy.core::swimmy-path (format nil "data/historical/~a_M1.csv" symbol)))
          (tmp-db (format nil "/tmp/swimmy-oos-range-~a.db" (get-universal-time)))
          (orig-db swimmy.core::*db-path-default*)
          (orig-request (symbol-function 'swimmy.school::request-backtest))
          (orig-interval swimmy.school::*oos-request-interval*)
+         (had-window-days (boundp 'swimmy.school::*oos-fixed-window-days*))
+         (orig-window-days (when had-window-days swimmy.school::*oos-fixed-window-days*))
          (orig-dispatch-map swimmy.school::*oos-last-dispatch-at*)
          (captured-start nil)
          (captured-end nil)
@@ -341,39 +369,81 @@
            (ensure-directories-exist data-path)
            (with-open-file (s data-path :direction :output :if-exists :supersede :if-does-not-exist :create)
              (write-line "timestamp,open,high,low,close,volume" s)
-             ;; 10 bars, ascending by 60s.
+             ;; 10 bars, ascending by 1 day.
              (dotimes (i 10)
-               (format s "~d,145.1,145.2,145.0,145.15,1000~%" (+ 1700000000 (* i 60)))))
+               (format s "~d,145.1,145.2,145.0,145.15,1000~%" (+ 1700000000 (* i 86400)))))
 
-           (setf swimmy.core::*db-path-default* tmp-db)
-           (swimmy.core:close-db-connection)
-           (swimmy.school::init-db)
-           (setf swimmy.school::*oos-request-interval* 0)
-           (setf swimmy.school::*oos-last-dispatch-at* (make-hash-table :test 'equal))
+           (let ((swimmy.school::*disable-auto-migration* t))
+             (setf swimmy.core::*db-path-default* tmp-db)
+             (swimmy.core:close-db-connection)
+             (swimmy.school::init-db)
+             (setf swimmy.school::*oos-request-interval* 0)
+             (setf swimmy.school::*oos-fixed-window-days* 3)
+             (setf swimmy.school::*oos-last-dispatch-at* (make-hash-table :test 'equal))
 
-           (setf (symbol-function 'swimmy.school::request-backtest)
-                 (lambda (strat &key suffix request-id start-ts end-ts &allow-other-keys)
-                   (declare (ignore strat request-id))
-                   (setf captured-suffix suffix
-                         captured-start start-ts
-                         captured-end end-ts)
-                   t))
+             (setf (symbol-function 'swimmy.school::request-backtest)
+                   (lambda (strat &key suffix request-id start-ts end-ts &allow-other-keys)
+                     (declare (ignore strat request-id))
+                     (setf captured-suffix suffix
+                           captured-start start-ts
+                           captured-end end-ts)
+                     t))
 
-           (let* ((strat (cl-user::make-strategy :name "UnitTest-OOS-Range"
-                                                 :symbol symbol
-                                                 :oos-sharpe nil))
-                  (req-id (swimmy.school::maybe-request-oos-backtest strat)))
-             (assert-true req-id "dispatch should return request_id")
-             (assert-equal "-OOS" captured-suffix "A-rank OOS suffix should be canonical")
-             ;; n=10, ratio=0.3 => OOS starts at index floor(10*0.7)=7
-             (assert-equal 1700000420 captured-start "expected OOS start timestamp from CSV split")
-             (assert-equal 1700000540 captured-end "expected OOS end timestamp from CSV split")))
+             (let* ((strat (cl-user::make-strategy :name "UnitTest-OOS-Range"
+                                                   :symbol symbol
+                                                   :oos-sharpe nil))
+                    (req-id (swimmy.school::maybe-request-oos-backtest strat)))
+               (assert-true req-id "dispatch should return request_id")
+               (assert-equal "-OOS" captured-suffix "A-rank OOS suffix should be canonical")
+               ;; end is day9, fixed window 3d => start should be day6.
+               (assert-equal (+ 1700000000 (* 6 86400)) captured-start
+                             "expected fixed-window OOS start timestamp")
+               (assert-equal (+ 1700000000 (* 9 86400)) captured-end
+                             "expected OOS end timestamp"))))
       (setf swimmy.school::*oos-request-interval* orig-interval)
+      (if had-window-days
+          (setf swimmy.school::*oos-fixed-window-days* orig-window-days)
+          (makunbound 'swimmy.school::*oos-fixed-window-days*))
       (setf swimmy.school::*oos-last-dispatch-at* orig-dispatch-map)
       (setf (symbol-function 'swimmy.school::request-backtest) orig-request)
       (setf swimmy.core::*db-path-default* orig-db)
       (swimmy.core:close-db-connection)
       (when (probe-file data-path) (delete-file data-path))
+      (when (probe-file tmp-db) (delete-file tmp-db)))))
+
+(deftest test-handle-oos-result-upserts-deployment-gate-status
+  "OOS result handling should persist deployment gate status for forward tracking."
+  (let* ((tmp-db (format nil "/tmp/swimmy-deploy-gate-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+         (let ((swimmy.core::*db-path-default* tmp-db)
+               (swimmy.core::*sqlite-conn* nil)
+               (swimmy.school::*disable-auto-migration* t))
+           (swimmy.core:close-db-connection)
+           (swimmy.school::init-db)
+           (let* ((strat (swimmy.school:make-strategy :name "UT-DEPLOY-GATE"
+                                                      :symbol "USDJPY"
+                                                      :sharpe 0.2
+                                                      :profit-factor 1.0
+                                                      :win-rate 0.3
+                                                      :trades 10
+                                                      :max-dd 0.4
+                                                      :oos-sharpe nil))
+                  (*strategy-knowledge-base* (list strat))
+                  (*evolved-strategies* nil))
+             (swimmy.school::upsert-strategy strat)
+             (swimmy.school::enqueue-oos-request "UT-DEPLOY-GATE" "RID-DEPLOY-GATE" :status "sent")
+             (swimmy.school::handle-oos-backtest-result
+              "UT-DEPLOY-GATE" (list :sharpe 0.40 :request-id "RID-DEPLOY-GATE"))
+             (let ((row (first (swimmy.school::execute-to-list
+                                "SELECT oos_passed, decision FROM deployment_gate_status WHERE strategy_name = ?"
+                                "UT-DEPLOY-GATE"))))
+               (assert-true row "deployment gate row should exist after OOS result")
+               (assert-equal 1 (first row) "oos_passed should be true")
+               (assert-true (string= "FORWARD_RUNNING" (second row))
+                            "decision should be FORWARD_RUNNING after OOS pass"))))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
       (when (probe-file tmp-db) (delete-file tmp-db)))))
 
 (deftest test-top-candidates-displays-official-and-composite-evidence
@@ -602,7 +672,8 @@
         (write-line "1700000000,145.1,145.2,145.0,145.15,1000" s))
       (setf created-file t))
     (let ((swimmy.core::*db-path-default* tmp-db)
-          (swimmy.core::*sqlite-conn* nil))
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
       (unwind-protect
            (progn
              (swimmy.school::init-db)
@@ -645,6 +716,32 @@
                             (lambda (&rest _args) (declare (ignore _args)) nil))
                       (let ((report (swimmy.school::generate-evolution-report)))
                         (assert-true (search "OOS sent:" report) "Report should contain OOS status line")))
+                 (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
+(deftest test-evolution-report-includes-forward-status
+  "Evolution report should include Forward Go/No-Go status line."
+  (let* ((tmp-db (format nil "/tmp/swimmy-report-forward-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (swimmy.school::execute-non-query
+              "INSERT OR REPLACE INTO deployment_gate_status
+               (strategy_name, research_passed, oos_passed, oos_window_days, forward_start, forward_days, forward_trades, forward_sharpe, forward_pf, decision, reason, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+              "UT-FORWARD-1" 1 1 180 1700000000 30 310 0.88 1.66 "LIVE_READY" "manual-test" (get-universal-time))
+             (let ((orig-refresh (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)))
+               (unwind-protect
+                    (progn
+                      (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db)
+                            (lambda (&rest _args) (declare (ignore _args)) nil))
+                      (let ((report (swimmy.school::generate-evolution-report)))
+                        (assert-true (search "Forward Go/No-Go:" report)
+                                     "Report should contain forward deployment status line")))
                  (setf (symbol-function 'swimmy.school::refresh-strategy-metrics-from-db) orig-refresh))))
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))

@@ -528,6 +528,9 @@ REVERSION : ~a"
                                  cpcv-gate-line
                                  cpcv-median-line))
            (oos-snippet (oos-metrics-summary-line))
+           (forward-snippet (if (fboundp 'forward-deployment-summary-line)
+                                (forward-deployment-summary-line :refresh t)
+                                "Forward Go/No-Go: unavailable"))
            (validation-coverage-line (validation-coverage-summary-line))
            (a-stage1-counts
              (or (ignore-errors (a-stage1-failure-counts-from-db))
@@ -611,6 +614,8 @@ Current status of the autonomous strategy generation pipeline.
 
 	~a
 
+	~a
+
 	⚙️ System Status
 	~a
 	✅ Native Lisp Orchestration (V28)
@@ -629,6 +634,7 @@ Current status of the autonomous strategy generation pipeline.
 	            drift-text
 	            cpcv-snippet
 	            oos-snippet
+              forward-snippet
 	            validation-coverage-line
 	            a-stage1-snippet
 	            a-gate-pressure-line
@@ -662,7 +668,9 @@ Current status of the autonomous strategy generation pipeline.
     (write-evolution-report-files report)
     (send-evolution-report report)
     (when (fboundp 'write-oos-status-file)
-      (ignore-errors (write-oos-status-file :reason "report")))))
+      (ignore-errors (write-oos-status-file :reason "report")))
+    (when (fboundp 'write-forward-status-file)
+      (ignore-errors (write-forward-status-file :reason "report")))))
 
 (defun validation-coverage-summary-line ()
   "Return DB cumulative validation coverage for OOS/CPCV."

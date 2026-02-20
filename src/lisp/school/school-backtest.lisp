@@ -563,32 +563,25 @@ Budget is auto-shrunk under backtest pending pressure."
     (cond
       ;; Scenario 1: Robust Strategy (OOS > Threshold AND Degradation < 50%)
       ((and (> oos-sharpe required-oos) (< degradation 0.5))
-       (setf decision "validated")
-       (format t "[L] ✅ VALIDATED: ~a is robust! Promoted.~%" base-name)
+       (setf decision "validated_analysis")
+       (format t "[L] ✅ VALIDATED (analysis-only): ~a is robust.~%" base-name)
        (notify-discord-alert (format nil "Valid Strategy: ~a (Gen ~d | OOS: ~,2f)" base-name gen oos-sharpe) :color 3066993)
-       ;; V17c: Persist Promotion to Battlefield
-       (swimmy.persistence:move-strategy strat :battlefield))
+       ;; Contract: WFV is analysis-only and must not mutate rank/storage.
+       nil)
       
       ;; Scenario 2: Overfit (Good IS, Bad OOS)
       ((> degradation 0.7)
-       (setf decision "overfit")
-       (format t "[L] 🚮 OVERFIT: ~a discarded. (Good past, bad future)~%" base-name)
-       (setf *evolved-strategies* 
-             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
-       ;; V17c: Move to Graveyard
-       (swimmy.persistence:move-strategy strat :graveyard))
+       (setf decision "overfit_analysis")
+       (format t "[L] 🚮 OVERFIT (analysis-only): ~a (Good past, bad future)~%" base-name)
+       ;; Contract: WFV is analysis-only and must not mutate rank/storage.
+       nil)
        
       ;; Scenario 3: Weak (OOS < Required)
       (t
-       (setf decision "weak")
-       (format t "[L] 🗑️ WEAK: ~a (OOS ~,2f < ~,2f) discarded.~%" base-name oos-sharpe required-oos)
-       (setf *evolved-strategies* 
-             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
-       ;; V17c: Move to Graveyard
-       (setf *evolved-strategies* 
-             (remove-if (lambda (s) (string= (strategy-name s) base-name)) *evolved-strategies*))
-       ;; V17c: Move to Graveyard
-       (swimmy.persistence:move-strategy strat :graveyard)))
+       (setf decision "weak_analysis")
+       (format t "[L] 🗑️ WEAK (analysis-only): ~a (OOS ~,2f < ~,2f)~%" base-name oos-sharpe required-oos)
+       ;; Contract: WFV is analysis-only and must not mutate rank/storage.
+       nil))
 
     (swimmy.core::emit-telemetry-event "wfv.result"
       :service "school"
