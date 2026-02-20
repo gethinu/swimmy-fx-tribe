@@ -1131,8 +1131,16 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
   "When T, hydrate missing active DB strategies into in-memory KB during DB refresh.")
 (defparameter *kb-active-db-reconcile-enabled* t
   "When T, hydrate missing active KB strategies into DB during DB refresh.")
+(defparameter *db-active-library-reconcile-enabled* t
+  "When T, hydrate missing active DB strategies into Library active rank dirs.")
 (defparameter *db-active-kb-reconcile-max-additions* 5000
   "Safety cap for active DB<->KB reconciliation additions per refresh cycle.")
+(defparameter *db-active-library-reconcile-max-additions* 500
+  "Safety cap for active DB->Library hydration additions per reconciliation.")
+(defparameter *db-active-library-reconcile-interval* 300
+  "Minimum seconds between active DB->Library reconciliation runs.")
+(defparameter *last-db-active-library-reconcile-time* 0
+  "Timestamp of last active DB->Library reconciliation run.")
 (defparameter *active-rank-db-where-clause*
   "UPPER(TRIM(COALESCE(rank,''))) IN (':B','B',':A','A',':S','S',':LEGEND','LEGEND')"
   "SQL WHERE clause for active (B/A/S/LEGEND) rank rows.")
@@ -1175,6 +1183,65 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
     (if (string= token "NIL")
         nil
         (intern token :keyword))))
+
+(defun %active-rank-token-for-library-sync (rank-cell)
+  "Normalize active rank token for Library sync (INCUBATOR fallback)."
+  (let ((token (%normalize-rank-token-for-kb-sync rank-cell)))
+    (if (member token '("B" "A" "S" "LEGEND") :test #'string=)
+        token
+        "INCUBATOR")))
+
+(defun %active-library-file-path (name rank-cell &optional (root swimmy.persistence:*library-path*))
+  "Build Library active file path for strategy NAME and active rank cell."
+  (let* ((dir (%active-rank-token-for-library-sync rank-cell))
+         (safe-name (swimmy.persistence::sanitize-filename name)))
+    (merge-pathnames (format nil "~a/~a.lisp" dir safe-name) root)))
+
+(defun %library-active-file-exists-p (name rank-cell &optional (root swimmy.persistence:*library-path*))
+  "Return T when active Library file for NAME exists at target rank dir."
+  (let ((path (%active-library-file-path name rank-cell root)))
+    (and path (probe-file path))))
+
+(defun %find-active-kb-strategy-for-library-sync (name rank-keyword)
+  "Return active in-memory strategy object by NAME, when available."
+  (when (and name rank-keyword)
+    (find name *strategy-knowledge-base*
+          :key (lambda (s)
+                 (and (strategy-p s)
+                      (%active-rank-for-kb-sync-p (strategy-rank s))
+                      (eq (strategy-rank s) rank-keyword)
+                      (strategy-name s)))
+          :test #'string=)))
+
+(defun %persist-db-active-row-into-library (name rank-cell data-sexp)
+  "Persist one DB active row into Library active rank dirs. Returns T on success."
+  (handler-case
+      (let* ((rank-token (%active-rank-token-for-library-sync rank-cell))
+             (rank-keyword (intern rank-token :keyword))
+             (parsed (and (stringp data-sexp)
+                          (> (length (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                   data-sexp))
+                             0)
+                          (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school)))
+             (kb-obj (or (and (strategy-p parsed) parsed)
+                         (%find-active-kb-strategy-for-library-sync name rank-keyword))))
+        (cond
+          ((strategy-p kb-obj)
+           (setf (strategy-rank kb-obj) rank-keyword)
+           (swimmy.persistence:save-strategy kb-obj)
+           t)
+          ((and (stringp data-sexp)
+                (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) data-sexp))
+                   0))
+           (let ((path (%active-library-file-path name rank-cell)))
+             (ensure-directories-exist path)
+             (with-open-file (out path :direction :output :if-exists :supersede :if-does-not-exist :create)
+               (write-string data-sexp out)
+               (terpri out))
+             t))
+          (t nil)))
+    (error ()
+      nil)))
 
 (defun %archive-rank-token-for-library-sync (rank-cell)
   "Normalize archive rank token for Library sync (GRAVEYARD fallback)."
@@ -1248,6 +1315,61 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
     (or (probe-file (merge-pathnames (format nil "GRAVEYARD/~a.lisp" safe-name) root))
         (probe-file (merge-pathnames (format nil "RETIRED/~a.lisp" safe-name) root)))))
 
+(defparameter *archive-reconcile-backup-table-available* :unknown
+  "Cache for archive_reconcile_backup table availability (:unknown/T/NIL).")
+
+(defun %archive-reconcile-backup-table-available-p ()
+  "Return T when archive_reconcile_backup table exists."
+  (case *archive-reconcile-backup-table-available*
+    ((t) t)
+    ((nil) nil)
+    (otherwise
+     (let ((exists-p
+             (ignore-errors
+               (let ((cnt (execute-single
+                           "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='archive_reconcile_backup'")))
+                 (and cnt (> cnt 0))))))
+       (setf *archive-reconcile-backup-table-available* (if exists-p t nil))
+       exists-p))))
+
+(defun %blank-string-p (value)
+  "Return T when VALUE is NIL or empty after trim."
+  (or (null value)
+      (not (stringp value))
+      (zerop (length (string-trim '(#\Space #\Tab #\Newline #\Return) value)))))
+
+(defun %fetch-archive-backup-data-sexp (name rank-cell)
+  "Fetch latest non-empty archive payload from archive_reconcile_backup for NAME.
+Prefer matching rank token, then fallback to any rank for the same NAME."
+  (when (and name (%archive-reconcile-backup-table-available-p))
+    (let* ((rank-token (%archive-rank-token-for-library-sync rank-cell))
+           (rank-plain rank-token)
+           (rank-colon (format nil ":~a" rank-token))
+           (exact (ignore-errors
+                    (execute-single
+                     "SELECT data_sexp
+                        FROM archive_reconcile_backup
+                       WHERE name = ?
+                         AND UPPER(TRIM(rank)) IN (?, ?)
+                         AND data_sexp IS NOT NULL
+                         AND TRIM(data_sexp) <> ''
+                       ORDER BY backed_up_at DESC, id DESC
+                       LIMIT 1"
+                     name rank-plain rank-colon))))
+      (if (and (stringp exact)
+               (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) exact)) 0))
+          exact
+          (ignore-errors
+            (execute-single
+             "SELECT data_sexp
+                FROM archive_reconcile_backup
+               WHERE name = ?
+                 AND data_sexp IS NOT NULL
+                 AND TRIM(data_sexp) <> ''
+               ORDER BY backed_up_at DESC, id DESC
+               LIMIT 1"
+             name))))))
+
 (defun %purge-stale-archive-files-from-library
     (&key (max-removals *db-archive-library-reconcile-max-removals*)
           (root swimmy.persistence:*library-path*))
@@ -1300,9 +1422,15 @@ Returns plist: :removed-names :removed-files :truncated."
 (defun %persist-db-archive-row-into-library (name rank-cell data-sexp)
   "Persist one DB archive row into Library archive dirs. Returns T on success."
   (handler-case
-      (let* ((parsed (and (stringp data-sexp)
-                          (> (length data-sexp) 0)
-                          (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school)))
+      (let* ((resolved-data-sexp
+               (if (%blank-string-p data-sexp)
+                   (%fetch-archive-backup-data-sexp name rank-cell)
+                   data-sexp))
+             (parsed (and (stringp resolved-data-sexp)
+                          (> (length (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                   resolved-data-sexp))
+                             0)
+                          (swimmy.core:safe-read-sexp resolved-data-sexp :package :swimmy.school)))
              (rank-token (%archive-rank-token-for-library-sync rank-cell))
              (rank-keyword (if (string= rank-token "RETIRED") :RETIRED :GRAVEYARD)))
         (cond
@@ -1310,16 +1438,71 @@ Returns plist: :removed-names :removed-files :truncated."
            (setf (strategy-rank parsed) rank-keyword)
            (swimmy.persistence:save-strategy parsed)
            t)
-          ((and (stringp data-sexp) (> (length data-sexp) 0))
+          ((and (stringp resolved-data-sexp)
+                (> (length (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                        resolved-data-sexp))
+                   0))
            (let ((path (%archive-library-file-path name rank-cell)))
              (ensure-directories-exist path)
              (with-open-file (out path :direction :output :if-exists :supersede :if-does-not-exist :create)
-               (write-string data-sexp out)
+               (write-string resolved-data-sexp out)
                (terpri out))
              t))
           (t nil)))
     (error ()
       nil)))
+
+(defun reconcile-active-library-with-db
+    (&key (max-additions *db-active-library-reconcile-max-additions*)
+          (interval *db-active-library-reconcile-interval*)
+          (now (get-universal-time)))
+  "Ensure active DB rows (B/A/S/LEGEND) exist in Library active rank dirs.
+Returns plist with :db-active :added :write-failed :truncated :skipped."
+  (when (and (numberp interval)
+             (> interval 0)
+             (< (- now *last-db-active-library-reconcile-time*) interval))
+    (return-from reconcile-active-library-with-db
+      (list :skipped :cooldown
+            :db-active nil
+            :added 0
+            :write-failed 0
+            :truncated nil)))
+  (setf *last-db-active-library-reconcile-time* now)
+  (let* ((db-active (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a"
+                                                *active-rank-db-where-clause*))
+                        0))
+         (added 0)
+         (write-failed 0)
+         (truncated nil))
+    (dolist (row (execute-to-list
+                  (format nil
+                          "SELECT rowid, name, rank
+                             FROM strategies
+                            WHERE ~a
+                            ORDER BY rowid"
+                          *active-rank-db-where-clause*)))
+      (when (and max-additions (>= added max-additions))
+        (setf truncated t)
+        (return))
+      (destructuring-bind (rowid name rank-cell) row
+        (when (and name (not (%library-active-file-exists-p name rank-cell)))
+          (let ((data-sexp (execute-single
+                            "SELECT data_sexp FROM strategies WHERE rowid = ? LIMIT 1"
+                            rowid)))
+            (if (%persist-db-active-row-into-library name rank-cell data-sexp)
+                (incf added)
+                (incf write-failed))))))
+    (when (> added 0)
+      (format t "[DB] 🧩 Library active reconciled from DB: added=~d write_failed=~d~%"
+              added write-failed))
+    (when (and (> write-failed 0) (zerop added))
+      (format t "[DB] ⚠️ Library active reconcile write_failed=~d (added=0; missing payload in DB/KB).~%"
+              write-failed))
+    (list :skipped nil
+          :db-active db-active
+          :added added
+          :write-failed write-failed
+          :truncated truncated)))
 
 (defun reconcile-archive-library-with-db
     (&key (max-additions *db-archive-library-reconcile-max-additions*)
@@ -1406,6 +1589,9 @@ Returns plist with :db-archive :library-canonical :added :removed-names :removed
       (when (> added 0)
         (format t "[DB] 🧩 Library archive reconciled from DB: added=~d write_failed=~d~%"
                 added write-failed))
+      (when (and (> write-failed 0) (zerop added))
+        (format t "[DB] ⚠️ Library archive reconcile write_failed=~d (added=0; missing payload in DB/backup).~%"
+                write-failed))
       (setf lib-canonical (%library-archive-canonical-count-for-reconcile)))
     (list :skipped nil
           :db-archive db-archive
@@ -1617,6 +1803,12 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
           (ignore-errors
             (reconcile-active-db-with-kb
              :max-additions *db-active-kb-reconcile-max-additions*)))
+        (when *db-active-library-reconcile-enabled*
+          (ignore-errors
+            (reconcile-active-library-with-db
+             :max-additions *db-active-library-reconcile-max-additions*
+             :interval *db-active-library-reconcile-interval*
+             :now now)))
         (when *db-archive-library-reconcile-enabled*
           (ignore-errors
             (reconcile-archive-library-with-db

@@ -125,8 +125,49 @@
             *wisdom-update-interval-sec*)
     (analyze-veterans)))
 
+(defvar *startup-report-snapshot-written* nil
+  "Set once after writing a local evolution report snapshot at startup.")
+
+(defparameter *local-report-refresh-interval-sec*
+  (%connector-env-int-or "SWIMMY_LOCAL_REPORT_REFRESH_INTERVAL_SEC" 300)
+  "Minimum seconds between local evolution report/status refreshes.")
+
+(defvar *last-local-report-refresh-time* 0
+  "Unix timestamp of the last local evolution report/status refresh.")
+
+(defun maybe-refresh-local-report-snapshot (&key (now (get-universal-time)) (reason "phase-7-local") (force nil))
+  "Refresh local evolution report + status files without sending Discord notifications."
+  (let ((interval (max 1 (or *local-report-refresh-interval-sec* 300))))
+    (when (or force
+              (<= *last-local-report-refresh-time* 0)
+              (>= (- now *last-local-report-refresh-time*) interval))
+      (when (and (fboundp 'swimmy.school::generate-evolution-report)
+                 (fboundp 'swimmy.school::write-evolution-report-files))
+        (handler-case
+            (let ((report (swimmy.school::generate-evolution-report)))
+              (swimmy.school::write-evolution-report-files report)
+              (when (fboundp 'swimmy.school::write-oos-status-file)
+                (ignore-errors (swimmy.school::write-oos-status-file :reason reason)))
+              (when (fboundp 'swimmy.school::write-forward-status-file)
+                (ignore-errors (swimmy.school::write-forward-status-file :reason reason)))
+              (setf *last-local-report-refresh-time* now)
+              (format t "[CONNECTOR] 📝 Local report snapshot refreshed (~a).~%" reason)
+              t)
+          (error (e)
+            (format t "[CONNECTOR] ⚠️ Local report snapshot failed: ~a~%" e)
+            nil))))))
+
+(defun maybe-write-startup-report-snapshot ()
+  "Refresh local report file once at startup to avoid stale dashboards after restarts."
+  (unless *startup-report-snapshot-written*
+    (when (maybe-refresh-local-report-snapshot :reason "startup" :force t)
+      (setf *startup-report-snapshot-written* t)
+      (format t "[CONNECTOR] 📝 Startup report snapshot refreshed.~%"))))
+
 (defun phase-7-report ()
   "Send report if interval passed"
+  (maybe-write-startup-report-snapshot)
+  (maybe-refresh-local-report-snapshot :reason "phase-7-local")
   (when (fboundp 'swimmy.school::maybe-send-evolution-report)
     (swimmy.school::maybe-send-evolution-report :reason "phase-7")))
 
