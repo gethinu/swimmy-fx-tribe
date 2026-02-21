@@ -340,6 +340,12 @@ def dispatch_discord_notification(
     return {"notified": False, "error": last_error or "notification failed", "attempted": len(cleaned)}
 
 
+def apply_notify_result(report: Dict[str, object], notify_result: Dict[str, object]) -> Dict[str, object]:
+    merged = dict(report)
+    merged["notify"] = dict(notify_result)
+    return merged
+
+
 def _load_comparison(path: Path) -> Dict[str, object]:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
@@ -463,6 +469,10 @@ def main() -> None:
         webhook_candidates.extend(args.discord_webhook_fallbacks.split(","))
     if webhook_candidates:
         notify_result = dispatch_discord_notification(webhook_candidates, report, strict=args.notify_strict)
+        report = apply_notify_result(report, notify_result)
+        with report_path.open("w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=True, indent=2)
+            f.write("\n")
         print(json.dumps(notify_result, ensure_ascii=True))
 
     if promotion_blocked:

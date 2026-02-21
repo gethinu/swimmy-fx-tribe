@@ -210,6 +210,12 @@ def dispatch_discord_notification(
     return {"notified": False, "error": last_error or "notification failed", "attempted": len(cleaned)}
 
 
+def apply_notify_result(output: Dict[str, object], notify_result: Dict[str, object]) -> Dict[str, object]:
+    merged = dict(output)
+    merged["notify"] = dict(notify_result)
+    return merged
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run xau_autobot_cycle over multiple periods")
     parser.add_argument("--python-exe", default="./.venv/bin/python")
@@ -318,6 +324,10 @@ def main() -> None:
         webhook_candidates.extend(args.discord_webhook_fallbacks.split(","))
     if output.get("action") == "SKIP" and webhook_candidates:
         notify_result = dispatch_discord_notification(webhook_candidates, output, strict=args.notify_strict)
+        output = apply_notify_result(output, notify_result)
+        with output_path.open("w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=True, indent=2)
+            f.write("\n")
         print(json.dumps(notify_result, ensure_ascii=True))
 
 

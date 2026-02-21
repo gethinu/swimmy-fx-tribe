@@ -29,10 +29,12 @@
     - promotion通知を追加:
       - `--discord-webhook` / `--discord-webhook-fallbacks` / `--notify-strict`
       - 通知本文へ `underperforming_reasons` を含め、ブロック理由を即時可視化
+      - 通知結果を promotion report の `notify` として永続化
   - `tools/xau_autobot_cycle_compare.py`
     - `--market-hours-only` 時に `SKIP` 行のみ返るケースを許容
     - 比較結果を fail-close せず、`action=SKIP` / `reason=market_closed` を出力
     - 全期間 `SKIP` の場合は compare からDiscordへ SKIP 通知を送信
+    - 通知結果を comparison report の `notify` として永続化
   - `tools/xau_autobot_cycle_runner.sh`
     - `--live-reports-dir` / `--live-max-age-hours` を promotion step へ連携
     - `XAU_AUTOBOT_FAIL_ON_LIVE_UNDERPERFORMING=1` で fail-on-live-underperforming を有効化
@@ -223,11 +225,26 @@
     - BT-only 追加スキャン（hold OFF, top240）: `data/reports/armada_player_replica_20260221_a1_nami_btonly_seed20260221_c240_top240_holdoff_scan.json`
     - BT-only 追加スキャン診断: `data/reports/armada_nami_bt_feasibility_20260221_seed20260221_c240_holdoff.json`
     - 追加診断結果: `max BT PF=1.2386`, `p95 BT PF=1.1656`, `median BT PF=1.0358`, `BT PF>=1.30 = 0/240`, `bt_ok=0/240`
+    - strict R&D再探索（BT-only大域, c1056）: `data/reports/armada_player_replica_20260221_a1_nami_strictscan_seed20260221_c1056_btonly.json`
+    - c1056実行ログ: `logs/armada_a1_nami_strictscan_c1056_btonly_20260221.log`
+    - c1056補足: report未生成（log末尾に `failed printing to stdout: Broken pipe (os error 32)` を確認）
+    - c1056再実行（セッション監視）: 同条件で再試行中（report生成待ち）
+    - strict R&D再探索（BT-only, volsma集中 c800/top200）: `data/reports/armada_nami_bt_scan_seed20260221_c800_volsma.json`
+    - volsma集中診断: `data/reports/armada_nami_bt_feasibility_20260221_seed20260221_c800_volsma.json`
+    - volsma集中結果: `evaluated=216`, `selected=200`, `max BT PF=1.2514`, `p95 BT PF=1.2007`, `median BT PF=1.0692`, `BT PF>=1.30 = 0/200`, `bt_ok=0/200`
+    - strict R&D再探索（BT-only, volsma集中 c800/top200, seed=23）: `data/reports/armada_nami_bt_scan_seed23_c800_volsma.json`
+    - seed=23結果: `evaluated=216`, `selected=200`, `max BT PF=1.2514`, `BT PF>=1.30 = 0/200`, `bt_ok=0/200`
+    - seed比較: `data/reports/armada_nami_bt_scan_seed_compare_20260221_vs_23_volsma.json`
+    - seed比較結論: `strict_pf130_reached_any=false`, `strict_bt_ok_reached_any=false`, `max BT PF overall=1.2514`（seed変更でも上限更新なし）
+    - 追加実行（進行中）: `data/reports/armada_nami_bt_scan_seed20260221_c800_vwapvr.json`（BT-only, vwapvr集中）
+    - 追加実行（進行中）: `data/reports/armada_player_replica_20260221_a1_nami_strictscan_seed20260221_c1056_btonly.json`（BT-only, all indicators）
     - seed sweep集計: `data/reports/armada_nami_seed_sweep_20260221.json`
     - 診断: `data/reports/armada_nami_bt_feasibility_20260221.json`
     - 診断結果: `max BT PF=1.2514`, `BT PF>=1.30 = 0/240`, `bt_ok=0/240`
-    - 閾値感度: `data/reports/armada_nami_bt_threshold_sensitivity_20260221.json`
-    - 感度結果: A2 proxy条件を満たす `BT PF` 範囲は `1.20〜1.22`（最大成立値 `1.22`）
+    - 閾値感度（what-if）: `data/reports/armada_a1_bt_floor_sensitivity_20260221.json`, `data/reports/armada_nami_bt_threshold_sensitivity_20260221.json`
+    - 感度結果: `PF>=1.30` では各runとも top5 `strong=0`。`PF>=1.20` では複数runで top5 `strong>=1`（例: `c480_allind` で `strong=4/5`）。A2 proxy条件を満たす `BT PF` 範囲は `1.20〜1.22`（最大成立値 `1.22`）。
+    - strict floor130追試（hold OFF, c360, seed=314159）: `data/reports/armada_player_replica_20260221_a1_nami_strict_floor130_seed314159_c360_holdoff_allind.json`
+    - floor130追試結果: `top5 strong=0/5`, `bt_ok=0/5`, `oos_ok=2/5`, `cpcv_ok=3/5`, `top5 (oos_ok && cpcv_ok)=1/5`, `strong_proxy=0/5`。`max BT PF(top5)=1.0827` で改善なし（strict未達を再確認）。
     - 実装観測: strict `bt_ok` 判定は `BT PF>=1.30 && Sharpe>=0.10`（固定）だが、選抜スコア側の既定 floor は `core_bt_pf_floor=1.20`。この差で `BT PF 1.20台` 候補が上位に残りやすい。
     - 判定（strict）: 現行候補空間では strict `bt_ok` 閾値到達が確認できず、A1は未達（ブロッカー）
     - proxy判定（`BT PF>=1.22`）: top5 `strong_proxy=1/5`（A1完了条件を充足）
@@ -288,8 +305,15 @@
     - top50診断結果: `top3 combo=0/3`, `top10 combo=1/10`, `top50 combo=30/50`（候補自体はあるが選抜上位に乗らない）
     - 追加診断（pandajiro strength_weight=3.0）: `data/reports/armada_player_replica_20260221_pandajiro_b2_strengthw3_seed23_c180.json`
     - strength_weight=3.0結果: `top3 oos_ok=0/3`, `top3 cpcv_ok=0/3`（悪化、採用見送り）
+    - 再現性追試（seed=47, volsma専用）は計算競合で長時間化し中断（`...seed47_c240_volsma.json` 未生成）
     - 主要ボトルネック: all-indicators混在時は `cpcv_pass_rate=0.40` で頭打ちだが、`volsma` へ絞ると `0.60` まで改善
     - 判定: B2完了（完了条件を満たすrunを複数確認）ただし最終選抜ルールの再現性は未固定
+
+- [ ] **B2R volsma再現性検証（seed sweep）**
+  - 目的: B2 pass 条件（`top3 (oos_ok && cpcv_ok)>=1`）が seed依存でないことを確認。
+  - 実行: `seed={11,23,47,83,131}`、`--indicators volsma --candidates-per-player 240 --top-per-player 3` で実行。
+  - 完了条件: 5 seed中 `4/5` 以上で pandajiro/yumimin ともに `top3 (oos_ok && cpcv_ok)>=1`。
+  - 成果物: `data/reports/armada_b2_volsma_seed_sweep_YYYYMMDD_summary.json`
 
 - [x] **C1 core5投入判定パック作成**
   - 目的: core5全体の L1/L2/L3 判定を1ファイルで追跡可能にする。
@@ -297,9 +321,11 @@
   - 完了条件: 「投入可/保留/再探索」の3区分でプレイヤー別に判定完了。
   - 成果物: `data/reports/armada_deploy_readiness_YYYYMMDD.json`
   - 2026-02-21 実行メモ:
-    - 実行済み: `data/reports/armada_deploy_readiness_20260221.json`
-    - 区分結果: `投入可=0`, `保留=4(taiki/kojirin/pandajiro/yumimin)`, `再探索=1(nami)`
-    - 判定: `deploy_decision=保留 (no player reached L3)`
+    - 実行済み（strictビュー）: `data/reports/armada_deploy_readiness_20260221.json`
+    - 区分結果（strict）: `投入可=0`, `保留=4(taiki/kojirin/pandajiro/yumimin)`, `再探索=1(nami)`
+    - 実行済み（proxy運用ビュー）: `data/reports/armada_deploy_readiness_20260221_proxy.json`
+    - 区分結果（proxy）: `投入可=0`, `保留=5`, `再探索=0`
+    - 判定: `deploy_decision=保留 (no player reached L3)`（strict/proxyとも同一）
     - 参照入力:
       - `data/reports/armada_nami_seed_sweep_20260221_strengthbias_summary.json`
       - `data/reports/armada_player_replica_20260221_b1_taiki_kojirin_seed20260221.json`

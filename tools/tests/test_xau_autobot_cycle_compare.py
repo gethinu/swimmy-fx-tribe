@@ -1,6 +1,7 @@
 import unittest
 
 from tools.xau_autobot_cycle_compare import (
+    apply_notify_result,
     build_skip_notification_lines,
     build_cycle_command,
     parse_json_lines,
@@ -49,6 +50,13 @@ class TestXauAutoBotCycleCompare(unittest.TestCase):
         lines = build_skip_notification_lines(output)
         self.assertTrue(any("action=SKIP reason=market_closed" in ln for ln in lines))
         self.assertTrue(any("skipped_periods=45d,60d" in ln for ln in lines))
+
+    def test_apply_notify_result_returns_copy(self):
+        output = {"action": "SKIP"}
+        notify = {"notified": True, "attempted": 1}
+        merged = apply_notify_result(output, notify)
+        self.assertNotIn("notify", output)
+        self.assertEqual(merged["notify"]["notified"], True)
 
     def test_build_cycle_command(self):
         cmd = build_cycle_command(

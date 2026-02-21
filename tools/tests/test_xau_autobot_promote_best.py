@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.xau_autobot_promote_best import (
+    apply_notify_result,
     build_period_scoreboard,
     build_live_gap,
     build_promotion_notification_lines,
@@ -281,6 +282,13 @@ class TestXauAutoBotPromoteBest(unittest.TestCase):
         }
         lines = build_promotion_notification_lines(report)
         self.assertTrue(any("underperforming_reasons=live_pf_below_1,pf_gap_large" in ln for ln in lines))
+
+    def test_apply_notify_result_returns_copy(self):
+        report = {"selected_period": "45d"}
+        notify = {"notified": True, "attempted": 1}
+        merged = apply_notify_result(report, notify)
+        self.assertNotIn("notify", report)
+        self.assertEqual(merged["notify"]["notified"], True)
 
 
 if __name__ == "__main__":
