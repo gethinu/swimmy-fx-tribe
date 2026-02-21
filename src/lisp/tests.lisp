@@ -4086,7 +4086,8 @@
           (setf (symbol-function 'swimmy.core::get-model-prediction)
                 (lambda (h) (declare (ignore h)) :HOLD))
           (setf (symbol-function 'swimmy.engine::trading-allowed-p) (lambda () t))
-          (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) (lambda () t))
+          ;; S-rank count gate is no longer a live-path blocker.
+          (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) (lambda () nil))
           (setf (symbol-function 'swimmy.school::cleanup-stale-allocations) (lambda () nil))
           (setf (symbol-function 'swimmy.school::close-category-positions) (lambda (s b a) (declare (ignore s b a)) nil))
           (setf (symbol-function 'swimmy.school::is-safe-to-trade-p) (lambda () t))
@@ -4112,7 +4113,8 @@
           (setf (symbol-function 'swimmy.school::record-strategy-trade) (lambda (&rest args) (declare (ignore args)) nil))
 
           (swimmy.school::process-category-trades "USDJPY" 100.0 100.1)
-          (assert-true executed "Expected execute-category-trade to run (model gate should not block)."))
+          (assert-true executed
+                       "Expected execute-category-trade to run (model gate/S-rank count gate should not block)."))
       ;; Restore globals/functions even if test fails.
       (setf swimmy.globals:*candle-histories* orig-candle-histories)
       (setf swimmy.globals:*candle-history* orig-candle-history)
@@ -4418,7 +4420,7 @@
       (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strat))))
 
 (deftest test-process-category-trades-runs-a-rank-shadow-when-s-gate-blocked
-  "When S gate blocks live execution, A-rank signals should still run in shadow and persist shadow outcomes."
+  "When live entry path is skipped, A-rank signals should still run in shadow and persist shadow outcomes."
   (let ((orig-candle-histories swimmy.globals:*candle-histories*)
         (orig-candle-history swimmy.globals:*candle-history*)
         (orig-kb swimmy.school::*strategy-knowledge-base*)
@@ -4477,8 +4479,9 @@
                               :timeframe 15))))
           (setf (symbol-function 'swimmy.school::get-cached-backtest)
                 (lambda (_n) (declare (ignore _n)) (list :sharpe 1.0)))
+          ;; Skip live entry path (independent from S-rank count gate).
           (setf (symbol-function 'swimmy.school::can-category-trade-p)
-                (lambda (_k) (declare (ignore _k)) t))
+                (lambda (_k) (declare (ignore _k)) nil))
           (setf (symbol-function 'swimmy.school::execute-category-trade)
                 (lambda (&rest _args)
                   (declare (ignore _args))
@@ -4500,7 +4503,7 @@
           (swimmy.school::process-category-trades "USDJPY" 100.00 100.02)
           (swimmy.school::process-category-trades "USDJPY" 100.08 100.10)
 
-          (assert-false live-executed "Live execute-category-trade should not run while S gate is blocked")
+          (assert-false live-executed "Live execute-category-trade should not run when entry path is skipped")
           (assert-true (member :shadow captured-modes :test #'eq)
                        "Expected at least one shadow-mode learning outcome"))
       (setf swimmy.globals:*candle-histories* orig-candle-histories)

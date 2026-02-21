@@ -26,10 +26,18 @@
 - **Live Trade-Close Integrity 監査契約**: 運用監査は `tools/check_live_trade_close_integrity.py` を用いて、(1) `trade_logs` の `strategy_name/direction/category` が `Unknown/NIL` に劣化していないこと、(2) `swimmy.log` に `Unsafe/invalid SEXP ... POSITIONS` が再発していないこと、を継続確認する。`tools/system_audit.sh` でも同監査を WARN ステップとして実行する。履歴データを除外する必要がある場合は `LIVE_TRADE_CLOSE_AFTER_ID` で `id <= baseline` を無視できる。`DB not found` / `trade_logs` クエリエラーは WARN に落とさず FAIL（exit 1）として扱う。
 - **Live Trade-Close 連続監視契約**: 実トレード発生待ちの間は `tools/watch_trade_close_loop.sh` を使って `tools/watch_trade_close_integrity.py` をタイムアウト再試行し、`success(0)` または `violation(1)` が出るまで監視を継続できる状態を維持する。
 - **Edge Scorecard 契約（V50.7-P0）**: `tools/edge_scorecard.py` は日次 KPI（KPI-0: Live Edge Guard準拠、KPI-1: 7日/30日PnL健全性、KPI-2: Rank conformance違反、KPI-3: Breeder親品質率）を `data/reports/edge_scorecard_latest.json` と履歴 `data/reports/edge_scorecard/` に保存する。入力データ欠損時は例外停止せず `status=degraded` と理由を出力し、監視を fail-open 可観測化する。
+- **Edge Scorecard KPI 定義契約（V50.7-P3）**:
+  - KPI-0（Live Edge Guard準拠）: `deployment_gate_status` の `decision` 集計を正本とし、`LIVE_READY` 件数が 0 の場合は `degraded` とする。
+  - KPI-1（実運用PnL健全性）: `trade_logs` の 7日/30日窓を正本とし、30日窓で `PF<1.05` / `WR<35%` / `net_pnl<0` / `max_loss_streak>3` のいずれかで `degraded` とする。
+  - KPI-2（Rank conformanceドリフト）: `rank_conformance_latest.json` の `violations.total` を正本とし、`total>0` で `degraded` とする。
+  - KPI-3（Breeder親品質率）: `strategies` の `B/A/S` を対象に `check_rank_conformance.meets_rank_criteria` で判定し、`pass_count<total_count` の rank が1つでもあれば `degraded` とする。
+  - Overall 判定: `k0..k3` がすべて `ok` のときのみ `overall_status=ok`。それ以外は `overall_status=degraded`。
 - **System Audit Edge Scorecard 契約（V50.7-P1）**: `tools/system_audit.sh` は `tools/edge_scorecard.py` を WARN ステップとして実行し、日次 `swimmy-system-audit.timer` で `Edge scorecard summary` を監査ログへ残す。scorecard 失敗は system audit 全体を即FAILにせず WARN 扱いで可観測化する。
+- **Edge Scorecard Discord 通知契約（V50.7-P2）**: `tools/edge_scorecard.py` は `--discord-when=problem` のとき `overall_status in {degraded, critical}` でのみ通知をキューし、`overall_status=ok` は通知しない。通知経路は Notifier PUSH（`SWIMMY_PORT_NOTIFIER`/既定5562）を正本とし、webhook は `EDGE_SCORECARD_DISCORD_WEBHOOK` または `EDGE_SCORECARD_DISCORD_WEBHOOK_ENV`（既定 `SWIMMY_DISCORD_ALERTS`）から解決する。
 - **ORDER_OPEN コメント契約**: `comment` はトップシグナル戦略の実行文脈（`strategy_name|tf_key`）を送る。`NIL` 名や「文脈欠落による `M1` フォールバック」をコメントへ出さない。`M1` は戦略TFが実際に1分足のときのみ許容する。
 - **Execution Fail-Closed 契約**: 実行文脈（`strategy_name` / `timeframe`）が欠落・不正な場合は、`NIL` や既定TFへ丸めずに**発注を中止**する。`NIL` で先に進むフォールバックを禁止する。`timeframe="NIL"` / 空文字 / 不正ラベル（例: `"UNKNOWN"`）は「不正な時間足」として fail-closed 対象にする。
 - **Live Execution Go/No-Go 強制契約**: `process-category-trades` / `execute-category-trade` は Rank（B/A/S）のみで live 発注可否を決めない。`deployment_gate_status.decision == "LIVE_READY"` の戦略のみ live 実行を許可し、`BLOCKED_OOS/FORWARD_RUNNING/FORWARD_FAIL/未登録` は fail-closed で中止する（研究評価と実運用判定を完全分離）。
+- **Live 実行経路の Rank件数ゲート禁止契約**: live 実行経路は「S-rank本数」などの rank件数しきい値で全体停止しない。実行可否は戦略単位の `deployment_gate_status`（`LIVE_READY`）と runtime `Live Edge Guard` を正本とする。Rank件数は監視KPI用途に限定し、発注の前段ブロッカーとしては使わない。
 - **Live Edge Guard 契約（実行時）**: `deployment_gate_status=LIVE_READY` でも直近 LIVE 実績（既定: 最新40件、判定最小20件）を再審査し、`PF>=1.05` / `WR>=35%` / `net_pnl>=0` / `latest_loss_streak<=3` を満たさない戦略は fail-closed で発注を中止する。ブロック時は Discord alert と `execution.live_edge_blocked` telemetry を出力する。
 - **Unknown/NIL 戦略文脈 fail-closed 契約**: 実行文脈の `strategy_name` は `NIL/UNKNOWN/NULL/NONE/空文字` を不正値として扱い、時間足が有効でも発注しない。`execution.context_missing` と同等に可観測化し、`Unknown` の学習データ混入を抑止する。
 - **ORDER_OPEN Sink Guard 契約**: `safe-order` / `make-order-message`（Sender）と `SwimmyBridge ORDER_OPEN`（Receiver）は `comment` を厳格検証し、`strategy|tf` 形式不正（区切り欠落、strategy/timeframe 欠落、`NIL` 含有）を検知した場合は `SW-<magic>` 等へフォールバックせず fail-closed で中止する。
@@ -234,6 +242,9 @@
 - **2026-02-20**: Rank conformance監査の差分基準を更新。`tools/check_rank_conformance.py` は `rank_conformance_latest.json` 直前値ではなく、履歴ディレクトリ内の「前日以前の最新スナップショット」を基準に `promotion/demotion/by_route` を算出する方針を正本化。
 - **2026-02-20**: V50.7-P0 の Edge Scorecard 契約を追加。`tools/edge_scorecard.py` で KPI-0〜KPI-3 を latest+history へ保存し、欠損データは `degraded` で可観測化する方針を正本化。
 - **2026-02-20**: V50.7-P1 の System Audit 統合契約を追加。`tools/system_audit.sh` で `tools/edge_scorecard.py` を WARN ステップとして日次実行し、`Edge scorecard summary` を監査ログに残す方針を正本化。
+- **2026-02-21**: V50.7-P3 の KPI定義契約を追加。Edge Scorecard の `KPI-0..3` についてデータソース（`deployment_gate_status` / `trade_logs` / `rank_conformance_latest.json` / `strategies`）と `degraded` 判定条件、`overall_status` 集約条件を正本化。
+- **2026-02-21**: V50.7-P2 の Discord通知契約を追加。`edge_scorecard` の `discord-when=problem` は `degraded/critical` のみ通知し、`ok` は通知しない方針を正本化。通知は Notifier経由キューイングを標準とする。
+- **2026-02-21**: Live 実行経路の Rank件数ゲート禁止契約を追加。`process-category-trades` の前段で `S-rank` 件数しきい値による全体停止を行わず、`deployment_gate_status(LIVE_READY)` + `Live Edge Guard` を発注可否の正本に統一する方針を正本化。
 - **2026-02-20**: Live trade-close 監査の fail-closed 契約を更新。`tools/check_live_trade_close_integrity.py` は `DB not found` / `trade_logs` クエリエラー時に WARN 成功へ落とさず FAIL（exit 1）にする。`tools/system_audit.sh` は `LIVE_TRADE_CLOSE_AFTER_ID` を渡して historical 不良行を除外できる。
 - **2026-02-20**: `trade_logs` の legacy 不良データ（`id=1..7`, `Unknown/NIL`）を `trade_logs_archive_20260220_205326` へ退避し、主テーブルから削除して live 監査基盤をリフレッシュ。`sqlite_sequence(trade_logs)=7` を維持し、次回新規行は `id=8` から継続する運用とした。
 - **2026-02-20**: MT5 `POSITIONS` S式整合契約を追加。`(data . (...))` を含む整形式 alist（0件時は `(data . ())`）を必須化し、括弧不整合メッセージで Dispatcher が `Unsafe/invalid SEXP` 棄却する事象を防ぐ方針を正本化。

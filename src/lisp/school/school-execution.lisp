@@ -27,7 +27,7 @@
 (defparameter *signal-confidence-soft-lot-multiplier* 0.55
   "Lot multiplier for medium-confidence entries.")
 (defparameter *min-s-rank-strategies-for-live* 2
-  "Minimum number of S-rank strategies required before live execution starts.")
+  "Legacy threshold (monitoring-only). Live execution path no longer blocks on S-rank count.")
 (defparameter *live-edge-guard-enabled* t
   "When T, block LIVE execution for strategies with degraded recent LIVE edge.")
 (defparameter *live-edge-guard-lookback-trades* 40
@@ -1100,7 +1100,6 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
   (when (boundp 'swimmy.main::*dispatch-step*)
     (setf swimmy.main::*dispatch-step* :tick/load-history))
   (let ((history (or (gethash symbol *candle-histories*) *candle-history*)))
-    ;; V49.0: Added S-Rank Gate (Musk)
     ;; NOTE: Set dispatch-step before each gate so Msg Error logs point to the true failing step
     ;; even when earlier helpers leave a stale step value behind.
     (when (boundp 'swimmy.main::*dispatch-step*)
@@ -1108,86 +1107,81 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
     (let ((allowed (trading-allowed-p)))
       (when (and allowed history (> (length history) 100))
         (when (boundp 'swimmy.main::*dispatch-step*)
-          (setf swimmy.main::*dispatch-step* :tick/s-rank-gate-passed-p))
-        (let ((live-enabled (s-rank-gate-passed-p)))
-          (when live-enabled
-            (when (boundp 'swimmy.main::*dispatch-step*)
-              (setf swimmy.main::*dispatch-step* :tick/close-category-positions))
-            (close-category-positions symbol bid ask))
-          ;; Shadow positions are closed regardless of live gate status.
-          (close-a-rank-shadow-positions symbol bid ask)
+          (setf swimmy.main::*dispatch-step* :tick/close-category-positions))
+        (close-category-positions symbol bid ask)
+        ;; Shadow positions are closed regardless of live execution gate results.
+        (close-a-rank-shadow-positions symbol bid ask)
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
+        (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/volatility-allows-trading-p))
+        (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
+        (when (>= (length history) 50)
           (when (boundp 'swimmy.main::*dispatch-step*)
-            (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
-          (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
+            (setf swimmy.main::*dispatch-step* :tick/research-enhanced-analysis))
+          (research-enhanced-analysis history)
           (when (boundp 'swimmy.main::*dispatch-step*)
-            (setf swimmy.main::*dispatch-step* :tick/volatility-allows-trading-p))
-          (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
-          (when (>= (length history) 50)
-            (when (boundp 'swimmy.main::*dispatch-step*)
-              (setf swimmy.main::*dispatch-step* :tick/research-enhanced-analysis))
-            (research-enhanced-analysis history)
-            (when (boundp 'swimmy.main::*dispatch-step*)
-              (setf swimmy.main::*dispatch-step* :tick/detect-regime-hmm))
-            (detect-regime-hmm history))
-          (when (boundp 'swimmy.main::*dispatch-step*)
-            (setf swimmy.main::*dispatch-step* :tick/elect-leader))
-          (elect-leader)
-          (handler-case
-              (progn
-                (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
-                (let ((strat-signals (collect-strategy-signals symbol history)))
-                  (when strat-signals
-                    (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                    ;; A-rank shadow operation: keep collecting paper outcomes even when live is blocked.
-                    (open-a-rank-shadow-trades symbol bid ask strat-signals)
-                    (when live-enabled
-                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                      (let* ((all-sorted
-                              (sort (copy-list strat-signals)
-                                    (lambda (a b)
-                                      (let* ((name-a (getf a :strategy-name))
-                                             (name-b (getf b :strategy-name))
-                                             (cache-a (get-cached-backtest name-a))
-                                             (cache-b (get-cached-backtest name-b))
-                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                        (> sharpe-a sharpe-b)))))
-                             (top-sig (first all-sorted))
-                             (top-name (when top-sig (getf top-sig :strategy-name)))
-                             (top-cat (when top-sig (getf top-sig :category)))
-                             (top-cache (when top-name (get-cached-backtest top-name)))
-                             (top-timeframe (or (and top-sig (getf top-sig :timeframe))
-                                                (let ((top-strat (resolve-strategy-by-name top-name)))
-                                                  (and top-strat (strategy-timeframe top-strat)))))
-                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                        (when top-sig
-                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                                  top-name top-cat top-sharpe (length strat-signals))
-                          (let* ((direction (getf top-sig :direction))
-                                 (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
-                                 (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
-                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                            (when (<= confidence-lot-mult 0.0)
-                              (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
-                                      top-name signal-confidence *signal-confidence-entry-threshold*))
-                            (when (and (> confidence-lot-mult 0.0)
-                                       (can-category-trade-p strat-key))
-                              (let ((trade-executed
-                                      (execute-category-trade top-cat direction symbol bid ask
-                                                              :lot-multiplier confidence-lot-mult
-                                                              :signal-confidence signal-confidence
-                                                              :strategy-name top-name
-                                                              :strategy-timeframe top-timeframe)))
-                                (when trade-executed
-                                  (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
-                                          symbol direction top-name signal-confidence confidence-lot-mult)
-                                  (record-category-trade-time strat-key)
-                                  (when (fboundp 'record-strategy-trade)
-                                    (record-strategy-trade top-name :trade 0))))))))))))
-            (error (e)
-              (declare (ignore e))
-              nil)))))))
+            (setf swimmy.main::*dispatch-step* :tick/detect-regime-hmm))
+          (detect-regime-hmm history))
+        (when (boundp 'swimmy.main::*dispatch-step*)
+          (setf swimmy.main::*dispatch-step* :tick/elect-leader))
+        (elect-leader)
+        (handler-case
+            (progn
+              (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
+              (let ((strat-signals (collect-strategy-signals symbol history)))
+                (when strat-signals
+                  (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                  ;; A-rank shadow operation: keep collecting paper outcomes.
+                  (open-a-rank-shadow-trades symbol bid ask strat-signals)
+                  ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                  ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
+                  (let* ((all-sorted
+                          (sort (copy-list strat-signals)
+                                (lambda (a b)
+                                  (let* ((name-a (getf a :strategy-name))
+                                         (name-b (getf b :strategy-name))
+                                         (cache-a (get-cached-backtest name-a))
+                                         (cache-b (get-cached-backtest name-b))
+                                         (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                         (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                    (> sharpe-a sharpe-b)))))
+                         (top-sig (first all-sorted))
+                         (top-name (when top-sig (getf top-sig :strategy-name)))
+                         (top-cat (when top-sig (getf top-sig :category)))
+                         (top-cache (when top-name (get-cached-backtest top-name)))
+                         (top-timeframe (or (and top-sig (getf top-sig :timeframe))
+                                            (let ((top-strat (resolve-strategy-by-name top-name)))
+                                              (and top-strat (strategy-timeframe top-strat)))))
+                         (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                    (when top-sig
+                      (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                              top-name top-cat top-sharpe (length strat-signals))
+                      (let* ((direction (getf top-sig :direction))
+                             (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
+                             (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
+                             (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                        (when (<= confidence-lot-mult 0.0)
+                          (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
+                                  top-name signal-confidence *signal-confidence-entry-threshold*))
+                        (when (and (> confidence-lot-mult 0.0)
+                                   (can-category-trade-p strat-key))
+                          (let ((trade-executed
+                                  (execute-category-trade top-cat direction symbol bid ask
+                                                          :lot-multiplier confidence-lot-mult
+                                                          :signal-confidence signal-confidence
+                                                          :strategy-name top-name
+                                                          :strategy-timeframe top-timeframe)))
+                            (when trade-executed
+                              (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
+                                      symbol direction top-name signal-confidence confidence-lot-mult)
+                              (record-category-trade-time strat-key)
+                              (when (fboundp 'record-strategy-trade)
+                                (record-strategy-trade top-name :trade 0)))))))))))
+          (error (e)
+            (declare (ignore e))
+            nil))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING
