@@ -13380,6 +13380,7 @@
                   test-handle-oos-result-upserts-deployment-gate-status
 	                  test-evolution-report-includes-oos-status
                   test-evolution-report-includes-forward-status
+                  test-fetch-forward-pnls-includes-paper-and-live-compatible-modes
                   test-evolution-report-reflects-evolution-daemon-status
                   test-evolution-report-includes-cpcv-gate-failures
                   test-display-candidate-name-preserves-suffix-for-long-names

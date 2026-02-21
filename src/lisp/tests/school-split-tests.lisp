@@ -746,6 +746,34 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-fetch-forward-pnls-includes-paper-and-live-compatible-modes
+  "Forward evidence should include SHADOW/PAPER/LIVE modes and exclude unrelated modes."
+  (let* ((tmp-db (format nil "/tmp/swimmy-forward-modes-~a.db" (get-universal-time)))
+         (now (get-universal-time)))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+           (progn
+             (swimmy.school::init-db)
+             (labels ((ins (offset pnl mode)
+                        (swimmy.school::execute-non-query
+                         "INSERT INTO trade_logs
+                          (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                         (+ now offset) "UT-FWD-MODES" "USDJPY" "BUY" "trend" "trend" pnl 10 nil mode)))
+               (ins 1 1.0 "SHADOW")
+               (ins 2 2.0 "LIVE")
+               (ins 3 3.0 "PAPER")
+               (ins 4 4.0 "DRYRUN"))
+             (let ((pnls (swimmy.school::%fetch-forward-pnls "UT-FWD-MODES" (- now 60))))
+               (assert-equal 3 (length pnls)
+                             "Forward pnl list should include SHADOW/PAPER/LIVE only")
+               (assert-true (< (abs (- 6.0 (reduce #'+ pnls :initial-value 0.0))) 1e-9)
+                            "Forward pnl sum should match included modes only")))
+        (swimmy.core:close-db-connection)
+        (when (probe-file tmp-db) (delete-file tmp-db))))))
+
 (deftest test-evolution-report-includes-validation-coverage
   "Evolution report should include DB cumulative validation coverage."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-validation-coverage-~a.db" (get-universal-time))))

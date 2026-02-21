@@ -579,7 +579,7 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
       (t 0.0))))
 
 (defun %fetch-forward-pnls (strategy-name forward-start)
-  "Fetch LIVE pnl list from trade_logs for STRATEGY-NAME since FORWARD-START."
+  "Fetch forward pnl list (paper-first + live-compatible) for STRATEGY-NAME since FORWARD-START."
   (if (or (null strategy-name)
           (not (stringp strategy-name))
           (not (numberp forward-start))
@@ -590,7 +590,7 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                        FROM trade_logs
                       WHERE strategy_name = ?
                         AND timestamp >= ?
-                        AND UPPER(COALESCE(execution_mode, 'LIVE')) = 'LIVE'
+                        AND UPPER(COALESCE(execution_mode, 'LIVE')) IN ('SHADOW','PAPER','LIVE')
                       ORDER BY timestamp"
                     strategy-name
                     forward-start))

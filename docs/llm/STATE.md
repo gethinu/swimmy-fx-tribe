@@ -71,6 +71,7 @@
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **OOS 固定期間契約**: A向け OOS dispatch は `*oos-test-ratio*` の可変比率を正本にせず、`*oos-fixed-window-days*`（既定180日）で `end_ts - window` を基準に算出する。データが短い場合は利用可能な最古timestampまでを OOS 開始とし、範囲欠落で dispatch 失敗にしない。
 - **実運用 Go/No-Go 契約（Rankと分離）**: Rank（B/A/S）は研究評価、ライブ投入可否は `deployment_gate_status` を正本として判定する。最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。判定は `BLOCKED_OOS` / `FORWARD_RUNNING` / `FORWARD_FAIL` / `LIVE_READY` を使う。
+- **Forward Evidence Source 契約**: `forward_trades/forward_sharpe/forward_pf` は paper-forward を正本とし、`trade_logs.execution_mode` の `SHADOW/PAPER` を優先的に集計する。互換目的で `LIVE` も含められるが、`LIVE_READY` 判定に「LIVE実績のみ」を必須条件として使わない（循環ゲート防止）。
 - **Forward Status 表示**: `data/reports/forward_status.txt` を正本として保持し、Evolution Report に Forward Go/No-Go 集計（LIVE_READY件数、FORWARD_RUNNING件数、失敗理由）を表示する。
 - **Legacy WFV 隔離契約**: WFV（`_IS/_OOS`）は分析専用とし、`move-strategy` / Rank遷移 / archive移動に関与させない。既定は `*wfv-enabled*=nil` で、明示有効化時も「分析テレメトリの記録」のみ許可する。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
@@ -245,6 +246,7 @@
 - **2026-02-21**: V50.7-P3 の KPI定義契約を追加。Edge Scorecard の `KPI-0..3` についてデータソース（`deployment_gate_status` / `trade_logs` / `rank_conformance_latest.json` / `strategies`）と `degraded` 判定条件、`overall_status` 集約条件を正本化。
 - **2026-02-21**: V50.7-P2 の Discord通知契約を追加。`edge_scorecard` の `discord-when=problem` は `degraded/critical` のみ通知し、`ok` は通知しない方針を正本化。通知は Notifier経由キューイングを標準とする。
 - **2026-02-21**: Live 実行経路の Rank件数ゲート禁止契約を追加。`process-category-trades` の前段で `S-rank` 件数しきい値による全体停止を行わず、`deployment_gate_status(LIVE_READY)` + `Live Edge Guard` を発注可否の正本に統一する方針を正本化。
+- **2026-02-21**: Forward evidence source 契約を追加。`deployment_gate_status` の `forward_*` 指標は `trade_logs.execution_mode` の `SHADOW/PAPER` を正本（互換で `LIVE` も許容）として集計し、`LIVE_ONLY` の循環ゲートを避ける方針を正本化。
 - **2026-02-20**: Live trade-close 監査の fail-closed 契約を更新。`tools/check_live_trade_close_integrity.py` は `DB not found` / `trade_logs` クエリエラー時に WARN 成功へ落とさず FAIL（exit 1）にする。`tools/system_audit.sh` は `LIVE_TRADE_CLOSE_AFTER_ID` を渡して historical 不良行を除外できる。
 - **2026-02-20**: `trade_logs` の legacy 不良データ（`id=1..7`, `Unknown/NIL`）を `trade_logs_archive_20260220_205326` へ退避し、主テーブルから削除して live 監査基盤をリフレッシュ。`sqlite_sequence(trade_logs)=7` を維持し、次回新規行は `id=8` から継続する運用とした。
 - **2026-02-20**: MT5 `POSITIONS` S式整合契約を追加。`(data . (...))` を含む整形式 alist（0件時は `(data . ())`）を必須化し、括弧不整合メッセージで Dispatcher が `Unsafe/invalid SEXP` 棄却する事象を防ぐ方針を正本化。

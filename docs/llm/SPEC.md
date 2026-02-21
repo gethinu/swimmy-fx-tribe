@@ -38,6 +38,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **実運用 Go/No-Go（Rankと分離）**:
   - Rank（B/A/S）は研究評価を担い、ライブ投入可否は `deployment_gate_status` で別管理する。
   - 最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。
+  - `forward_*` 指標は paper-forward を正本とし、`trade_logs.execution_mode` の `SHADOW/PAPER`（必要に応じて `LIVE` 互換データも含む）から算出する。
   - `LIVE_READY` 戦略でも、**直近LIVE実績ガード**（既定: 最新40件・判定最小20件）で `PF>=1.05` / `WR>=35%` / `net_pnl>=0` / `latest_loss_streak<=3` を満たさない場合は、実行経路で fail-closed により発注を中止する。
   - これにより `S-Rank` は「研究上の上位評価」であり、単独では `live-ready` を意味しない。
 
