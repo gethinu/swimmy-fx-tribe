@@ -1,0 +1,14 @@
+[Unit]
+Description=Swimmy Edge Scorecard Daily Job
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/tools/edge_scorecard_runner.sh
+Environment=HOME=/home/swimmy
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
+StandardOutput=append:/home/swimmy/swimmy/logs/edge_scorecard.log
+StandardError=append:/home/swimmy/swimmy/logs/edge_scorecard.log
