@@ -346,6 +346,13 @@ def apply_notify_result(report: Dict[str, object], notify_result: Dict[str, obje
     return merged
 
 
+def append_history_jsonl(path: Path, report: Dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(report, ensure_ascii=True))
+        f.write("\n")
+
+
 def _load_comparison(path: Path) -> Dict[str, object]:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
@@ -371,6 +378,10 @@ def main() -> None:
     parser.add_argument("--config-dir", default="tools/configs")
     parser.add_argument("--write-active", default="tools/configs/xau_autobot.tuned_auto_active.json")
     parser.add_argument("--write-report", default="data/reports/xau_autobot_promotion.json")
+    parser.add_argument(
+        "--write-history-jsonl",
+        default="data/reports/xau_autobot_promotion_history.jsonl",
+    )
     parser.add_argument("--live-report", default="")
     parser.add_argument("--live-reports-dir", default="data/reports")
     parser.add_argument("--live-max-age-hours", type=float, default=48.0)
@@ -389,6 +400,7 @@ def main() -> None:
     config_dir = Path(args.config_dir)
     active_path = Path(args.write_active)
     report_path = Path(args.write_report)
+    history_path = Path(args.write_history_jsonl)
     live_reports_dir = Path(args.live_reports_dir)
 
     data = _load_comparison(comparison_path)
@@ -474,6 +486,8 @@ def main() -> None:
             json.dump(report, f, ensure_ascii=True, indent=2)
             f.write("\n")
         print(json.dumps(notify_result, ensure_ascii=True))
+
+    append_history_jsonl(history_path, report)
 
     if promotion_blocked:
         reasons = live_gap.get("underperforming_reasons", [])

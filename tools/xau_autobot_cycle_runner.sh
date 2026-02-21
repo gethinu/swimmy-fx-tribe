@@ -22,6 +22,7 @@ CMD=(
   --reports-dir data/reports
   --config-dir tools/configs
   --write-comparison data/reports/xau_autobot_cycle_comparison.json
+  --write-history-jsonl "${XAU_AUTOBOT_COMPARE_HISTORY_JSONL:-data/reports/xau_autobot_cycle_comparison_history.jsonl}"
 )
 
 if [ -n "${PRIMARY_WEBHOOK:-}" ]; then
@@ -78,6 +79,7 @@ PROMOTE_CMD=(
   --live-max-win-rate-drop "${XAU_AUTOBOT_LIVE_MAX_WIN_RATE_DROP:-0.08}"
   --write-active "$ROOT/tools/configs/xau_autobot.tuned_auto_active.json"
   --write-report "$ROOT/data/reports/xau_autobot_promotion.json"
+  --write-history-jsonl "${XAU_AUTOBOT_PROMOTION_HISTORY_JSONL:-data/reports/xau_autobot_promotion_history.jsonl}"
 )
 
 if [ "${XAU_AUTOBOT_LIVE_IGNORE_NET_PROFIT_CHECK:-0}" = "1" ]; then

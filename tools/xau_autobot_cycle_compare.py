@@ -216,6 +216,13 @@ def apply_notify_result(output: Dict[str, object], notify_result: Dict[str, obje
     return merged
 
 
+def append_history_jsonl(path: Path, output: Dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(output, ensure_ascii=True))
+        f.write("\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run xau_autobot_cycle over multiple periods")
     parser.add_argument("--python-exe", default="./.venv/bin/python")
@@ -233,6 +240,10 @@ def main() -> None:
     parser.add_argument("--reports-dir", default="data/reports")
     parser.add_argument("--config-dir", default="tools/configs")
     parser.add_argument("--write-comparison", default="data/reports/xau_autobot_cycle_comparison.json")
+    parser.add_argument(
+        "--write-history-jsonl",
+        default="data/reports/xau_autobot_cycle_comparison_history.jsonl",
+    )
     parser.add_argument("--discord-webhook", default="")
     parser.add_argument("--discord-webhook-fallbacks", default="")
     parser.add_argument("--notify-strict", action="store_true")
@@ -310,6 +321,7 @@ def main() -> None:
         output["reason"] = "market_closed"
 
     output_path = Path(args.write_comparison)
+    history_path = Path(args.write_history_jsonl)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=True, indent=2)
@@ -329,6 +341,8 @@ def main() -> None:
             json.dump(output, f, ensure_ascii=True, indent=2)
             f.write("\n")
         print(json.dumps(notify_result, ensure_ascii=True))
+
+    append_history_jsonl(history_path, output)
 
 
 if __name__ == "__main__":

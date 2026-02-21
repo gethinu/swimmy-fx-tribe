@@ -1,6 +1,10 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 
 from tools.xau_autobot_cycle_compare import (
+    append_history_jsonl,
     apply_notify_result,
     build_skip_notification_lines,
     build_cycle_command,
@@ -57,6 +61,19 @@ class TestXauAutoBotCycleCompare(unittest.TestCase):
         merged = apply_notify_result(output, notify)
         self.assertNotIn("notify", output)
         self.assertEqual(merged["notify"]["notified"], True)
+
+    def test_append_history_jsonl_appends_rows(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "history.jsonl"
+            append_history_jsonl(path, {"action": "SKIP", "reason": "market_closed"})
+            append_history_jsonl(path, {"action": "OK", "periods": [{"period": "45d"}]})
+
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 2)
+            first = json.loads(lines[0])
+            second = json.loads(lines[1])
+            self.assertEqual(first.get("action"), "SKIP")
+            self.assertEqual(second.get("action"), "OK")
 
     def test_build_cycle_command(self):
         cmd = build_cycle_command(

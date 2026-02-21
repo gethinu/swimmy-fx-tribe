@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.xau_autobot_promote_best import (
+    append_history_jsonl,
     apply_notify_result,
     build_period_scoreboard,
     build_live_gap,
@@ -289,6 +290,19 @@ class TestXauAutoBotPromoteBest(unittest.TestCase):
         merged = apply_notify_result(report, notify)
         self.assertNotIn("notify", report)
         self.assertEqual(merged["notify"]["notified"], True)
+
+    def test_append_history_jsonl_appends_rows(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "history.jsonl"
+            append_history_jsonl(path, {"selected_period": "45d", "promotion_blocked": False})
+            append_history_jsonl(path, {"selected_period": "60d", "promotion_blocked": True})
+
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 2)
+            first = json.loads(lines[0])
+            second = json.loads(lines[1])
+            self.assertEqual(first.get("selected_period"), "45d")
+            self.assertEqual(second.get("selected_period"), "60d")
 
 
 if __name__ == "__main__":
