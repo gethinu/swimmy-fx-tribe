@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compile src/mt5/SwimmyBridge.mq5 via Windows MetaEditor from WSL.
+# Compile src/mt5/*.mq5 via Windows MetaEditor from WSL.
 #
 # Usage:
 #   scripts/compile_swimmybridge_mt5.sh
 #   scripts/compile_swimmybridge_mt5.sh --win-user stair --terminal-id D0E820...
+#   scripts/compile_swimmybridge_mt5.sh --src src/mt5/InstitutionalHunterEA.mq5
 #
 # Prereqs:
 # - WSL with /mnt/c mounted
@@ -17,7 +18,9 @@ WIN_USER="stair"
 TERMINAL_ID="D0E8209F77C8CF37AD8BF550E51FF075"
 METAEDITOR_WIN="C:\\Program Files\\MetaTrader 5\\MetaEditor64.exe"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC_MQ5="$REPO_ROOT/src/mt5/SwimmyBridge.mq5"
+SRC_REL="src/mt5/SwimmyBridge.mq5"
+SRC_MQ5="$REPO_ROOT/$SRC_REL"
+EA_BASENAME="SwimmyBridge"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +36,15 @@ while [[ $# -gt 0 ]]; do
       METAEDITOR_WIN="${2:?missing value for --metaeditor-win}"
       shift 2
       ;;
+    --src)
+      SRC_REL="${2:?missing value for --src}"
+      if [[ "$SRC_REL" = /* ]]; then
+        SRC_MQ5="$SRC_REL"
+      else
+        SRC_MQ5="$REPO_ROOT/$SRC_REL"
+      fi
+      shift 2
+      ;;
     *)
       echo "Unknown arg: $1" >&2
       exit 2
@@ -40,9 +52,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$SRC_MQ5" == *.mq5 ]]; then
+  EA_BASENAME="$(basename "$SRC_MQ5" .mq5)"
+fi
+
 EXP_DIR_LINUX="/mnt/c/Users/${WIN_USER}/AppData/Roaming/MetaQuotes/Terminal/${TERMINAL_ID}/MQL5/Experts"
-TARGET_MQ5="${EXP_DIR_LINUX}/SwimmyBridge.mq5"
-TARGET_EX5="${EXP_DIR_LINUX}/SwimmyBridge.ex5"
+TARGET_MQ5="${EXP_DIR_LINUX}/${EA_BASENAME}.mq5"
+TARGET_EX5="${EXP_DIR_LINUX}/${EA_BASENAME}.ex5"
 
 if [[ ! -f "$SRC_MQ5" ]]; then
   echo "[ERR] source not found: $SRC_MQ5" >&2
@@ -61,17 +77,18 @@ if [[ ! -f "/mnt/c/Program Files/MetaTrader 5/MetaEditor64.exe" ]] && [[ "$METAE
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-BACKUP_MQ5="${EXP_DIR_LINUX}/SwimmyBridge.mq5.bak_${TS}"
-BACKUP_EX5="${EXP_DIR_LINUX}/SwimmyBridge.ex5.bak_${TS}"
-LOG_LINUX="${EXP_DIR_LINUX}/metaeditor_compile_${TS}.log"
-SUMMARY_TXT="${EXP_DIR_LINUX}/metaeditor_compile_${TS}.utf8.txt"
+BACKUP_MQ5="${EXP_DIR_LINUX}/${EA_BASENAME}.mq5.bak_${TS}"
+BACKUP_EX5="${EXP_DIR_LINUX}/${EA_BASENAME}.ex5.bak_${TS}"
+LOG_LINUX="${EXP_DIR_LINUX}/metaeditor_compile_${EA_BASENAME}_${TS}.log"
+SUMMARY_TXT="${EXP_DIR_LINUX}/metaeditor_compile_${EA_BASENAME}_${TS}.utf8.txt"
 
 EXP_DIR_WIN="C:\\Users\\${WIN_USER}\\AppData\\Roaming\\MetaQuotes\\Terminal\\${TERMINAL_ID}\\MQL5\\Experts"
-FILE_WIN="${EXP_DIR_WIN}\\SwimmyBridge.mq5"
-LOG_WIN="${EXP_DIR_WIN}\\metaeditor_compile_${TS}.log"
+FILE_WIN="${EXP_DIR_WIN}\\${EA_BASENAME}.mq5"
+LOG_WIN="${EXP_DIR_WIN}\\metaeditor_compile_${EA_BASENAME}_${TS}.log"
 
 echo "[INFO] win-user=$WIN_USER terminal-id=$TERMINAL_ID"
 echo "[INFO] source=$SRC_MQ5"
+echo "[INFO] ea=$EA_BASENAME"
 echo "[INFO] target=$TARGET_MQ5"
 echo "[INFO] backup mq5=$BACKUP_MQ5"
 echo "[INFO] backup ex5=$BACKUP_EX5"

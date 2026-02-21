@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-02-21 実装追補: XAU Autobot の「バックテスト良化 / 実運用悪化」診断強化
+
+- 背景:
+  - バックテスト指標が良好でも、live では `PF<1`・`net_profit<0` が続くケースがあり、選定根拠の可視性が不足していた。
+- 実装:
+  - `tools/xau_autobot_cycle.py`
+    - readiness compact に OOS頑健性を追加:
+      - `oos_count`, `oos_worst_pf`, `oos_worst_total_return`, `oos_negative_return_ratio`
+  - `tools/xau_autobot_promote_best.py`
+    - liveレポート自動解決 + 鮮度フィルタ（`--live-max-age-hours`）
+    - live弱化時のストレス乗数を導入し、DD/OOS不安定性ペナルティを強化
+    - `scoreboard`（period別スコア一覧）を promotion report に出力
+    - `live_gap`（backtest vs live 差分診断）を promotion report に出力
+      - `delta_profit_factor`, `delta_win_rate`, `underperforming` など
+  - `tools/xau_autobot_cycle_runner.sh`
+    - `--live-reports-dir` / `--live-max-age-hours` を promotion step へ連携
+- 検証:
+  - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot_cycle.py tools/tests/test_xau_autobot_cycle_compare.py tools/tests/test_xau_autobot_promote_best.py` → pass
+  - promotion report (`data/reports/xau_autobot_promotion.json`) で `scoreboard` / `live_gap` を確認
+
+---
+
 ## 2026-02-20 推奨実行順（依存つき運用TODO）
 
 > 現状は「実装完了」状態のため、次の失敗点は機能追加より運用ドリフト。  
@@ -77,6 +99,111 @@
   - 実装:
     - `doc/knowledge/implementation_plan_v50.7.md` を起票済み
     - 先頭セクションを `0. 運用監視KPI（最優先）` として定義
+
+---
+
+## 2026-02-21 実装追補: Institutional Hunter EA 追加（MT5単体）
+
+- 目的:
+  - 「大口介入の推定」を `MSB + OB + 出来高 + ATR` で厳格判定し、MT5単体で自動執行するEAを新設。
+- 実装:
+  - 新規EA: `src/mt5/InstitutionalHunterEA.mq5`
+  - 自動コンパイル:
+    - `scripts/compile_swimmybridge_mt5.sh` を汎用化（`--src` でEAソース切替）
+    - `scripts/compile_institutionalhunter_mt5.sh` を追加（InstitutionalHunterEA専用ラッパー）
+  - 主要仕様:
+    - H4で `MSB/OrderBlock` 検出、M15で執行判定
+    - 厳格条件: `tick_volume >= SMA20*2.0` かつ `z-score(50)>=2.0` かつ `ATR14/ATR50>=1.3`
+    - エントリー: OB接触後の反転確定足で成行
+    - SL/TP: `SL=OB外+0.5ATR`、`TP=反対側OB`
+    - リスク: 1トレード0.5%、1シンボル1ポジ、同時最大3、日次DD2%停止
+    - 安全ガード: 取引モード制約（LONG/SHORT可否）、スプレッド上限、シンボル日次件数上限、バー間クールダウン
+- 運用資料:
+  - `doc/knowledge/institutional_hunter_ea_quickstart_20260221.md`
+- 補足:
+  - 自動コンパイル検証（2026-02-21 JST）:
+    - `scripts/compile_institutionalhunter_mt5.sh` 実行
+    - `Result: 0 errors, 0 warnings`
+    - 出力: `.../MQL5/Experts/InstitutionalHunterEA.ex5`
+
+---
+
+## 2026-02-21 運用追補: Armada再現モデルの運用投入タスク化（Core 5）
+
+- 方針:
+  - まずは **A1（nami専用の局所探索）** を最優先で実行する。
+  - 同時に、他プレイヤー（taiki / pandajiro / yumimin / kojirin）も「運用投入レベル」へ順次引き上げる。
+  - 比較は `hold TF filter ON/OFF` を固定条件で継続し、TF逸脱（hold-bars<2）を抑制しながら強化する。
+
+### 運用投入レベル（Armada暫定定義）
+
+| レベル | 判定 | 条件 |
+|------|------|------|
+| L1 Candidate | 単発合格 | strict verdict で `bt_ok/oos_ok/cpcv_ok = True` |
+| L2 Player | 再現性合格 | seed=5 で `top1 strong >= 2/5` かつ `median OOS PF >= 1.15` |
+| L3 Deploy-Ready | 投入合格 | L2達成 + paper 20 tradesで重大逸脱なし（DD/スリッページ警戒値内） |
+
+### 優先順位（2026-02-21時点）
+
+| 優先 | Task | 対象 | 目的 | 依存 |
+|------|------|------|------|------|
+| P0 | A1 | nami | まず1名をL1へ到達 | なし |
+| P1 | A2 | nami | L2（seed再現性）到達 | A1 |
+| P1 | B1 | taiki/kojirin | TF逸脱抑制 + OOS証拠不足の解消 | A1 |
+| P2 | B2 | pandajiro/yumimin | CPCV pass_rateの底上げ | A1 |
+| P3 | C1 | core5全体 | L3判定と投入パッケージ化 | A2/B1/B2 |
+
+### 実行タスク（Armada）
+
+- [ ] **A1 nami局所探索（着手タスク）**
+  - 目的: `nami_no_yukusaki_armada` の `TF120` 周辺で L1 候補を作る。
+  - 固定条件: `--players nami_no_yukusaki_armada --candidates-per-player 240 --top-per-player 5 --oos-min-trades-abs 50 --oos-trade-ratio-floor 0.35 --cpcv-folds 5 --cpcv-require-for-core`。
+  - 探索方針: `volsma/vwapvr` を中心に、`sma/ema` を比較対象として残す。
+  - 完了条件: top5 内で strict `strong=True` を最低1件。
+  - 成果物: `data/reports/armada_player_replica_YYYYMMDD_nami_focus_*.json`
+
+- [ ] **A2 nami再現性検証（seed sweep）**
+  - 目的: A1で得た条件が偶然でないことを確認し、L2判定に進める。
+  - 実行: seed `{11, 23, 47, 83, 131}` で同一条件を再実行。
+  - 完了条件: `top1 strong >= 2/5` かつ `median OOS PF >= 1.15`。
+  - 成果物: `data/reports/armada_nami_seed_sweep_*.json`
+
+- [ ] **B1 taiki/kojirin引き上げ（TF逸脱対策つき）**
+  - 目的: OFF時に顕著だった `TF360/720` 偏重を抑え、OOS有効トレードを増やす。
+  - 実行: hold TF filter を有効固定し、`hold-bars` 逸脱（<2）をゼロ化。
+  - 完了条件: 各プレイヤーで `oos_ok` 候補を top3 内に最低1件。
+  - 成果物: `data/reports/armada_player_replica_YYYYMMDD_taiki_kojirin_*.json`
+
+- [ ] **B2 pandajiro/yumimin引き上げ（CPCV底上げ）**
+  - 目的: OOSは通るが CPCVが弱い候補の pass_rate を改善。
+  - 実行: `volsma/vwapvr` の閾値・期間密度を上げて再探索（TF60中心）。
+  - 完了条件: 各プレイヤーで `cpcv_ok=True` かつ `oos_ok=True` の候補を top3 内に最低1件。
+  - 成果物: `data/reports/armada_player_replica_YYYYMMDD_panda_yumi_*.json`
+
+- [ ] **C1 core5投入判定パック作成**
+  - 目的: core5全体の L1/L2/L3 判定を1ファイルで追跡可能にする。
+  - 実行: ON/OFF比較、seed比較、strict合格数、paper監視結果を統合。
+  - 完了条件: 「投入可/保留/再探索」の3区分でプレイヤー別に判定完了。
+  - 成果物: `data/reports/armada_deploy_readiness_YYYYMMDD.json`
+
+---
+
+## 2026-02-21 運用追補: VWAPVR Founder投入時の Guardian ドリフト対策
+
+- 背景:
+  - `:hunted-h12-vwapvr-50-150` 投入時、`logs/backtest.log` に `unknown variant 'vwapvr'` が断続的に発生。
+  - 症状として Phase1 が `Sharpe=0/PF=0` 側へ偏り、正常な比較ができないケースが発生。
+- 原因:
+  - `backtest_service.py` が古い Guardian バイナリを保持したまま稼働し、`vwapvr` variant を解釈できない状態だった。
+- 対応:
+  - `guardian` を再ビルド（`cargo build --release`）し、`backtest_service` を再起動して新バイナリへ切替。
+  - 影響を受けた対象（`Hunted-H12-VWAPVR-50-150-USDJPY`）は `GRAVEYARD` 重複を除去して再評価。
+- 検証:
+  - `logs/swimmy.log` で `Phase 1 Result ... Sharpe=0.12 PF=1.33` と `NIL → B` を確認。
+  - DB（`data/memory/swimmy.db`）で `Hunted-H12-VWAPVR-50-150-USDJPY` が `:B` を確認。
+- 運用ルール（再発防止）:
+  - Guardian の indicator variant 追加後は必ず `guardian` 再ビルド + `backtest_service` 再起動をワンセットで実施。
+  - `unknown variant` が検出された場合、Phase1結果を信頼せず、まずバイナリ整合を疑う。
 
 ---
 
