@@ -1,10 +1,13 @@
 import unittest
 
 from tools.xau_autobot_cycle_compare import (
+    build_skip_notification_lines,
     build_cycle_command,
     parse_json_lines,
     parse_periods,
     pick_cycle_summary,
+    pick_cycle_summary_or_none,
+    pick_skip_row_or_none,
 )
 
 
@@ -25,6 +28,27 @@ class TestXauAutoBotCycleCompare(unittest.TestCase):
         summary = pick_cycle_summary(rows)
         self.assertEqual(summary["period"], "45d")
         self.assertEqual(summary["readiness"]["verdict"], "GO")
+
+    def test_pick_cycle_summary_or_none_returns_none_for_skip_rows(self):
+        rows = parse_json_lines('{"timestamp":"2026-02-21T07:37:00+00:00","action":"SKIP","reason":"market_closed"}')
+        self.assertIsNone(pick_cycle_summary_or_none(rows))
+        skip = pick_skip_row_or_none(rows)
+        self.assertIsNotNone(skip)
+        self.assertEqual(skip["reason"], "market_closed")
+
+    def test_build_skip_notification_lines(self):
+        output = {
+            "action": "SKIP",
+            "reason": "market_closed",
+            "interval": "5m",
+            "skipped_periods": [
+                {"period": "45d", "reason": "market_closed"},
+                {"period": "60d", "reason": "market_closed"},
+            ],
+        }
+        lines = build_skip_notification_lines(output)
+        self.assertTrue(any("action=SKIP reason=market_closed" in ln for ln in lines))
+        self.assertTrue(any("skipped_periods=45d,60d" in ln for ln in lines))
 
     def test_build_cycle_command(self):
         cmd = build_cycle_command(

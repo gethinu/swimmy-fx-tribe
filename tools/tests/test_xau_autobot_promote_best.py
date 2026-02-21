@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.xau_autobot_promote_best import (
+    build_period_scoreboard,
+    build_live_gap,
+    build_promotion_notification_lines,
+    should_block_promotion,
     choose_best_period,
     resolve_live_summary,
     score_period_summary,
@@ -182,6 +186,101 @@ class TestXauAutoBotPromoteBest(unittest.TestCase):
             )
             self.assertEqual(path, fresh_zero)
             self.assertEqual(summary.get("closed_positions"), 0.0)
+
+    def test_build_period_scoreboard_sorted_desc(self):
+        rows = [
+            {
+                "period": "45d",
+                "backtest": {"pf": 1.3, "total_return": 0.06, "max_dd": 0.04},
+                "readiness": {"verdict": "GO"},
+                "cost_guard": {"verdict": "GO"},
+            },
+            {
+                "period": "60d",
+                "backtest": {"pf": 1.1, "total_return": 0.03, "max_dd": 0.07},
+                "readiness": {"verdict": "GO"},
+                "cost_guard": {"verdict": "GO"},
+            },
+        ]
+        board = build_period_scoreboard(rows, live_summary={})
+        self.assertEqual(board[0]["period"], "45d")
+        self.assertGreater(board[0]["score"], board[1]["score"])
+
+    def test_build_live_gap_flags_underperformance(self):
+        best = {
+            "period": "45d",
+            "backtest": {"trades": 120.0, "win_rate": 0.48, "pf": 1.31, "total_return": 0.06, "max_dd": 0.04},
+        }
+        live = {
+            "closed_positions": 22.0,
+            "win_rate": 0.29,
+            "profit_factor": 0.62,
+            "net_profit": -8900.0,
+        }
+        gap = build_live_gap(best, live_summary=live)
+        self.assertEqual(gap["sample_quality"], "ok")
+        self.assertEqual(gap["underperforming"], True)
+        self.assertLess(gap["delta_profit_factor"], 0.0)
+        self.assertLess(gap["delta_win_rate"], 0.0)
+        self.assertIn("live_pf_below_1", gap["underperforming_reasons"])
+        self.assertIn("live_net_profit_negative", gap["underperforming_reasons"])
+
+    def test_should_block_promotion_when_enabled_and_underperforming(self):
+        gap = {
+            "sample_quality": "ok",
+            "underperforming": True,
+            "underperforming_reasons": ["live_pf_below_1"],
+        }
+        self.assertTrue(should_block_promotion(gap, fail_on_live_underperforming=True))
+        self.assertFalse(should_block_promotion(gap, fail_on_live_underperforming=False))
+
+    def test_should_not_block_promotion_for_low_sample(self):
+        gap = {
+            "sample_quality": "low",
+            "underperforming": False,
+            "underperforming_reasons": [],
+        }
+        self.assertFalse(should_block_promotion(gap, fail_on_live_underperforming=True))
+
+    def test_build_live_gap_threshold_overrides(self):
+        best = {
+            "period": "45d",
+            "backtest": {"trades": 120.0, "win_rate": 0.48, "pf": 1.31, "total_return": 0.06, "max_dd": 0.04},
+        }
+        live = {
+            "closed_positions": 22.0,
+            "win_rate": 0.29,
+            "profit_factor": 0.62,
+            "net_profit": -8900.0,
+        }
+        gap = build_live_gap(
+            best,
+            live_summary=live,
+            min_closed_positions=30.0,
+            min_live_profit_factor=0.5,
+            max_profit_factor_drop=0.8,
+            max_win_rate_drop=0.3,
+        )
+        self.assertEqual(gap["sample_quality"], "low")
+        self.assertFalse(gap["underperforming"])
+        self.assertEqual(gap["underperforming_reasons"], [])
+
+    def test_build_promotion_notification_lines_includes_underperforming_reasons(self):
+        report = {
+            "selected_period": "45d",
+            "selected_score": 4.69,
+            "promotion_blocked": True,
+            "live_gap": {
+                "sample_quality": "ok",
+                "underperforming": True,
+                "underperforming_reasons": [
+                    "live_pf_below_1",
+                    "pf_gap_large",
+                ],
+            },
+        }
+        lines = build_promotion_notification_lines(report)
+        self.assertTrue(any("underperforming_reasons=live_pf_below_1,pf_gap_large" in ln for ln in lines))
 
 
 if __name__ == "__main__":
