@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Swimmy Rank Conformance Daily Audit
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

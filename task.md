@@ -1,5 +1,13 @@
 # Tasks
 
+## Expert Panel 2026-02-20 (Live Learning Integrity / Unknown-NIL)
+- [ ] `SendOpenPositions` の S式閉じ括弧を修正し、Bridge出力の文字列妥当性テストを追加する: `src/mt5/SwimmyBridge.mq5:1295`
+- [ ] `process-trade-closed` で `strategy_name=Unknown` の学習保存を禁止し、quarantine + telemetry を追加する: `src/lisp/core/executor.lisp:393`, `src/lisp/school/school-learning.lisp:395`
+- [ ] `trade_logs` 挿入前に `unknown/NIL` バリデーションを導入し、学習系DB汚染を防ぐ: `src/lisp/school/school-db.lisp:580`
+- [ ] `TRADE_CLOSED` 契約を `comment` または `strategy_name/timeframe` 同梱へ拡張し、`INTERFACES/STATE` 更新後に実装する: `docs/llm/INTERFACES.md:112`, `docs/llm/STATE.md`
+- [ ] `Unsafe/invalid SEXP` の type別カウンタと閾値アラートを実装する: `src/lisp/core/message-dispatcher.lisp:484`
+- [ ] E2E回帰テスト（MT5 POSITIONS生成→dispatcher parse→allocation reconcile）を追加する: `src/lisp/tests.lisp:2639`, `src/mt5/SwimmyBridge.mq5:1295`
+
 ## Expert Panel 2026-02-15 (Timeframe Unification / Free TF Mining)
 - [ ] TF正規化の正本化（分int + 表示ラベル + バケット）を1箇所に実装し、各所の分岐を削減: `src/lisp/school/school-backtest.lisp`, `src/lisp/school/school-execution.lisp`, `src/lisp/school/school-strategy.lisp`
 - [ ] unknown TF のサイレント`M1`フォールバックを撤去（リサンプル or エラーへ）: `src/lisp/school/school-backtest.lisp:160`, `src/lisp/school/school-execution.lisp:321`

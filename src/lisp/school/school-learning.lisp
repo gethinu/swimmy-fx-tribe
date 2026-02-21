@@ -16,6 +16,12 @@
 (defparameter *max-log-size* 500          "Keep more history")
 (defparameter *decay-half-life* 3600      "1 hour in seconds")
 (defparameter *min-samples-for-block* 5   "Need 5+ samples before blocking")
+(defparameter *learning-log-bootstrap-limit* 1000
+  "Max trade_logs rows to bootstrap into in-memory learning logs.")
+(defparameter *learning-log-bootstrap-ttl-seconds* 300
+  "Throttle interval for DB->memory learning bootstrap.")
+(defvar *learning-log-last-bootstrap-at* 0
+  "Last bootstrap timestamp for in-memory learning logs.")
 
 ;;; ==========================================
 ;;; TRADE RECORD STRUCTURE
@@ -212,12 +218,82 @@
       (incf score 1))
     (/ score (max 1 total))))
 
+(defun %mode->keyword (value)
+  "Normalize execution mode token into :LIVE or :SHADOW."
+  (let ((token (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                           (format nil "~a" (or value :live))))))
+    (if (or (string= token "SHADOW") (string= token ":SHADOW"))
+        :shadow
+        :live)))
+
+(defun %token->keyword (value &optional fallback)
+  "Best-effort normalize VALUE into keyword token, otherwise FALLBACK."
+  (cond
+    ((keywordp value) value)
+    ((symbolp value) (intern (string-upcase (symbol-name value)) :keyword))
+    ((stringp value)
+     (let* ((trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) value)))
+            (plain (if (and (> (length trimmed) 0)
+                            (char= (char trimmed 0) #\:))
+                       (subseq trimmed 1)
+                       trimmed)))
+       (if (> (length plain) 0)
+           (intern plain :keyword)
+           fallback)))
+    (t fallback)))
+
+(defun bootstrap-learning-logs-from-db (&key force)
+  "Load recent trade_logs into *success-log*/*failure-log* for restart-safe learning.
+Returns number of loaded rows."
+  (let* ((now (get-universal-time))
+         (age (if (numberp *learning-log-last-bootstrap-at*)
+                  (- now *learning-log-last-bootstrap-at*)
+                  most-positive-fixnum))
+         (have-samples (+ (length *success-log*) (length *failure-log*)))
+         (should-load (or force
+                          (= have-samples 0)
+                          (and (< have-samples *min-samples-for-block*)
+                               (>= age *learning-log-bootstrap-ttl-seconds*)))))
+    (unless should-load
+      (return-from bootstrap-learning-logs-from-db 0))
+    (let ((rows (and (fboundp 'fetch-trade-logs-for-learning)
+                     (ignore-errors
+                       (fetch-trade-logs-for-learning
+                        :limit *learning-log-bootstrap-limit*
+                        :modes '(:live :shadow))))))
+      (when rows
+        (let ((successes '())
+              (failures '()))
+          (dolist (row rows)
+            (destructuring-bind (timestamp strategy-name symbol direction category regime pnl hold-time pair-id execution-mode) row
+              (when (numberp pnl)
+                (let ((record (make-trade-record
+                               :timestamp (or timestamp (get-universal-time))
+                               :strategy-name strategy-name
+                               :symbol (or symbol "USDJPY")
+                               :direction (%token->keyword direction :buy)
+                               :category (%token->keyword category :trend)
+                               :regime (%token->keyword regime :unknown)
+                               :execution-mode (%mode->keyword execution-mode)
+                               :pnl pnl
+                               :hold-time (if (numberp hold-time) hold-time 0)
+                               :pair-id pair-id)))
+                  (if (< pnl 0)
+                      (push record failures)
+                      (push record successes))))))
+          (setf *success-log* (subseq successes 0 (min (length successes) *max-log-size*)))
+          (setf *failure-log* (subseq failures 0 (min (length failures) *max-log-size*)))
+          (setf *learning-log-last-bootstrap-at* now)
+          (return-from bootstrap-learning-logs-from-db (+ (length successes) (length failures)))))
+      0)))
+
 ;;; ==========================================
 ;;; FAILURE CONFIDENCE CALCULATION
 ;;; ==========================================
 
 (defun calculate-failure-confidence (symbol direction category)
   "Calculate confidence that this trade will fail (0.0 to 1.0)"
+  (bootstrap-learning-logs-from-db)
   (let* ((current-ctx (get-rich-market-context symbol))
          (weighted-failures 0.0)
          (weighted-successes 0.0)
@@ -347,9 +423,13 @@
             ;; V50.5.1 Persistence Fix: Save metrics to DB immediately
             (swimmy.school:upsert-strategy strategy)))))))
 
-(defun record-trade-outcome (symbol direction category strategy-name pnl &key (hit :unknown) (hold-time 0) pair-id)
+(defun record-trade-outcome (symbol direction category strategy-name pnl
+                              &key (hit :unknown) (hold-time 0) pair-id (execution-mode :live))
   "Record trade outcome for learning (both wins and losses)"
   (let* ((ctx (get-rich-market-context symbol))
+         (mode (%mode->keyword execution-mode))
+         (shadow-mode-p (eq mode :shadow))
+         (mode-label (if shadow-mode-p "SHADOW" "LIVE"))
          (record (make-trade-record
                   :timestamp (get-universal-time)
                   :symbol symbol
@@ -357,6 +437,7 @@
                   :category category
                   :strategy-name strategy-name
                   :pair-id pair-id
+                  :execution-mode mode
                   :regime (getf ctx :regime)
                   :volatility (getf ctx :volatility)
                   :sma-position (getf ctx :sma-position)
@@ -376,31 +457,31 @@
                   :hit-sl-or-tp hit))
          (regime (getf ctx :regime))
          (won-p (> pnl 0)))
-    (if (< pnl 0)
-        (progn
-          (push record *failure-log*)
-          (when (> (length *failure-log*) *max-log-size*)
-            (setf *failure-log* (subseq *failure-log* 0 *max-log-size*)))
-          (format t "[L] 📉 FAILURE: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
-                  strategy-name direction (getf ctx :regime) 
-                  (getf ctx :rsi-value) (getf ctx :session)))
-        (progn
-          (push record *success-log*)
-          (when (> (length *success-log*) *max-log-size*)
-            (setf *success-log* (subseq *success-log* 0 *max-log-size*)))
-          (format t "[L] ✅ SUCCESS: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
-                  strategy-name direction (getf ctx :regime)
-                  (getf ctx :rsi-value) (getf ctx :session))))
-    
-    ;; V49.8: SQL Persistence for Trade Logs
-    (record-trade-to-db record)
-    
-    ;; Update Strategy Specific Metrics (V6.9 Fix: The -0.19 Bug)
-    (when strategy-name
-      (let ((strat (or (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)
-                       (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
-        (when strat
-          (update-strategy-metrics strat pnl)
+	    (if (< pnl 0)
+	        (progn
+	          (push record *failure-log*)
+	          (when (> (length *failure-log*) *max-log-size*)
+	            (setf *failure-log* (subseq *failure-log* 0 *max-log-size*)))
+	          (format t "[L] 📉 ~a FAILURE: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
+	                  mode-label strategy-name direction (getf ctx :regime)
+	                  (getf ctx :rsi-value) (getf ctx :session)))
+	        (progn
+	          (push record *success-log*)
+	          (when (> (length *success-log*) *max-log-size*)
+	            (setf *success-log* (subseq *success-log* 0 *max-log-size*)))
+	          (format t "[L] ✅ ~a SUCCESS: ~a | ~a ~a | RSI:~,0f | Session:~a~%"
+	                  mode-label strategy-name direction (getf ctx :regime)
+	                  (getf ctx :rsi-value) (getf ctx :session))))
+	    
+	    ;; V49.8: SQL Persistence for Trade Logs
+	    (record-trade-to-db record)
+	    
+	    ;; Update Strategy Specific Metrics (V6.9 Fix: The -0.19 Bug)
+	    (when (and strategy-name (not shadow-mode-p))
+	      (let ((strat (or (find strategy-name *evolved-strategies* :key #'strategy-name :test #'string=)
+	                       (find strategy-name *strategy-knowledge-base* :key #'strategy-name :test #'string=))))
+	        (when strat
+	          (update-strategy-metrics strat pnl)
           
           ;; Phase 4: Adaptation Engine (memo3 Sec 9)
           ;; Update adaptation weights (EWMA) based on context
@@ -419,21 +500,23 @@
         (when (fboundp 'on-trade-close-meta)
           (on-trade-close-meta regime strategy-name won-p pnl))
       (error () nil))
-    (handler-case
-        (when (fboundp 'record-proof-trade)
-          (record-proof-trade pnl))
-      (error () nil))
+	    (handler-case
+	        (when (fboundp 'record-proof-trade)
+	          (unless shadow-mode-p
+	            (record-proof-trade pnl)))
+	      (error () nil))
     (handler-case
         (when (and (fboundp 'record-template-result) category)
           (record-template-result category won-p 0.0))
       (error () nil))
 
-    ;; P1 LEARNING FEEDBACK LOOP
-    ;; Link actual outcome back to prediction history
-    (when (boundp '*prediction-history*)
-      (let ((pred (find-if (lambda (p) 
-                             (and (string= (trade-prediction-symbol p) symbol)
-                                  (eq (trade-prediction-direction p) direction)
+	    ;; P1 LEARNING FEEDBACK LOOP
+	    ;; Link actual outcome back to prediction history
+	    (when (and (not shadow-mode-p)
+	               (boundp '*prediction-history*))
+	      (let ((pred (find-if (lambda (p) 
+	                             (and (string= (trade-prediction-symbol p) symbol)
+	                                  (eq (trade-prediction-direction p) direction)
                                   (null (trade-prediction-actual-outcome p))))
                            *prediction-history*)))
         (when pred
@@ -495,5 +578,34 @@
                            50)))
     (format nil "Overall win rate: ~,1f% (~d wins, ~d losses)"
             overall-rate total-successes total-failures)))
+
+(defun learning-log-summary-line (&key (bootstrap t))
+  "Return one-line learning log summary with LIVE/SHADOW breakdown."
+  (when bootstrap
+    (bootstrap-learning-logs-from-db))
+  (labels ((record-mode (record)
+             (let ((mode (ignore-errors (trade-record-execution-mode record))))
+               (%mode->keyword (or mode :live))))
+           (count-mode (records mode)
+             (count-if (lambda (r) (eq (record-mode r) mode)) (or records '())))
+           (format-wr (wins total)
+             (if (> total 0)
+                 (format nil "~,1f%%" (* 100.0 (/ wins total)))
+                 "n/a")))
+    (let* ((successes (or *success-log* '()))
+           (failures (or *failure-log* '()))
+           (live-wins (count-mode successes :live))
+           (shadow-wins (count-mode successes :shadow))
+           (live-losses (count-mode failures :live))
+           (shadow-losses (count-mode failures :shadow))
+           (live-total (+ live-wins live-losses))
+           (shadow-total (+ shadow-wins shadow-losses))
+           (total (+ live-total shadow-total)))
+      (format nil "Learning Logs: total=~d | LIVE=~d (WR ~a) | SHADOW=~d (WR ~a)"
+              total
+              live-total
+              (format-wr live-wins live-total)
+              shadow-total
+              (format-wr shadow-wins shadow-total)))))
 
 ;;; P3: LEARNING ADVANCED functions moved to school-p3-learning.lisp (V47.3)

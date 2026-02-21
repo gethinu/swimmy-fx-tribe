@@ -475,6 +475,15 @@
                            ((and first-indicator (listp first-indicator)) (string-downcase (symbol-name (first first-indicator))))
                            (t nil))))
     (cond
+      ;; VWAP volume ratio strategies (orange threshold style)
+      ((and indicator-name
+            (or (search "vwapvr" indicator-name)
+                (search "vwap-volume-ratio" indicator-name)))
+       "vwapvr")
+      ;; Volume profile / volume expansion families
+      ((and indicator-name (search "vpoc" indicator-name)) "vpoc")
+      ((and indicator-name (search "volsma" indicator-name)) "volsma")
+      ((and indicator-name (search "vwap" indicator-name)) "vwap")
       ;; MACD strategies
       ((and indicator-name (search "macd" indicator-name)) "macd")
       ;; RSI strategies (including elder, momentum)

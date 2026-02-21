@@ -1,0 +1,16 @@
+[Unit]
+Description=Swimmy System Audit (Ops Health + Drift Checks)
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+TimeoutStartSec=7200
+ExecStart=/home/swimmy/swimmy/tools/system_audit.sh
+Environment=HOME=/home/swimmy
+Environment=RUN_REGRESSION_BUNDLE=1
+EnvironmentFile=/home/swimmy/swimmy/.env
+StandardOutput=append:/home/swimmy/swimmy/logs/system_audit.log
+StandardError=append:/home/swimmy/swimmy/logs/system_audit.log

@@ -50,15 +50,15 @@ bool g_pub_connected = false;
 bool g_sub_connected = false;
 datetime g_last_reconnect_attempt = 0;
 
-// Track positions by Magic Number (16 warriors possible)
-struct WarriorPosition {
+// Track positions by Magic Number (16 execution slots).
+struct PositionSlot {
    ulong magic;
    ulong ticket;
    string symbol;
    double entry_price;
    bool active;
 };
-WarriorPosition g_warriors[16];
+PositionSlot g_slots[16];
 
 datetime g_last_history_check = 0;
 datetime g_last_heartbeat = 0;
@@ -430,6 +430,87 @@ bool ValidateOrderComment(string comment, string &reason) {
    return true;
 }
 
+string ExtractStrategyNameFromComment(string comment) {
+   string trimmed = comment;
+   StringTrimLeft(trimmed);
+   StringTrimRight(trimmed);
+   int delim = StringFind(trimmed, "|");
+   if(delim <= 0) return "";
+   string strategy = StringSubstr(trimmed, 0, delim);
+   StringTrimLeft(strategy);
+   StringTrimRight(strategy);
+   if(IsNilLikeToken(strategy)) return "";
+   return strategy;
+}
+
+string CategoryFromMagic(ulong magic) {
+   if(magic < 100000000 || magic >= 200000000) return "";
+   ulong value = magic - 100000000;
+   int cat_id = (int)(value / 10000000);
+   switch(cat_id) {
+      case 1: return "trend";
+      case 2: return "reversion";
+      case 3: return "breakout";
+      case 4: return "scalp";
+   }
+   return "";
+}
+
+string DirectionFromDealType(long deal_type) {
+   if(deal_type == DEAL_TYPE_BUY) return "BUY";
+   if(deal_type == DEAL_TYPE_SELL) return "SELL";
+   return "";
+}
+
+string InferTradeDirectionFromCloseDeal(long close_deal_type) {
+   if(close_deal_type == DEAL_TYPE_SELL) return "BUY";
+   if(close_deal_type == DEAL_TYPE_BUY) return "SELL";
+   return "";
+}
+
+bool ResolveEntryContextFromHistory(ulong close_deal,
+                                    double &entry_price,
+                                    datetime &open_time,
+                                    string &strategy_name,
+                                    string &direction,
+                                    double &lot) {
+   long position_id = HistoryDealGetInteger(close_deal, DEAL_POSITION_ID);
+   if(position_id <= 0) return false;
+
+   datetime close_time = (datetime)HistoryDealGetInteger(close_deal, DEAL_TIME);
+   datetime best_open_time = 0;
+   double best_entry_price = 0.0;
+   string best_strategy = "";
+   string best_direction = "";
+   double best_lot = 0.0;
+
+   int total = HistoryDealsTotal();
+   for(int i = total - 1; i >= 0; i--) {
+      ulong deal = HistoryDealGetTicket(i);
+      if(HistoryDealGetInteger(deal, DEAL_POSITION_ID) != position_id) continue;
+      if(HistoryDealGetInteger(deal, DEAL_ENTRY) != DEAL_ENTRY_IN) continue;
+
+      datetime deal_time = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
+      if(deal_time > close_time) continue;
+      if(best_open_time > 0 && deal_time >= best_open_time) continue;
+
+      best_open_time = deal_time;
+      best_entry_price = HistoryDealGetDouble(deal, DEAL_PRICE);
+      best_lot = HistoryDealGetDouble(deal, DEAL_VOLUME);
+      best_strategy = ExtractStrategyNameFromComment(HistoryDealGetString(deal, DEAL_COMMENT));
+      best_direction = DirectionFromDealType(HistoryDealGetInteger(deal, DEAL_TYPE));
+   }
+
+   if(best_open_time <= 0) return false;
+
+   open_time = best_open_time;
+   if(best_entry_price > 0.0) entry_price = best_entry_price;
+   if(best_lot > 0.0) lot = best_lot;
+   if(strategy_name == "" && best_strategy != "") strategy_name = best_strategy;
+   if(direction == "" && best_direction != "") direction = best_direction;
+   return true;
+}
+
 //+------------------------------------------------------------------+
 //| Connection functions with retry logic                             |
 //+------------------------------------------------------------------+
@@ -542,13 +623,13 @@ int OnInit() {
       return(INIT_FAILED);
    }
    
-   // Initialize warrior tracking
+   // Initialize slot tracking
    for(int i = 0; i < 16; i++) {
-      g_warriors[i].magic = 0;
-      g_warriors[i].ticket = 0;
-      g_warriors[i].symbol = "";
-      g_warriors[i].entry_price = 0.0;
-      g_warriors[i].active = false;
+      g_slots[i].magic = 0;
+      g_slots[i].ticket = 0;
+      g_slots[i].symbol = "";
+      g_slots[i].entry_price = 0.0;
+      g_slots[i].active = false;
    }
    for(int i = 0; i < ORDER_RESULT_CACHE_SIZE; i++) {
       ClearOrderResultRecord(i);
@@ -586,11 +667,11 @@ void OnDeinit(const int reason) {
 }
 
 //+------------------------------------------------------------------+
-//| Warrior management                                                |
+//| Slot management                                                   |
 //+------------------------------------------------------------------+
-int FindWarriorByMagic(ulong magic) {
+int FindSlotByMagic(ulong magic) {
    for(int i = 0; i < 16; i++) {
-      if(g_warriors[i].active && g_warriors[i].magic == magic) {
+      if(g_slots[i].active && g_slots[i].magic == magic) {
          return i;
       }
    }
@@ -666,11 +747,43 @@ void RecordOrderResult(string id, bool success, ulong ticket, string reason, lon
    g_order_results[slot].active = true;
 }
 
-void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic, double entry_price, double exit_price) {
+void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong magic, double entry_price, double exit_price,
+                     string direction, string strategy_name, string category, double lot, datetime open_time) {
    if(!g_pub_connected) return;
    
-   string sexp = StringFormat("((type . \"TRADE_CLOSED\") (won . %s) (pnl . %.2f) (symbol . \"%s\") (ticket . %I64u) (magic . %I64u) (entry_price . %.5f) (exit_price . %.5f))",
+   string dir = ToUpperCopy(direction);
+   StringTrimLeft(dir);
+   StringTrimRight(dir);
+   if(dir != "BUY" && dir != "SELL") dir = "";
+
+   string strat = strategy_name;
+   StringTrimLeft(strat);
+   StringTrimRight(strat);
+   if(IsNilLikeToken(strat)) strat = "";
+
+   string cat = ToLowerCopy(category);
+   StringTrimLeft(cat);
+   StringTrimRight(cat);
+   if(IsNilLikeToken(cat)) cat = "";
+
+   string sexp = StringFormat("((type . \"TRADE_CLOSED\") (won . %s) (pnl . %.2f) (symbol . \"%s\") (ticket . %I64u) (magic . %I64u) (entry_price . %.5f) (exit_price . %.5f)",
                               won ? "true" : "false", pnl, EscapeSexpString(symbol), ticket, magic, entry_price, exit_price);
+   if(dir != "") {
+      sexp += StringFormat(" (direction . \"%s\")", EscapeSexpString(dir));
+   }
+   if(strat != "") {
+      sexp += StringFormat(" (strategy_name . \"%s\")", EscapeSexpString(strat));
+   }
+   if(cat != "") {
+      sexp += StringFormat(" (category . \"%s\")", EscapeSexpString(cat));
+   }
+   if(lot > 0.0) {
+      sexp += StringFormat(" (lot . %.2f)", lot);
+   }
+   if(open_time > 0) {
+      sexp += StringFormat(" (open_time . %I64d)", open_time);
+   }
+   sexp += ")";
    uchar data[];
    StringToCharArray(sexp, data);
    zmq_send(g_pub_socket, data, ArraySize(data)-1, ZMQ_DONTWAIT);
@@ -679,16 +792,16 @@ void SendTradeResult(bool won, double pnl, string symbol, ulong ticket, ulong ma
 
 void CheckPositionsClosed() {
    for(int i = 0; i < 16; i++) {
-      if(!g_warriors[i].active) continue;
+      if(!g_slots[i].active) continue;
       
       // Only check positions for THIS symbol
-      if(g_warriors[i].symbol != _Symbol) continue;
+      if(g_slots[i].symbol != _Symbol) continue;
       
       bool found = false;
       for(int j = PositionsTotal() - 1; j >= 0; j--) {
          ulong ticket = PositionGetTicket(j);
          if(ticket > 0 && PositionSelectByTicket(ticket)) {
-            if(PositionGetInteger(POSITION_MAGIC) == (long)g_warriors[i].magic) {
+            if(PositionGetInteger(POSITION_MAGIC) == (long)g_slots[i].magic) {
                found = true;
                break;
             }
@@ -696,44 +809,67 @@ void CheckPositionsClosed() {
       }
       
       if(!found) {
-         HistorySelect(g_last_history_check, TimeCurrent());
+         if(!HistorySelect(0, TimeCurrent())) {
+            continue;
+         }
          for(int d = HistoryDealsTotal() - 1; d >= 0; d--) {
             ulong deal = HistoryDealGetTicket(d);
-            if(HistoryDealGetInteger(deal, DEAL_MAGIC) == (long)g_warriors[i].magic &&
+            datetime deal_time = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
+            if(deal_time < g_last_history_check) {
+               continue;
+            }
+            if(HistoryDealGetInteger(deal, DEAL_MAGIC) == (long)g_slots[i].magic &&
                HistoryDealGetInteger(deal, DEAL_ENTRY) == DEAL_ENTRY_OUT) {
                double pnl = HistoryDealGetDouble(deal, DEAL_PROFIT);
                string sym = HistoryDealGetString(deal, DEAL_SYMBOL);
                double exit_price = HistoryDealGetDouble(deal, DEAL_PRICE);
-               double entry_price = g_warriors[i].entry_price;
-               SendTradeResult(pnl > 0, pnl, sym, deal, g_warriors[i].magic, entry_price, exit_price);
+               double entry_price = g_slots[i].entry_price;
+               string strategy_name = ExtractStrategyNameFromComment(HistoryDealGetString(deal, DEAL_COMMENT));
+               string direction = InferTradeDirectionFromCloseDeal(HistoryDealGetInteger(deal, DEAL_TYPE));
+               string category = CategoryFromMagic(g_slots[i].magic);
+               double lot = HistoryDealGetDouble(deal, DEAL_VOLUME);
+               datetime open_time = 0;
+
+               if(entry_price <= 0.0 || strategy_name == "" || direction == "" || open_time <= 0 || lot <= 0.0) {
+                  ResolveEntryContextFromHistory(deal, entry_price, open_time, strategy_name, direction, lot);
+               }
+
+               SendTradeResult(pnl > 0, pnl, sym, deal, g_slots[i].magic, entry_price, exit_price,
+                               direction,
+                               strategy_name,
+                               category,
+                               lot,
+                               open_time);
                break;
             }
          }
-         g_warriors[i].active = false;
-         g_warriors[i].magic = 0;
-         g_warriors[i].entry_price = 0.0;
-         LogDebug("⚔️ Warrior #" + IntegerToString(i) + " returned from battle");
+         g_slots[i].active = false;
+         g_slots[i].magic = 0;
+         g_slots[i].ticket = 0;
+         g_slots[i].symbol = "";
+         g_slots[i].entry_price = 0.0;
+         LogDebug("🧩 Slot #" + IntegerToString(i) + " released after close");
       }
    }
    g_last_history_check = TimeCurrent();
 }
 
-int RegisterWarrior(ulong magic, ulong ticket, string symbol) {
+int RegisterSlot(ulong magic, ulong ticket, string symbol) {
    for(int i = 0; i < 16; i++) {
-      if(!g_warriors[i].active) {
-         g_warriors[i].magic = magic;
-         g_warriors[i].ticket = ticket;
-         g_warriors[i].symbol = symbol;
-         g_warriors[i].entry_price = 0.0;
-         g_warriors[i].active = true;
+      if(!g_slots[i].active) {
+         g_slots[i].magic = magic;
+         g_slots[i].ticket = ticket;
+         g_slots[i].symbol = symbol;
+         g_slots[i].entry_price = 0.0;
+         g_slots[i].active = true;
          if(PositionSelectByTicket(ticket)) {
-            g_warriors[i].entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+            g_slots[i].entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
          }
-         LogInfo("⚔️ Warrior #" + IntegerToString(i) + " deployed (Magic: " + IntegerToString(magic) + ")");
+         LogInfo("🧩 Slot #" + IntegerToString(i) + " reserved (Magic: " + IntegerToString(magic) + ")");
          return i;
       }
    }
-   LogError("All warrior slots full!");
+   LogError("All execution slots full!");
    return -1;
 }
 
@@ -1033,7 +1169,7 @@ void ExecuteCommand(string cmd) {
          LogInfo("🟢 BUY " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
          if(g_trade.Buy(vol, _Symbol, 0, sl, tp, comment)) {
             ulong ticket = g_trade.ResultOrder();
-            RegisterWarrior(cmd_magic, ticket, _Symbol);
+            RegisterSlot(cmd_magic, ticket, _Symbol);
             RecordOrderResult(cmd_id, true, ticket, "", 0);
             SendTradeAckById(cmd_id, ticket);
          } else {
@@ -1048,7 +1184,7 @@ void ExecuteCommand(string cmd) {
          LogInfo("🔴 SELL " + _Symbol + " | Vol:" + DoubleToString(vol, 2) + " SL:" + DoubleToString(sl, 5) + " TP:" + DoubleToString(tp, 5) + " [" + comment + "]");
          if(g_trade.Sell(vol, _Symbol, 0, sl, tp, comment)) {
             ulong ticket = g_trade.ResultOrder();
-            RegisterWarrior(cmd_magic, ticket, _Symbol);
+            RegisterSlot(cmd_magic, ticket, _Symbol);
             RecordOrderResult(cmd_id, true, ticket, "", 0);
             SendTradeAckById(cmd_id, ticket);
          } else {
@@ -1316,7 +1452,7 @@ void SendOpenPositions() {
          }
       }
    }
-   sexp += "))";
+   sexp += ")))";
    
    uchar data[];
    StringToCharArray(sexp, data);

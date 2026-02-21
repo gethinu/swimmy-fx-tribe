@@ -78,6 +78,101 @@
           ((stringp val) (or (ignore-errors (read-from-string val)) default))
           (t default))))
 
+(defun %normalize-token-string (value)
+  "Return trimmed string token for VALUE, or NIL when empty."
+  (let* ((raw (cond ((null value) "")
+                    ((stringp value) value)
+                    ((symbolp value) (symbol-name value))
+                    (t (format nil "~a" value))))
+         (trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))
+    (when (> (length trimmed) 0) trimmed)))
+
+(defun %nil-like-token-p (value &key (treat-unknown nil))
+  "True when VALUE represents NIL-like token."
+  (let ((token (%normalize-token-string value)))
+    (if (null token)
+        t
+        (let ((up (string-upcase token)))
+          (or (string= up "NIL")
+              (string= up "NULL")
+              (string= up "NONE")
+              (and treat-unknown (string= up "UNKNOWN")))))))
+
+(defun %direction-token->string (value)
+  "Normalize VALUE into BUY/SELL string or empty string."
+  (let* ((token (%normalize-token-string value))
+         (up (if token (string-upcase token) "")))
+    (cond ((or (string= up "") (string= up "TRADE_CLOSED")) "")
+          ((search "BUY" up) "BUY")
+          ((search "SELL" up) "SELL")
+          (t ""))))
+
+(defun %direction-token->keyword (value)
+  "Normalize direction VALUE into :BUY/:SELL/:UNKNOWN."
+  (let ((dir (%direction-token->string value)))
+    (cond ((string= dir "BUY") :buy)
+          ((string= dir "SELL") :sell)
+          (t :unknown))))
+
+(defun %normalize-category-token (value)
+  "Normalize VALUE into category keyword, or NIL when missing/invalid token."
+  (let ((token (%normalize-token-string value)))
+    (when (and token (not (%nil-like-token-p token :treat-unknown t)))
+      (intern (string-upcase token) :keyword))))
+
+(defun %normalize-strategy-name-token (value)
+  "Normalize strategy token; return NIL when missing/nil-like/unknown."
+  (let ((token (%normalize-token-string value)))
+    (when (and token (not (%nil-like-token-p token :treat-unknown t)))
+      token)))
+
+(defun %category-from-magic (magic)
+  "Decode category keyword from encoded magic number, or NIL when unknown."
+  (when (numberp magic)
+    (let ((magic-int (truncate magic)))
+      (when (and (>= magic-int 100000000) (< magic-int 200000000))
+        (case (truncate (- magic-int 100000000) 10000000)
+          (1 :trend)
+          (2 :reversion)
+          (3 :breakout)
+          (4 :scalp)
+          (otherwise nil))))))
+
+(defun %format-signed-yen (amount)
+  "Format AMOUNT as signed yen text without trailing decimals."
+  (let* ((value (if (numberp amount) (float amount) 0.0))
+         (sign (if (>= value 0.0) "+" "-"))
+         (rounded (round (abs value))))
+    (format nil "~a¥~d" sign rounded)))
+
+(defun %format-trade-close-notification (symbol direction strategy-name category pnl entry-price exit-price
+                                         &key lot open-time)
+  "Build fixed-template trade-close notification text."
+  (let* ((symbol-token (or (%normalize-token-string symbol) "UNKNOWN"))
+         (direction-token (or (%normalize-token-string direction) "UNKNOWN"))
+         (strategy-token (or (%normalize-strategy-name-token strategy-name) "Unknown"))
+         (category-token (or (%normalize-token-string category) "unknown"))
+         (pnl-value (if (numberp pnl) (float pnl) 0.0))
+         (entry-value (if (numberp entry-price) (float entry-price) 0.0))
+         (exit-value (if (numberp exit-price) (float exit-price) 0.0))
+         (lot-line (if (and (numberp lot) (> lot 0.0))
+                       (format nil "~%Lot: ~,2f" (float lot))
+                       ""))
+         (open-line (if (and (numberp open-time) (> open-time 0))
+                        (format nil "~%OpenTime: ~d" (truncate open-time))
+                        "")))
+    (format nil "Trade Closed | ~a~%Result: ~a ~a~%Strategy: ~a (~a)~%PnL: ~a~%Entry: ~,5f~%Exit: ~,5f~a~a"
+            (if (> pnl-value 0.0) "WIN" "LOSS")
+            symbol-token
+            (string-upcase direction-token)
+            strategy-token
+            (string-downcase category-token)
+            (%format-signed-yen pnl-value)
+            entry-value
+            exit-value
+            lot-line
+            open-line)))
+
 (defun stale-account-info-timestamp-p (timestamp)
   "True when TIMESTAMP belongs to a previous process/session."
   (and (numberp timestamp)
@@ -156,8 +251,8 @@
           (pzmq:send *cmd-publisher* (swimmy.core:encode-sexp heartbeat-msg))))
       ;; V43.0: Position Status Report every 5 minutes
       (when (and (= (mod (floor now 30) 10) 0)
-                 (boundp 'swimmy.school::*warrior-allocation*)
-                 (> (hash-table-count swimmy.school::*warrior-allocation*) 0))
+                 (boundp 'swimmy.school::*slot-allocation*)
+                 (> (hash-table-count swimmy.school::*slot-allocation*) 0))
         (handler-case (swimmy.school:report-active-positions) (error () nil)))
       ;; V8.5: ACCOUNT_INFO Monitoring
       (when (and (> *last-account-info-time* 0)
@@ -242,8 +337,26 @@
         (let* ((ticket (%payload-first payload '(ticket "ticket") "?"))
                (symbol (%payload-string payload '(symbol "symbol") "UNKNOWN"))
                (pnl (%payload-number payload '(profit "profit" pnl "pnl" close_profit "close_profit") 0))
-               (direction-raw (%payload-string payload '(action "action" side "side" direction "direction" type "type") ""))
-               (direction (if (string= (string-upcase direction-raw) "TRADE_CLOSED") "" direction-raw))
+               (magic-from-json (%payload-number payload '(magic "magic") nil))
+               (direction (let ((payload-dir (%direction-token->string
+                                              (%payload-string payload '(action "action" side "side" direction "direction" type "type") ""))))
+                            payload-dir))
+               (dir-keyword (%direction-token->keyword direction))
+               (alloc-dir-key (case dir-keyword
+                                (:buy :long)
+                                (:sell :short)
+                                (otherwise :unknown)))
+               (strategy-name
+                (or (%normalize-strategy-name-token
+                     (%payload-string payload '(strategy "strategy" strategy_name "strategy_name" "strategy-name") ""))
+                    "Unknown"))
+               (category (or (%normalize-category-token (%payload-first payload '(category "category") nil))
+                             (%category-from-magic magic-from-json)
+                             :trend))
+               (raw-lot (%payload-number payload '(lot "lot") nil))
+               (lot (if (and (numberp raw-lot) (> raw-lot 0)) (float raw-lot) 0.01))
+               (raw-open-time (%payload-number payload '(open_time "open_time" open-time "open-time") nil))
+               (open-time (if (and (numberp raw-open-time) (> raw-open-time 0)) raw-open-time 0))
                (is-win (if won-ok (and won t) (> pnl 0))))
           ;; V44.0: Ticket Deduplication (Expert Panel P1)
           ;; Prevent processing same TRADE_CLOSED twice
@@ -259,59 +372,65 @@
           (incf *monthly-pnl* pnl)
           (incf *accumulated-pnl* pnl)
 
-          ;; V44.0 FIX: Cleanup ONLY ONE warrior per TRADE_CLOSED (Expert Panel P1)
-          ;; Match by magic number if available, else by symbol+direction (remove only first match)
-          (when (boundp 'swimmy.school::*warrior-allocation*)
-            (let* ((magic-from-json (%payload-number payload '(magic "magic") nil))
-                   (dir-key (cond ((search "BUY" (string-upcase direction)) :long)
-                                  ((search "SELL" (string-upcase direction)) :short)
-                                  (t :unknown)))
-                   (entry-context (and magic-from-json
-                                       (swimmy.school:lookup-entry-context-by-magic magic-from-json)))
-                   (removed nil))
-              (maphash (lambda (key warrior)
-                         (when (and (not removed)
-                                    (or (and magic-from-json (= (getf warrior :magic) magic-from-json))
-                                        (and (null magic-from-json)
-                                             (equal (getf warrior :symbol) symbol)
-                                             (eq (getf warrior :direction) dir-key))))
-                           (remhash key swimmy.school::*warrior-allocation*)
-                           (setf removed t)
-                           (format t "[L] 🧹 WARRIOR CLEANUP: Slot ~a freed (Ticket: ~a)~%" key ticket)))
-                       swimmy.school::*warrior-allocation*)
-              (when (and entry-context (fboundp 'swimmy.core::emit-telemetry-event))
-                (let* ((raw-entry (%payload-number payload '(entry_price "entry_price" entry-price "entry-price") 0.0))
-                       (entry-price (if (> raw-entry 0.00001) raw-entry nil))
-                       (entry-bid (getf entry-context :entry-bid))
-                       (entry-ask (getf entry-context :entry-ask))
-                       (entry-spread-pips (getf entry-context :entry-spread-pips))
-                       (entry-cost-pips (getf entry-context :entry-cost-pips))
-                       (entry-direction (or (getf entry-context :direction) direction))
-                       (strategy-name (getf entry-context :strategy)))
-                  (when entry-price
-                    (let ((slip (swimmy.school:slippage-pips-from-fill
-                                 symbol entry-direction entry-bid entry-ask entry-price)))
-                      (when slip
-                        (when (and strategy-name
-                                   (fboundp 'swimmy.school::record-dryrun-slippage))
-                          (swimmy.school::record-dryrun-slippage strategy-name slip))
-                        (swimmy.core::emit-telemetry-event "execution.slippage"
-                          :service "executor"
-                          :severity "info"
-                          :data (jsown:new-js
-                                  ("symbol" symbol)
-                                  ("direction" (string-upcase direction))
-                                  ("magic" magic-from-json)
-                                  ("entry_expected_bid" entry-bid)
-                                  ("entry_expected_ask" entry-ask)
-                                  ("entry_actual" entry-price)
-                                  ("slippage_pips" slip)
-                                  ("entry_spread_pips" entry-spread-pips)
-                                  ("entry_cost_pips" entry-cost-pips)
-                                  ("pip_size" (swimmy.school:get-pip-size symbol)))))))))))
+	          ;; V44.0 FIX: Cleanup ONLY ONE slot per TRADE_CLOSED (Expert Panel P1)
+	          ;; Match by magic number if available, else by symbol+direction (remove only first match)
+	          (when (boundp 'swimmy.school::*slot-allocation*)
+	            (let ((removed nil))
+	              (maphash (lambda (key slot)
+	                         (when (and (not removed)
+	                                    (or (and magic-from-json (= (getf slot :magic) magic-from-json))
+	                                        (and (null magic-from-json)
+	                                             (equal (getf slot :symbol) symbol)
+	                                             (eq (getf slot :direction) alloc-dir-key))))
+	                           (remhash key swimmy.school::*slot-allocation*)
+	                           (setf removed t)
+	                           (format t "[L] 🧹 SLOT CLEANUP: ~a freed (Ticket: ~a)~%" key ticket)))
+	                       swimmy.school::*slot-allocation*)))
 
-          ;; Record result for danger tracking
-          (swimmy.school:record-trade-result (if is-win :win :loss))
+	          ;; Optional telemetry enrichment for slippage evidence.
+	          ;; Learning context remains payload-canonical; this block is best-effort only.
+	          (let ((entry-context (and magic-from-json
+	                                    (ignore-errors
+	                                      (swimmy.school:lookup-entry-context-by-magic magic-from-json)))))
+	            (when (and entry-context (fboundp 'swimmy.core::emit-telemetry-event))
+	              (let* ((raw-entry (%payload-number payload '(entry_price "entry_price" entry-price "entry-price") 0.0))
+	                     (entry-price (if (> raw-entry 0.00001) raw-entry nil))
+	                     (entry-bid (getf entry-context :entry-bid))
+	                     (entry-ask (getf entry-context :entry-ask))
+	                     (entry-spread-pips (getf entry-context :entry-spread-pips))
+	                     (entry-cost-pips (getf entry-context :entry-cost-pips))
+	                     (entry-direction (or (getf entry-context :direction) direction))
+	                     (strategy-for-slip (or (%normalize-strategy-name-token strategy-name)
+	                                            (%normalize-strategy-name-token (getf entry-context :strategy)))))
+	                (when (and entry-price (numberp entry-bid) (numberp entry-ask))
+	                  (let ((slip (swimmy.school:slippage-pips-from-fill
+	                               symbol entry-direction entry-bid entry-ask entry-price)))
+	                    (when (numberp slip)
+	                      (when (and strategy-for-slip
+	                                 (fboundp 'swimmy.school::record-dryrun-slippage))
+	                        (swimmy.school::record-dryrun-slippage strategy-for-slip slip))
+	                      (swimmy.core::emit-telemetry-event "execution.slippage"
+	                        :service "executor"
+	                        :severity "info"
+	                        :data (jsown:new-js
+	                                ("symbol" symbol)
+	                                ("direction"
+	                                 (let ((d1 (%direction-token->string entry-direction))
+	                                       (d2 (%direction-token->string direction)))
+	                                   (cond ((> (length d1) 0) d1)
+	                                         ((> (length d2) 0) d2)
+	                                         (t ""))))
+	                                ("magic" magic-from-json)
+	                                ("entry_expected_bid" entry-bid)
+	                                ("entry_expected_ask" entry-ask)
+	                                ("entry_actual" entry-price)
+	                                ("slippage_pips" slip)
+	                                ("entry_spread_pips" entry-spread-pips)
+	                                ("entry_cost_pips" entry-cost-pips)
+	                                ("pip_size" (swimmy.school:get-pip-size symbol))))))))))
+
+	          ;; Record result for danger tracking
+	          (swimmy.school:record-trade-result (if is-win :win :loss))
 
           ;; V5.1: Increment total trades
           (incf *total-trades*)
@@ -320,19 +439,7 @@
           (when is-win (incf *success-count*))
 
           ;; LEARNING: Record for dreamer analysis
-          (let* ((dir-keyword (cond ((search "BUY" (string-upcase direction)) :buy)
-                                    ((search "SELL" (string-upcase direction)) :sell)
-                                    (t :unknown)))
-                 (category-raw (%payload-first payload '(category "category") nil))
-                 (category (cond ((keywordp category-raw) category-raw)
-                                 ((symbolp category-raw)
-                                  (intern (string-upcase (symbol-name category-raw)) :keyword))
-                                 ((stringp category-raw)
-                                  (intern (string-upcase category-raw) :keyword))
-                                 (t :trend)))
-                 (strategy-name (%payload-string payload '(strategy "strategy") "unknown"))
-                 (magic (%payload-number payload '(magic "magic") nil))
-                 (pair-id (swimmy.school:lookup-pair-id-by-magic magic)))
+          (let* ((pair-id (swimmy.school:lookup-pair-id-by-magic magic-from-json)))
             (handler-case
                 (swimmy.school:record-trade-outcome symbol dir-keyword category strategy-name pnl :pair-id pair-id)
               (error (e) (format t "[L] Learning record error: ~a~%" e))))
@@ -356,9 +463,7 @@
                                       :rsi-value rsi
                                       :price-position price-pos
                                       :symbol symbol
-                                      :direction (cond ((search "BUY" (string-upcase direction)) :buy)
-                                                       ((search "SELL" (string-upcase direction)) :sell)
-                                                       (t :unknown)))))
+                                      :direction dir-keyword)))
                   (when (fboundp 'swimmy.school:learn-from-failure)
                     (swimmy.school:learn-from-failure context pnl))
                   (format t "[L] 📚 長老会議に敗因を報告(6次元)~%"))
@@ -369,58 +474,27 @@
               (progn
                 (when (fboundp 'swimmy.school:update-leader-stats)
                   (swimmy.school:update-leader-stats pnl))
-                (let ((dir-keyword (cond ((search "BUY" (string-upcase direction)) :buy)
-                                         ((search "SELL" (string-upcase direction)) :sell)
-                                         (t :unknown))))
-                  (when (fboundp 'swimmy.school:store-memory)
-                    (swimmy.school:store-memory symbol dir-keyword (if is-win :win :loss) pnl 0))))
+                (when (fboundp 'swimmy.school:store-memory)
+                  (swimmy.school:store-memory symbol dir-keyword (if is-win :win :loss) pnl 0)))
             (error (e) (format t "[L] Leader/Memory error: ~a~%" e)))
 
-          ;; Victory/Funeral Ceremony using RICH narrative (P9 Fix)
-          (handler-case
-              (let* ((magic (%payload-number payload '(magic "magic") nil))
-                     (lot (%payload-number payload '(lot "lot") 0.01))
-                     ;; V44.10: Price Fallback Logic (Fix for 0.0 notification)
-                     ;; If MT5 sends 0, use current market price for Exit, and Exit for Entry default.
-                     (curr-candle (gethash symbol swimmy.school::*current-candles*))
-                     (curr-close (if curr-candle (swimmy.school::candle-close curr-candle) 0.0))
-                     (raw-exit (%payload-number payload '(exit_price "exit_price" exit-price "exit-price") 0.0))
-                     (exit-price (if (> raw-exit 0.00001) raw-exit curr-close))
-                     (raw-entry (%payload-number payload '(entry_price "entry_price" entry-price "entry-price") 0.0))
-                     (entry-price (if (> raw-entry 0.00001) raw-entry exit-price))
-                     ;; V44.8: Try to resolve Unknown strategy using Magic Number
-                     (strategy-name
-                      (let ((raw-name (%payload-string payload '(strategy "strategy" strategy_name "strategy_name" "strategy-name") "Unknown")))
-                        (if (or (string= raw-name "Unknown") (string= raw-name "") (search "Swimmy" raw-name))
-                            (or (swimmy.school:lookup-strategy-by-magic magic) "Unknown")
-                            raw-name)))
-                     (open-time (%payload-number payload '(open_time "open_time" open-time "open-time") 0))
-                     (category-raw (%payload-first payload '(category "category") nil))
-                     (category (cond ((keywordp category-raw) category-raw)
-                                     ((symbolp category-raw)
-                                      (intern (string-upcase (symbol-name category-raw)) :keyword))
-                                     ((stringp category-raw)
-                                      (intern (string-upcase category-raw) :keyword))
-                                     (t :trend)))
-                     (duration-seconds (if (and (numberp open-time) (> open-time 0))
-                                           (- (get-universal-time) open-time)
-                                           0))
-                     (dir-keyword (cond ((search "BUY" (string-upcase direction)) :buy)
-                                        ((search "SELL" (string-upcase direction)) :sell)
-                                        (t :unknown)))
-                     (narrative (swimmy.school:generate-trade-result-narrative
-                                 symbol dir-keyword pnl pnl entry-price exit-price lot strategy-name duration-seconds category)))
-                (format t "[L] ~a~%" narrative)
-                (queue-discord-notification (gethash symbol *symbol-webhooks*) narrative
-                                            :color (if is-win 3066993 15158332)))
-            (error (e)
-              ;; Fallback to simple notification if narrative generation fails
-              (format t "[L] Narrative generation error: ~a. Using fallback.~%" e)
-              (if is-win
-                  (queue-discord-notification (gethash symbol *symbol-webhooks*)
-                                              (format nil "🎉 WIN: ~a ~a +¥~d" symbol direction (round pnl)) :color 3066993)
-                  (queue-discord-notification (gethash symbol *symbol-webhooks*)
-                                              (format nil "💀 LOSS: ~a ~a ¥~d" symbol direction (round (abs pnl))) :color 15158332))))
+	          ;; Fixed-template trade-close notification (payload-canonical, no narrative dependency).
+	          (handler-case
+	              (let* ((curr-candle (gethash symbol swimmy.school::*current-candles*))
+	                     (curr-close (if curr-candle (swimmy.school::candle-close curr-candle) 0.0))
+	                     (raw-exit (%payload-number payload '(exit_price "exit_price" exit-price "exit-price") 0.0))
+	                     (exit-price (if (> raw-exit 0.00001) raw-exit curr-close))
+	                     (raw-entry (%payload-number payload '(entry_price "entry_price" entry-price "entry-price") 0.0))
+	                     (entry-price (if (> raw-entry 0.00001) raw-entry exit-price))
+	                     (message (%format-trade-close-notification
+	                               symbol direction strategy-name category pnl entry-price exit-price
+	                               :lot lot
+	                               :open-time open-time)))
+	                (format t "[L] ~a~%" message)
+	                (queue-discord-notification (gethash symbol *symbol-webhooks*) message
+	                                            :color (if is-win 3066993 15158332)))
+	            (error (e)
+	              (format t "[L] Trade close notification error: ~a~%" e)))
 
           ;; Persist state immediately after trade close
           (when (fboundp 'swimmy.engine:save-state)

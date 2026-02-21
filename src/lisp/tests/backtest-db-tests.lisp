@@ -1073,6 +1073,139 @@
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-trade-logs-supports-execution-mode
+  "trade_logs should persist execution_mode and default to LIVE when omitted."
+  (let* ((tmp-db (format nil "/tmp/swimmy-trade-mode-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (swimmy.school::record-trade-to-db
+             (swimmy.school::make-trade-record
+              :timestamp 1
+              :strategy-name "TEST-LIVE"
+              :symbol "USDJPY"
+              :direction :buy
+              :category :trend
+              :regime :trend
+              :pnl 1.0
+              :hold-time 10))
+            (swimmy.school::record-trade-to-db
+             (let ((mode-args (list (intern "EXECUTION-MODE" :keyword) :shadow)))
+               (apply #'swimmy.school::make-trade-record
+                      (append (list :timestamp 2
+                                    :strategy-name "TEST-SHADOW"
+                                    :symbol "USDJPY"
+                                    :direction :sell
+                                    :category :trend
+                                    :regime :trend
+                                    :pnl -0.5
+                                    :hold-time 12)
+                              mode-args))))
+            (let ((live-mode (swimmy.school::execute-single
+                              "SELECT execution_mode FROM trade_logs WHERE strategy_name = ?"
+                              "TEST-LIVE"))
+                  (shadow-mode (swimmy.school::execute-single
+                                "SELECT execution_mode FROM trade_logs WHERE strategy_name = ?"
+                                "TEST-SHADOW")))
+              (assert-equal "LIVE" live-mode "Default execution_mode should be LIVE")
+              (assert-equal "SHADOW" shadow-mode "Shadow execution_mode should persist as SHADOW")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-fetch-recent-live-trade-metrics-uses-latest-live-trades-only
+  "fetch-recent-live-trade-metrics should use latest N LIVE rows and ignore SHADOW rows."
+  (let* ((tmp-db (format nil "/tmp/swimmy-live-edge-metrics-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Older LIVE rows (outside latest N=4 window)
+            (dolist (spec '((1 10.0 :live)
+                            (2 -8.0 :live)
+                            ;; Latest 4 rows by timestamp:
+                            (3 9.0 :live)
+                            (4 -6.0 :live)
+                            (5 7.0 :live)
+                            (6 -4.0 :live)
+                            ;; Should be ignored even if recent:
+                            (7 100.0 :shadow)))
+              (destructuring-bind (ts pnl mode) spec
+                (swimmy.school::record-trade-to-db
+                 (swimmy.school::make-trade-record
+                  :timestamp ts
+                  :strategy-name "UT-LIVE-EDGE"
+                  :symbol "USDJPY"
+                  :direction :buy
+                  :category :trend
+                  :regime :trend
+                  :pnl pnl
+                  :hold-time 10
+                  :execution-mode mode))))
+            (let* ((metrics (swimmy.school::fetch-recent-live-trade-metrics
+                             "UT-LIVE-EDGE" :limit 4))
+                   (trades (getf metrics :trades 0))
+                   (wins (getf metrics :wins 0))
+                   (losses (getf metrics :losses 0))
+                   (net (getf metrics :net-pnl 0.0))
+                   (pf (getf metrics :profit-factor 0.0))
+                   (wr (getf metrics :win-rate 0.0)))
+              (assert-equal 4 trades "Expected latest 4 LIVE trades only")
+              (assert-equal 2 wins "Expected 2 winning LIVE trades in latest window")
+              (assert-equal 2 losses "Expected 2 losing LIVE trades in latest window")
+              (assert-true (< (abs (- (float net 1.0) 6.0)) 1e-6)
+                           "Expected net pnl from latest 4 LIVE rows: 9-6+7-4 = 6")
+              (assert-true (< (abs (- (float pf 1.0) (/ 16.0 10.0))) 1e-6)
+                           "Expected PF=(9+7)/(6+4)=1.6")
+              (assert-true (< (abs (- (float wr 1.0) 0.5)) 1e-6)
+                           "Expected WR=2/4=0.5")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-fetch-recent-live-trade-metrics-includes-loss-streaks
+  "fetch-recent-live-trade-metrics should return latest/max LIVE loss streak metrics."
+  (let* ((tmp-db (format nil "/tmp/swimmy-live-edge-streak-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Latest 5 LIVE rows by timestamp: -6, +4, -3, -2, -1
+            ;; => latest_loss_streak=1, max_loss_streak=3 (the -3/-2/-1 run).
+            (dolist (spec '((1 5.0 :live)
+                            (2 -1.0 :live)
+                            (3 -2.0 :live)
+                            (4 -3.0 :live)
+                            (5 4.0 :live)
+                            (6 -6.0 :live)
+                            (7 -100.0 :shadow)))
+              (destructuring-bind (ts pnl mode) spec
+                (swimmy.school::record-trade-to-db
+                 (swimmy.school::make-trade-record
+                  :timestamp ts
+                  :strategy-name "UT-LIVE-STREAK"
+                  :symbol "USDJPY"
+                  :direction :buy
+                  :category :trend
+                  :regime :trend
+                  :pnl pnl
+                  :hold-time 10
+                  :execution-mode mode))))
+            (let* ((metrics (swimmy.school::fetch-recent-live-trade-metrics
+                             "UT-LIVE-STREAK" :limit 5))
+                   (latest-loss-streak (getf metrics :latest-loss-streak -1))
+                   (max-loss-streak (getf metrics :max-loss-streak -1)))
+              (assert-equal 1 latest-loss-streak
+                            "Expected latest_loss_streak=1 from latest LIVE row -6")
+              (assert-equal 3 max-loss-streak
+                            "Expected max_loss_streak=3 from LIVE run -3/-2/-1")))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-strategy-daily-pnl-aggregation
   "Daily aggregation should sum pnl per strategy per day"
   (let* ((tmp-db (format nil "/tmp/swimmy-daily-~a.db" (get-universal-time)))

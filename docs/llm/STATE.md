@@ -20,10 +20,18 @@
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
-- **TRADE_CLOSED 文脈契約**: `TRADE_CLOSED` は最小学習キー（`direction/strategy_name/category`）を同梱する。受信側（Executor）は payload を正本として処理し、warrior allocation キャッシュ補完に依存しない。
+- **TRADE_CLOSED 文脈契約**: `TRADE_CLOSED` は最小学習キー（`direction/strategy_name/category`）を同梱する。受信側（Executor）は payload を正本として処理し、slot allocation キャッシュ補完に依存しない。
+- **Execution Slot Allocation 契約**: 実行スロット管理の正本語彙は `slot` とし、`warrior` 呼称は廃止する。互換目的の旧識別子は段階的移行のためにのみ残し、新規実装では使用しない。
 - **Trade Close Notification 契約**: 約定クローズ通知は fixed template（構造化テキスト）を正本とし、`generate-trade-result-narrative` 依存の物語通知は live 経路で使用しない。
+- **Live Trade-Close Integrity 監査契約**: 運用監査は `tools/check_live_trade_close_integrity.py` を用いて、(1) `trade_logs` の `strategy_name/direction/category` が `Unknown/NIL` に劣化していないこと、(2) `swimmy.log` に `Unsafe/invalid SEXP ... POSITIONS` が再発していないこと、を継続確認する。`tools/system_audit.sh` でも同監査を WARN ステップとして実行する。履歴データを除外する必要がある場合は `LIVE_TRADE_CLOSE_AFTER_ID` で `id <= baseline` を無視できる。`DB not found` / `trade_logs` クエリエラーは WARN に落とさず FAIL（exit 1）として扱う。
+- **Live Trade-Close 連続監視契約**: 実トレード発生待ちの間は `tools/watch_trade_close_loop.sh` を使って `tools/watch_trade_close_integrity.py` をタイムアウト再試行し、`success(0)` または `violation(1)` が出るまで監視を継続できる状態を維持する。
+- **Edge Scorecard 契約（V50.7-P0）**: `tools/edge_scorecard.py` は日次 KPI（KPI-0: Live Edge Guard準拠、KPI-1: 7日/30日PnL健全性、KPI-2: Rank conformance違反、KPI-3: Breeder親品質率）を `data/reports/edge_scorecard_latest.json` と履歴 `data/reports/edge_scorecard/` に保存する。入力データ欠損時は例外停止せず `status=degraded` と理由を出力し、監視を fail-open 可観測化する。
+- **System Audit Edge Scorecard 契約（V50.7-P1）**: `tools/system_audit.sh` は `tools/edge_scorecard.py` を WARN ステップとして実行し、日次 `swimmy-system-audit.timer` で `Edge scorecard summary` を監査ログへ残す。scorecard 失敗は system audit 全体を即FAILにせず WARN 扱いで可観測化する。
 - **ORDER_OPEN コメント契約**: `comment` はトップシグナル戦略の実行文脈（`strategy_name|tf_key`）を送る。`NIL` 名や「文脈欠落による `M1` フォールバック」をコメントへ出さない。`M1` は戦略TFが実際に1分足のときのみ許容する。
 - **Execution Fail-Closed 契約**: 実行文脈（`strategy_name` / `timeframe`）が欠落・不正な場合は、`NIL` や既定TFへ丸めずに**発注を中止**する。`NIL` で先に進むフォールバックを禁止する。`timeframe="NIL"` / 空文字 / 不正ラベル（例: `"UNKNOWN"`）は「不正な時間足」として fail-closed 対象にする。
+- **Live Execution Go/No-Go 強制契約**: `process-category-trades` / `execute-category-trade` は Rank（B/A/S）のみで live 発注可否を決めない。`deployment_gate_status.decision == "LIVE_READY"` の戦略のみ live 実行を許可し、`BLOCKED_OOS/FORWARD_RUNNING/FORWARD_FAIL/未登録` は fail-closed で中止する（研究評価と実運用判定を完全分離）。
+- **Live Edge Guard 契約（実行時）**: `deployment_gate_status=LIVE_READY` でも直近 LIVE 実績（既定: 最新40件、判定最小20件）を再審査し、`PF>=1.05` / `WR>=35%` / `net_pnl>=0` / `latest_loss_streak<=3` を満たさない戦略は fail-closed で発注を中止する。ブロック時は Discord alert と `execution.live_edge_blocked` telemetry を出力する。
+- **Unknown/NIL 戦略文脈 fail-closed 契約**: 実行文脈の `strategy_name` は `NIL/UNKNOWN/NULL/NONE/空文字` を不正値として扱い、時間足が有効でも発注しない。`execution.context_missing` と同等に可観測化し、`Unknown` の学習データ混入を抑止する。
 - **ORDER_OPEN Sink Guard 契約**: `safe-order` / `make-order-message`（Sender）と `SwimmyBridge ORDER_OPEN`（Receiver）は `comment` を厳格検証し、`strategy|tf` 形式不正（区切り欠落、strategy/timeframe 欠落、`NIL` 含有）を検知した場合は `SW-<magic>` 等へフォールバックせず fail-closed で中止する。
 - **Fail-Closed 可観測性契約**: fail-closed で発注を中止した場合は、`notify-discord-alert` による運用アラートと `execution.context_missing` telemetry を同時出力し、運用者が即時検知できる状態を正本とする。
 - **Local Storage**: `data/backtest_cache.sexp` / `data/system_metrics.sexp` / `.opus/live_status.sexp` をS式で原子保存（tmp→rename）。`backtest_cache/system_metrics` は `schema_version=1`、`live_status` は `schema_version=2`。
@@ -74,6 +82,7 @@
 - **永続化**: SQLite (`swimmy.db`) と Sharded Files (`data/library/`) のハイブリッド。
 - **サービス管理**: Systemdによるコア4サービス＋補助サービス体制。
 - **System Audit**: `tools/system_audit.sh` を正本とし、systemd(system) を監査・自動修復（daemon-reload + enable + restart）。`DRY_RUN=1` で修復をスキップ。`SUDO_CMD` で sudo 実行方法を上書き可能（例: `SUDO_CMD="sudo"` で対話式許可）。`sudo -n` が使えない環境でも `systemctl` 直実行で監査を継続し、監査自体をスキップしない。**このフォールバック自体は運用上正常であり WARN にしない**（健康状態のWARNはサービス/監査項目の実体に限定）。`.env` を自動読み込みして Discord 設定を拾う。
+  - **Live Trade-Close 監査パラメータ**: `LIVE_TRADE_CLOSE_DB` / `LIVE_TRADE_CLOSE_LOG` / `LIVE_TRADE_CLOSE_LOOKBACK_MINUTES` / `LIVE_TRADE_CLOSE_TAIL_LINES` / `LIVE_TRADE_CLOSE_AFTER_ID` / `LIVE_TRADE_CLOSE_REQUIRE_RECENT_TRADES` を `tools/system_audit.sh` から `tools/check_live_trade_close_integrity.py` に引き渡す。通常は historical 不良行を避けるため `LIVE_TRADE_CLOSE_AFTER_ID=<baseline_id>` を使う。
   - **Polymarket OpenClaw（任意）**: `swimmy-polymarket-openclaw.timer` が `enabled` のときのみ `tools/polymarket_openclaw_status.py --fail-on-problem` を監査に含める。timer が無効（`disabled/static/not-found` 等）なら OpenClaw は「意図的に無効化」とみなし、監査は `SKIP (disabled)` 表示で WARN にしない（stale 誤検知を防ぐ）。
     - **Statusのdisabled扱い**: `tools/polymarket_openclaw_status.py` は cycle timer が `enabled` でない場合 `Health: disabled` として扱い、`--fail-on-problem` 指定でも exit 0 とする（OpenClaw停止中に status ファイルが更新されず stale になるのは仕様のため）。
   - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
@@ -109,7 +118,7 @@
     - **証拠不足の自己修復（Backfill）**: trade evidence（`strategy-trades` 等）が十分（>=30）なのに `strategy-pnl-history` が欠落している場合、`include_trades` 付き BACKTEST を自動 dispatch して trade_list を回収する（戦略ごとにスロットル）。
   - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
     - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
-    - **証拠収集（約定確認時）**: MT5 が `POSITIONS` に `entry_price` を含める環境では、Pending→Warrior 昇格（約定確認）時に `entry_price` を使って slippage を算出し、DryRun slippage サンプルへ追加できる（trade close を待たずに証拠を蓄積）。
+    - **証拠収集（約定確認時）**: MT5 が `POSITIONS` に `entry_price` を含める環境では、Pending→Slot 昇格（約定確認）時に `entry_price` を使って slippage を算出し、DryRun slippage サンプルへ追加できる（trade close を待たずに証拠を蓄積）。
     - 永続化方針: `dryrun_slippage_samples` テーブルへ保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持する。再起動後もゲート判定を継続できるようにする。
     - 削除ポリシー: `*dryrun-slippage-max-age-seconds*` が正の値のとき、`dryrun_slippage_samples` の古い行（`observed_at` が保持期間外）を戦略単位で削除する。`NIL` は期間削除を無効化。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
@@ -186,6 +195,12 @@
 - **B-Rank Culling スコア契約**: prune順は Sharpe 偏重にせず、A Stage1 基準（Sharpe/PF/WR/MaxDD）からの欠損度にペナルティを与える。A基準から遠い B を優先的に cull し、A基準に近い B 基盤を残す。
 - **B-Rank Culling PF優先契約**: A基準欠損ペナルティは PF不足を最優先で重く扱う（PF欠損 > WR/Sharpe/MaxDD）。Sharpe高値でも PF未達のBが残留し続けるドリフトを抑え、A Stage1 `PF>=1.30` 通過候補の比率改善を優先する。
 - **B-Rank Culling PF帯優先契約**: B基盤の保持順は `A PF pass (PF>=1.30)` → `PF near [1.24,1.30)` → `others` を優先し、同一帯内で culling score を比較する。PF帯をまたいで Sharpe 単独で逆転させない。
+- **Rank整合スイープ契約（A/B/S）**: `run-rank-evaluation` は trade-evidence floor と S conformance に加え、A/B の基準逸脱も毎サイクルで是正する。A基準不適合は `:B` へ降格し、B基準不適合は `:graveyard` へ遷移させる（「基準外ランク残留」を許容しない）。
+- **Rank conformance 日次比較契約**: `tools/check_rank_conformance.py` は昇降格差分を「前回実行比」ではなく「前日スナップショット比」で算出する。履歴ディレクトリ（`data/reports/rank_conformance/`）から前日以前の最新レポートを基準として `promotion_count/demotion_count/by_route` を出力し、同日内の再実行で差分が消える状態を防ぐ。
+- **Breeder Edge-First 選抜契約**: 親選抜 `strategy-breeding-priority-score` は rank/generation のみで優先しない。Stage1品質（Sharpe/PF/WR/MaxDD）と OOS 実績を重み付けし、閾値未達ペナルティを与えて「再現性の弱い親」への交配偏重を抑制する。
+- **Breeder 親品質ハードゲート契約**: `can-breed-p` は非Legend親に対して Stage1 B 基準（Sharpe/PF/WR/MaxDD）を必須化する。優先度ペナルティのみで弱エッジ親を交配に残す fail-open を禁止し、基準未達親は fail-closed で親候補から除外する。`run-breeding-cycle` と `run-legend-breeding`（B側親）も同じ `can-breed-p` で足並みを揃える。
+- **Breeder OOSハードゲート契約**: `can-breed-p` は A/S 親に `OOS Sharpe >= 0.35` を必須化する。OOS 欠落または閾値未達の A/S 親は fail-closed で交配対象から除外し、研究ランクのみでの親流入を抑止する。
+- **Breeder ランク整合ハードゲート契約**: `can-breed-p` は A/S 親に対して「自ランク基準への適合」を必須化する。A親は A基準（TradeEvidence/A Stage1/OOS）未達なら fail-closed、S親は S基準（TradeEvidence/S Stage1/CPCV）未達なら fail-closed で交配対象から除外する。
 - **Deferred Flush 制御**: `SWIMMY_DEFERRED_FLUSH_BATCH` で1回のフラッシュ数を制限し、`SWIMMY_DEFERRED_FLUSH_INTERVAL_SEC` でフラッシュ間隔を制御（0は無制限/即時）。
 - **Backtest CSV Override**: `SWIMMY_BACKTEST_CSV_OVERRIDE` が設定されている場合、Backtestの `candles_file` は指定パスを優先する。
 - **Backtest CSV Override運用例**: `SWIMMY_BACKTEST_CSV_OVERRIDE=/path/to/USDJPY_M1_light.csv` で軽量CSVに差し替える。
@@ -212,12 +227,29 @@
 
 ## 直近の変更履歴
 - **2026-02-20**: Trade close 経路の narrative 依存を廃止。`generate-trade-result-narrative` ではなく fixed template 通知を正本化。
-- **2026-02-20**: `TRADE_CLOSED` 学習文脈の正本を payload に統一し、Executor の warrior allocation 補完依存を削減する方針を正本化。
+- **2026-02-20**: `TRADE_CLOSED` 学習文脈の正本を payload に統一し、Executor の slot allocation 補完依存を削減する方針を正本化。
+- **2026-02-20**: Allocation 用語を `warrior` から `slot` へ移行する方針を追加。`Execution Slot Allocation` を正本語彙として運用・実装・通知文言を統一する。
+- **2026-02-20**: Live trade-close 整合監査を追加。`tools/check_live_trade_close_integrity.py` を新設し、`trade_logs` 文脈欠落（Unknown/NIL）と `POSITIONS` S式不整合の再発を運用監査で検知する方針を正本化。`tools/system_audit.sh` に同チェックを統合。
+- **2026-02-20**: Live trade-close の連続監視スクリプト `tools/watch_trade_close_loop.sh` を追加。トレード未発生時の timeout を自動再試行し、次回クローズ発生時の整合確認を取りこぼさない運用へ更新。
+- **2026-02-20**: Rank conformance監査の差分基準を更新。`tools/check_rank_conformance.py` は `rank_conformance_latest.json` 直前値ではなく、履歴ディレクトリ内の「前日以前の最新スナップショット」を基準に `promotion/demotion/by_route` を算出する方針を正本化。
+- **2026-02-20**: V50.7-P0 の Edge Scorecard 契約を追加。`tools/edge_scorecard.py` で KPI-0〜KPI-3 を latest+history へ保存し、欠損データは `degraded` で可観測化する方針を正本化。
+- **2026-02-20**: V50.7-P1 の System Audit 統合契約を追加。`tools/system_audit.sh` で `tools/edge_scorecard.py` を WARN ステップとして日次実行し、`Edge scorecard summary` を監査ログに残す方針を正本化。
+- **2026-02-20**: Live trade-close 監査の fail-closed 契約を更新。`tools/check_live_trade_close_integrity.py` は `DB not found` / `trade_logs` クエリエラー時に WARN 成功へ落とさず FAIL（exit 1）にする。`tools/system_audit.sh` は `LIVE_TRADE_CLOSE_AFTER_ID` を渡して historical 不良行を除外できる。
+- **2026-02-20**: `trade_logs` の legacy 不良データ（`id=1..7`, `Unknown/NIL`）を `trade_logs_archive_20260220_205326` へ退避し、主テーブルから削除して live 監査基盤をリフレッシュ。`sqlite_sequence(trade_logs)=7` を維持し、次回新規行は `id=8` から継続する運用とした。
 - **2026-02-20**: MT5 `POSITIONS` S式整合契約を追加。`(data . (...))` を含む整形式 alist（0件時は `(data . ())`）を必須化し、括弧不整合メッセージで Dispatcher が `Unsafe/invalid SEXP` 棄却する事象を防ぐ方針を正本化。
 - **2026-02-20**: OOS dispatch の範囲算出契約を更新。`70/30 split` ではなく `*oos-fixed-window-days*`（既定180日）を正本として `start_time/end_time` を算出する方針を追加。
 - **2026-02-20**: 実運用 Go/No-Go 契約を追加。`deployment_gate_status` を新設し、`BLOCKED_OOS/FORWARD_RUNNING/FORWARD_FAIL/LIVE_READY` を strategy 単位で永続化する方針を正本化。
 - **2026-02-20**: Forward Go/No-Go のレポート契約を追加。`data/reports/forward_status.txt` と Evolution Report の Forward行を正本化し、`LIVE_READY` 件数と失敗理由を可視化する方針を追記。
 - **2026-02-20**: Legacy WFV の運用契約を更新。WFV は分析専用（テレメトリ用途）とし、`move-strategy`/rank遷移/アーカイブ移動を禁止する方針を正本化。既定値 `*wfv-enabled*` は `nil` とする。
+- **2026-02-20**: Live execution gate を Rank依存から `deployment_gate_status` 依存へ強化する方針を追加。`decision=LIVE_READY` 以外は fail-closed とし、研究評価（B/A/S）と実運用可否（Go/No-Go）を実行経路で分離する。
+- **2026-02-20**: 実行文脈の nil-like 戦略名（`NIL/UNKNOWN/NULL/NONE/空文字`）を fail-closed 対象に追加し、`Unknown/NIL` 文脈の trade close 学習混入を防止する方針を正本化。
+- **2026-02-20**: Rank整合スイープを A/B/S 全体へ拡張する方針を追加。`run-rank-evaluation` で A/B 基準不適合の残留を毎サイクル是正する。
+- **2026-02-20**: Breeder 親選抜を edge-first へ補正する方針を追加。`strategy-breeding-priority-score` に OOS/Stage1 品質の重みを反映し、低品質親の過剰交配を抑制する。
+- **2026-02-20**: Breeder 親品質ハードゲート契約を追加。`can-breed-p` で非Legend親に Stage1 B 基準（Sharpe/PF/WR/MaxDD）を必須化し、弱エッジ親の交配流入を fail-closed で抑止する方針を正本化。`run-legend-breeding` の B側親も同ゲートに統一。
+- **2026-02-20**: Breeder OOSハードゲート契約を追加。`can-breed-p` で A/S 親に `OOS Sharpe >= 0.35` を必須化し、OOS 欠落/未達の高ランク親を fail-closed で交配対象から除外する方針を正本化。
+- **2026-02-20**: Breeder ランク整合ハードゲート契約を追加。`can-breed-p` で A/S 親に自ランク基準適合（A: TradeEvidence/A Stage1/OOS、S: TradeEvidence/S Stage1/CPCV）を必須化し、ランク名先行の弱い親流入を fail-closed で抑止する方針を正本化。
+- **2026-02-20**: Live edge guard 契約を追加。`LIVE_READY` 戦略でも直近 LIVE 実績（最新40件・最小20件）で `PF>=1.05` / `WR>=35%` / `net_pnl>=0` を満たさない場合は、実行経路で fail-closed により発注停止する方針を正本化。
+- **2026-02-20**: Live edge guard を連敗耐性へ拡張。`latest_loss_streak<=3` を追加し、`LIVE_READY` でも直近連敗が閾値超過なら実行経路で fail-closed により発注停止する方針を正本化。
 - **2026-02-17**: Dispatcher の S式 bool互換契約を追加。`safe-read-sexp` は `#t/#f` を `t/nil` 相当として受理し、`serde_lexpr` 由来メッセージの誤 `Unsafe/invalid SEXP` を抑止する方針を正本化。
 - **2026-02-17**: Dispatcher の invalid S式可観測性契約を追加。`Unsafe/invalid SEXP` ログに payload 先頭（`head`）を併記し、再現時に原因メッセージを即時特定できる方針を正本化。
 - **2026-02-17**: MT5 `ORDER_REJECT` 可観測化契約を更新。sink-guard fail-closed の Discord alert は維持しつつ、送信側再送による同一 `id+reason` の短時間重複をデデュープして通知スパムを抑止する方針を正本化。
@@ -280,7 +312,7 @@
 - **2026-02-14**: Archive drift の表示契約を更新。Library の GRAVEYARD/RETIRED raw dir count は overlap により二重計上されるため、drift 判定を canonical(unique-name) に統一し、`delta(DB-LibraryCanonical)` と `overlap` を併記する方針へ更新。
 - **2026-02-13**: BACKTEST_RESULT 適用の数値メトリクス耐性を追加。`metrics` がキー存在でも値が `NIL` の場合は `0.0/0` として正規化し、`The value NIL is not of type REAL` で受信ループが落ちないことを正本化。
 - **2026-02-13**: `Msg Error` 可観測性を強化。message-dispatcher の例外ログに `head`（先頭プレビュー）と `step`（ブレッドクラム）を付与し、原因メッセージ/経路を同定できるように更新。
-- **2026-02-13**: Allocation の pending 管理を修正。executor の `swimmy.globals:*pending-orders*`（UUID→(ts,retry,msg)）と School の warrior slot 用 pending を分離し、`check-pending-timeouts` が誤って retry table を走査して `NIL is not of type REAL` を起こす不具合を解消（`*allocation-pending-orders*` 導入）。
+- **2026-02-13**: Allocation の pending 管理を修正。executor の `swimmy.globals:*pending-orders*`（UUID→(ts,retry,msg)）と School の execution slot 用 pending を分離し、`check-pending-timeouts` が誤って retry table を走査して `NIL is not of type REAL` を起こす不具合を解消（`*allocation-pending-orders*` 導入）。
 - **2026-02-13**: PF/WR mutation bias の S-target を追加。両親が A-rank 以上のときは S基準（PF=1.70/WR=0.50）を mutation bias のターゲットとして扱い、A基準達成後も S readiness を探索圧として維持する。
 - **2026-02-13**: Graveyard Avoidance の運用契約を更新。`analyze-graveyard-for-avoidance` は graveyard.sexp の破損フォームで中断せずスキップ継続し、`SWIMMY_GRAVEYARD_AVOID_CACHE_SEC` によるTTLキャッシュで child 生成ごとの全走査を防ぐ方針を追加。
 - **2026-02-13**: `migrate-existing-data` の graveyard 読み込み契約を更新。`read` 一括読込で破損行に遭遇すると migration 全体が停止するため、行単位 `safe-read-sexp` に変更し、破損行をスキップして継続する方針を追加。

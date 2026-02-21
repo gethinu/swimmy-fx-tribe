@@ -5,6 +5,81 @@
 
 ---
 
+## 2026-02-20 推奨実行順（依存つき運用TODO）
+
+> 現状は「実装完了」状態のため、次の失敗点は機能追加より運用ドリフト。  
+> 推奨は **優先順位整理 → 監視/回帰の固定化**。
+
+### 優先順位
+
+| 優先 | タスク | 目的 | 依存 |
+|------|--------|------|------|
+| P0 | クリティカル回帰の定期実行を固定化 | 既存仕様の再劣化を即検知 | なし |
+| P1 | systemd scope + heartbeat観測の常設化 | 「止まって見えるが動いている」誤認を防ぐ | P0 |
+| P1 | TF/strategy解決 fail-close の監査定常化 | 古いシグナル混入による誤発注を防ぐ | P0 |
+| P2 | ランク整合（A/S floor, conformance）の日次監査化 | 低サンプル過大評価の再発防止 | P0 |
+| P3 | V50.7ドラフト起票（新規機能は監視定着後） | 追加開発前に運用土台を固定 | P0-P2 |
+
+### 実行TODO（推奨順）
+
+- [x] **P0-1 回帰バンドルを1コマンド化**（2026-02-20 完了）
+  - 追加先: `tools/system_audit.sh`
+  - 内容:
+    - `SWIMMY_DISABLE_DISCORD=1 sbcl --script tests/test_runner.lisp`
+    - `python3 tools/test_backtest_service.py`
+    - `python3 tools/check_order_timeframe_consistency.py --lookback-minutes 120 --fail-on-issues`
+  - 完了条件: 3系統が1実行で pass/fail 可視化される
+  - 実装: `RUN_REGRESSION_BUNDLE`（既定ON）で `system_audit.sh` に統合済み
+
+- [x] **P1-1 systemd scope 判定を監査に組み込み**（2026-02-20 完了）
+  - 追加先: `tools/system_audit.sh`（`/proc/<pid>/cgroup` 判定）
+  - 目的: `systemctl --user` と `systemctl` の取り違え防止
+  - 完了条件: system/user scope の判定結果が監査出力に明示される
+  - 実装: `Systemd cgroup scope alignment` ステップ追加（`detect_pid_scope` / `audit_systemd_scope_alignment`）
+
+- [x] **P1-2 Backtest heartbeat 停滞アラート閾値を固定**（2026-02-20 完了）
+  - 対象: `tools/backtest_service.py` / `logs/backtest.log`
+  - 目的: heartbeat 停滞を「停止疑い」として機械判定
+  - 完了条件: `rx_age/tx_age` の閾値超過で監査が WARNING/FAIL を返す
+  - 実装:
+    - `tools/check_backtest_heartbeat.py` を追加（log鮮度 + `rx_age/tx_age` をしきい値判定）
+    - `tools/system_audit.sh` の `Backtest heartbeat freshness` ステップを新スクリプト呼び出しへ統一
+    - しきい値: `BACKTEST_HEARTBEAT_MAX_LOG_AGE_SECONDS` / `BACKTEST_HEARTBEAT_MAX_RX_AGE_SECONDS` / `BACKTEST_HEARTBEAT_MAX_TX_AGE_SECONDS`
+
+- [x] **P1-3 Live TF fail-close の定期監査化**（2026-02-20 完了）
+  - 実行: `python3 tools/check_order_timeframe_consistency.py --lookback-minutes 120 --fail-on-issues`
+  - 目的: stale timeframe / unresolved strategy の再混入検出
+  - 完了条件: 日次実行（timer/cron） + 失敗時ログ導線確保
+  - 実装:
+    - `systemd/swimmy-system-audit.service`
+    - `systemd/swimmy-system-audit.timer`
+    - ログ導線: `logs/system_audit.log`（`tools/system_audit.sh` の append 出力）
+  - 運用有効化:
+    - `sudo systemctl daemon-reload`
+    - `sudo systemctl enable --now swimmy-system-audit.timer`
+
+- [x] **P2-1 Rank conformance 監査を日次ジョブ化**（2026-02-20 完了）
+  - 対象: A/S floor と S conformance sweep の結果差分
+  - 目的: low-trade高Sharpe再発を監視で抑止
+  - 完了条件: 前日比の昇降格件数と違反件数が定点出力される
+  - 実装:
+    - `tools/check_rank_conformance.py` を追加（前日スナップショット基準の昇降格差分 + 違反件数）
+    - `tools/rank_conformance_audit_runner.sh` を追加
+    - `systemd/swimmy-rank-conformance-audit.service` / `.timer` を追加（日次実行）
+    - user scope 用に `systemd/swimmy-rank-conformance-audit.user.service` も追加
+    - `tools/system_audit.sh` に `Rank conformance audit` ステップを追加
+    - 回帰: `tools/tests/test_check_rank_conformance.py` に前日基準選択/フォールバックのテストを追加
+
+- [x] **P3-1 V50.7ドラフト起票**（2026-02-20 完了）
+  - 作成先: `doc/knowledge/implementation_plan_v50.7.md`（新規）
+  - 前提: P0-P2 が監査運用に載っていること
+  - 完了条件: 「新機能」ではなく「運用監視KPI」を先頭に置いた計画になっている
+  - 実装:
+    - `doc/knowledge/implementation_plan_v50.7.md` を起票済み
+    - 先頭セクションを `0. 運用監視KPI（最優先）` として定義
+
+---
+
 ## 2026-02-19 実装追補: TF正本化の徹底（意味カテゴリは補助タグ）
 
 - 方針:

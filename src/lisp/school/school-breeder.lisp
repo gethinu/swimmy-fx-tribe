@@ -148,6 +148,36 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "Generation bonus weight in breeder parent ranking.")
 (defparameter *breeder-priority-cpcv-pass-rate-weight* 0.35
   "Additive bonus weight for CPCV pass-rate in breeder parent ranking. 0 disables.")
+(defparameter *breeder-priority-rank-bonus-weight* 0.25
+  "Weight applied to raw rank bonus so rank does not dominate weak edge metrics.")
+(defparameter *breeder-priority-oos-sharpe-weight* 0.35
+  "Additive bonus weight for OOS Sharpe in breeder parent ranking.")
+(defparameter *breeder-priority-oos-sharpe-floor* -0.20
+  "OOS Sharpe lower bound used for bonus normalization.")
+(defparameter *breeder-priority-oos-sharpe-ceiling* 1.20
+  "OOS Sharpe upper bound used for bonus normalization.")
+(defparameter *breeder-priority-threshold-penalty-weight* 0.80
+  "Global multiplier for breeder priority threshold deficits.")
+(defparameter *breeder-priority-min-sharpe* 0.15
+  "Minimum Stage1 Sharpe expected for breeding parent priority.")
+(defparameter *breeder-priority-min-pf* 1.05
+  "Minimum Stage1 PF expected for breeding parent priority.")
+(defparameter *breeder-priority-min-wr* 0.35
+  "Minimum Stage1 WR expected for breeding parent priority.")
+(defparameter *breeder-priority-max-dd* 0.25
+  "Maximum Stage1 maxdd expected for breeding parent priority.")
+(defparameter *breeder-priority-min-oos-sharpe* 0.35
+  "Minimum OOS Sharpe expected for breeder edge confidence.")
+(defparameter *breeder-priority-penalty-weight-sharpe* 0.25
+  "Weight for Sharpe deficit in breeder threshold penalty.")
+(defparameter *breeder-priority-penalty-weight-pf* 0.30
+  "Weight for PF deficit in breeder threshold penalty.")
+(defparameter *breeder-priority-penalty-weight-wr* 0.20
+  "Weight for WR deficit in breeder threshold penalty.")
+(defparameter *breeder-priority-penalty-weight-maxdd* 0.15
+  "Weight for maxdd excess in breeder threshold penalty.")
+(defparameter *breeder-priority-penalty-weight-oos* 0.10
+  "Weight for OOS Sharpe deficit in breeder threshold penalty.")
 (defparameter *breeder-complement-wr-bonus* 1.5
   "Partner score bonus when candidate satisfies WR target that parent is missing.")
 (defparameter *breeder-complement-pf-bonus* 1.5
@@ -533,6 +563,61 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
              (boost (+ 1.0 (* gap-ratio *pfwr-upside-scale-gain*))))
         (clamp-breeder-float boost 1.0 *pfwr-upside-scale-max*))))
 
+(defun %breeder-safe-deficit-ratio (shortfall threshold)
+  "Normalize metric shortfall by threshold."
+  (if (<= threshold 1.0e-9)
+      0.0
+      (/ shortfall threshold)))
+
+(defun breeder-priority-oos-bonus (strategy)
+  "Return additive OOS quality bonus for breeder priority."
+  (let* ((raw (float (or (strategy-oos-sharpe strategy) 0.0) 1.0))
+         (lo (float *breeder-priority-oos-sharpe-floor* 1.0))
+         (hi (float *breeder-priority-oos-sharpe-ceiling* 1.0))
+         (span (max 1.0e-6 (- hi lo)))
+         (normalized (clamp-breeder-float (/ (- raw lo) span) 0.0 1.0)))
+    (* (float *breeder-priority-oos-sharpe-weight* 1.0) normalized)))
+
+(defun breeder-priority-threshold-penalty (strategy)
+  "Return additive penalty for Stage1/OOS threshold deficits."
+  (let* ((sharpe (float (or (strategy-sharpe strategy) 0.0) 1.0))
+         (pf (float (or (strategy-profit-factor strategy) 0.0) 1.0))
+         (wr (float (or (strategy-win-rate strategy) 0.0) 1.0))
+         (maxdd (float (or (strategy-max-dd strategy) 1.0) 1.0))
+         (oos (float (or (strategy-oos-sharpe strategy) 0.0) 1.0))
+         (sh-min (float *breeder-priority-min-sharpe* 1.0))
+         (pf-min (float *breeder-priority-min-pf* 1.0))
+         (wr-min (float *breeder-priority-min-wr* 1.0))
+         (dd-max (float *breeder-priority-max-dd* 1.0))
+         (oos-min (float *breeder-priority-min-oos-sharpe* 1.0))
+         (sh-def (if (>= sharpe sh-min) 0.0
+                     (clamp-breeder-float
+                      (%breeder-safe-deficit-ratio (- sh-min sharpe) sh-min)
+                      0.0 2.0)))
+         (pf-def (if (>= pf pf-min) 0.0
+                     (clamp-breeder-float
+                      (%breeder-safe-deficit-ratio (- pf-min pf) pf-min)
+                      0.0 2.0)))
+         (wr-def (if (>= wr wr-min) 0.0
+                     (clamp-breeder-float
+                      (%breeder-safe-deficit-ratio (- wr-min wr) wr-min)
+                      0.0 2.0)))
+         (dd-def (if (< maxdd dd-max) 0.0
+                     (clamp-breeder-float
+                      (%breeder-safe-deficit-ratio (- maxdd dd-max) dd-max)
+                      0.0 2.0)))
+         (oos-def (if (>= oos oos-min) 0.0
+                      (clamp-breeder-float
+                       (%breeder-safe-deficit-ratio (- oos-min oos) oos-min)
+                       0.0 2.0)))
+         (weighted-deficit (+ (* (float *breeder-priority-penalty-weight-sharpe* 1.0) sh-def)
+                              (* (float *breeder-priority-penalty-weight-pf* 1.0) pf-def)
+                              (* (float *breeder-priority-penalty-weight-wr* 1.0) wr-def)
+                              (* (float *breeder-priority-penalty-weight-maxdd* 1.0) dd-def)
+                              (* (float *breeder-priority-penalty-weight-oos* 1.0) oos-def))))
+    (* (float *breeder-priority-threshold-penalty-weight* 1.0)
+       weighted-deficit)))
+
 (defun strategy-breeding-priority-score (strategy)
   "Composite parent priority score for breeding partner selection."
   (let* ((rank-bonus (case (strategy-rank strategy)
@@ -540,6 +625,7 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                        (:S 2.0)
                        (:A 1.0)
                        (t 0.0)))
+         (rank-weight (float (or *breeder-priority-rank-bonus-weight* 0.0) 1.0))
          (base-score (if (and *breeder-priority-use-a-base-score*
                               (fboundp 'strategy-culling-score))
                          (strategy-culling-score strategy)
@@ -553,8 +639,15 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                               *breeder-priority-generation-weight*))
          (cpcv-pass (float (or (strategy-cpcv-pass-rate strategy) 0.0) 1.0))
          (cpcv-weight (float (or *breeder-priority-cpcv-pass-rate-weight* 0.0) 1.0))
-         (cpcv-bonus (* cpcv-weight cpcv-pass)))
-    (+ rank-bonus base-score generation-bonus cpcv-bonus)))
+         (cpcv-bonus (* cpcv-weight cpcv-pass))
+         (oos-bonus (breeder-priority-oos-bonus strategy))
+         (threshold-penalty (breeder-priority-threshold-penalty strategy)))
+    (+ (* rank-weight rank-bonus)
+       base-score
+       generation-bonus
+       cpcv-bonus
+       oos-bonus
+       (- threshold-penalty))))
 
 (defun strategy-meets-target-pf-p (strategy &optional (target *pfwr-target-pf*))
   (>= (float (or (strategy-profit-factor strategy) 0.0))

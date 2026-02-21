@@ -46,6 +46,16 @@
   "Maximum breeding reuse count for non-Legend parents.")
 (defparameter *breeder-min-parent-trades* 30
   "Minimum trade evidence required for non-Legend breeding parents.")
+(defparameter *breeder-parent-quality-floor-enabled* t
+  "When T, non-Legend breeding parents must satisfy Stage1 B quality floor.")
+(defparameter *breeder-parent-oos-floor-enabled* t
+  "When T, selected ranks require minimum OOS Sharpe to be eligible as breeding parents.")
+(defparameter *breeder-parent-oos-required-ranks* '(:A :S)
+  "Ranks that require OOS floor in can-breed-p.")
+(defparameter *breeder-parent-min-oos-sharpe* 0.35
+  "Minimum OOS Sharpe required for ranks in *breeder-parent-oos-required-ranks*.")
+(defparameter *breeder-parent-rank-conformance-enabled* t
+  "When T, A/S parents must satisfy their own rank criteria in can-breed-p.")
 
 (defparameter *a-candidate-category-metrics* (make-hash-table :test 'equal)
   "Latest A-candidate funnel metrics per category key (timeframe direction symbol).")
@@ -71,8 +81,108 @@
 (defparameter *enforce-s-rank-criteria-conformance* t
   "When T, rank evaluation demotes existing S strategies that no longer satisfy S criteria.")
 
+(defparameter *enforce-a-b-rank-criteria-conformance* t
+  "When T, rank evaluation enforces A/B criteria conformance on existing ranks.")
+
 (defvar *trade-evidence-count-cache* nil
   "Optional preloaded hash-table of canonical strategy-name -> persisted backtest trade count.")
+
+;;; ArmadaAC Core Profile (behavioral replica)
+(defun armada-core-env-value (key)
+  "Read env value from process env (and .env fallback when available)."
+  (or (ignore-errors
+        (when (fboundp 'swimmy.core::getenv-or-dotenv)
+          (swimmy.core::getenv-or-dotenv key)))
+      (ignore-errors (uiop:getenv key))))
+
+(defun armada-core-env-bool-or (key default)
+  "Parse boolean env KEY with DEFAULT fallback."
+  (let ((raw (armada-core-env-value key)))
+    (if (and (stringp raw) (> (length raw) 0))
+        (not (null (member (string-downcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw))
+                           '("1" "true" "yes" "on" "y" "t")
+                           :test #'string=)))
+        default)))
+
+(defun armada-core-env-float-or (key default)
+  "Parse numeric env KEY as float with DEFAULT fallback."
+  (let* ((raw (armada-core-env-value key))
+         (num (and (stringp raw)
+                   (> (length raw) 0)
+                   (ignore-errors (safe-parse-number raw)))))
+    (if (numberp num)
+        (float num 1.0)
+        (float default 1.0))))
+
+(defun armada-core-env-int-or (key default)
+  "Parse integer env KEY with DEFAULT fallback."
+  (let* ((raw (armada-core-env-value key))
+         (num (and (stringp raw)
+                   (> (length raw) 0)
+                   (ignore-errors (parse-integer raw :junk-allowed t)))))
+    (if (integerp num) num default)))
+
+(defun armada-core-parse-rank-token (token)
+  "Parse rank token string into keyword rank."
+  (let* ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) token))
+         (up (string-upcase trimmed)))
+    (cond
+      ((string= up "A") :A)
+      ((string= up "S") :S)
+      ((string= up "B") :B)
+      ((string= up "LEGEND") :LEGEND)
+      (t nil))))
+
+(defun armada-core-env-ranks-or (key default)
+  "Parse comma/space-delimited rank list env KEY."
+  (let ((raw (armada-core-env-value key)))
+    (if (and (stringp raw) (> (length raw) 0))
+        (let* ((tokens (uiop:split-string raw :separator '(#\, #\Space #\Tab #\Newline)))
+               (ranks (remove nil (mapcar #'armada-core-parse-rank-token tokens))))
+          (if ranks (remove-duplicates ranks :test #'eq) default))
+        default)))
+
+(defparameter *armada-core-canary-mode-enabled*
+  (armada-core-env-bool-or "SWIMMY_ARMADA_CANARY_MODE" nil)
+  "When T, force Armada canary preset (A-rank only).")
+
+(defparameter *armada-core-profile-enabled*
+  (armada-core-env-bool-or "SWIMMY_ARMADA_CORE_PROFILE_ENABLED" nil)
+  "When T, apply Armada Core profile gate to selected rank checks.")
+(defparameter *armada-core-apply-ranks*
+  (armada-core-env-ranks-or "SWIMMY_ARMADA_CORE_APPLY_RANKS" '(:A :S))
+  "Ranks where Armada Core profile gate is enforced.")
+(defparameter *armada-core-pf-min*
+  (armada-core-env-float-or "SWIMMY_ARMADA_CORE_PF_MIN" 1.60)
+  "Armada Core minimum PF.")
+(defparameter *armada-core-maxdd-max*
+  (armada-core-env-float-or "SWIMMY_ARMADA_CORE_MAXDD_MAX" 0.12)
+  "Armada Core maximum drawdown (ratio).")
+(defparameter *armada-core-min-trades*
+  (armada-core-env-int-or "SWIMMY_ARMADA_CORE_MIN_TRADES" 250)
+  "Armada Core minimum trade evidence.")
+(defparameter *armada-core-min-avg-hold-seconds*
+  (armada-core-env-int-or "SWIMMY_ARMADA_CORE_MIN_AVG_HOLD_SECONDS" 10800)
+  "Armada Core minimum average hold-time (3h).")
+(defparameter *armada-core-max-avg-hold-seconds*
+  (armada-core-env-int-or "SWIMMY_ARMADA_CORE_MAX_AVG_HOLD_SECONDS" 36000)
+  "Armada Core maximum average hold-time (10h).")
+(defparameter *armada-core-max-side-share*
+  (armada-core-env-float-or "SWIMMY_ARMADA_CORE_MAX_SIDE_SHARE" 0.80)
+  "Armada Core maximum directional side concentration.")
+(defparameter *armada-core-require-trade-profile*
+  (armada-core-env-bool-or "SWIMMY_ARMADA_CORE_REQUIRE_TRADE_PROFILE" nil)
+  "When T, missing hold-time/side profile fails Armada gate.")
+
+(defun enable-armada-core-canary-mode ()
+  "Enable Armada Core canary preset (A-rank only)."
+  (setf *armada-core-profile-enabled* t
+        *armada-core-apply-ranks* '(:A)
+        *armada-core-require-trade-profile* t)
+  t)
+
+(when *armada-core-canary-mode-enabled*
+  (enable-armada-core-canary-mode))
 
 ;;; ---------------------------------------------------------------------------
 ;;; COMPOSITE SCORE (Multi-Metric)
@@ -227,7 +337,8 @@ Low trade counts are softly shrunk instead of hard-blocked."
   (cdr (assoc rank *rank-criteria*)))
 
 (defun strategy-trade-evidence-count (strategy)
-  "Best-effort trade evidence count for staged S-rank gates."
+  "Best-effort trade evidence count for staged S-rank gates.
+Combines backtest evidence with shadow-paper trade evidence."
   (let* ((history-count (length (remove-if-not #'numberp (or (strategy-pnl-history strategy) '()))))
          (trade-count (or (strategy-trades strategy) 0))
          (local-count (max history-count trade-count))
@@ -237,7 +348,7 @@ Low trade counts are softly shrunk instead of hard-blocked."
          (canonical-name (if (and name (stringp name) (fboundp '%canonicalize-backtest-strategy-name))
                              (%canonicalize-backtest-strategy-name name)
                              name))
-         (db-count
+         (backtest-count
            (if (and canonical-name
                     (stringp canonical-name)
                     (< local-count query-threshold))
@@ -258,8 +369,103 @@ Low trade counts are softly shrunk instead of hard-blocked."
                                      :error (format nil "~a" e))))
                       0)))
                  (t 0))
-               0)))
-    (max local-count db-count)))
+               0))
+         (shadow-count
+           (if (and canonical-name
+                    (stringp canonical-name)
+                    (< local-count query-threshold)
+                    (fboundp 'count-trade-logs-for-strategy))
+               (handler-case
+                   (or (count-trade-logs-for-strategy canonical-name :modes '(:shadow)) 0)
+                 (error (e)
+                   (when (fboundp 'swimmy.core::emit-telemetry-event)
+                     (swimmy.core::emit-telemetry-event
+                      "rank.trade_evidence_shadow_error"
+                      :service "school"
+                      :severity :warn
+                      :data (list :strategy canonical-name
+                                  :local-count local-count
+                                  :error (format nil "~a" e))))
+                   0))
+               0))
+         (base-count (max local-count backtest-count)))
+    (+ base-count shadow-count)))
+
+(defun armada-core-profile-applies-p (rank)
+  "Return T when Armada Core profile gate applies to RANK."
+  (and *armada-core-profile-enabled*
+       (member rank *armada-core-apply-ranks* :test #'eq)))
+
+(defun %normalize-trade-direction-token (value)
+  "Normalize direction text from DB rows into :BUY/:SELL/:UNKNOWN."
+  (let ((txt (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                         (format nil "~a" (or value ""))))))
+    (cond
+      ((or (string= txt "BUY") (string= txt ":BUY") (string= txt "LONG") (string= txt ":LONG")) :buy)
+      ((or (string= txt "SELL") (string= txt ":SELL") (string= txt "SHORT") (string= txt ":SHORT")) :sell)
+      (t :unknown))))
+
+(defun armada-strategy-trade-profile (strategy &key oos-kind)
+  "Return trade behavior profile plist for STRATEGY from persisted backtest logs.
+Keys:
+  :trade-count :buy-count :sell-count :hold-sample-count
+  :avg-hold-seconds :max-side-share"
+  (let ((name (and strategy (strategy-name strategy))))
+    (when (and name (stringp name) (fboundp 'fetch-backtest-trades))
+      (handler-case
+          (let* ((rows (fetch-backtest-trades name :oos-kind oos-kind))
+                 (trade-count (length rows))
+                 (buy-count 0)
+                 (sell-count 0)
+                 (hold-sum 0.0d0)
+                 (hold-count 0))
+            (dolist (row rows)
+              ;; fetch-backtest-trades row:
+              ;; (request_id strategy_name timestamp pnl symbol direction ... hold_time ...)
+              (let ((direction (nth 5 row))
+                    (hold-time (nth 11 row)))
+                (case (%normalize-trade-direction-token direction)
+                  (:buy (incf buy-count))
+                  (:sell (incf sell-count)))
+                (when (numberp hold-time)
+                  (incf hold-sum (float hold-time 1.0d0))
+                  (incf hold-count))))
+            (let* ((directional-total (+ buy-count sell-count))
+                   (avg-hold-seconds (when (> hold-count 0)
+                                       (/ hold-sum (float hold-count 1.0d0))))
+                   (max-side-share (when (> directional-total 0)
+                                     (/ (float (max buy-count sell-count) 1.0d0)
+                                        (float directional-total 1.0d0)))))
+              (list :trade-count trade-count
+                    :buy-count buy-count
+                    :sell-count sell-count
+                    :hold-sample-count hold-count
+                    :avg-hold-seconds avg-hold-seconds
+                    :max-side-share max-side-share)))
+        (error (e)
+          (format t "[RANK] ⚠️ Armada profile lookup failed for ~a: ~a~%" name e)
+          nil)))))
+
+(defun armada-core-profile-passed-p (strategy &key trade-profile)
+  "Return T when STRATEGY matches Armada Core behavioral profile."
+  (let* ((pf (float (or (strategy-profit-factor strategy) 0.0) 1.0))
+         (maxdd (float (or (strategy-max-dd strategy) 1.0) 1.0))
+         (trade-evidence (strategy-trade-evidence-count strategy))
+         (profile (or trade-profile
+                      (armada-strategy-trade-profile strategy)))
+         (avg-hold-seconds (and profile (getf profile :avg-hold-seconds)))
+         (max-side-share (and profile (getf profile :max-side-share)))
+         (base-pass (and (>= pf (float *armada-core-pf-min* 1.0))
+                         (<= maxdd (float *armada-core-maxdd-max* 1.0))
+                         (>= trade-evidence *armada-core-min-trades*)))
+         (hold-pass (if (numberp avg-hold-seconds)
+                        (and (>= avg-hold-seconds (float *armada-core-min-avg-hold-seconds* 1.0))
+                             (<= avg-hold-seconds (float *armada-core-max-avg-hold-seconds* 1.0)))
+                        (not *armada-core-require-trade-profile*)))
+         (side-pass (if (numberp max-side-share)
+                        (<= max-side-share (float *armada-core-max-side-share* 1.0))
+                        (not *armada-core-require-trade-profile*))))
+    (and base-pass hold-pass side-pass)))
 
 (defun min-trade-evidence-for-rank (rank)
   "Return minimum trade evidence required for rank gate."
@@ -294,10 +500,13 @@ Low trade counts are softly shrunk instead of hard-blocked."
          (wr (or (strategy-win-rate strategy) 0.0))
          (maxdd (or (strategy-max-dd strategy) 1.0))
          (trade-evidence (strategy-trade-evidence-count strategy))
-         (min-trade-evidence (min-trade-evidence-for-rank target-rank)))
+         (min-trade-evidence (min-trade-evidence-for-rank target-rank))
+         (armada-pass (or (not (armada-core-profile-applies-p target-rank))
+                          (armada-core-profile-passed-p strategy))))
     (cond
       ((eq target-rank :S)
        (and (>= trade-evidence min-trade-evidence)
+            armada-pass
             (>= sharpe (getf criteria :sharpe-min 0))
             (>= pf (getf criteria :pf-min 0))
             (>= wr (getf criteria :wr-min 0))
@@ -308,6 +517,7 @@ Low trade counts are softly shrunk instead of hard-blocked."
                      (< (or (strategy-cpcv-median-maxdd strategy) 1.0) (getf criteria :cpcv-maxdd-max 1.0))))))
       (t
        (and (>= trade-evidence min-trade-evidence)
+            armada-pass
             (>= sharpe (getf criteria :sharpe-min 0))
             (>= pf (getf criteria :pf-min 0))
             (>= wr (getf criteria :wr-min 0))
@@ -967,6 +1177,30 @@ Returns plist summary:
             s-demoted)
     (list :s-demoted s-demoted)))
 
+(defun enforce-a-b-rank-criteria-conformance ()
+  "Enforce A/B criteria conformance on existing ranks.
+Returns plist summary:
+  (:a-demoted N :b-graveyarded N)"
+  (let ((a-demoted 0)
+        (b-graveyarded 0))
+    ;; A conformance:
+    ;; - Existing A that fail A criteria => demote to B.
+    (dolist (s (copy-list (get-strategies-by-rank :A)))
+      (unless (check-rank-criteria s :A)
+        (demote-rank s :B "A criteria conformance failed")
+        (incf a-demoted)))
+    ;; B conformance:
+    ;; - Existing B that fail B criteria => graveyard.
+    ;; Includes newly demoted A from the first sweep.
+    (dolist (s (copy-list (get-strategies-by-rank :B)))
+      (unless (check-rank-criteria s :B)
+        (send-to-graveyard s "B criteria conformance failed")
+        (incf b-graveyarded)))
+    (format t "[RANK] 📉 A/B conformance sweep: A-demoted=~d B->Graveyard=~d~%"
+            a-demoted b-graveyarded)
+    (list :a-demoted a-demoted
+          :b-graveyarded b-graveyarded)))
+
 (defun run-b-rank-culling (&optional single-tf)
   "Run culling for all TF × Direction × Symbol categories.
    V49.3: Dynamic symbol detection to prevent zombie-accumulation in non-major pairs."
@@ -983,8 +1217,9 @@ Returns plist summary:
   "Main rank evaluation cycle.
    1. Enforce A/S trade-evidence floors on existing ranks.
    2. Enforce existing S-rank criteria conformance.
-   3. Cull B-RANK if threshold reached (Dynamic Categories)
-   4. Validate A-RANK via CPCV (→ S or back)
+   3. Enforce existing A/B criteria conformance.
+   4. Cull B-RANK if threshold reached (Dynamic Categories)
+   5. Validate A-RANK via CPCV (→ S or back)
    V49.3: Added missing A-Rank evaluation loop."
   (let ((*trade-evidence-count-cache*
           (if (fboundp 'fetch-backtest-trade-count-map)
@@ -1011,6 +1246,10 @@ Returns plist summary:
     ;; 0.5 Enforce S-rank criteria conformance on existing S ranks
     (when *enforce-s-rank-criteria-conformance*
       (enforce-s-rank-criteria-conformance))
+
+    ;; 0.6 Enforce A/B criteria conformance on existing A/B ranks
+    (when *enforce-a-b-rank-criteria-conformance*
+      (enforce-a-b-rank-criteria-conformance))
     
     ;; 1. Culling
     (run-b-rank-culling)
@@ -1085,6 +1324,34 @@ Returns plist summary:
 (defun can-breed-p (strategy)
   "Check if strategy can be used for breeding.
    Returns T if under breeding limit or is Legend."
+  (labels ((parent-quality-floor-passed-p (s)
+             (if (not *breeder-parent-quality-floor-enabled*)
+                 t
+                 (let ((criteria (get-rank-criteria :B)))
+                   (if (null criteria)
+                       t
+                       (let ((sharpe (float (or (strategy-sharpe s) 0.0) 1.0))
+                             (pf (float (or (strategy-profit-factor s) 0.0) 1.0))
+                             (wr (float (or (strategy-win-rate s) 0.0) 1.0))
+                             (maxdd (float (or (strategy-max-dd s) 1.0) 1.0)))
+                         (and (>= sharpe (float (getf criteria :sharpe-min 0.0) 1.0))
+                              (>= pf (float (getf criteria :pf-min 0.0) 1.0))
+                              (>= wr (float (getf criteria :wr-min 0.0) 1.0))
+                              (< maxdd (float (getf criteria :maxdd-max 1.0) 1.0))))))))
+           (parent-oos-floor-passed-p (s rank)
+             (if (not *breeder-parent-oos-floor-enabled*)
+                 t
+                 (if (member rank *breeder-parent-oos-required-ranks* :test #'eq)
+                     (>= (float (or (strategy-oos-sharpe s) -1.0) 1.0)
+                         (float *breeder-parent-min-oos-sharpe* 1.0))
+                     t)))
+           (parent-rank-floor-passed-p (s rank)
+             (if (not *breeder-parent-rank-conformance-enabled*)
+                 t
+                 (case rank
+                   (:A (check-rank-criteria s :A :include-oos t :include-cpcv nil))
+                   (:S (check-rank-criteria s :S :include-oos t :include-cpcv t))
+                   (otherwise t)))))
   (let ((rank (and strategy (strategy-rank strategy))))
     (and strategy
          (not (and (slot-exists-p strategy 'revalidation-pending)
@@ -1098,7 +1365,10 @@ Returns plist summary:
          (< (abs (strategy-tp strategy)) 1000.0)
          (or (eq rank :legend)
              (and (>= (or (strategy-trades strategy) 0) *breeder-min-parent-trades*)
-                  (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*))))))
+                  (< (or (strategy-breeding-count strategy) 0) *max-breeding-uses*)
+                  (parent-quality-floor-passed-p strategy)
+                  (parent-oos-floor-passed-p strategy rank)
+                  (parent-rank-floor-passed-p strategy rank)))))))
 
 (defun run-legend-breeding ()
   "Breed Legend strategies with random B-rank strategies.
@@ -1109,10 +1379,11 @@ Returns plist summary:
                                    (and (slot-exists-p s 'revalidation-pending)
                                         (strategy-revalidation-pending s))))
                              (get-strategies-by-rank :legend)))
-         (b-ranks (remove-if (lambda (s)
-                               (and (slot-exists-p s 'revalidation-pending)
-                                    (strategy-revalidation-pending s)))
-                             (get-strategies-by-rank :B)))
+         (b-ranks (remove-if-not #'can-breed-p
+                                 (remove-if (lambda (s)
+                                              (and (slot-exists-p s 'revalidation-pending)
+                                                   (strategy-revalidation-pending s)))
+                                            (get-strategies-by-rank :B))))
         (bred-count 0))
     
     (when (and legends b-ranks)
@@ -1136,11 +1407,16 @@ Returns plist summary:
               (increment-breeding-count b-rank)
 
               ;; Route through unified breeder intake (Phase1 mandatory via add-to-kb).
-              (when (add-to-kb child :breeder :require-bt t :notify nil)
-                (when (fboundp 'save-recruit-to-lisp)
-                  (save-recruit-to-lisp child))
-                (incf bred-count)
-                (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child))))))))
+              (multiple-value-bind (accepted status)
+                  (add-to-kb child :breeder :require-bt t :notify nil)
+                (when accepted
+                  (if (eq (or status :added) :queued-phase1)
+                      (format t "[LEGEND] ⏳ Royal Child queued for Phase1: ~a~%" (strategy-name child))
+                      (progn
+                        (when (fboundp 'save-recruit-to-lisp)
+                          (save-recruit-to-lisp child))
+                        (incf bred-count)
+                        (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child)))))))))))
     
     (format t "[LEGEND] 👑 Legend Breeding Complete: ~d children~%" bred-count)
     bred-count))

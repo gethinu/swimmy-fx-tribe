@@ -89,3 +89,108 @@
    参照: `src/lisp/school/school-rank-system.lisp:237`
 5. **重複耐性の強化**: `backtest_trade_logs` に再送耐性のユニーク戦略（例: `request_id+timestamp+strategy_name`）を導入し、重複時は upsert/ignore。  
    参照: `src/lisp/school/school-db.lisp:263`
+
+---
+
+# 🦅 Expert Panel Report (Consult)
+
+**Date:** 2026-02-18  
+**Leader:** Elon Musk  
+**Mode:** consult  
+**Trigger:** 「これ逆じゃない？tfが正でしょ？意味カテゴリは昔の実装で今は形骸化してるはず。」  
+**Purpose:** `strategy-category` の正本定義（TFキー vs 意味カテゴリ）を再決定し、トレード停止リスクを減らす。  
+**Constraints:** 本番稼働中。既存DB/Library戦略を破壊しない。`Scanning 0/X` を再発させない。  
+**Success Criteria:** カテゴリ定義が1つに定まり、プール選抜・レジーム選抜・進化系で同時に整合する。  
+**Assumptions:** Owner’s Vision は TF-Bucket×Direction×Symbol をカテゴリ正本としている。  
+**Uncertainties:** 現在のDB内 `strategy-category` 実データ分布（semantic/TF混在率）を未計測。
+
+## 現状診断（要点）
+- 仕様正本は TF キー寄り。  
+  参照: `doc/knowledge/implementation_plan_v50.6.md:322`, `doc/knowledge/implementation_plan_v50.6.md:335`
+- 実装は二重化して衝突。  
+  TFキー生成: `src/lisp/school/school-strategy.lisp:197`, `src/lisp/school/school-strategy.lisp:208`, `src/lisp/school/school-strategy.lisp:220`  
+  semantic前提選抜: `src/lisp/school/school-strategy.lisp:283`, `src/lisp/school/school-strategy.lisp:305`, `src/lisp/school/school-evaluation.lisp:478`  
+  semantic前提の生態系: `src/lisp/school/school-ecosystem.lisp:33`, `src/lisp/school/school-ecosystem.lisp:113`
+- 直近変更は semantic 側へ寄せており、Vision と逆方向。  
+  参照: `src/lisp/school/school-strategy.lisp:154`, `src/lisp/school/school-strategy.lisp:186`, `src/lisp/school.lisp:59`, `src/lisp/school/school-kb.lisp:325`, `src/lisp/strategies/strategies.lisp:74`
+
+## 🏛️ 常設顧問の意見
+
+### Taleb
+- 単一スロットに「市場マイクロ構造軸（TF/Dir/Symbol）」と「戦術意味軸（trend/reversion）」を混在させるのは、静かな破局の温床。  
+  参照: `src/lisp/dsl.lisp:169`, `src/lisp/school/school-strategy.lisp:208`, `src/lisp/school/school-evaluation.lisp:494`
+- **選択肢**
+  1. TF正本の単一化（semanticは都度推論）: シンプルだが推論ゆらぎが増える。
+  2. 二軸分離（TF正本 + semanticタグ別スロット）: 破局回避に最も強い。
+  3. semantic正本へ回帰: Vision逸脱、再び0件選抜リスク。
+
+### Graham
+- 事業価値は「トレード継続」。現在はドメイン語彙が壊れている。`category` という名前で2概念を運ぶのをやめるべき。  
+  参照: `src/lisp/school/school-strategy.lisp:208`, `src/lisp/school/school-strategy.lisp:289`
+- 推奨は Option 2。名前を分ければレビュー・オンボーディング・障害解析が速くなる。
+
+### Naval
+- レバレッジ視点では「推論を毎回行う設計」は負債。タグは計算して保存し、実行時は読むだけにする。  
+  参照: `src/lisp/school/school-evaluation.lisp:476`, `src/lisp/school/school-learning.lisp:290`
+- 反証: 「保存タグは陳腐化する」→ だから再計算ジョブを定期実行すればよい。
+
+### Jim Simons
+- 統計軸（TF/Dir/Symbol）と戦術軸（regime適合）は別確率空間。1変数へ射影するのは情報落ち。  
+  参照: `src/lisp/school/school-evolution-orchestration.lisp:35`, `src/lisp/school/school-breeder.lisp:704`
+- Option 2 が最も情報保存量が高い。
+
+## 💻 技術パネルの意見
+
+### Fowler
+- これはモデリング不一致。`strategy-category` を domain term のまま多義化したのが原因。  
+  参照: `src/lisp/dsl.lisp:162`, `src/lisp/dsl.lisp:168`, `src/lisp/school/school-strategy.lisp:154`
+- `strategy-scope-key`（TF/Dir/Symbol）と `strategy-regime-class`（semantic）に分離すべき。
+
+### Hickey
+- 「Simple」ではなく「Complected」。1つのデータに2意味を絡めた結果、関数境界で if/fallback が増殖している。  
+  参照: `src/lisp/school/school-evaluation.lisp:494`, `src/lisp/school/school-strategy.lisp:177`
+- データモデルを先に直せ。ロジックで救済するな。
+
+### Uncle Bob
+- 現在の新規テストは“移行動作”は守るが、“設計契約”を守っていない。  
+  参照: `src/lisp/tests.lisp:9738`, `src/lisp/tests.lisp:9758`
+- 追加必須テスト:
+  1. scope-key/semantic-tag の両方が必須である契約テスト
+  2. `build-category-pools` と `assemble-team` のキー空間一致テスト
+  3. `collect-strategy-signals` で `Scanning 0/X` を再現防止する回帰
+
+## 🚀 ビジョナリーパネルの意見
+
+### Ng
+- 推論タグは ML feature として有効だが、推論結果を主キーにしてはいけない。主キーは観測可能な market microstructure に置くべき。  
+  参照: `src/lisp/school/school-strategy.lisp:197`, `src/lisp/school/school-strategy.lisp:289`
+
+### López de Prado
+- レジーム選択とカテゴリ淘汰を同一キーで扱うと、分散投資が形だけになる。TF/Dir/Symbol 分散は保持し続ける必要がある。  
+  参照: `doc/knowledge/implementation_plan_v50.6.md:320`, `src/lisp/school/school-breeder.lisp:996`
+
+### Gene Kim
+- まず可観測化。`Scanning 0/X`、pool key cardinality、semantic-tag欠損率をメトリクス化しないと議論が宗教化する。  
+  参照: `src/lisp/school/school-evaluation.lisp:515`, `src/lisp/school/school-evolution-orchestration.lisp:35`
+
+## 🚀 Musk's Decision (Final)
+> 「君の指摘は正しい。TFが正本だ。だが“TFだけ”でも足りない。  
+> やるべきことは、TF/Dir/Symbolを正本キーに据えた上で、レジーム意味タグを別軸として持つこと。  
+> 逆に、`strategy-category` をどちらか片方に寄せるパッチはもうやらない。  
+> データモデルを二軸化し、選抜系を段階的に差し替える。」
+
+## Actionable Items
+1. `strategy` 構造体を二軸化する。  
+`strategy-scope-key`（list: TF-bucket/dir/symbol）と `strategy-regime-class`（keyword）を追加し、`strategy-category` は互換レイヤーへ縮退。  
+対象: `src/lisp/dsl.lisp:169`
+2. プールを分離する。  
+`*category-pools*`（scope用）と `*regime-pools*`（semantic用）を分離し、`assemble-team` / `select-strategies-for-regime` の参照先を統一。  
+対象: `src/lisp/school/school-strategy.lisp:220`, `src/lisp/school/school-strategy.lisp:283`, `src/lisp/school/school-evaluation.lisp:476`
+3. 直近の semantic 側移行パッチをロールバックし、暫定的には「scope正本 + semanticは明示推論関数のみ」に戻す。  
+対象: `src/lisp/school/school-strategy.lisp:154`, `src/lisp/school.lisp:59`, `src/lisp/school/school-kb.lisp:325`, `src/lisp/strategies/strategies.lisp:74`
+4. 観測を追加する。  
+`pool_scope_cardinality`, `pool_regime_cardinality`, `regime_scan_candidates`, `semantic_tag_missing_rate` を telemetry 出力。  
+対象: `src/lisp/school/school-evaluation.lisp:515`
+5. 契約テストを追加する。  
+「キー空間不一致でfail」「両軸があると選抜が0にならない」をCI必須にする。  
+対象: `src/lisp/tests.lisp:9738`, `src/lisp/tests.lisp:9758`

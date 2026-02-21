@@ -241,10 +241,14 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       regime TEXT,
       pnl REAL,
       hold_time INTEGER,
-      pair_id TEXT
+      pair_id TEXT,
+      execution_mode TEXT NOT NULL DEFAULT 'LIVE'
     )")
   (handler-case
       (execute-non-query "ALTER TABLE trade_logs ADD COLUMN pair_id TEXT")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE trade_logs ADD COLUMN execution_mode TEXT NOT NULL DEFAULT 'LIVE'")
     (error () nil))
 
   ;; Table: Daily PnL Aggregates (per strategy per day)
@@ -356,6 +360,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
    "CREATE INDEX IF NOT EXISTS idx_strategies_category_rank
       ON strategies(timeframe, direction, symbol, rank)")
   (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name ON trade_logs(strategy_name)")
+  (execute-non-query "CREATE INDEX IF NOT EXISTS idx_trade_name_mode ON trade_logs(strategy_name, execution_mode)")
   (execute-non-query
    "CREATE INDEX IF NOT EXISTS idx_backtest_trade_strategy
       ON backtest_trade_logs(strategy_name)")
@@ -599,9 +604,15 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
 
 (defun record-trade-to-db (record)
   "Log trade to SQL."
+  (labels ((normalize-execution-mode (mode)
+             (let ((token (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                      (format nil "~a" (or mode :live))))))
+               (cond
+                 ((or (string= token "SHADOW") (string= token ":SHADOW")) "SHADOW")
+                 (t "LIVE")))))
   (execute-non-query
-   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+   "INSERT INTO trade_logs (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
    (trade-record-timestamp record)
    (trade-record-strategy-name record)
    (trade-record-symbol record)
@@ -610,10 +621,11 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
    (format nil "~a" (trade-record-regime record))
    (trade-record-pnl record)
    (trade-record-hold-time record)
-   (trade-record-pair-id record)))
+   (trade-record-pair-id record)
+   (normalize-execution-mode (ignore-errors (trade-record-execution-mode record))))))
 
 (defun refresh-strategy-daily-pnl ()
-  "Aggregate trade_logs into daily PnL (JST localtime)."
+  "Aggregate LIVE trade_logs into daily PnL (JST localtime)."
   (init-db)
   (let ((now (get-universal-time)))
     (execute-non-query
@@ -624,6 +636,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
              COUNT(*) AS trade_count,
              ? AS updated_at
         FROM trade_logs
+       WHERE UPPER(COALESCE(execution_mode, 'LIVE')) = 'LIVE'
        GROUP BY strategy_name, trade_date
       ON CONFLICT(strategy_name, trade_date)
       DO UPDATE SET pnl_sum=excluded.pnl_sum,
@@ -640,6 +653,159 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
      ORDER BY trade_date DESC
      LIMIT ?"
    strategy-name limit))
+
+(defun %normalize-execution-mode-token (mode)
+  "Normalize MODE token into SQL mode string (LIVE/SHADOW)."
+  (let ((token (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                           (format nil "~a" (or mode :live))))))
+    (cond
+      ((or (string= token "SHADOW") (string= token ":SHADOW")) "SHADOW")
+      (t "LIVE"))))
+
+(defun count-trade-logs-for-strategy (strategy-name &key (modes '(:live)) from-timestamp to-timestamp)
+  "Count trade_logs rows for STRATEGY-NAME filtered by execution MODES.
+Defaults to LIVE-only counting."
+  (init-db)
+  (when (and (stringp strategy-name) (> (length strategy-name) 0))
+    (let* ((normalized-modes (remove-duplicates
+                              (mapcar #'%normalize-execution-mode-token
+                                      (or modes '(:live)))
+                              :test #'string=))
+           (placeholders (%sql-placeholders (length normalized-modes)))
+           (query (with-output-to-string (s)
+                    (format s "SELECT COUNT(*) FROM trade_logs WHERE strategy_name = ? ")
+                    (when (numberp from-timestamp)
+                      (format s "AND timestamp >= ? "))
+                    (when (numberp to-timestamp)
+                      (format s "AND timestamp < ? "))
+                    (format s "AND UPPER(COALESCE(execution_mode, 'LIVE')) IN (~a)" placeholders)))
+           (params (append (list strategy-name)
+                           (when (numberp from-timestamp) (list from-timestamp))
+                           (when (numberp to-timestamp) (list to-timestamp))
+                           normalized-modes)))
+      (handler-case
+          (apply #'execute-single query params)
+        (error (e)
+          (format t "[DB] ⚠️ Failed to count trade_logs for ~a: ~a~%" strategy-name e)
+          0)))))
+
+(defun fetch-recent-live-trade-metrics (strategy-name &key (limit 40))
+  "Return recent LIVE metrics plist for STRATEGY-NAME from latest LIMIT rows.
+Keys: :trades :wins :losses :win-rate :gross-win :gross-loss :profit-factor :net-pnl
+      :latest-loss-streak :max-loss-streak."
+  (init-db)
+  (when (and (stringp strategy-name) (> (length strategy-name) 0))
+    (let ((safe-limit (max 1 (or (and (numberp limit) (round limit)) 40))))
+      (handler-case
+          (let* ((recent-pnl-rows
+                   (execute-to-list
+                    "SELECT pnl
+                       FROM trade_logs
+                      WHERE strategy_name = ?
+                        AND UPPER(COALESCE(execution_mode, 'LIVE')) = 'LIVE'
+                      ORDER BY timestamp DESC
+                      LIMIT ?"
+                    strategy-name
+                    safe-limit))
+                 (recent-pnls
+                   (mapcar (lambda (row)
+                             (let ((pnl (if (and (listp row) row)
+                                            (first row)
+                                            row)))
+                               (if (numberp pnl)
+                                   (float pnl 1.0)
+                                   0.0)))
+                           recent-pnl-rows))
+                 (latest-loss-streak
+                   (let ((streak 0))
+                     (dolist (pnl recent-pnls streak)
+                       (if (< pnl 0.0)
+                           (incf streak)
+                           (return streak)))))
+                 (max-loss-streak
+                   (let ((best 0)
+                         (current 0))
+                     (dolist (pnl recent-pnls best)
+                       (if (< pnl 0.0)
+                           (progn
+                             (incf current)
+                             (when (> current best)
+                               (setf best current)))
+                           (setf current 0)))))
+                 (row (first
+                       (execute-to-list
+                        "SELECT
+                             COUNT(*) AS trades,
+                             COALESCE(SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END), 0) AS wins,
+                             COALESCE(SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END), 0) AS losses,
+                             COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0.0) AS gross_win,
+                             COALESCE(SUM(CASE WHEN pnl < 0 THEN -pnl ELSE 0 END), 0.0) AS gross_loss,
+                             COALESCE(SUM(pnl), 0.0) AS net_pnl
+                           FROM (
+                             SELECT pnl
+                               FROM trade_logs
+                              WHERE strategy_name = ?
+                                AND UPPER(COALESCE(execution_mode, 'LIVE')) = 'LIVE'
+                              ORDER BY timestamp DESC
+                              LIMIT ?
+                           ) recent"
+                        strategy-name
+                        safe-limit))))
+            (when row
+              (destructuring-bind (trades wins losses gross-win gross-loss net-pnl) row
+                (let* ((trade-count (if (numberp trades) (max 0 (round trades)) 0))
+                       (win-count (if (numberp wins) (max 0 (round wins)) 0))
+                       (loss-count (if (numberp losses) (max 0 (round losses)) 0))
+                       (gross-win-f (if (numberp gross-win) (float gross-win 1.0) 0.0))
+                       (gross-loss-f (if (numberp gross-loss) (float gross-loss 1.0) 0.0))
+                       (net-pnl-f (if (numberp net-pnl) (float net-pnl 1.0) 0.0))
+                       (wr (if (> trade-count 0)
+                               (/ (float win-count 1.0) (float trade-count 1.0))
+                               0.0))
+                       (pf (cond
+                             ((> gross-loss-f 0.0) (/ gross-win-f gross-loss-f))
+                             ((> gross-win-f 0.0) 99.0)
+                             (t 0.0))))
+                  (list :trades trade-count
+                        :wins win-count
+                        :losses loss-count
+                        :win-rate wr
+                        :gross-win gross-win-f
+                        :gross-loss gross-loss-f
+                        :profit-factor pf
+                        :net-pnl net-pnl-f
+                        :latest-loss-streak (max 0 (round latest-loss-streak))
+                        :max-loss-streak (max 0 (round max-loss-streak)))))))
+        (error (e)
+          (format t "[DB] ⚠️ Failed to fetch recent LIVE metrics for ~a: ~a~%"
+                  strategy-name e)
+          nil)))))
+
+(defun fetch-trade-logs-for-learning (&key strategy-name (limit 500) (modes '(:live :shadow)))
+  "Fetch recent trade_logs rows for learning bootstrap.
+Returns rows: (timestamp strategy_name symbol direction category regime pnl hold_time pair_id execution_mode)."
+  (init-db)
+  (let* ((normalized-modes (remove-duplicates
+                            (mapcar #'%normalize-execution-mode-token (or modes '(:live :shadow)))
+                            :test #'string=))
+         (mode-placeholders (%sql-placeholders (length normalized-modes)))
+         (query (with-output-to-string (s)
+                  (write-string "SELECT timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, COALESCE(execution_mode, 'LIVE') FROM trade_logs WHERE " s)
+                  (if (and (stringp strategy-name) (> (length strategy-name) 0))
+                      (write-string "strategy_name = ? " s)
+                      (write-string "1=1 " s))
+                  (format s "AND UPPER(COALESCE(execution_mode, 'LIVE')) IN (~a) " mode-placeholders)
+                  (write-string "ORDER BY timestamp DESC LIMIT ?" s)))
+         (params (append
+                  (when (and (stringp strategy-name) (> (length strategy-name) 0))
+                    (list strategy-name))
+                  normalized-modes
+                  (list (max 1 (or limit 500))))))
+    (handler-case
+        (apply #'execute-to-list query params)
+      (error (e)
+        (format t "[DB] ⚠️ Failed to fetch learning trade logs: ~a~%" e)
+        '()))))
 
 (defun %backtest-entry-val (entry keys)
   "Extract value from ENTRY (alist or plist) using KEYS."

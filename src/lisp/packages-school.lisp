@@ -80,6 +80,10 @@
    #:lookup-strategy-by-magic  ;; V44.8: Resolving Unknown strategy names
    #:lookup-entry-context-by-magic
    #:lookup-pair-id-by-magic
+   #:get-slot-magic
+   #:decode-slot-magic
+   #:try-reserve-slot
+   #:register-pending-slot
    #:generate-trade-result-narrative
    #:process-clone-check-result ;; V10: Exported for message-dispatcher
    #:process-wfv-result ;; V10: Exported for message-dispatcher
@@ -204,6 +208,11 @@
    #:danger-cooldown-active-p
    #:has-resigned-p
    #:reset-danger-state
+   #:enable-armada-core-canary-mode
+   #:enable-armada-kill-switch-canary-mode
+   #:enable-armada-canary-mode
+   #:debug-reset-slots
+   #:debug-slot-status
    #:debug-reset-warriors
    #:debug-warrior-status
    

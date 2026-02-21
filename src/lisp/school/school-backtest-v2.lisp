@@ -98,6 +98,31 @@
         (end (getf *backtest-range-1* :end)))
     (request-backtest-v2 strat :start-date start :end-date end :phase "phase1" :range-id "P1")))
 
+(defun founder-phase1-recovery-candidate-p (strat)
+  "Return T when STRAT should be eligible for Founder recovery gate in Phase1."
+  (and *phase1-founder-recovery-enabled*
+       strat
+       (stringp (strategy-name strat))
+       (search "HUNTED-" (string-upcase (strategy-name strat)))
+       (<= (or (strategy-generation strat) 0) 0)))
+
+(defun founder-phase1-recovery-passed-p (strat sharpe pf trades max-dd)
+  "Return T when Founder recovery gate passes for STRAT metrics."
+  (and (founder-phase1-recovery-candidate-p strat)
+       (>= sharpe (float *phase1-founder-min-sharpe* 1.0))
+       (>= pf (float *phase1-founder-min-pf* 1.0))
+       (>= trades (max 0 (truncate *phase1-founder-min-trades*)))
+       (<= max-dd (float *phase1-founder-max-dd* 1.0))))
+
+(defun phase1-screening-passed-p (strat sharpe pf trades max-dd)
+  "Return two values: (passed-p founder-recovery-p)."
+  (let* ((standard-pass (and (>= sharpe *phase1-min-sharpe*)
+                             (>= pf 1.0)))
+         (founder-recovery-pass (and (not standard-pass)
+                                     (founder-phase1-recovery-passed-p strat sharpe pf trades max-dd))))
+    (values (or standard-pass founder-recovery-pass)
+            founder-recovery-pass)))
+
 ;;; =========================================================
 ;;; LOGIC HANDLER (Async Results)
 ;;; =========================================================
@@ -112,7 +137,9 @@
     ;; Phase 1 Result
     ((search "_P1" strat-name)
      (let* ((base-name (subseq strat-name 0 (search "_P1" strat-name)))
-            (strat (find-strategy base-name))
+            (strat (or (find-strategy base-name)
+                       (when (fboundp 'take-phase1-pending-candidate)
+                         (take-phase1-pending-candidate base-name))))
             ;; Normalize nil metrics to 0.0 to avoid type errors in comparisons/float coercions.
             (sharpe (float (or (getf result :sharpe) 0.0) 0.0))
             (pf (float (or (getf result :profit-factor) 0.0) 0.0))
@@ -123,6 +150,11 @@
        (if (null strat)
            (format t "[BT-V2] ⚠️ Strategy not found for Phase 1 result: ~a~%" base-name)
            (progn
+             ;; Admit deferred candidate into KB just before rank evaluation.
+             (unless (find strat *strategy-knowledge-base* :test #'eq)
+               (bt:with-lock-held (*kb-lock*)
+                 (unless (find strat *strategy-knowledge-base* :test #'eq)
+                   (push strat *strategy-knowledge-base*))))
              ;; Sync metrics to the actual strategy object
              (setf (strategy-sharpe strat) sharpe
                    (strategy-profit-factor strat) pf
@@ -133,10 +165,20 @@
                (setf (strategy-status-reason strat) "Phase1 Screening Result"))
              (upsert-strategy strat)
 
-             (if (and (>= sharpe *phase1-min-sharpe*) (>= pf 1.0))
-                 (progn
-                   (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B.~%")
-                   (ensure-rank strat :B "Phase1 Screening Passed (V2)"))
-                 (progn
-                   (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
-                   (send-to-graveyard strat "Phase1 Screening Failed (V2)")))))))))
+             (multiple-value-bind (passed founder-recovery-pass)
+                 (phase1-screening-passed-p strat sharpe pf trades max-dd)
+               (if passed
+                   (progn
+                     (when founder-recovery-pass
+                       (format t "[BT-V2] 🛟 Founder recovery gate used: S>=~,2f PF>=~,2f Trades>=~d MaxDD<=~,2f~%"
+                               (float *phase1-founder-min-sharpe* 1.0)
+                               (float *phase1-founder-min-pf* 1.0)
+                               (max 0 (truncate *phase1-founder-min-trades*))
+                               (float *phase1-founder-max-dd* 1.0)))
+                     (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B.~%")
+                     (ensure-rank strat :B "Phase1 Screening Passed (V2)")
+                     (when (fboundp 'add-strategy-to-active-pools)
+                       (add-strategy-to-active-pools strat)))
+                   (progn
+                     (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
+                     (send-to-graveyard strat "Phase1 Screening Failed (V2)"))))))))))

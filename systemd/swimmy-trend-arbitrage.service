@@ -1,0 +1,14 @@
+[Unit]
+Description=Swimmy Trend Arbitrage Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/swimmy/swimmy
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
+ExecStart=/home/swimmy/swimmy/tools/trend_arbitrage_runner.sh
+
+[Install]
+WantedBy=multi-user.target
+

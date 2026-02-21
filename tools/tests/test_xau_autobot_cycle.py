@@ -3,6 +3,7 @@ import unittest
 from unittest import mock
 
 from tools.xau_autobot_cycle import (
+    _compact_readiness,
     build_discord_headers,
     build_cycle_summary,
     build_optimize_command,
@@ -80,6 +81,24 @@ class TestXauAutoBotCycle(unittest.TestCase):
         self.assertEqual(summary["readiness"]["verdict"], "GO")
         self.assertEqual(summary["cost_guard"]["verdict"], "GO")
         self.assertEqual(summary["reports"]["cost_guard"], "data/reports/b.json")
+
+    def test_compact_readiness_includes_oos_robustness(self):
+        report = {
+            "verdict": "GO",
+            "break_even_roundtrip_cost": 0.0012,
+            "all": {"trades": 90.0, "pf": 1.5, "total_return": 0.09, "max_dd": 0.03},
+            "splits": [
+                {"ratio": 0.5, "oos": {"pf": 1.2, "total_return": 0.01}},
+                {"ratio": 0.6, "oos": {"pf": 1.0, "total_return": 0.0}},
+                {"ratio": 0.7, "oos": {"pf": 0.7, "total_return": -0.02}},
+            ],
+        }
+        compact = _compact_readiness(report)
+        robustness = compact.get("robustness", {})
+        self.assertEqual(robustness.get("oos_count"), 3.0)
+        self.assertAlmostEqual(robustness.get("oos_worst_pf"), 0.7, places=8)
+        self.assertAlmostEqual(robustness.get("oos_worst_total_return"), -0.02, places=8)
+        self.assertAlmostEqual(robustness.get("oos_negative_return_ratio"), 1.0 / 3.0, places=8)
 
     def test_dispatch_discord_notification_soft_fail(self):
         with mock.patch("tools.xau_autobot_cycle._post_discord", side_effect=RuntimeError("boom")):

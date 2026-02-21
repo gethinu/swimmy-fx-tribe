@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>Trend Arbitrage Feed</title>
+<link>https://example.com/trend-arbitrage/</link>
+<description>Demand surge + supply gap opportunities</description>
+<lastBuildDate>Fri, 20 Feb 2026 14:15:24 +0000</lastBuildDate>
+<item>
+<title>副業 アイデア: 需要先行の穴場を自動検知</title>
+<link>https://example.com/trend-arbitrage/posts/topic-55ba8f1bf2-55ba8f1b.md</link>
+<guid isPermaLink="false">trend-55ba8f1bf2390eda</guid>
+<description>Demand 0.58, Gap 0.18, Intent 0.47, Opp 0.42</description>
+<pubDate>2026-02-20T14:15:24+00:00</pubDate>
+</item>
+<item>
+<title>AI ツール 比較: 需要先行の穴場を自動検知</title>
+<link>https://example.com/trend-arbitrage/posts/ai-69a995f0.md</link>
+<guid isPermaLink="false">trend-69a995f0e9f1dcd4</guid>
+<description>Demand 0.62, Gap 0.20, Intent 0.47, Opp 0.44</description>
+<pubDate>2026-02-20T14:13:58+00:00</pubDate>
+</item>
+<item>
+<title>価格比較 ツール: 需要先行の穴場を自動検知</title>
+<link>https://example.com/trend-arbitrage/posts/topic-989c75ac31-989c75ac.md</link>
+<guid isPermaLink="false">trend-989c75ac315a6a60</guid>
+<description>Demand 0.62, Gap 0.27, Intent 0.72, Opp 0.52</description>
+<pubDate>2026-02-20T14:08:36+00:00</pubDate>
+</item>
+<item>
+<title>アフィリエイト 収益化: 需要先行の穴場を自動検知</title>
+<link>https://example.com/trend-arbitrage/posts/topic-de6c0e3429-de6c0e34.md</link>
+<guid isPermaLink="false">trend-de6c0e34291b5d4c</guid>
+<description>Demand 0.62, Gap 0.30, Intent 0.72, Opp 0.53</description>
+<pubDate>2026-02-20T14:02:54+00:00</pubDate>
+</item>
+</channel>
+</rss>

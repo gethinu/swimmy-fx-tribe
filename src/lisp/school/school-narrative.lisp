@@ -109,7 +109,7 @@
 
 (defun get-category-positions-summary ()
   "Generate a compact summary of active positions for all categories"
-  (if (hash-table-p *warrior-allocation*)
+  (if (hash-table-p *slot-allocation*)
       (let ((trends nil) (breakouts nil) (scalps nil) (reversions nil))
         
         ;; Aggregate positions
@@ -123,7 +123,7 @@
                         (:breakout (pushnew sym breakouts :test #'string=))
                         (:scalp (pushnew sym scalps :test #'string=))
                         (:reversion (pushnew sym reversions :test #'string=)))))) 
-                 *warrior-allocation*)
+                 *slot-allocation*)
         
         ;; Format Text
         (format nil "
@@ -544,6 +544,9 @@ REVERSION : ~a"
            (a-funnel-snippet (if (fboundp 'a-candidate-metrics-snippet)
                                  (a-candidate-metrics-snippet :limit 6)
                                  "A Candidate Funnel (latest): unavailable"))
+           (learning-snippet (if (fboundp 'learning-log-summary-line)
+                                 (learning-log-summary-line :bootstrap t)
+                                 "Learning Logs: unavailable"))
            (daemon-status-line (evolution-daemon-status-line)))
       (let* ((graveyard-text (if lib-counts
                                  (format nil "~d (Library ~d)" graveyard lib-graveyard)
@@ -616,6 +619,8 @@ Current status of the autonomous strategy generation pipeline.
 
 	~a
 
+	~a
+
 	⚙️ System Status
 	~a
 	✅ Native Lisp Orchestration (V28)
@@ -641,6 +646,7 @@ Current status of the autonomous strategy generation pipeline.
 	            a-near-miss-snippet
 	            a-funnel-snippet
 	            top-snippet
+              learning-snippet
               daemon-status-line
 	            (format-timestamp (get-universal-time)))))))
 

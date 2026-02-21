@@ -132,19 +132,21 @@
     :indicators '((ema 20) (ema 50) (ema 100))
     :entry '(and (> ema-20 ema-50) (> ema-50 ema-100)) :exit '(< ema-20 ema-50)))
 
-(def-founder :hunted-d1-adx "Hunted-D1-ADX-Trend"
+(def-founder :hunted-d1-adx "Hunted-D1-ADX-Trend-V2"
   "D1 ADX Strong Trend."
-  (make-strategy :name "Hunted-D1-ADX-Trend" :category :trend :timeframe "D1" :generation 0
+  (make-strategy :name "Hunted-D1-ADX-Trend-V2" :category :trend :timeframe "D1" :generation 0
     :sl 0.0100 :tp 0.0300 :volume 0.03
-    :indicators '((adx 14))
-    :entry '(> adx 25) :exit '(< adx 20)))
+    :indicators '((adx 14) (ema 50))
+    :entry '(and (> adx 23) (> close ema-50))
+    :exit '(or (< adx 18) (< close ema-50))))
 
-(def-founder :hunted-d1-williams "Hunted-D1-Williams-R"
+(def-founder :hunted-d1-williams "Hunted-D1-Williams-R-V2"
   "D1 Williams %R Reversion."
-  (make-strategy :name "Hunted-D1-Williams-R" :category :reversion :timeframe "D1" :generation 0
+  (make-strategy :name "Hunted-D1-Williams-R-V2" :category :reversion :timeframe "D1" :generation 0
     :sl 0.0080 :tp 0.0150 :volume 0.03
-    :indicators '((williams 14)) 
-    :entry '(< williams -80) :exit '(> williams -20)))
+    :indicators '((williams 14) (sma 200))
+    :entry '(and (> close sma-200) (cross-above williams -80))
+    :exit '(or (< close sma-200) (> williams -20))))
 
 (def-founder :hunted-d1-sar "Hunted-D1-SMA-Break"
   "D1 SMA 10 Breakout (Momentum)."
@@ -152,6 +154,15 @@
     :sl 0.0100 :tp 0.0200 :volume 0.03
     :indicators '((sma 10))
     :entry '(cross-above close sma-10) :exit '(cross-below close sma-10)))
+
+(def-founder :hunted-h12-vwapvr-50-150 "Hunted-H12-VWAPVR-50-150"
+  "H12 VWAP Volume-Ratio breakout (orange threshold 150)."
+  (make-strategy :name "Hunted-H12-VWAPVR-50-150" :category :trend :timeframe 720 :generation 0
+    :sl 1.6 :tp 6.0 :volume 0.03
+    :indicators '((vwapvr 50 150))
+    :entry '(and (< vwapvr-50-prev vwapvr-threshold)
+                 (>= vwapvr-50 vwapvr-threshold))
+    :exit '(<= vwapvr-50 0)))
 
 
 ;;; ----------------------------------------------------------------------------
@@ -186,12 +197,13 @@
     :indicators '((donchian 4))
     :entry '(> close donchian-upper) :exit '(< close donchian-mid)))
 
-(def-founder :hunted-w1-ema "Hunted-W1-EMA-Trend"
+(def-founder :hunted-w1-ema "Hunted-W1-EMA-Trend-V2"
   "W1 EMA 13/26 Trend."
-  (make-strategy :name "Hunted-W1-EMA-Trend" :category :trend :timeframe "W1" :generation 0
+  (make-strategy :name "Hunted-W1-EMA-Trend-V2" :category :trend :timeframe "W1" :generation 0
     :sl 0.0200 :tp 0.0500 :volume 0.05
-    :indicators '((ema 13) (ema 26))
-    :entry '(cross-above ema-13 ema-26) :exit '(cross-below ema-13 ema-26)))
+    :indicators '((ema 13) (ema 26) (ema 52))
+    :entry '(and (cross-above ema-13 ema-26) (> ema-26 ema-52))
+    :exit '(or (cross-below ema-13 ema-26) (< ema-26 ema-52))))
 
 (def-founder :hunted-w1-bb "Hunted-W1-BB-Break"
   "W1 Bollinger Breakout."
@@ -207,12 +219,13 @@
     :indicators '((stoch 14 3 3))
     :entry '(< stoch-k 20) :exit '(> stoch-k 80)))
 
-(def-founder :hunted-w1-pullback "Hunted-W1-Pullback"
+(def-founder :hunted-w1-pullback "Hunted-W1-Pullback-V2"
   "W1 Trend Pullback."
-  (make-strategy :name "Hunted-W1-Pullback" :category :trend :timeframe "W1" :generation 0
+  (make-strategy :name "Hunted-W1-Pullback-V2" :category :trend :timeframe "W1" :generation 0
     :sl 0.0200 :tp 0.0500 :volume 0.05
-    :indicators '((sma 50) (rsi 14))
-    :entry '(and (> close sma-50) (< rsi 45)) :exit '(> rsi 60)))
+    :indicators '((sma 50) (sma 200) (rsi 14))
+    :entry '(and (> close sma-50) (> sma-50 sma-200) (< rsi 40))
+    :exit '(or (> rsi 60) (< close sma-50))))
 
 (def-founder :hunted-w1-long-hold "Hunted-W1-Long-Hold"
   "W1 Long Term Hold (SMA 200)."
@@ -221,12 +234,13 @@
     :indicators '((sma 200))
     :entry '(cross-above close sma-200) :exit '(cross-below close sma-200)))
 
-(def-founder :hunted-w1-volume "Hunted-W1-Volume-Trend"
+(def-founder :hunted-w1-volume "Hunted-W1-Volume-Trend-V2"
   "W1 Volume Trend."
-  (make-strategy :name "Hunted-W1-Volume-Trend" :category :trend :timeframe "W1" :generation 0
+  (make-strategy :name "Hunted-W1-Volume-Trend-V2" :category :trend :timeframe "W1" :generation 0
     :sl 0.0200 :tp 0.0600 :volume 0.05
-    :indicators '((sma 20))
-    :entry '(and (> close sma-20) (> volume 0)) :exit '(< close sma-20)))
+    :indicators '((sma 20) (ema 50) (rsi 14))
+    :entry '(and (> close sma-20) (> sma-20 ema-50) (> rsi 52))
+    :exit '(or (< close sma-20) (< rsi 45))))
 
 ;;; ----------------------------------------------------------------------------
 ;;; 9. BATCH RECRUITMENT (Auto-execution on Load)
@@ -259,6 +273,7 @@
   (recruit-founder :hunted-d1-adx)
   (recruit-founder :hunted-d1-williams)
   (recruit-founder :hunted-d1-sar)
+  (recruit-founder :hunted-h12-vwapvr-50-150)
 
   ;; W1 Batch
   (recruit-founder :hunted-w1-weinstein)

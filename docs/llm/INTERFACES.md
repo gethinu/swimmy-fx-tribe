@@ -74,9 +74,10 @@ MT5からブロードキャストされる。
 ```
 ((type . "POSITIONS")
  (symbol . "USDJPY")
- (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10))
-          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05)))))
+ (data . (((ticket . 123456789) (magic . 123456) (type . "BUY") (volume . 0.10) (entry_price . 145.12345))
+          ((ticket . 123456790) (magic . 123457) (type . "SELL") (volume . 0.05) (entry_price . 145.09876)))))
 ```
+**備考**: `data` は list 値（`(data . (...))`）として送る。ポジション0件時は `(data . ())` を返し、外側 alist を必ず閉じる（括弧不整合の S式を送らない）。
 
 **SWAP_DATA**:
 ```
@@ -116,8 +117,17 @@ MT5からブロードキャストされる。
  (pnl . 1234.56)
  (symbol . "USDJPY")
  (ticket . 123456789)
- (magic . 123456))
+ (magic . 123456)
+ (direction . "BUY")
+ (strategy_name . "Volvo-Scalp-Gen0")
+ (category . "trend")
+ (lot . 0.10)
+ (open_time . 1709231000)
+ (entry_price . 145.12345)
+ (exit_price . 145.45678))
 ```
+**備考**: 最小必須は `won/pnl/symbol/ticket/magic`。学習一貫性のため `direction/strategy_name/category` を送信側（MT5 Bridge）が同梱する。`strategy_name` は `strategy` と同義キーとして受信側が扱う。`category` に `NIL` を送らない。
+受信側（Executor/Learning）は `TRADE_CLOSED` payload を正本として扱い、slot allocation キャッシュ由来の文脈補完に依存しない。
 
 ### 2. Execution / Commands (Port 5560)
 RustからMT5へ送信される。
@@ -823,3 +833,27 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `/etc/systemd/system/swimmy-polymarket-openclaw-status.service`
   - `/etc/systemd/system/swimmy-polymarket-openclaw-status.timer`
   - `/etc/systemd/system/swimmy-notifier.service`
+
+## 運用監査CLIインターフェース
+`tools/system_audit.sh` が実行するローカル監査コマンドのうち、live trade-close 整合に関する契約を以下に定義する。
+
+### `tools/check_live_trade_close_integrity.py`
+- **入力引数**:
+  - `--db`（既定: `data/memory/swimmy.db`）
+  - `--log`（既定: `logs/swimmy.log`）
+  - `--lookback-minutes`（既定: `240`）
+  - `--tail-lines`（既定: `5000`）
+  - `--after-id`（既定: `0`、`id > after-id` のみ評価）
+  - `--require-recent-trades`（指定時は lookback 内 `trade_logs=0` を FAIL）
+- **出口コード**:
+  - `0`: 契約違反なし（`no recent trades` は WARN 表示で継続）
+  - `1`: 契約違反あり（文脈欠落、`POSITIONS` parser 再発、DB欠落、query失敗）
+
+### `tools/system_audit.sh` 連携パラメータ
+- **Env → 引数マッピング**:
+  - `LIVE_TRADE_CLOSE_DB` → `--db`
+  - `LIVE_TRADE_CLOSE_LOG` → `--log`
+  - `LIVE_TRADE_CLOSE_LOOKBACK_MINUTES` → `--lookback-minutes`
+  - `LIVE_TRADE_CLOSE_TAIL_LINES` → `--tail-lines`
+  - `LIVE_TRADE_CLOSE_AFTER_ID` → `--after-id`
+  - `LIVE_TRADE_CLOSE_REQUIRE_RECENT_TRADES=1` のとき `--require-recent-trades` を追加

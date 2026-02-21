@@ -223,6 +223,16 @@ def main():
     _assert_in("phase", payload, "phase")
     _assert_in("range_id", payload, "range_id")
 
+    # Strategy indicator type normalization should preserve supported non-SMA indicators.
+    sanitized_vwapvr = svc._sanitize_strategy({"name": "ut", "indicator_type": "vwapvr"})
+    assert sanitized_vwapvr["indicator_type"] == "vwapvr"
+    sanitized_vwap = svc._sanitize_strategy({"name": "ut", "indicator_type": "vwap"})
+    assert sanitized_vwap["indicator_type"] == "vwap"
+    sanitized_volsma = svc._sanitize_strategy({"name": "ut", "indicator_type": "volsma"})
+    assert sanitized_volsma["indicator_type"] == "volsma"
+    sanitized_vpoc = svc._sanitize_strategy({"name": "ut", "indicator_type": "vpoc"})
+    assert sanitized_vpoc["indicator_type"] == "vpoc"
+
     # Legacy candle/swap keys should be normalized for guardian.
     payload_legacy = svc._build_guardian_payload(
         {

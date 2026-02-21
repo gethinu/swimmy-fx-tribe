@@ -134,6 +134,38 @@ So the alist entry prints like: (data_id \"USDJPY_M1\") / (start_time 1700000000
       (assert-true (string-equal "sma" (symbol-name indicator))
                    "Expected indicator_type to be SMA symbol"))))
 
+(deftest test-request-backtest-indicator-type-vwapvr
+  "request-backtest should emit VWAP volume-ratio indicator type symbol."
+  (let ((captured nil)
+        (orig-send (symbol-function 'swimmy.school::send-zmq-msg)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::send-zmq-msg)
+                (lambda (msg &key target)
+                  (declare (ignore target))
+                  (setf captured msg)))
+          (let* ((strat (swimmy.school:make-strategy
+                         :name "Test-BT-VWAPVR"
+                         :indicators '((vwapvr 20 140))
+                         :sl 0.001
+                         :tp 0.002
+                         :volume 0.01
+                         :indicator-type "sma"
+                         :timeframe 60
+                         :symbol "USDJPY"))
+                 (candles (list (swimmy.globals:make-candle
+                                 :timestamp 1700000000
+                                 :open 1.0 :high 1.0 :low 1.0 :close 1.0 :volume 1.0))))
+            (swimmy.school:request-backtest strat :candles candles)))
+      (setf (symbol-function 'swimmy.school::send-zmq-msg) orig-send))
+    (assert-not-nil captured "Expected backtest payload to be sent")
+    (let* ((payload (parse-sexpr-payload captured))
+           (strategy (field 'strategy payload))
+           (indicator (field 'indicator_type strategy)))
+      (assert-true (symbolp indicator) "Expected indicator_type to be a symbol")
+      (assert-true (string-equal "vwapvr" (symbol-name indicator))
+                   "Expected indicator_type to be VWAPVR symbol"))))
+
 (deftest test-request-backtest-single-line
   "request-backtest should emit a single-line S-expression payload."
   (let ((captured nil)

@@ -404,29 +404,39 @@ Otherwise, append \"-SYMBOL\"."
                               (if match (strategy-name match) "n/a"))
                       (return-from recruit-founder nil))))
                 (format t "~%[HEADHUNTER] 🕵️ Recruiting Founder: ~a~%" (strategy-name founder))
-                (if (add-to-kb founder :founder :require-bt nil) ; Disable gate for entry
-                    (progn
-                      (when *founder-preflight-screen-enabled*
-                        (note-founder-preflight-success founder))
-                      ;; V50.5: Trigger Validation (only if system is running)
-                      (if (and (boundp '*startup-mode*) *startup-mode*)
-                          (format t "[HEADHUNTER] ⏳ Founder ~a added. BT Deferred (Startup Mode).~%" (strategy-name founder))
-                          (progn
-                            (format t "[HEADHUNTER] ⏳ Founder ~a provisionally accepted. Requesting BT...~%" (strategy-name founder))
-                            (request-backtest founder)
-                            ;; ZMQ notification for external systems
-                            (when (and (boundp 'swimmy.globals::*cmd-publisher*) swimmy.globals::*cmd-publisher*)
-                              (let ((payload `((type . "FOUNDER_RECRUITED")
-                                               (name . ,(strategy-name founder)))))
-                                (pzmq:send swimmy.globals::*cmd-publisher*
-                                           (swimmy.core::sexp->string payload :package *package*))))))
-                      t)
-                    (progn
-                      (when *founder-preflight-screen-enabled*
-                        (note-founder-preflight-reject founder :add-to-kb-rejected))
-                      (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%" 
-                              (strategy-name founder))
-                      nil)))))
+                (multiple-value-bind (accepted status)
+                    (add-to-kb founder :founder :require-bt t)
+                  (if accepted
+                      (progn
+                        (when *founder-preflight-screen-enabled*
+                          (note-founder-preflight-success founder))
+                        (let ((effective-status (or status :added)))
+                          (cond
+                            ((eq effective-status :queued-phase1)
+                             (format t "[HEADHUNTER] ⏳ Founder ~a queued for Phase1 screening.~%"
+                                     (strategy-name founder)))
+                            ;; Legacy fallback path: if add-to-kb admits immediately.
+                            ((and (boundp '*startup-mode*) *startup-mode*)
+                             (format t "[HEADHUNTER] ⏳ Founder ~a added. BT Deferred (Startup Mode).~%"
+                                     (strategy-name founder)))
+                            (t
+                             (format t "[HEADHUNTER] ⏳ Founder ~a provisionally accepted. Requesting BT...~%"
+                                     (strategy-name founder))
+                             (request-backtest founder)
+                             ;; ZMQ notification for external systems
+                             (when (and (boundp 'swimmy.globals::*cmd-publisher*)
+                                        swimmy.globals::*cmd-publisher*)
+                               (let ((payload `((type . "FOUNDER_RECRUITED")
+                                                (name . ,(strategy-name founder)))))
+                                 (pzmq:send swimmy.globals::*cmd-publisher*
+                                            (swimmy.core::sexp->string payload :package *package*)))))))
+                        t)
+                      (progn
+                        (when *founder-preflight-screen-enabled*
+                          (note-founder-preflight-reject founder :add-to-kb-rejected))
+                        (format t "[HEADHUNTER] 🚫 Founder ~a rejected by KB (Duplicate)~%"
+                                (strategy-name founder))
+                        nil))))))
         (format t "[HEADHUNTER] ⚠️ Founder type ~a not found in registry~%" founder-type))))
 
 ;;; ----------------------------------------------------------------------------

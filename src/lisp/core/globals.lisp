@@ -127,7 +127,11 @@
 (defparameter *backtest-webhook-url* nil)
 (defparameter *last-status-notification-time* (make-hash-table :test 'equal))
 (defparameter *status-notification-interval* 3600)
-(defparameter *warrior-allocation* (make-hash-table :test 'equal))
+(defparameter *slot-allocation* (make-hash-table :test 'equal))
+;; Deprecated compatibility alias. Keep synchronized during terminology migration.
+(defparameter *warrior-allocation* *slot-allocation*)
+(unless (eq *warrior-allocation* *slot-allocation*)
+  (setf *warrior-allocation* *slot-allocation*))
 (defparameter *resignation-threshold* -10000) ; Default logic usually sets this
 
 ;;; MISSING GLOBALS (Discord)

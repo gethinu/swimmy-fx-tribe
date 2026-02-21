@@ -1,0 +1,50 @@
+{
+  "profile_name": "armada_core_v1",
+  "profile_version": "2026-02-20",
+  "source": "Myfxbook ArmadaAC public systems",
+  "candidate_gate": {
+    "min_profit_factor": 1.6,
+    "max_drawdown_percent": 12.0,
+    "min_trades": 250,
+    "min_avg_trade_length_hours": 3.0,
+    "max_avg_trade_length_hours": 10.0,
+    "max_single_side_trade_share": 0.8
+  },
+  "promotion_gate": {
+    "min_oos_profit_factor": 1.3,
+    "min_rolling_30d_profit_factor": 1.1,
+    "max_rolling_30d_drawdown_percent": 6.0,
+    "require_positive_expectancy": true
+  },
+  "risk_budget": {
+    "min_risk_per_trade_percent": 0.25,
+    "max_risk_per_trade_percent": 0.4,
+    "max_concurrent_positions": 3,
+    "hard_equity_drawdown_percent": 12.0,
+    "allow_martingale": false,
+    "allow_grid_averaging": false
+  },
+  "kill_switch": {
+    "max_weekly_drawdown_percent": 4.0,
+    "min_rolling_30d_profit_factor": 1.0,
+    "min_trade_count_ratio_60d_vs_baseline": 0.5,
+    "action": "auto_pause"
+  },
+  "clusters": {
+    "core": [
+      "taiki",
+      "pandajiro",
+      "yumimin",
+      "nami-no-yukusaki-armada",
+      "kojirin"
+    ],
+    "aggressive_satellite": [
+      "hiro",
+      "gokuhi-dou-ri-man"
+    ]
+  },
+  "notes": [
+    "Behavioral replica only; strategy entry/exit logic is not publicly disclosed.",
+    "Use public stats for gating and risk profile reproduction, not for direct signal cloning."
+  ]
+}

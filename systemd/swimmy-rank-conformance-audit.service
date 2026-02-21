@@ -1,0 +1,14 @@
+[Unit]
+Description=Swimmy Rank Conformance Daily Audit
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/tools/rank_conformance_audit_runner.sh
+Environment=HOME=/home/swimmy
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
+StandardOutput=append:/home/swimmy/swimmy/logs/rank_conformance_audit.log
+StandardError=append:/home/swimmy/swimmy/logs/rank_conformance_audit.log

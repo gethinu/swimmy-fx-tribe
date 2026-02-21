@@ -119,8 +119,43 @@ def _load_json(path: Path) -> Dict[str, object]:
 
 
 def _compact_readiness(report: Dict[str, object]) -> Dict[str, object]:
+    def _as_float(value: object, default: float = 0.0) -> float:
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _summarize_oos_robustness(raw_splits: object) -> Dict[str, float]:
+        if not isinstance(raw_splits, list):
+            return {}
+
+        oos_pf: List[float] = []
+        oos_returns: List[float] = []
+        for split in raw_splits:
+            if not isinstance(split, dict):
+                continue
+            oos = split.get("oos")
+            if not isinstance(oos, dict):
+                continue
+            oos_pf.append(_as_float(oos.get("pf", 0.0), 0.0))
+            oos_returns.append(_as_float(oos.get("total_return", 0.0), 0.0))
+
+        if not oos_returns:
+            return {}
+
+        neg_count = sum(1 for value in oos_returns if value < 0.0)
+        count = float(len(oos_returns))
+        return {
+            "oos_count": count,
+            "oos_worst_pf": float(min(oos_pf)),
+            "oos_worst_total_return": float(min(oos_returns)),
+            "oos_negative_return_ratio": float(neg_count / len(oos_returns)),
+        }
+
     all_metrics = report.get("all") if isinstance(report.get("all"), dict) else {}
-    return {
+    compact = {
         "verdict": report.get("verdict", "UNKNOWN"),
         "break_even_roundtrip_cost": report.get("break_even_roundtrip_cost", 0.0),
         "trades": all_metrics.get("trades", 0.0),
@@ -128,6 +163,10 @@ def _compact_readiness(report: Dict[str, object]) -> Dict[str, object]:
         "total_return": all_metrics.get("total_return", 0.0),
         "max_dd": all_metrics.get("max_dd", 0.0),
     }
+    robustness = _summarize_oos_robustness(report.get("splits"))
+    if robustness:
+        compact["robustness"] = robustness
+    return compact
 
 
 def _compact_cost_guard(report: Dict[str, object]) -> Dict[str, object]:

@@ -15,6 +15,7 @@
   category            ; :trend, :reversion, :breakout, :scalp
   strategy-name
   pair-id
+  (execution-mode :live) ; :live or :shadow
   ;; Market Context (15+ variables)
   regime              ; :trending, :ranging
   volatility          ; :high, :normal, :low
@@ -57,6 +58,10 @@
 (defvar *trade-history* (make-hash-table :test 'eq))
 (defvar *category-entries* (make-hash-table :test 'eq))
 (defvar *category-positions* nil)
+(defparameter *shadow-slot-allocation* (make-hash-table :test 'equal)
+  "In-memory shadow positions keyed by strategy/symbol/direction for A-rank paper execution.")
+(defparameter *a-rank-shadow-trading-enabled* t
+  "When T, A-rank signals are shadow-executed even when live S-gate blocks.")
 (defvar *yesterday-pnl* 0 "PnL from the previous trading day (for reporting)")
 (defvar *category-trades* 0)
 
@@ -117,8 +122,8 @@
 (defparameter *max-net-exposure-pct* 0.15 "Max Σ(Nominal) / Equity (15%)")
 (defparameter *max-currency-exposure-pct* 0.10 "Max Single Currency Exposure / Equity (10%)")
 
-;; Warrior System (school-danger.lisp)
-;; *warrior-allocation* moved to globals.lisp
+;; Slot System (school-danger.lisp)
+;; *slot-allocation* moved to globals.lisp
 
 ;; Ritual History (rituals.lisp)
 (defparameter *win-rate-history* nil "Historical win rates")

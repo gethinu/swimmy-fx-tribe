@@ -68,7 +68,7 @@ graph TD
 ### 3. Lisp Brain/School (Cortex)
 - **Pure Lisp Daemon (Systemd)**
 - **School**: 進化 (Breeding), 淘汰 (Culling), ランク付 (B/A/S)。
-- **Brain**: シグナル生成、Atomic Allocation (スロット確保)。
+- **Brain**: シグナル生成、Execution Slot Allocation（実行スロット確保）。
 - **Timeframe Model**: 戦略TFは minutes(int) を正本にし、既定8TFバケットでカテゴリ/相関を有限化。`M36/H2/H5/H60` など任意TF探索は mutation pool で制御する。
 - **Rank Safety**: A/S は trade evidence floor（A>=50, S>=100）を持ち、評価サイクルで既存ランクにも降格スイープを適用する。
 - **Scribe**: I/O分離用ワーカー。
@@ -95,7 +95,7 @@ graph TD
 | :--- | :--- | :--- |
 | **High Freq (Tick)** | MT5 | 価格更新、Rustへ送信 |
 | **Realtime** | Rust | Risk Gate、Reflex |
-| **Event** | Lisp | シグナル生成、Atomic Allocation、昇格時の非相関スコア通知 |
+| **Event** | Lisp | シグナル生成、Execution Slot Allocation、昇格時の非相関スコア通知 |
 | **Hourly** | Lisp | 学習、ファイルローテーション、**Evolution Report** |
 | **Daily (00:10 JST)** | Lisp | `strategy_daily_pnl` 日次集計 |
 | **Weekly (Sat)** | Guardian | Weekend Auto-Close (全決済) |

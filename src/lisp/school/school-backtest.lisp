@@ -54,12 +54,36 @@
   "Detect primary indicator type from indicators list for Rust backtester.
    Returns a symbol or nil."
   (when (and indicators (listp indicators))
-    (let ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators))))
+    (let* ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators)))
+           (indicator-name (cond
+                             ((symbolp first-ind) (string-downcase (symbol-name first-ind)))
+                             ((stringp first-ind) (string-downcase first-ind))
+                             (t nil))))
       (cond
-        ((member first-ind '(rsi RSI :rsi)) 'rsi)
-        ((member first-ind '(bb BB :bb bollinger)) 'bb)
-        ((member first-ind '(macd MACD :macd)) 'macd)
-        ((member first-ind '(stoch STOCH :stoch stochastic)) 'stoch)
+        ((and indicator-name
+              (or (search "vwapvr" indicator-name)
+                  (search "vwap-volume-ratio" indicator-name)))
+         'vwapvr)
+        ((and indicator-name
+              (or (search "vpoc" indicator-name)
+                  (search "volume-poc" indicator-name)))
+         'vpoc)
+        ((and indicator-name
+              (or (search "volsma" indicator-name)
+                  (search "volume-sma" indicator-name)))
+         'volsma)
+        ((and indicator-name (search "vwap" indicator-name)) 'vwap)
+        ((and indicator-name (search "rsi" indicator-name)) 'rsi)
+        ((and indicator-name
+              (or (search "boland" indicator-name)
+                  (search "bollinger" indicator-name)
+                  (search "bb" indicator-name)))
+         'bb)
+        ((and indicator-name (search "macd" indicator-name)) 'macd)
+        ((and indicator-name
+              (or (search "stoch" indicator-name)
+                  (search "stochastic" indicator-name)))
+         'stoch)
         (t 'sma)))))
 
 ;; V7.13: Convert strategy to Alist for S-Expression Protocol

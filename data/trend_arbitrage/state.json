@@ -1,0 +1,49 @@
+{
+  "published_ids": [
+    "trend-de6c0e34291b5d4c",
+    "trend-989c75ac315a6a60",
+    "trend-69a995f0e9f1dcd4",
+    "trend-55ba8f1bf2390eda"
+  ],
+  "posts": [
+    {
+      "id": "trend-55ba8f1bf2390eda",
+      "title": "副業 アイデア: 需要先行の穴場を自動検知",
+      "slug": "topic-55ba8f1bf2-55ba8f1b",
+      "published_at": "2026-02-20T14:15:24+00:00",
+      "summary": "Demand 0.58, Gap 0.18, Intent 0.47, Opp 0.42",
+      "query": "副業 アイデア",
+      "url": "https://example.com/trend-arbitrage/posts/topic-55ba8f1bf2-55ba8f1b.md"
+    },
+    {
+      "id": "trend-69a995f0e9f1dcd4",
+      "title": "AI ツール 比較: 需要先行の穴場を自動検知",
+      "slug": "ai-69a995f0",
+      "published_at": "2026-02-20T14:13:58+00:00",
+      "summary": "Demand 0.62, Gap 0.20, Intent 0.47, Opp 0.44",
+      "query": "AI ツール 比較",
+      "url": "https://example.com/trend-arbitrage/posts/ai-69a995f0.md"
+    },
+    {
+      "id": "trend-989c75ac315a6a60",
+      "title": "価格比較 ツール: 需要先行の穴場を自動検知",
+      "slug": "topic-989c75ac31-989c75ac",
+      "published_at": "2026-02-20T14:08:36+00:00",
+      "summary": "Demand 0.62, Gap 0.27, Intent 0.72, Opp 0.52",
+      "query": "価格比較 ツール",
+      "url": "https://example.com/trend-arbitrage/posts/topic-989c75ac31-989c75ac.md"
+    },
+    {
+      "id": "trend-de6c0e34291b5d4c",
+      "title": "アフィリエイト 収益化: 需要先行の穴場を自動検知",
+      "slug": "topic-de6c0e3429-de6c0e34",
+      "published_at": "2026-02-20T14:02:54+00:00",
+      "summary": "Demand 0.62, Gap 0.30, Intent 0.72, Opp 0.53",
+      "query": "アフィリエイト 収益化",
+      "url": "https://example.com/trend-arbitrage/posts/topic-de6c0e3429-de6c0e34.md"
+    }
+  ],
+  "published": {
+    "trend-55ba8f1bf2390eda": "2026-02-20T14:15:24+00:00"
+  }
+}

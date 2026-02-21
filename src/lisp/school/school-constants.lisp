@@ -100,3 +100,13 @@
 
 ;;; 5. SCREENING THRESHOLDS
 (defparameter *phase1-min-sharpe* 0.1 "Minimum Sharpe for Phase 1 (Screening)")
+(defparameter *phase1-founder-recovery-enabled* t
+  "When T, Founder seed strategies can use a limited recovery gate in Phase 1.")
+(defparameter *phase1-founder-min-sharpe* 0.05
+  "Minimum Sharpe for Founder Phase1 recovery gate.")
+(defparameter *phase1-founder-min-pf* 1.15
+  "Minimum Profit Factor for Founder Phase1 recovery gate.")
+(defparameter *phase1-founder-min-trades* 15
+  "Minimum trades for Founder Phase1 recovery gate.")
+(defparameter *phase1-founder-max-dd* 0.20
+  "Maximum drawdown for Founder Phase1 recovery gate.")

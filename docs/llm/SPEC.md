@@ -38,6 +38,7 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **実運用 Go/No-Go（Rankと分離）**:
   - Rank（B/A/S）は研究評価を担い、ライブ投入可否は `deployment_gate_status` で別管理する。
   - 最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。
+  - `LIVE_READY` 戦略でも、**直近LIVE実績ガード**（既定: 最新40件・判定最小20件）で `PF>=1.05` / `WR>=35%` / `net_pnl>=0` / `latest_loss_streak<=3` を満たさない場合は、実行経路で fail-closed により発注を中止する。
   - これにより `S-Rank` は「研究上の上位評価」であり、単独では `live-ready` を意味しない。
 
 ## 4.5. Pattern Similarity Gate (Regime/Gate)
@@ -76,8 +77,9 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
 - **Risk Gate (Rust)**:
   - Daily Loss Limit (-¥5000), Max Risk Per Trade, Liquidity Check, Concentration Limit。
   - Dead Man's Switch (300秒無通信で全決済)。
-- **Atomic Allocation (Lisp)**:
-  - トレード計算前にスロットを物理確保し、Magic Number衝突を防止。
+- **Execution Slot Allocation (Lisp)**:
+  - トレード計算前に実行スロットを確保し、Magic Number衝突を防止する。
+  - `warrior` 呼称は廃止し、運用・実装の正本語彙は `slot` に統一する。
 - **Tiered Cooldown (Lisp)**:
   - 損失が続くと冷却期間が段階的に伸びる (3m → ... → EOD)。
 - **Toxic Feature Auditor (Lisp/Python)**:

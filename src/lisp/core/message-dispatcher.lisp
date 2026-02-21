@@ -385,6 +385,35 @@ This keeps school allocation reconciliation independent of the dispatcher read p
     (when raw
       (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
 
+(defun %normalize-symbol-list (raw)
+  "Normalize RAW into an uppercase symbol list for supported-symbol overrides."
+  (let ((items (cond
+                 ((null raw) nil)
+                 ((listp raw) raw)
+                 (t (list raw))))
+        (out nil))
+    (dolist (item items (nreverse out))
+      (let ((token (%normalize-token-string item)))
+        (when (and token (> (length token) 0))
+          (pushnew token out :test #'string=))))))
+
+(defun %normalize-founder-key-list (raw)
+  "Normalize RAW into a unique founder keyword list."
+  (let ((items (cond
+                 ((null raw) nil)
+                 ((listp raw) raw)
+                 (t (list raw))))
+        (out nil))
+    (dolist (item items (nreverse out))
+      (let* ((token (%normalize-token-string item))
+             (plain (and token
+                         (if (and (> (length token) 0)
+                                  (char= (char token 0) #\:))
+                             (subseq token 1)
+                             token))))
+        (when (and plain (> (length plain) 0))
+          (pushnew (intern plain :keyword) out :test #'eq))))))
+
 (defparameter +order-reject-sink-guard-reasons+
   '("MISSING_INSTRUMENT" "INVALID_INSTRUMENT"
     "MISSING_COMMENT" "INVALID_COMMENT_FORMAT"
@@ -767,6 +796,75 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                          (swimmy.main:update-candle bid-num symbol-str))
                        ;; Force immediate status emission even outside regular market hours.
                        (swimmy.shell:send-periodic-status-report symbol-str (or bid-num 0.0) t))))
+                  ((string= type-str "RECRUIT_SPECIAL_FORCES")
+                   (let* ((symbols-raw (%alist-val sexp '(symbols :symbols) nil))
+                          (symbols (%normalize-symbol-list symbols-raw))
+                          (founder-keys-raw (%alist-val sexp '(founder_keys founder-keys
+                                                               :founder_keys :founder-keys)
+                                                        nil))
+                          (founder-keys (%normalize-founder-key-list founder-keys-raw))
+                          (recruit-limit-raw (%alist-val sexp '(recruit_limit recruit-limit
+                                                                :recruit_limit :recruit-limit)
+                                                          nil))
+                          (recruit-limit-int (%as-integer recruit-limit-raw))
+                          (recruit-limit (and (integerp recruit-limit-int)
+                                              (>= recruit-limit-int 0)
+                                              recruit-limit-int))
+                          (disable-preflight (%normalize-bool
+                                              (%alist-val sexp '(disable_preflight disable-preflight
+                                                                 :disable_preflight :disable-preflight)
+                                                          nil)
+                                              nil))
+                          (bypass-graveyard (%normalize-bool
+                                             (%alist-val sexp '(bypass_graveyard bypass-graveyard
+                                                                :bypass_graveyard :bypass-graveyard)
+                                                         nil)
+                                             nil))
+                          (flush-phase1 (%normalize-bool
+                                         (%alist-val sexp '(flush_phase1 flush-phase1
+                                                            :flush_phase1 :flush-phase1)
+                                                     t)
+                                         t))
+                          (flush-limit-raw (%alist-val sexp '(flush_limit flush-limit
+                                                              :flush_limit :flush-limit)
+                                                        nil))
+                          (flush-limit-int (%as-integer flush-limit-raw))
+                          (flush-limit (and (integerp flush-limit-int)
+                                            (>= flush-limit-int 0)
+                                            flush-limit-int))
+                          (active-symbols
+                            (if symbols
+                                symbols
+                                    (if (and (boundp 'swimmy.core::*supported-symbols*)
+                                         swimmy.core::*supported-symbols*)
+                                    swimmy.core::*supported-symbols*
+                                    '("USDJPY")))))
+                     (format t "[DISPATCH] 📥 RECRUIT_SPECIAL_FORCES recv: symbols=~a founder_keys=~a recruit_limit=~a disable_preflight=~a bypass_graveyard=~a flush_phase1=~a flush_limit=~a~%"
+                             active-symbols
+                             (if founder-keys founder-keys "all")
+                             (or recruit-limit "none")
+                             disable-preflight bypass-graveyard flush-phase1 (or flush-limit "default"))
+                     (if (fboundp 'swimmy.school::recruit-special-forces)
+                         (let ((swimmy.core::*supported-symbols* active-symbols))
+                           (let ((swimmy.school::*founder-graveyard-bypass-enabled*
+                                   (if bypass-graveyard t nil)))
+                             (declare (special swimmy.school::*founder-graveyard-bypass-enabled*))
+                             (if disable-preflight
+                                 (let ((swimmy.school::*founder-preflight-screen-enabled* nil))
+                                   (declare (special swimmy.school::*founder-preflight-screen-enabled*))
+                                   (swimmy.school::recruit-special-forces
+                                    :max-attempts recruit-limit
+                                    :founder-keys founder-keys))
+                                 (swimmy.school::recruit-special-forces
+                                  :max-attempts recruit-limit
+                                  :founder-keys founder-keys))))
+                         (format t "[DISPATCH] ⚠️ recruit-special-forces unavailable~%"))
+                     (when (and flush-phase1
+                                (fboundp 'swimmy.school::flush-deferred-founders))
+                       (let ((sent (if flush-limit
+                                       (swimmy.school::flush-deferred-founders :limit flush-limit)
+                                       (swimmy.school::flush-deferred-founders))))
+                         (format t "[DISPATCH] 🌱 Deferred Phase1 flush sent=~a~%" sent)))))
                   ((string= type-str swimmy.core:+MSG-ACCOUNT-INFO+)
                    (swimmy.executor:process-account-info sexp))
                   ((string= type-str swimmy.core:+MSG-SWAP-DATA+)

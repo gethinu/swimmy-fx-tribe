@@ -48,5 +48,7 @@ CMD+=(--market-hours-only)
 "$ROOT/.venv/bin/python" "$ROOT/tools/xau_autobot_promote_best.py" \
   --comparison "$ROOT/data/reports/xau_autobot_cycle_comparison.json" \
   --config-dir "$ROOT/tools/configs" \
+  --live-reports-dir "$ROOT/data/reports" \
+  --live-max-age-hours "${XAU_AUTOBOT_LIVE_MAX_AGE_HOURS:-48}" \
   --write-active "$ROOT/tools/configs/xau_autobot.tuned_auto_active.json" \
   --write-report "$ROOT/data/reports/xau_autobot_promotion.json"

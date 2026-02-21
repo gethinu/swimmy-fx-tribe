@@ -79,6 +79,42 @@
            (k (float (if (= high low) 50 (* 100 (/ (- curr low) (max 0.00001 (- high low))))))))
       k)))
 
+(defun ind-vwap (n history)
+  "Rolling VWAP based on the previous N candles (excluding current), matching Guardian semantics."
+  (when (and (integerp n) (> n 0) (>= (length history) (1+ n)))
+    (let* ((window (subseq history 1 (1+ n)))
+           (pv-sum 0.0)
+           (vol-sum 0.0))
+      (dolist (c window)
+        (let* ((vol (max 0.0 (float (candle-volume c))))
+               (typical (float (/ (+ (candle-high c) (candle-low c) (candle-close c)) 3.0))))
+          (incf pv-sum (* typical vol))
+          (incf vol-sum vol)))
+      (when (> vol-sum 0.0)
+        (float (/ pv-sum vol-sum))))))
+
+(defun ind-volume-sma (n history)
+  "Rolling SMA of volume over previous N candles (excluding current)."
+  (when (and (integerp n) (> n 0) (>= (length history) (1+ n)))
+    (let* ((window (subseq history 1 (1+ n)))
+           (sum (reduce #'+ (mapcar (lambda (c) (max 0.0 (float (candle-volume c)))) window)
+                        :initial-value 0.0)))
+      (float (/ sum n)))))
+
+(defun ind-vwapvr (n history)
+  "Signed VWAP volume-ratio (percent), matching Guardian logic.
+value = sign(close>=vwap ? +1 : -1) * (current_volume / prev_volume_sma(n) * 100)."
+  (let ((vwap (ind-vwap n history))
+        (vol-ma (ind-volume-sma n history)))
+    (when (and (numberp vwap)
+               (numberp vol-ma)
+               (> vol-ma 0.0)
+               history)
+      (let* ((curr (first history))
+             (ratio (float (* 100.0 (/ (max 0.0 (float (candle-volume curr))) vol-ma))))
+             (sign (if (>= (candle-close curr) vwap) 1.0 -1.0)))
+        (float (* sign ratio))))))
+
 (defun ind-cci (n history)
   (when (>= (length history) n)
     (let* ((prices (mapcar (lambda (c) (float (/ (+ (candle-high c) (candle-low c) (candle-close c)) 3))) (subseq history 0 n)))
@@ -139,11 +175,13 @@
 
 (defparameter *allowed* '(+ - * / < > <= >= = and or not if 
                           ind-sma ind-ema ind-rsi ind-macd ind-bb ind-williams ind-stoch ind-atr ind-cci
+                          ind-vwap ind-volume-sma ind-vwapvr
                           ind-ichimoku ind-donchian
                           ind-session-high ind-session-low
                           ind-kalman ind-kalman-velocity ind-kalman-trend
                           ind-smma is-staircase-pattern is-volume-increasing confirm-breakout
-                          cross-above cross-below defstrategy sma ema rsi macd bb williams stoch atr cci kalman close high low open
+                          cross-above cross-below defstrategy sma ema rsi macd bb williams stoch atr cci kalman
+                          vwap volsma vpoc vwapvr close high low open
                           session-high session-low ichimoku donchian))
 
 (defun indicator-ref-p (sym)
@@ -151,6 +189,7 @@
     (or (search "SMA-" name)
         (search "EMA-" name)
         (search "RSI-" name)
+        (search "VWAPVR-" name)
         (search "ATR-" name)
         (search "MACD-" name)
         (search "BB-" name)

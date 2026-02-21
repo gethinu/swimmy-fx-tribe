@@ -1,0 +1,89 @@
+{
+  "profile_name": "armada_player_profiles_v1",
+  "profile_version": "2026-02-20",
+  "source": "Myfxbook ArmadaAC public advanced stats",
+  "symbol": "USDJPY",
+  "players": [
+    {
+      "key": "taiki",
+      "label": "taiki",
+      "cluster": "core",
+      "target": {
+        "profit_factor": 1.99,
+        "drawdown_percent": 10.93,
+        "trades": 272,
+        "avg_hold_hours": 6.53
+      }
+    },
+    {
+      "key": "pandajiro",
+      "label": "pandajiro",
+      "cluster": "core",
+      "target": {
+        "profit_factor": 1.79,
+        "drawdown_percent": 6.06,
+        "trades": 871,
+        "avg_hold_hours": 8.47
+      }
+    },
+    {
+      "key": "yumimin",
+      "label": "yumimin",
+      "cluster": "core",
+      "target": {
+        "profit_factor": 1.62,
+        "drawdown_percent": 7.34,
+        "trades": 898,
+        "avg_hold_hours": 6.88
+      }
+    },
+    {
+      "key": "nami_no_yukusaki_armada",
+      "label": "nami-no-yukusaki-armada",
+      "cluster": "core",
+      "target": {
+        "profit_factor": 1.79,
+        "drawdown_percent": 10.95,
+        "trades": 536,
+        "avg_hold_hours": 6.22
+      }
+    },
+    {
+      "key": "kojirin",
+      "label": "kojirin",
+      "cluster": "core",
+      "target": {
+        "profit_factor": 1.93,
+        "drawdown_percent": 7.02,
+        "trades": 336,
+        "avg_hold_hours": 4.43
+      }
+    },
+    {
+      "key": "hiro",
+      "label": "hiro-fx-youtuber",
+      "cluster": "aggressive",
+      "target": {
+        "profit_factor": 1.71,
+        "drawdown_percent": 17.56,
+        "trades": 172,
+        "avg_hold_hours": 12.50
+      }
+    },
+    {
+      "key": "gokuhi_dou_ri_man",
+      "label": "gokuhi-dou-ri-man",
+      "cluster": "aggressive",
+      "target": {
+        "profit_factor": 1.74,
+        "drawdown_percent": 19.00,
+        "trades": 946,
+        "avg_hold_hours": 8.33
+      }
+    }
+  ],
+  "notes": [
+    "Behavioral replica objective: match player-level PF/DD/Trades profile first.",
+    "Signal logic is intentionally simple and transparent; this is not direct code cloning."
+  ]
+}

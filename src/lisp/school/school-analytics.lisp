@@ -12,8 +12,15 @@
 ;;; - Actionable insights generation
 ;;; - JSON-formatted feedback for Gemini
 
+(defun ensure-learning-logs-available ()
+  "Best-effort bootstrap of in-memory learning logs from trade_logs."
+  (when (fboundp 'bootstrap-learning-logs-from-db)
+    (ignore-errors (bootstrap-learning-logs-from-db)))
+  nil)
+
 (defun analyze-by-category ()
   "Analyze performance by trading category"
+  (ensure-learning-logs-available)
   (let ((stats (make-hash-table :test 'eq)))
     ;; Initialize categories
     (dolist (cat '(:trend :reversion :breakout :scalp))
@@ -37,6 +44,7 @@
 
 (defun analyze-by-session ()
   "Analyze performance by trading session"
+  (ensure-learning-logs-available)
   (let ((stats (make-hash-table :test 'eq)))
     (dolist (session '(:tokyo :london :newyork :overlap :off))
       (setf (gethash session stats) (list 0 0 0.0)))
@@ -60,6 +68,7 @@
 
 (defun analyze-by-regime ()
   "Analyze performance by market regime"
+  (ensure-learning-logs-available)
   (let ((stats (make-hash-table :test 'eq)))
     (dolist (regime '(:trending :ranging :unknown))
       (setf (gethash regime stats) (list 0 0 0.0)))
@@ -219,6 +228,7 @@ CURRENT MARKET: Regime=~a, Volatility=~a
 
 (defun update-global-stats ()
   "V44.3: Recalculate global statistics (PnL, Win Rate) from logs"
+  (ensure-learning-logs-available)
   (let ((wins 0)
         (losses 0)
         (total-pnl 0.0))

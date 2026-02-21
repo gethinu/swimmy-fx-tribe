@@ -17,6 +17,21 @@
 
 (defparameter *breeder-graveyard-bypass-for-phase1-enabled* t
   "When T, breeder entries requiring Phase1 can bypass graveyard pattern rejection once.")
+(defparameter *founder-graveyard-bypass-enabled* nil
+  "When T, founder entries can bypass graveyard pattern rejection once (manual re-evaluation).")
+
+(defparameter *phase1-pending-candidates* (make-hash-table :test 'equal)
+  "Candidates queued for Phase1 screening but not yet admitted to KB.
+Keyed by strategy name.")
+
+(defun take-phase1-pending-candidate (name)
+  "Pop pending Phase1 candidate by NAME. Returns candidate or NIL."
+  (when (and (stringp name) (> (length name) 0))
+    (bt:with-lock-held (*kb-lock*)
+      (let ((candidate (gethash name *phase1-pending-candidates*)))
+        (when candidate
+          (remhash name *phase1-pending-candidates*))
+        candidate))))
 
 ;; *kb-lock* moved to school-state.lisp for early initialization
 
@@ -120,11 +135,38 @@
          (canonical (prin1-to-string (list sym tf entry exit indicators))))
     (sxhash canonical)))
 
+(defun normalize-rank-token-for-competition (rank)
+  "Normalize rank token into a keyword used by competition filters."
+  (cond
+    ((keywordp rank) rank)
+    ((symbolp rank) (intern (string-upcase (symbol-name rank)) :keyword))
+    ((stringp rank)
+     (let* ((trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) rank)))
+            (plain (if (and (> (length trimmed) 0)
+                            (char= (char trimmed 0) #\:))
+                       (subseq trimmed 1)
+                       trimmed)))
+       (and (> (length plain) 0)
+            (intern plain :keyword))))
+    (t nil)))
+
+(defun archived-rank-for-competition-p (rank)
+  "Return T when rank is archived and should not compete in duplicate/correlation checks."
+  (member (normalize-rank-token-for-competition rank)
+          '(:GRAVEYARD :RETIRED)
+          :test #'eq))
+
+(defun strategy-competition-eligible-p (strategy)
+  "Archived strategies should not block fresh admissions."
+  (and strategy
+       (not (archived-rank-for-competition-p (strategy-rank strategy)))))
+
 (defun is-logic-duplicate-p (strategy kb)
   "Check if logic already exists in KB (under different name)."
   (let ((target-hash (compute-strategy-hash strategy)))
     (dolist (s kb)
-      (when (= (compute-strategy-hash s) target-hash)
+      (when (and (strategy-competition-eligible-p s)
+                 (= (compute-strategy-hash s) target-hash))
         (return-from is-logic-duplicate-p s)))
     nil))
 
@@ -200,7 +242,8 @@ so identical logic across different symbols is allowed."
 V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
   (let ((target-scope (strategy-correlation-scope-key strategy)))
     (dolist (s kb)
-      (when (and (not (string= (strategy-name s) (strategy-name strategy)))
+      (when (and (strategy-competition-eligible-p s)
+                 (not (string= (strategy-name s) (strategy-name strategy)))
                  (equal target-scope (strategy-correlation-scope-key s)))
         (let ((score (calculate-jaccard-similarity strategy s)))
           (when (> score threshold)
@@ -240,13 +283,33 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
           (%normalize-timeframe-minutes (strategy-timeframe strategy))))
   
   (bt:with-lock-held (*kb-lock*)
-    (let ((name (strategy-name strategy))
-          (breeder-variant-approved nil))
+      (let ((name (strategy-name strategy))
+            (breeder-variant-approved nil)
+            (defer-phase1-admission nil))
       
       ;; 1. Name Duplicate Check
-      (when (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
-        (format t "[KB] ⚠️ Duplicate (Name): ~a already exists~%" name)
-        (return-from add-to-kb nil))
+      ;; NOTE: Archived name collisions should not block founder re-entry.
+      ;; Avoid removing archived rows from in-memory KB here because repeated
+      ;; large-list copies can trigger severe GC pressure during bulk recruit.
+      (let ((active-name-duplicate
+              (and (stringp name)
+                   (find-if (lambda (existing)
+                              (let ((existing-name (and existing (strategy-name existing))))
+                                (and (stringp existing-name)
+                                     (string= existing-name name)
+                                     (strategy-competition-eligible-p existing))))
+                            *strategy-knowledge-base*))))
+        (when active-name-duplicate
+          (format t "[KB] ⚠️ Duplicate (Name): ~a already exists~%" name)
+          (return-from add-to-kb nil))
+        (when (and (stringp name)
+                   (find-if (lambda (existing)
+                              (let ((existing-name (and existing (strategy-name existing))))
+                                (and (stringp existing-name)
+                                     (string= existing-name name)
+                                     (not (strategy-competition-eligible-p existing)))))
+                            *strategy-knowledge-base*))
+          (format t "[KB] ♻️ Archived duplicate ignored: ~a~%" name)))
       
       ;; 1.2 Logic Duplicate Check (Symbolic Hashing)
       (let ((dupe (is-logic-duplicate-p strategy *strategy-knowledge-base*)))
@@ -292,6 +355,8 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
       ;; 1.5 Graveyard Check (V49.0 Taleb)
       (when (and (not *startup-mode*) (is-graveyard-pattern-p strategy))
         (cond
+          ((and (eq source :founder) *founder-graveyard-bypass-enabled*)
+           (format t "[KB] ♻️ Founder bypassed graveyard pattern once: ~a~%" name))
           ((and (eq source :breeder) breeder-variant-approved)
            (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name))
           ((and (eq source :breeder)
@@ -309,18 +374,21 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
           ;; During startup we skip mandatory queueing to avoid replay storms.
           ((and (eq source :breeder) (not *startup-mode*))
            (format t "[KB] 🧪 Breeder candidate: ~a. Queueing mandatory Phase 1 Screening...~%" name)
-           (setf (strategy-rank strategy) :incubator)
-           (run-phase-1-screening strategy))
+           (setf defer-phase1-admission t))
           (t
            (let ((sharpe (or (strategy-sharpe strategy) 0.0)))
              (when (< sharpe *phase1-min-sharpe*)
                ;; V50.2: Automatic Screening Injection
                (format t "[KB] 🐣 Newborn: ~a (Sharpe ~a). Queueing for Phase 1 Screening...~%" name sharpe)
-               (setf (strategy-rank strategy) :incubator)
-               (run-phase-1-screening strategy)
-               ;; We continue to add it as :incubator.
-               ;; NOTE: It will fall through to Step 3.
-               )))))
+               (setf defer-phase1-admission t))))))
+
+      ;; Defer admission until Phase1 result arrives.
+      (when defer-phase1-admission
+        (setf (strategy-rank strategy) nil)
+        (setf (gethash name *phase1-pending-candidates*) strategy)
+        (run-phase-1-screening strategy)
+        (format t "[KB] ⏸️ Deferred admission until Phase1 result: ~a~%" name)
+        (return-from add-to-kb (values t :queued-phase1)))
 
       ;; 3. Add to KB
       (push strategy *strategy-knowledge-base*)
@@ -331,13 +399,15 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
         (%ensure-rank-no-lock strategy :B "New Strategy Induction (Validation Passed)"))
       (format t "[KB] ✅ Added: ~a (Source: ~a, Rank: ~s)~%" name source (strategy-rank strategy))
       
-      ;; 4. Add to category pool
-      (let ((cat (categorize-strategy strategy)))
-        (when (boundp '*category-pools*)
-          (push strategy (gethash cat *category-pools*))))
-      (when (boundp '*regime-pools*)
-        (let ((regime-class (strategy-regime-class strategy)))
-          (push strategy (gethash regime-class *regime-pools*))))
+      ;; 4. Add to active pools.
+      (if (fboundp 'add-strategy-to-active-pools)
+          (add-strategy-to-active-pools strategy)
+          (let ((cat (categorize-strategy strategy)))
+            (when (boundp '*category-pools*)
+              (pushnew strategy (gethash cat *category-pools* nil) :test #'eq))
+            (when (boundp '*regime-pools*)
+              (let ((regime-class (strategy-regime-class strategy)))
+                (pushnew strategy (gethash regime-class *regime-pools* nil) :test #'eq)))))
       
       ;; 5. Persist to SQL (V49.8)
       (upsert-strategy strategy)
@@ -346,7 +416,7 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
       (when (and notify (not *startup-mode*))
         (notify-recruit-unified strategy source))
       
-      t)))
+      (values t :added))))
 
 (defun notify-recruit-unified (strategy source)
   "Send unified recruitment notification to Discord.

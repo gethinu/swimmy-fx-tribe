@@ -197,11 +197,12 @@
              ;; Sort by Sharpe ascending (worst first)
              (sorted (sort (copy-list *strategy-knowledge-base*) #'<
                            :key (lambda (s) (or (strategy-sharpe s) 0.0))))
-             (to-purge (subseq (remove-if (lambda (s)
+             (purge-candidates (remove-if (lambda (s)
                                             (or (member (strategy-rank s) *prune-protected-ranks*)
                                                 (newborn-protected-p s)))
-                                          sorted)
-                               0 (min excess current-size))))
+                                          sorted))
+             (purge-count (min excess (length purge-candidates)))
+             (to-purge (subseq purge-candidates 0 purge-count)))
         (format t "[PRUNE] 🚨 KB Over Limit (~d > ~d). Purging ~d laggards...~%"
                 current-size *kb-hard-cap* (length to-purge))
         (dolist (strat to-purge)

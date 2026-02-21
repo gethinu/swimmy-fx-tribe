@@ -28,6 +28,24 @@
   "Lot multiplier for medium-confidence entries.")
 (defparameter *min-s-rank-strategies-for-live* 2
   "Minimum number of S-rank strategies required before live execution starts.")
+(defparameter *live-edge-guard-enabled* t
+  "When T, block LIVE execution for strategies with degraded recent LIVE edge.")
+(defparameter *live-edge-guard-lookback-trades* 40
+  "Latest LIVE trade rows used for runtime edge guard checks.")
+(defparameter *live-edge-guard-min-trades* 20
+  "Minimum LIVE trades required before runtime edge guard can block execution.")
+(defparameter *live-edge-guard-pf-min* 1.05
+  "Runtime edge guard minimum PF floor on latest LIVE trades.")
+(defparameter *live-edge-guard-wr-min* 0.35
+  "Runtime edge guard minimum WR floor on latest LIVE trades.")
+(defparameter *live-edge-guard-net-pnl-min* 0.0
+  "Runtime edge guard minimum net pnl floor on latest LIVE trades.")
+(defparameter *live-edge-guard-max-latest-loss-streak* 3
+  "Runtime edge guard maximum allowed consecutive losses from the latest LIVE trade.")
+(defparameter *live-edge-guard-alert-dedupe-seconds* 900
+  "Minimum interval between repeated live-edge block alerts for same strategy/reason.")
+(defparameter *live-edge-guard-last-alert-at* (make-hash-table :test 'equal)
+  "Per strategy/reason timestamp for live-edge block alert deduplication.")
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -65,18 +83,22 @@
     (if alloc (max 0.01 (* *total-capital* alloc)) 0.01)))
 
 ;;; ==========================================
-;;; EXECUTION & WARRIORS
+;;; EXECUTION & SLOTS
 ;;; ==========================================
 
 
-;; NOTE: get-warrior-magic is defined in school-allocation.lisp
+;; NOTE: get-slot-magic is defined in school-allocation.lisp
 ;; Do not duplicate here - it uses deterministic format: 1[CatID][Slot] (e.g., 110000)
 
-(defun find-free-warrior-slot (category)
+(defun find-free-slot (category)
   (loop for i from 0 to 3
         for key = (format nil "~a-~d" category i)
-        when (null (gethash key *warrior-allocation*))
+        when (null (gethash key *slot-allocation*))
         return i))
+
+(defun find-free-warrior-slot (category)
+  "Deprecated compatibility alias. Use FIND-FREE-SLOT."
+  (find-free-slot category))
 
 (defun close-opposing-category-positions (category new-direction symbol price reason)
   "Close positions in the opposite direction for Doten (Stop and Reverse) logic"
@@ -84,15 +106,15 @@
   (let ((opposing-direction (if (eq new-direction :buy) :short :long))
         (closed-count 0))
     (maphash 
-     (lambda (key warrior)
-       (when (and warrior 
-                  (equal (getf warrior :category) category)
-                  (eq (getf warrior :direction) opposing-direction)
-                  (equal (getf warrior :symbol) symbol))
+     (lambda (key slot)
+       (when (and slot 
+                  (equal (getf slot :category) category)
+                  (eq (getf slot :direction) opposing-direction)
+                  (equal (getf slot :symbol) symbol))
          ;; Close it
-         (let* ((magic (getf warrior :magic))
-                (entry (getf warrior :entry))
-                (lot (or (getf warrior :lot) 0.01))
+         (let* ((magic (getf slot :magic))
+                (entry (getf slot :entry))
+                (lot (or (getf slot :lot) 0.01))
                 (pnl (if (eq opposing-direction :long)
                          (- price entry)
                          (- entry price))))
@@ -102,7 +124,7 @@
                                                  (magic . ,magic)))))
              (pzmq:send *cmd-publisher* msg))
            ;; Free slot
-           (remhash key *warrior-allocation*)
+           (remhash key *slot-allocation*)
            (update-symbol-exposure symbol lot :close)
            ;; Logging & Recording
            (format t "[L] 🔄 DOTEN: Closing ~a ~a for ~a signal (PnL: ~5f)~%" category opposing-direction new-direction pnl)
@@ -124,7 +146,7 @@
            (swimmy.shell:notify-discord-symbol symbol (format nil "🔄 **DOTEN** ~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                                   :color (if (> pnl 0) 3066993 15158332))
            (incf closed-count))))
-     *warrior-allocation*)
+     *slot-allocation*)
     closed-count))
 
 
@@ -145,9 +167,13 @@
     ;; 2. Entry Interval
     ((< (- now *last-entry-time*) *min-entry-interval-seconds*) nil)
     ;; 3. Startup Safety
-    ((and (< now (+ *warmup-end-time* 60)) (> (hash-table-count *warrior-allocation*) 0)) nil)
+    ((and (< now (+ *warmup-end-time* 60)) (> (hash-table-count *slot-allocation*) 0)) nil)
     ;; 4. Market Hours
     ((not (market-open-p)) nil)
+    ;; 4.5 Armada runtime kill switch (fail-close)
+    ((and (fboundp 'enforce-armada-kill-switch)
+          (enforce-armada-kill-switch now))
+     nil)
     ;; 5. Circuit Breaker
     (*circuit-breaker-active*
      (if (> now *breaker-cooldown-end*)
@@ -419,9 +445,22 @@ Multiplier NIL means fallback to direction mismatch logic."
 
 ;;; P3 Refactor: Decomposed Execution Helpers (Expert Panel 2026-01-20)
 
+(defun %normalize-strategy-token (value)
+  "Normalize VALUE into uppercase trimmed token, or NIL."
+  (when value
+    (let ((text (string-trim '(#\Space #\Tab #\Newline #\Return) (format nil "~a" value))))
+      (when (> (length text) 0)
+        (string-upcase text)))))
+
+(defun %nil-like-strategy-name-p (value)
+  "True when VALUE is missing or one of the reserved NIL-like strategy tokens."
+  (let ((token (%normalize-strategy-token value)))
+    (or (null token)
+        (member token '("NIL" "UNKNOWN" "NULL" "NONE") :test #'string=))))
+
 (defun resolve-strategy-by-name (name)
   "Best-effort resolve strategy object by NAME from KB/evolved pools."
-  (when (and (stringp name) (> (length name) 0))
+  (when (and (stringp name) (not (%nil-like-strategy-name-p name)))
     (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         (find name *evolved-strategies* :key #'strategy-name :test #'string=))))
 
@@ -525,10 +564,9 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                          (:missing-strategy "Missing strategy context")
                          (:missing-timeframe "Missing timeframe context")
                          (otherwise "Missing execution context")))
-         (strategy-text (if (and strategy-name
-                                 (not (string= (string-upcase (format nil "~a" strategy-name)) "NIL")))
-                            (format nil "~a" strategy-name)
-                            "N/A"))
+         (strategy-text (if (%nil-like-strategy-name-p strategy-name)
+                            "N/A"
+                            (format nil "~a" strategy-name)))
          (timeframe-text (if (and timeframe-key
                                   (not (string= (string-upcase (format nil "~a" timeframe-key)) "NIL")))
                              (format nil "~a" timeframe-key)
@@ -549,20 +587,289 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
       (swimmy.core:notify-discord-alert msg :color 15158332))
     nil))
 
+(defun %deployment-gate-live-ready-p (gate-status)
+  "Return T only when GATE-STATUS decision is LIVE_READY."
+  (let ((decision (%normalize-strategy-token (and (listp gate-status)
+                                                  (getf gate-status :decision nil)))))
+    (and decision (string= decision "LIVE_READY"))))
+
+(defun report-deployment-gate-blocked (symbol category strategy-name gate-status)
+  "Emit observability signals when deployment gate blocks live execution."
+  (let* ((cat (if (keywordp category) (string-downcase (symbol-name category)) (format nil "~a" category)))
+         (strategy-text (if (%nil-like-strategy-name-p strategy-name)
+                            "N/A"
+                            (format nil "~a" strategy-name)))
+         (decision-token (%normalize-strategy-token (and (listp gate-status)
+                                                         (getf gate-status :decision nil))))
+         (decision-text (or decision-token "UNSET"))
+         (reason-text (let ((raw (and (listp gate-status)
+                                      (getf gate-status :reason nil))))
+                        (if (and raw (> (length (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                              (format nil "~a" raw)))
+                                        0))
+                            (format nil "~a" raw)
+                            "deployment gate row missing")))
+         (msg (format nil "🚫 EXECUTION BLOCKED (Deployment Gate)~%Symbol: ~a~%Category: ~a~%Strategy: ~a~%Decision: ~a~%Reason: ~a"
+                      symbol cat strategy-text decision-text reason-text)))
+    (when (fboundp 'swimmy.core::emit-telemetry-event)
+      (swimmy.core::emit-telemetry-event "execution.deployment_gate_blocked"
+        :service "school"
+        :severity "warn"
+        :data (jsown:new-js
+                ("symbol" symbol)
+                ("category" cat)
+                ("strategy" strategy-text)
+                ("decision" decision-text)
+                ("reason" reason-text))))
+    (when (fboundp 'swimmy.core:notify-discord-alert)
+      (swimmy.core:notify-discord-alert msg :color 15158332))
+    nil))
+
+(defun %live-edge-guard-pass-p (strategy-name)
+  "Return (values PASS-P FAIL-REASON METRICS) for runtime LIVE edge guard."
+  (cond
+    ((not *live-edge-guard-enabled*) (values t :disabled nil))
+    ((or (null strategy-name) (not (stringp strategy-name)) (= (length strategy-name) 0))
+     (values t :invalid-name nil))
+    ((not (fboundp 'fetch-recent-live-trade-metrics))
+     (values t :metrics-fn-missing nil))
+    (t
+     (let ((metrics (ignore-errors
+                      (fetch-recent-live-trade-metrics
+                       strategy-name
+                       :limit *live-edge-guard-lookback-trades*))))
+       (if (null metrics)
+           (values t :metrics-unavailable nil)
+           (let* ((trades (if (numberp (getf metrics :trades))
+                              (round (getf metrics :trades))
+                              0))
+                  (pf (float (or (getf metrics :profit-factor) 0.0) 1.0))
+                  (wr (float (or (getf metrics :win-rate) 0.0) 1.0))
+                  (net (float (or (getf metrics :net-pnl) 0.0) 1.0))
+                  (latest-loss-streak (if (numberp (getf metrics :latest-loss-streak))
+                                          (max 0 (round (getf metrics :latest-loss-streak)))
+                                          0))
+                  (min-trades (max 1 (round *live-edge-guard-min-trades*)))
+                  (max-latest-loss-streak (max 0 (round *live-edge-guard-max-latest-loss-streak*))))
+             (cond
+               ((< trades min-trades) (values t :insufficient-trades metrics))
+               ((> latest-loss-streak max-latest-loss-streak)
+                (values nil :loss-streak metrics))
+               ((< pf (float *live-edge-guard-pf-min* 1.0)) (values nil :pf metrics))
+               ((< wr (float *live-edge-guard-wr-min* 1.0)) (values nil :wr metrics))
+               ((< net (float *live-edge-guard-net-pnl-min* 1.0)) (values nil :net-pnl metrics))
+               (t (values t :ok metrics)))))))))
+
+(defun %live-edge-fail-reason-label (reason)
+  "Human readable reason text for live-edge runtime block."
+  (case reason
+    (:loss-streak (format nil "latest_loss_streak > ~d" *live-edge-guard-max-latest-loss-streak*))
+    (:pf (format nil "pf < ~,2f" *live-edge-guard-pf-min*))
+    (:wr (format nil "wr < ~,1f%%" (* 100.0 *live-edge-guard-wr-min*)))
+    (:net-pnl (format nil "net_pnl < ~,2f" *live-edge-guard-net-pnl-min*))
+    (otherwise "live edge guard failed")))
+
+(defun %should-notify-live-edge-block-p (strategy-name reason)
+  "Deduplicate repetitive live-edge block alerts."
+  (let* ((key (format nil "~a|~a" (or strategy-name "N/A") reason))
+         (now (get-universal-time))
+         (last-ts (or (gethash key *live-edge-guard-last-alert-at*) 0))
+         (dedupe-sec (max 0 (round *live-edge-guard-alert-dedupe-seconds*))))
+    (if (or (<= dedupe-sec 0)
+            (>= (- now last-ts) dedupe-sec))
+        (progn
+          (setf (gethash key *live-edge-guard-last-alert-at*) now)
+          t)
+        nil)))
+
+(defun report-live-edge-guard-blocked (symbol category strategy-name reason metrics)
+  "Emit observability signals when runtime LIVE edge guard blocks execution."
+  (let* ((cat (if (keywordp category) (string-downcase (symbol-name category)) (format nil "~a" category)))
+         (strategy-text (if (%nil-like-strategy-name-p strategy-name)
+                            "N/A"
+                            (format nil "~a" strategy-name)))
+         (trades (if (numberp (getf metrics :trades)) (round (getf metrics :trades)) 0))
+         (pf (float (or (getf metrics :profit-factor) 0.0) 1.0))
+         (wr (float (or (getf metrics :win-rate) 0.0) 1.0))
+         (net (float (or (getf metrics :net-pnl) 0.0) 1.0))
+         (latest-loss-streak (if (numberp (getf metrics :latest-loss-streak))
+                                 (max 0 (round (getf metrics :latest-loss-streak)))
+                                 0))
+         (reason-text (%live-edge-fail-reason-label reason))
+         (msg (format nil "🚫 EXECUTION BLOCKED (Live Edge)~%Symbol: ~a~%Category: ~a~%Strategy: ~a~%Reason: ~a~%Recent LIVE: n=~d PF=~,2f WR=~,1f%% NET=~,2f latest_loss_streak=~d~%Thresholds: n>=~d PF>=~,2f WR>=~,1f%% NET>=~,2f latest_loss_streak<=~d"
+                      symbol cat strategy-text reason-text
+                      trades pf (* 100.0 wr) net latest-loss-streak
+                      *live-edge-guard-min-trades*
+                      *live-edge-guard-pf-min*
+                      (* 100.0 *live-edge-guard-wr-min*)
+                      *live-edge-guard-net-pnl-min*
+                      *live-edge-guard-max-latest-loss-streak*)))
+    (when (fboundp 'swimmy.core::emit-telemetry-event)
+      (swimmy.core::emit-telemetry-event "execution.live_edge_blocked"
+        :service "school"
+        :severity "warn"
+        :data (jsown:new-js
+                ("symbol" symbol)
+                ("category" cat)
+                ("strategy" strategy-text)
+                ("reason" reason-text)
+                ("trades" trades)
+                ("pf" pf)
+                ("wr" wr)
+                ("net_pnl" net)
+                ("latest_loss_streak" latest-loss-streak)
+                ("min_trades" *live-edge-guard-min-trades*)
+                ("pf_min" *live-edge-guard-pf-min*)
+                ("wr_min" *live-edge-guard-wr-min*)
+                ("net_pnl_min" *live-edge-guard-net-pnl-min*)
+                ("max_latest_loss_streak" *live-edge-guard-max-latest-loss-streak*))))
+    (when (and (fboundp 'swimmy.core:notify-discord-alert)
+               (%should-notify-live-edge-block-p strategy-text reason))
+      (swimmy.core:notify-discord-alert msg :color 15158332))
+    nil))
+
 (defun verify-signal-authority (symbol direction category lot rank lead-name)
   "Helper: Verify signal with Council, AI, and Blocking rules."
-  (declare (ignore lead-name))
+  (declare (ignore lot rank))
   (cond
     ((should-block-trade-p symbol direction category) nil)
     ((should-unlearn-p symbol) nil)
+    ((%nil-like-strategy-name-p lead-name)
+     (report-execution-context-missing symbol category :missing-strategy
+                                       :strategy-name lead-name))
+    ((let ((gate-status (and (stringp lead-name)
+                             (fetch-deployment-gate-status lead-name))))
+       (unless (%deployment-gate-live-ready-p gate-status)
+         (report-deployment-gate-blocked symbol category lead-name gate-status)
+         t))
+     nil)
+    ((multiple-value-bind (pass-p fail-reason metrics)
+         (%live-edge-guard-pass-p lead-name)
+       (unless pass-p
+         (report-live-edge-guard-blocked symbol category lead-name fail-reason metrics)
+         t))
+     nil)
     ((not (verify-parallel-scenarios symbol direction category)) nil)
     (t t)))
+
+(defun %normalize-shadow-direction (value)
+  "Normalize direction token into :BUY/:SELL, or NIL."
+  (let ((token (%normalize-strategy-token value)))
+    (cond
+      ((member token '("BUY" "LONG" ":BUY" ":LONG") :test #'string=) :buy)
+      ((member token '("SELL" "SHORT" ":SELL" ":SHORT") :test #'string=) :sell)
+      (t nil))))
+
+(defun %normalize-shadow-rank (rank)
+  "Normalize strategy rank token into keyword."
+  (cond
+    ((keywordp rank) rank)
+    ((symbolp rank) (intern (string-upcase (symbol-name rank)) :keyword))
+    ((stringp rank)
+     (let* ((up (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) rank)))
+            (plain (if (and (> (length up) 0) (char= (char up 0) #\:))
+                       (subseq up 1)
+                       up)))
+       (and (> (length plain) 0) (intern plain :keyword))))
+    (t nil)))
+
+(defun %shadow-slot-key (strategy-name symbol direction)
+  (format nil "~a|~a|~a"
+          (or strategy-name "UNKNOWN")
+          (string-upcase (or symbol "USDJPY"))
+          (if (eq direction :buy) "BUY" "SELL")))
+
+(defun close-a-rank-shadow-positions (symbol bid ask)
+  "Close open A-rank shadow positions on SL/TP and record learning rows."
+  (let ((keys-to-close '())
+        (now (get-universal-time)))
+    (maphash
+     (lambda (key slot)
+       (when (and (listp slot)
+                  (string= (string-upcase (or (getf slot :symbol) ""))
+                           (string-upcase (or symbol ""))))
+         (let* ((direction (or (%normalize-shadow-direction (getf slot :direction)) :buy))
+                (entry (getf slot :entry))
+                (sl (getf slot :sl))
+                (tp (getf slot :tp))
+                (category (or (getf slot :category) :trend))
+                (strategy-name (getf slot :strategy))
+                (pair-id (getf slot :pair-id))
+                (close-p nil)
+                (hit :unknown)
+                (pnl 0.0))
+           (when (and (numberp entry) (numberp sl) (numberp tp) (numberp bid) (numberp ask))
+             (cond
+               ((eq direction :buy)
+                (cond
+                  ((<= bid sl) (setf close-p t hit :sl pnl (- bid entry)))
+                  ((>= bid tp) (setf close-p t hit :tp pnl (- bid entry)))))
+               ((eq direction :sell)
+                (cond
+                  ((>= ask sl) (setf close-p t hit :sl pnl (- entry ask)))
+                  ((<= ask tp) (setf close-p t hit :tp pnl (- entry ask))))))
+             (when close-p
+               (push (list key strategy-name direction category pnl hit pair-id
+                           (max 0 (- now (or (getf slot :opened-at) now))))
+                     keys-to-close))))))
+     *shadow-slot-allocation*)
+    (dolist (item keys-to-close)
+      (destructuring-bind (key strategy-name direction category pnl hit pair-id hold-time) item
+        (remhash key *shadow-slot-allocation*)
+        (handler-case
+            (record-trade-outcome symbol direction category strategy-name pnl
+                                  :hit hit
+                                  :hold-time hold-time
+                                  :pair-id pair-id
+                                  :execution-mode :shadow)
+          (error (e)
+            (format t "[SHADOW] ⚠️ Failed to record shadow outcome for ~a: ~a~%" strategy-name e))))))
+  t)
+
+(defun open-a-rank-shadow-trades (symbol bid ask strat-signals)
+  "Open A-rank shadow positions from STRAT-SIGNALS."
+  (when (and *a-rank-shadow-trading-enabled*
+             (listp strat-signals)
+             (numberp bid)
+             (numberp ask))
+    (dolist (sig strat-signals)
+      (let* ((strategy-name (getf sig :strategy-name))
+             (direction (%normalize-shadow-direction (getf sig :direction)))
+             (strat (and strategy-name (resolve-strategy-by-name strategy-name)))
+             (rank (and strat (%normalize-shadow-rank (strategy-rank strat)))))
+        (when (and strategy-name
+                   strat
+                   direction
+                   (eq rank :A))
+          (let* ((slot-key (%shadow-slot-key strategy-name symbol direction))
+                 (entry (if (eq direction :buy) ask bid))
+                 (sl-pips (let ((raw (strategy-sl strat)))
+                            (if (and (numberp raw) (> raw 0.0))
+                                (float raw 1.0)
+                                *default-sl-pips*)))
+                 (tp-pips (let ((raw (strategy-tp strat)))
+                            (if (and (numberp raw) (> raw 0.0))
+                                (float raw 1.0)
+                                *default-tp-pips*)))
+                 (sl (if (eq direction :buy) (- entry sl-pips) (+ entry sl-pips)))
+                 (tp (if (eq direction :buy) (+ entry tp-pips) (- entry tp-pips))))
+            (unless (gethash slot-key *shadow-slot-allocation*)
+              (setf (gethash slot-key *shadow-slot-allocation*)
+                    (list :strategy strategy-name
+                          :symbol symbol
+                          :direction direction
+                          :category (or (getf sig :category) :trend)
+                          :entry entry
+                          :sl sl
+                          :tp tp
+                          :pair-id (getf sig :pair-id)
+                          :opened-at (get-universal-time)))))))))
+  t)
 
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."
   (declare (ignore magic-override))
-  (when (or (null lead-name)
-            (string= (string-upcase (format nil "~a" lead-name)) "NIL"))
+  (when (%nil-like-strategy-name-p lead-name)
     (format t "[EXEC] 🚫 Missing strategy context before reservation for ~a (~a); skip trade.~%" symbol category)
     (report-execution-context-missing symbol category :missing-strategy
                                       :strategy-name lead-name
@@ -581,7 +888,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
          (entry-cost-pips entry-spread-pips))
     ;; Reservation
     (multiple-value-bind (slot-index magic)
-        (try-reserve-warrior-slot category lead-name symbol direction
+        (try-reserve-slot category lead-name symbol direction
                                   :pair-id pair-id
                                   :lot lot
                                   :entry-bid entry-bid
@@ -636,7 +943,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
           ;; Cleanup
           (unless committed
             (remhash magic *allocation-pending-orders*)
-            (remhash (format nil "~a-~d" category slot-index) *warrior-allocation*)
+            (remhash (format nil "~a-~d" category slot-index) *slot-allocation*)
             (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
 
 (defun execute-category-trade (category direction symbol bid ask
@@ -649,7 +956,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                                                      (format nil "~a" strategy-name))))
                (strategy-name-provided (and strategy-name-text
                                             (> (length strategy-name-text) 0)
-                                            (not (string= (string-upcase strategy-name-text) "NIL"))))
+                                            (not (%nil-like-strategy-name-p strategy-name-text))))
                (resolved-signal-strat (and strategy-name-provided
                                            (resolve-strategy-by-name strategy-name-text))))
         (let ((spread-pips (spread-pips-from-bid-ask symbol bid ask)))
@@ -672,8 +979,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
             (prepare-trade-context category symbol
                                    :strategy-name strategy-name
                                    :strategy-timeframe strategy-timeframe)
-          (when (or (null lead-name)
-                    (string= (string-upcase (format nil "~a" lead-name)) "NIL"))
+          (when (%nil-like-strategy-name-p lead-name)
             (format t "[EXEC] 🚫 Missing strategy context for ~a (~a); skip trade.~%" symbol category)
             (report-execution-context-missing symbol category :missing-strategy
                                               :strategy-name lead-name
@@ -720,15 +1026,15 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
     (error (e) (format t "[EXEC] 🚨 Error: ~a~%" e))))
 
 (defun close-category-positions (symbol bid ask)
-  "V5.2: Close warrior positions at SL/TP using warrior-allocation"
+  "V5.2: Close slot positions at SL/TP using slot-allocation"
   (maphash 
-   (lambda (key warrior)
-     (when (and warrior (equal (getf warrior :symbol) symbol))
-       (let* ((category (getf warrior :category))
-              (pos (getf warrior :direction))
-              (entry (getf warrior :entry))
-               (magic (getf warrior :magic))
-               (lot (or (getf warrior :lot) 0.01))
+   (lambda (key slot)
+     (when (and slot (equal (getf slot :symbol) symbol))
+       (let* ((category (getf slot :category))
+              (pos (getf slot :direction))
+              (entry (getf slot :entry))
+               (magic (getf slot :magic))
+               (lot (or (getf slot :lot) 0.01))
                (sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)
                (pnl 0) (closed nil))
          (when (and entry (numberp bid) (numberp ask))
@@ -746,13 +1052,13 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                                                    (symbol . ,symbol)
                                                    (magic . ,magic)))))
                (pzmq:send *cmd-publisher* msg))
-             (remhash key *warrior-allocation*)
+             (remhash key *slot-allocation*)
              (update-symbol-exposure symbol lot :close)
              (incf *daily-pnl* (round (* pnl 1000 100)))
              (record-trade-result (if (> pnl 0) :win :loss))
              ;; V17: Record prediction outcome for feedback loop (Issue 2)
              (record-prediction-outcome symbol (if (eq pos :long) :buy :sell) (if (> pnl 0) :win :loss))
-             (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Warriors" pnl)
+             (record-trade-outcome symbol (if (eq pos :long) :buy :sell) category "Slots" pnl)
              (when (fboundp 'record-strategy-trade)
                  (let ((lead-strat (first (gethash category *active-team*))))
                      (when lead-strat 
@@ -765,7 +1071,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
               (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "win" "loss")))
              (swimmy.shell:notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
                             :color (if (> pnl 0) 3066993 15158332)))))))
-   *warrior-allocation*))
+   *slot-allocation*))
 
 
 (defun s-rank-gate-passed-p ()
@@ -803,81 +1109,85 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
       (when (and allowed history (> (length history) 100))
         (when (boundp 'swimmy.main::*dispatch-step*)
           (setf swimmy.main::*dispatch-step* :tick/s-rank-gate-passed-p))
-        (when (s-rank-gate-passed-p)
-      (when (boundp 'swimmy.main::*dispatch-step*)
-        (setf swimmy.main::*dispatch-step* :tick/close-category-positions))
-      (close-category-positions symbol bid ask)
-      (when (boundp 'swimmy.main::*dispatch-step*)
-        (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
-      (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
-      (when (boundp 'swimmy.main::*dispatch-step*)
-        (setf swimmy.main::*dispatch-step* :tick/volatility-allows-trading-p))
-      (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
-    
-      (when (>= (length history) 50)
-        (when (boundp 'swimmy.main::*dispatch-step*)
-          (setf swimmy.main::*dispatch-step* :tick/research-enhanced-analysis))
-        (research-enhanced-analysis history)
-        (when (boundp 'swimmy.main::*dispatch-step*)
-          (setf swimmy.main::*dispatch-step* :tick/detect-regime-hmm))
-        (detect-regime-hmm history))
-    
-      (when (boundp 'swimmy.main::*dispatch-step*)
-        (setf swimmy.main::*dispatch-step* :tick/elect-leader))
-      (elect-leader) ;; Keep leader election if relevant, otherwise remove if tied to Swarm
-      ;; Swarm Logic Removed (Center of gravity restored to individual strategies)
-      (handler-case
-          (when t ;; Swarm Consensus removed
-            (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
-            (let ((strat-signals (collect-strategy-signals symbol history)))
-              (when strat-signals
-                (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                (let* ((all-sorted
-                        (sort (copy-list strat-signals)
-                              (lambda (a b)
-                                (let* ((name-a (getf a :strategy-name))
-                                       (name-b (getf b :strategy-name))
-                                       (cache-a (get-cached-backtest name-a))
-                                       (cache-b (get-cached-backtest name-b))
-                                       (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                       (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                  (> sharpe-a sharpe-b)))))
-                       (top-sig (first all-sorted))
-                       (top-name (when top-sig (getf top-sig :strategy-name)))
-                   (top-cat (when top-sig (getf top-sig :category)))
-                   (top-cache (when top-name (get-cached-backtest top-name)))
-                   (top-timeframe (or (and top-sig (getf top-sig :timeframe))
-                                      (let ((top-strat (resolve-strategy-by-name top-name)))
-                                        (and top-strat (strategy-timeframe top-strat)))))
-                   (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                  (when top-sig
-                    (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                            top-name top-cat top-sharpe (length strat-signals))
-                    (let* ((direction (getf top-sig :direction))
-                           (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
-                           (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
-                           (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                      (when (<= confidence-lot-mult 0.0)
-                        (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
-                                top-name signal-confidence *signal-confidence-entry-threshold*))
-                      (when (and (> confidence-lot-mult 0.0)
-                                 (can-category-trade-p strat-key))
-                        (let ((trade-executed
-                                (execute-category-trade top-cat direction symbol bid ask
-                                                        :lot-multiplier confidence-lot-mult
-                                                        :signal-confidence signal-confidence
-                                                        :strategy-name top-name
-                                                        :strategy-timeframe top-timeframe)))
-                          (when trade-executed
-                            (format t "~a~%" (generate-dynamic-narrative top-sig symbol bid))
-                            (record-category-trade-time strat-key)
-                            (when (fboundp 'record-strategy-trade)
-                              (record-strategy-trade top-name :trade 0)))))))))))
-        (error (e)
-          (declare (ignore e))
-          nil)))))))
+        (let ((live-enabled (s-rank-gate-passed-p)))
+          (when live-enabled
+            (when (boundp 'swimmy.main::*dispatch-step*)
+              (setf swimmy.main::*dispatch-step* :tick/close-category-positions))
+            (close-category-positions symbol bid ask))
+          ;; Shadow positions are closed regardless of live gate status.
+          (close-a-rank-shadow-positions symbol bid ask)
+          (when (boundp 'swimmy.main::*dispatch-step*)
+            (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
+          (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
+          (when (boundp 'swimmy.main::*dispatch-step*)
+            (setf swimmy.main::*dispatch-step* :tick/volatility-allows-trading-p))
+          (unless (volatility-allows-trading-p) (return-from process-category-trades nil))
+          (when (>= (length history) 50)
+            (when (boundp 'swimmy.main::*dispatch-step*)
+              (setf swimmy.main::*dispatch-step* :tick/research-enhanced-analysis))
+            (research-enhanced-analysis history)
+            (when (boundp 'swimmy.main::*dispatch-step*)
+              (setf swimmy.main::*dispatch-step* :tick/detect-regime-hmm))
+            (detect-regime-hmm history))
+          (when (boundp 'swimmy.main::*dispatch-step*)
+            (setf swimmy.main::*dispatch-step* :tick/elect-leader))
+          (elect-leader)
+          (handler-case
+              (progn
+                (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
+                (let ((strat-signals (collect-strategy-signals symbol history)))
+                  (when strat-signals
+                    (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                    ;; A-rank shadow operation: keep collecting paper outcomes even when live is blocked.
+                    (open-a-rank-shadow-trades symbol bid ask strat-signals)
+                    (when live-enabled
+                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
+                      (let* ((all-sorted
+                              (sort (copy-list strat-signals)
+                                    (lambda (a b)
+                                      (let* ((name-a (getf a :strategy-name))
+                                             (name-b (getf b :strategy-name))
+                                             (cache-a (get-cached-backtest name-a))
+                                             (cache-b (get-cached-backtest name-b))
+                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                        (> sharpe-a sharpe-b)))))
+                             (top-sig (first all-sorted))
+                             (top-name (when top-sig (getf top-sig :strategy-name)))
+                             (top-cat (when top-sig (getf top-sig :category)))
+                             (top-cache (when top-name (get-cached-backtest top-name)))
+                             (top-timeframe (or (and top-sig (getf top-sig :timeframe))
+                                                (let ((top-strat (resolve-strategy-by-name top-name)))
+                                                  (and top-strat (strategy-timeframe top-strat)))))
+                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                        (when top-sig
+                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                                  top-name top-cat top-sharpe (length strat-signals))
+                          (let* ((direction (getf top-sig :direction))
+                                 (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
+                                 (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
+                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                            (when (<= confidence-lot-mult 0.0)
+                              (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
+                                      top-name signal-confidence *signal-confidence-entry-threshold*))
+                            (when (and (> confidence-lot-mult 0.0)
+                                       (can-category-trade-p strat-key))
+                              (let ((trade-executed
+                                      (execute-category-trade top-cat direction symbol bid ask
+                                                              :lot-multiplier confidence-lot-mult
+                                                              :signal-confidence signal-confidence
+                                                              :strategy-name top-name
+                                                              :strategy-timeframe top-timeframe)))
+                                (when trade-executed
+                                  (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
+                                          symbol direction top-name signal-confidence confidence-lot-mult)
+                                  (record-category-trade-time strat-key)
+                                  (when (fboundp 'record-strategy-trade)
+                                    (record-strategy-trade top-name :trade 0))))))))))))
+            (error (e)
+              (declare (ignore e))
+              nil)))))))
 
 ;;; ==========================================
 ;;; SYSTEM LOADING
@@ -890,19 +1200,25 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
     (if strat
         (progn
           (pushnew strat *evolved-strategies* :test #'string= :key #'strategy-name)
-          (let ((cat (categorize-strategy strat)))
-            (setf (gethash cat *category-pools*) 
-                  (cons strat (remove (strategy-name strat) (gethash cat *category-pools*) :key #'strategy-name :test #'string=))))
-          (when (boundp '*regime-pools*)
-            (let ((regime-class (if (fboundp 'strategy-regime-class)
-                                    (strategy-regime-class strat)
-                                    (strategy-category strat))))
-              (setf (gethash regime-class *regime-pools*)
-                    (cons strat
-                          (remove (strategy-name strat)
-                                  (gethash regime-class *regime-pools*)
-                                  :key #'strategy-name
-                                  :test #'string=)))))
+          (if (or (not (fboundp 'strategy-active-pool-eligible-p))
+                  (strategy-active-pool-eligible-p strat))
+              (if (fboundp 'add-strategy-to-active-pools)
+                  (add-strategy-to-active-pools strat)
+                  (let ((cat (categorize-strategy strat)))
+                    (setf (gethash cat *category-pools*)
+                          (cons strat (remove (strategy-name strat) (gethash cat *category-pools*) :key #'strategy-name :test #'string=)))
+                    (when (boundp '*regime-pools*)
+                      (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                              (strategy-regime-class strat)
+                                              (strategy-category strat))))
+                        (setf (gethash regime-class *regime-pools*)
+                              (cons strat
+                                    (remove (strategy-name strat)
+                                            (gethash regime-class *regime-pools*)
+                                            :key #'strategy-name
+                                            :test #'string=)))))))
+              (format t "[L] ⏳ Special Force deferred until evaluated: ~a (Rank: ~s)~%"
+                      name (strategy-rank strat)))
           (format t "[L] 🎖️ Special Force Recruited: ~a~%" name)
           t)
         (format t "[L] ⚠️ Special Force NOT FOUND: ~a~%" name))))
@@ -919,42 +1235,89 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
     (and (stringp src)
          (search "school-hunter-auto.lisp" src :test #'char-equal))))
 
-(defun recruit-special-forces ()
+(defun normalize-founder-key-token (value)
+  "Normalize VALUE into a founder keyword token."
+  (cond
+    ((keywordp value) value)
+    ((symbolp value) (intern (string-upcase (symbol-name value)) :keyword))
+    ((stringp value)
+     (let* ((trimmed (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) value)))
+            (plain (if (and (> (length trimmed) 0)
+                            (char= (char trimmed 0) #\:))
+                       (subseq trimmed 1)
+                       trimmed)))
+       (and (> (length plain) 0)
+            (intern plain :keyword))))
+    (t nil)))
+
+(defun normalize-founder-key-list (raw)
+  "Normalize RAW founder key list into unique keyword tokens."
+  (let ((items (cond
+                 ((null raw) nil)
+                 ((listp raw) raw)
+                 (t (list raw))))
+        (out nil))
+    (dolist (item items (nreverse out))
+      (let ((token (normalize-founder-key-token item)))
+        (when token
+          (pushnew token out :test #'eq))))))
+
+(defun recruit-special-forces (&key max-attempts founder-keys)
   (force-recruit-strategy "T-Nakane-Gotobi")
   (let ((symbols (if (and (boundp 'swimmy.core::*supported-symbols*)
                           swimmy.core::*supported-symbols*)
                      swimmy.core::*supported-symbols*
                      '("USDJPY")))
+        (attempt-limit (and (integerp max-attempts)
+                            (>= max-attempts 0)
+                            max-attempts))
+        (selected-keys (normalize-founder-key-list founder-keys))
         (known-names (make-hash-table :test 'equal))
         (recruited 0)
-        (auto-skipped 0))
+        (attempted 0)
+        (auto-skipped 0)
+        (limit-reached nil))
     (dolist (s *strategy-knowledge-base*)
-      (let ((name (and s (strategy-name s))))
-        (when (and name (stringp name))
+      (let ((name (and s (strategy-name s)))
+            (competition-eligible-p
+              (if (fboundp 'strategy-competition-eligible-p)
+                  (strategy-competition-eligible-p s)
+                  t)))
+        (when (and competition-eligible-p
+                   name
+                   (stringp name))
           (setf (gethash name known-names) t))))
-    (maphash
-     (lambda (key maker-func)
-       (when (functionp maker-func)
-         (if (and *special-force-skip-hunter-auto-founders*
-                  (hunter-auto-founder-key-p key))
-             (incf auto-skipped)
-             (let ((proto (handler-case (funcall maker-func)
-                            (error () nil))))
-               (when proto
-                 (let ((base-name (strategy-name proto)))
-                   (when (and base-name (stringp base-name))
-                     ;; Multi-symbol evolution: recruit the same founder archetype per
-                     ;; supported symbol, with distinct names (P12.5 contract).
-                     (dolist (sym symbols)
-                       (let ((name (rewrite-strategy-name-for-symbol base-name sym)))
-                         (unless (and name (gethash name known-names))
-                           (when (recruit-founder key :symbol sym)
-                             (incf recruited))
-                           (when name
-                             (setf (gethash name known-names) t))))))))))))
-     *founder-registry*)
-    (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts (auto-skipped ~d)~%"
-            recruited auto-skipped)))
+    (block special-force-loop
+      (maphash
+       (lambda (key maker-func)
+         (when (and (functionp maker-func)
+                    (or (null selected-keys)
+                        (member key selected-keys :test #'eq)))
+           (if (and *special-force-skip-hunter-auto-founders*
+                    (hunter-auto-founder-key-p key))
+               (incf auto-skipped)
+               (let ((proto (handler-case (funcall maker-func)
+                              (error () nil))))
+                 (when proto
+                   (let ((base-name (strategy-name proto)))
+                     (when (and base-name (stringp base-name))
+                       ;; Multi-symbol evolution: recruit the same founder archetype per
+                       ;; supported symbol, with distinct names (P12.5 contract).
+                       (dolist (sym symbols)
+                         (let ((name (rewrite-strategy-name-for-symbol base-name sym)))
+                           (unless (and name (gethash name known-names))
+                             (when (and attempt-limit
+                                        (>= attempted attempt-limit))
+                               (setf limit-reached t)
+                               (return-from special-force-loop nil))
+                             (incf attempted)
+                             (when (recruit-founder key :symbol sym)
+                               (incf recruited))
+                             (when name
+                               (setf (gethash name known-names) t))))))))))))
+       *founder-registry*))
+    (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts (auto-skipped ~d, tried ~d~@[ /limit ~d~]~:[~; LIMIT REACHED~])~%"
+            recruited auto-skipped attempted attempt-limit limit-reached)))
 
 (defun safely-load-hunter-strategies ()
   "Load Hunter strategies. P9: Split into core + auto files."

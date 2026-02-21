@@ -122,6 +122,7 @@
    #:*genome*
    #:*memory*
    #:*current-leader*
+   #:*slot-allocation*
    #:*warrior-allocation*
    #:*symbol-round-robin-index*
    #:*symbol-webhooks*

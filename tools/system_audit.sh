@@ -48,11 +48,29 @@ usage() {
 Usage: tools/system_audit.sh [--help]
 Environment:
   DRY_RUN=1  Skip auto-repair steps
+  RUN_REGRESSION_BUNDLE=1  Run critical regression bundle (Lisp/Python/TF audit). Set 0 to skip
+  BACKTEST_HEARTBEAT_LOG=/path/to/backtest.log  Override heartbeat log path
+  BACKTEST_HEARTBEAT_MAX_LOG_AGE_SECONDS=600  Max age for backtest.log mtime
+  BACKTEST_HEARTBEAT_MAX_RX_AGE_SECONDS=300  Max allowed heartbeat rx_age
+  BACKTEST_HEARTBEAT_MAX_TX_AGE_SECONDS=300  Max allowed heartbeat tx_age
+  BACKTEST_HEARTBEAT_STRICT=0  Set 1 to fail audit when heartbeat freshness check fails
+  BACKTEST_HEARTBEAT_MAX_RXTX_SEC=180  (legacy) Max allowed rx_age/tx_age
+  BACKTEST_HEARTBEAT_LOG_STALE_SEC=300  (legacy) Max allowed seconds since heartbeat log update
   SUDO_CMD="sudo -n"  Override sudo invocation (e.g., "sudo" for interactive)
   SWIMMY_AUDIT_SERVICES="svc1 svc2"  Override default services
   ORDER_TF_AUDIT_LOOKBACK_MINUTES=120  Recency window for order timeframe audit
   ORDER_TF_AUDIT_SINCE=ISO8601  Fixed lower bound for order timeframe audit (overrides lookback)
   ORDER_TF_AUDIT_STRATEGY=name  Optional exact strategy filter for order timeframe audit
+  LIVE_TRADE_CLOSE_LOOKBACK_MINUTES=240  Recency window for trade-close integrity audit
+  LIVE_TRADE_CLOSE_TAIL_LINES=5000  Log tail lines scanned for POSITIONS/legacy markers
+  LIVE_TRADE_CLOSE_AFTER_ID=0  Ignore trade_logs rows with id <= this value
+  LIVE_TRADE_CLOSE_REQUIRE_RECENT_TRADES=0  Set 1 to fail when no recent trade rows
+  RANK_CONF_DB=/path/to/swimmy.db  Override rank conformance DB path
+  RANK_CONF_LATEST_REPORT=/path/to/rank_conformance_latest.json  Latest rank audit report path
+  RANK_CONF_HISTORY_DIR=/path/to/history/dir  Rank audit history output dir
+  RANK_CONF_MAX_VIOLATIONS=0  Threshold for fail-on-problem in rank conformance audit
+  TREND_ARB_STATUS_LATEST_RUN=/path/to/latest_run.json  Override trend-arbitrage run file
+  TREND_ARB_STATUS_MAX_AGE_SECONDS=14400  Freshness threshold when timer enabled
   .env is auto-loaded (environment variables take precedence)
 USAGE
 }
@@ -108,7 +126,171 @@ run_fail() {
   fi
 }
 
+run_order_timeframe_consistency_audit() {
+  local order_tf_audit_args=(
+    --db "${ORDER_TF_AUDIT_DB:-$ROOT/data/memory/swimmy.db}"
+    --log "${ORDER_TF_AUDIT_LOG:-$ROOT/logs/swimmy.json.log}"
+    --fail-on-issues
+  )
+  if [[ -n "${ORDER_TF_AUDIT_STRATEGY:-}" ]]; then
+    order_tf_audit_args+=(--strategy "$ORDER_TF_AUDIT_STRATEGY")
+  fi
+  if [[ -n "${ORDER_TF_AUDIT_SINCE:-}" ]]; then
+    order_tf_audit_args+=(--since "$ORDER_TF_AUDIT_SINCE")
+  else
+    order_tf_audit_args+=(--lookback-minutes "${ORDER_TF_AUDIT_LOOKBACK_MINUTES:-120}")
+  fi
+  python3 "$ROOT/tools/check_order_timeframe_consistency.py" "${order_tf_audit_args[@]}"
+}
+
+run_backtest_heartbeat_freshness() {
+  local heartbeat_log="${BACKTEST_HEARTBEAT_LOG:-$ROOT/logs/backtest.log}"
+  local max_log_age="${BACKTEST_HEARTBEAT_MAX_LOG_AGE_SECONDS:-${BACKTEST_HEARTBEAT_LOG_STALE_SEC:-600}}"
+  local max_rx_age="${BACKTEST_HEARTBEAT_MAX_RX_AGE_SECONDS:-${BACKTEST_HEARTBEAT_MAX_RXTX_SEC:-300}}"
+  local max_tx_age="${BACKTEST_HEARTBEAT_MAX_TX_AGE_SECONDS:-${BACKTEST_HEARTBEAT_MAX_RXTX_SEC:-300}}"
+  if [[ -f "$ROOT/tools/check_backtest_heartbeat.py" ]]; then
+    python3 "$ROOT/tools/check_backtest_heartbeat.py" \
+      --log "$heartbeat_log" \
+      --max-log-age-seconds "$max_log_age" \
+      --max-rx-age-seconds "$max_rx_age" \
+      --max-tx-age-seconds "$max_tx_age" \
+      --fail-on-problem
+    return $?
+  fi
+  log "[WARN] heartbeat check skipped: missing tools/check_backtest_heartbeat.py"
+  return 1
+}
+
+run_rank_conformance_audit() {
+  local rank_conf_report="${RANK_CONF_LATEST_REPORT:-$ROOT/data/reports/rank_conformance_latest.json}"
+  local rc=0
+  if python3 "$ROOT/tools/check_rank_conformance.py" \
+    --db "${RANK_CONF_DB:-$ROOT/data/memory/swimmy.db}" \
+    --out "$rank_conf_report" \
+    --history-dir "${RANK_CONF_HISTORY_DIR:-$ROOT/data/reports/rank_conformance}" \
+    --fail-on-problem \
+    --max-violations "${RANK_CONF_MAX_VIOLATIONS:-0}"; then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  if [[ -f "$rank_conf_report" ]]; then
+    local summary
+    summary="$(python3 - "$rank_conf_report" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("[WARN] Rank conformance summary unavailable: report JSON parse failed")
+    raise SystemExit(0)
+
+if not isinstance(payload, dict):
+    print("[WARN] Rank conformance summary unavailable: invalid report payload")
+    raise SystemExit(0)
+
+transitions = payload.get("transitions", {})
+violations = payload.get("violations", {})
+floor = violations.get("floor", {})
+conformance = violations.get("conformance", {})
+
+def as_int(value):
+    try:
+        return int(value)
+    except Exception:
+        return 0
+
+print(
+    "[INFO] Rank conformance summary "
+    f"promotions={as_int(transitions.get('promotion_count'))} "
+    f"demotions={as_int(transitions.get('demotion_count'))} "
+    f"changed={as_int(transitions.get('changed_count'))} "
+    f"violations={as_int(violations.get('total'))} "
+    f"a_lt_50={as_int(floor.get('A_lt_50'))} "
+    f"s_lt_100={as_int(floor.get('S_lt_100'))} "
+    f"s_fail={as_int(conformance.get('S_fail'))} "
+    f"a_fail_to_b={as_int(conformance.get('A_fail_to_B'))} "
+    f"b_fail_to_graveyard={as_int(conformance.get('B_fail_to_graveyard'))}"
+)
+PY
+)"
+    if [[ -n "$summary" ]]; then
+      log "$summary"
+    fi
+  else
+    log "[WARN] Rank conformance summary unavailable: report file missing ($rank_conf_report)"
+  fi
+
+  return "$rc"
+}
+
+detect_pid_scope() {
+  local pid="$1"
+  local cgroup_file="/proc/$pid/cgroup"
+  local cgroup_data=""
+  if [[ ! -r "$cgroup_file" ]]; then
+    printf 'unknown'
+    return 0
+  fi
+  cgroup_data="$(cat "$cgroup_file" 2>/dev/null || true)"
+  if [[ -z "$cgroup_data" ]]; then
+    printf 'unknown'
+    return 0
+  fi
+  if printf '%s\n' "$cgroup_data" | rg -q '/system.slice/'; then
+    printf 'system'
+    return 0
+  fi
+  if printf '%s\n' "$cgroup_data" | rg -q '/user.slice/'; then
+    printf 'user'
+    return 0
+  fi
+  printf 'other'
+  return 0
+}
+
+audit_systemd_scope_alignment() {
+  local has_issue=0
+  if [[ -z "$SYSTEMCTL_STATUS_MODE" ]]; then
+    log "[SKIP] scope alignment check skipped: systemctl unavailable"
+    return 0
+  fi
+
+  for svc in "${services[@]}"; do
+    local unit_state=""
+    local main_pid=""
+    local scope=""
+    unit_state="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" is-active "$svc" 2>/dev/null || true)"
+    [[ "$unit_state" == "active" ]] || continue
+
+    main_pid="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" show -p MainPID --value "$svc" 2>/dev/null || true)"
+    main_pid="${main_pid//[[:space:]]/}"
+    if [[ -z "$main_pid" || "$main_pid" == "0" ]]; then
+      log "[WARN] scope alignment: $svc active but MainPID unavailable"
+      has_issue=1
+      continue
+    fi
+
+    scope="$(detect_pid_scope "$main_pid")"
+    if [[ "$scope" != "system" ]]; then
+      log "[WARN] scope alignment: $svc pid=$main_pid scope=$scope (expected=system)"
+      has_issue=1
+    fi
+  done
+
+  if [[ $has_issue -ne 0 ]]; then
+    return 1
+  fi
+  return 0
+}
+
 log "[AUDIT] Starting system audit (system scope)"
+
+RUN_REGRESSION_BUNDLE="${RUN_REGRESSION_BUNDLE:-1}"
 
 SYSTEMCTL_STATUS_MODE=""
 SYSTEMCTL_REPAIR_MODE=""
@@ -246,6 +428,7 @@ if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
     fi
   done
 fi
+run_warn "Systemd cgroup scope alignment" audit_systemd_scope_alignment
 
 # auto-repair
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -315,8 +498,29 @@ else
   fi
 fi
 
+if [[ "$RUN_REGRESSION_BUNDLE" == "1" ]]; then
+  run_fail "Regression suite (Lisp test runner)" \
+    env SWIMMY_DISABLE_DISCORD=1 \
+      sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" \
+      --script "$ROOT/tests/test_runner.lisp"
+  if [[ -f "$ROOT/tools/test_backtest_service.py" ]]; then
+    run_fail "Regression suite (Backtest service)" \
+      python3 "$ROOT/tools/test_backtest_service.py"
+  else
+    log "[WARN] Regression suite (Backtest service) skipped: missing tools/test_backtest_service.py"
+    mark_warn
+  fi
+else
+  log "[SKIP] Regression bundle disabled (RUN_REGRESSION_BUNDLE=$RUN_REGRESSION_BUNDLE)"
+fi
+
 run_warn "Dashboard" python3 "$ROOT/tools/dashboard.py"
 run_fail "Backtest systemd drift" python3 "$ROOT/tools/systemd_drift_probe.py"
+if [[ "${BACKTEST_HEARTBEAT_STRICT:-0}" == "1" ]]; then
+  run_fail "Backtest heartbeat freshness" run_backtest_heartbeat_freshness
+else
+  run_warn "Backtest heartbeat freshness" run_backtest_heartbeat_freshness
+fi
 run_warn "Notifier log" tail -n 200 "$ROOT/logs/notifier.log"
 run_warn "Notifier direct test" python3 "$ROOT/tools/test_notifier_direct.py"
 run_warn "Broadcast routing" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/broadcast_test_v2.lisp"
@@ -362,6 +566,37 @@ if [[ -f "$ROOT/tools/polymarket_openclaw_status.py" ]]; then
   fi
 fi
 
+if [[ -f "$ROOT/tools/trend_arbitrage_status.py" ]]; then
+  trend_timer="swimmy-trend-arbitrage.timer"
+  trend_timer_state=""
+  trend_enabled="0"
+  if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
+    trend_timer_state="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" is-enabled "$trend_timer" 2>/dev/null || true)"
+    case "$trend_timer_state" in
+      enabled|enabled-runtime)
+        trend_enabled="1"
+        ;;
+      *)
+        trend_enabled="0"
+        ;;
+    esac
+  fi
+
+  if [[ "$trend_enabled" == "1" ]]; then
+    run_warn "Trend arbitrage status" \
+      python3 "$ROOT/tools/trend_arbitrage_status.py" \
+        --latest-run "${TREND_ARB_STATUS_LATEST_RUN:-$ROOT/data/trend_arbitrage/latest_run.json}" \
+        --max-age-seconds "${TREND_ARB_STATUS_MAX_AGE_SECONDS:-14400}" \
+        --fail-on-problem
+  else
+    if [[ -n "$SYSTEMCTL_STATUS_MODE" ]]; then
+      log "[SKIP] Trend arbitrage status (disabled: $trend_timer state=${trend_timer_state:-unknown})"
+    else
+      log "[SKIP] Trend arbitrage status (disabled: systemctl unavailable)"
+    fi
+  fi
+fi
+
 if [[ -f "$ROOT/tools/pattern_backend_calibration_status.py" ]]; then
   pattern_cal_timer="${PATTERN_BACKEND_CALIBRATION_TIMER_UNIT:-swimmy-pattern-backend-calibration.timer}"
   pattern_cal_report="${PATTERN_BACKEND_CALIBRATION_REPORT:-$ROOT/data/reports/pattern_backend_calibration_latest.json}"
@@ -374,21 +609,30 @@ if [[ -f "$ROOT/tools/pattern_backend_calibration_status.py" ]]; then
       --fail-on-problem
 fi
 if [[ -f "$ROOT/tools/check_order_timeframe_consistency.py" ]]; then
-  order_tf_audit_args=(
-    --db "${ORDER_TF_AUDIT_DB:-$ROOT/data/memory/swimmy.db}"
-    --log "${ORDER_TF_AUDIT_LOG:-$ROOT/logs/swimmy.json.log}"
-    --fail-on-issues
-  )
-  if [[ -n "${ORDER_TF_AUDIT_STRATEGY:-}" ]]; then
-    order_tf_audit_args+=(--strategy "$ORDER_TF_AUDIT_STRATEGY")
-  fi
-  if [[ -n "${ORDER_TF_AUDIT_SINCE:-}" ]]; then
-    order_tf_audit_args+=(--since "$ORDER_TF_AUDIT_SINCE")
+  if [[ "$RUN_REGRESSION_BUNDLE" == "1" ]]; then
+    run_fail "Regression suite (Order timeframe consistency)" \
+      run_order_timeframe_consistency_audit
   else
-    order_tf_audit_args+=(--lookback-minutes "${ORDER_TF_AUDIT_LOOKBACK_MINUTES:-120}")
+    run_warn "Order timeframe consistency" \
+      run_order_timeframe_consistency_audit
   fi
-  run_warn "Order timeframe consistency" \
-    python3 "$ROOT/tools/check_order_timeframe_consistency.py" "${order_tf_audit_args[@]}"
+fi
+if [[ -f "$ROOT/tools/check_rank_conformance.py" ]]; then
+  run_warn "Rank conformance audit" run_rank_conformance_audit
+fi
+if [[ -f "$ROOT/tools/check_live_trade_close_integrity.py" ]]; then
+  live_trade_close_args=(
+    --db "${LIVE_TRADE_CLOSE_DB:-$ROOT/data/memory/swimmy.db}"
+    --log "${LIVE_TRADE_CLOSE_LOG:-$ROOT/logs/swimmy.log}"
+    --lookback-minutes "${LIVE_TRADE_CLOSE_LOOKBACK_MINUTES:-240}"
+    --tail-lines "${LIVE_TRADE_CLOSE_TAIL_LINES:-5000}"
+    --after-id "${LIVE_TRADE_CLOSE_AFTER_ID:-0}"
+  )
+  if [[ "${LIVE_TRADE_CLOSE_REQUIRE_RECENT_TRADES:-0}" == "1" ]]; then
+    live_trade_close_args+=(--require-recent-trades)
+  fi
+  run_warn "Live trade-close integrity" \
+    python3 "$ROOT/tools/check_live_trade_close_integrity.py" "${live_trade_close_args[@]}"
 fi
 run_fail "Integrity audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/integrity_audit.lisp"
 run_fail "Deep audit" sbcl --dynamic-space-size "$SWIMMY_SBCL_DYNAMIC_SPACE_MB" --script "$ROOT/tools/deep_audit.lisp"

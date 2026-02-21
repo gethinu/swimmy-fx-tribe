@@ -814,6 +814,58 @@
                  (format nil "Expected high-CPCV score (~,3f) > low-CPCV score (~,3f)"
                          high-score low-score))))
 
+(deftest test-strategy-breeding-priority-score-penalizes-weak-edge-even-with-high-rank
+  "Breeding priority should penalize weak-edge high-rank parents below stronger lower-rank parents."
+  (let* ((weak-s (swimmy.school:make-strategy :name "UT-PRIORITY-WEAK-S"
+                                              :rank :S
+                                              :generation 8
+                                              :sharpe 0.50
+                                              :profit-factor 1.03
+                                              :win-rate 0.34
+                                              :max-dd 0.28
+                                              :trades 260
+                                              :oos-sharpe 0.40
+                                              :cpcv-pass-rate 0.60))
+         (strong-b (swimmy.school:make-strategy :name "UT-PRIORITY-STRONG-B"
+                                                :rank :B
+                                                :generation 2
+                                                :sharpe 0.70
+                                                :profit-factor 1.20
+                                                :win-rate 0.42
+                                                :max-dd 0.15
+                                                :trades 260
+                                                :oos-sharpe 0.40
+                                                :cpcv-pass-rate 0.60))
+         (weak-score (swimmy.school::strategy-breeding-priority-score weak-s))
+         (strong-score (swimmy.school::strategy-breeding-priority-score strong-b)))
+    (assert-true (> strong-score weak-score)
+                 (format nil "Expected strong edge score (~,3f) > weak high-rank score (~,3f)"
+                         strong-score weak-score))))
+
+(deftest test-strategy-breeding-priority-score-prefers-high-oos-sharpe
+  "Breeding priority should prefer better OOS quality when Stage1/CPCV metrics tie."
+  (let* ((base (list :rank :A
+                     :generation 4
+                     :sharpe 0.90
+                     :profit-factor 1.45
+                     :win-rate 0.48
+                     :max-dd 0.08
+                     :trades 260
+                     :cpcv-pass-rate 0.60))
+         (low-oos (apply #'swimmy.school:make-strategy
+                         (append (list :name "UT-PRIORITY-OOS-LOW"
+                                       :oos-sharpe 0.05)
+                                 base)))
+         (high-oos (apply #'swimmy.school:make-strategy
+                          (append (list :name "UT-PRIORITY-OOS-HIGH"
+                                        :oos-sharpe 0.60)
+                                  base)))
+         (low-score (swimmy.school::strategy-breeding-priority-score low-oos))
+         (high-score (swimmy.school::strategy-breeding-priority-score high-oos)))
+    (assert-true (> high-score low-score)
+                 (format nil "Expected high-OOS score (~,3f) > low-OOS score (~,3f)"
+                         high-score low-score))))
+
 (deftest test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
   "PF/WR mutation bias should raise RR when PF deficit dominates."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-PF1"
@@ -1046,9 +1098,27 @@
 
 (deftest test-find-diverse-breeding-partner-falls-back-past-similar-neighbor
   "Breeder should scan forward for a non-similar partner when immediate neighbor is too similar."
-  (let* ((p1 (swimmy.school:make-strategy :name "UT-P1" :sl 20.0 :tp 60.0 :rank :B :trades 50))
-         (p2 (swimmy.school:make-strategy :name "UT-P2" :sl 20.0 :tp 60.0 :rank :B :trades 50))
-         (p3 (swimmy.school:make-strategy :name "UT-P3" :sl 20.0 :tp 60.0 :rank :B :trades 50))
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-P1"
+                                          :sl 20.0 :tp 60.0
+                                          :rank :B :trades 50
+                                          :sharpe 0.60
+                                          :profit-factor 1.20
+                                          :win-rate 0.45
+                                          :max-dd 0.10))
+         (p2 (swimmy.school:make-strategy :name "UT-P2"
+                                          :sl 20.0 :tp 60.0
+                                          :rank :B :trades 50
+                                          :sharpe 0.58
+                                          :profit-factor 1.18
+                                          :win-rate 0.44
+                                          :max-dd 0.11))
+         (p3 (swimmy.school:make-strategy :name "UT-P3"
+                                          :sl 20.0 :tp 60.0
+                                          :rank :B :trades 50
+                                          :sharpe 0.62
+                                          :profit-factor 1.22
+                                          :win-rate 0.46
+                                          :max-dd 0.09))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
         (progn
@@ -1137,32 +1207,208 @@
                                            :status :active
                                            :sl 0.22 :tp 0.31
                                            :trades 0
-                                           :profit-factor 1.10 :win-rate 0.46))
+                                           :sharpe 0.30
+                                           :profit-factor 1.10
+                                           :win-rate 0.46
+                                           :max-dd 0.10))
          (ok (swimmy.school:make-strategy :name "UT-ENOUGH-TRADES-PARENT"
                                           :rank :B
                                           :status :active
                                           :sl 0.22 :tp 0.31
                                           :trades 50
-                                          :profit-factor 1.10 :win-rate 0.46)))
+                                          :sharpe 0.30
+                                          :profit-factor 1.10
+                                          :win-rate 0.46
+                                          :max-dd 0.10)))
     (assert-false (swimmy.school::can-breed-p low)
                   "Expected can-breed-p to reject low-trade parent")
     (assert-true (swimmy.school::can-breed-p ok)
                  "Expected can-breed-p to allow parent with enough trades")))
+
+(deftest test-can-breed-p-rejects-stage1-weak-edge-parent
+  "Breeder parent must fail closed when Stage1 B edge is below threshold."
+  (let* ((base (list :rank :B
+                     :status :active
+                     :sl 0.22 :tp 0.31
+                     :trades 80
+                     :sharpe 0.40
+                     :profit-factor 1.20
+                     :win-rate 0.45
+                     :max-dd 0.10))
+         (weak-cases
+           (list
+             (list "sharpe" (apply #'swimmy.school:make-strategy
+                                    (append (list :name "UT-WEAK-SHARPE" :sharpe 0.14) base)))
+             (list "pf" (apply #'swimmy.school:make-strategy
+                                (append (list :name "UT-WEAK-PF" :profit-factor 1.04) base)))
+             (list "wr" (apply #'swimmy.school:make-strategy
+                                (append (list :name "UT-WEAK-WR" :win-rate 0.34) base)))
+             (list "maxdd" (apply #'swimmy.school:make-strategy
+                                   (append (list :name "UT-WEAK-MAXDD" :max-dd 0.25) base))))))
+    (dolist (pair weak-cases)
+      (let ((label (first pair))
+            (strategy (second pair)))
+        (assert-false (swimmy.school::can-breed-p strategy)
+                      (format nil "Expected can-breed-p to reject Stage1-weak parent (~a)" label))))))
+
+(deftest test-can-breed-p-allows-legend-parent-even-if-stage1-weak
+  "Legend parent should remain eligible even when Stage1 edge metrics are weak."
+  (let ((legend (swimmy.school:make-strategy :name "UT-LEGEND-STAGE1-WEAK"
+                                             :rank :legend
+                                             :status :active
+                                             :sl 0.22 :tp 0.31
+                                             :trades 0
+                                             :sharpe 0.01
+                                             :profit-factor 0.80
+                                             :win-rate 0.20
+                                             :max-dd 0.50)))
+    (assert-true (swimmy.school::can-breed-p legend)
+                 "Expected can-breed-p to keep legend eligible despite weak Stage1 metrics")))
+
+(deftest test-can-breed-p-rejects-a-parent-with-weak-oos
+  "A-rank parent with weak OOS edge must be excluded from breeding."
+  (let ((a-weak-oos (swimmy.school:make-strategy :name "UT-A-WEAK-OOS-PARENT"
+                                                 :rank :A
+                                                 :status :active
+                                                 :sl 0.22 :tp 0.31
+                                                 :trades 120
+                                                 :sharpe 0.80
+                                                 :profit-factor 1.45
+                                                 :win-rate 0.48
+                                                 :max-dd 0.10
+                                                 :oos-sharpe 0.10)))
+    (assert-false (swimmy.school::can-breed-p a-weak-oos)
+                  "Expected can-breed-p to reject A parent with weak OOS Sharpe")))
+
+(deftest test-can-breed-p-allows-a-parent-with-strong-oos
+  "A-rank parent with strong OOS edge should remain eligible."
+  (let ((a-strong-oos (swimmy.school:make-strategy :name "UT-A-STRONG-OOS-PARENT"
+                                                   :rank :A
+                                                   :status :active
+                                                   :sl 0.22 :tp 0.31
+                                                   :trades 120
+                                                   :sharpe 0.80
+                                                   :profit-factor 1.45
+                                                   :win-rate 0.48
+                                                   :max-dd 0.10
+                                                   :oos-sharpe 0.55)))
+    (assert-true (swimmy.school::can-breed-p a-strong-oos)
+                 "Expected can-breed-p to allow A parent with strong OOS Sharpe")))
+
+(deftest test-can-breed-p-rejects-a-parent-that-fails-a-rank-floor
+  "A-rank parent that only clears B floor should fail closed for breeding."
+  (let ((a-b-only (swimmy.school:make-strategy :name "UT-A-B-ONLY-PARENT"
+                                               :rank :A
+                                               :status :active
+                                               :sl 0.22 :tp 0.31
+                                               :trades 120
+                                               :sharpe 0.20
+                                               :profit-factor 1.10
+                                               :win-rate 0.40
+                                               :max-dd 0.20
+                                               :oos-sharpe 0.55)))
+    (assert-false (swimmy.school::can-breed-p a-b-only)
+                  "Expected can-breed-p to reject A parent that fails A-rank floor")))
+
+(deftest test-can-breed-p-rejects-s-parent-without-cpcv-floor
+  "S-rank parent should fail closed when CPCV floor is missing."
+  (let ((s-no-cpcv (swimmy.school:make-strategy :name "UT-S-NO-CPCV-PARENT"
+                                                :rank :S
+                                                :status :active
+                                                :sl 0.22 :tp 0.31
+                                                :trades 180
+                                                :sharpe 0.80
+                                                :profit-factor 1.80
+                                                :win-rate 0.52
+                                                :max-dd 0.09
+                                                :oos-sharpe 0.60
+                                                :cpcv-pass-rate 0.0
+                                                :cpcv-median-maxdd 1.0)))
+    (assert-false (swimmy.school::can-breed-p s-no-cpcv)
+                  "Expected can-breed-p to reject S parent with weak CPCV metrics")))
+
+(deftest test-can-breed-p-allows-s-parent-with-cpcv-floor
+  "S-rank parent should remain eligible when S-rank CPCV floor is met."
+  (let ((s-good-cpcv (swimmy.school:make-strategy :name "UT-S-GOOD-CPCV-PARENT"
+                                                  :rank :S
+                                                  :status :active
+                                                  :sl 0.22 :tp 0.31
+                                                  :trades 180
+                                                  :sharpe 0.80
+                                                  :profit-factor 1.80
+                                                  :win-rate 0.52
+                                                  :max-dd 0.09
+                                                  :oos-sharpe 0.60
+                                                  :cpcv-pass-rate 0.80
+                                                  :cpcv-median-maxdd 0.08)))
+    (assert-true (swimmy.school::can-breed-p s-good-cpcv)
+                 "Expected can-breed-p to allow S parent with healthy CPCV metrics")))
+
+(deftest test-run-legend-breeding-skips-stage1-weak-b-parent
+  "Legend breeding should not proceed when B-side parent fails can-breed-p quality gate."
+  (let* ((legend (swimmy.school:make-strategy :name "UT-LEGEND-PARENT"
+                                              :rank :legend
+                                              :status :active
+                                              :sl 20.0 :tp 40.0))
+         (weak-b (swimmy.school:make-strategy :name "UT-WEAK-B-PARENT"
+                                              :rank :B
+                                              :status :active
+                                              :trades 80
+                                              :sl 20.0 :tp 40.0
+                                              :sharpe 0.10
+                                              :profit-factor 1.00
+                                              :win-rate 0.30
+                                              :max-dd 0.30))
+         (orig-get-by-rank (symbol-function 'swimmy.school::get-strategies-by-rank))
+         (orig-breed (symbol-function 'swimmy.school::breed-strategies))
+         (orig-add-to-kb (symbol-function 'swimmy.school::add-to-kb))
+         (called nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::get-strategies-by-rank)
+                (lambda (rank)
+                  (case rank
+                    (:legend (list legend))
+                    (:B (list weak-b))
+                    (otherwise nil))))
+          (setf (symbol-function 'swimmy.school::breed-strategies)
+                (lambda (_legend _b)
+                  (declare (ignore _legend _b))
+                  (setf called t)
+                  (swimmy.school:make-strategy :name "UT-SHOULD-NOT-BE-CREATED")))
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (_child _source &key _require-bt _notify &allow-other-keys)
+                  (declare (ignore _child _source _require-bt _notify))
+                  (values t :queued-phase1)))
+          (let ((count (swimmy.school::run-legend-breeding)))
+            (assert-false called
+                          "Expected legend breeding to skip weak B parent before breed-strategies")
+            (assert-equal 0 count
+                          "Expected no legend children when no B parent passes can-breed-p")))
+      (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get-by-rank)
+      (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add-to-kb))))
 
 (deftest test-find-diverse-breeding-partner-prefers-pfwr-complement
   "Breeder should prefer a complement partner when parent has WR/PF deficit imbalance."
   (let* ((parent (swimmy.school:make-strategy :name "UT-COMP-PARENT"
                                               :rank :B :sl 20.0 :tp 60.0
                                               :trades 50
-                                              :profit-factor 1.40 :win-rate 0.34))
+                                              :sharpe 0.70
+                                              :profit-factor 1.40 :win-rate 0.36
+                                              :max-dd 0.12))
          (cand1 (swimmy.school:make-strategy :name "UT-COMP-CAND1"
                                              :rank :B :sl 20.0 :tp 70.0
                                              :trades 50
-                                             :profit-factor 1.45 :win-rate 0.35))
+                                             :sharpe 0.75
+                                             :profit-factor 1.45 :win-rate 0.35
+                                             :max-dd 0.12))
          (cand2 (swimmy.school:make-strategy :name "UT-COMP-CAND2"
                                              :rank :B :sl 20.0 :tp 30.0
                                              :trades 50
-                                             :profit-factor 1.22 :win-rate 0.49))
+                                             :sharpe 0.72
+                                             :profit-factor 1.22 :win-rate 0.49
+                                             :max-dd 0.11))
          (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p)))
     (unwind-protect
         (progn

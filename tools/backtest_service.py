@@ -217,7 +217,7 @@ _STRATEGY_FIELDS = {
     "filter_period",
     "filter_logic",
 }
-_INDICATOR_TYPES = {"sma", "ema", "rsi", "macd", "bb", "stoch"}
+_INDICATOR_TYPES = {"sma", "ema", "rsi", "macd", "bb", "stoch", "vwap", "volsma", "vpoc", "vwapvr"}
 _OPTIONAL_LIST_KEYS = (
     "data_id",
     "candles_file",
