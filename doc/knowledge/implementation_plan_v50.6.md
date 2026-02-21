@@ -19,8 +19,10 @@
     - `scoreboard`（period別スコア一覧）を promotion report に出力
     - `live_gap`（backtest vs live 差分診断）を promotion report に出力
       - `delta_profit_factor`, `delta_win_rate`, `underperforming` など
+    - `--fail-on-live-underperforming` を追加（sample_quality=ok かつ underperforming の場合に昇格をブロック）
   - `tools/xau_autobot_cycle_runner.sh`
     - `--live-reports-dir` / `--live-max-age-hours` を promotion step へ連携
+    - `XAU_AUTOBOT_FAIL_ON_LIVE_UNDERPERFORMING=1` で fail-on-live-underperforming を有効化
 - 検証:
   - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot_cycle.py tools/tests/test_xau_autobot_cycle_compare.py tools/tests/test_xau_autobot_promote_best.py` → pass
   - promotion report (`data/reports/xau_autobot_promotion.json`) で `scoreboard` / `live_gap` を確認
@@ -111,6 +113,10 @@
   - 自動コンパイル:
     - `scripts/compile_swimmybridge_mt5.sh` を汎用化（`--src` でEAソース切替）
     - `scripts/compile_institutionalhunter_mt5.sh` を追加（InstitutionalHunterEA専用ラッパー）
+  - テスター運用プリセット:
+    - `src/mt5/InstitutionalHunterEA_Strict_AllSymbols.set`
+    - `src/mt5/InstitutionalHunterEA_OptimizeCore_XAU_FX4.set`
+    - `src/mt5/InstitutionalHunterEA_Forward_XAU_FX4.set`
   - 主要仕様:
     - H4で `MSB/OrderBlock` 検出、M15で執行判定
     - 厳格条件: `tick_volume >= SMA20*2.0` かつ `z-score(50)>=2.0` かつ `ATR14/ATR50>=1.3`
@@ -204,6 +210,30 @@
 - 運用ルール（再発防止）:
   - Guardian の indicator variant 追加後は必ず `guardian` 再ビルド + `backtest_service` 再起動をワンセットで実施。
   - `unknown variant` が検出された場合、Phase1結果を信頼せず、まずバイナリ整合を疑う。
+
+## 2026-02-21 実装追補: VWAPVR Founder の3通貨ペア対応（USDJPY/EURUSD/GBPUSD）
+
+- 背景:
+  - 既存 `:hunted-h12-vwapvr-50-150` は USDJPY では機能したが、同一設定を EURUSD/GBPUSD へ横展開すると `PF<1` 側に寄りやすかった。
+  - 共通1セットでは3通貨同時に安定しづらいため、通貨ペア別チューニングへ切替。
+- 実装:
+  - `src/lisp/school/school-founders-hunted.lisp`
+    - 既存キーを USDJPY 固定化:
+      - `:hunted-h12-vwapvr-50-150` -> `Hunted-H12-VWAPVR-50-150-USDJPY`
+    - 新規 founder を追加:
+      - `:hunted-d1-vwapvr-50-220-eurusd` (`D1`, `vwapvr 50/220`, `SL=1.2`, `TP=4.0`)
+      - `:hunted-d1-vwapvr-80-180-gbpusd` (`D1`, `vwapvr 80/180`, `SL=1.2`, `TP=4.0`)
+    - `recruit-hunted-batch` に EUR/GBP 向け2 founder を追加。
+  - `src/lisp/school/school-execution.lisp`
+    - `recruit-special-forces` に founder key 接尾辞ベースの symbol pinning を追加:
+      - `-USDJPY` / `-EURUSD` / `-GBPUSD` は該当シンボルのみ募集。
+      - 互換性維持のため `:hunted-h12-vwapvr-50-150` は `USDJPY` 固定で扱う。
+    - それ以外の founder は従来どおり `*supported-symbols*` 全体へ募集。
+- テスト:
+  - `src/lisp/tests.lisp`
+    - `test-hunted-founder-templates-apply-trend-hardening-filters` を拡張し、EUR/GBP 向け VWAPVR founder の存在・symbol・TF・entry/exit を検証。
+    - `test-recruit-special-forces-respects-founder-key-symbol-suffix` を追加（接尾辞 founder の単一シンボル募集を検証）。
+    - 既存の `recruit-special-forces` 系回帰 (`...per-supported-symbol`, `...filters-founder-keys`, `...respects-recruit-limit`) も pass。
 
 ---
 

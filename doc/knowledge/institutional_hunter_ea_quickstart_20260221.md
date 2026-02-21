@@ -60,6 +60,23 @@
 - 連敗中に日次DD停止が機能すること
 - 高スプレッド時間帯で新規停止すること
 
+### 4.1 推奨プリセット
+
+- 厳格デフォルト（全銘柄）:
+  - `src/mt5/InstitutionalHunterEA_Strict_AllSymbols.set`
+- 最適化（XAU + FX4）:
+  - `src/mt5/InstitutionalHunterEA_OptimizeCore_XAU_FX4.set`
+- フォワード（XAU + FX4）:
+  - `src/mt5/InstitutionalHunterEA_Forward_XAU_FX4.set`
+
+### 4.2 最適化の使い方（短手順）
+
+1. `InstitutionalHunterEA_OptimizeCore_XAU_FX4.set` を読込
+2. Genetic optimization を有効化
+3. 期間を `IS 12か月` / `OOS 6か月` に設定
+4. 上位5設定を `InstitutionalHunterEA_Forward_XAU_FX4.set` ベースに手動反映
+5. Forward期間で再検証して採用を1本に絞る
+
 ## 5. 注意点
 
 - このEAは「大口注文そのもの」ではなく、価格・出来高・ボラからの推定。
