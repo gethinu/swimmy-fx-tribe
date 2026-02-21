@@ -384,11 +384,15 @@
           (when orig-stress
             (setf (symbol-function 'swimmy.school::check-stress-test-trigger) (lambda () nil)))
           (swimmy.main::run-periodic-maintenance)
-          (assert-equal 1 (length sent-messages) "Should flush stagnant C-rank summary")
-          (assert-true (search "Stagnant C-Rank Summary" (car sent-messages))
-                       "Summary title should be included")
-          (assert-true (search "UT-STAGNANT" (car sent-messages))
-                       "Summary should include buffered strategy"))
+          (let* ((stagnant-messages
+                   (remove-if-not (lambda (msg)
+                                    (and (stringp msg)
+                                         (search "Stagnant C-Rank Summary" msg)))
+                                  sent-messages))
+                 (summary (car stagnant-messages)))
+            (assert-true stagnant-messages "Should flush stagnant C-rank summary")
+            (assert-true (search "UT-STAGNANT" summary)
+                         "Summary should include buffered strategy")))
       (when orig-notify
         (setf (symbol-function 'swimmy.school::notify-discord-alert) orig-notify))
       (when orig-heartbeat

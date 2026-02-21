@@ -5317,13 +5317,17 @@
            (w1-volume-maker (gethash :hunted-w1-volume swimmy.school::*founder-registry*))
            (d1-adx-maker (gethash :hunted-d1-adx swimmy.school::*founder-registry*))
            (d1-williams-maker (gethash :hunted-d1-williams swimmy.school::*founder-registry*))
-           (h12-vwapvr-maker (gethash :hunted-h12-vwapvr-50-150 swimmy.school::*founder-registry*)))
+           (h12-vwapvr-maker (gethash :hunted-h12-vwapvr-50-150 swimmy.school::*founder-registry*))
+           (d1-vwapvr-eur-maker (gethash :hunted-d1-vwapvr-50-220-eurusd swimmy.school::*founder-registry*))
+           (d1-vwapvr-gbp-maker (gethash :hunted-d1-vwapvr-80-180-gbpusd swimmy.school::*founder-registry*)))
       (assert-not-nil w1-ema-maker "Expected :hunted-w1-ema founder")
       (assert-not-nil w1-pullback-maker "Expected :hunted-w1-pullback founder")
       (assert-not-nil w1-volume-maker "Expected :hunted-w1-volume founder")
       (assert-not-nil d1-adx-maker "Expected :hunted-d1-adx founder")
       (assert-not-nil d1-williams-maker "Expected :hunted-d1-williams founder")
       (assert-not-nil h12-vwapvr-maker "Expected :hunted-h12-vwapvr-50-150 founder")
+      (assert-not-nil d1-vwapvr-eur-maker "Expected :hunted-d1-vwapvr-50-220-eurusd founder")
+      (assert-not-nil d1-vwapvr-gbp-maker "Expected :hunted-d1-vwapvr-80-180-gbpusd founder")
 
       (let* ((s (funcall w1-ema-maker))
              (inds (swimmy.school:strategy-indicators s))
@@ -5398,6 +5402,10 @@
              (inds (swimmy.school:strategy-indicators s))
              (entry (sexp-upcase (swimmy.school:strategy-entry s)))
              (exit (sexp-upcase (swimmy.school:strategy-exit s))))
+        (assert-equal "USDJPY" (swimmy.school:strategy-symbol s)
+                      "Expected legacy H12 VWAPVR founder to target USDJPY")
+        (assert-equal 720 (swimmy.school:strategy-timeframe s)
+                      "Expected legacy H12 VWAPVR founder to remain H12 (720)")
         (assert-true (indicator-present-p inds "VWAPVR" 50)
                      "Expected H12 VWAPVR template to include VWAPVR period 50")
         (assert-true (search "VWAPVR-50-PREV" entry)
@@ -5405,7 +5413,41 @@
         (assert-true (search "VWAPVR-THRESHOLD" entry)
                      "Expected H12 VWAPVR entry to reference orange threshold")
         (assert-true (and (search "VWAPVR-50" exit) (search "<=" exit))
-                     "Expected H12 VWAPVR exit to flatten when VWAPVR loses strength")))))
+                     "Expected H12 VWAPVR exit to flatten when VWAPVR loses strength"))
+
+      (let* ((s (funcall d1-vwapvr-eur-maker))
+             (inds (swimmy.school:strategy-indicators s))
+             (entry (sexp-upcase (swimmy.school:strategy-entry s)))
+             (exit (sexp-upcase (swimmy.school:strategy-exit s))))
+        (assert-equal "EURUSD" (swimmy.school:strategy-symbol s)
+                      "Expected EUR founder to pin EURUSD")
+        (assert-equal 1440 (swimmy.school:strategy-timeframe s)
+                      "Expected EUR founder to use D1 timeframe")
+        (assert-true (indicator-present-p inds "VWAPVR" 50)
+                     "Expected EUR founder to use VWAPVR period 50")
+        (assert-true (search "VWAPVR-50-PREV" entry)
+                     "Expected EUR founder entry to use prior-bar cross")
+        (assert-true (search "VWAPVR-THRESHOLD" entry)
+                     "Expected EUR founder entry to use threshold variable")
+        (assert-true (and (search "VWAPVR-50" exit) (search "<=" exit))
+                     "Expected EUR founder exit to flatten on weakness"))
+
+      (let* ((s (funcall d1-vwapvr-gbp-maker))
+             (inds (swimmy.school:strategy-indicators s))
+             (entry (sexp-upcase (swimmy.school:strategy-entry s)))
+             (exit (sexp-upcase (swimmy.school:strategy-exit s))))
+        (assert-equal "GBPUSD" (swimmy.school:strategy-symbol s)
+                      "Expected GBP founder to pin GBPUSD")
+        (assert-equal 1440 (swimmy.school:strategy-timeframe s)
+                      "Expected GBP founder to use D1 timeframe")
+        (assert-true (indicator-present-p inds "VWAPVR" 80)
+                     "Expected GBP founder to use VWAPVR period 80")
+        (assert-true (search "VWAPVR-80-PREV" entry)
+                     "Expected GBP founder entry to use prior-bar cross")
+        (assert-true (search "VWAPVR-THRESHOLD" entry)
+                     "Expected GBP founder entry to use threshold variable")
+        (assert-true (and (search "VWAPVR-80" exit) (search "<=" exit))
+                     "Expected GBP founder exit to flatten on weakness")))))
 
 (deftest test-ledger-omits-tribe-fields
   "save-state should omit tribe fields"
@@ -5676,7 +5718,9 @@
           (let ((line (swimmy.school::learning-log-summary-line :bootstrap nil)))
             (assert-true (search "total=5" line) "Expected total learning sample count")
             (assert-true (search "LIVE=2" line) "Expected LIVE sample count in summary")
-            (assert-true (search "SHADOW=3" line) "Expected SHADOW sample count in summary")))
+            (assert-true (search "SHADOW=3" line) "Expected SHADOW sample count in summary")
+            (assert-false (search "%%" line)
+                          "Learning summary should use single percent symbols")))
       (setf swimmy.school::*success-log* orig-success)
       (setf swimmy.school::*failure-log* orig-failure))))
 
@@ -7696,6 +7740,53 @@
       (setf swimmy.core::*supported-symbols* orig-supported)
       (setf (symbol-function 'swimmy.school::recruit-founder) orig-recruit))))
 
+(deftest test-recruit-special-forces-respects-founder-key-symbol-suffix
+  "Founder keys ending with -EURUSD/-GBPUSD/-USDJPY should recruit only that symbol."
+  (let* ((orig-registry swimmy.school::*founder-registry*)
+         (orig-meta swimmy.school::*founder-registry-meta*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-recruit (symbol-function 'swimmy.school::recruit-founder))
+         (orig-supported swimmy.core::*supported-symbols*)
+         (calls nil)
+         (generic-key :ut-founder-generic)
+         (eur-key :ut-founder-vwapvr-eurusd))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*supported-symbols* '("USDJPY" "EURUSD" "GBPUSD"))
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*founder-registry* (make-hash-table :test 'equal))
+          (setf swimmy.school::*founder-registry-meta* (make-hash-table :test 'equal))
+          (setf (gethash generic-key swimmy.school::*founder-registry*)
+                (lambda ()
+                  (swimmy.school:make-strategy :name "UT-SF-GENERIC" :rank nil)))
+          (setf (gethash eur-key swimmy.school::*founder-registry*)
+                (lambda ()
+                  (swimmy.school:make-strategy :name "UT-SF-EUR" :rank nil)))
+          (setf (gethash generic-key swimmy.school::*founder-registry-meta*)
+                (list :name "UT-SF-GENERIC" :source-file "unit-test"))
+          (setf (gethash eur-key swimmy.school::*founder-registry-meta*)
+                (list :name "UT-SF-EUR" :source-file "unit-test"))
+          (setf (symbol-function 'swimmy.school::recruit-founder)
+                (lambda (key &key symbol)
+                  (push (cons key symbol) calls)
+                  t))
+          (swimmy.school::recruit-special-forces)
+          (assert-equal 4 (length calls)
+                        "Expected generic founder x3 plus EUR-pinned founder x1")
+          (let ((eur-calls (remove-if-not (lambda (pair) (eq (car pair) eur-key)) calls))
+                (generic-calls (remove-if-not (lambda (pair) (eq (car pair) generic-key)) calls)))
+            (assert-equal 1 (length eur-calls)
+                          "Expected EUR-suffixed founder to be recruited only once")
+            (assert-equal "EURUSD" (cdr (first eur-calls))
+                          "Expected EUR-suffixed founder to target EURUSD only")
+            (assert-equal 3 (length generic-calls)
+                          "Expected generic founder to recruit across all supported symbols")))
+      (setf swimmy.school::*founder-registry* orig-registry)
+      (setf swimmy.school::*founder-registry-meta* orig-meta)
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.core::*supported-symbols* orig-supported)
+      (setf (symbol-function 'swimmy.school::recruit-founder) orig-recruit))))
+
 (deftest test-backtest-uses-csv-override
   "request-backtest should honor SWIMMY_BACKTEST_CSV_OVERRIDE when set"
   (require :sb-posix)
@@ -8278,7 +8369,9 @@
     (unwind-protect
         (progn
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
-                (lambda () (list nil (swimmy.school:make-strategy :name "UT-DB"))))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list nil (swimmy.school:make-strategy :name "UT-DB"))))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda () (list nil (swimmy.school:make-strategy :name "UT-FILE"))))
           (handler-case
@@ -8298,7 +8391,8 @@
     (unwind-protect
         (progn
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
-                (lambda ()
+                (lambda (&rest _args)
+                  (declare (ignore _args))
                   (list (swimmy.school:make-strategy :name "UT-DB-TF-MN" :timeframe "MN1" :rank :B))))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda ()
@@ -8348,7 +8442,9 @@
     (unwind-protect
         (progn
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
-                (lambda () (list active nil-rank)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list active nil-rank)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda () (list incubator scout)))
           (swimmy.school::init-knowledge-base)
@@ -8392,7 +8488,9 @@
         (progn
           (setf swimmy.school::*kb-init-revive-require-active-library-file* nil)
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
-                (lambda () (list db-strat)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list db-strat)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda () (list file-strat)))
           (setf (symbol-function 'swimmy.school:upsert-strategy)
@@ -8454,7 +8552,9 @@
         (progn
           (setf swimmy.school::*kb-init-revive-require-active-library-file* t)
           (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
-                (lambda () (list db-strat)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list db-strat)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
                 (lambda () (list file-strat)))
           (setf (symbol-function 'swimmy.school:upsert-strategy)
@@ -8501,6 +8601,93 @@
             (assert-equal :B (swimmy.school:strategy-rank obj)
                           "Expected rank column (:B) to override stale data_sexp rank")))
       (setf (symbol-function 'swimmy.school::execute-to-list) orig-exec))))
+
+(deftest test-fetch-all-strategies-from-db-supports-rank-filter
+  "DB fetch should accept rank filter to avoid full-table deserialization at startup."
+  (let* ((orig-exec (symbol-function 'swimmy.school::execute-to-list))
+         (stale (swimmy.school:make-strategy :name "UT-STALE-ALL-FILTER" :rank :graveyard))
+         (sexp (format nil "~s" stale))
+         (captured-query nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::execute-to-list)
+                (lambda (query &rest _args)
+                  (declare (ignore _args))
+                  (setf captured-query query)
+                  (list (list sexp ":S"))))
+          (let* ((rows (swimmy.school::fetch-all-strategies-from-db :ranks '(":B" ":S")))
+                 (obj (first rows)))
+            (assert-not-nil obj "Expected one filtered strategy row")
+            (assert-true (and captured-query
+                              (search "WHERE" captured-query :test #'char-equal))
+                         "Expected rank-filter query to include WHERE clause")
+            (assert-equal :S (swimmy.school:strategy-rank obj)
+                          "Expected rank column (:S) to override stale data_sexp rank")))
+      (setf (symbol-function 'swimmy.school::execute-to-list) orig-exec))))
+
+(deftest test-init-knowledge-base-revives-active-file-strategy-from-archived-db-rank-via-rank-lookup
+  "init-knowledge-base should revive active file strategy even when archived DB row wasn't deserialized."
+  (let* ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+         (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-purge (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files))
+         (orig-exec-single (symbol-function 'swimmy.school::execute-single))
+         (orig-require-file swimmy.school::*kb-init-revive-require-active-library-file*)
+         (orig-cap swimmy.school::*kb-init-max-archived-duplicate-revives*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (file-strat (swimmy.school:make-strategy :name "UT-KB-REVIVE-RANK-LOOKUP"
+                                                  :rank :B
+                                                  :symbol "USDJPY"
+                                                  :timeframe 300
+                                                  :sharpe 1.20))
+         (upsert-called 0)
+         (purge-called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*kb-init-revive-require-active-library-file* nil)
+          (setf swimmy.school::*kb-init-max-archived-duplicate-revives* 10)
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  nil))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list file-strat)))
+          (setf (symbol-function 'swimmy.school::execute-single)
+                (lambda (query &rest params)
+                  (if (and (search "SELECT rank FROM strategies WHERE name = ?" query :test #'char-equal)
+                           (equal (first params) "UT-KB-REVIVE-RANK-LOOKUP"))
+                      ":GRAVEYARD"
+                      nil)))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf upsert-called)
+                  t))
+          (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (incf purge-called)
+                  1))
+          (swimmy.school::init-knowledge-base)
+          (assert-equal 1 upsert-called
+                        "Expected archived DB duplicate revive upsert via rank lookup")
+          (assert-equal 1 purge-called
+                        "Expected archive purge when revive upsert succeeds")
+          (assert-true (find "UT-KB-REVIVE-RANK-LOOKUP"
+                             swimmy.school::*strategy-knowledge-base*
+                             :key #'swimmy.school:strategy-name
+                             :test #'string=)
+                       "Expected revived strategy to be present in KB"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*kb-init-revive-require-active-library-file* orig-require-file)
+      (setf swimmy.school::*kb-init-max-archived-duplicate-revives* orig-cap)
+      (setf (symbol-function 'swimmy.school::execute-single) orig-exec-single)
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files) orig-purge))))
 
 (deftest test-fetch-candidate-strategies-prefers-rank-column-over-stale-data-sexp
   "Candidate fetch should trust rank column when serialized rank in data_sexp is stale."
@@ -9214,6 +9401,62 @@
       (setf swimmy.school::*phase1-pending-candidates* orig-pending)
       (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
       (setf (symbol-function 'swimmy.school::ensure-rank) orig-ensure))))
+
+(deftest test-handle-v2-result-loads-phase1-candidate-from-db-fallback
+  "Phase1 result should fall back to DB candidate when KB and pending map lost state."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-ensure (symbol-function 'swimmy.school::ensure-rank))
+         (orig-db-load (symbol-function 'swimmy.school::%load-strategy-from-db-for-phase1))
+         (child (swimmy.school:make-strategy :name "UT-PHASE1-DB-FALLBACK"
+                                             :symbol "GBPUSD"
+                                             :timeframe 1440
+                                             :direction :BOTH
+                                             :rank nil
+                                             :sl 40.0
+                                             :tp 80.0
+                                             :sharpe 0.0
+                                             :profit-factor 0.0
+                                             :win-rate 0.0
+                                             :max-dd 1.0
+                                             :trades 0
+                                             :indicators '((vwap-vr 50))
+                                             :entry '(> vwap-vr close)
+                                             :exit '(< vwap-vr close)))
+         (ensure-called 0)
+         (db-load-called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::ensure-rank)
+                (lambda (strategy new-rank &optional reason)
+                  (declare (ignore reason))
+                  (incf ensure-called)
+                  (setf (swimmy.school:strategy-rank strategy) new-rank)
+                  new-rank))
+          (setf (symbol-function 'swimmy.school::%load-strategy-from-db-for-phase1)
+                (lambda (name)
+                  (incf db-load-called)
+                  (if (string= name "UT-PHASE1-DB-FALLBACK")
+                      child
+                      nil)))
+          (swimmy.school::handle-v2-result
+           "UT-PHASE1-DB-FALLBACK_P1"
+           '(:sharpe 0.7 :profit-factor 1.4 :win-rate 0.45 :trades 18 :max-dd 0.2))
+          (assert-equal 1 db-load-called "Expected DB fallback to be queried once")
+          (assert-equal 1 ensure-called "Expected fallback-loaded candidate to be rank-evaluated")
+          (assert-equal :B (swimmy.school:strategy-rank child))
+          (assert-not-nil (find child swimmy.school::*strategy-knowledge-base* :test #'eq)
+                          "Fallback-loaded candidate should be admitted to KB"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::ensure-rank) orig-ensure)
+      (setf (symbol-function 'swimmy.school::%load-strategy-from-db-for-phase1) orig-db-load))))
 
 (deftest test-build-category-pools-excludes-unevaluated-incubator
   "build-category-pools should exclude unevaluated incubators from active pools."
@@ -13133,6 +13376,7 @@
 	                  test-add-to-kb-breeder-requires-phase1-screening-when-require-bt
 	                  test-add-to-kb-phase1-pending-skips-pool-membership
 	                  test-handle-v2-result-admits-pending-phase1-candidate
+	                  test-handle-v2-result-loads-phase1-candidate-from-db-fallback
 	                  test-build-category-pools-excludes-unevaluated-incubator
 	                  test-build-category-pools-excludes-zero-evidence-active-rank
 	                  test-build-category-pools-excludes-revalidation-pending-legend
@@ -13442,6 +13686,7 @@
 	                  test-recruit-founder-applies-symbol-override-and-rewrites-name
 	                  test-recruit-founder-queues-phase1-before-admission
 	                  test-recruit-special-forces-recruits-founders-per-supported-symbol
+	                  test-recruit-special-forces-respects-founder-key-symbol-suffix
 	                  test-backtest-uses-csv-override
 	                  test-heartbeat-webhook-prefers-env
 	                  test-backtest-webhook-routes-to-system-logs

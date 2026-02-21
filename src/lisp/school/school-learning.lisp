@@ -590,7 +590,7 @@ Returns number of loaded rows."
              (count-if (lambda (r) (eq (record-mode r) mode)) (or records '())))
            (format-wr (wins total)
              (if (> total 0)
-                 (format nil "~,1f%%" (* 100.0 (/ wins total)))
+                 (format nil "~,1f%" (* 100.0 (/ wins total)))
                  "n/a")))
     (let* ((successes (or *success-log* '()))
            (failures (or *failure-log* '()))

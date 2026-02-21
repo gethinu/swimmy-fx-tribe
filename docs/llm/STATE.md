@@ -34,6 +34,9 @@
   - Overall 判定: `k0..k3` がすべて `ok` のときのみ `overall_status=ok`。それ以外は `overall_status=degraded`。
 - **System Audit Edge Scorecard 契約（V50.7-P1）**: `tools/system_audit.sh` は `tools/edge_scorecard.py` を WARN ステップとして実行し、日次 `swimmy-system-audit.timer` で `Edge scorecard summary` を監査ログへ残す。scorecard 失敗は system audit 全体を即FAILにせず WARN 扱いで可観測化する。
 - **Edge Scorecard Discord 通知契約（V50.7-P2）**: `tools/edge_scorecard.py` は `--discord-when=problem` のとき `overall_status in {degraded, critical}` でのみ通知をキューし、`overall_status=ok` は通知しない。通知経路は Notifier PUSH（`SWIMMY_PORT_NOTIFIER`/既定5562）を正本とし、webhook は `EDGE_SCORECARD_DISCORD_WEBHOOK` または `EDGE_SCORECARD_DISCORD_WEBHOOK_ENV`（既定 `SWIMMY_DISCORD_ALERTS`）から解決する。
+- **Edge Scorecard 専用タイマー契約（V50.7-P4）**: `swimmy-edge-scorecard.timer` / `swimmy-edge-scorecard.service` を追加し、`tools/edge_scorecard.py` を systemd から単独実行できる状態を維持する。`system_audit` 統合とは独立に `edge_scorecard_latest.json` と履歴を日次更新できることを正本とする。
+- **Edge Scorecard installer scope 契約（V50.7-P4.1）**: `tools/install_edge_scorecard_service.sh` は `SWIMMY_SYSTEMD_SCOPE=system|user` を受理し、`system` は `/etc/systemd/system`（root必須）、`user` は `~/.config/systemd/user`（非root可）へ unit を配置できる。`user` 運用時は `systemctl --user` 経由で `daemon-reload/enable/status` を実行する。
+- **Edge Scorecard unit 権限契約（V50.7-P4.2）**: `systemd/swimmy-edge-scorecard.service` の正本は system scope 運用（`User=swimmy`、`Group=` 固定なし）とし、`tools/install_edge_scorecard_service.sh` は `SWIMMY_SYSTEMD_SCOPE=user` のとき配置先 unit から `User=`/`Group=` を除去した user-scope 互換コピーを生成する。これにより user manager での `Failed to determine supplementary groups (status=216/GROUP)` を回避する。
 - **ORDER_OPEN コメント契約**: `comment` はトップシグナル戦略の実行文脈（`strategy_name|tf_key`）を送る。`NIL` 名や「文脈欠落による `M1` フォールバック」をコメントへ出さない。`M1` は戦略TFが実際に1分足のときのみ許容する。
 - **Execution Fail-Closed 契約**: 実行文脈（`strategy_name` / `timeframe`）が欠落・不正な場合は、`NIL` や既定TFへ丸めずに**発注を中止**する。`NIL` で先に進むフォールバックを禁止する。`timeframe="NIL"` / 空文字 / 不正ラベル（例: `"UNKNOWN"`）は「不正な時間足」として fail-closed 対象にする。
 - **Live Execution Go/No-Go 強制契約**: `process-category-trades` / `execute-category-trade` は Rank（B/A/S）のみで live 発注可否を決めない。`deployment_gate_status.decision == "LIVE_READY"` の戦略のみ live 実行を許可し、`BLOCKED_OOS/FORWARD_RUNNING/FORWARD_FAIL/未登録` は fail-closed で中止する（研究評価と実運用判定を完全分離）。
@@ -97,6 +100,7 @@
   - **sudo -n 不可フォールバック**: `sudo -n` が使えない場合でも監査は `systemctl` 直実行（status-only）で継続し、**フォールバック自体は WARN にしない**。修復（enable/restart）が必要な運用では `SUDO_CMD="sudo"`（対話式）または passwordless sudo を前提とする。
   - **sudo 可用性の判定（systemctl限定NOPASSWD対応）**: `sudo -n true` の可否ではなく、`SUDO_CMD systemctl is-active swimmy-brain.service` の実行可否で「非対話 sudo が systemctl に使えるか」を判定する。これにより「systemctl だけ NOPASSWD（allowlist sudoers）」の環境でも restart 修復が動作する。
   - **権限不足時の修復スキップ**: `Interactive authentication required`（polkit）および `sudo: a password is required`（sudoers非許可）は **FAIL 扱いにせず WARN で skip** し、監査を継続する。
+  - **enable 実行のノイズ抑制契約**: auto-repair は `systemctl is-enabled` を先に確認し、既に `enabled/enabled-runtime` の unit には `enable` を再実行しない。`restart/status` のみ NOPASSWD が許可され、`enable` だけ拒否される環境で不要な権限 WARN を増やさない。
   - **Pattern Similarity fallback 健全判定**: `swimmy-pattern-similarity.service` が未登録/停止でも、`tools/pattern_similarity_service.py` 実プロセスが稼働し `:5564` が LISTEN なら監査上は稼働扱いとする（systemd未管理である旨は WARN で残す）。
   - **Pattern Similarity のsystemd復帰**: systemd修復（`SUDO_CMD` で sudo 実行可能）が行える場合、unit が inactive なのに fallback プロセスが稼働している状態は運用ドリフトとして扱い、fallback を停止して `enable/restart` により systemd 正本へ復帰させる。
     - **安全規約**: unit の `LoadState=not-found`（未インストール）の場合は fallback を停止しない（停止すると 5564 が無に落ちるため）。この場合は WARN で継続し、先に `sudo bash tools/install_services.sh`（または同等の unit 配置）を促す。
@@ -245,8 +249,16 @@
 - **2026-02-20**: V50.7-P1 の System Audit 統合契約を追加。`tools/system_audit.sh` で `tools/edge_scorecard.py` を WARN ステップとして日次実行し、`Edge scorecard summary` を監査ログに残す方針を正本化。
 - **2026-02-21**: V50.7-P3 の KPI定義契約を追加。Edge Scorecard の `KPI-0..3` についてデータソース（`deployment_gate_status` / `trade_logs` / `rank_conformance_latest.json` / `strategies`）と `degraded` 判定条件、`overall_status` 集約条件を正本化。
 - **2026-02-21**: V50.7-P2 の Discord通知契約を追加。`edge_scorecard` の `discord-when=problem` は `degraded/critical` のみ通知し、`ok` は通知しない方針を正本化。通知は Notifier経由キューイングを標準とする。
+- **2026-02-21**: V50.7-P4 の専用タイマー契約を追加。`swimmy-edge-scorecard.service/timer` と `tools/install_edge_scorecard_service.sh` により Edge Scorecard を単独で日次実行・運用有効化できる方針を正本化。
+- **2026-02-21**: V50.7-P4.1 の installer scope 契約を追加。`install_edge_scorecard_service.sh` は system/user scope を切替可能とし、sudo不可環境でも `--user` で有効化できる方針を正本化。
+- **2026-02-21**: V50.7-P4.2 の unit権限契約を更新。`swimmy-edge-scorecard.service` の正本は system scope（`User=swimmy`）を維持しつつ、`install_edge_scorecard_service.sh` の user scope では配置時に `User=`/`Group=` を除去したコピーを生成する方針へ修正（`status=216/GROUP` 回避）。
+- **2026-02-21**: `tools/system_audit.sh` の auto-repair ノイズ抑制を追加。`systemctl is-enabled` で既に有効な unit には `enable` を再実行せず、`enable` のみ権限不足な環境で不要 WARN を増やさない方針を正本化。
+- **2026-02-21**: 回帰テスト安定化契約を更新。`test-periodic-maintenance-flushes-stagnant-c-rank` は run-all 時に他 timeout バッファ通知が混在しうるため、`Stagnant C-Rank Summary` を含む通知のみ抽出して評価し、順序依存で誤FAILしない方針を正本化。
 - **2026-02-21**: Live 実行経路の Rank件数ゲート禁止契約を追加。`process-category-trades` の前段で `S-rank` 件数しきい値による全体停止を行わず、`deployment_gate_status(LIVE_READY)` + `Live Edge Guard` を発注可否の正本に統一する方針を正本化。
 - **2026-02-21**: Forward evidence source 契約を追加。`deployment_gate_status` の `forward_*` 指標は `trade_logs.execution_mode` の `SHADOW/PAPER` を正本（互換で `LIVE` も許容）として集計し、`LIVE_ONLY` の循環ゲートを避ける方針を正本化。
+- **2026-02-21**: Evolution Report のパーセント表記契約を更新。`candidate-rank-label` の `CPCV PENDING` 文言は `%` を単一表記とし、レポート文字列に `%%` が混入しないことを正本化。
+- **2026-02-21**: Evolution Report の `Learning Logs` 表記契約を更新。`learning-log-summary-line` の勝率表記は `%` を単一表記とし、レポート全体で `%%` が混入しないことを正本化。
+- **2026-02-21**: Rank demotion 永続化契約を更新。`ensure-rank` 経路で `A->B` などの明示降格を行う際、`upsert-strategy` の active-rank regression guard を意図的にバイパスする動的束縛を必ず有効化し、DB rank が旧ランクへ巻き戻らないことを正本化。
 - **2026-02-20**: Live trade-close 監査の fail-closed 契約を更新。`tools/check_live_trade_close_integrity.py` は `DB not found` / `trade_logs` クエリエラー時に WARN 成功へ落とさず FAIL（exit 1）にする。`tools/system_audit.sh` は `LIVE_TRADE_CLOSE_AFTER_ID` を渡して historical 不良行を除外できる。
 - **2026-02-20**: `trade_logs` の legacy 不良データ（`id=1..7`, `Unknown/NIL`）を `trade_logs_archive_20260220_205326` へ退避し、主テーブルから削除して live 監査基盤をリフレッシュ。`sqlite_sequence(trade_logs)=7` を維持し、次回新規行は `id=8` から継続する運用とした。
 - **2026-02-20**: MT5 `POSITIONS` S式整合契約を追加。`(data . (...))` を含む整形式 alist（0件時は `(data . ())`）を必須化し、括弧不整合メッセージで Dispatcher が `Unsafe/invalid SEXP` 棄却する事象を防ぐ方針を正本化。
