@@ -79,6 +79,10 @@ pub enum IndicatorType {
     Macd,
     Bb,
     Stoch,
+    Vwap,
+    Volsma,
+    Vpoc,
+    Vwapvr,
 }
 
 // V6.12: Methods moved from tournament.rs for unified implementation
@@ -86,13 +90,17 @@ impl IndicatorType {
     pub fn random() -> Self {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        match rng.gen_range(0..6) {
+        match rng.gen_range(0..10) {
             0 => IndicatorType::Sma,
             1 => IndicatorType::Ema,
             2 => IndicatorType::Rsi,
             3 => IndicatorType::Bb,
             4 => IndicatorType::Macd,
-            _ => IndicatorType::Stoch,
+            5 => IndicatorType::Stoch,
+            6 => IndicatorType::Vwap,
+            7 => IndicatorType::Volsma,
+            8 => IndicatorType::Vpoc,
+            _ => IndicatorType::Vwapvr,
         }
     }
     
@@ -104,6 +112,10 @@ impl IndicatorType {
             IndicatorType::Bb => "BB",
             IndicatorType::Macd => "MACD",
             IndicatorType::Stoch => "STOCH",
+            IndicatorType::Vwap => "VWAP",
+            IndicatorType::Volsma => "VOLSMA",
+            IndicatorType::Vpoc => "VPOC",
+            IndicatorType::Vwapvr => "VWAPVR",
         }
     }
 }
@@ -223,6 +235,101 @@ fn calculate_sma(candles: &[Candle], period: usize, end_idx: usize) -> Option<f6
         .map(|c| c.close)
         .sum();
     Some(sum / period as f64)
+}
+
+/// Calculate rolling VWAP from trailing candles [end_idx - period, end_idx)
+fn calculate_vwap(candles: &[Candle], period: usize, end_idx: usize) -> Option<f64> {
+    if period == 0 || end_idx < period {
+        return None;
+    }
+    let slice = &candles[end_idx - period..end_idx];
+    let mut pv_sum = 0.0;
+    let mut vol_sum = 0.0;
+    for c in slice {
+        let typical = (c.high + c.low + c.close) / 3.0;
+        let vol = c.volume.max(0.0);
+        pv_sum += typical * vol;
+        vol_sum += vol;
+    }
+    if vol_sum <= 0.0 {
+        return None;
+    }
+    Some(pv_sum / vol_sum)
+}
+
+fn calculate_volume_sma(candles: &[Candle], period: usize, end_idx: usize) -> Option<f64> {
+    if period == 0 || end_idx < period {
+        return None;
+    }
+    let sum: f64 = candles[end_idx - period..end_idx]
+        .iter()
+        .map(|c| c.volume.max(0.0))
+        .sum();
+    Some(sum / period as f64)
+}
+
+/// Signed VWAP volume-ratio:
+///   ratio = volume / SMA(volume, period) * 100
+///   sign  = +1 if close >= VWAP(period), else -1
+///   value = sign * ratio
+fn calculate_signed_vwap_volume_ratio(candles: &[Candle], period: usize, idx: usize) -> Option<f64> {
+    if idx == 0 || period == 0 || idx < period {
+        return None;
+    }
+    let vwap = calculate_vwap(candles, period, idx)?;
+    let vol_ma = calculate_volume_sma(candles, period, idx)?;
+    if vol_ma <= 0.0 {
+        return None;
+    }
+    let ratio = (candles[idx].volume.max(0.0) / vol_ma) * 100.0;
+    let sign = if candles[idx].close >= vwap { 1.0 } else { -1.0 };
+    Some(sign * ratio)
+}
+
+/// Close-binned volume profile proxy (POC) from trailing candles [end_idx - period, end_idx).
+/// This is an approximation because OHLCV bars do not provide true intrabar volume-at-price.
+fn calculate_vpoc(candles: &[Candle], period: usize, bins: usize, end_idx: usize) -> Option<f64> {
+    if period == 0 || bins < 2 || end_idx < period {
+        return None;
+    }
+    let slice = &candles[end_idx - period..end_idx];
+    let mut min_price = f64::INFINITY;
+    let mut max_price = f64::NEG_INFINITY;
+    for c in slice {
+        min_price = min_price.min(c.close);
+        max_price = max_price.max(c.close);
+    }
+    if !min_price.is_finite() || !max_price.is_finite() {
+        return None;
+    }
+    if (max_price - min_price).abs() < f64::EPSILON {
+        return Some(min_price);
+    }
+
+    let width = (max_price - min_price) / bins as f64;
+    if width <= 0.0 || !width.is_finite() {
+        return None;
+    }
+
+    let mut bucket_vol = vec![0.0; bins];
+    for c in slice {
+        let mut idx = ((c.close - min_price) / width).floor() as usize;
+        if idx >= bins {
+            idx = bins - 1;
+        }
+        bucket_vol[idx] += c.volume.max(0.0);
+    }
+
+    let mut best_idx = 0usize;
+    let mut best_vol = f64::NEG_INFINITY;
+    for (i, v) in bucket_vol.iter().enumerate() {
+        if *v > best_vol {
+            best_vol = *v;
+            best_idx = i;
+        }
+    }
+
+    Some(min_price + (best_idx as f64 + 0.5) * width)
 }
 
 /// Calculate Sharpe Ratio
@@ -614,6 +721,10 @@ fn run_backtest_internal(
         IndicatorType::Macd => 40,
         IndicatorType::Bb => strategy.sma_short + 2,
         IndicatorType::Stoch => strategy.sma_short + 2,
+        IndicatorType::Vwap => strategy.sma_short.max(2) + 2,
+        IndicatorType::Volsma => strategy.sma_short.max(2) + 2,
+        IndicatorType::Vpoc => strategy.sma_short.max(4) + 2,
+        IndicatorType::Vwapvr => strategy.sma_short.max(2) + 2,
     };
     
     if candles.len() < min_bars {
@@ -724,6 +835,10 @@ fn run_backtest_internal(
                     }
                 },
                 IndicatorType::Stoch => generate_stoch_signals(candles, strategy, i),
+                IndicatorType::Vwap => generate_vwap_signals(candles, strategy, i),
+                IndicatorType::Volsma => generate_volsma_signals(candles, strategy, i),
+                IndicatorType::Vpoc => generate_vpoc_signals(candles, strategy, i),
+                IndicatorType::Vwapvr => generate_vwapvr_signals(candles, strategy, i),
             }
         };
         
@@ -1055,6 +1170,88 @@ fn generate_stoch_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> 
     (buy, sell, k > 80.0, k < 20.0)
 }
 
+fn generate_vwap_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (bool, bool, bool, bool) {
+    if i == 0 {
+        return (false, false, false, false);
+    }
+    let period = strategy.sma_short.max(2);
+    let vwap = calculate_vwap(candles, period, i);
+    let prev_vwap = calculate_vwap(candles, period, i - 1);
+    if let (Some(v), Some(pv)) = (vwap, prev_vwap) {
+        let close = candles[i].close;
+        let prev_close = candles[i - 1].close;
+        let buy = prev_close <= pv && close > v;
+        let sell = prev_close >= pv && close < v;
+        (buy, sell, sell, buy)
+    } else {
+        (false, false, false, false)
+    }
+}
+
+fn generate_volsma_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (bool, bool, bool, bool) {
+    if i == 0 {
+        return (false, false, false, false);
+    }
+    let period = strategy.sma_short.max(2);
+    let vol_ma = calculate_volume_sma(candles, period, i);
+    let prev_vol_ma = calculate_volume_sma(candles, period, i - 1);
+    // Use sma_long as threshold percent. e.g. 150 => 1.50x average volume.
+    let multiplier = (strategy.sma_long.max(105) as f64) / 100.0;
+    if let (Some(vma), Some(pvma)) = (vol_ma, prev_vol_ma) {
+        let vol = candles[i].volume.max(0.0);
+        let prev_vol = candles[i - 1].volume.max(0.0);
+        let threshold = vma * multiplier;
+        let prev_threshold = pvma * multiplier;
+        let spike = prev_vol <= prev_threshold && vol > threshold;
+        let up = candles[i].close > candles[i - 1].close;
+        let down = candles[i].close < candles[i - 1].close;
+        let buy = spike && up;
+        let sell = spike && down;
+        (buy, sell, sell, buy)
+    } else {
+        (false, false, false, false)
+    }
+}
+
+fn generate_vpoc_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (bool, bool, bool, bool) {
+    if i == 0 {
+        return (false, false, false, false);
+    }
+    let period = strategy.sma_short.max(4);
+    let bins = strategy.sma_long.clamp(4, 40);
+    let vpoc = calculate_vpoc(candles, period, bins, i);
+    let prev_vpoc = calculate_vpoc(candles, period, bins, i - 1);
+    if let (Some(v), Some(pv)) = (vpoc, prev_vpoc) {
+        let close = candles[i].close;
+        let prev_close = candles[i - 1].close;
+        let buy = prev_close <= pv && close > v;
+        let sell = prev_close >= pv && close < v;
+        (buy, sell, sell, buy)
+    } else {
+        (false, false, false, false)
+    }
+}
+
+fn generate_vwapvr_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (bool, bool, bool, bool) {
+    if i == 0 {
+        return (false, false, false, false);
+    }
+    let period = strategy.sma_short.max(2);
+    // Reuse sma_long as "orange threshold" percent (e.g. 150 -> 1.5x volume).
+    let threshold = strategy.sma_long.max(1) as f64;
+    let value = calculate_signed_vwap_volume_ratio(candles, period, i);
+    let prev_value = calculate_signed_vwap_volume_ratio(candles, period, i - 1);
+    if let (Some(v), Some(pv)) = (value, prev_value) {
+        let buy = pv < threshold && v >= threshold;
+        let sell = pv > -threshold && v <= -threshold;
+        let exit_long = v <= 0.0;
+        let exit_short = v >= 0.0;
+        (buy, sell, exit_long, exit_short)
+    } else {
+        (false, false, false, false)
+    }
+}
+
 // ===== CLONE DETECTION =====
 
 /// Strategy parameters as a normalized vector for similarity comparison
@@ -1267,6 +1464,173 @@ mod tests {
         ];
         let sma = calculate_sma(&candles, 3, 3).unwrap();
         assert_eq!(sma, 20.0);
+    }
+
+    #[test]
+    fn test_calculate_vwap_basic() {
+        let candles = vec![
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 1.0 },
+            Candle { timestamp: 2, open: 110.0, high: 110.0, low: 110.0, close: 110.0, volume: 2.0 },
+            Candle { timestamp: 3, open: 120.0, high: 120.0, low: 120.0, close: 120.0, volume: 3.0 },
+        ];
+        let vwap = calculate_vwap(&candles, 2, 3).unwrap();
+        assert!((vwap - 116.0).abs() < 1e-9, "unexpected vwap: {}", vwap);
+    }
+
+    #[test]
+    fn test_calculate_vpoc_prefers_high_volume_bin() {
+        let candles = vec![
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 100.0 },
+            Candle { timestamp: 3, open: 101.0, high: 101.0, low: 101.0, close: 101.0, volume: 10.0 },
+            Candle { timestamp: 4, open: 102.0, high: 102.0, low: 102.0, close: 102.0, volume: 10.0 },
+        ];
+        let vpoc = calculate_vpoc(&candles, 4, 4, 4).unwrap();
+        assert!(vpoc >= 99.9 && vpoc <= 100.6, "unexpected vpoc: {}", vpoc);
+    }
+
+    #[test]
+    fn test_generate_vwap_signals_detects_cross_up() {
+        let candles = vec![
+            Candle { timestamp: 0, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 3, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 4, open: 120.0, high: 120.0, low: 120.0, close: 120.0, volume: 10.0 },
+        ];
+        let strategy = Strategy {
+            name: "VWAPCross".to_string(),
+            sma_short: 3,
+            sma_long: 0,
+            sl: 1.0,
+            tp: 2.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+        let (buy, sell, exit_long, exit_short) = generate_vwap_signals(&candles, &strategy, 4);
+        assert!(buy);
+        assert!(!sell);
+        assert!(!exit_long);
+        assert!(exit_short);
+    }
+
+    #[test]
+    fn test_generate_volsma_signals_detects_up_spike() {
+        let candles = vec![
+            Candle { timestamp: 0, open: 99.0, high: 99.0, low: 99.0, close: 99.0, volume: 10.0 },
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 3, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 4, open: 101.0, high: 101.0, low: 101.0, close: 101.0, volume: 30.0 },
+        ];
+        let strategy = Strategy {
+            name: "VOLSpike".to_string(),
+            sma_short: 3,   // volume SMA period
+            sma_long: 150,  // 1.50x threshold
+            sl: 1.0,
+            tp: 2.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+        let (buy, sell, exit_long, exit_short) = generate_volsma_signals(&candles, &strategy, 4);
+        assert!(buy);
+        assert!(!sell);
+        assert!(!exit_long);
+        assert!(exit_short);
+    }
+
+    #[test]
+    fn test_calculate_signed_vwap_volume_ratio_above_vwap_positive() {
+        let candles = vec![
+            Candle { timestamp: 0, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 3, open: 110.0, high: 110.0, low: 110.0, close: 110.0, volume: 20.0 },
+        ];
+        let value = calculate_signed_vwap_volume_ratio(&candles, 3, 3).unwrap();
+        assert!((value - 200.0).abs() < 1e-9, "unexpected value: {}", value);
+    }
+
+    #[test]
+    fn test_generate_vwapvr_signals_detects_orange_cross_up() {
+        let candles = vec![
+            Candle { timestamp: 0, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 3, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 4, open: 102.0, high: 102.0, low: 102.0, close: 102.0, volume: 25.0 },
+        ];
+        let strategy = Strategy {
+            name: "VWAPVR-Orange".to_string(),
+            sma_short: 3,   // rolling period
+            sma_long: 150,  // orange threshold in percent
+            sl: 1.0,
+            tp: 2.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+        let (buy, sell, exit_long, exit_short) = generate_vwapvr_signals(&candles, &strategy, 4);
+        assert!(buy);
+        assert!(!sell);
+        assert!(!exit_long);
+        assert!(exit_short);
+    }
+
+    #[test]
+    fn test_generate_vwapvr_signals_detects_negative_break() {
+        let candles = vec![
+            Candle { timestamp: 0, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 1, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 2, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 3, open: 100.0, high: 100.0, low: 100.0, close: 100.0, volume: 10.0 },
+            Candle { timestamp: 4, open: 98.0, high: 98.0, low: 98.0, close: 98.0, volume: 25.0 },
+        ];
+        let strategy = Strategy {
+            name: "VWAPVR-Neg".to_string(),
+            sma_short: 3,   // rolling period
+            sma_long: 150,  // threshold in percent
+            sl: 1.0,
+            tp: 2.0,
+            volume: 0.1,
+            indicator_type: IndicatorType::Sma,
+            filter_enabled: false,
+            filter_tf: String::new(),
+            filter_period: 0,
+            filter_logic: String::new(),
+            entry_long_ast: None,
+            entry_short_ast: None,
+            exit_long_ast: None,
+            exit_short_ast: None,
+        };
+        let (buy, sell, exit_long, exit_short) = generate_vwapvr_signals(&candles, &strategy, 4);
+        assert!(!buy);
+        assert!(sell);
+        assert!(exit_long);
+        assert!(!exit_short);
     }
     
     #[test]

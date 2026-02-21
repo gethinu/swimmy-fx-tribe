@@ -54,6 +54,10 @@ impl RatedStrategy {
             IndicatorType::Bb => (20, rng.gen_range(15..25)),   // period, deviation*10
             IndicatorType::Macd => (12, 26),                     // fast, slow
             IndicatorType::Stoch => (14, rng.gen_range(20..80)), // period, threshold
+            IndicatorType::Vwap => (rng.gen_range(10..80), 0),   // period, reserved
+            IndicatorType::Volsma => (rng.gen_range(5..40), rng.gen_range(110..220)), // period, spike%
+            IndicatorType::Vpoc => (rng.gen_range(20..120), rng.gen_range(8..24)),     // lookback, bins
+            IndicatorType::Vwapvr => (rng.gen_range(5..40), rng.gen_range(110..220)),  // period, orange threshold%
         };
         let name = format!("{}-{}-{}", ind_type.name(), short, long);
         RatedStrategy::new(name, ind_type, short, long, rng.gen_range(0.1..0.4), rng.gen_range(0.2..0.8))
@@ -297,8 +301,10 @@ pub fn mutate(strat: &mut RatedStrategy) {
         strat.param_long = ((strat.param_long as i32 + delta).max(10) as usize).min(200);
     }
     
-    // Ensure param_short < param_long
-    if strat.param_short >= strat.param_long {
+    // Ensure ordering only for MA-cross style indicators.
+    if matches!(strat.indicator_type, IndicatorType::Sma | IndicatorType::Ema | IndicatorType::Macd)
+        && strat.param_short >= strat.param_long
+    {
         strat.param_long = strat.param_short + 10;
     }
     

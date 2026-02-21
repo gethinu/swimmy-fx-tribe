@@ -389,6 +389,10 @@ fn run_backtest_range_from_loaded_candles(
         "macd" => IndicatorType::Macd,
         "bb" | "bollinger" => IndicatorType::Bb,
         "stoch" | "stochastic" => IndicatorType::Stoch,
+        "vwap" => IndicatorType::Vwap,
+        "volsma" | "vol_sma" | "volume_sma" => IndicatorType::Volsma,
+        "vpoc" | "volume_profile" | "volume-profile" => IndicatorType::Vpoc,
+        "vwapvr" | "vwap_volume_ratio" | "vwap-volume-ratio" => IndicatorType::Vwapvr,
         _ => IndicatorType::Sma,
     };
 

@@ -1745,10 +1745,21 @@ fn main() {
                             (final_candles, final_aux)
                         };
 
-                        let result = if req.include_trades {
-                            backtester::run_backtest_with_trade_list(&req.strategy, &working_candles, &working_aux, &req.swap_history)
+                        // Keep BACKTEST range semantics consistent across all request routes.
+                        let start = req.start_time.unwrap_or(0);
+                        let end = req.end_time.unwrap_or(i64::MAX);
+                        let start_idx = working_candles.partition_point(|c| c.timestamp < start);
+                        let end_idx = working_candles.partition_point(|c| c.timestamp <= end);
+                        let slice = if start_idx < end_idx && end_idx <= working_candles.len() {
+                            &working_candles[start_idx..end_idx]
                         } else {
-                            backtester::run_backtest(&req.strategy, &working_candles, &working_aux, &req.swap_history)
+                            &[]
+                        };
+
+                        let result = if req.include_trades {
+                            backtester::run_backtest_with_trade_list(&req.strategy, slice, &working_aux, &req.swap_history)
+                        } else {
+                            backtester::run_backtest(&req.strategy, slice, &working_aux, &req.swap_history)
                         };
                         
                         // Response is ALWAYS SXP
