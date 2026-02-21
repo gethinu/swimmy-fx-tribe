@@ -13,6 +13,23 @@ fi
 
 PRIMARY_WEBHOOK="${SWIMMY_XAU_NOTIFY_WEBHOOK:-${SWIMMY_DISCORD_REPORTS:-}}"
 
+run_performance_summary() {
+  local compare_history promotion_history write_report lookback
+  compare_history="${XAU_AUTOBOT_COMPARE_HISTORY_JSONL:-$ROOT/data/reports/xau_autobot_cycle_comparison_history.jsonl}"
+  promotion_history="${XAU_AUTOBOT_PROMOTION_HISTORY_JSONL:-$ROOT/data/reports/xau_autobot_promotion_history.jsonl}"
+  write_report="${XAU_AUTOBOT_PERFORMANCE_SUMMARY_REPORT:-$ROOT/data/reports/xau_autobot_performance_summary.json}"
+  lookback="${XAU_AUTOBOT_PERFORMANCE_SUMMARY_LOOKBACK:-30}"
+
+  if ! "$ROOT/.venv/bin/python" \
+    "$ROOT/tools/xau_autobot_performance_summary.py" \
+    --compare-history "$compare_history" \
+    --promotion-history "$promotion_history" \
+    --lookback "$lookback" \
+    --write-report "$write_report"; then
+    echo '{"action":"SUMMARY_WARN","reason":"xau_performance_summary_failed"}'
+  fi
+}
+
 CMD=(
   "$ROOT/.venv/bin/python"
   "$ROOT/tools/xau_autobot_cycle_compare.py"
@@ -62,6 +79,7 @@ PY
 )"
 
 if [ "$HAS_PERIOD_SUMMARY" != "1" ]; then
+  run_performance_summary
   echo '{"action":"SKIP_PROMOTION","reason":"no_period_summaries"}'
   exit 0
 fi
@@ -102,3 +120,4 @@ if [ "${XAU_AUTOBOT_NOTIFY_STRICT:-0}" = "1" ]; then
 fi
 
 "${PROMOTE_CMD[@]}"
+run_performance_summary
