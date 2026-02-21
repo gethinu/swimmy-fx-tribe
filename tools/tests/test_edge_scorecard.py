@@ -1,8 +1,10 @@
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools import edge_scorecard as es
 
@@ -131,6 +133,129 @@ class TestEdgeScorecard(unittest.TestCase):
             self.assertTrue(out_path.exists())
             self.assertTrue(any(history_dir.glob("edge_scorecard_*.json")))
             self.assertIn("overall_status", report)
+
+    def test_send_discord_notification_sends_on_problem(self) -> None:
+        report = {
+            "overall_status": "degraded",
+            "kpi_live_edge_guard": {"status": "ok"},
+            "kpi_live_pnl_health": {"status": "degraded"},
+            "kpi_rank_conformance": {"status": "ok"},
+            "kpi_breeder_parent_quality": {"status": "ok"},
+            "generated_at": "2026-02-20T00:00:00+00:00",
+        }
+        calls = {}
+
+        def fake_post(url: str, payload: dict, timeout_sec: int = 15) -> tuple[bool, str]:
+            calls["url"] = url
+            calls["payload"] = payload
+            calls["timeout"] = timeout_sec
+            return True, "204"
+
+        out = es.send_discord_notification(
+            report,
+            when="problem",
+            webhook_url="https://example.com/webhook",
+            webhook_env="SWIMMY_DISCORD_ALERTS",
+            post_func=fake_post,
+        )
+        self.assertTrue(out["sent"])
+        self.assertEqual("https://example.com/webhook", calls["url"])
+        self.assertIn("content", calls["payload"])
+
+    def test_send_discord_notification_skips_when_ok(self) -> None:
+        report = {
+            "overall_status": "ok",
+            "kpi_live_edge_guard": {"status": "ok"},
+            "kpi_live_pnl_health": {"status": "ok"},
+            "kpi_rank_conformance": {"status": "ok"},
+            "kpi_breeder_parent_quality": {"status": "ok"},
+            "generated_at": "2026-02-20T00:00:00+00:00",
+        }
+        out = es.send_discord_notification(
+            report,
+            when="problem",
+            webhook_url="https://example.com/webhook",
+            webhook_env="SWIMMY_DISCORD_ALERTS",
+        )
+        self.assertFalse(out["sent"])
+        self.assertEqual("policy_skip", out["reason"])
+
+    def test_send_discord_notification_reads_env_webhook(self) -> None:
+        report = {
+            "overall_status": "critical",
+            "kpi_live_edge_guard": {"status": "degraded"},
+            "kpi_live_pnl_health": {"status": "degraded"},
+            "kpi_rank_conformance": {"status": "degraded"},
+            "kpi_breeder_parent_quality": {"status": "degraded"},
+            "generated_at": "2026-02-20T00:00:00+00:00",
+        }
+        old_val = os.environ.get("SWIMMY_DISCORD_ALERTS")
+        os.environ["SWIMMY_DISCORD_ALERTS"] = "https://example.com/env_webhook"
+        calls = {}
+        try:
+            def fake_post(url: str, payload: dict, timeout_sec: int = 15) -> tuple[bool, str]:
+                calls["url"] = url
+                return True, "204"
+
+            out = es.send_discord_notification(
+                report,
+                when="problem",
+                webhook_url="",
+                webhook_env="SWIMMY_DISCORD_ALERTS",
+                post_func=fake_post,
+            )
+            self.assertTrue(out["sent"])
+            self.assertEqual("https://example.com/env_webhook", calls["url"])
+        finally:
+            if old_val is None:
+                os.environ.pop("SWIMMY_DISCORD_ALERTS", None)
+            else:
+                os.environ["SWIMMY_DISCORD_ALERTS"] = old_val
+
+    def test_should_discord_notify_problem_only_for_degraded_or_critical(self) -> None:
+        self.assertFalse(es.should_discord_notify(when="problem", overall_status="ok"))
+        self.assertTrue(es.should_discord_notify(when="problem", overall_status="degraded"))
+        self.assertTrue(es.should_discord_notify(when="problem", overall_status="critical"))
+
+    def test_maybe_queue_discord_notification_sends_when_problem_and_degraded(self) -> None:
+        report = {
+            "overall_status": "degraded",
+            "kpi_live_edge_guard": {"status": "ok"},
+            "kpi_live_pnl_health": {"status": "degraded"},
+            "kpi_rank_conformance": {"status": "ok"},
+            "kpi_breeder_parent_quality": {"status": "ok"},
+        }
+        with mock.patch.object(es, "queue_discord_notification_via_notifier") as sender:
+            queued = es.maybe_queue_discord_scorecard_notification(
+                when="problem",
+                webhook="https://discord.com/api/webhooks/1/dummy",
+                webhook_env="",
+                report=report,
+                zmq_host="localhost",
+                zmq_port=5562,
+            )
+        self.assertTrue(queued)
+        sender.assert_called_once()
+
+    def test_maybe_queue_discord_notification_skips_when_ok(self) -> None:
+        report = {
+            "overall_status": "ok",
+            "kpi_live_edge_guard": {"status": "ok"},
+            "kpi_live_pnl_health": {"status": "ok"},
+            "kpi_rank_conformance": {"status": "ok"},
+            "kpi_breeder_parent_quality": {"status": "ok"},
+        }
+        with mock.patch.object(es, "queue_discord_notification_via_notifier") as sender:
+            queued = es.maybe_queue_discord_scorecard_notification(
+                when="problem",
+                webhook="https://discord.com/api/webhooks/1/dummy",
+                webhook_env="",
+                report=report,
+                zmq_host="localhost",
+                zmq_port=5562,
+            )
+        self.assertFalse(queued)
+        sender.assert_not_called()
 
 
 if __name__ == "__main__":

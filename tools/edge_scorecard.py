@@ -5,10 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
+import sys
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any, Callable, Dict, Iterable, Mapping
 
 try:
     from tools import check_rank_conformance as rc
@@ -46,6 +51,21 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _env_int(key: str, default: int) -> int:
+    raw = str(os.getenv(key, "")).strip()
+    if not raw:
+        return int(default)
+    try:
+        return int(raw)
+    except ValueError:
+        return int(default)
+
+
+def _env_str(key: str, default: str = "") -> str:
+    raw = str(os.getenv(key, "")).strip()
+    return raw if raw else str(default)
 
 
 def _compute_live_edge_guard_kpi(conn: sqlite3.Connection) -> Dict[str, Any]:
@@ -330,6 +350,209 @@ def render_summary_line(report: Mapping[str, Any]) -> str:
     )
 
 
+def should_discord_notify(*, when: str, overall_status: str) -> bool:
+    mode = str(when or "").strip().lower()
+    status = str(overall_status or "").strip().lower()
+    if mode in {"", "never", "off", "0", "false", "no"}:
+        return False
+    if mode in {"always", "on", "1", "true", "yes"}:
+        return True
+    if mode in {"problem", "issues", "not_ok"}:
+        return status in {"degraded", "critical"}
+    return False
+
+
+def resolve_discord_webhook(*, webhook: str, webhook_env: str) -> str:
+    explicit = str(webhook or "").strip()
+    if explicit:
+        return explicit
+    key = str(webhook_env or "").strip()
+    if not key:
+        return ""
+    return str(os.getenv(key, "")).strip()
+
+
+def _discord_color_for_status(status: str) -> int:
+    value = str(status or "").strip().lower()
+    if value == "ok":
+        return 3066993  # green
+    if value == "critical":
+        return 15158332  # red
+    if value == "degraded":
+        return 16705372  # yellow
+    return 10070709  # gray
+
+
+def build_discord_scorecard_payload(*, report: Mapping[str, Any], now: datetime | None = None) -> Dict[str, Any]:
+    ts = now or datetime.now(timezone.utc)
+    status = str(report.get("overall_status", "unknown"))
+    generated_at = str(report.get("generated_at", "")).strip() or "-"
+    fields = [
+        {"name": "Status", "value": status, "inline": True},
+        {"name": "Generated", "value": generated_at, "inline": True},
+        {"name": "KPI-0", "value": str(report.get("kpi_live_edge_guard", {}).get("status", "unknown")), "inline": True},
+        {"name": "KPI-1", "value": str(report.get("kpi_live_pnl_health", {}).get("status", "unknown")), "inline": True},
+        {"name": "KPI-2", "value": str(report.get("kpi_rank_conformance", {}).get("status", "unknown")), "inline": True},
+        {
+            "name": "KPI-3",
+            "value": str(report.get("kpi_breeder_parent_quality", {}).get("status", "unknown")),
+            "inline": True,
+        },
+    ]
+    return {
+        "embeds": [
+            {
+                "title": f"Edge Scorecard: {status.upper()}",
+                "description": render_summary_line(report),
+                "color": _discord_color_for_status(status),
+                "timestamp": ts.isoformat(),
+                "fields": fields,
+            }
+        ]
+    }
+
+
+def _post_json_webhook(url: str, payload: Mapping[str, Any], timeout_sec: int = 15) -> tuple[bool, str]:
+    body = json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "swimmy-edge-scorecard/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=max(1, int(timeout_sec))) as resp:
+            code = int(getattr(resp, "status", 0) or resp.getcode() or 0)
+    except urllib.error.HTTPError as exc:
+        return False, f"http_{int(exc.code)}"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}:{exc}"
+    if 200 <= code < 300:
+        return True, str(code)
+    return False, str(code)
+
+
+def send_discord_notification(
+    report: Mapping[str, Any],
+    *,
+    when: str,
+    webhook_url: str,
+    webhook_env: str,
+    post_func: Callable[[str, Dict[str, Any], int], tuple[bool, str]] | None = None,
+) -> Dict[str, Any]:
+    status = str(report.get("overall_status", "unknown"))
+    if not should_discord_notify(when=when, overall_status=status):
+        return {"sent": False, "reason": "policy_skip", "status": status}
+
+    resolved_webhook = resolve_discord_webhook(webhook=webhook_url, webhook_env=webhook_env)
+    if not resolved_webhook:
+        return {"sent": False, "reason": "webhook_missing", "status": status}
+
+    payload = build_discord_scorecard_payload(report=report)
+    payload["content"] = render_summary_line(report)
+    sender = post_func or _post_json_webhook
+    try:
+        ok, detail = sender(resolved_webhook, payload, 15)
+    except Exception as exc:
+        return {
+            "sent": False,
+            "reason": "post_exception",
+            "status": status,
+            "detail": f"{type(exc).__name__}:{exc}",
+        }
+
+    if ok:
+        return {"sent": True, "reason": "sent", "status": status, "detail": str(detail)}
+    return {"sent": False, "reason": "post_failed", "status": status, "detail": str(detail)}
+
+
+def resolve_base_dir() -> Path:
+    env = os.getenv("SWIMMY_HOME", "").strip()
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    for parent in [here] + list(here.parents):
+        if (parent / "swimmy.asd").exists() or (parent / "run.sh").exists():
+            return parent
+    return here.parent
+
+
+def queue_discord_notification_via_notifier(
+    *,
+    webhook_url: str,
+    payload: Mapping[str, Any],
+    zmq_host: str,
+    zmq_port: int,
+) -> None:
+    import zmq  # type: ignore
+
+    base_dir = resolve_base_dir()
+    python_src = base_dir / "src" / "python"
+    if str(python_src) not in sys.path:
+        sys.path.insert(0, str(python_src))
+
+    from aux_sexp import sexp_request  # type: ignore
+
+    message = sexp_request(
+        {
+            "type": "NOTIFIER",
+            "action": "SEND",
+            "webhook": webhook_url,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+        }
+    )
+
+    ctx = zmq.Context()
+    try:
+        sock = ctx.socket(zmq.PUSH)
+        sock.setsockopt(zmq.LINGER, 1000)
+        sock.connect(f"tcp://{zmq_host}:{int(zmq_port)}")
+        time.sleep(0.05)
+        sock.send_string(message)
+        sock.close()
+    finally:
+        ctx.term()
+
+
+def maybe_queue_discord_scorecard_notification(
+    *,
+    when: str,
+    webhook: str,
+    webhook_env: str,
+    report: Mapping[str, Any],
+    zmq_host: str,
+    zmq_port: int,
+) -> bool:
+    status = str(report.get("overall_status", "unknown"))
+    if not should_discord_notify(when=when, overall_status=status):
+        return False
+
+    webhook_url = resolve_discord_webhook(webhook=webhook, webhook_env=webhook_env)
+    if not webhook_url:
+        return False
+
+    discord_payload = build_discord_scorecard_payload(report=report)
+    try:
+        queue_discord_notification_via_notifier(
+            webhook_url=webhook_url,
+            payload=discord_payload,
+            zmq_host=zmq_host,
+            zmq_port=zmq_port,
+        )
+    except Exception as exc:
+        msg = str(exc)
+        msg = msg if len(msg) <= 200 else msg[:197] + "..."
+        print(
+            f"[WARN] Edge scorecard Discord notify failed: {type(exc).__name__}: {msg}",
+            file=sys.stderr,
+            flush=True,
+        )
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Swimmy edge scorecard")
     parser.add_argument("--db", default="data/memory/swimmy.db")
@@ -339,6 +562,22 @@ def main() -> None:
     parser.add_argument("--now-ts", type=int, default=None, help="Unix timestamp override for deterministic runs")
     parser.add_argument("--short-days", type=int, default=7)
     parser.add_argument("--long-days", type=int, default=30)
+    parser.add_argument(
+        "--discord-when",
+        choices=["never", "problem", "always"],
+        default=_env_str("EDGE_SCORECARD_DISCORD_WHEN", "never"),
+    )
+    parser.add_argument("--discord-webhook", default=_env_str("EDGE_SCORECARD_DISCORD_WEBHOOK", ""))
+    parser.add_argument(
+        "--discord-webhook-env",
+        default=_env_str("EDGE_SCORECARD_DISCORD_WEBHOOK_ENV", "SWIMMY_DISCORD_ALERTS"),
+    )
+    parser.add_argument("--discord-zmq-host", default=_env_str("EDGE_SCORECARD_DISCORD_ZMQ_HOST", "localhost"))
+    parser.add_argument(
+        "--discord-zmq-port",
+        type=int,
+        default=_env_int("EDGE_SCORECARD_DISCORD_ZMQ_PORT", _env_int("SWIMMY_PORT_NOTIFIER", 5562)),
+    )
     args = parser.parse_args()
 
     report = run_edge_scorecard(
@@ -352,6 +591,15 @@ def main() -> None:
     )
     print(json.dumps(report, ensure_ascii=False))
     print(render_summary_line(report))
+    if maybe_queue_discord_scorecard_notification(
+        when=args.discord_when,
+        webhook=args.discord_webhook,
+        webhook_env=args.discord_webhook_env,
+        report=report,
+        zmq_host=args.discord_zmq_host,
+        zmq_port=args.discord_zmq_port,
+    ):
+        print("[INFO] Edge scorecard Discord notification queued")
 
 
 if __name__ == "__main__":

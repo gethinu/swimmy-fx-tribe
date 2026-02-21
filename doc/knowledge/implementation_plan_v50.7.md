@@ -43,20 +43,33 @@
     - 既存 `check_rank_conformance` を参照して KPI-2/KPI-3 を算出
     - 回帰テスト `tools/tests/test_edge_scorecard.py` を追加
 
-- [ ] **V50.7-P1 system_audit へ Edge Scorecard 統合**
+- [x] **V50.7-P1 system_audit へ Edge Scorecard 統合**（2026-02-21 完了）
   - 追加先: `tools/system_audit.sh`
   - 方針: WARN ステップとして実行、summary をログへ1行出力
   - 完了条件: `swimmy-system-audit.timer` 日次実行で定点出力される
+  - 実装:
+    - `tools/system_audit.sh` に `run_edge_scorecard_audit` を追加
+    - 監査フローに `run_warn "Edge scorecard"` ステップを統合
+    - help usage に `EDGE_SCORECARD_*` 環境変数を追加
+    - `tools/test_system_audit.sh` に usage/step/summary の回帰チェックを追加
 
-- [ ] **V50.7-P2 Discord運用通知（要約のみ）**
+- [x] **V50.7-P2 Discord運用通知（要約のみ）**（2026-02-21 完了）
   - 追加: scorecard の `degraded/critical` 時だけ通知
   - 目的: ノイズ通知ではなく、対応が必要な劣化だけを通知
   - 完了条件: 通常日は無通知、異常日のみ要約通知
+  - 実装:
+    - `tools/edge_scorecard.py` に通知ポリシー判定 / webhook解決 / notifier経由queueを実装
+    - `tools/edge_scorecard.py` に `send_discord_notification` を追加（要約 `content` + embed）
+    - `tools/system_audit.sh` から `EDGE_SCORECARD_DISCORD_*` を引き渡して日次監査に統合
+    - `tools/tests/test_edge_scorecard.py` で通知判定・送信・env webhook解決を回帰テスト化
 
-- [ ] **V50.7-P3 KPIドキュメント固定化**
+- [x] **V50.7-P3 KPIドキュメント固定化**（2026-02-21 完了）
   - 反映先: `docs/llm/STATE.md`（契約）/ 必要なら `SPEC.md`
   - 内容: 指標定義、算出窓、データソース、fail条件
   - 完了条件: 実装とドキュメントの差分が無い
+  - 実装:
+    - `docs/llm/STATE.md` に `Edge Scorecard KPI 定義契約（V50.7-P3）` を追記
+    - KPI-0..3 の data source / degraded条件 / overall集約を明文化
 
 ---
 

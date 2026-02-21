@@ -69,6 +69,17 @@ Environment:
   RANK_CONF_LATEST_REPORT=/path/to/rank_conformance_latest.json  Latest rank audit report path
   RANK_CONF_HISTORY_DIR=/path/to/history/dir  Rank audit history output dir
   RANK_CONF_MAX_VIOLATIONS=0  Threshold for fail-on-problem in rank conformance audit
+  EDGE_SCORECARD_DB=/path/to/swimmy.db  Override edge scorecard DB path
+  EDGE_SCORECARD_LATEST_REPORT=/path/to/edge_scorecard_latest.json  Latest edge scorecard report path
+  EDGE_SCORECARD_HISTORY_DIR=/path/to/edge_scorecard/history  Edge scorecard history output dir
+  EDGE_SCORECARD_RANK_REPORT=/path/to/rank_conformance_latest.json  Rank conformance report path for scorecard
+  EDGE_SCORECARD_SHORT_DAYS=7  Short window days for edge scorecard KPI
+  EDGE_SCORECARD_LONG_DAYS=30  Long window days for edge scorecard KPI
+  EDGE_SCORECARD_DISCORD_WHEN=problem  Discord notify mode for edge scorecard (never/problem/always)
+  EDGE_SCORECARD_DISCORD_WEBHOOK=...  Optional explicit webhook for edge scorecard notify
+  EDGE_SCORECARD_DISCORD_WEBHOOK_ENV=SWIMMY_DISCORD_ALERTS  Webhook env key for edge scorecard notify
+  EDGE_SCORECARD_DISCORD_ZMQ_HOST=localhost  Notifier ZMQ host for edge scorecard notify
+  EDGE_SCORECARD_DISCORD_ZMQ_PORT=5562  Notifier ZMQ port for edge scorecard notify
   TREND_ARB_STATUS_LATEST_RUN=/path/to/latest_run.json  Override trend-arbitrage run file
   TREND_ARB_STATUS_MAX_AGE_SECONDS=14400  Freshness threshold when timer enabled
   .env is auto-loaded (environment variables take precedence)
@@ -223,6 +234,76 @@ PY
     fi
   else
     log "[WARN] Rank conformance summary unavailable: report file missing ($rank_conf_report)"
+  fi
+
+  return "$rc"
+}
+
+run_edge_scorecard_audit() {
+  local edge_scorecard_report="${EDGE_SCORECARD_LATEST_REPORT:-$ROOT/data/reports/edge_scorecard_latest.json}"
+  local edge_scorecard_rank_report="${EDGE_SCORECARD_RANK_REPORT:-${RANK_CONF_LATEST_REPORT:-$ROOT/data/reports/rank_conformance_latest.json}}"
+  local output=""
+  local rc=0
+  if output="$(python3 "$ROOT/tools/edge_scorecard.py" \
+    --db "${EDGE_SCORECARD_DB:-$ROOT/data/memory/swimmy.db}" \
+    --out "$edge_scorecard_report" \
+    --history-dir "${EDGE_SCORECARD_HISTORY_DIR:-$ROOT/data/reports/edge_scorecard}" \
+    --rank-report "$edge_scorecard_rank_report" \
+    --short-days "${EDGE_SCORECARD_SHORT_DAYS:-7}" \
+    --long-days "${EDGE_SCORECARD_LONG_DAYS:-30}" \
+    --discord-when "${EDGE_SCORECARD_DISCORD_WHEN:-problem}" \
+    --discord-webhook "${EDGE_SCORECARD_DISCORD_WEBHOOK:-}" \
+    --discord-webhook-env "${EDGE_SCORECARD_DISCORD_WEBHOOK_ENV:-SWIMMY_DISCORD_ALERTS}" \
+    --discord-zmq-host "${EDGE_SCORECARD_DISCORD_ZMQ_HOST:-localhost}" \
+    --discord-zmq-port "${EDGE_SCORECARD_DISCORD_ZMQ_PORT:-${SWIMMY_PORT_NOTIFIER:-5562}}" 2>&1)"; then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  if [[ $rc -ne 0 && -n "$output" ]]; then
+    printf '%s\n' "$output"
+  fi
+
+  if [[ -f "$edge_scorecard_report" ]]; then
+    local summary
+    summary="$(python3 - "$edge_scorecard_report" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("[WARN] Edge scorecard summary unavailable: report JSON parse failed")
+    raise SystemExit(0)
+
+if not isinstance(payload, dict):
+    print("[WARN] Edge scorecard summary unavailable: invalid report payload")
+    raise SystemExit(0)
+
+def get_status(key):
+    value = payload.get(key, {})
+    if isinstance(value, dict):
+        return value.get("status", "unknown")
+    return "unknown"
+
+print(
+    "[INFO] Edge scorecard summary "
+    f"status={payload.get('overall_status', 'unknown')} "
+    f"k0={get_status('kpi_live_edge_guard')} "
+    f"k1={get_status('kpi_live_pnl_health')} "
+    f"k2={get_status('kpi_rank_conformance')} "
+    f"k3={get_status('kpi_breeder_parent_quality')}"
+)
+PY
+)"
+    if [[ -n "$summary" ]]; then
+      log "$summary"
+    fi
+  else
+    log "[WARN] Edge scorecard summary unavailable: report file missing ($edge_scorecard_report)"
   fi
 
   return "$rc"
@@ -619,6 +700,9 @@ if [[ -f "$ROOT/tools/check_order_timeframe_consistency.py" ]]; then
 fi
 if [[ -f "$ROOT/tools/check_rank_conformance.py" ]]; then
   run_warn "Rank conformance audit" run_rank_conformance_audit
+fi
+if [[ -f "$ROOT/tools/edge_scorecard.py" ]]; then
+  run_warn "Edge scorecard" run_edge_scorecard_audit
 fi
 if [[ -f "$ROOT/tools/check_live_trade_close_integrity.py" ]]; then
   live_trade_close_args=(
