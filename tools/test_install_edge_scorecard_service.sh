@@ -14,6 +14,14 @@ grep -q "ExecStart=/home/swimmy/swimmy/tools/edge_scorecard_runner.sh" "$SERVICE
   echo "Service unit missing edge scorecard runner ExecStart" >&2
   exit 1
 }
+grep -q "^User=swimmy" "$SERVICE_UNIT" || {
+  echo "Service unit must pin User=swimmy for system scope safety" >&2
+  exit 1
+}
+if grep -q "^Group=" "$SERVICE_UNIT"; then
+  echo "Service unit must not pin Group= for user-scope compatibility" >&2
+  exit 1
+fi
 grep -q "OnCalendar=daily" "$TIMER_UNIT" || {
   echo "Timer unit missing daily schedule" >&2
   exit 1
@@ -47,5 +55,13 @@ HOME="$tmp_dir/home" PATH="$mock_bin:$PATH" MOCK_SYSTEMCTL_LOG="$mock_log" \
 
 [[ -f "$user_dest/swimmy-edge-scorecard.service" ]] || { echo "User scope service not installed" >&2; exit 1; }
 [[ -f "$user_dest/swimmy-edge-scorecard.timer" ]] || { echo "User scope timer not installed" >&2; exit 1; }
+if grep -q "^User=" "$user_dest/swimmy-edge-scorecard.service"; then
+  echo "User scope service must not include User=" >&2
+  exit 1
+fi
+if grep -q "^Group=" "$user_dest/swimmy-edge-scorecard.service"; then
+  echo "User scope service must not include Group=" >&2
+  exit 1
+fi
 grep -q -- "--user daemon-reload" "$mock_log" || { echo "Missing --user daemon-reload call" >&2; exit 1; }
 grep -q -- "--user enable --now swimmy-edge-scorecard.timer" "$mock_log" || { echo "Missing --user enable call" >&2; exit 1; }

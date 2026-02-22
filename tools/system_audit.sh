@@ -558,13 +558,22 @@ else
           continue
         fi
       fi
-      log "[REPAIR] enable $svc"
-      if run_systemctl_repair_step "enable $svc" enable "$svc"; then
-        local_rc=0
-      else
-        local_rc=$?
-      fi
-      [[ $local_rc -eq 1 ]] && mark_fail
+      enable_state="$(run_systemctl "$SYSTEMCTL_STATUS_MODE" is-enabled "$svc" 2>/dev/null || true)"
+      case "$enable_state" in
+        enabled|enabled-runtime)
+          log "[REPAIR] enable $svc (already $enable_state; skip)"
+          local_rc=0
+          ;;
+        *)
+          log "[REPAIR] enable $svc"
+          if run_systemctl_repair_step "enable $svc" enable "$svc"; then
+            local_rc=0
+          else
+            local_rc=$?
+          fi
+          [[ $local_rc -eq 1 ]] && mark_fail
+          ;;
+      esac
       log "[REPAIR] restart $svc"
       if run_systemctl_repair_step "restart $svc" restart "$svc"; then
         local_rc=0

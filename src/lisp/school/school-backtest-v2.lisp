@@ -139,7 +139,9 @@
      (let* ((base-name (subseq strat-name 0 (search "_P1" strat-name)))
             (strat (or (find-strategy base-name)
                        (when (fboundp 'take-phase1-pending-candidate)
-                         (take-phase1-pending-candidate base-name))))
+                         (take-phase1-pending-candidate base-name))
+                       (when (fboundp '%load-strategy-from-db-for-phase1)
+                         (%load-strategy-from-db-for-phase1 base-name))))
             ;; Normalize nil metrics to 0.0 to avoid type errors in comparisons/float coercions.
             (sharpe (float (or (getf result :sharpe) 0.0) 0.0))
             (pf (float (or (getf result :profit-factor) 0.0) 0.0))
@@ -182,3 +184,18 @@
                    (progn
                      (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
                      (send-to-graveyard strat "Phase1 Screening Failed (V2)"))))))))))
+
+(defun %load-strategy-from-db-for-phase1 (name)
+  "Best-effort fallback: load strategy object from strategies.data_sexp by NAME.
+Used when Phase1 result arrives after pending in-memory state was lost."
+  (handler-case
+      (let ((sexp-str (ignore-errors
+                        (execute-single "SELECT data_sexp FROM strategies WHERE name = ?" name))))
+        (when (and (stringp sexp-str)
+                   (> (length (string-trim '(#\Space #\Tab #\Newline #\Return) sexp-str)) 0))
+          (let ((obj (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+            (when (strategy-p obj)
+              obj))))
+    (error (e)
+      (format t "[BT-V2] ⚠️ DB fallback load failed for ~a: ~a~%" name e)
+      nil)))

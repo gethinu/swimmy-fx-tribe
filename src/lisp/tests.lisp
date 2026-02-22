@@ -8373,7 +8373,9 @@
                   (declare (ignore _args))
                   (list nil (swimmy.school:make-strategy :name "UT-DB"))))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
-                (lambda () (list nil (swimmy.school:make-strategy :name "UT-FILE"))))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list nil (swimmy.school:make-strategy :name "UT-FILE"))))
           (handler-case
               (swimmy.school::init-knowledge-base)
             (error () (setf failed t)))
@@ -8395,7 +8397,8 @@
                   (declare (ignore _args))
                   (list (swimmy.school:make-strategy :name "UT-DB-TF-MN" :timeframe "MN1" :rank :B))))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
-                (lambda ()
+                (lambda (&rest _args)
+                  (declare (ignore _args))
                   (list (swimmy.school:make-strategy :name "UT-FILE-TF-H5" :timeframe "H5" :rank :B))))
           (swimmy.school::init-knowledge-base)
           (let ((db (find "UT-DB-TF-MN" swimmy.school::*strategy-knowledge-base*
@@ -8446,7 +8449,9 @@
                   (declare (ignore _args))
                   (list active nil-rank)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
-                (lambda () (list incubator scout)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list incubator scout)))
           (swimmy.school::init-knowledge-base)
           (assert-true (find "UT-KB-ACTIVE-B" swimmy.school::*strategy-knowledge-base*
                              :key #'swimmy.school:strategy-name :test #'string=)
@@ -8492,7 +8497,9 @@
                   (declare (ignore _args))
                   (list db-strat)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
-                (lambda () (list file-strat)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list file-strat)))
           (setf (symbol-function 'swimmy.school:upsert-strategy)
                 (lambda (s)
                   (push (list (swimmy.school:strategy-name s)
@@ -8556,7 +8563,9 @@
                   (declare (ignore _args))
                   (list db-strat)))
           (setf (symbol-function 'swimmy.persistence:load-all-strategies)
-                (lambda () (list file-strat)))
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (list file-strat)))
           (setf (symbol-function 'swimmy.school:upsert-strategy)
                 (lambda (&rest _args)
                   (declare (ignore _args))
@@ -8688,6 +8697,29 @@
       (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file)
       (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
       (setf (symbol-function 'swimmy.school::%purge-revived-strategy-archive-files) orig-purge))))
+
+(deftest test-init-knowledge-base-loads-active-library-dirs-by-default
+  "init-knowledge-base should load only active library dirs during startup."
+  (let* ((orig-db (symbol-function 'swimmy.school:fetch-all-strategies-from-db))
+         (orig-file (symbol-function 'swimmy.persistence:load-all-strategies))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (seen-dirs nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  nil))
+          (setf (symbol-function 'swimmy.persistence:load-all-strategies)
+                (lambda (&key dirs &allow-other-keys)
+                  (setf seen-dirs dirs)
+                  nil))
+          (swimmy.school::init-knowledge-base)
+          (assert-equal '("B" "A" "S" "LEGEND") seen-dirs
+                        "Expected KB init to request active-only library dirs"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school:fetch-all-strategies-from-db) orig-db)
+      (setf (symbol-function 'swimmy.persistence:load-all-strategies) orig-file))))
 
 (deftest test-fetch-candidate-strategies-prefers-rank-column-over-stale-data-sexp
   "Candidate fetch should trust rank column when serialized rank in data_sexp is stale."
@@ -9098,6 +9130,71 @@
                         "Founder should remain pending before Phase1 result")
           (assert-not-nil (gethash (swimmy.school:strategy-name founder) swimmy.school::*phase1-pending-candidates*)
                           "Founder should be staged in pending queue"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*phase1-pending-candidates* orig-pending)
+      (setf swimmy.school::*category-pools* orig-pools)
+      (setf swimmy.school::*startup-mode* orig-startup)
+      (if orig-bypass-bound
+          (setf (symbol-value bypass-sym) orig-bypass)
+          (makunbound bypass-sym))
+      (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
+      (setf (symbol-function 'swimmy.school::notify-recruit-unified) orig-notify)
+      (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p) orig-graveyard)
+      (setf (symbol-function 'swimmy.school::run-phase-1-screening) orig-phase1))))
+
+(deftest test-add-to-kb-founder-bypass-skips-graveyard-pattern-evaluation
+  "Founder bypass should avoid calling is-graveyard-pattern-p (hot path protection)."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-pending swimmy.school::*phase1-pending-candidates*)
+         (orig-pools swimmy.school::*category-pools*)
+         (orig-startup swimmy.school::*startup-mode*)
+         (orig-upsert (symbol-function 'swimmy.school:upsert-strategy))
+         (orig-notify (symbol-function 'swimmy.school::notify-recruit-unified))
+         (orig-graveyard (symbol-function 'swimmy.school::is-graveyard-pattern-p))
+         (orig-phase1 (symbol-function 'swimmy.school::run-phase-1-screening))
+         (bypass-sym 'swimmy.school::*founder-graveyard-bypass-enabled*)
+         (orig-bypass-bound (boundp bypass-sym))
+         (orig-bypass (and orig-bypass-bound (symbol-value bypass-sym)))
+         (graveyard-called 0)
+         (founder (swimmy.school:make-strategy :name "UT-FOUNDER-BYPASS-NO-GRAVE-CALL"
+                                               :symbol "EURUSD"
+                                               :timeframe 300
+                                               :direction :BOTH
+                                               :rank nil
+                                               :sl 10.0
+                                               :tp 20.0
+                                               :sharpe 0.0
+                                               :profit-factor 0.0
+                                               :win-rate 0.0
+                                               :max-dd 0.0
+                                               :trades 0
+                                               :indicators '((ema 20))
+                                               :entry '(> close ema-20)
+                                               :exit '(< close ema-20))))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* nil)
+          (setf swimmy.school::*phase1-pending-candidates* (make-hash-table :test 'equal))
+          (setf swimmy.school::*category-pools* (make-hash-table))
+          (setf swimmy.school::*startup-mode* nil)
+          (setf (symbol-value bypass-sym) t)
+          (setf (symbol-function 'swimmy.school:upsert-strategy)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::notify-recruit-unified)
+                (lambda (&rest args) (declare (ignore args)) nil))
+          (setf (symbol-function 'swimmy.school::is-graveyard-pattern-p)
+                (lambda (&rest args)
+                  (declare (ignore args))
+                  (incf graveyard-called)
+                  t))
+          (setf (symbol-function 'swimmy.school::run-phase-1-screening)
+                (lambda (&rest args)
+                  (declare (ignore args))
+                  t))
+          (assert-true (swimmy.school:add-to-kb founder :founder :notify nil :require-bt t)
+                       "Expected founder bypass path to accept candidate")
+          (assert-equal 0 graveyard-called
+                        "Expected founder bypass path to skip graveyard-pattern evaluation"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf swimmy.school::*phase1-pending-candidates* orig-pending)
       (setf swimmy.school::*category-pools* orig-pools)

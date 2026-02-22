@@ -172,6 +172,46 @@ def test_build_candidate_pool_supports_indicator_filter() -> None:
     assert {c.indicator_type for c in pool} == {"vwapvr"}
 
 
+def test_build_candidate_pool_aligns_fast_profile_tf_with_hold_hours() -> None:
+    profile = PlayerProfile(
+        key="pandajiro",
+        label="pandajiro",
+        cluster="core",
+        target_profit_factor=1.79,
+        target_drawdown_ratio=0.0606,
+        target_trades=900,  # fast bucket
+        target_avg_hold_hours=8.47,
+    )
+    pool = build_candidate_pool(
+        profile,
+        candidates_per_player=99999,
+        seed=20260220,
+        indicators=("macd",),
+    )
+    assert pool
+    assert {c.timeframe for c in pool} == {60}
+
+
+def test_build_candidate_pool_falls_back_to_nearest_tf_when_hold_band_has_no_match() -> None:
+    profile = PlayerProfile(
+        key="fast_long_hold",
+        label="fast-long-hold",
+        cluster="core",
+        target_profit_factor=1.6,
+        target_drawdown_ratio=0.10,
+        target_trades=900,  # fast bucket
+        target_avg_hold_hours=20.0,  # no fast TF gives 2-12 bars
+    )
+    pool = build_candidate_pool(
+        profile,
+        candidates_per_player=99999,
+        seed=20260220,
+        indicators=("macd",),
+    )
+    assert pool
+    assert {c.timeframe for c in pool} == {60}
+
+
 def test_compute_cpcv_summary_calculates_pass_rate_and_medians() -> None:
     folds = [
         {"profit_factor": 1.20, "sharpe": 0.05, "trades": 25},
@@ -262,6 +302,32 @@ def test_strength_verdict_aggressive_does_not_require_cpcv_by_default() -> None:
     assert verdict["is_strong"] is True
 
 
+def test_strength_verdict_accepts_custom_oos_min_trades() -> None:
+    profile = PlayerProfile(
+        key="taiki",
+        label="taiki",
+        cluster="core",
+        target_profit_factor=1.99,
+        target_drawdown_ratio=0.1093,
+        target_trades=272,
+        target_avg_hold_hours=6.53,
+    )
+    bt = {"profit_factor": 1.35, "sharpe": 0.20, "max_drawdown": 0.06, "trades": 120}
+    oos = {"profit_factor": 1.15, "sharpe": 0.02, "trades": 30}
+    verdict = _strength_verdict(
+        profile,
+        bt,
+        oos,
+        None,
+        require_cpcv_for_core=False,
+        oos_min_trades_abs=50,
+        oos_trade_ratio_floor=0.2,
+    )
+    assert verdict["bt_ok"] is True
+    assert verdict["oos_ok"] is False
+    assert verdict["is_strong"] is False
+
+
 def test_build_walkforward_windows_spreads_folds_across_series() -> None:
     windows = build_walkforward_windows(
         total_rows=1000,
@@ -301,6 +367,27 @@ def test_parse_args_accepts_cpcv_flags() -> None:
     assert abs(args.cpcv_test_ratio - 0.25) < 1e-9
     assert args.cpcv_min_fold_trades == 30
     assert args.cpcv_require_for_core is True
+
+
+def test_parse_args_accepts_hold_tf_and_oos_trade_floor_flags() -> None:
+    args = parse_args(
+        [
+            "--hold-bars-min",
+            "2.5",
+            "--hold-bars-max",
+            "10.0",
+            "--disable-hold-tf-filter",
+            "--oos-min-trades-abs",
+            "50",
+            "--oos-trade-ratio-floor",
+            "0.35",
+        ]
+    )
+    assert abs(args.hold_bars_min - 2.5) < 1e-9
+    assert abs(args.hold_bars_max - 10.0) < 1e-9
+    assert args.disable_hold_tf_filter is True
+    assert args.oos_min_trades_abs == 50
+    assert abs(args.oos_trade_ratio_floor - 0.35) < 1e-9
 
 
 def test_core_bt_floor_pass_applies_only_to_core_cluster() -> None:

@@ -757,8 +757,14 @@ Keys:
       (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
               (strategy-name strategy) old-rank new-rank reason)
       
-      ;; V49.9: Persist to SQL
-      (let ((*allow-rank-regression-write* t))
+      ;; V49.9: Persist to SQL.
+      ;; Allow explicit archived(:graveyard/:retired)->active resurrection writes from ensure-rank.
+      (let ((*allow-rank-regression-write* t)
+            (*allow-archived-rank-resurrection-write*
+              (and (member old-rank '(:graveyard :retired) :test #'eq)
+                   (member new-rank '(:B :A :S :legend) :test #'eq))))
+        (declare (special *allow-rank-regression-write*
+                          *allow-archived-rank-resurrection-write*))
         (upsert-strategy strategy))
 
       (let ((promotion-p (%promotion-p old-rank new-rank)))

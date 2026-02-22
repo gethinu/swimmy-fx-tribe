@@ -156,7 +156,9 @@ REVERSION : ~a"
       ((eq rank :S) "S")
       (s-eligible (if (eq rank :A) "A: S-ELIGIBLE" "S: PROMOTION PENDING"))
       ((and (eq rank :A) s-base)
-       (format nil "CPCV PENDING (median=~,2f pass=~,0f%%)" cpcv (* 100 cpcv-pass)))
+       (format nil "CPCV PENDING (median=~,2f pass=~d%)"
+               cpcv
+               (round (* 100 cpcv-pass))))
       ((and a-eligible (eq rank :B)) "A: PROMOTION PENDING")
       ((and (eq rank :B) (>= sharpe a-sharpe-min) (not a-base)) "A: BASE METRICS FAIL")
       ((and a-eligible (eq rank :A)) "A")

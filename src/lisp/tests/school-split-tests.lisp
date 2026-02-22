@@ -940,6 +940,28 @@
         (swimmy.core:close-db-connection)
         (when (probe-file tmp-db) (delete-file tmp-db))))))
 
+(deftest test-candidate-rank-label-cpcv-pending-uses-single-percent
+  "candidate-rank-label should render CPCV pending pass-rate with a single percent sign."
+  (let* ((strat (cl-user::make-strategy :name "UT-CPCV-PCT"
+                                        :symbol "USDJPY"
+                                        :rank :A
+                                        :trades 150
+                                        :sharpe 0.90
+                                        :profit-factor 1.90
+                                        :win-rate 0.56
+                                        :max-dd 0.08
+                                        ;; Keep S base true but S eligible false.
+                                        :cpcv-pass-rate 0.20
+                                        :cpcv-median-maxdd 0.20
+                                        :cpcv-median-sharpe 0.82)))
+    (let ((label (swimmy.school::candidate-rank-label strat)))
+      (assert-true (search "CPCV PENDING" label)
+                   "Expected CPCV pending label")
+      (assert-true (search "pass=20%" label)
+                   "Pass-rate should be rendered with single percent")
+      (assert-false (search "%%" label)
+                    "Label should not contain doubled percent symbols"))))
+
 (deftest test-evolution-report-includes-a-near-miss-candidates
   "Evolution report should include A near-miss B-rank candidates."
   (let* ((tmp-db (format nil "/tmp/swimmy-report-near-miss-~a.db" (get-universal-time))))

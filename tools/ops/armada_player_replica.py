@@ -171,6 +171,35 @@ def tempo_bucket(target_trades: int) -> str:
     return "slow"
 
 
+def _filter_timeframes_by_hold_hours(
+    timeframes: Iterable[int],
+    *,
+    target_avg_hold_hours: float,
+    hold_bars_min: float = 2.0,
+    hold_bars_max: float = 12.0,
+) -> tuple[int, ...]:
+    tfs = tuple(int(tf) for tf in timeframes if int(tf) > 0)
+    if not tfs:
+        return ()
+    hold_minutes = max(0.0, float(target_avg_hold_hours)) * 60.0
+    if hold_minutes <= 0.0:
+        return tfs
+
+    min_bars = max(0.1, float(hold_bars_min))
+    max_bars = max(min_bars, float(hold_bars_max))
+    bars_by_tf = {tf: (hold_minutes / float(tf)) for tf in tfs}
+    filtered = tuple(tf for tf in tfs if min_bars <= bars_by_tf[tf] <= max_bars)
+    if filtered:
+        return filtered
+
+    # Fallback to nearest edge when no timeframe is inside the target hold bar band.
+    if all(bars_by_tf[tf] > max_bars for tf in tfs):
+        return (max(tfs),)
+    if all(bars_by_tf[tf] < min_bars for tf in tfs):
+        return (min(tfs),)
+    return tfs
+
+
 def parse_indicator_filter(raw: Optional[str]) -> tuple[str, ...]:
     if not raw:
         return ()
@@ -264,15 +293,29 @@ def build_candidate_pool(
     candidates_per_player: int,
     seed: int,
     indicators: Optional[Iterable[str]] = None,
+    hold_tf_filter_enabled: bool = True,
+    hold_bars_min: float = 2.0,
+    hold_bars_max: float = 12.0,
 ) -> list[CandidateSpec]:
     bucket = tempo_bucket(profile.target_trades)
     requested = tuple(indicators) if indicators else _INDICATORS
+    base_timeframes = _TIMEFRAMES[bucket]
+    timeframes = (
+        _filter_timeframes_by_hold_hours(
+            base_timeframes,
+            target_avg_hold_hours=profile.target_avg_hold_hours,
+            hold_bars_min=hold_bars_min,
+            hold_bars_max=hold_bars_max,
+        )
+        if hold_tf_filter_enabled
+        else base_timeframes
+    )
     candidates: list[CandidateSpec] = []
     for indicator in requested:
         param_pairs = _indicator_param_pairs(indicator, bucket)
         if not param_pairs:
             continue
-        for tf in _TIMEFRAMES[bucket]:
+        for tf in timeframes:
             for short, long_p in param_pairs:
                 if indicator in ("sma", "ema", "macd") and short >= long_p:
                     continue
@@ -689,6 +732,8 @@ def _strength_verdict(
     cpcv_summary: Optional[dict] = None,
     *,
     require_cpcv_for_core: bool = False,
+    oos_min_trades_abs: int = 15,
+    oos_trade_ratio_floor: float = 0.2,
 ) -> dict:
     bt_pf = _safe_float(bt.get("profit_factor"), 0.0)
     bt_sh = _safe_float(bt.get("sharpe"), 0.0)
@@ -713,7 +758,8 @@ def _strength_verdict(
     oos_pf = _safe_float(oos.get("profit_factor"), 0.0)
     oos_sh = _safe_float(oos.get("sharpe"), 0.0)
     oos_tr = _safe_int(oos.get("trades"), 0)
-    oos_ok = oos_pf >= 1.10 and oos_sh >= 0.0 and oos_tr >= max(15, int(min_trades * 0.2))
+    oos_min_trades = max(int(oos_min_trades_abs), int(min_trades * max(0.01, float(oos_trade_ratio_floor))))
+    oos_ok = oos_pf >= 1.10 and oos_sh >= 0.0 and oos_tr >= oos_min_trades
     cpcv_required = bool(require_cpcv_for_core and profile.cluster == "core")
     strong = bt_ok and oos_ok and ((cpcv_ok is True) if cpcv_required else True)
     return {
@@ -776,6 +822,12 @@ def run_replica_search(args: argparse.Namespace) -> int:
         "profiles_file": str(config_path),
         "candles_file": str(candles_file),
         "oos_file": str(oos_file) if oos_file else None,
+        "oos": {
+            "enabled": not bool(args.no_oos),
+            "ratio": args.oos_ratio,
+            "min_trades_abs": args.oos_min_trades_abs,
+            "trade_ratio_floor": args.oos_trade_ratio_floor,
+        },
         "cpcv": {
             "enabled": len(cpcv_fold_files) > 0,
             "folds": len(cpcv_fold_files),
@@ -794,6 +846,11 @@ def run_replica_search(args: argparse.Namespace) -> int:
             "core_bt_trade_ratio_floor": args.core_bt_trade_ratio_floor,
             "core_strength_penalty": args.core_strength_penalty,
         },
+        "hold_timeframe_filter": {
+            "enabled": not bool(args.disable_hold_tf_filter),
+            "hold_bars_min": args.hold_bars_min,
+            "hold_bars_max": args.hold_bars_max,
+        },
         "players": [],
     }
 
@@ -805,6 +862,9 @@ def run_replica_search(args: argparse.Namespace) -> int:
                 candidates_per_player=args.candidates_per_player,
                 seed=args.seed,
                 indicators=indicator_filter or None,
+                hold_tf_filter_enabled=not bool(args.disable_hold_tf_filter),
+                hold_bars_min=args.hold_bars_min,
+                hold_bars_max=args.hold_bars_max,
             )
             ranked: list[dict] = []
             for idx, candidate in enumerate(pool):
@@ -882,6 +942,8 @@ def run_replica_search(args: argparse.Namespace) -> int:
                     oos_metrics,
                     cpcv_summary,
                     require_cpcv_for_core=bool(args.cpcv_require_for_core),
+                    oos_min_trades_abs=args.oos_min_trades_abs,
+                    oos_trade_ratio_floor=args.oos_trade_ratio_floor,
                 )
                 item["oos_metrics"] = oos_metrics
                 item["cpcv_summary"] = cpcv_summary
@@ -997,6 +1059,35 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--no-oos", action="store_true", help="skip OOS tail evaluation")
     parser.add_argument("--oos-ratio", type=float, default=0.2, help="OOS tail ratio from latest data")
+    parser.add_argument(
+        "--oos-min-trades-abs",
+        type=int,
+        default=15,
+        help="minimum absolute OOS trades required in strong verdict",
+    )
+    parser.add_argument(
+        "--oos-trade-ratio-floor",
+        type=float,
+        default=0.2,
+        help="minimum OOS trades as ratio of BT min evidence",
+    )
+    parser.add_argument(
+        "--hold-bars-min",
+        type=float,
+        default=2.0,
+        help="minimum target hold bars (target hold minutes / timeframe) for candidate timeframe filter",
+    )
+    parser.add_argument(
+        "--hold-bars-max",
+        type=float,
+        default=12.0,
+        help="maximum target hold bars (target hold minutes / timeframe) for candidate timeframe filter",
+    )
+    parser.add_argument(
+        "--disable-hold-tf-filter",
+        action="store_true",
+        help="disable hold-hours based candidate timeframe filtering",
+    )
     parser.add_argument(
         "--cpcv-folds",
         type=int,

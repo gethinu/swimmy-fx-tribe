@@ -1,5 +1,12 @@
 # Tasks
 
+## Expert Panel 2026-02-22 (XAU Trial Validity / NO_GO Decision)
+- [x] Trial判定を3値化（`GO/NO_GO/INVALID_TRIAL`）し、`after_magic_filter`/`after_comment_prefix_filter` 不足時を `INVALID_TRIAL` として出力する: `tools/xau_autobot_trial_judge.py`, `tools/tests/test_xau_autobot_trial_judge.py`
+- [x] Trial起動前preflight（既存xau_autobotプロセス検査 + lock）を導入し、二重起動をfail-fast化する: `tools/xau_autobot_trial_v2_start.sh`, `tools/xau_autobot_active_runner.sh`
+- [ ] promotion時のlive report同定を `magic/comment_prefix` 一致必須へ強化し、別戦略レポート混入を防止する: `tools/xau_autobot_promote_best.py`, `tools/tests/test_xau_autobot_promote_best.py`
+- [ ] `market_closed` 通知の連投を抑制（1日1回上限 or 週末抑止）する: `tools/xau_autobot_cycle_compare.py`, `tools/xau_autobot_cycle_runner.sh`
+- [ ] Trial V2 再実行 runbook を固定化（14日固定窓・閾値固定・途中設定変更禁止）し、成果物を `run_id` 単位で保存する: `doc/knowledge/implementation_plan_v50.7.md`, `tools/xau_autobot_trial_v2_eval.sh`
+
 ## Expert Panel 2026-02-20 (Live Learning Integrity / Unknown-NIL)
 - [ ] `SendOpenPositions` の S式閉じ括弧を修正し、Bridge出力の文字列妥当性テストを追加する: `src/mt5/SwimmyBridge.mq5:1295`
 - [ ] `process-trade-closed` で `strategy_name=Unknown` の学習保存を禁止し、quarantine + telemetry を追加する: `src/lisp/core/executor.lisp:393`, `src/lisp/school/school-learning.lisp:395`

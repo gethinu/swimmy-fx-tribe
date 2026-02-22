@@ -146,11 +146,11 @@
                 (format t "[PERSISTENCE] ✅ Recovered strategy from ~a via fallback parser~%" path))
               fallback)))))))
 
-(defun load-all-strategies ()
-  "Load all strategies from the library"
+(defun load-all-strategies (&key (dirs '("INCUBATOR" "B" "A" "S" "LEGEND" "LEGEND-ARCHIVE")))
+  "Load strategies from selected library DIRS."
   (let ((strategies nil)
         (count 0))
-    (dolist (dir '("INCUBATOR" "B" "A" "S" "LEGEND" "LEGEND-ARCHIVE"))
+    (dolist (dir dirs)
       (let ((wildcard (merge-pathnames (format nil "~a/*.lisp" dir) *library-path*)))
         (dolist (file (directory wildcard))
           (handler-case
@@ -161,7 +161,7 @@
                   (incf count)))
             (error (e)
               (format t "[LIB] ⚠️ Failed to load ~a: ~a~%" file e))))))
-    (format t "[LIB] 📖 Loaded ~d strategies from Library~%" count)
+    (format t "[LIB] 📖 Loaded ~d strategies from Library (~{~a~^,~})~%" count dirs)
     strategies))
 
 (defun delete-strategy (strategy-obj &key rank)

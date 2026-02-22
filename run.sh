@@ -65,5 +65,7 @@ if [ "$BOOT_TEMP" -eq 1 ]; then
 fi
 
 # Start Swimmy with logging
+# Allow runtime tuning from .env without editing this script again.
+SBCL_DYNAMIC_SPACE_MB="${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-6144}"
 echo "[$(date)] Starting Swimmy Ver 41.5..."
-sbcl --dynamic-space-size 4096 --noinform --load "$BOOT_FILE" 2>&1 | tee logs/swimmy.log
+sbcl --dynamic-space-size "$SBCL_DYNAMIC_SPACE_MB" --noinform --load "$BOOT_FILE" 2>&1 | tee logs/swimmy.log

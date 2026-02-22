@@ -1256,6 +1256,36 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
         (when token
           (pushnew token out :test #'eq))))))
 
+(defun string-suffix-ci-p (suffix value)
+  "Case-insensitive suffix predicate."
+  (let* ((suffix (or suffix ""))
+         (value (or value ""))
+         (ls (length suffix))
+         (lv (length value)))
+    (and (<= ls lv)
+         (string-equal suffix value
+                       :start1 0 :end1 ls
+                       :start2 (- lv ls) :end2 lv))))
+
+(defun founder-key-pinned-symbol (key)
+  "Return pinned symbol when founder KEY is symbol-scoped, else NIL."
+  (let ((token (and (symbolp key) (string-upcase (symbol-name key)))))
+    (cond
+      ;; Backward-compatible mapping for existing VWAPVR founder key.
+      ((eq key :hunted-h12-vwapvr-50-150) "USDJPY")
+      ((and token (string-suffix-ci-p "-USDJPY" token)) "USDJPY")
+      ((and token (string-suffix-ci-p "-EURUSD" token)) "EURUSD")
+      ((and token (string-suffix-ci-p "-GBPUSD" token)) "GBPUSD")
+      (t nil))))
+
+(defun founder-target-symbols (key symbols)
+  "Resolve target symbols for founder KEY from supported SYMBOLS."
+  (let ((pinned (founder-key-pinned-symbol key)))
+    (if (and pinned
+             (find pinned symbols :test #'string-equal))
+        (list pinned)
+        (if pinned nil symbols))))
+
 (defun recruit-special-forces (&key max-attempts founder-keys)
   (force-recruit-strategy "T-Nakane-Gotobi")
   (let ((symbols (if (and (boundp 'swimmy.core::*supported-symbols*)
@@ -1295,9 +1325,11 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                  (when proto
                    (let ((base-name (strategy-name proto)))
                      (when (and base-name (stringp base-name))
+                       (let ((target-symbols (founder-target-symbols key symbols)))
+                         (when target-symbols
                        ;; Multi-symbol evolution: recruit the same founder archetype per
                        ;; supported symbol, with distinct names (P12.5 contract).
-                       (dolist (sym symbols)
+                       (dolist (sym target-symbols)
                          (let ((name (rewrite-strategy-name-for-symbol base-name sym)))
                            (unless (and name (gethash name known-names))
                              (when (and attempt-limit
@@ -1308,7 +1340,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                              (when (recruit-founder key :symbol sym)
                                (incf recruited))
                              (when name
-                               (setf (gethash name known-names) t))))))))))))
+                               (setf (gethash name known-names) t))))))))))))))
        *founder-registry*))
     (format t "[L] 🎖️ Special Force recruit run complete: ~d new founder attempts (auto-skipped ~d, tried ~d~@[ /limit ~d~]~:[~; LIMIT REACHED~])~%"
             recruited auto-skipped attempted attempt-limit limit-reached)))

@@ -51,14 +51,25 @@
 
 (defun init-school ()
   ;; V9.2: Taleb's Antifragility (Safe Load)
+  (format t "[SCHOOL] ⏱️ init-school: safely-load-hunter-strategies start~%")
   (safely-load-hunter-strategies)
+  (format t "[SCHOOL] ⏱️ init-school: safely-load-hunter-strategies done~%")
+  (format t "[SCHOOL] ⏱️ init-school: sanitize-strategies start~%")
   (sanitize-strategies) ; V48: Clean bad data immediately after load
+  (format t "[SCHOOL] ⏱️ init-school: sanitize-strategies done~%")
+  (format t "[SCHOOL] ⏱️ init-school: load-strategy-ranks start~%")
   (load-strategy-ranks) ; V46.1: Load Rank DB
+  (format t "[SCHOOL] ⏱️ init-school: load-strategy-ranks done~%")
+  (format t "[SCHOOL] ⏱️ init-school: apply-optimized-params start~%")
   (apply-optimized-params) ; Phase 4: Apply Evolutionary Genes
+  (format t "[SCHOOL] ⏱️ init-school: apply-optimized-params done~%")
 
   ;; V8.7: Reclassify ALL strategies (KB + Evolved) to fix category bugs
+  (format t "[SCHOOL] ⏱️ init-school: build-category-pools start~%")
   (build-category-pools) ; Clears pools and adds *strategy-knowledge-base*
+  (format t "[SCHOOL] ⏱️ init-school: build-category-pools done~%")
   
+  (format t "[SCHOOL] ⏱️ init-school: merge evolved strategies start~%")
   ;; Add Evolved/Recruited strategies to pools with NEW categorization logic
   (when (boundp '*evolved-strategies*)
     (dolist (strat *evolved-strategies*)
@@ -67,15 +78,25 @@
       (when (boundp '*regime-pools*)
         (let ((regime-class (strategy-regime-class strat)))
           (push strat (gethash regime-class *regime-pools* nil))))))
+  (format t "[SCHOOL] ⏱️ init-school: merge evolved strategies done~%")
         
-  (recruit-special-forces) ; V7.0: Inject special forces
+  ;; V51.1: Defer auto-recruit on startup to avoid long boot stalls.
+  ;; Operators can still trigger recruitment explicitly via RECRUIT_SPECIAL_FORCES.
+  (if (and (boundp '*startup-mode*) *startup-mode*)
+      (format t "[RECRUIT] ⏳ Startup mode: deferring auto recruit-special-forces.~%")
+      (recruit-special-forces)) ; V7.0: Inject special forces
   (clrhash *category-positions*)
   
-  ;; V47.0: Run B/A/S Rank Evaluation (Expert Panel - Naval)
+  ;; V51.1: Avoid blocking startup on heavy rank evaluation.
+  ;; Let Brain bind ZMQ ports first, then periodic maintenance can evaluate.
+  (format t "[SCHOOL] ⏱️ init-school: rank evaluation gate check~%")
   (when (fboundp 'run-rank-evaluation)
-    (run-rank-evaluation))
+    (if (and (boundp '*startup-mode*) *startup-mode*)
+        (format t "[RANK] ⏳ Startup mode: deferring rank evaluation.~%")
+        (run-rank-evaluation)))
   
   ;; Phase 25: Start Scribe Service (I/O Isolation)
+  (format t "[SCHOOL] ⏱️ init-school: start-scribe gate check~%")
   (when (fboundp 'swimmy.school.scribe:start-scribe)
     (swimmy.school.scribe:start-scribe))
   

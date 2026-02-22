@@ -74,6 +74,7 @@ def evaluate_trial_report(
     min_net_profit: float,
 ) -> Dict[str, object]:
     summary = report.get("summary", {}) if isinstance(report.get("summary"), dict) else {}
+    diagnostics = report.get("diagnostics", {}) if isinstance(report.get("diagnostics"), dict) else {}
     start_utc = _parse_utc(report.get("start_utc"))
     end_utc = _parse_utc(report.get("end_utc"))
     window_days = 0.0
@@ -92,10 +93,25 @@ def evaluate_trial_report(
         "win_rate": win_rate >= float(min_win_rate),
         "net_profit": net_profit > float(min_net_profit),
     }
+    invalid_reasons = []
+    if "after_magic_filter" in diagnostics and _as_float(diagnostics.get("after_magic_filter"), -1.0) <= 0.0:
+        invalid_reasons.append("after_magic_filter")
+    if "after_comment_prefix_filter" in diagnostics and _as_float(
+        diagnostics.get("after_comment_prefix_filter"), -1.0
+    ) <= 0.0:
+        invalid_reasons.append("after_comment_prefix_filter")
+    trial_valid = len(invalid_reasons) == 0
+
     failed_checks = [name for name, ok in checks.items() if not ok]
-    verdict = "GO" if not failed_checks else "NO_GO"
+    verdict = "GO"
+    if not trial_valid:
+        verdict = "INVALID_TRIAL"
+    elif failed_checks:
+        verdict = "NO_GO"
     return {
         "verdict": verdict,
+        "trial_valid": trial_valid,
+        "invalid_reasons": invalid_reasons,
         "window_days": window_days,
         "summary": {
             "closed_positions": closed_positions,
@@ -172,7 +188,7 @@ def main() -> None:
         f.write("\n")
 
     if args.fail_on_no_go and output.get("verdict") != "GO":
-        raise SystemExit("trial verdict: NO_GO")
+        raise SystemExit(f"trial verdict: {output.get('verdict')}")
 
 
 if __name__ == "__main__":

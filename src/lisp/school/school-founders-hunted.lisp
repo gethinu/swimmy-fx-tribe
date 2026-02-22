@@ -155,14 +155,38 @@
     :indicators '((sma 10))
     :entry '(cross-above close sma-10) :exit '(cross-below close sma-10)))
 
-(def-founder :hunted-h12-vwapvr-50-150 "Hunted-H12-VWAPVR-50-150"
-  "H12 VWAP Volume-Ratio breakout (orange threshold 150)."
-  (make-strategy :name "Hunted-H12-VWAPVR-50-150" :category :trend :timeframe 720 :generation 0
-    :sl 1.6 :tp 6.0 :volume 0.03
-    :indicators '((vwapvr 50 150))
-    :entry '(and (< vwapvr-50-prev vwapvr-threshold)
-                 (>= vwapvr-50 vwapvr-threshold))
-    :exit '(<= vwapvr-50 0)))
+(def-founder :hunted-h12-vwapvr-50-150 "Hunted-H12-VWAPVR-50-150-USDJPY"
+  "H12 VWAP Volume-Ratio breakout tuned for USDJPY (orange threshold 150)."
+  (make-strategy :name "Hunted-H12-VWAPVR-50-150-USDJPY"
+                 :symbol "USDJPY"
+                 :category :trend :timeframe 720 :generation 0
+                 :sl 1.6 :tp 6.0 :volume 0.03
+                 :indicators '((vwapvr 50 150))
+                 :entry '(and (< vwapvr-50-prev vwapvr-threshold)
+                              (>= vwapvr-50 vwapvr-threshold))
+                 :exit '(<= vwapvr-50 0)))
+
+(def-founder :hunted-d1-vwapvr-50-220-eurusd "Hunted-D1-VWAPVR-50-220-EURUSD"
+  "D1 VWAP Volume-Ratio breakout tuned for EURUSD (threshold 220)."
+  (make-strategy :name "Hunted-D1-VWAPVR-50-220-EURUSD"
+                 :symbol "EURUSD"
+                 :category :trend :timeframe 1440 :generation 0
+                 :sl 1.2 :tp 4.0 :volume 0.03
+                 :indicators '((vwapvr 50 220))
+                 :entry '(and (< vwapvr-50-prev vwapvr-threshold)
+                              (>= vwapvr-50 vwapvr-threshold))
+                 :exit '(<= vwapvr-50 0)))
+
+(def-founder :hunted-d1-vwapvr-80-180-gbpusd "Hunted-D1-VWAPVR-80-180-GBPUSD"
+  "D1 VWAP Volume-Ratio breakout tuned for GBPUSD (threshold 180)."
+  (make-strategy :name "Hunted-D1-VWAPVR-80-180-GBPUSD"
+                 :symbol "GBPUSD"
+                 :category :trend :timeframe 1440 :generation 0
+                 :sl 1.2 :tp 4.0 :volume 0.03
+                 :indicators '((vwapvr 80 180))
+                 :entry '(and (< vwapvr-80-prev vwapvr-threshold)
+                              (>= vwapvr-80 vwapvr-threshold))
+                 :exit '(<= vwapvr-80 0)))
 
 
 ;;; ----------------------------------------------------------------------------
@@ -274,6 +298,8 @@
   (recruit-founder :hunted-d1-williams)
   (recruit-founder :hunted-d1-sar)
   (recruit-founder :hunted-h12-vwapvr-50-150)
+  (recruit-founder :hunted-d1-vwapvr-50-220-eurusd)
+  (recruit-founder :hunted-d1-vwapvr-80-180-gbpusd)
 
   ;; W1 Batch
   (recruit-founder :hunted-w1-weinstein)

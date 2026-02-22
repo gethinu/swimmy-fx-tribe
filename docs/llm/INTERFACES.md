@@ -829,10 +829,24 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `~/.config/systemd/user/swimmy-openclaw-signal-sync.timer`
   - `~/.config/systemd/user/swimmy-polymarket-openclaw.service`
   - `~/.config/systemd/user/swimmy-polymarket-openclaw.timer`
+- **Edge Scorecard units（installer経由）**:
+  - `SWIMMY_SYSTEMD_SCOPE=system`:
+    - `/etc/systemd/system/swimmy-edge-scorecard.service`
+    - `/etc/systemd/system/swimmy-edge-scorecard.timer`
+  - `SWIMMY_SYSTEMD_SCOPE=user`:
+    - `~/.config/systemd/user/swimmy-edge-scorecard.service`
+    - `~/.config/systemd/user/swimmy-edge-scorecard.timer`
+    - 注: user scope 配置時の service unit は installer が `User=`/`Group=` を除去して生成する（user manager 互換）。
 - **system units（monitor/notifier）**:
   - `/etc/systemd/system/swimmy-polymarket-openclaw-status.service`
   - `/etc/systemd/system/swimmy-polymarket-openclaw-status.timer`
   - `/etc/systemd/system/swimmy-notifier.service`
+
+### `tools/install_edge_scorecard_service.sh`（Env インターフェース）
+- `SWIMMY_SYSTEMD_SCOPE=system|user`（既定: `system`）
+- `SWIMMY_SYSTEMD_DEST_DIR=<path>`（scope別デフォルトを上書き）
+- `SWIMMY_SYSTEMD_DRY_RUN=1`（検証のみ、配置/enable を行わない）
+- `SWIMMY_SYSTEMD_DIR=<path>`（unit ソースディレクトリを上書き）
 
 ## 運用監査CLIインターフェース
 `tools/system_audit.sh` が実行するローカル監査コマンドのうち、live trade-close 整合に関する契約を以下に定義する。

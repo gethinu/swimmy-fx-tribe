@@ -227,22 +227,34 @@
     - 追加診断結果: `max BT PF=1.2386`, `p95 BT PF=1.1656`, `median BT PF=1.0358`, `BT PF>=1.30 = 0/240`, `bt_ok=0/240`
     - strict R&D再探索（BT-only大域, c1056）: `data/reports/armada_player_replica_20260221_a1_nami_strictscan_seed20260221_c1056_btonly.json`
     - c1056実行ログ: `logs/armada_a1_nami_strictscan_c1056_btonly_20260221.log`
-    - c1056補足: report未生成（log末尾に `failed printing to stdout: Broken pipe (os error 32)` を確認）
-    - c1056再実行（セッション監視）: 同条件で再試行中（report生成待ち）
+    - c1056補足: 初回ログ末尾に `failed printing to stdout: Broken pipe (os error 32)` を記録したが、後続再実行で report 生成を確認
+    - c1056診断: `data/reports/armada_nami_bt_feasibility_armada_player_replica_20260221_a1_nami_strictscan_seed20260221_c1056_btonly.json`
+    - c1056結果: `evaluated=1056`, `selected=1056`, `max BT PF=1.2514`, `median BT PF=1.0591`, `p95 BT PF=1.1532`, `BT PF>=1.30 = 0/1056`, `bt_ok=0/1056`
     - strict R&D再探索（BT-only, volsma集中 c800/top200）: `data/reports/armada_nami_bt_scan_seed20260221_c800_volsma.json`
     - volsma集中診断: `data/reports/armada_nami_bt_feasibility_20260221_seed20260221_c800_volsma.json`
+    - volsma集中補助診断: `data/reports/armada_nami_bt_feasibility_20260221_volsma_scan.json`
     - volsma集中結果: `evaluated=216`, `selected=200`, `max BT PF=1.2514`, `p95 BT PF=1.2007`, `median BT PF=1.0692`, `BT PF>=1.30 = 0/200`, `bt_ok=0/200`
     - strict R&D再探索（BT-only, volsma集中 c800/top200, seed=23）: `data/reports/armada_nami_bt_scan_seed23_c800_volsma.json`
     - seed=23結果: `evaluated=216`, `selected=200`, `max BT PF=1.2514`, `BT PF>=1.30 = 0/200`, `bt_ok=0/200`
     - seed比較: `data/reports/armada_nami_bt_scan_seed_compare_20260221_vs_23_volsma.json`
     - seed比較結論: `strict_pf130_reached_any=false`, `strict_bt_ok_reached_any=false`, `max BT PF overall=1.2514`（seed変更でも上限更新なし）
-    - 追加実行（進行中）: `data/reports/armada_nami_bt_scan_seed20260221_c800_vwapvr.json`（BT-only, vwapvr集中）
-    - 追加実行（進行中）: `data/reports/armada_player_replica_20260221_a1_nami_strictscan_seed20260221_c1056_btonly.json`（BT-only, all indicators）
+    - 追加実行（中断）: `data/reports/armada_nami_bt_scan_seed20260221_c800_vwapvr.json`（BT-only, vwapvr集中。長時間化のため中断、report未生成）
+    - 追加実行（完了）: `data/reports/armada_nami_bt_scan_seed20260221_c480_vwapvr_probe.json`（BT-only, vwapvr集中 probe）
+    - c480(vwapvr probe)診断: `data/reports/armada_nami_bt_feasibility_armada_nami_bt_scan_seed20260221_c480_vwapvr_probe.json`
+    - c480(vwapvr probe)結果: `evaluated=480`, `selected=300`, `max BT PF=1.1833`, `median BT PF=1.0739`, `p95 BT PF=1.1680`, `BT PF>=1.30 = 0/300`, `bt_ok=0/300`
+    - 追加実行（中断）: `data/reports/armada_nami_bt_scan_seed20260221_c1000_volsma_holdoff.json`（BT-only, volsma+holdOFF。長時間化のため中断、report未生成）
+    - 追加実行（中断）: `data/reports/armada_nami_bt_scan_seed20260221_c400_volsma_holdoff.json`（BT-only, volsma+holdOFF。Guardian長時間化のため中断、report未生成）
+    - 代替実行（完了）: `data/reports/armada_nami_bt_scan_seed20260221_c200_volsma_tf240probe.json`（BT-only, `TF240` 単独プローブ）
+    - tf240プローブ診断: `data/reports/armada_nami_bt_feasibility_20260222_tf240probe.json`
+    - tf240プローブ結果: `evaluated=108`, `selected=108`, `max BT PF=1.1192`, `median BT PF=0.9591`, `p95 BT PF=1.0642`, `BT PF>=1.30 = 0/108`（`TF240` 追加で上限PFの押し上げなし）
     - seed sweep集計: `data/reports/armada_nami_seed_sweep_20260221.json`
     - 診断: `data/reports/armada_nami_bt_feasibility_20260221.json`
     - 診断結果: `max BT PF=1.2514`, `BT PF>=1.30 = 0/240`, `bt_ok=0/240`
     - 閾値感度（what-if）: `data/reports/armada_a1_bt_floor_sensitivity_20260221.json`, `data/reports/armada_nami_bt_threshold_sensitivity_20260221.json`
     - 感度結果: `PF>=1.30` では各runとも top5 `strong=0`。`PF>=1.20` では複数runで top5 `strong>=1`（例: `c480_allind` で `strong=4/5`）。A2 proxy条件を満たす `BT PF` 範囲は `1.20〜1.22`（最大成立値 `1.22`）。
+    - strict到達性統合サマリ: `data/reports/armada_nami_strict_reachability_summary_20260221.json`
+    - strict到達性統合サマリ（refresh）: `data/reports/armada_nami_strict_reachability_summary_20260222_refresh.json`
+    - 統合結論: `max BT PF observed=1.2514`, `strict_pf130_unreachable_in_scanned_space=true`
     - strict floor130追試（hold OFF, c360, seed=314159）: `data/reports/armada_player_replica_20260221_a1_nami_strict_floor130_seed314159_c360_holdoff_allind.json`
     - floor130追試結果: `top5 strong=0/5`, `bt_ok=0/5`, `oos_ok=2/5`, `cpcv_ok=3/5`, `top5 (oos_ok && cpcv_ok)=1/5`, `strong_proxy=0/5`。`max BT PF(top5)=1.0827` で改善なし（strict未達を再確認）。
     - 実装観測: strict `bt_ok` 判定は `BT PF>=1.30 && Sharpe>=0.10`（固定）だが、選抜スコア側の既定 floor は `core_bt_pf_floor=1.20`。この差で `BT PF 1.20台` 候補が上位に残りやすい。
@@ -277,6 +289,40 @@
       - `data/reports/armada_player_replica_20260221_b1_taiki_kojirin_seed20260221.json`
       - taiki/kojirin ともに `top3 oos_ok=1/3`、`timeframe=120`（`hold-bars>=2` を維持）
     - 判定: B1完了条件（taiki/kojirinともに top3 内 `oos_ok>=1`）を満たした。
+  - 2026-02-22 追補（B1R試行メモ）:
+    - 重量run（`taiki,kojirin` 同時 / `volsma,vwapvr` / `c240`）は長時間化のため手動中断:
+      - `logs/armada_b1r_taiki_kojirin_seed11_20260222.log`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed11_c240_volsma_vwapvr.json`（未生成）
+    - 軽量run（`taiki` 単独 / `volsma` / `c120`, `seed=11`）:
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_seed11_c120_volsma.json`
+      - 結果: `top3 bt_ok=0/3`, `top3 oos_ok=0/3`, `top3 cpcv_ok=3/3`, `top3 (oos_ok&&cpcv_ok)=0/3`
+    - 軽量run（`taiki` 単独 / `volsma` / `c120`, `seed=23`）は手動中断:
+      - `logs/armada_b1r_taiki_volsma_seed23_20260222.log`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_seed23_c120_volsma.json`（未生成）
+    - canary（`taiki` 単独 / all-indicators / `c60`, `seed=11`）は手動停止で未完:
+      - `logs/armada_b1r_taiki_canary_seed11_c60_allind_20260222.log`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_canary_seed11_c60_allind.json`（未生成）
+
+- [x] **B1R taiki/kojirin再現性検証（運用投入向け）**
+  - 目的: B1の単発 pass を seed再現性へ拡張し、L3投入判定の証拠を追加する。
+  - 実行: プレイヤー分割で `seed={11,23,47,83,131}` を実行（`hold TF filter ON`, `oos/cpcv` 有効）。
+  - 完了条件: 各プレイヤーで 5 seed中 `4/5` 以上の run で `top3 oos_ok>=1`。
+  - 成果物: `data/reports/armada_b1_seed_sweep_YYYYMMDD_summary.json`
+  - 2026-02-22 実行メモ（外部ジョブ回収完了）:
+    - 実行済み:
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed11_c240_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed23_c240_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed47_c240_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed83_c240_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed131_c240_top3.json`
+    - 集計:
+      - `data/reports/armada_b1_seed_sweep_20260222_summary.json`
+      - `player_pass_counts={taiki:2, kojirin:1}`
+      - `both_players_pass_count=0/5`
+      - `b1r_completed=false`（完了条件 `>=4/5` 未達）
+    - 観測:
+      - 上位指標が `rsi/volsma` 側へ寄り、B1時点の `vwapvr` 中心帯を再現しにくい seed が多数
+      - `top3 bt_ok` は全seedで `0/3`（strict未達は継続）
 
 - [x] **B2 pandajiro/yumimin引き上げ（CPCV底上げ）**
   - 目的: OOSは通るが CPCVが弱い候補の pass_rate を改善。
@@ -305,15 +351,25 @@
     - top50診断結果: `top3 combo=0/3`, `top10 combo=1/10`, `top50 combo=30/50`（候補自体はあるが選抜上位に乗らない）
     - 追加診断（pandajiro strength_weight=3.0）: `data/reports/armada_player_replica_20260221_pandajiro_b2_strengthw3_seed23_c180.json`
     - strength_weight=3.0結果: `top3 oos_ok=0/3`, `top3 cpcv_ok=0/3`（悪化、採用見送り）
-    - 再現性追試（seed=47, volsma専用）は計算競合で長時間化し中断（`...seed47_c240_volsma.json` 未生成）
+    - 再現性追試（seed=47, volsma専用）は当初計算競合で長時間化したが、後続 B2R で `seed=47/83/131` を完走して解消
     - 主要ボトルネック: all-indicators混在時は `cpcv_pass_rate=0.40` で頭打ちだが、`volsma` へ絞ると `0.60` まで改善
-    - 判定: B2完了（完了条件を満たすrunを複数確認）ただし最終選抜ルールの再現性は未固定
+    - 判定: B2完了（完了条件を満たすrunを複数確認）。B2Rで最終選抜ルールの再現性も固定（5/5 seed達成）。
 
-- [ ] **B2R volsma再現性検証（seed sweep）**
+- [x] **B2R volsma再現性検証（seed sweep）**
   - 目的: B2 pass 条件（`top3 (oos_ok && cpcv_ok)>=1`）が seed依存でないことを確認。
   - 実行: `seed={11,23,47,83,131}`、`--indicators volsma --candidates-per-player 240 --top-per-player 3` で実行。
   - 完了条件: 5 seed中 `4/5` 以上で pandajiro/yumimin ともに `top3 (oos_ok && cpcv_ok)>=1`。
   - 成果物: `data/reports/armada_b2_volsma_seed_sweep_YYYYMMDD_summary.json`
+  - 2026-02-22 実行メモ:
+    - 実行済み:
+      - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed11_c240_volsma.json`
+      - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed23_c240_volsma.json`
+      - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed47_c240_volsma.json`
+      - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed83_c240_volsma.json`
+      - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed131_c240_volsma.json`
+    - 集計: `data/reports/armada_b2_volsma_seed_sweep_20260221_summary.json`
+    - seed別結果: 全seedで pandajiro/yumimin ともに `top3 (oos_ok && cpcv_ok)=3/3`
+    - 判定: `aggregate.player_pass_counts={pandajiro:5, yumimin:5}`, `aggregate.both_players_pass_count=5/5`, `aggregate.b2r_completed=true`（B2R完了）
 
 - [x] **C1 core5投入判定パック作成**
   - 目的: core5全体の L1/L2/L3 判定を1ファイルで追跡可能にする。
@@ -331,6 +387,12 @@
       - `data/reports/armada_player_replica_20260221_b1_taiki_kojirin_seed20260221.json`
       - `data/reports/armada_player_replica_20260221_b2_panda_yumi_seed23_c240_volsma.json`
       - `data/reports/armada_b2_indicator_comparison_20260221.json`
+  - 2026-02-22 追補（B2R反映 refresh）:
+    - strict refresh: `data/reports/armada_deploy_readiness_20260222_b2rrefresh.json`
+    - proxy refresh: `data/reports/armada_deploy_readiness_20260222_proxy_b2rrefresh.json`
+    - 反映点: B2入力を volsma seed sweep 5本（11/23/47/83/131）へ更新し、`b2r_summary` を入力に追加
+    - 反映結果: pandajiro/yumimin ともに `b2_seed_pass_count=5/5` を確認
+    - 判定維持: `deploy_decision=保留 (no player reached L3)`（strict bt_ok=0 が継続ブロッカー）
 
 ---
 
@@ -374,6 +436,14 @@
     - `test-hunted-founder-templates-apply-trend-hardening-filters` を拡張し、EUR/GBP 向け VWAPVR founder の存在・symbol・TF・entry/exit を検証。
     - `test-recruit-special-forces-respects-founder-key-symbol-suffix` を追加（接尾辞 founder の単一シンボル募集を検証）。
     - 既存の `recruit-special-forces` 系回帰 (`...per-supported-symbol`, `...filters-founder-keys`, `...respects-recruit-limit`) も pass。
+- 2026-02-22 検証メモ（運用実行）:
+  - 実行:
+    - `./.venv/bin/python tools/trigger_recruit_special_forces.py --symbols USDJPY EURUSD GBPUSD --founder-keys hunted-h12-vwapvr-50-150 hunted-d1-vwapvr-50-220-eurusd hunted-d1-vwapvr-80-180-gbpusd --recruit-limit 3 --disable-preflight --bypass-graveyard --flush-phase1 --flush-limit 12`
+  - 観測:
+    - dispatcher で `RECRUIT_SPECIAL_FORCES` を受信し、3 founder の募集を確認。
+    - `Hunted-H12-VWAPVR-50-150-USDJPY` は `Phase 1 Result` 受信まで到達（`GRAVEYARD -> B` ログを確認）。
+    - `Strategy not found for Phase 1 result` は再現せず（該当実行後ヒット 0）。
+    - EURUSD/GBPUSD founder は `Queueing for Phase 1 Screening...` まで確認し、当該時点では結果待ち（Backtestキュー高負荷時）。
 
 ---
 

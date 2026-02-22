@@ -315,6 +315,49 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-ensure-rank-demotion-persists-rank-regression
+  "ensure-rank demotion should persist active rank regression (A -> B) to DB."
+  (let* ((name "TEST-ENSURE-RANK-DEMOTION-PERSISTS")
+         (tmp-db (format nil "/tmp/swimmy-ensure-rank-demote-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((strat (make-strategy :name name :symbol "USDJPY" :rank :A)))
+              (upsert-strategy strat)
+              (swimmy.school::ensure-rank strat :B "test demotion")
+              (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+                (assert-equal ":B" rank "ensure-rank demotion should persist :B"))))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-ensure-rank-archive-resurrection-persists-active-rank
+  "ensure-rank promotion from archived rank should persist active rank (GRAVEYARD -> B) to DB."
+  (let* ((name "TEST-ENSURE-RANK-ARCHIVE-RESURRECT")
+         (tmp-db (format nil "/tmp/swimmy-ensure-rank-archive-resurrect-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let ((strat (make-strategy :name name :symbol "USDJPY" :rank :graveyard)))
+              (upsert-strategy strat)
+              (swimmy.school::ensure-rank strat :B "test archive resurrection")
+              (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+                (assert-equal ":B" rank
+                              "ensure-rank archived->active promotion should persist :B"))))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-ensure-rank-triggers-report-sync-on-promotion
   "ensure-rank should trigger evolution report sync on A/S promotion."
   (let* ((strat (make-strategy :name "TEST-RANK-SYNC" :symbol "USDJPY" :rank :B))

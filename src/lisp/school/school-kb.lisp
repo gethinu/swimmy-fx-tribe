@@ -353,19 +353,22 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
                 (return-from add-to-kb nil))))))
         
       ;; 1.5 Graveyard Check (V49.0 Taleb)
-      (when (and (not *startup-mode*) (is-graveyard-pattern-p strategy))
-        (cond
-          ((and (eq source :founder) *founder-graveyard-bypass-enabled*)
-           (format t "[KB] ♻️ Founder bypassed graveyard pattern once: ~a~%" name))
-          ((and (eq source :breeder) breeder-variant-approved)
-           (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name))
-          ((and (eq source :breeder)
-                require-bt
-                *breeder-graveyard-bypass-for-phase1-enabled*)
-           (format t "[KB] ♻️ Breeder Phase1 bypassed graveyard pattern once: ~a~%" name))
-          (t
-           (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
-           (return-from add-to-kb nil))))
+      ;; Performance note: founder bypass is an explicit operator override.
+      ;; Skip expensive graveyard-pattern evaluation entirely in this branch.
+      (unless *startup-mode*
+        (if (and (eq source :founder) *founder-graveyard-bypass-enabled*)
+            (format t "[KB] ♻️ Founder bypassed graveyard pattern once: ~a~%" name)
+            (when (is-graveyard-pattern-p strategy)
+              (cond
+                ((and (eq source :breeder) breeder-variant-approved)
+                 (format t "[KB] ♻️ Breeder variant bypassed graveyard pattern once: ~a~%" name))
+                ((and (eq source :breeder)
+                      require-bt
+                      *breeder-graveyard-bypass-for-phase1-enabled*)
+                 (format t "[KB] ♻️ Breeder Phase1 bypassed graveyard pattern once: ~a~%" name))
+                (t
+                 (format t "[KB] 🪦 Rejected: ~a matches GRAVEYARD pattern!~%" name)
+                 (return-from add-to-kb nil))))))
       
       ;; 2. BT Validation (Phase 1 Screening Gate)
       (when require-bt

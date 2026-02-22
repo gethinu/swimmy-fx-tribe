@@ -52,8 +52,10 @@
 
 (defvar *allow-archived-rank-resurrection-write* nil
   "When T, upsert can intentionally revive archived DB rows to active ranks.")
-(defparameter *kb-init-max-archived-duplicate-revives* 1000
+(defparameter *kb-init-max-archived-duplicate-revives* 256
   "Maximum archived DB duplicate revives during one KB init pass. NIL means unlimited.")
+(defparameter *kb-init-library-dirs* '("B" "A" "S" "LEGEND")
+  "Library directories loaded during startup KB init.")
 (defparameter *kb-init-revive-source-dirs* '("B" "A" "S" "LEGEND")
   "Library directories considered authoritative sources for archived->active revive.")
 (defparameter *kb-init-revive-require-active-library-file* t
@@ -123,12 +125,17 @@
 
 (defun init-knowledge-base ()
   "Initialize with strategies from The Great Library + SQL database."
-  (let* ((raw-file-strats (or (swimmy.persistence:load-all-strategies) '()))
-         (raw-db-strats (or (fetch-all-strategies-from-db) '()))
+  (let* ((raw-file-strats (or (swimmy.persistence:load-all-strategies
+                               :dirs *kb-init-library-dirs*) '()))
+         ;; Startup performance: avoid deserializing archived DB rows (can be 400k+).
+         (raw-db-strats (or (fetch-all-strategies-from-db :ranks '(":B" ":A" ":S" ":LEGEND")) '()))
          (file-strats (remove-if-not #'strategy-p raw-file-strats))
          (db-strats (remove-if-not #'strategy-p raw-db-strats))
          (dropped (+ (- (length raw-file-strats) (length file-strats))
                      (- (length raw-db-strats) (length db-strats)))))
+    (format t "[KB] 🗂️ Startup library dirs: ~{~a~^,~}.~%" *kb-init-library-dirs*)
+    (format t "[KB] 🧭 Startup DB restore scope: B/A/S/LEGEND only (~d rows).~%"
+            (length db-strats))
     (when (> dropped 0)
       (format t "[KB] ⚠️ Dropped ~d invalid strategies during init.~%" dropped))
     ;; Canonicalize loaded TFs to internal minutes(int).
@@ -146,6 +153,8 @@
           (revive-targets '())
           (replaced-archived-duplicates 0)
           (revive-skipped-by-cap 0)
+          (revive-lookups 0)
+          (revive-lookup-hits 0)
           (purged-archive-files 0))
       (dolist (dbs kb)
         (let ((name (and (strategy-p dbs) (strategy-name dbs))))
@@ -158,7 +167,28 @@
             ((null existing)
              (push fs kb)
              (when name
-               (setf (gethash name kb-index) fs)))
+               (setf (gethash name kb-index) fs))
+             ;; When DB restore is active-only, archived collisions won't be deserialized.
+             ;; Probe rank by name for ACTIVE file strategies and queue revive if archived.
+             (when (and name
+                        (%active-rank-for-kb-init-p (strategy-rank fs)))
+               (incf revive-lookups)
+               (let ((db-rank (ignore-errors
+                                (execute-single "SELECT rank FROM strategies WHERE name = ?"
+                                                name))))
+                 (when (and db-rank
+                            (%archived-rank-for-kb-init-p db-rank)
+                            (or (not *kb-init-revive-require-active-library-file*)
+                                (gethash name revive-source-index)))
+                   (incf revive-lookup-hits)
+                   (if (or (null revive-limit)
+                           (< replaced-archived-duplicates revive-limit))
+                       (progn
+                         (unless (find name revive-targets
+                                       :key #'strategy-name :test #'string=)
+                           (push fs revive-targets))
+                         (incf replaced-archived-duplicates))
+                       (incf revive-skipped-by-cap))))))
             ((and (%archived-rank-for-kb-init-p (strategy-rank existing))
                   (%active-rank-for-kb-init-p (strategy-rank fs))
                   (or (not *kb-init-revive-require-active-library-file*)
@@ -173,10 +203,13 @@
                                  :key #'strategy-name :test #'string=)
                      (push fs revive-targets))
                    (incf replaced-archived-duplicates))
-                 (incf revive-skipped-by-cap))))))
+                  (incf revive-skipped-by-cap))))))
       (when (> (hash-table-count revived-db-entries) 0)
         (setf kb (remove-if (lambda (s) (gethash s revived-db-entries)) kb)))
       (setf *strategy-knowledge-base* kb)
+      (when (> revive-lookups 0)
+        (format t "[KB] 🔎 Archived rank lookups for active file strategies: ~d (hits: ~d).~%"
+                revive-lookups revive-lookup-hits))
       (when (> replaced-archived-duplicates 0)
         (format t "[KB] ♻️ Revived ~d archived DB duplicates from active Library entries.~%"
                 replaced-archived-duplicates))

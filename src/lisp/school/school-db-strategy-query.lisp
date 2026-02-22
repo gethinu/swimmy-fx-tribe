@@ -45,9 +45,36 @@
       (remove-if #'null
                  (mapcar #'%deserialize-strategy-row rows)))))
 
-(defun fetch-all-strategies-from-db ()
-  "Fetch EVERY strategy from the DB, including unranked and legends."
-  (let ((rows (execute-to-list "SELECT data_sexp, rank FROM strategies")))
+(defun %normalize-db-rank-filter-token (rank)
+  "Normalize RANK token to uppercase DB value (':B', ':A'...)."
+  (let* ((raw (cond
+                ((null rank) nil)
+                ((stringp rank) rank)
+                ((symbolp rank) (symbol-name rank))
+                (t (format nil "~a" rank))))
+         (trimmed (and raw
+                       (string-upcase
+                        (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))))
+    (when (and trimmed
+               (> (length trimmed) 0)
+               (not (string= trimmed "NIL")))
+      (if (char= (char trimmed 0) #\:)
+          trimmed
+          (format nil ":~a" trimmed)))))
+
+(defun fetch-all-strategies-from-db (&key ranks)
+  "Fetch strategies from DB.
+When RANKS is provided, filter rows by normalized rank tokens."
+  (let* ((normalized-ranks (remove-duplicates
+                            (remove nil (mapcar #'%normalize-db-rank-filter-token ranks))
+                            :test #'string=))
+         (rows (if normalized-ranks
+                   (let* ((placeholders (%sql-placeholders (length normalized-ranks)))
+                          (query (format nil
+                                         "SELECT data_sexp, rank FROM strategies WHERE UPPER(TRIM(rank)) IN (~a)"
+                                         placeholders)))
+                     (apply #'execute-to-list query normalized-ranks))
+                   (execute-to-list "SELECT data_sexp, rank FROM strategies"))))
     (remove-if #'null
                (mapcar #'%deserialize-strategy-row rows))))
 
