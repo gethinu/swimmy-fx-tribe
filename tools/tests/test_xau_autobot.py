@@ -1,6 +1,7 @@
 import unittest
 import tempfile
 import os
+from unittest import mock
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -322,6 +323,30 @@ class TestXauAutoBotConfig(unittest.TestCase):
             )
             blocked = guard.check(now_utc=datetime(2026, 2, 22, 11, 0, tzinfo=timezone.utc))
             self.assertIsNone(blocked)
+
+    def test_live_underperformance_guard_default_is_disabled(self):
+        with mock.patch.dict(
+            os.environ,
+            {"XAU_AUTOBOT_FAIL_ON_LIVE_UNDERPERFORMING": "1"},
+            clear=True,
+        ):
+            guard = LiveUnderperformanceGuard.from_env()
+            self.assertFalse(guard.enabled)
+
+    def test_live_underperformance_guard_can_be_enabled_explicitly(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "XAU_AUTOBOT_LIVE_GUARD_ENABLED": "1",
+                "XAU_AUTOBOT_LIVE_GUARD_MIN_STREAK": "3",
+                "XAU_AUTOBOT_LIVE_GUARD_MAX_REPORT_AGE_HOURS": "12",
+            },
+            clear=True,
+        ):
+            guard = LiveUnderperformanceGuard.from_env()
+            self.assertTrue(guard.enabled)
+            self.assertEqual(guard.min_streak, 3)
+            self.assertEqual(guard.max_report_age_hours, 12.0)
 
 
 class _FakeGateway:

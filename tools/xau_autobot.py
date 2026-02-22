@@ -187,8 +187,7 @@ class LiveUnderperformanceGuard:
 
     @classmethod
     def from_env(cls) -> "LiveUnderperformanceGuard":
-        fail_close_default = _env_bool("XAU_AUTOBOT_FAIL_ON_LIVE_UNDERPERFORMING", False)
-        enabled = _env_bool("XAU_AUTOBOT_LIVE_GUARD_ENABLED", fail_close_default)
+        enabled = _env_bool("XAU_AUTOBOT_LIVE_GUARD_ENABLED", False)
         report_path = Path(os.getenv("XAU_AUTOBOT_LIVE_GUARD_REPORT_PATH", "data/reports/xau_autobot_promotion.json"))
         min_streak = max(1, _env_int("XAU_AUTOBOT_LIVE_GUARD_MIN_STREAK", 2))
         max_report_age_hours = _env_float("XAU_AUTOBOT_LIVE_GUARD_MAX_REPORT_AGE_HOURS", 72.0)
