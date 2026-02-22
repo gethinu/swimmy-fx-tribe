@@ -1,10 +1,12 @@
 import unittest
 import tempfile
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 
 from tools.xau_autobot import (
     BotConfig,
+    LiveUnderperformanceGuard,
     atr_last,
     atr_pct_series,
     build_sl_tp,
@@ -12,6 +14,7 @@ from tools.xau_autobot import (
     decide_signal,
     ema_last,
     evaluate_once,
+    extract_live_underperforming_signal,
     is_session_allowed,
     next_session_open_utc,
     resolve_config_path,
@@ -238,6 +241,87 @@ class TestXauAutoBotConfig(unittest.TestCase):
             p2 = Path(td) / "missing-b.json"
             resolved = resolve_config_path("", default_candidates=[str(p1), str(p2)])
             self.assertEqual(resolved, "")
+
+    def test_extract_live_underperforming_signal(self):
+        report = {
+            "promotion_blocked": False,
+            "live_gap": {
+                "sample_quality": "ok",
+                "underperforming": True,
+                "underperforming_reasons": ["live_pf_below_1", "pf_gap_large"],
+            },
+        }
+        under, reasons = extract_live_underperforming_signal(report)
+        self.assertTrue(under)
+        self.assertEqual(reasons, ["live_pf_below_1", "pf_gap_large"])
+
+    def test_live_underperformance_guard_triggers_after_consecutive_alerts(self):
+        with tempfile.TemporaryDirectory() as td:
+            report_path = Path(td) / "promotion.json"
+            report_path.write_text(
+                '{"generated_at":"2026-02-22T11:00:00+00:00","promotion_blocked":true,'
+                '"live_gap":{"sample_quality":"ok","underperforming":true,'
+                '"underperforming_reasons":["live_pf_below_1"]}}',
+                encoding="utf-8",
+            )
+            guard = LiveUnderperformanceGuard(
+                enabled=True,
+                report_path=report_path,
+                min_streak=2,
+                max_report_age_hours=72.0,
+            )
+            self.assertIsNone(guard.check(now_utc=datetime(2026, 2, 22, 11, 5, tzinfo=timezone.utc)))
+            blocked = guard.check(now_utc=datetime(2026, 2, 22, 11, 10, tzinfo=timezone.utc))
+            self.assertIsNotNone(blocked)
+            self.assertEqual(blocked["action"], "BLOCKED")
+            self.assertEqual(blocked["reason"], "live_underperforming_guard")
+            self.assertEqual(blocked["guard_streak"], 2)
+
+    def test_live_underperformance_guard_resets_streak_on_recovery(self):
+        with tempfile.TemporaryDirectory() as td:
+            report_path = Path(td) / "promotion.json"
+            guard = LiveUnderperformanceGuard(
+                enabled=True,
+                report_path=report_path,
+                min_streak=2,
+                max_report_age_hours=72.0,
+            )
+            report_path.write_text(
+                '{"promotion_blocked":true,"live_gap":{"sample_quality":"ok","underperforming":true}}',
+                encoding="utf-8",
+            )
+            self.assertIsNone(guard.check(now_utc=datetime(2026, 2, 22, 11, 0, tzinfo=timezone.utc)))
+            report_path.write_text(
+                '{"promotion_blocked":false,"live_gap":{"sample_quality":"ok","underperforming":false}}',
+                encoding="utf-8",
+            )
+            self.assertIsNone(guard.check(now_utc=datetime(2026, 2, 22, 11, 5, tzinfo=timezone.utc)))
+            report_path.write_text(
+                '{"promotion_blocked":true,"live_gap":{"sample_quality":"ok","underperforming":true}}',
+                encoding="utf-8",
+            )
+            self.assertIsNone(guard.check(now_utc=datetime(2026, 2, 22, 11, 10, tzinfo=timezone.utc)))
+            blocked = guard.check(now_utc=datetime(2026, 2, 22, 11, 15, tzinfo=timezone.utc))
+            self.assertIsNotNone(blocked)
+            self.assertEqual(blocked["guard_streak"], 2)
+
+    def test_live_underperformance_guard_skips_stale_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            report_path = Path(td) / "promotion.json"
+            report_path.write_text(
+                '{"promotion_blocked":true,"live_gap":{"sample_quality":"ok","underperforming":true}}',
+                encoding="utf-8",
+            )
+            stale_ts = datetime(2026, 2, 20, 0, 0, tzinfo=timezone.utc).timestamp()
+            os.utime(report_path, (stale_ts, stale_ts))
+            guard = LiveUnderperformanceGuard(
+                enabled=True,
+                report_path=report_path,
+                min_streak=1,
+                max_report_age_hours=12.0,
+            )
+            blocked = guard.check(now_utc=datetime(2026, 2, 22, 11, 0, tzinfo=timezone.utc))
+            self.assertIsNone(blocked)
 
 
 class _FakeGateway:

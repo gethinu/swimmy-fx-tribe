@@ -55,6 +55,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "")
+    if raw == "":
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return default
+
+
 def resolve_discord_webhook_from_env() -> str:
     for key in DISCORD_WEBHOOK_ENV_KEYS:
         val = os.getenv(key, "").strip()
@@ -128,6 +138,100 @@ def _build_discord_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; xau-autobot-live/1.0)",
     }
+
+
+def _load_json_object(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _path_age_hours(path: Path, *, now_utc: datetime) -> float:
+    modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return float((now_utc - modified).total_seconds() / 3600.0)
+
+
+def extract_live_underperforming_signal(report: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    if not report:
+        return False, []
+    reasons: List[str] = []
+    live_gap = report.get("live_gap", {})
+    if isinstance(live_gap, dict):
+        raw = live_gap.get("underperforming_reasons", [])
+        if isinstance(raw, list):
+            for item in raw:
+                text = str(item).strip()
+                if text:
+                    reasons.append(text)
+        sample_quality = str(live_gap.get("sample_quality", "")).lower()
+        underperforming = bool(live_gap.get("underperforming", False))
+        if sample_quality == "ok" and underperforming:
+            return True, (reasons or ["live_underperforming"])
+    if bool(report.get("promotion_blocked", False)):
+        return True, (reasons or ["promotion_blocked"])
+    return False, []
+
+
+@dataclass
+class LiveUnderperformanceGuard:
+    enabled: bool
+    report_path: Path
+    min_streak: int
+    max_report_age_hours: float
+    _streak: int = 0
+
+    @classmethod
+    def from_env(cls) -> "LiveUnderperformanceGuard":
+        fail_close_default = _env_bool("XAU_AUTOBOT_FAIL_ON_LIVE_UNDERPERFORMING", False)
+        enabled = _env_bool("XAU_AUTOBOT_LIVE_GUARD_ENABLED", fail_close_default)
+        report_path = Path(os.getenv("XAU_AUTOBOT_LIVE_GUARD_REPORT_PATH", "data/reports/xau_autobot_promotion.json"))
+        min_streak = max(1, _env_int("XAU_AUTOBOT_LIVE_GUARD_MIN_STREAK", 2))
+        max_report_age_hours = _env_float("XAU_AUTOBOT_LIVE_GUARD_MAX_REPORT_AGE_HOURS", 72.0)
+        return cls(
+            enabled=enabled,
+            report_path=report_path,
+            min_streak=min_streak,
+            max_report_age_hours=max_report_age_hours,
+        )
+
+    def check(self, *, now_utc: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+        if not self.enabled:
+            return None
+        if now_utc is None:
+            now_utc = datetime.now(timezone.utc)
+        if not self.report_path.exists():
+            self._streak = 0
+            return None
+        if self.max_report_age_hours > 0.0:
+            if _path_age_hours(self.report_path, now_utc=now_utc) > self.max_report_age_hours:
+                self._streak = 0
+                return None
+
+        report = _load_json_object(self.report_path)
+        underperforming, reasons = extract_live_underperforming_signal(report)
+        if not underperforming:
+            self._streak = 0
+            return None
+
+        self._streak += 1
+        if self._streak < self.min_streak:
+            return None
+
+        return {
+            "action": "BLOCKED",
+            "reason": "live_underperforming_guard",
+            "guard_streak": self._streak,
+            "guard_min_streak": self.min_streak,
+            "underperforming_reasons": reasons,
+            "report_path": str(self.report_path),
+            "report_generated_at": report.get("generated_at", ""),
+            "selected_period": report.get("selected_period", ""),
+        }
 
 
 class SessionBlockNotifier:
@@ -823,12 +927,26 @@ def resolve_config_path(path: str, default_candidates: Tuple[str, ...] = DEFAULT
 
 def run(config: BotConfig) -> None:
     notifier = SessionBlockNotifier.from_env()
+    live_guard = LiveUnderperformanceGuard.from_env()
     gateway = Mt5Gateway(config)
     gateway.connect()
     try:
         last_bar_time: Optional[int] = None
         cycles = 0
         while True:
+            guard_payload = live_guard.check()
+            if guard_payload is not None:
+                now_unix = int(time.time())
+                print(json.dumps(guard_payload, ensure_ascii=True))
+                notifier.maybe_notify(guard_payload, config=config, bar_time=now_unix)
+                cycles += 1
+                if config.once:
+                    break
+                if config.max_cycles > 0 and cycles >= config.max_cycles:
+                    break
+                time.sleep(max(1, config.poll_seconds))
+                continue
+
             payload, last_bar_time = evaluate_once(config, gateway, last_bar_time)
             print(json.dumps(payload, ensure_ascii=True))
             notifier.maybe_notify(payload, config=config, bar_time=last_bar_time)
