@@ -38,6 +38,7 @@
     - `metatester64` CPU合計は増加継続（例: `573882.45 -> 573959.41` / 6秒）
   - 備考:
     - `terminal64` と `metatester64 x16` の稼働を確認済み（計算継続中）
+    - 監視コマンド: `tools/mt5_watch_optimization.sh --report-prefix ih_opt_full_rerun_20260222_181920`
 
 ---
 
@@ -590,9 +591,11 @@
     - 集計:
       - `data/reports/armada_b1_fix5b_kojirin_seed_sweep_20260223_holdoff_summary.json`
       - `data/reports/armada_b1r_fix5b_overlap_evaluation_20260223.json`
+      - `data/reports/armada_b1r_fix5_overlap_feasibility_20260223.json`
       - `taiki_pass_seeds={11,83,131}`（A6/fix3）
       - overlapは `{83,131}`（`both_players_pass_count=2/5`）
       - `max_possible_overlap=3/5`（目標 `>=4/5` に未達）
+      - `required_anchor={11,23,83}` の維持は `{83}` のみ
     - 判定:
       - A8の主眼だった `seed131` 回復は達成。
       - ただし `seed11/23` を維持できず、重なり上限が `3/5` のため A8完了条件は未達。
@@ -607,17 +610,32 @@
   - 成果物:
     - `data/reports/armada_player_replica_20260223_b1r_fix6a_taiki_seed47_c480_allind_holdoff_top3.json`
     - `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
+    - `data/reports/armada_player_replica_20260223_b1r_fix6c_taiki_seed47_c804_allind_holdon_top3.json`
+    - `data/reports/armada_player_replica_20260223_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_top3.json`
+    - `data/reports/armada_player_replica_20260223_b1r_fix7a_taiki_seed47_c240_vwapvr_rsi_ema_holdoff_top3.json`
   - 2026-02-23 実行メモ（進行中）:
     - fix6a（`candidates_per_player=480`）:
       - `data/reports/armada_player_replica_20260223_b1r_fix6a_taiki_seed47_c480_allind_holdoff_top3.json`
       - 結果: `top3_oos_ok=0`（gate未達）
     - fix6b（`candidates_per_player=3216` / 全候補）:
-      - 実行開始後に長時間化したため一時停止。
-      - 方針: `fix6c` で先に gate可否を確定し、未達時のみ再開。
-      - 出力先（再開時）: `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
+      - 実行中（再開済み）
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
+      - 監視ログ: `logs/armada_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_20260223.log`
     - fix6c（`candidates_per_player=804` / all indicators, holdon）:
-      - 実行中
+      - 完了
       - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6c_taiki_seed47_c804_allind_holdon_top3.json`
+      - 結果: `top3_oos_ok=0`（gate未達）
+    - fix7a（`candidates_per_player=240` / `indicators=vwapvr,rsi,ema`, holdoff）:
+      - 完了
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix7a_taiki_seed47_c240_vwapvr_rsi_ema_holdoff_top3.json`
+      - 結果: `top3_oos_ok=0`（gate未達）
+    - fix6d（`candidates_per_player=804` / all indicators, holdoff, selection-relaxed）:
+      - 実行中（2026-02-23 13:21 JST 開始）
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_top3.json`
+      - 監視ログ: `logs/armada_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_20260223.log`
+    - 2026-02-23 13:23 JST 進捗スナップショット:
+      - fix6b: `output未生成`, `log_bytes=259303`（増加継続）
+      - fix6d: `output未生成`, `log_bytes=4391`（増加継続）
 
 ---
 
