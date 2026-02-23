@@ -293,6 +293,31 @@
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
+(deftest test-upsert-preserves-active-rank-when-incoming-archive
+  "Upsert should keep existing active rank when incoming stale rank is archived (e.g., B -> GRAVEYARD)."
+  (let* ((name "TEST-ACTIVE-RANK-ARCHIVE-REGRESSION-LOCK")
+         (tmp-db (format nil "/tmp/swimmy-active-archive-regression-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; First write active rank B.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :B))
+            ;; Later upsert from stale archived object should not archive DB rank.
+            (let ((stale (make-strategy :name name :symbol "USDJPY" :rank :graveyard)))
+              (upsert-strategy stale)
+              (assert-equal :B (strategy-rank stale)
+                            "In-memory stale archived object should be corrected to DB active rank"))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":B" rank "Active rank must not regress to GRAVEYARD on stale upsert")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-upsert-allows-explicit-rank-regression
   "Upsert should allow explicit rank regression when the guard is intentionally bypassed."
   (let* ((name "TEST-ACTIVE-RANK-REGRESSION-EXPLICIT")
@@ -311,6 +336,29 @@
                 (upsert-strategy regression)))
             (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
               (assert-equal ":B" rank "Explicit downgrade path should be honored")))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-upsert-allows-explicit-active-to-archive-regression
+  "Upsert should allow explicit active->archive rank write when guard bypass is intentional."
+  (let* ((name "TEST-ACTIVE-TO-ARCHIVE-EXPLICIT")
+         (tmp-db (format nil "/tmp/swimmy-active-archive-explicit-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :B))
+            (let ((regression (make-strategy :name name :symbol "USDJPY" :rank :graveyard)))
+              (let ((swimmy.school::*allow-rank-regression-write* t))
+                (upsert-strategy regression)))
+            (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+              (assert-equal ":GRAVEYARD" rank
+                            "Explicit active->archive downgrade path should be honored")))
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
@@ -354,6 +402,31 @@
               (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
                 (assert-equal ":B" rank
                               "ensure-rank archived->active promotion should persist :B"))))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-ensure-rank-archive-resurrection-persists-active-rank-from-db-when-memory-rank-nil
+  "ensure-rank should persist archived->active resurrection even when in-memory rank is NIL and DB rank is archived."
+  (let* ((name "TEST-ENSURE-RANK-ARCHIVE-RESURRECT-NIL-MEM")
+         (tmp-db (format nil "/tmp/swimmy-ensure-rank-archive-resurrect-nil-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            ;; Seed archived row in DB.
+            (upsert-strategy (make-strategy :name name :symbol "USDJPY" :rank :graveyard))
+            ;; Simulate deferred candidate object with stale/NIL in-memory rank.
+            (let ((pending (make-strategy :name name :symbol "USDJPY")))
+              (setf (strategy-rank pending) nil)
+              (swimmy.school::ensure-rank pending :B "test archive resurrection from nil mem")
+              (let ((rank (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+                (assert-equal ":B" rank
+                              "ensure-rank should persist :B when DB had archived rank and memory rank was NIL"))))
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))

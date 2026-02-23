@@ -497,13 +497,16 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
         (setf (strategy-rank strat) incoming-rank))
       ;; Guard against stale active-rank regression from old in-memory objects.
       ;; Explicit demotions should set *allow-rank-regression-write* while calling upsert.
+      ;; Also block accidental active->archive writes from stale duplicates.
       (let ((db-level (and existing-row (active-rank-level db-rank-raw)))
-            (incoming-level (active-rank-level incoming-rank)))
+            (incoming-level (active-rank-level incoming-rank))
+            (incoming-archive-p (archive-rank-p incoming-rank)))
         (when (and existing-row
                    (not *allow-rank-regression-write*)
                    db-level
-                   incoming-level
-                   (< incoming-level db-level))
+                   (or (and incoming-level
+                            (< incoming-level db-level))
+                       incoming-archive-p))
           (multiple-value-bind (db-rank db-rank-ok)
               (%parse-rank-safe (rank->db-string db-rank-raw))
             (when db-rank-ok
