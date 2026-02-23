@@ -33,9 +33,9 @@
   - 条件:
     - `Back: 2023-02-20 00:00 -> 2025-02-19 00:00`
     - `Forward: 2025-02-19 00:00 -> 2026-02-20 00:00`
-  - 進捗（2026-02-23 00:02 JST時点）:
-    - `Best result 10935.76 produced at generation 0. Next generation 2`（直近ログ更新）
-    - `metatester64` CPU合計は 12秒で `168092.77 -> 168216.28`（計算継続を確認）
+  - 進捗（2026-02-23 12:14 JST時点）:
+    - ログ最終更新は `2026-02-22 22:59 JST` の `Best result 10935.76 produced at generation 0. Next generation 2`
+    - `metatester64` CPU合計は増加継続（例: `573882.45 -> 573959.41` / 6秒）
   - 備考:
     - `terminal64` と `metatester64 x16` の稼働を確認済み（計算継続中）
 
@@ -447,6 +447,25 @@
     - 判定:
       - A5-2は完走したが、A5完了条件（`both_players_pass_count>=4/5`）は未達。
       - ボトルネックは `kojirin` 単体の弱さではなく、`taiki` と `kojirin` の seed重なり不足。
+  - 2026-02-23 実行メモ（A5-3 / taiki holdoff refresh）:
+    - 実行:
+      - `taiki`: `--indicators vwapvr,vwap --disable-hold-tf-filter`
+      - 共通: `candidates_per_player=120`, `top_per_player=3`, `seed={11,23,47,83,131}`
+    - 生成:
+      - `data/reports/armada_player_replica_20260223_b1r_fix3_taiki_seed*_c120_vwapvr_vwap_holdoff_top3.json`
+      - `data/reports/armada_b1_seed_sweep_20260223_taiki_fix3_holdoff_summary.json`
+      - `data/reports/armada_player_replica_20260223_b1r_fix3_taiki_kojirin_seed*_c120_holdoff_mix_top3.json`
+      - `data/reports/armada_b1_seed_sweep_20260223_fix3_holdoff_summary.json`
+      - `data/reports/armada_b1r_fix3_taiki_holdoff_evaluation_20260223.json`
+    - 結果:
+      - `taiki gate_pass=3/5`（`11,83,131`）
+      - `kojirin gate_pass=4/5`（`11,23,47,83`、A5-2 holdoff固定）
+      - `both_players_pass_count=2/5`（`11,83`）
+      - baseline（`data/reports/armada_b1_seed_sweep_20260222_fix2_holdoff_summary.json`）比:
+        - `delta={taiki:+1, kojirin:+0, both_players_pass_count:+1}`
+    - 判定:
+      - 改善は確認できたが、A5完了条件（`>=4/5`）には未達。
+      - 次の主対象は `seed={23,47}` の `taiki` 側ボトルネック解消。
 
 - [x] **V50.7-A6 Seed重なり是正（taiki holdoff / 第3波）**
   - 目的: A5で露呈した seed重なり不足（`taiki={23,131}` vs `kojirin={11,23,47,83}`）を是正し、`both_players_pass_count` を引き上げる。
@@ -547,7 +566,7 @@
     - `data/reports/armada_player_replica_20260223_b1r_fix5a_kojirin_seed*_*.json`
     - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed*_*.json`
     - `data/reports/armada_b1r_fix5_overlap_feasibility_20260223.json`
-  - 2026-02-23 実行メモ（進行中）:
+  - 2026-02-23 実行メモ（完了）:
     - fix5a（axis1: `vwapvr,volsma,rsi`, targeted `seed={131,23,83}`）:
       - 実行:
         - `data/reports/armada_player_replica_20260223_b1r_fix5a_kojirin_seed131_c120_vwapvr_volsma_rsi_holdoff_top3.json`
@@ -559,15 +578,24 @@
         - `seed83: gate_pass=false`
       - 判定: `131`回復に失敗（axis1は不採用）。
     - fix5b（axis2: `vwapvr,vwap,volsma`）:
-      - 先行確認（`seed131`）:
+      - 5seed完走:
+        - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed11_c120_vwapvr_vwap_volsma_holdoff_top3.json`
+        - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed23_c120_vwapvr_vwap_volsma_holdoff_top3.json`
+        - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed47_c120_vwapvr_vwap_volsma_holdoff_top3.json`
+        - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed83_c120_vwapvr_vwap_volsma_holdoff_top3.json`
         - `data/reports/armada_player_replica_20260223_b1r_fix5b_kojirin_seed131_c120_vwapvr_vwap_volsma_holdoff_top3.json`
-        - 結果: `seed131 gate_pass=true`（回復確認）
-      - `seed23/83` は同条件で再実行中だったが、`taiki`側ボトルネック検証を優先するため途中停止（再開候補）。
-    - interim集計:
-      - `data/reports/armada_b1r_fix5_overlap_feasibility_20260223_interim.json`
-      - `fix5a_pass_tested_seeds={23}`
-      - `fix5b_pass_tested_seeds={131}`
-      - `fix5b_pending_or_aborted_seeds={23,83}`
+      - 結果:
+        - `kojirin_fix5b_pass_seeds={47,83,131}`（`3/5`）
+        - `seed131` は回復したが `seed11/23` はfail
+    - 集計:
+      - `data/reports/armada_b1_fix5b_kojirin_seed_sweep_20260223_holdoff_summary.json`
+      - `data/reports/armada_b1r_fix5b_overlap_evaluation_20260223.json`
+      - `taiki_pass_seeds={11,83,131}`（A6/fix3）
+      - overlapは `{83,131}`（`both_players_pass_count=2/5`）
+      - `max_possible_overlap=3/5`（目標 `>=4/5` に未達）
+    - 判定:
+      - A8の主眼だった `seed131` 回復は達成。
+      - ただし `seed11/23` を維持できず、重なり上限が `3/5` のため A8完了条件は未達。
 
 - [ ] **V50.7-A9 taiki seed47 直撃探索（高探索量）**
   - 目的: A7/A8で残存した主ボトルネック `taiki seed47` の gate fail を単独で崩す。
@@ -578,6 +606,18 @@
     - indicator 制約を外し（all indicators）、`candidates_per_player=480` へ拡張して探索密度を上げる。
   - 成果物:
     - `data/reports/armada_player_replica_20260223_b1r_fix6a_taiki_seed47_c480_allind_holdoff_top3.json`
+    - `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
+  - 2026-02-23 実行メモ（進行中）:
+    - fix6a（`candidates_per_player=480`）:
+      - `data/reports/armada_player_replica_20260223_b1r_fix6a_taiki_seed47_c480_allind_holdoff_top3.json`
+      - 結果: `top3_oos_ok=0`（gate未達）
+    - fix6b（`candidates_per_player=3216` / 全候補）:
+      - 実行開始後に長時間化したため一時停止。
+      - 方針: `fix6c` で先に gate可否を確定し、未達時のみ再開。
+      - 出力先（再開時）: `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
+    - fix6c（`candidates_per_player=804` / all indicators, holdon）:
+      - 実行中
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6c_taiki_seed47_c804_allind_holdon_top3.json`
 
 ---
 
@@ -620,3 +660,21 @@
 - 運用判定:
   - 3通貨 founder の「昇格後即落ち」症状は解消。
   - 次運用は `B=3 / Graveyard=0` の継続監視（短期）を実施し、再発がなければ本修正を確定扱いとする。
+
+- 2026-02-23 短期監視ジョブ起動（JST 12:13）:
+  - systemd unit:
+    - `founder_rank_watch_20260223_121322.service`
+  - 監視条件:
+    - 監視対象: 上記3 founder 固定
+    - 5分間隔 (`interval_sec=300`) x 288サンプル（24時間）
+    - 逸脱条件: `count_b != 3` または `count_graveyard != 0` または founder missing
+  - 出力:
+    - JSONL: `data/reports/founder_rank_watch_20260223_121322.jsonl`
+    - runtime log: `data/runtime/founder_rank_watch_20260223_121322.out`
+    - current unit marker: `data/runtime/founder_rank_watch_current.unit`
+  - 初回サンプル:
+    - `sample 1/288: b=3 gy=0 drift=False missing=0`
+  - 参照/停止コマンド:
+    - `systemctl --user status founder_rank_watch_20260223_121322.service --no-pager`
+    - `tail -f data/reports/founder_rank_watch_20260223_121322.jsonl`
+    - `systemctl --user stop founder_rank_watch_20260223_121322.service`
