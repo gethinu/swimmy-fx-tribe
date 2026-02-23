@@ -600,7 +600,7 @@
       - A8の主眼だった `seed131` 回復は達成。
       - ただし `seed11/23` を維持できず、重なり上限が `3/5` のため A8完了条件は未達。
 
-- [ ] **V50.7-A9 taiki seed47 直撃探索（高探索量）**
+- [x] **V50.7-A9 taiki seed47 直撃探索（高探索量）**
   - 目的: A7/A8で残存した主ボトルネック `taiki seed47` の gate fail を単独で崩す。
   - 完了条件:
     - `seed47` で `top3_oos_ok>=1` を達成する条件を1本以上確保。
@@ -613,14 +613,18 @@
     - `data/reports/armada_player_replica_20260223_b1r_fix6c_taiki_seed47_c804_allind_holdon_top3.json`
     - `data/reports/armada_player_replica_20260223_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_top3.json`
     - `data/reports/armada_player_replica_20260223_b1r_fix7a_taiki_seed47_c240_vwapvr_rsi_ema_holdoff_top3.json`
-  - 2026-02-23 実行メモ（進行中）:
+    - `data/reports/armada_player_replica_20260223_b1r_fix7b_taiki_seed47_c804_allind_holdband12_60_top3.json`
+  - 2026-02-23 実行メモ（完了）:
     - fix6a（`candidates_per_player=480`）:
       - `data/reports/armada_player_replica_20260223_b1r_fix6a_taiki_seed47_c480_allind_holdoff_top3.json`
       - 結果: `top3_oos_ok=0`（gate未達）
     - fix6b（`candidates_per_player=3216` / 全候補）:
-      - 実行中（再開済み）
+      - 完了
       - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_top3.json`
-      - 監視ログ: `logs/armada_b1r_fix6b_taiki_seed47_c3216_allind_holdoff_20260223.log`
+      - 結果: `top3_oos_ok=0`, `top3_cpcv_ok=3`（gate未達）
+      - top3内訳: `rsi@240`, `rsi@720`, `rsi@240`（3本とも `oos_ok=false`）
+      - 評価: `data/reports/armada_b1r_fix6_seed47_evaluation_20260223.json`
+        - 現在値: `fix6a=False, fix6b=False, fix6c=False, fix7a=False, fix7c=False, fix6d=True, fix7b=missing`
     - fix6c（`candidates_per_player=804` / all indicators, holdon）:
       - 完了
       - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6c_taiki_seed47_c804_allind_holdon_top3.json`
@@ -630,13 +634,62 @@
       - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix7a_taiki_seed47_c240_vwapvr_rsi_ema_holdoff_top3.json`
       - 結果: `top3_oos_ok=0`（gate未達）
     - fix6d（`candidates_per_player=804` / all indicators, holdoff, selection-relaxed）:
-      - 実行中（2026-02-23 13:21 JST 開始）
+      - 完了
       - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_top3.json`
-      - 監視ログ: `logs/armada_b1r_fix6d_taiki_seed47_c804_allind_holdoff_selrelaxed_20260223.log`
+      - 結果: `top3_oos_ok=1`, `top3_cpcv_ok=3`（gate達成）
+      - top3内訳: `rsi@240`, `vwapvr@360`, `rsi@720`（`vwapvr@360` が `oos_ok=true`）
+    - fix7b（`candidates_per_player=804` / all indicators, hold filter ON, hold-bars=1.2..6.0）:
+      - 実行終了（2026-02-23 13:51 JST 確認）
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix7b_taiki_seed47_c804_allind_holdband12_60_top3.json`（未生成）
+      - 監視ログ: `logs/armada_b1r_fix7b_taiki_seed47_c804_allind_holdband12_60_20260223.log`
+      - 結果: `Broken pipe (os error 32)` により出力欠損（`status=missing` として扱う）
+    - fix7c（`candidates_per_player=240` / all indicators, hold-bars=1.2..6.0, selection-relaxed, top12）:
+      - 完了
+      - 出力先: `data/reports/armada_player_replica_20260223_b1r_fix7c_taiki_seed47_c240_allind_holdband12_60_selrelaxed_top12.json`
+      - 監視ログ: `logs/armada_b1r_fix7c_taiki_seed47_c240_allind_holdband12_60_selrelaxed_top12_20260223.log`
+      - 結果: `top3_oos_ok=0`, `top3_cpcv_ok=3`（gate未達）
+      - 参考: `top12_oos_ok=5`, `top12_combo_ok=1`
+      - top3内訳: `rsi@240`, `rsi@240`, `volsma@240`（3本とも `oos_ok=false`）
+      - 評価: `data/reports/armada_b1r_fix7_seed47_evaluation_20260223.json`（`fix7a=False, fix7b=missing, fix7c=False`）
     - 2026-02-23 13:23 JST 進捗スナップショット:
       - fix6b: `output未生成`, `log_bytes=259303`（増加継続）
       - fix6d: `output未生成`, `log_bytes=4391`（増加継続）
-
+    - 2026-02-23 13:26 JST 進捗スナップショット:
+      - fix6b: `output未生成`, `log_bytes=266510`（増加継続）
+      - fix6d: `output未生成`, `log_bytes=11910`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=0`（起動直後）
+    - 2026-02-23 13:35 JST 進捗スナップショット:
+      - fix6b: `output生成済み`, `top3_oos_ok=0`, `top3_cpcv_ok=3`, `gate_pass=false`
+      - fix6d: `output未生成`, `log_bytes=43018`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=25841`（増加継続）
+      - fix7c: `output未生成`（実行中）
+    - 2026-02-23 13:40 JST 進捗スナップショット:
+      - fix6b: `output生成済み`, `top3_oos_ok=0`, `top3_cpcv_ok=3`, `gate_pass=false`
+      - fix6d: `output未生成`, `log_bytes=54719`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=38446`（増加継続）
+      - fix7c: `output未生成`, `log_bytes=9238`（増加継続）
+    - 2026-02-23 13:41 JST 進捗スナップショット:
+      - fix6d: `output未生成`, `log_bytes=55451`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=39549`（増加継続）
+      - fix7c: `output未生成`, `log_bytes=10330`（増加継続）
+    - 2026-02-23 13:45 JST 進捗スナップショット:
+      - fix6d: `output未生成`, `log_bytes=65304`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=50302`（増加継続）
+      - fix7c: `output未生成`, `log_bytes=21105`（増加継続）
+    - 2026-02-23 13:47 JST 進捗スナップショット:
+      - fix6d: `output未生成`, `log_bytes=69953`（増加継続）
+      - fix7b: `output未生成`, `log_bytes=54667`（増加継続）
+      - fix7c: `output生成済み`, `top3_oos_ok=0`, `top3_cpcv_ok=3`, `gate_pass=false`
+    - 2026-02-23 13:48 JST 進捗スナップショット:
+      - fix6d: `output生成済み`, `top3_oos_ok=1`, `top3_cpcv_ok=3`, `gate_pass=true`
+      - fix7b: `output未生成`, `log_bytes=60166`（増加継続）
+      - 評価更新: `data/reports/armada_b1r_fix6_seed47_evaluation_20260223.json`（`status=COMPLETED`）
+    - 2026-02-23 13:51 JST 進捗スナップショット:
+      - fix7b: `active=0`, `output未生成`
+      - fix7bログ末尾: `failed printing to stdout: Broken pipe (os error 32)`
+  - 判定:
+    - A9完了条件 `seed47 で top3_oos_ok>=1` は `fix6d` で達成（`vwapvr@360`）。
+    - `fix7b` は出力欠損で評価対象外だが、A9の完了判定には影響しない。
 ---
 
 ## 2026-02-23 運用追補: 3通貨 Founder（Hunted VWAPVR）安定化
