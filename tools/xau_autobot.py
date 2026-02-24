@@ -771,7 +771,19 @@ class Mt5Gateway:
 
 
 def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optional[int]) -> Tuple[Dict[str, Any], int]:
-    rates = gateway.fetch_rates()
+    try:
+        rates = gateway.fetch_rates()
+    except RuntimeError as exc:
+        # MT5 can temporarily return too few bars around session boundaries.
+        # Treat it as a retryable wait condition instead of crashing the live loop.
+        if "not enough bars" in str(exc).lower():
+            fallback_time = int(last_bar_time) if last_bar_time is not None else 0
+            return {
+                "action": "SKIP",
+                "reason": "not_enough_bars",
+                "symbol": config.symbol,
+            }, fallback_time
+        raise
     bar_time = int(rates["time"][-1])
     if last_bar_time is not None and bar_time == last_bar_time:
         return {"action": "SKIP", "reason": "no_new_bar"}, bar_time

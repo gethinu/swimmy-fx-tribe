@@ -358,16 +358,20 @@ class _FakeGateway:
         has_opposite,
         close_results,
         open_positions_after_close,
+        fetch_error=None,
     ):
         self._rates = rates
         self._open_positions = open_positions
         self._has_opposite = has_opposite
         self._close_results = close_results
         self._open_positions_after_close = open_positions_after_close
+        self._fetch_error = fetch_error
         self.orders = []
         self.close_calls = 0
 
     def fetch_rates(self):
+        if self._fetch_error is not None:
+            raise self._fetch_error
         return self._rates
 
     def get_tick_context(self):
@@ -448,6 +452,23 @@ class TestXauAutoBotLiveBehavior(unittest.TestCase):
         self.assertEqual(payload["reason"], "opposite_close_failed")
         self.assertEqual(gateway.close_calls, 1)
         self.assertEqual(len(gateway.orders), 0)
+
+    def test_evaluate_once_skips_when_mt5_has_not_enough_bars(self):
+        config = self._base_config()
+        gateway = _FakeGateway(
+            rates=self._rates(),
+            open_positions=0,
+            has_opposite=False,
+            close_results=[],
+            open_positions_after_close=0,
+            fetch_error=RuntimeError("not enough bars from MT5"),
+        )
+
+        payload, bar_time = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "SKIP")
+        self.assertEqual(payload["reason"], "not_enough_bars")
+        self.assertEqual(bar_time, 0)
 
 
 if __name__ == "__main__":
