@@ -93,7 +93,13 @@ def _comment_matches(deal: Any, comment_prefix: str) -> bool:
     if not comment_prefix:
         return True
     comment = str(_deal_value(deal, "comment", ""))
-    return comment.startswith(comment_prefix)
+    if comment.startswith(comment_prefix):
+        return True
+    # MT5 comment fields may truncate long prefixes on some brokers/servers.
+    # Accept the truncated deal comment when it is still a prefix of the configured comment.
+    if comment and comment_prefix.startswith(comment):
+        return True
+    return False
 
 
 def _position_id_for_deal(deal: Any) -> int:

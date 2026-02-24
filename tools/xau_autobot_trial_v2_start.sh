@@ -4,11 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+PYTHON_EXE="${XAU_AUTOBOT_PYTHON:-$ROOT/.venv/bin/python}"
 TRIAL_CONFIG="${XAU_AUTOBOT_TRIAL_CONFIG:-tools/configs/xau_autobot.trial_v2_20260222.json}"
 TRIAL_LIVE="${XAU_AUTOBOT_TRIAL_LIVE:-1}"
 POLL_SECONDS="${XAU_AUTOBOT_TRIAL_POLL_SECONDS:-10}"
 ALLOW_EXISTING="${XAU_AUTOBOT_TRIAL_ALLOW_EXISTING_PROCESSES:-0}"
 LOCK_FILE="${XAU_AUTOBOT_TRIAL_LOCK_FILE:-$ROOT/data/runtime/xau_autobot_trial_v2.lock}"
+TRIAL_RUN_ID="${XAU_AUTOBOT_TRIAL_RUN_ID:-trial_v2_$(date -u +%Y%m%d_%H%M%S)}"
+RUN_META_PATH="${XAU_AUTOBOT_TRIAL_RUN_META_PATH:-$ROOT/data/reports/xau_autobot_trial_v2_current_run.json}"
 
 existing_autobot_processes() {
   ps -eo pid=,args= | awk '
@@ -51,8 +54,50 @@ fi
 
 acquire_lock
 
+mkdir -p "$(dirname "$RUN_META_PATH")"
+"$PYTHON_EXE" - <<'PY' "$RUN_META_PATH" "$TRIAL_RUN_ID" "$TRIAL_CONFIG" "$TRIAL_LIVE" "$POLL_SECONDS"
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+meta_path = Path(sys.argv[1])
+run_id = str(sys.argv[2]).strip()
+now_utc = datetime.now(timezone.utc).isoformat()
+
+existing: dict = {}
+if meta_path.exists():
+    try:
+        loaded = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        loaded = {}
+    if isinstance(loaded, dict):
+        existing = loaded
+
+existing_run_id = str(existing.get("run_id", "")).strip()
+existing_started_at = str(existing.get("started_at_utc", "")).strip()
+started_at_utc = now_utc
+if existing_run_id == run_id and existing_started_at:
+    # Preserve the original trial window when restarting the same run_id.
+    started_at_utc = existing_started_at
+
+payload = {
+    "run_id": run_id,
+    "started_at_utc": started_at_utc,
+    "trial_config": str(sys.argv[3]),
+    "trial_live": str(sys.argv[4]),
+    "poll_seconds": str(sys.argv[5]),
+}
+with meta_path.open("w", encoding="utf-8") as f:
+    json.dump(payload, f, ensure_ascii=True, indent=2)
+    f.write("\n")
+PY
+
+echo "{\"action\":\"INFO\",\"reason\":\"trial_run_started\",\"run_id\":\"$TRIAL_RUN_ID\",\"meta_path\":\"$RUN_META_PATH\"}"
+
 XAU_AUTOBOT_CONFIG="$TRIAL_CONFIG" \
 XAU_AUTOBOT_LIVE="$TRIAL_LIVE" \
 XAU_AUTOBOT_POLL_SECONDS="$POLL_SECONDS" \
+XAU_AUTOBOT_TRIAL_RUN_ID="$TRIAL_RUN_ID" \
 XAU_AUTOBOT_LIVE_GUARD_ENABLED=0 \
 "$ROOT/tools/xau_autobot_active_runner.sh"

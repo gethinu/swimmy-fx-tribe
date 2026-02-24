@@ -78,6 +78,30 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertEqual(len(closed), 1)
         self.assertEqual(closed[0]["position_id"], 1)
 
+    def test_aggregate_closed_positions_accepts_truncated_entry_comment_prefix(self):
+        deals = [
+            self._deal(
+                position_id=900,
+                entry=0,
+                time=10,
+                commission=-1.0,
+                magic=560072,
+                comment="xau_autobot_tria",
+            ),
+            self._deal(position_id=900, entry=1, time=20, profit=6.0, commission=-1.0, magic=560072, comment="[tp]"),
+        ]
+
+        closed = aggregate_closed_positions(
+            deals=deals,
+            symbol="XAUUSD",
+            magic=560072,
+            comment_prefix="xau_autobot_trial_v2_20260222",
+        )
+
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0]["position_id"], 900)
+        self.assertAlmostEqual(closed[0]["net_profit"], 4.0, places=6)
+
     def test_aggregate_closed_positions_accepts_exit_comment_mismatch(self):
         deals = [
             self._deal(position_id=500, entry=0, time=10, commission=-1.0, comment="xau_autobot_tuned_auto"),
@@ -145,6 +169,23 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
 
         self.assertEqual(diagnostics["tradable_deals"], 4.0)
         self.assertEqual(diagnostics["after_symbol_filter"], 3.0)
+        self.assertEqual(diagnostics["after_magic_filter"], 2.0)
+        self.assertEqual(diagnostics["after_comment_prefix_filter"], 1.0)
+
+    def test_build_filter_diagnostics_accepts_truncated_comment_prefix(self):
+        deals = [
+            self._deal(symbol="XAUUSD", magic=560072, comment="xau_autobot_tria", deal_type=0),
+            self._deal(symbol="XAUUSD", magic=560072, comment="[tp]", deal_type=1),
+        ]
+
+        diagnostics = build_filter_diagnostics(
+            deals=deals,
+            symbol="XAUUSD",
+            magic=560072,
+            comment_prefix="xau_autobot_trial_v2_20260222",
+        )
+
+        self.assertEqual(diagnostics["after_symbol_filter"], 2.0)
         self.assertEqual(diagnostics["after_magic_filter"], 2.0)
         self.assertEqual(diagnostics["after_comment_prefix_filter"], 1.0)
 
