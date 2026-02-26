@@ -62,6 +62,16 @@
   "In-memory shadow positions keyed by strategy/symbol/direction for A-rank paper execution.")
 (defparameter *a-rank-shadow-trading-enabled* t
   "When T, A-rank signals are shadow-executed even when live S-gate blocks.")
+(defparameter *shadow-paper-eligible-ranks* '(:A :LEGEND)
+  "Strategy ranks eligible for shadow paper execution.")
+(defparameter *shadow-max-hold-seconds* 3600
+  "Maximum hold seconds for a shadow slot before timeout close is forced.")
+(defparameter *forward-no-signal-shadow-enabled* t
+  "When T, FORWARD_RUNNING strategies emit throttled periodic SHADOW probes.")
+(defparameter *forward-no-signal-shadow-interval-seconds* 3600
+  "Minimum seconds between periodic SHADOW probes per strategy.")
+(defparameter *forward-no-signal-shadow-last-at* (make-hash-table :test 'equal)
+  "Last periodic probe timestamp by strategy name.")
 (defvar *yesterday-pnl* 0 "PnL from the previous trading day (for reporting)")
 (defvar *category-trades* 0)
 

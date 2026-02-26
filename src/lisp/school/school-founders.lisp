@@ -574,6 +574,8 @@ Otherwise, append \"-SYMBOL\"."
   "Strategy names already queued for deferred flush (prevents duplicates).")
 (defvar *deferred-db-archive-cache* (make-hash-table :test 'equal)
   "Memoized flag: strategy name already archived in DB (:RETIRED/:GRAVEYARD).")
+(defvar *deferred-flush-archive-bypass-enabled* nil
+  "When T, deferred flush can dispatch DB-archived names for explicit operator resurrection.")
 (defvar *deferred-flush-last-run* 0)
 
 (defparameter *deferred-flush-batch* swimmy.core::*deferred-flush-batch*)
@@ -682,7 +684,8 @@ Returns number of newly queued strategies."
         (when (%deferred-rank-p rank)
           (let ((name (strategy-name s)))
             (unless (gethash name *deferred-flush-queued-names*)
-              (if (%deferred-name-archived-in-db-p name)
+              (if (and (not *deferred-flush-archive-bypass-enabled*)
+                       (%deferred-name-archived-in-db-p name))
                   ;; Keep tombstone to avoid re-checking the same archived name each schedule.
                   (setf (gethash name *deferred-flush-queued-names*) t)
                   (progn
@@ -722,7 +725,8 @@ LIMIT to cap the number of requests in this call to avoid startup storms."
                   (rank (strategy-rank s)))
               ;; Skip if it got ranked meanwhile.
               (when (%deferred-rank-p rank)
-                (unless (%deferred-name-archived-in-db-p name)
+                (unless (and (not *deferred-flush-archive-bypass-enabled*)
+                             (%deferred-name-archived-in-db-p name))
                   (handler-case
                       (let ((dispatch-state (request-backtest s)))
                         (if (backtest-dispatch-accepted-p dispatch-state)

@@ -25,6 +25,11 @@ class StrategyPreset:
     session_end_hour_utc: int
     min_atr_ratio_to_median: float
     max_atr_ratio_to_median: float
+    strategy_mode: str = "trend"
+    regime_trend_threshold: float = 1.2
+    reversion_atr: float = 0.8
+    reversion_sl_atr: float = 1.2
+    reversion_tp_atr: float = 1.2
     atr_period: int = 14
     atr_filter_window: int = 288
     atr_filter_min_samples: int = 120
@@ -63,6 +68,108 @@ def _is_session_allowed(hour_utc: int, start: int, end: int) -> bool:
     if start < end:
         return start <= hour_utc <= end
     return hour_utc >= start or hour_utc <= end
+
+
+def _detect_regime(*, ema_fast: float, ema_slow: float, atr_value: float, trend_threshold: float) -> str:
+    if atr_value <= 0.0:
+        return "range"
+    if trend_threshold <= 0.0:
+        return "trend"
+    trend_strength = abs(ema_fast - ema_slow) / atr_value
+    return "trend" if trend_strength >= trend_threshold else "range"
+
+
+def _trend_signal(
+    *,
+    last_close: float,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    pullback_atr: float,
+) -> str:
+    if atr_value <= 0.0:
+        return "HOLD"
+    pullback = atr_value * pullback_atr
+    if ema_fast > ema_slow and last_close <= ema_fast - pullback:
+        return "BUY"
+    if ema_fast < ema_slow and last_close >= ema_fast + pullback:
+        return "SELL"
+    return "HOLD"
+
+
+def _reversion_signal(
+    *,
+    last_close: float,
+    ema_anchor: float,
+    atr_value: float,
+    reversion_atr: float,
+) -> str:
+    if atr_value <= 0.0 or reversion_atr <= 0.0:
+        return "HOLD"
+    distance = atr_value * reversion_atr
+    if last_close <= ema_anchor - distance:
+        return "BUY"
+    if last_close >= ema_anchor + distance:
+        return "SELL"
+    return "HOLD"
+
+
+def _decide_signal_with_mode(
+    *,
+    preset: StrategyPreset,
+    last_close: float,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+) -> Tuple[str, str]:
+    mode = str(preset.strategy_mode or "trend").strip().lower()
+    if mode == "trend":
+        return (
+            _trend_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=preset.pullback_atr,
+            ),
+            "trend",
+        )
+    if mode == "reversion":
+        return (
+            _reversion_signal(
+                last_close=last_close,
+                ema_anchor=ema_slow,
+                atr_value=atr_value,
+                reversion_atr=preset.reversion_atr,
+            ),
+            "reversion",
+        )
+    regime = _detect_regime(
+        ema_fast=ema_fast,
+        ema_slow=ema_slow,
+        atr_value=atr_value,
+        trend_threshold=preset.regime_trend_threshold,
+    )
+    if regime == "trend":
+        return (
+            _trend_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=preset.pullback_atr,
+            ),
+            "trend",
+        )
+    return (
+        _reversion_signal(
+            last_close=last_close,
+            ema_anchor=ema_slow,
+            atr_value=atr_value,
+            reversion_atr=preset.reversion_atr,
+        ),
+        "reversion",
+    )
 
 
 def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
@@ -143,12 +250,14 @@ def _simulate(
                 position = 0
                 continue
 
-        pullback = atr_values[i] * preset.pullback_atr
-        signal = 0
-        if ema_cache[preset.fast_ema][i] > ema_cache[preset.slow_ema][i] and closes[i] <= ema_cache[preset.fast_ema][i] - pullback:
-            signal = 1
-        elif ema_cache[preset.fast_ema][i] < ema_cache[preset.slow_ema][i] and closes[i] >= ema_cache[preset.fast_ema][i] + pullback:
-            signal = -1
+        signal_text, signal_source = _decide_signal_with_mode(
+            preset=preset,
+            last_close=closes[i],
+            ema_fast=ema_cache[preset.fast_ema][i],
+            ema_slow=ema_cache[preset.slow_ema][i],
+            atr_value=atr_values[i],
+        )
+        signal = 1 if signal_text == "BUY" else -1 if signal_text == "SELL" else 0
 
         if position == 0 and signal != 0:
             hour_utc = times[i].hour
@@ -170,12 +279,14 @@ def _simulate(
                             continue
 
             entry = opens[i + 1]
+            sl_atr = preset.reversion_sl_atr if signal_source == "reversion" else preset.sl_atr
+            tp_atr = preset.reversion_tp_atr if signal_source == "reversion" else preset.tp_atr
             if signal == 1:
-                sl = entry - atr_values[i] * preset.sl_atr
-                tp = entry + atr_values[i] * preset.tp_atr
+                sl = entry - atr_values[i] * sl_atr
+                tp = entry + atr_values[i] * tp_atr
             else:
-                sl = entry + atr_values[i] * preset.sl_atr
-                tp = entry - atr_values[i] * preset.tp_atr
+                sl = entry + atr_values[i] * sl_atr
+                tp = entry - atr_values[i] * tp_atr
             position = signal
             continue
 

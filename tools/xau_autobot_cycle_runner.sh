@@ -40,6 +40,8 @@ CMD=(
   --config-dir tools/configs
   --write-comparison data/reports/xau_autobot_cycle_comparison.json
   --write-history-jsonl "${XAU_AUTOBOT_COMPARE_HISTORY_JSONL:-data/reports/xau_autobot_cycle_comparison_history.jsonl}"
+  --skip-notify-state-path "${XAU_AUTOBOT_SKIP_NOTIFY_STATE_PATH:-data/reports/xau_autobot_cycle_compare_notify_state.json}"
+  --skip-notify-cooldown-sec "${XAU_AUTOBOT_SKIP_NOTIFY_COOLDOWN_SEC:-86400}"
 )
 
 if [ -n "${PRIMARY_WEBHOOK:-}" ]; then

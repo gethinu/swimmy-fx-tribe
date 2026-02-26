@@ -254,6 +254,8 @@
     - 感度結果: `PF>=1.30` では各runとも top5 `strong=0`。`PF>=1.20` では複数runで top5 `strong>=1`（例: `c480_allind` で `strong=4/5`）。A2 proxy条件を満たす `BT PF` 範囲は `1.20〜1.22`（最大成立値 `1.22`）。
     - strict到達性統合サマリ: `data/reports/armada_nami_strict_reachability_summary_20260221.json`
     - strict到達性統合サマリ（refresh）: `data/reports/armada_nami_strict_reachability_summary_20260222_refresh.json`
+    - strict到達性統合サマリ（refresh2）: `data/reports/armada_nami_strict_reachability_summary_20260222_refresh2.json`
+    - refresh2補足: `c480(vwapvr probe)` と `floor130追試(c360 holdOFF)` を証拠に追加しても `max BT PF observed=1.2514`, `strict_pf130_unreachable_in_scanned_space=true` は不変
     - 統合結論: `max BT PF observed=1.2514`, `strict_pf130_unreachable_in_scanned_space=true`
     - strict floor130追試（hold OFF, c360, seed=314159）: `data/reports/armada_player_replica_20260221_a1_nami_strict_floor130_seed314159_c360_holdoff_allind.json`
     - floor130追試結果: `top5 strong=0/5`, `bt_ok=0/5`, `oos_ok=2/5`, `cpcv_ok=3/5`, `top5 (oos_ok && cpcv_ok)=1/5`, `strong_proxy=0/5`。`max BT PF(top5)=1.0827` で改善なし（strict未達を再確認）。
@@ -323,6 +325,39 @@
     - 観測:
       - 上位指標が `rsi/volsma` 側へ寄り、B1時点の `vwapvr` 中心帯を再現しにくい seed が多数
       - `top3 bt_ok` は全seedで `0/3`（strict未達は継続）
+  - 2026-02-26 追試（`rsi` 除外の再実行）:
+    - 実行済み（`indicators=vwapvr,volsma`, `c240/top3`, `seed={11,23,47,83,131}`）:
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed11_c240_vwvol_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed23_c240_vwvol_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed47_c240_vwvol_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed83_c240_vwvol_top3.json`
+      - `data/reports/armada_player_replica_20260222_b1r_taiki_kojirin_seed131_c240_vwvol_top3.json`
+    - 集計: `data/reports/armada_b1_seed_sweep_20260222_vwvol_summary.json`
+    - 差分比較: `data/reports/armada_b1_seed_sweep_20260226_vwvol_delta.json`（旧集計比 `taiki +1`, `kojirin +2`, `both +2`）
+    - 追試結果: `taiki_pass_count=3/5`, `kojirin_pass_count=3/5`, `both_players_pass_count=2/5`, `b1r_completed=false`
+    - 追試所見:
+      - 旧集計（`both=0/5`）からは改善したが、完了条件 `both>=4/5` には未達
+      - `top3_indicators` は全seedで `volsma/vwapvr` に収束し、`rsi` 依存は解消
+  - 2026-02-26 再追試（`vwapvr` 単独）:
+    - 事前レスキュー（失敗seed限定）:
+      - `data/reports/armada_player_replica_20260226_b1r_rescue_taiki_seed83_c360_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_rescue_kojirin_seed11_c360_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_rescue_kojirin_seed23_c360_vwapvr_top3.json`
+      - `data/reports/armada_b1r_rescue_20260226_vwapvr_summary.json`（3件とも `gate_pass=true`）
+    - 実行済み（`indicators=vwapvr`, `c240/top3`, `seed={11,23,47,83,131}`）:
+      - `data/reports/armada_player_replica_20260226_b1r_taiki_kojirin_seed11_c240_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_taiki_kojirin_seed23_c240_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_taiki_kojirin_seed47_c240_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_taiki_kojirin_seed83_c240_vwapvr_top3.json`
+      - `data/reports/armada_player_replica_20260226_b1r_taiki_kojirin_seed131_c240_vwapvr_top3.json`
+    - 集計: `data/reports/armada_b1_seed_sweep_20260226_vwapvr_summary.json`
+    - 差分比較: `data/reports/armada_b1_seed_sweep_20260226_vwapvr_delta_vs_20260222_vwvol.json`（`taiki +1`, `kojirin +2`, `both +2`, `completion_changed_to_true=true`）
+    - 再追試結果: `player_pass_counts={taiki:4, kojirin:5}`, `both_players_pass_count=4/5`, `b1r_completed=true`
+    - strict feasibility（top3横断）: `data/reports/armada_b1_strict_feasibility_20260226_vwapvr_top3_summary.json`
+    - strict feasibility結果: `max_bt_pf_observed=1.0267`, `bt_pf_ge_130_total=0/30`, `strict_bt130_reachable_in_top3=false`
+    - 再追試所見:
+      - 失敗seedは `seed=83` の `taiki` のみ（`top3_oos_ok=0`）で、他4seedは両プレイヤー同時pass
+      - 完了条件 `both>=4/5` を充足し、B1Rを投入判定可能な再現性へ更新
 
 - [x] **B2 pandajiro/yumimin引き上げ（CPCV底上げ）**
   - 目的: OOSは通るが CPCVが弱い候補の pass_rate を改善。
@@ -392,6 +427,12 @@
     - proxy refresh: `data/reports/armada_deploy_readiness_20260222_proxy_b2rrefresh.json`
     - 反映点: B2入力を volsma seed sweep 5本（11/23/47/83/131）へ更新し、`b2r_summary` を入力に追加
     - 反映結果: pandajiro/yumimin ともに `b2_seed_pass_count=5/5` を確認
+    - 判定維持: `deploy_decision=保留 (no player reached L3)`（strict bt_ok=0 が継続ブロッカー）
+  - 2026-02-26 追補（B1R vwapvr単独再追試の反映）:
+    - B1R入力更新: `data/reports/armada_b1_seed_sweep_20260226_vwapvr_summary.json`
+    - B1R結果: `player_pass_counts={taiki:4, kojirin:5}`, `both_players_pass_count=4/5`, `b1r_completed=true`
+    - 補足差分: `data/reports/armada_b1_seed_sweep_20260226_vwapvr_delta_vs_20260222_vwvol.json`
+    - 判定メモ: B1R再現性は完了条件を満たしたが、`taiki/kojirin` とも全seedで `top3 bt_ok=0/3` のため L3条件は未充足
     - 判定維持: `deploy_decision=保留 (no player reached L3)`（strict bt_ok=0 が継続ブロッカー）
 
 ---

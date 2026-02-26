@@ -285,6 +285,214 @@
                    counts)
                   "Expected mutation picker to prioritize least-populated TF")))
 
+(deftest test-breeder-timeframe-mutation-options-default-excludes-m5-and-prioritizes-h1-h5
+  "Breeder TF mutation options should exclude M5 and prioritize H1/H5 for S-flow."
+  (let* ((orig-excluded (and (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+                             swimmy.school::*breeder-timeframe-excluded-minutes*))
+         (orig-priority (and (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+                             swimmy.school::*breeder-timeframe-priority-minutes*))
+         (orig-options (and (fboundp 'swimmy.school::get-tf-mutation-options)
+                            (symbol-function 'swimmy.school::get-tf-mutation-options))))
+    (unwind-protect
+        (progn
+          (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+            (setf swimmy.school::*breeder-timeframe-excluded-minutes* '(5)))
+          (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+            (setf swimmy.school::*breeder-timeframe-priority-minutes* '(60 300)))
+          (when (fboundp 'swimmy.school::get-tf-mutation-options)
+            (setf (symbol-function 'swimmy.school::get-tf-mutation-options)
+                  (lambda () '(5 15 30 60 240 300 1440))))
+          (let ((opts (swimmy.school::breeder-timeframe-mutation-options)))
+            (assert-false (find 5 opts :test #'eql)
+                          "M5 should be excluded from breeder mutation options by default")
+            (assert-equal 60 (first opts)
+                          "Expected H1 to be first priority in breeder mutation options")
+            (assert-equal 300 (second opts)
+                          "Expected H5 to be second priority in breeder mutation options")
+            (assert-true (find 15 opts :test #'eql)
+                         "Non-excluded non-priority TFs can remain in the option pool")))
+      (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+        (setf swimmy.school::*breeder-timeframe-excluded-minutes* orig-excluded))
+      (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+        (setf swimmy.school::*breeder-timeframe-priority-minutes* orig-priority))
+      (when orig-options
+        (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options)))))
+
+(deftest test-select-breeder-child-timeframe-forces-non-m5-when-parents-are-m5
+  "When parent/base TF is M5, breeder should force child TF to allowed H1/H5 lane."
+  (let* ((p1 (swimmy.school:make-strategy
+              :name "UT-TF-M5-P1"
+              :category :trend
+              :timeframe 5
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 10
+              :sl 0.8
+              :tp 1.6
+              :indicators '((sma 20))
+              :entry '(> close sma-20)
+              :exit '(< close sma-20)))
+         (p2 (swimmy.school:make-strategy
+              :name "UT-TF-M5-P2"
+              :category :trend
+              :timeframe 5
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 9
+              :sl 0.9
+              :tp 1.8
+              :indicators '((sma 50))
+              :entry '(> close sma-50)
+              :exit '(< close sma-50)))
+         (crossover-rate-sym 'swimmy.school::*breeder-timeframe-crossover-rate*)
+         (mutation-rate-sym 'swimmy.school::*breeder-timeframe-mutation-rate*)
+         (same-tf-rate-sym 'swimmy.school::*breeder-timeframe-mutation-same-parent-rate*)
+         (short-floor-sym 'swimmy.school::*breeder-timeframe-short-parent-mutation-floor*)
+         (has-crossover-rate (boundp crossover-rate-sym))
+         (has-mutation-rate (boundp mutation-rate-sym))
+         (has-same-tf-rate (boundp same-tf-rate-sym))
+         (has-short-floor (boundp short-floor-sym))
+         (orig-crossover-rate (and has-crossover-rate (symbol-value crossover-rate-sym)))
+         (orig-mutation-rate (and has-mutation-rate (symbol-value mutation-rate-sym)))
+         (orig-same-tf-rate (and has-same-tf-rate (symbol-value same-tf-rate-sym)))
+         (orig-short-floor (and has-short-floor (symbol-value short-floor-sym)))
+         (orig-excluded (and (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+                             swimmy.school::*breeder-timeframe-excluded-minutes*))
+         (orig-priority (and (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+                             swimmy.school::*breeder-timeframe-priority-minutes*))
+         (orig-options (and (fboundp 'swimmy.school::get-tf-mutation-options)
+                            (symbol-function 'swimmy.school::get-tf-mutation-options))))
+    (unwind-protect
+        (progn
+          (when has-crossover-rate
+            (setf (symbol-value crossover-rate-sym) 0.0))
+          (when has-mutation-rate
+            (setf (symbol-value mutation-rate-sym) 0.0))
+          (when has-same-tf-rate
+            (setf (symbol-value same-tf-rate-sym) 0.0))
+          (when has-short-floor
+            (setf (symbol-value short-floor-sym) 0.0))
+          (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+            (setf swimmy.school::*breeder-timeframe-excluded-minutes* '(5)))
+          (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+            (setf swimmy.school::*breeder-timeframe-priority-minutes* '(60 300)))
+          (when (fboundp 'swimmy.school::get-tf-mutation-options)
+            (setf (symbol-function 'swimmy.school::get-tf-mutation-options)
+                  (lambda () '(5 60 300))))
+          (multiple-value-bind (tf mode _p1 _p2)
+              (swimmy.school::select-breeder-child-timeframe p1 p2)
+            (declare (ignore _p1 _p2))
+            (assert-equal 60 tf
+                          "Expected M5 parents to be redirected to H1 lane by default")
+            (assert-equal :policy mode
+                          "Expected mode to mark TF policy fallback when base TF is excluded")))
+      (when has-crossover-rate
+        (setf (symbol-value crossover-rate-sym) orig-crossover-rate))
+      (when has-mutation-rate
+        (setf (symbol-value mutation-rate-sym) orig-mutation-rate))
+      (when has-same-tf-rate
+        (setf (symbol-value same-tf-rate-sym) orig-same-tf-rate))
+      (when has-short-floor
+        (setf (symbol-value short-floor-sym) orig-short-floor))
+      (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+        (setf swimmy.school::*breeder-timeframe-excluded-minutes* orig-excluded))
+      (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+        (setf swimmy.school::*breeder-timeframe-priority-minutes* orig-priority))
+      (when orig-options
+        (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options)))))
+
+(deftest test-select-breeder-child-timeframe-short-parent-floor-shifts-from-m15
+  "When both parents are M15, short-parent mutation floor should move child TF into H1/H5 lanes."
+  (let* ((p1 (swimmy.school:make-strategy
+              :name "UT-TF-M15-P1"
+              :category :trend
+              :timeframe 15
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 6
+              :sl 0.8
+              :tp 1.5
+              :indicators '((sma 20))
+              :entry '(> close sma-20)
+              :exit '(< close sma-20)))
+         (p2 (swimmy.school:make-strategy
+              :name "UT-TF-M15-P2"
+              :category :trend
+              :timeframe 15
+              :direction :BOTH
+              :symbol "USDJPY"
+              :generation 7
+              :sl 0.9
+              :tp 1.6
+              :indicators '((sma 50))
+              :entry '(> close sma-50)
+              :exit '(< close sma-50)))
+         (crossover-rate-sym 'swimmy.school::*breeder-timeframe-crossover-rate*)
+         (mutation-rate-sym 'swimmy.school::*breeder-timeframe-mutation-rate*)
+         (same-tf-rate-sym 'swimmy.school::*breeder-timeframe-mutation-same-parent-rate*)
+         (short-floor-sym 'swimmy.school::*breeder-timeframe-short-parent-mutation-floor*)
+         (short-max-sym 'swimmy.school::*breeder-timeframe-short-parent-max-minutes*)
+         (has-crossover-rate (boundp crossover-rate-sym))
+         (has-mutation-rate (boundp mutation-rate-sym))
+         (has-same-tf-rate (boundp same-tf-rate-sym))
+         (has-short-floor (boundp short-floor-sym))
+         (has-short-max (boundp short-max-sym))
+         (orig-crossover-rate (and has-crossover-rate (symbol-value crossover-rate-sym)))
+         (orig-mutation-rate (and has-mutation-rate (symbol-value mutation-rate-sym)))
+         (orig-same-tf-rate (and has-same-tf-rate (symbol-value same-tf-rate-sym)))
+         (orig-short-floor (and has-short-floor (symbol-value short-floor-sym)))
+         (orig-short-max (and has-short-max (symbol-value short-max-sym)))
+         (orig-excluded (and (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+                             swimmy.school::*breeder-timeframe-excluded-minutes*))
+         (orig-priority (and (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+                             swimmy.school::*breeder-timeframe-priority-minutes*))
+         (orig-options (and (fboundp 'swimmy.school::get-tf-mutation-options)
+                            (symbol-function 'swimmy.school::get-tf-mutation-options))))
+    (unwind-protect
+        (progn
+          (when has-crossover-rate
+            (setf (symbol-value crossover-rate-sym) 0.0))
+          (when has-mutation-rate
+            (setf (symbol-value mutation-rate-sym) 0.0))
+          (when has-same-tf-rate
+            (setf (symbol-value same-tf-rate-sym) 0.0))
+          (when has-short-floor
+            (setf (symbol-value short-floor-sym) 1.0))
+          (when has-short-max
+            (setf (symbol-value short-max-sym) 30))
+          (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+            (setf swimmy.school::*breeder-timeframe-excluded-minutes* '(5)))
+          (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+            (setf swimmy.school::*breeder-timeframe-priority-minutes* '(60 300)))
+          (when (fboundp 'swimmy.school::get-tf-mutation-options)
+            (setf (symbol-function 'swimmy.school::get-tf-mutation-options)
+                  (lambda () '(15 60 300))))
+          (multiple-value-bind (tf mode _p1 _p2)
+              (swimmy.school::select-breeder-child-timeframe p1 p2)
+            (declare (ignore _p1 _p2))
+            (assert-false (= tf 15)
+                          "Expected short-parent mutation floor to avoid M15 lock-in")
+            (assert-true (member tf '(60 300) :test #'eql)
+                         "Expected M15-parent offspring to shift into H1/H5 lanes")
+            (assert-equal :mutation mode
+                          "Expected short-parent lane shift to be tagged as mutation")))
+      (when has-crossover-rate
+        (setf (symbol-value crossover-rate-sym) orig-crossover-rate))
+      (when has-mutation-rate
+        (setf (symbol-value mutation-rate-sym) orig-mutation-rate))
+      (when has-same-tf-rate
+        (setf (symbol-value same-tf-rate-sym) orig-same-tf-rate))
+      (when has-short-floor
+        (setf (symbol-value short-floor-sym) orig-short-floor))
+      (when has-short-max
+        (setf (symbol-value short-max-sym) orig-short-max))
+      (when (boundp 'swimmy.school::*breeder-timeframe-excluded-minutes*)
+        (setf swimmy.school::*breeder-timeframe-excluded-minutes* orig-excluded))
+      (when (boundp 'swimmy.school::*breeder-timeframe-priority-minutes*)
+        (setf swimmy.school::*breeder-timeframe-priority-minutes* orig-priority))
+      (when orig-options
+        (setf (symbol-function 'swimmy.school::get-tf-mutation-options) orig-options)))))
+
 (deftest test-pfwr-mutation-bias-adjusts-rr-when-parents-underperform
   "PF/WR mutation bias should adjust RR toward better parent profile when parents underperform."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-P1"
@@ -866,6 +1074,44 @@
                  (format nil "Expected high-OOS score (~,3f) > low-OOS score (~,3f)"
                          high-score low-score))))
 
+(deftest test-breeder-priority-threshold-defaults-align-a-base
+  "Breeder priority threshold defaults should align with A-base gate values."
+  (let ((a-criteria (swimmy.school::get-rank-criteria :A)))
+    (assert-equal (getf a-criteria :sharpe-min) swimmy.school::*breeder-priority-min-sharpe*)
+    (assert-equal (getf a-criteria :pf-min) swimmy.school::*breeder-priority-min-pf*)
+    (assert-equal (getf a-criteria :wr-min) swimmy.school::*breeder-priority-min-wr*)
+    (assert-equal (getf a-criteria :maxdd-max) swimmy.school::*breeder-priority-max-dd*)))
+
+(deftest test-breeder-priority-oos-bonus-attenuates-before-a-base
+  "A-base未達の親は OOS bonus が減衰される。"
+  (let* ((a-ready (swimmy.school:make-strategy :name "UT-PRIORITY-OOS-A"
+                                                :rank :B
+                                                :sharpe 0.90
+                                                :profit-factor 1.50
+                                                :win-rate 0.48
+                                                :max-dd 0.06
+                                                :trades 120
+                                                :oos-sharpe 1.20))
+         (pre-a (swimmy.school:make-strategy :name "UT-PRIORITY-OOS-PRE-A"
+                                              :rank :B
+                                              :sharpe 0.20
+                                              :profit-factor 1.50
+                                              :win-rate 0.48
+                                              :max-dd 0.06
+                                              :trades 120
+                                              :oos-sharpe 1.20))
+         (raw-scale 0.20))
+    (let ((swimmy.school::*breeder-priority-oos-bonus-requires-a-base* t)
+          (swimmy.school::*breeder-priority-oos-bonus-pre-a-scale* raw-scale))
+      (let* ((a-bonus (swimmy.school::breeder-priority-oos-bonus a-ready))
+             (pre-a-bonus (swimmy.school::breeder-priority-oos-bonus pre-a)))
+        (assert-true (> a-bonus pre-a-bonus)
+                     (format nil "Expected A-base bonus (~,4f) > pre-A bonus (~,4f)"
+                             a-bonus pre-a-bonus))
+        (assert-true (< (abs (- pre-a-bonus (* a-bonus raw-scale))) 1.0e-6)
+                     (format nil "Expected pre-A bonus ~~= A bonus * scale (~,2f), got A=~,5f pre-A=~,5f"
+                             raw-scale a-bonus pre-a-bonus))))))
+
 (deftest test-pfwr-mutation-bias-raises-rr-when-pf-gap-dominates
   "PF/WR mutation bias should raise RR when PF deficit dominates."
   (let* ((p1 (swimmy.school:make-strategy :name "UT-PFWR-PF1"
@@ -1179,6 +1425,74 @@
         (setf (symbol-value diversity-bonus-sym) orig-diversity-bonus))
       (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr))))
 
+(deftest test-find-diverse-breeding-partner-prefers-priority-timeframe-when-parent-short
+  "For short-TF parent, breeder should prefer priority lane (H1/H5) over another short TF when scores are close."
+  (let* ((parent (swimmy.school:make-strategy :name "UT-TF-LANE-PARENT"
+                                              :rank :B :generation 60
+                                              :timeframe 15
+                                              :sl 20.0 :tp 60.0
+                                              :trades 120
+                                              :profit-factor 1.40 :win-rate 0.50
+                                              :sharpe 1.10))
+         (cand-short (swimmy.school:make-strategy :name "UT-TF-LANE-SHORT"
+                                                  :rank :B :generation 12
+                                                  :timeframe 30
+                                                  :sl 20.0 :tp 62.0
+                                                  :trades 120
+                                                  :profit-factor 1.35 :win-rate 0.48
+                                                  :sharpe 1.05))
+         (cand-priority (swimmy.school:make-strategy :name "UT-TF-LANE-H1"
+                                                     :rank :B :generation 12
+                                                     :timeframe 60
+                                                     :sl 20.0 :tp 62.0
+                                                     :trades 120
+                                                     :profit-factor 1.35 :win-rate 0.48
+                                                     :sharpe 1.05))
+         (orig-corr (symbol-function 'swimmy.school::strategies-correlation-ok-p))
+         (orig-score (symbol-function 'swimmy.school::strategy-breeding-priority-score))
+         (diversity-bonus-sym 'swimmy.school::*breeder-timeframe-diversity-bonus*)
+         (priority-bonus-sym 'swimmy.school::*breeder-timeframe-short-parent-priority-bonus*)
+         (short-penalty-sym 'swimmy.school::*breeder-timeframe-short-parent-short-penalty*)
+         (has-diversity-bonus (boundp diversity-bonus-sym))
+         (has-priority-bonus (boundp priority-bonus-sym))
+         (has-short-penalty (boundp short-penalty-sym))
+         (orig-diversity-bonus (and has-diversity-bonus (symbol-value diversity-bonus-sym)))
+         (orig-priority-bonus (and has-priority-bonus (symbol-value priority-bonus-sym)))
+         (orig-short-penalty (and has-short-penalty (symbol-value short-penalty-sym))))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p)
+                (lambda (_a _b)
+                  (declare (ignore _a _b))
+                  t))
+          (setf (symbol-function 'swimmy.school::strategy-breeding-priority-score)
+                (lambda (s)
+                  (cond
+                    ((string= (swimmy.school:strategy-name s) "UT-TF-LANE-SHORT") 10.0)
+                    ((string= (swimmy.school:strategy-name s) "UT-TF-LANE-H1") 9.7)
+                    (t 8.0))))
+          (when has-diversity-bonus
+            (setf (symbol-value diversity-bonus-sym) 0.0))
+          (when has-priority-bonus
+            (setf (symbol-value priority-bonus-sym) 0.75))
+          (when has-short-penalty
+            (setf (symbol-value short-penalty-sym) 0.75))
+          (let ((picked (swimmy.school::find-diverse-breeding-partner
+                         parent
+                         (list parent cand-short cand-priority)
+                         :start-index 1)))
+            (assert-true (eq picked cand-priority)
+                         (format nil "Expected H1 priority-lane partner UT-TF-LANE-H1, got ~a"
+                                 (if picked (swimmy.school:strategy-name picked) :none)))))
+      (setf (symbol-function 'swimmy.school::strategies-correlation-ok-p) orig-corr)
+      (setf (symbol-function 'swimmy.school::strategy-breeding-priority-score) orig-score)
+      (when has-diversity-bonus
+        (setf (symbol-value diversity-bonus-sym) orig-diversity-bonus))
+      (when has-priority-bonus
+        (setf (symbol-value priority-bonus-sym) orig-priority-bonus))
+      (when has-short-penalty
+        (setf (symbol-value short-penalty-sym) orig-short-penalty)))))
+
 (deftest test-can-breed-p-rejects-retired-rank
   "Retired strategies must not be used as breeding parents."
   (let ((s (swimmy.school:make-strategy :name "UT-RETIRED-PARENT"
@@ -1388,6 +1702,210 @@
       (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get-by-rank)
       (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
       (setf (symbol-function 'swimmy.school::add-to-kb) orig-add-to-kb))))
+
+(deftest test-run-legend-breeding-does-not-consume-parent-quota-on-add-reject
+  "Legend breeding should not increment B-parent breeding count when add-to-kb rejects."
+  (let* ((legend (swimmy.school:make-strategy :name "UT-LEGEND-PARENT-REJECT"
+                                              :rank :legend
+                                              :status :active
+                                              :generation 10
+                                              :sl 20.0 :tp 40.0))
+         (b-rank (swimmy.school:make-strategy :name "UT-B-PARENT-REJECT"
+                                              :rank :B
+                                              :status :active
+                                              :generation 4
+                                              :trades 120
+                                              :sl 20.0 :tp 40.0
+                                              :sharpe 0.8
+                                              :profit-factor 1.4
+                                              :win-rate 0.48
+                                              :max-dd 0.08))
+         (child (swimmy.school:make-strategy :name "UT-LEGEND-CHILD-REJECT" :rank nil))
+         (orig-get (symbol-function 'swimmy.school::get-strategies-by-rank))
+         (orig-breed (symbol-function 'swimmy.school::breed-strategies))
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-inc (symbol-function 'swimmy.school::increment-breeding-count))
+         (inc-called 0))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::get-strategies-by-rank)
+                (lambda (rank)
+                  (case rank
+                    (:legend (list legend))
+                    (:B (list b-rank))
+                    (otherwise nil))))
+          (setf (symbol-function 'swimmy.school::breed-strategies)
+                (lambda (_legend _b)
+                  (declare (ignore _legend _b))
+                  child))
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (_child _source &key _require-bt _notify &allow-other-keys)
+                  (declare (ignore _child _source _require-bt _notify))
+                  (values nil :duplicate)))
+          (setf (symbol-function 'swimmy.school::increment-breeding-count)
+                (lambda (_parent)
+                  (declare (ignore _parent))
+                  (incf inc-called)))
+          (assert-equal 0 (swimmy.school::run-legend-breeding)
+                        "Expected rejected legend child to keep bred-count at 0")
+          (assert-equal 0 inc-called
+                        "Expected parent quota not to be consumed on add-to-kb reject"))
+      (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get)
+      (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf (symbol-function 'swimmy.school::increment-breeding-count) orig-inc))))
+
+(deftest test-run-legend-breeding-counts-queued-phase1-child-as-accepted
+  "Legend breeding completion count should include :queued-phase1 accepted child."
+  (let* ((legend (swimmy.school:make-strategy :name "UT-LEGEND-PARENT-QUEUED"
+                                              :rank :legend
+                                              :status :active
+                                              :generation 10
+                                              :sl 20.0 :tp 40.0))
+         (b-rank (swimmy.school:make-strategy :name "UT-B-PARENT-QUEUED"
+                                              :rank :B
+                                              :status :active
+                                              :generation 5
+                                              :trades 120
+                                              :sl 20.0 :tp 40.0
+                                              :sharpe 0.8
+                                              :profit-factor 1.4
+                                              :win-rate 0.48
+                                              :max-dd 0.08))
+         (child (swimmy.school:make-strategy :name "UT-LEGEND-CHILD-QUEUED" :rank nil))
+         (orig-get (symbol-function 'swimmy.school::get-strategies-by-rank))
+         (orig-breed (symbol-function 'swimmy.school::breed-strategies))
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-inc (symbol-function 'swimmy.school::increment-breeding-count))
+         (inc-called 0))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::get-strategies-by-rank)
+                (lambda (rank)
+                  (case rank
+                    (:legend (list legend))
+                    (:B (list b-rank))
+                    (otherwise nil))))
+          (setf (symbol-function 'swimmy.school::breed-strategies)
+                (lambda (_legend _b)
+                  (declare (ignore _legend _b))
+                  child))
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (_child _source &key _require-bt _notify &allow-other-keys)
+                  (declare (ignore _child _source _require-bt _notify))
+                  (values t :queued-phase1)))
+          (setf (symbol-function 'swimmy.school::increment-breeding-count)
+                (lambda (_parent)
+                  (declare (ignore _parent))
+                  (incf inc-called)))
+          (assert-equal 1 (swimmy.school::run-legend-breeding)
+                        "Expected queued Phase1 child to count as one accepted child")
+          (assert-equal 1 inc-called
+                        "Expected parent quota to be consumed once for accepted child"))
+      (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get)
+      (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf (symbol-function 'swimmy.school::increment-breeding-count) orig-inc))))
+
+(deftest test-run-breeding-cycle-does-not-consume-parent-quota-on-add-reject
+  "Breeder cycle should not increment parent breeding counts when add-to-kb rejects child."
+  (let* ((p1 (swimmy.school:make-strategy :name "UT-BREED-P1"
+                                          :rank :B
+                                          :status :active
+                                          :category :trend
+                                          :symbol "USDJPY"
+                                          :direction :BOTH
+                                          :timeframe 60
+                                          :generation 10
+                                          :trades 120
+                                          :sl 20.0 :tp 40.0
+                                          :sharpe 0.9
+                                          :profit-factor 1.4
+                                          :win-rate 0.48
+                                          :max-dd 0.08))
+         (p2 (swimmy.school:make-strategy :name "UT-BREED-P2"
+                                          :rank :B
+                                          :status :active
+                                          :category :trend
+                                          :symbol "USDJPY"
+                                          :direction :BOTH
+                                          :timeframe 300
+                                          :generation 9
+                                          :trades 120
+                                          :sl 18.0 :tp 36.0
+                                          :sharpe 0.85
+                                          :profit-factor 1.35
+                                          :win-rate 0.46
+                                          :max-dd 0.09))
+         (child (swimmy.school:make-strategy :name "UT-BREED-CHILD-REJECT"
+                                             :rank nil
+                                             :category :trend
+                                             :symbol "USDJPY"
+                                             :direction :BOTH
+                                             :timeframe 60
+                                             :generation 11
+                                             :sl 19.0 :tp 38.0))
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-cull (symbol-function 'swimmy.school::cull-pool-overflow))
+         (orig-can-breed (symbol-function 'swimmy.school::can-breed-p))
+         (orig-score (symbol-function 'swimmy.school::strategy-breeding-priority-score))
+         (orig-find (symbol-function 'swimmy.school::find-diverse-breeding-partner))
+         (orig-breed (symbol-function 'swimmy.school::breed-strategies))
+         (orig-add (symbol-function 'swimmy.school::add-to-kb))
+         (orig-inc (symbol-function 'swimmy.school::increment-breeding-count))
+         (orig-success (symbol-function 'swimmy.school::note-breeding-pair-success))
+         (orig-failure (symbol-function 'swimmy.school::note-breeding-pair-failure))
+         (inc-called 0))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list p1 p2))
+          (setf (symbol-function 'swimmy.school::cull-pool-overflow)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  nil))
+          (setf (symbol-function 'swimmy.school::can-breed-p)
+                (lambda (s)
+                  (or (eq s p1) (eq s p2))))
+          (setf (symbol-function 'swimmy.school::strategy-breeding-priority-score)
+                (lambda (s)
+                  (if (eq s p1) 2.0 1.0)))
+          (setf (symbol-function 'swimmy.school::find-diverse-breeding-partner)
+                (lambda (parent _sorted &key _start-index _used-names &allow-other-keys)
+                  (declare (ignore _sorted _start-index _used-names))
+                  (if (eq parent p1) p2 nil)))
+          (setf (symbol-function 'swimmy.school::breed-strategies)
+                (lambda (_p1 _p2)
+                  (declare (ignore _p1 _p2))
+                  child))
+          (setf (symbol-function 'swimmy.school::add-to-kb)
+                (lambda (_child _source &key _require-bt _notify &allow-other-keys)
+                  (declare (ignore _child _source _require-bt _notify))
+                  (values nil :duplicate)))
+          (setf (symbol-function 'swimmy.school::increment-breeding-count)
+                (lambda (_parent)
+                  (declare (ignore _parent))
+                  (incf inc-called)))
+          (setf (symbol-function 'swimmy.school::note-breeding-pair-success)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  nil))
+          (setf (symbol-function 'swimmy.school::note-breeding-pair-failure)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  nil))
+          (swimmy.school::run-breeding-cycle)
+          (assert-equal 0 inc-called
+                        "Expected breeder parent quota not to be consumed on add reject"))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf (symbol-function 'swimmy.school::cull-pool-overflow) orig-cull)
+      (setf (symbol-function 'swimmy.school::can-breed-p) orig-can-breed)
+      (setf (symbol-function 'swimmy.school::strategy-breeding-priority-score) orig-score)
+      (setf (symbol-function 'swimmy.school::find-diverse-breeding-partner) orig-find)
+      (setf (symbol-function 'swimmy.school::breed-strategies) orig-breed)
+      (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
+      (setf (symbol-function 'swimmy.school::increment-breeding-count) orig-inc)
+      (setf (symbol-function 'swimmy.school::note-breeding-pair-success) orig-success)
+      (setf (symbol-function 'swimmy.school::note-breeding-pair-failure) orig-failure))))
 
 (deftest test-find-diverse-breeding-partner-prefers-pfwr-complement
   "Breeder should prefer a complement partner when parent has WR/PF deficit imbalance."

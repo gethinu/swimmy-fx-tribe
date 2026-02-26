@@ -1321,11 +1321,51 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
   "Safety cap for archive DB->Library hydration additions per reconciliation.")
 (defparameter *db-archive-library-reconcile-max-removals* 2000
   "Safety cap for stale Library archive removals per reconciliation.")
+(defparameter *db-archive-library-reconcile-page-size* 1000
+  "Keyset page size for archive DB->Library hydration candidate scan.")
 (defparameter *last-db-archive-library-reconcile-time* 0
   "Timestamp of last archive DB->Library reconciliation run.")
 (defparameter *archive-rank-db-where-clause*
   "UPPER(TRIM(rank)) IN (':GRAVEYARD','GRAVEYARD',':RETIRED','RETIRED')"
   "SQL WHERE clause for archive ranks tracked in Library canonical drift.")
+
+(defun sync-active-runtime-state-from-db-sexp (strategy-index)
+  "Sync volatile in-memory fields from DB data_sexp for active ranks.
+This keeps split daemons coherent for fields not represented as SQL columns."
+  (let ((synced 0))
+    (handler-case
+        (dolist (row (execute-to-list
+                      (format nil "SELECT name, data_sexp FROM strategies WHERE ~a"
+                              *active-rank-db-where-clause*)))
+          (destructuring-bind (name data-sexp) row
+            (let ((strat (and name (gethash name strategy-index))))
+              (when (and strat (stringp data-sexp) (> (length data-sexp) 0))
+                (handler-case
+                    (let ((obj (swimmy.core:safe-read-sexp data-sexp :package :swimmy.school)))
+                      (when (strategy-p obj)
+                        (let ((changed nil))
+                          (when (and (slot-exists-p strat 'revalidation-pending)
+                                     (slot-exists-p obj 'revalidation-pending))
+                            (let ((db-pending (and (strategy-revalidation-pending obj) t))
+                                  (local-pending (and (strategy-revalidation-pending strat) t)))
+                              (unless (eql local-pending db-pending)
+                                (setf (strategy-revalidation-pending strat) db-pending)
+                                (setf changed t))))
+                          (when (and (slot-exists-p strat 'breeding-count)
+                                     (slot-exists-p obj 'breeding-count))
+                            (let ((db-count (max 0 (or (strategy-breeding-count obj) 0)))
+                                  (local-count (max 0 (or (strategy-breeding-count strat) 0))))
+                              (unless (= local-count db-count)
+                                (setf (strategy-breeding-count strat) db-count)
+                                (setf changed t))))
+                          (when changed
+                            (incf synced)))))
+                  (error () nil)))))
+        (when (> synced 0)
+          (format t "[DB] 🔄 Synced active runtime state from data_sexp for ~d strategies~%" synced)))
+      (error (e)
+        (format t "[DB] ⚠️ Active runtime state sync skipped: ~a~%" e)))
+    synced))
 
 (defun %normalize-rank-token-for-kb-sync (rank)
   "Normalize rank cell/symbol into uppercase token without leading colon."
@@ -1352,6 +1392,18 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
     (if (string= token "NIL")
         nil
         (intern token :keyword))))
+
+(defun %db-rank-overwrite-allowed-p (local-rank db-rank)
+  "Return T when DB rank can overwrite LOCAL-RANK during refresh sync.
+Preserve legend immutability against stale non-legend DB rows."
+  (let ((local-token (%normalize-rank-token-for-kb-sync local-rank))
+        (db-token (%normalize-rank-token-for-kb-sync db-rank)))
+    (cond
+      ((string= local-token "LEGEND")
+       (member db-token '("LEGEND" "LEGEND-ARCHIVE") :test #'string=))
+      ((string= local-token "LEGEND-ARCHIVE")
+       (member db-token '("LEGEND" "LEGEND-ARCHIVE") :test #'string=))
+      (t t))))
 
 (defun %active-rank-token-for-library-sync (rank-cell)
   "Normalize active rank token for Library sync (INCUBATOR fallback)."
@@ -1477,6 +1529,20 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
            (trimmed (and raw (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))
            (n (and trimmed (> (length trimmed) 0) (parse-integer trimmed :junk-allowed t))))
       (or n 0))))
+
+(defun %db-archive-canonical-count-for-reconcile ()
+  "Return canonical archive-name count in DB using Library filename normalization.
+Uses sanitize-filename-equivalent normalization (slash and backslash -> underscore)
+to avoid false drift when multiple DB names map to the same Library filename."
+  (or (execute-single
+       (format nil
+               "SELECT COUNT(DISTINCT REPLACE(REPLACE(name, '/', '_'), CHAR(92), '_'))
+                  FROM strategies
+                 WHERE ~a
+                   AND name IS NOT NULL
+                   AND TRIM(name) <> ''"
+               *archive-rank-db-where-clause*))
+      0))
 
 (defun %library-archive-has-name-p (name &optional (root swimmy.persistence:*library-path*))
   "Return T when archive file for NAME exists in GRAVEYARD or RETIRED."
@@ -1696,7 +1762,9 @@ Returns plist with :db-archive :library-canonical :added :removed-names :removed
   (let* ((db-archive (or (execute-single (format nil "SELECT count(*) FROM strategies WHERE ~a"
                                                   *archive-rank-db-where-clause*))
                          0))
+         (db-archive-canonical (%db-archive-canonical-count-for-reconcile))
          (lib-canonical (%library-archive-canonical-count-for-reconcile))
+         (library-name-index nil)
          (added 0)
          (removed-names 0)
          (removed-files 0)
@@ -1704,8 +1772,8 @@ Returns plist with :db-archive :library-canonical :added :removed-names :removed
          (truncated nil))
     ;; If Library archive has more canonical names than DB archive,
     ;; purge stale names that no longer exist as archived rows in DB.
-    (when (> lib-canonical db-archive)
-      (let* ((gap (- lib-canonical db-archive))
+    (when (> lib-canonical db-archive-canonical)
+      (let* ((gap (- lib-canonical db-archive-canonical))
              (purge-summary (%purge-stale-archive-files-from-library
                              :max-removals (if max-removals
                                                (min max-removals gap)
@@ -1721,40 +1789,65 @@ Returns plist with :db-archive :library-canonical :added :removed-names :removed
         ;; Refresh canonical count after cleanup to decide DB->Library hydration.
         (setf lib-canonical (%library-archive-canonical-count-for-reconcile))))
     ;; If DB archive still exceeds Library canonical, hydrate missing files from DB.
-    (when (> db-archive lib-canonical)
-      (let ((batch-size 10000)
-            (offset 0)
-            (gap (max 0 (- db-archive lib-canonical))))
+    (when (> db-archive-canonical lib-canonical)
+      (let* ((gap (max 0 (- db-archive-canonical lib-canonical)))
+             (page-size (max 1 (or *db-archive-library-reconcile-page-size* 1000)))
+             (next-rowid nil)
+             (seen-canonical (make-hash-table :test 'equal)))
+        ;; Build once and reuse; avoid per-row probe-file checks.
+        (setf library-name-index (%library-archive-name-index))
+        ;; Keyset pagination: avoid materializing all archive rows in one cycle.
         (loop
-          (let ((rows (execute-to-list
-                       (format nil
-                               "SELECT rowid, name, rank
-                                  FROM strategies
-                                 WHERE ~a
-                                 ORDER BY rowid
-                                 LIMIT ? OFFSET ?"
-                               *archive-rank-db-where-clause*)
-                       batch-size
-                       offset)))
-            (when (or (null rows) (zerop (length rows)))
+          (when (and max-additions (>= added max-additions))
+            (setf truncated t)
+            (return))
+          (when (>= added gap)
+            (return))
+          (let ((rows (if next-rowid
+                          (execute-to-list
+                           (format nil
+                                   "SELECT rowid, name, rank
+                                      FROM strategies
+                                     WHERE ~a
+                                       AND name IS NOT NULL
+                                       AND TRIM(name) <> ''
+                                       AND rowid < ?
+                                     ORDER BY rowid DESC
+                                     LIMIT ?"
+                                   *archive-rank-db-where-clause*)
+                           next-rowid
+                           page-size)
+                          (execute-to-list
+                           (format nil
+                                   "SELECT rowid, name, rank
+                                      FROM strategies
+                                     WHERE ~a
+                                       AND name IS NOT NULL
+                                       AND TRIM(name) <> ''
+                                     ORDER BY rowid DESC
+                                     LIMIT ?"
+                                   *archive-rank-db-where-clause*)
+                           page-size))))
+            (when (or (null rows) (null (first rows)))
               (return))
-            (incf offset (length rows))
             (dolist (row rows)
-              (when (and max-additions (>= added max-additions))
-                (setf truncated t)
-                (return))
-              (when (>= added gap)
-                (return))
               (destructuring-bind (rowid name rank-cell) row
-                (when (and name (not (%library-archive-has-name-p name)))
-                  (let ((data-sexp (execute-single
-                                    "SELECT data_sexp FROM strategies WHERE rowid = ? LIMIT 1"
-                                    rowid)))
-                    (if (%persist-db-archive-row-into-library name rank-cell data-sexp)
-                        (incf added)
-                        (incf write-failed))))))
-            (when (or truncated (>= added gap))
-              (return)))))
+                (setf next-rowid rowid)
+                (when (and name
+                           (< added gap)
+                           (or (null max-additions) (< added max-additions)))
+                  (let ((canonical-name (swimmy.persistence::sanitize-filename name)))
+                    (unless (gethash canonical-name seen-canonical)
+                      (setf (gethash canonical-name seen-canonical) t)
+                      (unless (gethash canonical-name library-name-index)
+                        (let ((data-sexp (execute-single
+                                          "SELECT data_sexp FROM strategies WHERE rowid = ? LIMIT 1"
+                                          rowid)))
+                          (if (%persist-db-archive-row-into-library name rank-cell data-sexp)
+                              (progn
+                                (setf (gethash canonical-name library-name-index) t)
+                                (incf added))
+                              (incf write-failed))))))))))))
       (when (> added 0)
         (format t "[DB] 🧩 Library archive reconciled from DB: added=~d write_failed=~d~%"
                 added write-failed))
@@ -1764,6 +1857,7 @@ Returns plist with :db-archive :library-canonical :added :removed-names :removed
       (setf lib-canonical (%library-archive-canonical-count-for-reconcile)))
     (list :skipped nil
           :db-archive db-archive
+          :db-archive-canonical db-archive-canonical
           :library-canonical lib-canonical
           :added added
           :removed-names removed-names
@@ -1885,7 +1979,9 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
             (processed 0)
             (log-every 50000)
             (sync-start (get-internal-real-time))
-            (strategy-index (make-hash-table :test 'equal)))
+            (strategy-index (make-hash-table :test 'equal))
+            (legend-rank-guarded 0)
+            (legend-rank-heal (make-hash-table :test 'equal)))
         (dolist (strat *strategy-knowledge-base*)
           (when (and strat (strategy-name strat))
             (setf (gethash (strategy-name strat) strategy-index) strat)))
@@ -1913,7 +2009,11 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
                          (when (and rank (stringp rank))
                            (multiple-value-bind (rank-sym ok) (%parse-rank-safe rank)
                              (when ok
-                               (setf (strategy-rank strat) rank-sym))))
+                               (if (%db-rank-overwrite-allowed-p (strategy-rank strat) rank-sym)
+                                   (setf (strategy-rank strat) rank-sym)
+                                   (progn
+                                     (incf legend-rank-guarded)
+                                     (setf (gethash (strategy-name strat) legend-rank-heal) strat))))))
                          (incf updated))))))
           (handler-case
               (let* ((query (if since-timestamp
@@ -1964,6 +2064,21 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
                       (finish-output)))))
               (when (> updated 0)
                 (format t "[DB] 🔄 Synced metrics for ~d strategies (full scan fallback)~%" updated)))))
+        (when (> legend-rank-guarded 0)
+          (let ((healed 0)
+                (heal-failed 0))
+            (maphash (lambda (_name strat)
+                       (declare (ignore _name))
+                       (handler-case
+                           (progn
+                             (upsert-strategy strat)
+                             (incf healed))
+                         (error ()
+                           (incf heal-failed))))
+                     legend-rank-heal)
+            (format t "[DB] 🛡️ Legend rank sync guard blocked ~d stale demotions (healed=~d failed=~d)~%"
+                    legend-rank-guarded healed heal-failed)))
+        (sync-active-runtime-state-from-db-sexp strategy-index)
         (when *db-active-kb-reconcile-enabled*
           (ignore-errors
             (reconcile-active-kb-with-db

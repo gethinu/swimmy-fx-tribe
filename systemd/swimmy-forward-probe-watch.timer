@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Swimmy Forward Probe Watch hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

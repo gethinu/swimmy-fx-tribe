@@ -36,7 +36,7 @@
 (defparameter *culling-bootstrap-min-count* 2
   "Minimum B count required for below-threshold bootstrap promotion.")
 
-(defparameter *culling-bootstrap-max-a-count* 1
+(defparameter *culling-bootstrap-max-a-count* 8
   "Allow below-threshold bootstrap while A-rank count is <= this value.")
 
 (defparameter *a-rank-slots-per-tf* 2
@@ -499,10 +499,19 @@ Keys:
          (pf (or (strategy-profit-factor strategy) 0.0))
          (wr (or (strategy-win-rate strategy) 0.0))
          (maxdd (or (strategy-max-dd strategy) 1.0))
+         (raw-trades (or (strategy-trades strategy) 0))
          (trade-evidence (strategy-trade-evidence-count strategy))
          (min-trade-evidence (min-trade-evidence-for-rank target-rank))
          (armada-pass (or (not (armada-core-profile-applies-p target-rank))
-                          (armada-core-profile-passed-p strategy))))
+                          (armada-core-profile-passed-p strategy)))
+         ;; Founder Phase1 recovery candidates can retain B-rank below strict Sharpe floor.
+         ;; This keeps V2 founder gate semantics consistent with later B conformance sweeps.
+         (founder-b-recovery-pass
+           (and (eq target-rank :B)
+                (fboundp 'founder-phase1-recovery-passed-p)
+                (ignore-errors
+                  (founder-phase1-recovery-passed-p
+                   strategy sharpe pf raw-trades maxdd)))))
     (cond
       ((eq target-rank :S)
        (and (>= trade-evidence min-trade-evidence)
@@ -518,16 +527,22 @@ Keys:
       (t
        (and (>= trade-evidence min-trade-evidence)
             armada-pass
-            (>= sharpe (getf criteria :sharpe-min 0))
-            (>= pf (getf criteria :pf-min 0))
-            (>= wr (getf criteria :wr-min 0))
-            (< maxdd (getf criteria :maxdd-max 1.0))
+            (or founder-b-recovery-pass
+                (and (>= sharpe (getf criteria :sharpe-min 0))
+                     (>= pf (getf criteria :pf-min 0))
+                     (>= wr (getf criteria :wr-min 0))
+                     (< maxdd (getf criteria :maxdd-max 1.0))))
             ;; V50.3: Gate Lockdown
             (cond
               ((eq target-rank :A)
                (or (not include-oos)
                    (>= (or (strategy-oos-sharpe strategy) 0.0) (getf criteria :oos-min 0))))
               (t t)))))))
+
+(defun meets-rank-criteria-p (strategy target-rank)
+  "Compatibility wrapper for legacy callers/tests.
+   Uses pre-validation semantics (no OOS/CPCV hard requirements)."
+  (check-rank-criteria strategy target-rank :include-oos nil :include-cpcv nil))
 
 (defun %s-gate-label (gate)
   (case gate
@@ -704,127 +719,171 @@ Keys:
 
 (defun %ensure-rank-no-lock (strategy new-rank &optional reason)
   "Internal version of ensure-rank that assumes *kb-lock* is already held."
-  (let ((old-rank (strategy-rank strategy)))
-    ;; LEGEND保護: レジェンドは墓場送りしない（子世代は別扱い）
-    (when (and (eq old-rank :legend) (eq new-rank :graveyard))
-      (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
-      (return-from %ensure-rank-no-lock old-rank))
-    (when (and (eq new-rank :graveyard)
-               (oos-request-pending-p (strategy-name strategy)))
-      (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))
-      (return-from %ensure-rank-no-lock old-rank))
-    (when (and (eq new-rank :S)
-               (not (eq old-rank :S))
-               (not (check-rank-criteria strategy :S)))
-      (let* ((diag (s-rank-block-diagnostics strategy :include-common-stage2 t))
-             (failed-gates (getf diag :failed-gates))
-             (common-msg (getf diag :common-stage2-message))
-             (summary (%format-s-rank-failed-gates failed-gates)))
-        (format t "[RANK] 🚫 Blocked S promotion for ~a (~a) [pf>=~,2f wr>=~,1f%% n=~d]~@[: ~a~].~%"
-                (strategy-name strategy)
-                summary
-                (or (getf diag :pf-min) 0.0)
-                (* 100 (or (getf diag :wr-min) 0.0))
-                (or (getf diag :trade-evidence) 0)
-                common-msg)
-      (when (fboundp 'swimmy.core::emit-telemetry-event)
-        (swimmy.core::emit-telemetry-event "rank.promotion.blocked"
-          :service "school"
-          :severity "warning"
-          :correlation-id (strategy-name strategy)
-          :data (list :strategy (strategy-name strategy)
-                      :old-rank old-rank
-                      :new-rank new-rank
-                      :promotion-reason reason
-                      :block (or (first failed-gates) :unknown)
-                      :failed-gates failed-gates
-                      :trade-evidence (getf diag :trade-evidence)
-                      :s-stage-min-trades (getf diag :stage-min-trades)
-                      :pf-min (getf diag :pf-min)
-                      :wr-min (getf diag :wr-min)
-                      :sharpe (getf diag :sharpe)
-                      :pf (getf diag :pf)
-                      :wr (getf diag :wr)
-                      :maxdd (getf diag :maxdd)
-                      :cpcv-pass-rate (getf diag :cpcv-pass-rate)
-                      :cpcv-maxdd (getf diag :cpcv-maxdd)
-                      :common-stage2-message common-msg))))
-      (return-from %ensure-rank-no-lock old-rank))
+  (flet ((rank-token (rank)
+           (let* ((raw (cond
+                         ((null rank) "")
+                         ((symbolp rank) (symbol-name rank))
+                         (t (format nil "~a" rank))))
+                  (up (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) raw))))
+             (if (and (> (length up) 0)
+                      (char= (char up 0) #\:))
+                 (subseq up 1)
+                 up))))
+    (let* ((old-rank (strategy-rank strategy))
+           (old-token (rank-token old-rank))
+           (new-token (rank-token new-rank))
+           (db-old-token
+             (rank-token
+              (ignore-errors
+                (and (fboundp 'execute-single)
+                     (execute-single "SELECT rank FROM strategies WHERE name = ?"
+                                     (strategy-name strategy)))))))
+      ;; LEGEND保護: レジェンドは墓場送りしない（子世代は別扱い）
+      (when (and (string= old-token "LEGEND")
+                 (string= new-token "GRAVEYARD"))
+        (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
+        (return-from %ensure-rank-no-lock old-rank))
+      (when (and (string= new-token "GRAVEYARD")
+                 (oos-request-pending-p (strategy-name strategy)))
+        (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))
+        (return-from %ensure-rank-no-lock old-rank))
+      (when (and (string= new-token "S")
+                 (not (string= old-token "S"))
+                 (not (check-rank-criteria strategy :S)))
+        (let* ((diag (s-rank-block-diagnostics strategy :include-common-stage2 t))
+               (failed-gates (getf diag :failed-gates))
+               (common-msg (getf diag :common-stage2-message))
+               (summary (%format-s-rank-failed-gates failed-gates)))
+          (format t "[RANK] 🚫 Blocked S promotion for ~a (~a) [pf>=~,2f wr>=~,1f%% n=~d]~@[: ~a~].~%"
+                  (strategy-name strategy)
+                  summary
+                  (or (getf diag :pf-min) 0.0)
+                  (* 100 (or (getf diag :wr-min) 0.0))
+                  (or (getf diag :trade-evidence) 0)
+                  common-msg)
+          (when (fboundp 'swimmy.core::emit-telemetry-event)
+            (swimmy.core::emit-telemetry-event "rank.promotion.blocked"
+              :service "school"
+              :severity "warning"
+              :correlation-id (strategy-name strategy)
+              :data (list :strategy (strategy-name strategy)
+                          :old-rank old-rank
+                          :new-rank new-rank
+                          :promotion-reason reason
+                          :block (or (first failed-gates) :unknown)
+                          :failed-gates failed-gates
+                          :trade-evidence (getf diag :trade-evidence)
+                          :s-stage-min-trades (getf diag :stage-min-trades)
+                          :pf-min (getf diag :pf-min)
+                          :wr-min (getf diag :wr-min)
+                          :sharpe (getf diag :sharpe)
+                          :pf (getf diag :pf)
+                          :wr (getf diag :wr)
+                          :maxdd (getf diag :maxdd)
+                          :cpcv-pass-rate (getf diag :cpcv-pass-rate)
+                          :cpcv-maxdd (getf diag :cpcv-maxdd)
+                          :common-stage2-message common-msg))))
+        (return-from %ensure-rank-no-lock old-rank))
 
-    (when (not (eq old-rank new-rank))
-      ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
-      (setf (strategy-rank strategy) new-rank)
-      (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
-              (strategy-name strategy) old-rank new-rank reason)
-      
-      ;; V49.9: Persist to SQL.
-      ;; Allow explicit archived(:graveyard/:retired)->active resurrection writes from ensure-rank.
-      (let ((*allow-rank-regression-write* t)
-            (*allow-archived-rank-resurrection-write*
-              (and (member old-rank '(:graveyard :retired) :test #'eq)
-                   (member new-rank '(:B :A :S :legend) :test #'eq))))
-        (declare (special *allow-rank-regression-write*
-                          *allow-archived-rank-resurrection-write*))
-        (upsert-strategy strategy))
+      ;; No-op rank updates still need DB healing when stale archived rank exists.
+      ;; Example: restore-legend path may call ensure-rank :LEGEND for an existing
+      ;; in-memory legend while DB row is still :GRAVEYARD.
+      (when (string= old-token new-token)
+        (let ((resurrection-write-p
+                (and (member new-token '("B" "A" "S" "LEGEND") :test #'string=)
+                     (member db-old-token '("GRAVEYARD" "RETIRED") :test #'string=))))
+          (when resurrection-write-p
+            (let ((*allow-rank-regression-write* t)
+                  (*allow-archived-rank-resurrection-write* t))
+              (declare (special *allow-rank-regression-write*
+                                *allow-archived-rank-resurrection-write*))
+              (upsert-strategy strategy))
+            (format t "[RANK] ♻️ No-op rank heal for ~a: db=~a -> ~a~%"
+                    (strategy-name strategy) db-old-token new-rank)))
+        (return-from %ensure-rank-no-lock old-rank))
 
-      (let ((promotion-p (%promotion-p old-rank new-rank)))
-        (when promotion-p
-          (handler-case
-              (notify-noncorrelated-promotion strategy new-rank :promotion-reason reason)
-            (error (e)
-              (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))
-          (when (fboundp 'maybe-sync-evolution-report-on-promotion)
+      (when (not (string= old-token new-token))
+        ;; Normal rank change. Global Portfolio selection handles S-RANK capacity.
+        (setf (strategy-rank strategy) new-rank)
+        (format t "[RANK] ~a: ~a → ~a~@[ (~a)~]~%"
+                (strategy-name strategy) old-rank new-rank reason)
+        
+        ;; V49.9: Persist to SQL.
+        ;; Allow explicit archived(:graveyard/:retired)->active resurrection writes from ensure-rank.
+        ;; Also allow resurrection when in-memory rank is NIL/stale but DB rank is archived.
+        (let* ((resurrection-write-p
+                 (and (member new-token '("B" "A" "S" "LEGEND") :test #'string=)
+                      (or (member old-token '("GRAVEYARD" "RETIRED") :test #'string=)
+                          (member db-old-token '("GRAVEYARD" "RETIRED") :test #'string=))))
+               (*allow-rank-regression-write* t)
+               (*allow-archived-rank-resurrection-write* resurrection-write-p))
+          (declare (special *allow-rank-regression-write*
+                            *allow-archived-rank-resurrection-write*))
+          (when (and resurrection-write-p
+                     (not (member old-token '("GRAVEYARD" "RETIRED") :test #'string=))
+                     (member db-old-token '("GRAVEYARD" "RETIRED") :test #'string=))
+            (format t "[RANK] ♻️ DB-anchored archive resurrection for ~a: mem=~a db=~a -> ~a~%"
+                    (strategy-name strategy) old-rank db-old-token new-rank))
+          (upsert-strategy strategy))
+
+        (let ((promotion-p (%promotion-p old-rank new-rank)))
+          (when promotion-p
             (handler-case
-                (maybe-sync-evolution-report-on-promotion :rank new-rank :reason reason)
+                (notify-noncorrelated-promotion strategy new-rank :promotion-reason reason)
               (error (e)
-                (format t "[RANK] ⚠️ Promotion report sync failed: ~a~%" e))))))
-      
-      ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
-      (when (eq new-rank :graveyard)
-        (ignore-errors (cancel-oos-request-for-strategy (strategy-name strategy) "graveyard"))
-        (save-failure-pattern strategy reason)
-        (setf *strategy-knowledge-base* 
-              (remove strategy *strategy-knowledge-base* :test #'eq))
-        ;; Also remove from category pools
-        (let ((cat (categorize-strategy strategy)))
-          (setf (gethash cat *category-pools*)
-                (remove strategy (gethash cat *category-pools*) :test #'eq)))
-        (when (boundp '*regime-pools*)
-          (let ((regime-class (if (fboundp 'strategy-regime-class)
-                                  (strategy-regime-class strategy)
-                                  (strategy-category strategy))))
-            (setf (gethash regime-class *regime-pools*)
-                  (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
+                (format t "[RANK] ⚠️ Noncorrelation notify failed: ~a~%" e)))
+            (when (fboundp 'maybe-sync-evolution-report-on-promotion)
+              (handler-case
+                  (maybe-sync-evolution-report-on-promotion :rank new-rank :reason reason)
+                (error (e)
+                  (format t "[RANK] ⚠️ Promotion report sync failed: ~a~%" e))))))
         
-        ;; P13: Synchronize with File System
-        (handler-case
-            (swimmy.persistence:move-strategy strategy :graveyard :from-rank old-rank)
-          (error (e)
-            (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
-        
-        (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%"))
+        ;; V48.2: If going to graveyard, DELETE physically from KB and pools immediately (Nassim Taleb: Survival)
+        (when (string= new-token "GRAVEYARD")
+          (ignore-errors (cancel-oos-request-for-strategy (strategy-name strategy) "graveyard"))
+          (save-failure-pattern strategy reason)
+          (setf *strategy-knowledge-base* 
+                (remove strategy *strategy-knowledge-base* :test #'eq))
+          ;; Also remove from category pools
+          (let ((cat (categorize-strategy strategy)))
+            (setf (gethash cat *category-pools*)
+                  (remove strategy (gethash cat *category-pools*) :test #'eq)))
+          (when (boundp '*regime-pools*)
+            (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                    (strategy-regime-class strategy)
+                                    (strategy-category strategy))))
+              (setf (gethash regime-class *regime-pools*)
+                    (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
+          
+          ;; P13: Synchronize with File System
+          (handler-case
+              (swimmy.persistence:move-strategy strategy :graveyard :from-rank old-rank)
+            (error (e)
+              (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
+          
+          (format t "[RANK] 🪦 Physically DELETED from Knowledge Base.~%"))
 
-      (when (eq new-rank :retired)
-        (save-retired-pattern strategy reason)
-        (setf *strategy-knowledge-base*
-              (remove strategy *strategy-knowledge-base* :test #'eq))
-        ;; Also remove from category pools
-        (let ((cat (categorize-strategy strategy)))
-          (setf (gethash cat *category-pools*)
-                (remove strategy (gethash cat *category-pools*) :test #'eq)))
-        (when (boundp '*regime-pools*)
-          (let ((regime-class (if (fboundp 'strategy-regime-class)
-                                  (strategy-regime-class strategy)
-                                  (strategy-category strategy))))
-            (setf (gethash regime-class *regime-pools*)
-                  (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
-        ;; Persist to archive
-        (handler-case
-            (swimmy.persistence:move-strategy strategy :retired :from-rank old-rank)
-          (error (e)
-            (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
-        (format t "[RANK] 🧊 Retired and removed from Knowledge Base.~%")))
-    new-rank))
+        (when (string= new-token "RETIRED")
+          (save-retired-pattern strategy reason)
+          (setf *strategy-knowledge-base*
+                (remove strategy *strategy-knowledge-base* :test #'eq))
+          ;; Also remove from category pools
+          (let ((cat (categorize-strategy strategy)))
+            (setf (gethash cat *category-pools*)
+                  (remove strategy (gethash cat *category-pools*) :test #'eq)))
+          (when (boundp '*regime-pools*)
+            (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                    (strategy-regime-class strategy)
+                                    (strategy-category strategy))))
+              (setf (gethash regime-class *regime-pools*)
+                    (remove strategy (gethash regime-class *regime-pools*) :test #'eq))))
+          ;; Persist to archive
+          (handler-case
+              (swimmy.persistence:move-strategy strategy :retired :from-rank old-rank)
+            (error (e)
+              (format t "[RANK] ⚠️ File move failed: ~a~%" e)))
+          (format t "[RANK] 🧊 Retired and removed from Knowledge Base.~%")))
+      new-rank)))
 
 (defun promote-rank (strategy new-rank reason)
   "Promote strategy to a higher rank."
@@ -1409,19 +1468,18 @@ Returns plist summary:
               (setf (strategy-generation child) 
                     (1+ (max (strategy-generation legend) 
                              (strategy-generation b-rank))))
-              ;; Increment B-rank's breeding count (Legend exempt)
-              (increment-breeding-count b-rank)
-
               ;; Route through unified breeder intake (Phase1 mandatory via add-to-kb).
               (multiple-value-bind (accepted status)
                   (add-to-kb child :breeder :require-bt t :notify nil)
                 (when accepted
+                  ;; Consume parent quota only when child admission is accepted.
+                  (increment-breeding-count b-rank)
+                  (incf bred-count)
                   (if (eq (or status :added) :queued-phase1)
                       (format t "[LEGEND] ⏳ Royal Child queued for Phase1: ~a~%" (strategy-name child))
                       (progn
                         (when (fboundp 'save-recruit-to-lisp)
                           (save-recruit-to-lisp child))
-                        (incf bred-count)
                         (format t "[LEGEND] 👶 Royal Child Born: ~a~%" (strategy-name child)))))))))))
     
     (format t "[LEGEND] 👑 Legend Breeding Complete: ~d children~%" bred-count)

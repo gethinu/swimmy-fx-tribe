@@ -11,6 +11,7 @@ if str(SRC_PY) not in sys.path:
     sys.path.insert(0, str(SRC_PY))
 
 from tools.ops.armada_player_replica import (
+    compute_oos_rerank_key,
     _strength_verdict,
     PlayerProfile,
     build_walkforward_windows,
@@ -455,3 +456,43 @@ def test_parse_args_accepts_selection_flags() -> None:
     assert abs(args.core_bt_dd_cap - 0.10) < 1e-9
     assert abs(args.core_bt_trade_ratio_floor - 0.20) < 1e-9
     assert abs(args.core_strength_penalty - 1.50) < 1e-9
+
+
+def test_parse_args_accepts_oos_rerank_pool_flag() -> None:
+    args = parse_args(["--oos-rerank-pool", "12"])
+    assert args.oos_rerank_pool == 12
+
+
+def test_compute_oos_rerank_key_prioritizes_oos_pass_over_bt_selection_score() -> None:
+    profile = PlayerProfile(
+        key="taiki",
+        label="taiki",
+        cluster="core",
+        target_profit_factor=1.99,
+        target_drawdown_ratio=0.1093,
+        target_trades=272,
+        target_avg_hold_hours=6.53,
+    )
+    bt_metrics = {"profit_factor": 1.35, "sharpe": 0.20, "max_drawdown": 0.06, "trades": 120}
+    oos_pass = {"profit_factor": 1.15, "sharpe": 0.02, "trades": 30}
+    oos_fail = {"profit_factor": 1.02, "sharpe": -0.01, "trades": 15}
+
+    pass_key = compute_oos_rerank_key(
+        profile,
+        bt_metrics,
+        oos_pass,
+        selection_score=2.0,
+        replica_score=1.0,
+        oos_min_trades_abs=50,
+        oos_trade_ratio_floor=0.35,
+    )
+    fail_key = compute_oos_rerank_key(
+        profile,
+        bt_metrics,
+        oos_fail,
+        selection_score=4.0,
+        replica_score=3.0,
+        oos_min_trades_abs=50,
+        oos_trade_ratio_floor=0.35,
+    )
+    assert pass_key > fail_key

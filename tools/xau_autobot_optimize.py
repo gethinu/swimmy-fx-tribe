@@ -7,14 +7,111 @@ import argparse
 import json
 from itertools import product
 from statistics import mean
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple, Union
 
 try:
     from tools.xau_autobot_data import load_ohlc
 except Exception:
     from xau_autobot_data import load_ohlc  # type: ignore
 
-Candidate = Tuple[int, int, float, float, float, int, int, float, float]
+try:
+    from tools.xau_autobot import validate_trade_comment
+    from tools.xau_autobot import decide_signal_with_mode
+    from tools.xau_autobot import validate_strategy_mode
+except Exception:
+    from xau_autobot import decide_signal_with_mode  # type: ignore
+    from xau_autobot import validate_strategy_mode  # type: ignore
+    from xau_autobot import validate_trade_comment  # type: ignore
+
+Candidate = Union[
+    Tuple[int, int, float, float, float, int, int, float, float],
+    Tuple[int, int, float, float, float, int, int, float, float, str, float, float, float, float],
+]
+
+
+def interval_to_timeframe(interval: str) -> str:
+    normalized = str(interval or "").strip().lower()
+    mapping = {
+        "1m": "M1",
+        "5m": "M5",
+        "15m": "M15",
+        "30m": "M30",
+        "60m": "H1",
+        "1h": "H1",
+        "240m": "H4",
+        "4h": "H4",
+    }
+    timeframe = mapping.get(normalized, "")
+    if timeframe == "":
+        raise ValueError(
+            f"unsupported interval for MT5 timeframe mapping: {interval} "
+            "(supported: 1m,5m,15m,30m,60m,1h,240m,4h)"
+        )
+    return timeframe
+
+
+def _unpack_candidate(candidate: Candidate) -> Dict[str, object]:
+    if len(candidate) == 9:
+        (
+            fast,
+            slow,
+            pullback,
+            sl_atr,
+            tp_atr,
+            session_start,
+            session_end,
+            min_ratio,
+            max_ratio,
+        ) = candidate
+        return {
+            "fast_ema": int(fast),
+            "slow_ema": int(slow),
+            "pullback_atr": float(pullback),
+            "sl_atr": float(sl_atr),
+            "tp_atr": float(tp_atr),
+            "session_start_hour_utc": int(session_start),
+            "session_end_hour_utc": int(session_end),
+            "min_atr_ratio_to_median": float(min_ratio),
+            "max_atr_ratio_to_median": float(max_ratio),
+            "strategy_mode": "trend",
+            "regime_trend_threshold": 1.2,
+            "reversion_atr": 0.8,
+            "reversion_sl_atr": 1.2,
+            "reversion_tp_atr": 1.2,
+        }
+
+    (
+        fast,
+        slow,
+        pullback,
+        sl_atr,
+        tp_atr,
+        session_start,
+        session_end,
+        min_ratio,
+        max_ratio,
+        strategy_mode,
+        regime_threshold,
+        reversion_atr,
+        reversion_sl_atr,
+        reversion_tp_atr,
+    ) = candidate
+    return {
+        "fast_ema": int(fast),
+        "slow_ema": int(slow),
+        "pullback_atr": float(pullback),
+        "sl_atr": float(sl_atr),
+        "tp_atr": float(tp_atr),
+        "session_start_hour_utc": int(session_start),
+        "session_end_hour_utc": int(session_end),
+        "min_atr_ratio_to_median": float(min_ratio),
+        "max_atr_ratio_to_median": float(max_ratio),
+        "strategy_mode": str(strategy_mode),
+        "regime_trend_threshold": float(regime_threshold),
+        "reversion_atr": float(reversion_atr),
+        "reversion_sl_atr": float(reversion_sl_atr),
+        "reversion_tp_atr": float(reversion_tp_atr),
+    }
 
 
 def score_candidate(split_metrics: List[Dict[str, float]], min_oos_trades: int = 40) -> float:
@@ -43,30 +140,39 @@ def score_candidate(split_metrics: List[Dict[str, float]], min_oos_trades: int =
     )
 
 
-def candidate_to_config(candidate: Candidate, *, magic: int, comment: str) -> Dict[str, object]:
-    fast, slow, pullback, sl_atr, tp_atr, session_start, session_end, min_ratio, max_ratio = candidate
+def candidate_to_config(candidate: Candidate, *, magic: int, comment: str, timeframe: str = "M5") -> Dict[str, object]:
+    unpacked = _unpack_candidate(candidate)
+    normalized_comment = validate_trade_comment(comment)
+    normalized_timeframe = str(timeframe or "").strip().upper()
+    if normalized_timeframe not in {"M1", "M5", "M15", "M30", "H1", "H4"}:
+        raise ValueError(f"unsupported timeframe: {timeframe}")
     return {
         "symbol": "XAUUSD",
-        "timeframe": "M5",
+        "timeframe": normalized_timeframe,
         "bars": 800,
-        "fast_ema": fast,
-        "slow_ema": slow,
+        "fast_ema": int(unpacked["fast_ema"]),
+        "slow_ema": int(unpacked["slow_ema"]),
         "atr_period": 14,
-        "pullback_atr": pullback,
-        "sl_atr": sl_atr,
-        "tp_atr": tp_atr,
+        "strategy_mode": str(unpacked["strategy_mode"]),
+        "regime_trend_threshold": float(unpacked["regime_trend_threshold"]),
+        "pullback_atr": float(unpacked["pullback_atr"]),
+        "reversion_atr": float(unpacked["reversion_atr"]),
+        "sl_atr": float(unpacked["sl_atr"]),
+        "tp_atr": float(unpacked["tp_atr"]),
+        "reversion_sl_atr": float(unpacked["reversion_sl_atr"]),
+        "reversion_tp_atr": float(unpacked["reversion_tp_atr"]),
         "lot": 0.01,
         "max_spread_points": 80.0,
         "max_positions": 1,
-        "session_start_hour_utc": session_start,
-        "session_end_hour_utc": session_end,
+        "session_start_hour_utc": int(unpacked["session_start_hour_utc"]),
+        "session_end_hour_utc": int(unpacked["session_end_hour_utc"]),
         "atr_filter_window": 288,
         "atr_filter_min_samples": 120,
-        "min_atr_ratio_to_median": min_ratio,
-        "max_atr_ratio_to_median": max_ratio,
+        "min_atr_ratio_to_median": float(unpacked["min_atr_ratio_to_median"]),
+        "max_atr_ratio_to_median": float(unpacked["max_atr_ratio_to_median"]),
         "deviation": 30,
         "magic": magic,
-        "comment": comment,
+        "comment": normalized_comment,
         "dry_run": True,
         "once": True,
         "poll_seconds": 10,
@@ -123,6 +229,15 @@ def _parse_ratio_pairs(value: str) -> List[Tuple[float, float]]:
         lo, hi = token.split(":")
         pairs.append((float(lo), float(hi)))
     return pairs
+
+
+def _parse_str_list(value: str) -> List[str]:
+    out: List[str] = []
+    for token in value.split(","):
+        token = token.strip()
+        if token:
+            out.append(token)
+    return out
 
 
 def _parse_split_ratios(value: str) -> List[float]:
@@ -190,7 +305,21 @@ def _simulate_segment(
     atr_pct_values: Sequence[float],
     cost_per_side: float,
 ) -> List[float]:
-    fast, slow, pullback, sl_atr, tp_atr, session_start, session_end, min_ratio, max_ratio = candidate
+    c = _unpack_candidate(candidate)
+    fast = int(c["fast_ema"])
+    slow = int(c["slow_ema"])
+    pullback = float(c["pullback_atr"])
+    sl_atr = float(c["sl_atr"])
+    tp_atr = float(c["tp_atr"])
+    session_start = int(c["session_start_hour_utc"])
+    session_end = int(c["session_end_hour_utc"])
+    min_ratio = float(c["min_atr_ratio_to_median"])
+    max_ratio = float(c["max_atr_ratio_to_median"])
+    strategy_mode = str(c["strategy_mode"])
+    regime_threshold = float(c["regime_trend_threshold"])
+    reversion_atr = float(c["reversion_atr"])
+    reversion_sl_atr = float(c["reversion_sl_atr"])
+    reversion_tp_atr = float(c["reversion_tp_atr"])
     warmup = max(slow, 14) + 5
     start = max(start_idx, warmup)
     end = min(end_idx - 1, len(closes) - 1)
@@ -219,12 +348,19 @@ def _simulate_segment(
                 position = 0
                 continue
 
-        pull = atr_values[i] * pullback
-        signal = 0
-        if ema_cache[fast][i] > ema_cache[slow][i] and closes[i] <= ema_cache[fast][i] - pull:
-            signal = 1
-        elif ema_cache[fast][i] < ema_cache[slow][i] and closes[i] >= ema_cache[fast][i] + pull:
-            signal = -1
+        signal_ctx = decide_signal_with_mode(
+            strategy_mode=strategy_mode,
+            last_close=closes[i],
+            ema_fast=ema_cache[fast][i],
+            ema_slow=ema_cache[slow][i],
+            atr_value=atr_values[i],
+            pullback_atr=pullback,
+            reversion_atr=reversion_atr,
+            trend_threshold=regime_threshold,
+        )
+        raw_signal = str(signal_ctx.get("signal", "HOLD")).upper()
+        signal = 1 if raw_signal == "BUY" else -1 if raw_signal == "SELL" else 0
+        signal_source = str(signal_ctx.get("source", "trend"))
 
         if position == 0 and signal != 0:
             hour_utc = times[i].hour
@@ -242,12 +378,14 @@ def _simulate_segment(
                         continue
 
             entry = opens[i + 1]
+            use_sl_atr = reversion_sl_atr if signal_source == "reversion" else sl_atr
+            use_tp_atr = reversion_tp_atr if signal_source == "reversion" else tp_atr
             if signal == 1:
-                sl = entry - atr_values[i] * sl_atr
-                tp = entry + atr_values[i] * tp_atr
+                sl = entry - atr_values[i] * use_sl_atr
+                tp = entry + atr_values[i] * use_tp_atr
             else:
-                sl = entry + atr_values[i] * sl_atr
-                tp = entry - atr_values[i] * tp_atr
+                sl = entry + atr_values[i] * use_sl_atr
+                tp = entry - atr_values[i] * use_tp_atr
             position = signal
             continue
 
@@ -289,14 +427,55 @@ def _build_candidates(
     sl_tp_pairs: Sequence[Tuple[float, float]],
     sessions: Sequence[Tuple[int, int]],
     vol_bands: Sequence[Tuple[float, float]],
+    strategy_modes: Sequence[str],
+    regime_thresholds: Sequence[float],
+    reversion_atrs: Sequence[float],
+    reversion_sl_tp_pairs: Sequence[Tuple[float, float]],
 ) -> List[Candidate]:
     candidates: List[Candidate] = []
-    for fast, slow, pullback, (sl_atr, tp_atr), (start, end), (min_ratio, max_ratio) in product(
-        fasts, slows, pullbacks, sl_tp_pairs, sessions, vol_bands
+    for (
+        fast,
+        slow,
+        pullback,
+        (sl_atr, tp_atr),
+        (start, end),
+        (min_ratio, max_ratio),
+        strategy_mode,
+        regime_threshold,
+        reversion_atr,
+        (reversion_sl_atr, reversion_tp_atr),
+    ) in product(
+        fasts,
+        slows,
+        pullbacks,
+        sl_tp_pairs,
+        sessions,
+        vol_bands,
+        strategy_modes,
+        regime_thresholds,
+        reversion_atrs,
+        reversion_sl_tp_pairs,
     ):
         if fast >= slow:
             continue
-        candidates.append((fast, slow, pullback, sl_atr, tp_atr, start, end, min_ratio, max_ratio))
+        candidates.append(
+            (
+                fast,
+                slow,
+                pullback,
+                sl_atr,
+                tp_atr,
+                start,
+                end,
+                min_ratio,
+                max_ratio,
+                strategy_mode,
+                regime_threshold,
+                reversion_atr,
+                reversion_sl_atr,
+                reversion_tp_atr,
+            )
+        )
     return candidates
 
 
@@ -315,20 +494,40 @@ def main() -> None:
     parser.add_argument("--sl-tp-pairs", default="1.2:2.0,1.5:2.5,2.0:3.0")
     parser.add_argument("--sessions", default="7-19,8-18")
     parser.add_argument("--vol-bands", default="0.8:1.6,0.9:1.4,0.7:1.8")
+    parser.add_argument("--strategy-modes", default="trend")
+    parser.add_argument("--regime-thresholds", default="1.2")
+    parser.add_argument("--reversion-atrs", default="0.8")
+    parser.add_argument("--reversion-sl-tp-pairs", default="1.2:1.2")
     parser.add_argument("--write-config", default="")
     parser.add_argument("--magic", type=int, default=560070)
     parser.add_argument("--comment", default="xau_autobot_tuned_auto")
     args = parser.parse_args()
 
     split_ratios = _parse_split_ratios(args.split_ratios)
+    validated_comment = validate_trade_comment(args.comment)
     fasts = _parse_int_list(args.fast_emas)
     slows = _parse_int_list(args.slow_emas)
     pullbacks = _parse_float_list(args.pullbacks)
     sl_tp_pairs = _parse_sl_tp_pairs(args.sl_tp_pairs)
     sessions = _parse_sessions(args.sessions)
     vol_bands = _parse_ratio_pairs(args.vol_bands)
+    strategy_modes = [validate_strategy_mode(mode) for mode in _parse_str_list(args.strategy_modes)]
+    regime_thresholds = _parse_float_list(args.regime_thresholds)
+    reversion_atrs = _parse_float_list(args.reversion_atrs)
+    reversion_sl_tp_pairs = _parse_sl_tp_pairs(args.reversion_sl_tp_pairs)
 
-    candidates = _build_candidates(fasts, slows, pullbacks, sl_tp_pairs, sessions, vol_bands)
+    candidates = _build_candidates(
+        fasts,
+        slows,
+        pullbacks,
+        sl_tp_pairs,
+        sessions,
+        vol_bands,
+        strategy_modes,
+        regime_thresholds,
+        reversion_atrs,
+        reversion_sl_tp_pairs,
+    )
     times, opens, highs, lows, closes = _load_ohlc(args.ticker, args.period, args.interval)
     atr_values = _atr_series(highs, lows, closes, 14)
     atr_pct_values = [(atr_values[i] / closes[i]) if closes[i] > 0.0 else 0.0 for i in range(len(closes))]
@@ -408,22 +607,13 @@ def main() -> None:
     )
 
     for rank, (score, candidate, split_metrics) in enumerate(top, start=1):
+        c = _unpack_candidate(candidate)
         print(
             json.dumps(
                 {
                     "rank": rank,
                     "score": score,
-                    "candidate": {
-                        "fast_ema": candidate[0],
-                        "slow_ema": candidate[1],
-                        "pullback_atr": candidate[2],
-                        "sl_atr": candidate[3],
-                        "tp_atr": candidate[4],
-                        "session_start_hour_utc": candidate[5],
-                        "session_end_hour_utc": candidate[6],
-                        "min_atr_ratio_to_median": candidate[7],
-                        "max_atr_ratio_to_median": candidate[8],
-                    },
+                    "candidate": c,
                     "splits": split_metrics,
                 },
                 ensure_ascii=True,
@@ -431,7 +621,12 @@ def main() -> None:
         )
 
     best_candidate = top[0][1]
-    config = candidate_to_config(best_candidate, magic=args.magic, comment=args.comment)
+    config = candidate_to_config(
+        best_candidate,
+        magic=args.magic,
+        comment=validated_comment,
+        timeframe=interval_to_timeframe(args.interval),
+    )
     print(json.dumps({"best_config": config}, ensure_ascii=True))
 
     if args.write_config:

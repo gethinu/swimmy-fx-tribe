@@ -773,6 +773,23 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
        (and (> (length plain) 0) (intern plain :keyword))))
     (t nil)))
 
+(defun %shadow-rank-eligible-p (rank)
+  "Return T when RANK is eligible for shadow paper execution."
+  (member rank *shadow-paper-eligible-ranks* :test #'eq))
+
+(defun %shadow-forward-running-p (strategy-name)
+  "Return T when STRATEGY-NAME is currently in FORWARD_RUNNING deployment gate."
+  (let* ((gate-status (and (stringp strategy-name)
+                           (ignore-errors (fetch-deployment-gate-status strategy-name))))
+         (decision (%normalize-strategy-token
+                    (and (listp gate-status) (getf gate-status :decision nil)))))
+    (and decision (string= decision "FORWARD_RUNNING"))))
+
+(defun %shadow-strategy-eligible-p (strategy-name rank)
+  "Return T when strategy is rank-eligible or actively collecting forward evidence."
+  (or (%shadow-rank-eligible-p rank)
+      (%shadow-forward-running-p strategy-name)))
+
 (defun %shadow-slot-key (strategy-name symbol direction)
   (format nil "~a|~a|~a"
           (or strategy-name "UNKNOWN")
@@ -790,11 +807,19 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                            (string-upcase (or symbol ""))))
          (let* ((direction (or (%normalize-shadow-direction (getf slot :direction)) :buy))
                 (entry (getf slot :entry))
+                (entry-bid (getf slot :entry-bid))
+                (entry-ask (getf slot :entry-ask))
                 (sl (getf slot :sl))
                 (tp (getf slot :tp))
                 (category (or (getf slot :category) :trend))
                 (strategy-name (getf slot :strategy))
                 (pair-id (getf slot :pair-id))
+                (opened-at (or (getf slot :opened-at) now))
+                (shadow-age (max 0 (- now opened-at)))
+                (max-hold-sec (if (and (numberp *shadow-max-hold-seconds*)
+                                       (> *shadow-max-hold-seconds* 0))
+                                  (round *shadow-max-hold-seconds*)
+                                  0))
                 (close-p nil)
                 (hit :unknown)
                 (pnl 0.0))
@@ -808,13 +833,30 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                 (cond
                   ((>= ask sl) (setf close-p t hit :sl pnl (- entry ask)))
                   ((<= ask tp) (setf close-p t hit :tp pnl (- entry ask))))))
+             (when (and (not close-p)
+                        (> max-hold-sec 0)
+                        (>= shadow-age max-hold-sec))
+               ;; Prevent paper evidence starvation when SL/TP is too wide to close naturally.
+               (setf close-p t
+                     hit :timeout
+                     pnl (if (eq direction :buy)
+                             (- bid entry)
+                             (- entry ask))))
              (when close-p
-               (push (list key strategy-name direction category pnl hit pair-id
-                           (max 0 (- now (or (getf slot :opened-at) now))))
-                     keys-to-close))))))
+               (let ((dryrun-slip nil))
+                 (when (and strategy-name
+                            (numberp entry)
+                            (numberp entry-bid)
+                            (numberp entry-ask)
+                            (fboundp 'slippage-pips-from-fill))
+                   (setf dryrun-slip
+                         (slippage-pips-from-fill symbol direction entry-bid entry-ask entry)))
+                 (push (list key strategy-name direction category pnl hit pair-id
+                             shadow-age dryrun-slip)
+                       keys-to-close)))))))
      *shadow-slot-allocation*)
     (dolist (item keys-to-close)
-      (destructuring-bind (key strategy-name direction category pnl hit pair-id hold-time) item
+      (destructuring-bind (key strategy-name direction category pnl hit pair-id hold-time dryrun-slip) item
         (remhash key *shadow-slot-allocation*)
         (handler-case
             (record-trade-outcome symbol direction category strategy-name pnl
@@ -823,11 +865,15 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                                   :pair-id pair-id
                                   :execution-mode :shadow)
           (error (e)
-            (format t "[SHADOW] ⚠️ Failed to record shadow outcome for ~a: ~a~%" strategy-name e))))))
+            (format t "[SHADOW] ⚠️ Failed to record shadow outcome for ~a: ~a~%" strategy-name e)))
+        (when (and strategy-name
+                   (numberp dryrun-slip)
+                   (fboundp 'record-dryrun-slippage))
+          (ignore-errors (record-dryrun-slippage strategy-name dryrun-slip))))))
   t)
 
 (defun open-a-rank-shadow-trades (symbol bid ask strat-signals)
-  "Open A-rank shadow positions from STRAT-SIGNALS."
+  "Open shadow positions for rank-eligible or FORWARD_RUNNING strategies."
   (when (and *a-rank-shadow-trading-enabled*
              (listp strat-signals)
              (numberp bid)
@@ -840,7 +886,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
         (when (and strategy-name
                    strat
                    direction
-                   (eq rank :A))
+                   (%shadow-strategy-eligible-p strategy-name rank))
           (let* ((slot-key (%shadow-slot-key strategy-name symbol direction))
                  (entry (if (eq direction :buy) ask bid))
                  (sl-pips (let ((raw (strategy-sl strat)))
@@ -859,12 +905,114 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                           :symbol symbol
                           :direction direction
                           :category (or (getf sig :category) :trend)
+                          :entry-bid bid
+                          :entry-ask ask
                           :entry entry
                           :sl sl
                           :tp tp
                           :pair-id (getf sig :pair-id)
                           :opened-at (get-universal-time)))))))))
   t)
+
+(defun %forward-no-signal-probe-interval-ok-p (strategy-name now)
+  "Return T when STRATEGY-NAME passed no-signal probe throttle interval."
+  (let* ((interval (if (and (numberp *forward-no-signal-shadow-interval-seconds*)
+                            (> *forward-no-signal-shadow-interval-seconds* 0))
+                       (round *forward-no-signal-shadow-interval-seconds*)
+                       0))
+         (last-at (and (hash-table-p *forward-no-signal-shadow-last-at*)
+                       (stringp strategy-name)
+                       (gethash strategy-name *forward-no-signal-shadow-last-at* nil))))
+    (or (<= interval 0)
+        (not (numberp last-at))
+        (>= (- now last-at) interval))))
+
+(defun %forward-running-probe-strategy-p (strategy symbol)
+  "Return T when STRATEGY should emit periodic probe for SYMBOL."
+  (let* ((strategy-name (and strategy (strategy-name strategy)))
+         (strategy-symbol (and strategy (strategy-symbol strategy)))
+         (symbol-match (and (stringp strategy-symbol)
+                            (stringp symbol)
+                            (string= (string-upcase strategy-symbol)
+                                     (string-upcase symbol)))))
+    (and (stringp strategy-name)
+         (> (length strategy-name) 0)
+         symbol-match
+         (%shadow-forward-running-p strategy-name)
+         ;; Do not emit probe while real shadow slot is open.
+         (not (gethash (%shadow-slot-key strategy-name symbol :buy) *shadow-slot-allocation*))
+         (not (gethash (%shadow-slot-key strategy-name symbol :sell) *shadow-slot-allocation*)))))
+
+(defun %forward-running-db-probe-strategy-names (symbol)
+  "Return FORWARD_RUNNING strategy names for SYMBOL from deployment gate DB rows."
+  (if (or (null symbol) (not (stringp symbol)) (<= (length symbol) 0))
+      '()
+      (let* ((rows (ignore-errors
+                     (execute-to-list
+                      "SELECT d.strategy_name
+                         FROM deployment_gate_status d
+                         LEFT JOIN strategies s
+                           ON s.name = d.strategy_name
+                        WHERE UPPER(COALESCE(d.decision, '')) = 'FORWARD_RUNNING'
+                          AND (UPPER(COALESCE(s.symbol, '')) = UPPER(?)
+                               OR INSTR(UPPER(COALESCE(d.strategy_name, '')), UPPER(?)) > 0)"
+                      symbol
+                      symbol)))
+             (names (remove nil
+                            (mapcar (lambda (row)
+                                      (let ((name (first row)))
+                                        (and (stringp name) (> (length name) 0) name)))
+                                    rows))))
+        (remove-duplicates names :test #'string=))))
+
+(defun record-forward-running-periodic-shadow-probes (symbol bid ask)
+  "Emit neutral SHADOW probe outcomes for FORWARD_RUNNING strategies.
+This keeps deployment-gate forward evidence moving even when live execution is blocked."
+  (let ((recorded 0))
+    (when (and *forward-no-signal-shadow-enabled*
+               (stringp symbol)
+               (> (length symbol) 0)
+               (numberp bid)
+               (numberp ask)
+               (listp *strategy-knowledge-base*))
+      (let* ((now (get-universal-time))
+             (direction :buy)
+             (kb-candidates
+               (remove nil
+                       (mapcar (lambda (strategy)
+                                 (when (%forward-running-probe-strategy-p strategy symbol)
+                                   (strategy-name strategy)))
+                               *strategy-knowledge-base*)))
+             (db-candidates (%forward-running-db-probe-strategy-names symbol))
+             (candidates (remove-duplicates (append kb-candidates db-candidates)
+                                            :test #'string=)))
+        (dolist (strategy-name candidates recorded)
+          (when (and (stringp strategy-name)
+                     (> (length strategy-name) 0)
+                     (%shadow-forward-running-p strategy-name)
+                     (not (gethash (%shadow-slot-key strategy-name symbol :buy) *shadow-slot-allocation*))
+                     (not (gethash (%shadow-slot-key strategy-name symbol :sell) *shadow-slot-allocation*))
+                     (%forward-no-signal-probe-interval-ok-p strategy-name now))
+            (handler-case
+                (progn
+                  (record-trade-outcome symbol direction :trend strategy-name 0.0
+                                        :hit :probe
+                                        :hold-time 0
+                                        :pair-id (format nil "NO-SIGNAL-PROBE-~d" now)
+                                        :execution-mode :shadow)
+                  (setf (gethash strategy-name *forward-no-signal-shadow-last-at*)
+                        now)
+                  (incf recorded))
+              (error (e)
+                (format t "[SHADOW] ⚠️ Failed to record no-signal probe for ~a: ~a~%"
+                        strategy-name e))))))
+      (when (> recorded 0)
+        (format t "[SHADOW] 🧪 Recorded periodic probes for ~a: ~d~%" symbol recorded)))
+    recorded))
+
+(defun record-forward-running-no-signal-shadow-probes (symbol bid ask)
+  "Backward-compatible alias for periodic FORWARD_RUNNING probe writer."
+  (record-forward-running-periodic-shadow-probes symbol bid ask))
 
 (defun execute-order-sequence (category direction symbol bid ask lot lead-name timeframe-key magic-override &key pair-id)
   "Helper: atomic reservation and execution."
@@ -1068,9 +1216,8 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                          (run-live-trade-audit lead-strat pnl))
                        (when (fboundp 'record-rl-reward)
                          (record-rl-reward lead-strat pnl)))))
-              (contribute-to-treasury category pnl :trade (format nil "Trade ~a" (if (> pnl 0) "win" "loss")))
-             (swimmy.shell:notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
-                            :color (if (> pnl 0) 3066993 15158332)))))))
+              (swimmy.shell:notify-discord-symbol symbol (format nil "~a ~a closed ~,2f" (if (> pnl 0) "✅" "❌") category pnl) 
+                             :color (if (> pnl 0) 3066993 15158332)))))))
    *slot-allocation*))
 
 
@@ -1111,6 +1258,9 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
         (close-category-positions symbol bid ask)
         ;; Shadow positions are closed regardless of live execution gate results.
         (close-a-rank-shadow-positions symbol bid ask)
+        ;; Keep FORWARD_RUNNING evidence progressing even when strategy signals exist
+        ;; or live guards block the current tick.
+        (record-forward-running-periodic-shadow-probes symbol bid ask)
         (when (boundp 'swimmy.main::*dispatch-step*)
           (setf swimmy.main::*dispatch-step* :tick/is-safe-to-trade-p))
         (unless (is-safe-to-trade-p) (return-from process-category-trades nil))
@@ -1131,54 +1281,56 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
             (progn
               (format t "[L] 🎯 61-STRATEGY SIGNAL SCAN~%")
               (let ((strat-signals (collect-strategy-signals symbol history)))
-                (when strat-signals
-                  (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
-                  ;; A-rank shadow operation: keep collecting paper outcomes.
-                  (open-a-rank-shadow-trades symbol bid ask strat-signals)
-                  ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                  ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                  (let* ((all-sorted
-                          (sort (copy-list strat-signals)
-                                (lambda (a b)
-                                  (let* ((name-a (getf a :strategy-name))
-                                         (name-b (getf b :strategy-name))
-                                         (cache-a (get-cached-backtest name-a))
-                                         (cache-b (get-cached-backtest name-b))
-                                         (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                         (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                    (> sharpe-a sharpe-b)))))
-                         (top-sig (first all-sorted))
-                         (top-name (when top-sig (getf top-sig :strategy-name)))
-                         (top-cat (when top-sig (getf top-sig :category)))
-                         (top-cache (when top-name (get-cached-backtest top-name)))
-                         (top-timeframe (or (and top-sig (getf top-sig :timeframe))
-                                            (let ((top-strat (resolve-strategy-by-name top-name)))
-                                              (and top-strat (strategy-timeframe top-strat)))))
-                         (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                    (when top-sig
-                      (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                              top-name top-cat top-sharpe (length strat-signals))
-                      (let* ((direction (getf top-sig :direction))
-                             (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
-                             (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
-                             (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                        (when (<= confidence-lot-mult 0.0)
-                          (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
-                                  top-name signal-confidence *signal-confidence-entry-threshold*))
-                        (when (and (> confidence-lot-mult 0.0)
-                                   (can-category-trade-p strat-key))
-                          (let ((trade-executed
-                                  (execute-category-trade top-cat direction symbol bid ask
-                                                          :lot-multiplier confidence-lot-mult
-                                                          :signal-confidence signal-confidence
-                                                          :strategy-name top-name
-                                                          :strategy-timeframe top-timeframe)))
-                            (when trade-executed
-                              (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
-                                      symbol direction top-name signal-confidence confidence-lot-mult)
-                              (record-category-trade-time strat-key)
-                              (when (fboundp 'record-strategy-trade)
-                                (record-strategy-trade top-name :trade 0)))))))))))
+                (if strat-signals
+                    (progn
+                      (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
+                      ;; A-rank shadow operation: keep collecting paper outcomes.
+                      (open-a-rank-shadow-trades symbol bid ask strat-signals)
+                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
+                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
+                      (let* ((all-sorted
+                              (sort (copy-list strat-signals)
+                                    (lambda (a b)
+                                      (let* ((name-a (getf a :strategy-name))
+                                             (name-b (getf b :strategy-name))
+                                             (cache-a (get-cached-backtest name-a))
+                                             (cache-b (get-cached-backtest name-b))
+                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
+                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
+                                        (> sharpe-a sharpe-b)))))
+                             (top-sig (first all-sorted))
+                             (top-name (when top-sig (getf top-sig :strategy-name)))
+                             (top-cat (when top-sig (getf top-sig :category)))
+                             (top-cache (when top-name (get-cached-backtest top-name)))
+                             (top-timeframe (or (and top-sig (getf top-sig :timeframe))
+                                                (let ((top-strat (resolve-strategy-by-name top-name)))
+                                                  (and top-strat (strategy-timeframe top-strat)))))
+                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
+                        (when top-sig
+                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
+                                  top-name top-cat top-sharpe (length strat-signals))
+                          (let* ((direction (getf top-sig :direction))
+                                 (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
+                                 (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
+                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                            (when (<= confidence-lot-mult 0.0)
+                              (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
+                                      top-name signal-confidence *signal-confidence-entry-threshold*))
+                            (when (and (> confidence-lot-mult 0.0)
+                                       (can-category-trade-p strat-key))
+                              (let ((trade-executed
+                                      (execute-category-trade top-cat direction symbol bid ask
+                                                              :lot-multiplier confidence-lot-mult
+                                                              :signal-confidence signal-confidence
+                                                              :strategy-name top-name
+                                                              :strategy-timeframe top-timeframe)))
+                                (when trade-executed
+                                  (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
+                                          symbol direction top-name signal-confidence confidence-lot-mult)
+                                  (record-category-trade-time strat-key)
+                                  (when (fboundp 'record-strategy-trade)
+                                    (record-strategy-trade top-name :trade 0)))))))))
+                    nil)))
           (error (e)
             (declare (ignore e))
             nil))))))

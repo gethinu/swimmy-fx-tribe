@@ -1,0 +1,102 @@
+{
+  "ran_at": "2026-02-23T00:04:15+00:00",
+  "trends_count": 10,
+  "candidate_count": 12,
+  "eligible_count": 0,
+  "selected_count": 0,
+  "top_candidates": [
+    {
+      "id": "trend-989c75ac315a6a60",
+      "query": "価格比較 ツール",
+      "demand_score": 0.62,
+      "gap_score": 0.16,
+      "intent_score": 0.72,
+      "opportunity_score": 0.479,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-6d831288ed28a24a",
+      "query": "オリンピック おすすめ",
+      "demand_score": 0.630821,
+      "gap_score": 0.25,
+      "intent_score": 0.47,
+      "opportunity_score": 0.465369,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-7e6b6dbc0483ad33",
+      "query": "オリンピック 比較",
+      "demand_score": 0.630821,
+      "gap_score": 0.18,
+      "intent_score": 0.47,
+      "opportunity_score": 0.440869,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-69a995f0e9f1dcd4",
+      "query": "AI ツール 比較",
+      "demand_score": 0.62,
+      "gap_score": 0.18,
+      "intent_score": 0.47,
+      "opportunity_score": 0.436,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-2ac43b01050b7cfd",
+      "query": "副業 AI",
+      "demand_score": 0.62,
+      "gap_score": 0.155,
+      "intent_score": 0.47,
+      "opportunity_score": 0.42725,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-afe0de137391b2e8",
+      "query": "オリンピック いつまで",
+      "demand_score": 0.659495,
+      "gap_score": 0.195,
+      "intent_score": 0.22,
+      "opportunity_score": 0.409023,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-2cec95843f1310de",
+      "query": "業務自動化 テンプレ",
+      "demand_score": 0.62,
+      "gap_score": 0.07,
+      "intent_score": 0.47,
+      "opportunity_score": 0.3975,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-765898017c5a0f21",
+      "query": "オリンピック 閉会式",
+      "demand_score": 0.659495,
+      "gap_score": 0.16,
+      "intent_score": 0.22,
+      "opportunity_score": 0.396773,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-05d2d2f879064442",
+      "query": "オリンピック 2026",
+      "demand_score": 0.659495,
+      "gap_score": 0.14,
+      "intent_score": 0.22,
+      "opportunity_score": 0.389773,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-8674d24e69d074cf",
+      "query": "オリンピック",
+      "demand_score": 0.716842,
+      "gap_score": 0.03,
+      "intent_score": 0.22,
+      "opportunity_score": 0.377079,
+      "serp_count": 10
+    }
+  ],
+  "eligible": [],
+  "selected": [],
+  "publish_results": []
+}

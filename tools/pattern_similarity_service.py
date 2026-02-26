@@ -4,6 +4,8 @@ import time
 import threading
 import csv
 import json
+import math
+from collections import deque
 from pathlib import Path
 
 import zmq
@@ -131,6 +133,7 @@ LABEL_ATR_MULT = _env_float("SWIMMY_PATTERN_LABEL_ATR_MULT", 0.50)
 
 # Guardrail: avoid accidental OOM on long histories (especially M5)
 MAX_BUILD_SAMPLES = _env_int("SWIMMY_PATTERN_MAX_BUILD_SAMPLES", 300_000)
+QUERY_METRICS_WINDOW = max(1, _env_int("SWIMMY_PATTERN_QUERY_METRICS_WINDOW", 200))
 
 # Horizon bars per timeframe (SPEC: fixed evaluation horizon by TF group)
 HORIZON_BARS = {
@@ -159,6 +162,32 @@ _state_lock = threading.Lock()
 _build_threads = {}  # (symbol, tf) -> Thread
 _build_status = {}  # (symbol, tf) -> dict(status=..., message=..., built=..., total=...)
 _model_indices = {}  # (symbol, tf, model) -> PatternIndex
+_query_latency_ms = deque(maxlen=QUERY_METRICS_WINDOW)
+_query_metrics = {
+    "count": 0,
+    "ok_count": 0,
+    "error_count": 0,
+    "last_ms": 0.0,
+    "last_error": "",
+    "updated_at": 0,
+}
+_index_loader = {
+    "status": "idle",  # idle | running | completed | failed
+    "started_at": 0,
+    "finished_at": 0,
+    "loaded": 0,
+    "error": "",
+}
+_index_loader_thread = None
+_backend_loader = {
+    "status": "idle",  # idle | running | completed | failed
+    "started_at": 0,
+    "finished_at": 0,
+    "clip_ready": False,
+    "vector_ready": False,
+    "error": "",
+}
+_backend_loader_thread = None
 
 
 class PatternIndex:
@@ -185,6 +214,143 @@ class PatternIndex:
 
 
 _indices = {}  # (symbol, tf) -> PatternIndex
+
+
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return float(values[0])
+    pct = min(100.0, max(0.0, float(p)))
+    ordered = sorted(float(v) for v in values)
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    lo = int(math.floor(rank))
+    hi = int(math.ceil(rank))
+    if lo == hi:
+        return float(ordered[lo])
+    frac = rank - lo
+    return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
+
+
+def _record_query_metric(elapsed_ms: float, *, ok: bool, error: str = "") -> None:
+    ms = max(0.0, float(elapsed_ms))
+    now = int(time.time())
+    with _state_lock:
+        _query_latency_ms.append(ms)
+        _query_metrics["count"] = int(_query_metrics["count"]) + 1
+        if ok:
+            _query_metrics["ok_count"] = int(_query_metrics["ok_count"]) + 1
+            _query_metrics["last_error"] = ""
+        else:
+            _query_metrics["error_count"] = int(_query_metrics["error_count"]) + 1
+            _query_metrics["last_error"] = str(error or "")
+        _query_metrics["last_ms"] = ms
+        _query_metrics["updated_at"] = now
+
+
+def _snapshot_query_metrics() -> dict:
+    with _state_lock:
+        samples = [float(v) for v in _query_latency_ms]
+        count = int(_query_metrics["count"])
+        ok_count = int(_query_metrics["ok_count"])
+        error_count = int(_query_metrics["error_count"])
+        last_ms = float(_query_metrics["last_ms"])
+        last_error = str(_query_metrics.get("last_error", "") or "")
+        updated_at = int(_query_metrics.get("updated_at", 0) or 0)
+
+    if samples:
+        avg_ms = float(sum(samples) / len(samples))
+        p50_ms = float(_percentile(samples, 50.0))
+        p95_ms = float(_percentile(samples, 95.0))
+        max_ms = float(max(samples))
+    else:
+        avg_ms = 0.0
+        p50_ms = 0.0
+        p95_ms = 0.0
+        max_ms = 0.0
+
+    return {
+        "count": count,
+        "ok_count": ok_count,
+        "error_count": error_count,
+        "window_count": int(len(samples)),
+        "window_size": int(QUERY_METRICS_WINDOW),
+        "avg_ms": avg_ms,
+        "p50_ms": p50_ms,
+        "p95_ms": p95_ms,
+        "max_ms": max_ms,
+        "last_ms": last_ms,
+        "last_error": last_error,
+        "updated_at": updated_at,
+    }
+
+
+def _set_index_loader_state(
+    *,
+    status: str | None = None,
+    started_at: int | None = None,
+    finished_at: int | None = None,
+    loaded: int | None = None,
+    error: str | None = None,
+) -> None:
+    with _state_lock:
+        if status is not None:
+            _index_loader["status"] = str(status)
+        if started_at is not None:
+            _index_loader["started_at"] = int(started_at)
+        if finished_at is not None:
+            _index_loader["finished_at"] = int(finished_at)
+        if loaded is not None:
+            _index_loader["loaded"] = int(loaded)
+        if error is not None:
+            _index_loader["error"] = str(error)
+
+
+def _snapshot_index_loader() -> dict:
+    with _state_lock:
+        return {
+            "status": str(_index_loader.get("status", "idle")),
+            "started_at": int(_index_loader.get("started_at", 0) or 0),
+            "finished_at": int(_index_loader.get("finished_at", 0) or 0),
+            "loaded": int(_index_loader.get("loaded", 0) or 0),
+            "error": str(_index_loader.get("error", "") or ""),
+        }
+
+
+def _set_backend_loader_state(
+    *,
+    status: str | None = None,
+    started_at: int | None = None,
+    finished_at: int | None = None,
+    clip_ready: bool | None = None,
+    vector_ready: bool | None = None,
+    error: str | None = None,
+) -> None:
+    with _state_lock:
+        if status is not None:
+            _backend_loader["status"] = str(status)
+        if started_at is not None:
+            _backend_loader["started_at"] = int(started_at)
+        if finished_at is not None:
+            _backend_loader["finished_at"] = int(finished_at)
+        if clip_ready is not None:
+            _backend_loader["clip_ready"] = bool(clip_ready)
+        if vector_ready is not None:
+            _backend_loader["vector_ready"] = bool(vector_ready)
+        if error is not None:
+            _backend_loader["error"] = str(error)
+
+
+def _snapshot_backend_loader() -> dict:
+    with _state_lock:
+        return {
+            "status": str(_backend_loader.get("status", "idle")),
+            "started_at": int(_backend_loader.get("started_at", 0) or 0),
+            "finished_at": int(_backend_loader.get("finished_at", 0) or 0),
+            "clip_ready": bool(_backend_loader.get("clip_ready", False)),
+            "vector_ready": bool(_backend_loader.get("vector_ready", False)),
+            "error": str(_backend_loader.get("error", "") or ""),
+        }
 
 
 def _error_response(message: str) -> str:
@@ -319,12 +485,14 @@ _weight_cache_mtime = None
 _weight_cache_value = None
 
 
-def _ensure_clip_loaded():
+def _ensure_clip_loaded(*, allow_cold_load: bool = True):
     global _clip_model, _clip_preprocess, _clip_device
     if torch is None or open_clip is None:
         return None, None, None
     with _clip_lock:
         if _clip_model is None:
+            if not allow_cold_load:
+                return None, None, None
             device = "cuda" if hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu"
             model, _, preprocess = open_clip.create_model_and_transforms(
                 "ViT-B-32",
@@ -335,14 +503,16 @@ def _ensure_clip_loaded():
             _clip_model = model
             _clip_preprocess = preprocess
             _clip_device = device
+            _set_backend_loader_state(clip_ready=True)
     return _clip_model, _clip_preprocess, _clip_device
 
 
-def _clip_embed(candles: list[dict]) -> tuple[str, "np.ndarray"]:
+def _clip_embed(candles: list[dict], *, allow_cold_load: bool = True) -> tuple[str, "np.ndarray"]:
     if np is None:
         raise RuntimeError("numpy not available")
-    model, preprocess, device = _ensure_clip_loaded()
+    model, preprocess, device = _ensure_clip_loaded(allow_cold_load=allow_cold_load)
     if model is None or preprocess is None:
+        _start_backend_warmup_async()
         raise RuntimeError("CLIP backend not available")
     img = _candles_to_image(candles, width=224, height=224)
     x = preprocess(img).unsqueeze(0)
@@ -374,6 +544,7 @@ def _ensure_vector_loaded():
             _vector_model = model
             _vector_meta = meta
             _vector_model_mtime = mtime
+            _set_backend_loader_state(vector_ready=True)
     return _vector_model, _vector_meta
 
 
@@ -394,12 +565,12 @@ def _vector_embed(candles: list[dict]) -> tuple[str, "np.ndarray"]:
     return backend, vec.astype(np.float32)
 
 
-def _embed_for_model(model: str, candles: list[dict]) -> tuple[str, "np.ndarray"]:
+def _embed_for_model(model: str, candles: list[dict], *, allow_cold_load: bool = True) -> tuple[str, "np.ndarray"]:
     m = str(model or "").strip().lower()
     if m.startswith("vector-siamese"):
         return _vector_embed(candles)
     if m.startswith("clip"):
-        return _clip_embed(candles)
+        return _clip_embed(candles, allow_cold_load=allow_cold_load)
     if m.startswith("pixel"):
         return _pixel_embed(candles)
     return _embed_candles(candles)
@@ -498,15 +669,137 @@ def _remember_index(idx: PatternIndex, *, prefer_primary: bool = False) -> None:
 
 
 def _reset_state_for_tests() -> None:
-    global _weight_cache_mtime, _weight_cache_value
+    global _weight_cache_mtime, _weight_cache_value, _index_loader_thread, _backend_loader_thread
     with _state_lock:
         _indices.clear()
         _model_indices.clear()
         _build_threads.clear()
         _build_status.clear()
+        _query_latency_ms.clear()
+        _query_metrics["count"] = 0
+        _query_metrics["ok_count"] = 0
+        _query_metrics["error_count"] = 0
+        _query_metrics["last_ms"] = 0.0
+        _query_metrics["last_error"] = ""
+        _query_metrics["updated_at"] = 0
+        _index_loader["status"] = "idle"
+        _index_loader["started_at"] = 0
+        _index_loader["finished_at"] = 0
+        _index_loader["loaded"] = 0
+        _index_loader["error"] = ""
+        _index_loader_thread = None
+        _backend_loader["status"] = "idle"
+        _backend_loader["started_at"] = 0
+        _backend_loader["finished_at"] = 0
+        _backend_loader["clip_ready"] = False
+        _backend_loader["vector_ready"] = False
+        _backend_loader["error"] = ""
+        _backend_loader_thread = None
     with _weight_cache_lock:
         _weight_cache_mtime = None
         _weight_cache_value = None
+
+
+def _run_initial_index_load() -> None:
+    _set_index_loader_state(
+        status="running",
+        started_at=int(time.time()),
+        finished_at=0,
+        loaded=0,
+        error="",
+    )
+    try:
+        loaded = int(load_indices_from_disk())
+        _set_index_loader_state(
+            status="completed",
+            finished_at=int(time.time()),
+            loaded=loaded,
+            error="",
+        )
+        print(f"[PATTERN] Loaded {loaded} index file(s) from {PATTERNS_DIR}")
+    except Exception as e:
+        _set_index_loader_state(
+            status="failed",
+            finished_at=int(time.time()),
+            error=str(e),
+        )
+        print(f"[PATTERN] Index load failed: {e}")
+
+
+def _start_initial_index_load_async() -> bool:
+    global _index_loader_thread
+    with _state_lock:
+        thread = _index_loader_thread
+        if thread is not None and thread.is_alive():
+            return False
+        thread = threading.Thread(
+            target=_run_initial_index_load,
+            name="pattern-index-loader",
+            daemon=True,
+        )
+        _index_loader_thread = thread
+    thread.start()
+    return True
+
+
+def _run_backend_warmup() -> None:
+    _set_backend_loader_state(
+        status="running",
+        started_at=int(time.time()),
+        finished_at=0,
+        error="",
+    )
+    clip_ready = False
+    vector_ready = False
+    errors = []
+
+    try:
+        vector_model, _meta = _ensure_vector_loaded()
+        vector_ready = vector_model is not None
+    except Exception as e:
+        errors.append(f"vector:{e}")
+
+    try:
+        clip_model, _preprocess, _device = _ensure_clip_loaded(allow_cold_load=True)
+        clip_ready = clip_model is not None
+    except Exception as e:
+        errors.append(f"clip:{e}")
+
+    if clip_ready or vector_ready:
+        status = "completed"
+    elif errors:
+        status = "failed"
+    else:
+        status = "completed"
+
+    _set_backend_loader_state(
+        status=status,
+        finished_at=int(time.time()),
+        clip_ready=clip_ready,
+        vector_ready=vector_ready,
+        error="; ".join(errors),
+    )
+    print(
+        "[PATTERN] Backend warmup status="
+        f"{status} clip_ready={clip_ready} vector_ready={vector_ready}"
+        + (f" error={'; '.join(errors)}" if errors else "")
+    )
+
+
+def _start_backend_warmup_async() -> bool:
+    global _backend_loader_thread
+    with _state_lock:
+        thread = _backend_loader_thread
+        if thread is not None and thread.is_alive():
+            return False
+        thread = threading.Thread(
+            target=_run_backend_warmup,
+            name="pattern-backend-loader",
+            daemon=True,
+        )
+        _backend_loader_thread = thread
+    thread.start()
+    return True
 
 
 def _build_index_from_inline_samples(*, symbol: str, timeframe: str, samples: list[dict]) -> None:
@@ -1079,7 +1372,7 @@ def _decide_action(
 
 
 def _query_single_index(idx: PatternIndex, candles: list[dict], k: int) -> tuple[dict, list[dict]]:
-    _model, q = _embed_for_model(idx.model, candles)
+    _model, q = _embed_for_model(idx.model, candles, allow_cold_load=False)
     nn_idx, dists = _knn_search_index(idx, q, k)
     neighbor_labels = [idx.labels[i] for i in nn_idx]
     probs, top_k = _distance_weighted_probs(neighbor_labels, dists)
@@ -1266,6 +1559,21 @@ def handle_request_sexp(message: str) -> str:
                 if isinstance(st, dict):
                     entry.update(st)
                 builds.append(entry)
+            index_loader = {
+                "status": str(_index_loader.get("status", "idle")),
+                "started_at": int(_index_loader.get("started_at", 0) or 0),
+                "finished_at": int(_index_loader.get("finished_at", 0) or 0),
+                "loaded": int(_index_loader.get("loaded", 0) or 0),
+                "error": str(_index_loader.get("error", "") or ""),
+            }
+            backend_loader = {
+                "status": str(_backend_loader.get("status", "idle")),
+                "started_at": int(_backend_loader.get("started_at", 0) or 0),
+                "finished_at": int(_backend_loader.get("finished_at", 0) or 0),
+                "clip_ready": bool(_backend_loader.get("clip_ready", False)),
+                "vector_ready": bool(_backend_loader.get("vector_ready", False)),
+                "error": str(_backend_loader.get("error", "") or ""),
+            }
 
             if len(models) == 1:
                 model = next(iter(models))
@@ -1285,6 +1593,9 @@ def handle_request_sexp(message: str) -> str:
                 "ensemble_default_vector_weight": float(_clamp_weight(ENSEMBLE_VECTOR_WEIGHT)),
                 "ensemble_weight_file": str(ENSEMBLE_WEIGHT_FILE),
                 "available_backends": sorted([m for m in models if m]),
+                "index_loader": index_loader,
+                "backend_loader": backend_loader,
+                "query_metrics": _snapshot_query_metrics(),
                 "indices": indices,
                 "builds": builds,
             }
@@ -1352,21 +1663,27 @@ def handle_request_sexp(message: str) -> str:
         )
 
     if action == "QUERY":
+        query_t0 = time.perf_counter()
+
+        def _query_error(msg: str) -> str:
+            _record_query_metric((time.perf_counter() - query_t0) * 1000.0, ok=False, error=msg)
+            return _error_response(msg)
+
         symbol = data.get("symbol")
         tf = data.get("timeframe")
         if not symbol:
-            return _error_response("Missing symbol")
+            return _query_error("Missing symbol")
         if not tf:
-            return _error_response("Missing timeframe")
+            return _query_error("Missing timeframe")
         tf_norm = _normalize_timeframe(tf)
         if not tf_norm:
-            return _error_response("Invalid timeframe")
+            return _query_error("Invalid timeframe")
         candles = data.get("candles")
         if not isinstance(candles, list):
-            return _error_response("Missing candles")
+            return _query_error("Missing candles")
         expected = WINDOW_BARS[tf_norm]
         if len(candles) != expected:
-            return _error_response("candles length mismatch")
+            return _query_error("candles length mismatch")
         k = data.get("k")
         k = _coerce_int(k, default=30) or 30
         intended_direction = _normalize_direction(data.get("intended_direction"))
@@ -1374,47 +1691,50 @@ def handle_request_sexp(message: str) -> str:
         symbol_norm = str(symbol).upper()
         candidates = _resolve_query_indices(symbol_norm, tf_norm)
         if not candidates:
-            return _error_response("index not built")
+            return _query_error("index not built")
 
-        backend_details = []
-        ensemble_sum = {"p_up": 0.0, "p_down": 0.0, "p_flat": 0.0}
-        weight_sum = 0.0
         vector_weight, weight_source = _current_vector_weight(symbol_norm, tf_norm)
-        top_k = []
+        weighted_candidates = [
+            (idx, max(0.0, float(_safe_backend_weight(idx.model, vector_weight=vector_weight))))
+            for idx in candidates
+        ]
 
-        for idx in candidates:
-            try:
-                probs, cur_top_k = _query_single_index(idx, candles, k)
-            except Exception:
-                continue
-            w = max(0.0, float(_safe_backend_weight(idx.model, vector_weight=vector_weight)))
-            weight_sum += w
-            ensemble_sum["p_up"] += w * float(probs["p_up"])
-            ensemble_sum["p_down"] += w * float(probs["p_down"])
-            ensemble_sum["p_flat"] += w * float(probs["p_flat"])
-            backend_details.append(
-                {
-                    "backend": idx.model,
-                    "weight": float(w),
-                    "p_up": float(probs["p_up"]),
-                    "p_down": float(probs["p_down"]),
-                    "p_flat": float(probs["p_flat"]),
-                }
-            )
-            if not top_k:
-                top_k = cur_top_k
+        def _evaluate_candidates(items: list[tuple[PatternIndex, float]], *, force_equal: bool) -> tuple[list[dict], dict, float, list[dict]]:
+            details: list[dict] = []
+            sums = {"p_up": 0.0, "p_down": 0.0, "p_flat": 0.0}
+            wsum = 0.0
+            first_top_k: list[dict] = []
+            for idx, configured_weight in items:
+                weight = 1.0 if force_equal else configured_weight
+                if (not force_equal) and weight <= 0.0:
+                    continue
+                try:
+                    probs, cur_top_k = _query_single_index(idx, candles, k)
+                except Exception:
+                    continue
+                wsum += float(weight)
+                sums["p_up"] += float(weight) * float(probs["p_up"])
+                sums["p_down"] += float(weight) * float(probs["p_down"])
+                sums["p_flat"] += float(weight) * float(probs["p_flat"])
+                details.append(
+                    {
+                        "backend": idx.model,
+                        "weight": float(weight),
+                        "p_up": float(probs["p_up"]),
+                        "p_down": float(probs["p_down"]),
+                        "p_flat": float(probs["p_flat"]),
+                    }
+                )
+                if not first_top_k:
+                    first_top_k = cur_top_k
+            return details, sums, wsum, first_top_k
 
+        backend_details, ensemble_sum, weight_sum, top_k = _evaluate_candidates(weighted_candidates, force_equal=False)
         if not backend_details:
-            return _error_response("search error: no usable backend")
-        if weight_sum <= 0:
-            # If all backend weights were configured to zero, fallback to equal mixing.
-            weight_sum = float(len(backend_details))
-            ensemble_sum = {"p_up": 0.0, "p_down": 0.0, "p_flat": 0.0}
-            for item in backend_details:
-                item["weight"] = 1.0
-                ensemble_sum["p_up"] += float(item["p_up"])
-                ensemble_sum["p_down"] += float(item["p_down"])
-                ensemble_sum["p_flat"] += float(item["p_flat"])
+            # Preferred weighted backends unavailable -> fail-soft to any available backend.
+            backend_details, ensemble_sum, weight_sum, top_k = _evaluate_candidates(weighted_candidates, force_equal=True)
+        if not backend_details or weight_sum <= 0.0:
+            return _query_error("search error: no usable backend")
 
         p_up = float(ensemble_sum["p_up"] / weight_sum)
         p_down = float(ensemble_sum["p_down"] / weight_sum)
@@ -1432,7 +1752,7 @@ def handle_request_sexp(message: str) -> str:
             distortion_passed=distortion_passed,
         )
 
-        return sexp_response(
+        response = sexp_response(
             {
                 "type": "PATTERN_SIMILARITY_RESULT",
                 "status": "ok",
@@ -1464,6 +1784,8 @@ def handle_request_sexp(message: str) -> str:
                 },
             }
         )
+        _record_query_metric((time.perf_counter() - query_t0) * 1000.0, ok=True)
+        return response
 
     return _error_response(f"Unknown action: {action}")
 
@@ -1472,16 +1794,14 @@ def run_server() -> None:
     print("👁️ Swimmy Pattern Similarity Service (S-exp, REQ/REP)")
     print("====================================================")
 
-    try:
-        loaded = load_indices_from_disk()
-        print(f"[PATTERN] Loaded {loaded} index file(s) from {PATTERNS_DIR}")
-    except Exception as e:
-        print(f"[PATTERN] Index load failed: {e}")
-
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     socket.bind(f"tcp://*:{ZMQ_PORT}")
     print(f"[PATTERN] Listening on port {ZMQ_PORT}...")
+    if _start_backend_warmup_async():
+        print("[PATTERN] Backend warmup started in background.")
+    if _start_initial_index_load_async():
+        print("[PATTERN] Initial index load started in background.")
 
     while True:
         try:

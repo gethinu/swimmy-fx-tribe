@@ -23,6 +23,82 @@ existing_autobot_processes() {
   '
 }
 
+resolve_trial_config_path() {
+  local raw="$1"
+  if [ -z "$raw" ]; then
+    printf '%s' "$ROOT/tools/configs/xau_autobot.trial_v2_20260222.json"
+    return
+  fi
+  case "$raw" in
+    /*) printf '%s' "$raw" ;;
+    *) printf '%s' "$ROOT/$raw" ;;
+  esac
+}
+
+validate_trial_config_comment() {
+  local config_path="$1"
+  "$PYTHON_EXE" - <<'PY' "$config_path"
+import json
+import sys
+from pathlib import Path
+
+from tools.xau_autobot import MT5_COMMENT_MAX_LEN, validate_trade_comment
+
+config_path = Path(sys.argv[1])
+if not config_path.exists():
+    print(
+        json.dumps(
+            {
+                "action": "ERROR",
+                "reason": "trial_config_not_found",
+                "config_path": str(config_path),
+            },
+            ensure_ascii=True,
+        ),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+try:
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(
+        json.dumps(
+            {
+                "action": "ERROR",
+                "reason": "trial_config_invalid_json",
+                "config_path": str(config_path),
+                "detail": str(exc),
+            },
+            ensure_ascii=True,
+        ),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+comment = str(payload.get("comment", ""))
+try:
+    validate_trade_comment(comment, max_len=MT5_COMMENT_MAX_LEN)
+except Exception as exc:
+    print(
+        json.dumps(
+            {
+                "action": "ERROR",
+                "reason": "trial_config_invalid_comment_length",
+                "config_path": str(config_path),
+                "comment": comment,
+                "comment_length": len(comment),
+                "max_comment_length": MT5_COMMENT_MAX_LEN,
+                "detail": str(exc),
+            },
+            ensure_ascii=True,
+        ),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+}
+
 acquire_lock() {
   mkdir -p "$(dirname "$LOCK_FILE")"
   if command -v flock >/dev/null 2>&1; then
@@ -51,6 +127,9 @@ if [ "$ALLOW_EXISTING" != "1" ]; then
     exit 1
   fi
 fi
+
+ABS_TRIAL_CONFIG="$(resolve_trial_config_path "$TRIAL_CONFIG")"
+validate_trial_config_comment "$ABS_TRIAL_CONFIG"
 
 acquire_lock
 
@@ -95,7 +174,7 @@ PY
 
 echo "{\"action\":\"INFO\",\"reason\":\"trial_run_started\",\"run_id\":\"$TRIAL_RUN_ID\",\"meta_path\":\"$RUN_META_PATH\"}"
 
-XAU_AUTOBOT_CONFIG="$TRIAL_CONFIG" \
+XAU_AUTOBOT_CONFIG="$ABS_TRIAL_CONFIG" \
 XAU_AUTOBOT_LIVE="$TRIAL_LIVE" \
 XAU_AUTOBOT_POLL_SECONDS="$POLL_SECONDS" \
 XAU_AUTOBOT_TRIAL_RUN_ID="$TRIAL_RUN_ID" \

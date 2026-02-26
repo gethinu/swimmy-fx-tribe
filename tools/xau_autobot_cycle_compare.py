@@ -223,6 +223,67 @@ def append_history_jsonl(path: Path, output: Dict[str, object]) -> None:
         f.write("\n")
 
 
+def _as_float(value: object, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _load_notify_state(path: Path) -> Dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_notify_state(path: Path, state: Dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=True, indent=2)
+        f.write("\n")
+
+
+def should_notify_skip(
+    *,
+    output: Dict[str, object],
+    state: Dict[str, object],
+    now_utc: datetime,
+    cooldown_sec: int,
+) -> bool:
+    if str(output.get("action", "")).upper() != "SKIP":
+        return False
+    reason = str(output.get("reason", "")).strip().lower()
+    if reason != "market_closed":
+        return True
+    if cooldown_sec <= 0:
+        return True
+    now_unix = float(now_utc.timestamp())
+    last_notified = _as_float(state.get("market_closed_last_notified_unix"), 0.0)
+    if last_notified <= 0.0:
+        return True
+    return (now_unix - last_notified) >= float(cooldown_sec)
+
+
+def update_skip_notify_state(
+    *,
+    output: Dict[str, object],
+    state: Dict[str, object],
+    now_utc: datetime,
+) -> Dict[str, object]:
+    merged = dict(state)
+    if str(output.get("action", "")).upper() == "SKIP" and str(output.get("reason", "")).strip().lower() == "market_closed":
+        merged["market_closed_last_notified_unix"] = float(now_utc.timestamp())
+        merged["market_closed_last_notified_utc"] = now_utc.isoformat()
+    return merged
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run xau_autobot_cycle over multiple periods")
     parser.add_argument("--python-exe", default="./.venv/bin/python")
@@ -247,6 +308,11 @@ def main() -> None:
     parser.add_argument("--discord-webhook", default="")
     parser.add_argument("--discord-webhook-fallbacks", default="")
     parser.add_argument("--notify-strict", action="store_true")
+    parser.add_argument(
+        "--skip-notify-state-path",
+        default="data/reports/xau_autobot_cycle_compare_notify_state.json",
+    )
+    parser.add_argument("--skip-notify-cooldown-sec", type=int, default=86400)
     parser.add_argument("--market-hours-only", action="store_true")
     args = parser.parse_args()
 
@@ -335,7 +401,26 @@ def main() -> None:
     if args.discord_webhook_fallbacks:
         webhook_candidates.extend(args.discord_webhook_fallbacks.split(","))
     if output.get("action") == "SKIP" and webhook_candidates:
-        notify_result = dispatch_discord_notification(webhook_candidates, output, strict=args.notify_strict)
+        now_utc = datetime.now(timezone.utc)
+        notify_state_path = Path(args.skip_notify_state_path)
+        notify_state = _load_notify_state(notify_state_path)
+        should_notify = should_notify_skip(
+            output=output,
+            state=notify_state,
+            now_utc=now_utc,
+            cooldown_sec=int(args.skip_notify_cooldown_sec),
+        )
+        if should_notify:
+            notify_result = dispatch_discord_notification(webhook_candidates, output, strict=args.notify_strict)
+            if bool(notify_result.get("notified", False)):
+                notify_state = update_skip_notify_state(output=output, state=notify_state, now_utc=now_utc)
+                _write_notify_state(notify_state_path, notify_state)
+        else:
+            notify_result = {
+                "notified": False,
+                "reason": "skip_notify_cooldown",
+                "cooldown_sec": int(args.skip_notify_cooldown_sec),
+            }
         output = apply_notify_result(output, notify_result)
         with output_path.open("w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=True, indent=2)

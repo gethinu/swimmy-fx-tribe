@@ -55,7 +55,10 @@
           (remove-if 
            (lambda (strat)
              (let ((sharpe (or (strategy-sharpe strat) 0.0))
-                   (rank (strategy-rank strat)))
+                   (rank (strategy-rank strat))
+                   (pf (or (strategy-profit-factor strat) 0.0))
+                   (trades (or (strategy-trades strat) 0))
+                   (max-dd (or (strategy-max-dd strat) 1.0)))
                (if (newborn-protected-p strat)
                    nil
                    ;; 1. Check if Sharpe is below threshold
@@ -66,6 +69,15 @@
                       (format t "[PRUNE-BLOCK] 🛡️ Protected ~a Strategy: ~a (Sharpe=~,3f) - SAFE~%"
                               rank (strategy-name strat) sharpe)
                       nil) ;; Do NOT remove
+                     ;; Founder recovery survivors keep B-rank under relaxed Phase1 gate.
+                     ((and (eq rank :B)
+                           (fboundp 'founder-phase1-recovery-passed-p)
+                           (ignore-errors
+                             (founder-phase1-recovery-passed-p
+                              strat sharpe pf trades max-dd)))
+                      (format t "[PRUNE-BLOCK] 🛟 Founder recovery protected: ~a (Sharpe=~,3f PF=~,2f Trades=~d MaxDD=~,3f)~%"
+                              (strategy-name strat) sharpe pf trades max-dd)
+                      nil)
                      
                      ;; 3. NORMAL PRUNING
                      (t

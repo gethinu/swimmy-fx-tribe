@@ -70,26 +70,52 @@ Keyed by strategy name.")
         *graveyard-cache*
         (progn
           (setf *last-graveyard-load* now)
-          (setf *graveyard-cache*
-                (or (handler-case
-                        (progn
-                          (init-db)
-                          (let ((rows (execute-to-list
-                                       "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
-                            (remove-if #'null
-                                       (mapcar (lambda (row)
-                                                 (let ((sexp-str (first row)))
-                                                   (let ((entry (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
-                                                     (when entry
-                                                       (normalize-graveyard-entry entry)))))
-                                               rows))))
-                      (error () nil))
-                    (when (probe-file "data/memory/graveyard.sexp")
-                      (with-open-file (stream "data/memory/graveyard.sexp" :direction :input :if-does-not-exist nil)
-                        (let ((*package* (find-package :swimmy.school)))
-                          (remove-if #'null
-                                     (loop for data = (handler-case (read stream nil nil) (error () nil))
-                                           while data collect (normalize-graveyard-entry data))))))))))))
+          (flet ((load-from-structured-sql ()
+                   (let ((rows (execute-to-list
+                                "SELECT sl, tp, symbol
+                                   FROM strategies
+                                  WHERE rank = ':GRAVEYARD'
+                                    AND sl IS NOT NULL
+                                    AND tp IS NOT NULL")))
+                     (remove-if #'null
+                                (mapcar (lambda (row)
+                                          (let ((sl (first row))
+                                                (tp (second row))
+                                                (symbol (third row)))
+                                            (when (and (numberp sl) (numberp tp))
+                                              (normalize-graveyard-entry
+                                               (list :sl (float sl 0.0)
+                                                     :tp (float tp 0.0)
+                                                     :symbol (if (and (stringp symbol)
+                                                                      (> (length symbol) 0))
+                                                                 symbol
+                                                                 "USDJPY"))))))
+                                        rows))))
+                 (load-from-sexp-sql ()
+                   (let ((rows (execute-to-list
+                                "SELECT data_sexp FROM strategies WHERE rank = ':GRAVEYARD'")))
+                     (remove-if #'null
+                                (mapcar (lambda (row)
+                                          (let ((sexp-str (first row)))
+                                            (let ((entry (swimmy.core:safe-read-sexp sexp-str :package :swimmy.school)))
+                                              (when entry
+                                                (normalize-graveyard-entry entry)))))
+                                        rows))))
+                 (load-from-file ()
+                   (when (probe-file "data/memory/graveyard.sexp")
+                     (with-open-file (stream "data/memory/graveyard.sexp" :direction :input :if-does-not-exist nil)
+                       (let ((*package* (find-package :swimmy.school)))
+                         (remove-if #'null
+                                    (loop for data = (handler-case (read stream nil nil) (error () nil))
+                                          while data collect (normalize-graveyard-entry data))))))))
+            (setf *graveyard-cache*
+                  (or (handler-case
+                          (progn
+                            (init-db)
+                            (or (load-from-structured-sql)
+                                (load-from-sexp-sql)))
+                        (error () nil))
+                      (load-from-file))))))))
 
 (defun is-graveyard-pattern-p (strategy)
   "Check if strategy matches a known failure pattern."
@@ -389,6 +415,11 @@ V50.6: Correlation is scoped to the same (timeframe × direction × symbol)."
       (when defer-phase1-admission
         (setf (strategy-rank strategy) nil)
         (setf (gethash name *phase1-pending-candidates*) strategy)
+        ;; Persist pending candidate so Phase1 result fallback can recover after restart.
+        (handler-case
+            (upsert-strategy strategy)
+          (error (e)
+            (format t "[KB] ⚠️ Failed to persist Phase1 pending candidate ~a: ~a~%" name e)))
         (run-phase-1-screening strategy)
         (format t "[KB] ⏸️ Deferred admission until Phase1 result: ~a~%" name)
         (return-from add-to-kb (values t :queued-phase1)))

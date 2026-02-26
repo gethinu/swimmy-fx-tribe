@@ -604,6 +604,29 @@ Discord通知の非同期中継（Python）。
  (ensemble_default_vector_weight . 0.0)
  (ensemble_weight_file . "/home/swimmy/swimmy/data/patterns/models/ensemble_weight.json")
  (available_backends . ("clip-vit-b32" "vector-siamese-v1"))
+ (index_loader . ((status . "running")
+                  (started_at . 1709234500)
+                  (finished_at . 0)
+                  (loaded . 0)
+                  (error . "")))
+ (backend_loader . ((status . "running")
+                    (started_at . 1709234500)
+                    (finished_at . 0)
+                    (clip_ready . false)
+                    (vector_ready . true)
+                    (error . "")))
+ (query_metrics . ((count . 1234)
+                   (ok_count . 1200)
+                   (error_count . 34)
+                   (window_count . 200)
+                   (window_size . 200)
+                   (avg_ms . 842.4)
+                   (p50_ms . 503.1)
+                   (p95_ms . 2312.8)
+                   (max_ms . 9188.5)
+                   (last_ms . 411.7)
+                   (last_error . "")
+                   (updated_at . 1709234567)))
  (indices . (((symbol . "USDJPY")
               (timeframe . "H1")
               (count . 12345)
@@ -712,6 +735,20 @@ Discord通知の非同期中継（Python）。
 - `policy_mode=shadow` では `decision_action` は助言として返すのみで、実売買の強制停止は行わない。  
 - `enforce_no_trade=true` は「強制停止すべき」というサービス側判定を示すフラグであり、最終執行は呼び出し側の責務。  
 - backend重みは `SWIMMY_PATTERN_ENSEMBLE_WEIGHT_FILE`（既定 `data/patterns/models/ensemble_weight.json`）を優先し、`symbol_timeframe_weights` に `<SYMBOL>:<TF>` があればそれを使用、なければファイルの `vector_weight`、さらに欠落/不正時は `SWIMMY_PATTERN_ENSEMBLE_VECTOR_WEIGHT` にフォールバックする。`symbol_timeframe_weights` の値は `0.0..1.0` の数値（例: `"USDJPY:H1": 0.15`）を正本とする。  
+- Lisp client の REQ timeout は `SWIMMY_PATTERN_SIMILARITY_TIMEOUT_MS`（ms）で制御する。既定は `30000`、`<1000` の設定は `1000` に切り上げて fail-open の連続 `EAGAIN` を抑制する。  
+- Lisp client は `QUERY` の timeout/error 時に REQ socket を再接続し、同一要求を **1回のみ** 再送する。2回目も失敗した場合は `GATEWAY_UNREACHABLE` として fail-open する。  
+- service は `STATUS.query_metrics` で `QUERY` 処理時間の rolling 指標（`avg/p50/p95/max`）を返す。window サイズは `SWIMMY_PATTERN_QUERY_METRICS_WINDOW`（既定 `200`）で制御する。  
+- service は起動時に **先に REP socket を bind** し、`data/patterns` の初期 index load はバックグラウンドで実行する。初期ロード中は `STATUS.index_loader.status="running"` を返し、`QUERY` が `No index for symbol/timeframe` を返しうる。  
+- service は起動時に embedding backend（clip/vector）をバックグラウンドで warmup し、状態を `STATUS.backend_loader`（`status/started_at/finished_at/clip_ready/vector_ready/error`）で返す。  
+- `QUERY` は cold-start 時に重い backend 初期化を同期実行しない。重み付き優先 backend が未利用（load中/失敗）でも、利用可能な backend があれば等重みで fail-soft に確率を返す。  
+
+### 9.1 School Evolution Loop Cadence (Env)
+- `SWIMMY_RANK_EVAL_INTERVAL_SEC`（既定: `60`）  
+  - `phase-4-purge` の `run-rank-evaluation` 実行間隔を制御する。
+  - 初回実行は即時、以降は interval 未満のループで rank 評価をスキップする。  
+- `SWIMMY_BREEDING_CYCLE_INTERVAL_SEC`（既定: `60`）  
+  - `phase-6-breeding`（`run-breeding-cycle` / `run-legend-breeding`）の実行間隔を制御する。
+  - 初回実行は即時、以降は interval 未満のループで breeding phase をスキップする。  
 
 ### 10. Inference Worker Service (Port 5565)
 LLM推論を行う補助サービス（Python）。  
@@ -847,6 +884,106 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 - `SWIMMY_SYSTEMD_DEST_DIR=<path>`（scope別デフォルトを上書き）
 - `SWIMMY_SYSTEMD_DRY_RUN=1`（検証のみ、配置/enable を行わない）
 - `SWIMMY_SYSTEMD_DIR=<path>`（unit ソースディレクトリを上書き）
+
+## Armada探索CLIインターフェース
+
+### `tools/ops/armada_player_replica.py`
+- **選抜再ランク引数**:
+  - `--oos-rerank-pool <int>`（既定: `0`）
+- **動作契約**:
+  - `--no-oos` 指定時は OOS再ランクを無効化する。
+  - `oos-rerank-pool <= top-per-player` の場合は従来どおり BT `selection_score` 上位 `top-per-player` を最終候補とする。
+  - `oos-rerank-pool > top-per-player` の場合は、BT `selection_score` 上位 N 件（N=`oos-rerank-pool`）へ OOS を先行評価し、`oos_ok` 優先キーで再ランクして最終候補を確定する。
+  - OOS再ランクのキー順序は `oos_ok` → `oos_pf` → `oos_sharpe` → `oos_trades` → `selection_score` → `replica_score`（降順）。
+  - `--cpcv-folds` が有効な場合でも、CPCV は pool 全件ではなく最終選抜後の `top-per-player` にのみ適用する。
+
+## XAU Trial CLIインターフェース
+
+### `tools/xau_autobot.py`（entry gate）
+- **設定キー**:
+  - `min_ema_gap_over_atr`（既定: `0.9`）
+  - `max_ema_gap_over_atr`（既定: `2.5`）
+- **判定契約**:
+  - `ema_gap_over_atr = abs(ema_fast - ema_slow) / atr` を算出し、`atr<=0` または `ema_gap_over_atr` が上記レンジ外なら `HOLD` を返す（新規発注しない）。
+- **実行payload（追加）**:
+  - `timestamp_utc`（ISO8601, UTC）
+  - `runtime_metrics.gate_check_count`（gapゲート判定を実行した累積回数）
+  - `runtime_metrics.gate_reject_gap_count`（`reason=ema_gap_out_of_range` の累積回数）
+  - `runtime_metrics.gap_reject_rate`（`gate_reject_gap_count / gate_check_count`）
+  - `runtime_metrics.signal_counts`（`BUY/SELL/HOLD` の累積件数）
+- **runtime journal**:
+  - `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`（既定: `data/reports/xau_autobot_runtime_journal_latest.jsonl`）
+  - 既定値および相対パスは repo-root 基準で絶対解決する（実行cwd依存にしない）。
+  - 各サイクルpayloadをJSONLで追記する（監査用途）。
+
+### `tools/xau_autobot_optimize.py`
+- **出力整合契約（interval/timeframe）**:
+  - `--write-config` で書き出す JSON の `timeframe` は `--interval` から自動正規化する。
+  - 対応:
+    - `1m -> M1`
+    - `5m -> M5`
+    - `15m -> M15`
+    - `30m -> M30`
+    - `60m/1h -> H1`
+    - `240m/4h -> H4`
+  - 非対応interval（例: `2h`）は fail-closed で `ValueError` を返し、最適化条件とライブ実行足の不一致を防止する。
+
+### `tools/xau_autobot_trial_judge.py`
+- **閾値引数の既定**:
+  - `--min-days` 既定 `14`
+  - `--min-closed-positions` 既定 `12`
+  - `--min-profit-factor` 既定 `1.10`
+  - `--min-win-rate` 既定 `0.42`
+  - `--min-net-profit` 既定 `0`
+- **出力JSON（追加）**:
+  - `readiness`: `window_days` と `closed_positions` の判定結果
+  - `performance`: `profit_factor` / `win_rate` / `net_profit` の判定結果
+  - `checks`: 互換維持のため `readiness + performance` のフラット判定を保持
+  - `failed_checks`: 互換維持のためフラットキーで出力
+- **判定契約**:
+  - `trial_valid=false` のとき `verdict=INVALID_TRIAL`
+  - `trial_valid=true` かつ readiness/performance で未達があるとき `verdict=NO_GO`
+  - 全判定達成時のみ `verdict=GO`
+
+### `tools/xau_autobot_trial_v2_eval.sh`
+- **Env既定値**:
+  - `XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS` 未指定時は `12` を `xau_autobot_trial_judge.py` へ渡す。
+  - `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH` 未指定時は `$ROOT/data/reports/xau_autobot_runtime_journal_latest.jsonl` を live-report 収集へ引き渡す。
+- **上書き契約**:
+  - 厳格運用時は `XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS=14`（または任意値）で上書き可能。
+
+### `tools/xau_autobot_live_report.py`
+- **入力引数（追加）**:
+  - `--runtime-journal-path`（任意。未指定時は `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`、さらに未指定なら repo-root 基準 `data/reports/xau_autobot_runtime_journal_latest.jsonl`）
+- **summary（追加）**:
+  - `closed_per_day`（`closed_positions / window_days`）
+  - `close_reason_counts`（`tp/sl/other`）
+  - `tp_sl_ratio`（`tp/sl`、`sl=0` かつ `tp>0` のとき `99.0`）
+- **top-level出力（追加）**:
+  - `runtime_metrics`（latest runtime snapshot。`gate_check_count/gate_reject_gap_count/gap_reject_rate/signal_counts`）
+  - `runtime_metrics_source`（採用した journal パス）
+- **算出契約**:
+  - `net_profit` は closed positions のみを正本とし、`open_snapshot.open_floating_profit` を混在させない。
+
+### `tools/xau_autobot_operational_audit.py`
+- **入力引数**:
+  - `--days`（既定 `3`）
+  - `--runtime-log-glob`（既定: `data/reports/xau_autobot_runtime_journal*.jsonl`）
+  - `--live-report-glob`（既定: `data/reports/xau_autobot_live_report_trial_v2_*.json`）
+  - `--write-report`（既定: `data/reports/xau_autobot_operational_audit.json`）
+  - `--run-id-filter`（任意、ファイル名/record中のrun識別文字列でフィルタ）
+- **出力JSON（要約）**:
+  - `status`: `PASS|WARN|FAIL|INSUFFICIENT_DATA`
+  - `window`: `start_utc/end_utc/days`
+  - `metrics.gap_reject_rate`
+  - `metrics.tp_sl_ratio`
+  - `metrics.closed_per_day`
+  - `metrics.expectancy`
+  - `checks`（各閾値判定）
+  - `recommendations`（`A/B/C` パターン対応）
+- **fallback契約（追加）**:
+  - runtime journal の snapshot が 0 件のとき、`xau_autobot_live_report_trial_v2_*.json` の top-level `runtime_metrics` を fallback 集計に利用する。
+  - fallback 利用時は `runtime_metrics.source=live_report.runtime_metrics` を出力し、観測元を明示する。
 
 ## 運用監査CLIインターフェース
 `tools/system_audit.sh` が実行するローカル監査コマンドのうち、live trade-close 整合に関する契約を以下に定義する。

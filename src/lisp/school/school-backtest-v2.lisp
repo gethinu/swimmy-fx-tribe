@@ -103,8 +103,7 @@
   (and *phase1-founder-recovery-enabled*
        strat
        (stringp (strategy-name strat))
-       (search "HUNTED-" (string-upcase (strategy-name strat)))
-       (<= (or (strategy-generation strat) 0) 0)))
+       (search "HUNTED-" (string-upcase (strategy-name strat)))))
 
 (defun founder-phase1-recovery-passed-p (strat sharpe pf trades max-dd)
   "Return T when Founder recovery gate passes for STRAT metrics."
@@ -137,11 +136,17 @@
     ;; Phase 1 Result
     ((search "_P1" strat-name)
      (let* ((base-name (subseq strat-name 0 (search "_P1" strat-name)))
-            (strat (or (find-strategy base-name)
-                       (when (fboundp 'take-phase1-pending-candidate)
-                         (take-phase1-pending-candidate base-name))
-                       (when (fboundp '%load-strategy-from-db-for-phase1)
-                         (%load-strategy-from-db-for-phase1 base-name))))
+            ;; Resolve pending candidate first so same-name archived KB entries do not
+            ;; shadow the latest Phase1 candidate.
+            (pending-strat (when (fboundp 'take-phase1-pending-candidate)
+                             (take-phase1-pending-candidate base-name)))
+            (kb-strat (and (null pending-strat)
+                           (find-strategy base-name)))
+            (db-strat (and (null pending-strat)
+                           (null kb-strat)
+                           (when (fboundp '%load-strategy-from-db-for-phase1)
+                             (%load-strategy-from-db-for-phase1 base-name))))
+            (strat (or pending-strat kb-strat db-strat))
             ;; Normalize nil metrics to 0.0 to avoid type errors in comparisons/float coercions.
             (sharpe (float (or (getf result :sharpe) 0.0) 0.0))
             (pf (float (or (getf result :profit-factor) 0.0) 0.0))
@@ -166,24 +171,44 @@
              (when (slot-exists-p strat 'status-reason)
                (setf (strategy-status-reason strat) "Phase1 Screening Result"))
              (upsert-strategy strat)
-
-             (multiple-value-bind (passed founder-recovery-pass)
-                 (phase1-screening-passed-p strat sharpe pf trades max-dd)
-               (if passed
-                   (progn
-                     (when founder-recovery-pass
-                       (format t "[BT-V2] 🛟 Founder recovery gate used: S>=~,2f PF>=~,2f Trades>=~d MaxDD<=~,2f~%"
-                               (float *phase1-founder-min-sharpe* 1.0)
-                               (float *phase1-founder-min-pf* 1.0)
-                               (max 0 (truncate *phase1-founder-min-trades*))
-                               (float *phase1-founder-max-dd* 1.0)))
-                     (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B.~%")
-                     (ensure-rank strat :B "Phase1 Screening Passed (V2)")
-                     (when (fboundp 'add-strategy-to-active-pools)
-                       (add-strategy-to-active-pools strat)))
-                   (progn
-                     (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
-                     (send-to-graveyard strat "Phase1 Screening Failed (V2)"))))))))))
+              (let* ((rank-raw (strategy-rank strat))
+                     (rank-token
+                       (let* ((raw (cond
+                                     ((null rank-raw) "")
+                                     ((symbolp rank-raw) (symbol-name rank-raw))
+                                     (t (format nil "~a" rank-raw))))
+                              (up (string-upcase
+                                   (string-trim '(#\Space #\Tab #\Newline #\Return) raw))))
+                         (if (and (> (length up) 0) (char= (char up 0) #\:))
+                             (subseq up 1)
+                             up)))
+                     (legend-revalidation-p
+                       (member rank-token '("LEGEND" "LEGEND-ARCHIVE") :test #'string=)))
+                (if legend-revalidation-p
+                    (progn
+                      ;; Legend revalidation updates metrics only; rank stays immutable.
+                      (format t "[BT-V2] 👑 Legend revalidation update. Keeping rank ~a for ~a.~%"
+                              rank-token (strategy-name strat))
+                      (ensure-rank strat (strategy-rank strat) "Legend Phase1 revalidation")
+                      (when (fboundp 'add-strategy-to-active-pools)
+                        (add-strategy-to-active-pools strat)))
+                    (multiple-value-bind (passed founder-recovery-pass)
+                        (phase1-screening-passed-p strat sharpe pf trades max-dd)
+                      (if passed
+                          (progn
+                            (when founder-recovery-pass
+                              (format t "[BT-V2] 🛟 Founder recovery gate used: S>=~,2f PF>=~,2f Trades>=~d MaxDD<=~,2f~%"
+                                      (float *phase1-founder-min-sharpe* 1.0)
+                                      (float *phase1-founder-min-pf* 1.0)
+                                      (max 0 (truncate *phase1-founder-min-trades*))
+                                      (float *phase1-founder-max-dd* 1.0)))
+                            (format t "[BT-V2] ✅ PASSED Phase 1. Promoting to Rank B.~%")
+                            (ensure-rank strat :B "Phase1 Screening Passed (V2)")
+                            (when (fboundp 'add-strategy-to-active-pools)
+                              (add-strategy-to-active-pools strat)))
+                          (progn
+                            (format t "[BT-V2] ❌ FAILED Phase 1. To Graveyard.~%")
+                            (send-to-graveyard strat "Phase1 Screening Failed (V2)"))))))))))))
 
 (defun %load-strategy-from-db-for-phase1 (name)
   "Best-effort fallback: load strategy object from strategies.data_sexp by NAME.

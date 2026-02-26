@@ -861,10 +861,29 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                          (format t "[DISPATCH] ⚠️ recruit-special-forces unavailable~%"))
                      (when (and flush-phase1
                                 (fboundp 'swimmy.school::flush-deferred-founders))
-                       (let ((sent (if flush-limit
-                                       (swimmy.school::flush-deferred-founders :limit flush-limit)
-                                       (swimmy.school::flush-deferred-founders))))
-                         (format t "[DISPATCH] 🌱 Deferred Phase1 flush sent=~a~%" sent)))))
+                       (let ((swimmy.school::*deferred-flush-archive-bypass-enabled*
+                               (if bypass-graveyard t nil)))
+                         (declare (special swimmy.school::*deferred-flush-archive-bypass-enabled*))
+                         (let ((sent (if flush-limit
+                                         (swimmy.school::flush-deferred-founders :limit flush-limit)
+                                         (swimmy.school::flush-deferred-founders))))
+                           (format t "[DISPATCH] 🌱 Deferred Phase1 flush sent=~a~%" sent))))
+                     ;; Founder dispatch can queue BACKTEST sends under short rate-limit bursts.
+                     ;; Force one immediate flush so multi-symbol founders are not stranded.
+                     (when (fboundp 'swimmy.school::flush-backtest-send-queue)
+                       (let* ((queue-count-sym (find-symbol "*BACKTEST-SEND-QUEUE-COUNT*" :swimmy.school))
+                              (queue-count (lambda ()
+                                             (if (and queue-count-sym
+                                                      (boundp queue-count-sym)
+                                                      (numberp (symbol-value queue-count-sym)))
+                                                 (symbol-value queue-count-sym)
+                                                 0)))
+                              (before (funcall queue-count)))
+                         (swimmy.school::flush-backtest-send-queue)
+                         (let ((after (funcall queue-count)))
+                           (when (/= before after)
+                             (format t "[DISPATCH] 🚚 Backtest send queue flush: ~d -> ~d~%"
+                                     before after)))))))
                   ((string= type-str swimmy.core:+MSG-ACCOUNT-INFO+)
                    (swimmy.executor:process-account-info sexp))
                   ((string= type-str swimmy.core:+MSG-SWAP-DATA+)

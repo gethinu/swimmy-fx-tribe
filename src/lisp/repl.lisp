@@ -99,11 +99,15 @@
   (format t "~%═══════════════════════════════════════~%")
   (format t "🗣️ TRIBAL DIALECT - Patterns~%")
   (format t "═══════════════════════════════════════~%")
-  (when (and (boundp 'swimmy.core::*tribal-dialect*) swimmy.core::*tribal-dialect*)
-    (maphash (lambda (name info)
-               (format t "~a: ~a~%"
-                       name (getf info :description)))
-             swimmy.core::*tribal-dialect*))
+  (let* ((dialect-sym 'swimmy.core::*tribal-dialect*)
+         (dialect (and (boundp dialect-sym)
+                       (symbol-value dialect-sym))))
+    (if (hash-table-p dialect)
+        (maphash (lambda (name info)
+                   (format t "~a: ~a~%"
+                           name (getf info :description)))
+                 dialect)
+        (format t "(no active patterns)~%")))
   (format t "═══════════════════════════════════════~%~%"))
 
 ;;; ─────────────────────────────────────────

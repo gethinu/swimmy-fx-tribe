@@ -66,6 +66,11 @@ class TestXauAutoBotTrialJudge(unittest.TestCase):
         self.assertEqual(result["verdict"], "GO")
         self.assertEqual(result["trial_valid"], True)
         self.assertEqual(result["failed_checks"], [])
+        self.assertTrue(result["readiness"]["checks"]["window_days"])
+        self.assertTrue(result["readiness"]["checks"]["closed_positions"])
+        self.assertTrue(result["performance"]["checks"]["profit_factor"])
+        self.assertTrue(result["performance"]["checks"]["win_rate"])
+        self.assertTrue(result["performance"]["checks"]["net_profit"])
 
     def test_evaluate_trial_report_no_go_when_metrics_fail(self):
         report = {
@@ -92,6 +97,11 @@ class TestXauAutoBotTrialJudge(unittest.TestCase):
         self.assertIn("profit_factor", result["failed_checks"])
         self.assertIn("win_rate", result["failed_checks"])
         self.assertIn("net_profit", result["failed_checks"])
+        self.assertIn("window_days", result["readiness"]["failed_checks"])
+        self.assertIn("closed_positions", result["readiness"]["failed_checks"])
+        self.assertIn("profit_factor", result["performance"]["failed_checks"])
+        self.assertIn("win_rate", result["performance"]["failed_checks"])
+        self.assertIn("net_profit", result["performance"]["failed_checks"])
 
     def test_evaluate_trial_report_invalid_when_magic_or_comment_unmatched(self):
         report = {
@@ -120,6 +130,32 @@ class TestXauAutoBotTrialJudge(unittest.TestCase):
         self.assertEqual(result["trial_valid"], False)
         self.assertIn("after_magic_filter", result["invalid_reasons"])
         self.assertIn("after_comment_prefix_filter", result["invalid_reasons"])
+
+    def test_evaluate_trial_report_treats_zero_net_profit_as_pass(self):
+        report = {
+            "start_utc": "2026-02-01T00:00:00+00:00",
+            "end_utc": "2026-02-16T00:00:00+00:00",
+            "summary": {
+                "closed_positions": 40.0,
+                "profit_factor": 1.2,
+                "win_rate": 0.45,
+                "net_profit": 0.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 12.0,
+                "after_comment_prefix_filter": 8.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=14.0,
+            min_closed_positions=12.0,
+            min_profit_factor=1.1,
+            min_win_rate=0.42,
+            min_net_profit=0.0,
+        )
+        self.assertEqual(result["verdict"], "GO")
+        self.assertTrue(result["performance"]["checks"]["net_profit"])
 
 
 if __name__ == "__main__":

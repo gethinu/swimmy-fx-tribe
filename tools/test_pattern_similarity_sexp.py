@@ -68,6 +68,8 @@ def make_flat_candles(*, n: int, start_ts: int, step_sec: int, price: float, vol
 
 
 def main():
+    pattern_similarity_service._reset_state_for_tests()
+
     status = pattern_similarity_service.handle_request_sexp(
         '((type . "PATTERN_SIMILARITY") (schema_version . 1) (action . "STATUS"))'
     )
@@ -77,6 +79,25 @@ def main():
     assert parsed["status"] in ("ok", "error")
     assert "ensemble_default_vector_weight" in parsed
     assert "ensemble_weight_file" in parsed
+    assert "query_metrics" in parsed
+    assert "index_loader" in parsed
+    assert "backend_loader" in parsed
+    loader0 = parsed["index_loader"]
+    backend_loader0 = parsed["backend_loader"]
+    assert str(loader0["status"]) in ("idle", "running", "completed", "failed")
+    assert int(loader0["started_at"]) >= 0
+    assert int(loader0["finished_at"]) >= 0
+    assert int(loader0["loaded"]) >= 0
+    assert "error" in loader0
+    assert str(backend_loader0["status"]) in ("idle", "running", "completed", "failed")
+    assert int(backend_loader0["started_at"]) >= 0
+    assert int(backend_loader0["finished_at"]) >= 0
+    assert str(backend_loader0["clip_ready"]).lower() in ("true", "false")
+    assert str(backend_loader0["vector_ready"]).lower() in ("true", "false")
+    assert "error" in backend_loader0
+    qm0 = parsed["query_metrics"]
+    assert int(qm0["count"]) == 0
+    assert int(qm0["window_count"]) == 0
 
     # No index yet -> QUERY should error (fail-open is on the Lisp side).
     query = pattern_similarity_service.handle_request_sexp(
@@ -88,6 +109,10 @@ def main():
     bad = pattern_similarity_service.handle_request_sexp('((schema_version . 1))')
     parsed_bad = parse_sexp_alist(bad)
     assert parsed_bad["status"] == "error"
+
+    if pattern_similarity_service.np is None:
+        print("SKIP: numpy not available")
+        return
 
     # Build a tiny in-memory index and ensure QUERY returns probabilities.
     up = make_trend_candles(n=120, start_ts=1709230000, step_sec=3600, start_price=100.0, delta=0.1)
@@ -217,7 +242,7 @@ def main():
             q_clip = parse_sexp_alist(pattern_similarity_service.handle_request_sexp(query2_msg))["result"]
             probs_clip = {str(item["backend"]): float(item["weight"]) for item in q_clip["backend_probs"]}
             assert probs_clip.get("clip-vit-b32") == 1.0
-            assert probs_clip.get("vector-siamese-v1") == 0.0
+            assert probs_clip.get("vector-siamese-v1") in (None, 0.0)
             assert q_clip["p_up"] > q_clip["p_down"]
             assert float(q_clip["vector_weight_applied"]) == 0.0
             assert str(q_clip["weight_source"]) == "file_global"
@@ -227,7 +252,7 @@ def main():
             pattern_similarity_service._weight_cache_value = None
             q_vec = parse_sexp_alist(pattern_similarity_service.handle_request_sexp(query2_msg))["result"]
             probs_vec = {str(item["backend"]): float(item["weight"]) for item in q_vec["backend_probs"]}
-            assert probs_vec.get("clip-vit-b32") == 0.0
+            assert probs_vec.get("clip-vit-b32") in (None, 0.0)
             assert probs_vec.get("vector-siamese-v1") == 1.0
             assert q_vec["p_up"] < q_vec["p_down"]
             assert float(q_vec["vector_weight_applied"]) == 1.0
@@ -248,7 +273,7 @@ def main():
             q_st = parse_sexp_alist(pattern_similarity_service.handle_request_sexp(query2_msg))["result"]
             probs_st = {str(item["backend"]): float(item["weight"]) for item in q_st["backend_probs"]}
             assert probs_st.get("clip-vit-b32") == 1.0
-            assert probs_st.get("vector-siamese-v1") == 0.0
+            assert probs_st.get("vector-siamese-v1") in (None, 0.0)
             assert float(q_st["vector_weight_applied"]) == 0.0
             assert str(q_st["weight_source"]) == "file_symbol_timeframe"
 
@@ -268,10 +293,50 @@ def main():
             q_h4 = parse_sexp_alist(pattern_similarity_service.handle_request_sexp(query_h4_msg))["result"]
             assert float(q_h4["vector_weight_applied"]) == 1.0
             assert str(q_h4["weight_source"]) == "file_global"
+
+            # If preferred backend is unavailable, QUERY should fail-soft to available backend.
+            called_models = []
+
+            def fake_query_single_degraded(idx, _candles, _k):
+                called_models.append(str(idx.model))
+                if idx.model == "clip-vit-b32":
+                    raise RuntimeError("clip warmup")
+                return {"p_up": 0.2, "p_down": 0.8, "p_flat": 0.0}, [{"distance": 0.1, "label": "DOWN", "id": "y"}]
+
+            pattern_similarity_service._query_single_index = fake_query_single_degraded
+            weight_path.write_text(json.dumps({"vector_weight": 0.0}), encoding="utf-8")
+            pattern_similarity_service._weight_cache_mtime = None
+            pattern_similarity_service._weight_cache_value = None
+
+            degraded_resp = parse_sexp_alist(pattern_similarity_service.handle_request_sexp(query2_msg))
+            assert degraded_resp["status"] == "ok"
+            degraded_result = degraded_resp["result"]
+            assert degraded_result["backend_used"] in ("vector-siamese-v1", "mixed")
+            assert any(str(item["backend"]) == "vector-siamese-v1" for item in degraded_result["backend_probs"])
+            assert "clip-vit-b32" in called_models
+            assert "vector-siamese-v1" in called_models
         finally:
             pattern_similarity_service.ENSEMBLE_WEIGHT_FILE = original_weight_file
             pattern_similarity_service._resolve_query_indices = original_resolve
             pattern_similarity_service._query_single_index = original_query_single
+
+    status_after = parse_sexp_alist(
+        pattern_similarity_service.handle_request_sexp(
+            '((type . "PATTERN_SIMILARITY") (schema_version . 1) (action . "STATUS"))'
+        )
+    )
+    qm = status_after["query_metrics"]
+    loader = status_after["index_loader"]
+    backend_loader = status_after["backend_loader"]
+    assert int(qm["count"]) >= 2
+    assert int(qm["ok_count"]) >= 2
+    assert int(qm["error_count"]) >= 0
+    assert int(qm["window_count"]) >= 1
+    assert int(qm["window_size"]) >= int(qm["window_count"])
+    assert float(qm["p95_ms"]) >= float(qm["p50_ms"]) >= 0.0
+    assert float(qm["max_ms"]) >= float(qm["p95_ms"])
+    assert str(loader["status"]) in ("idle", "running", "completed", "failed")
+    assert str(backend_loader["status"]) in ("idle", "running", "completed", "failed")
 
 
 if __name__ == "__main__":

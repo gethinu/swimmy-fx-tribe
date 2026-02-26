@@ -460,6 +460,46 @@ def compute_selection_score(
     return score
 
 
+def compute_oos_rerank_key(
+    profile: PlayerProfile,
+    bt_metrics: dict,
+    oos_metrics: Optional[dict],
+    *,
+    selection_score: float,
+    replica_score: float,
+    oos_min_trades_abs: int = 15,
+    oos_trade_ratio_floor: float = 0.2,
+) -> tuple:
+    verdict = _strength_verdict(
+        profile,
+        bt_metrics,
+        oos_metrics,
+        None,
+        require_cpcv_for_core=False,
+        oos_min_trades_abs=oos_min_trades_abs,
+        oos_trade_ratio_floor=oos_trade_ratio_floor,
+    )
+    oos_ok = 1 if verdict.get("oos_ok") is True else 0
+    if not oos_metrics:
+        return (
+            oos_ok,
+            0.0,
+            0.0,
+            0,
+            _safe_float(selection_score, 0.0),
+            _safe_float(replica_score, 0.0),
+        )
+
+    return (
+        oos_ok,
+        _safe_float(oos_metrics.get("profit_factor"), 0.0),
+        _safe_float(oos_metrics.get("sharpe"), 0.0),
+        _safe_int(oos_metrics.get("trades"), 0),
+        _safe_float(selection_score, 0.0),
+        _safe_float(replica_score, 0.0),
+    )
+
+
 def compute_cpcv_summary(
     fold_metrics: Iterable[dict],
     *,
@@ -845,6 +885,7 @@ def run_replica_search(args: argparse.Namespace) -> int:
             "core_bt_dd_cap": args.core_bt_dd_cap,
             "core_bt_trade_ratio_floor": args.core_bt_trade_ratio_floor,
             "core_strength_penalty": args.core_strength_penalty,
+            "oos_rerank_pool": args.oos_rerank_pool,
         },
         "hold_timeframe_filter": {
             "enabled": not bool(args.disable_hold_tf_filter),
@@ -857,6 +898,7 @@ def run_replica_search(args: argparse.Namespace) -> int:
     service = BacktestService(use_zmq=False)
     try:
         for profile in profiles:
+            top_n = max(1, args.top_per_player)
             pool = build_candidate_pool(
                 profile,
                 candidates_per_player=args.candidates_per_player,
@@ -908,10 +950,44 @@ def run_replica_search(args: argparse.Namespace) -> int:
                 ),
                 reverse=True,
             )
+
+            selection_source = ranked
+            oos_rerank_applied = False
+            oos_rerank_pool_evaluated = 0
+            oos_rerank_pool = min(len(ranked), max(0, int(args.oos_rerank_pool)))
+            if oos_file and oos_rerank_pool > top_n:
+                rerank_candidates = list(ranked[:oos_rerank_pool])
+                for pick_idx, item in enumerate(rerank_candidates):
+                    oos_metrics = _evaluate_candidate(
+                        service,
+                        profile=profile,
+                        candidate=CandidateSpec(**item["candidate"]),
+                        candles_file=oos_file,
+                        symbol=args.symbol,
+                        seed=args.seed + 997,
+                        index=pick_idx,
+                    )
+                    if oos_metrics and oos_metrics.get("error"):
+                        oos_metrics = None
+                    item["oos_metrics"] = oos_metrics
+                    item["_oos_rerank_key"] = compute_oos_rerank_key(
+                        profile,
+                        item["bt_metrics"],
+                        oos_metrics,
+                        selection_score=item.get("selection_score", item["replica_score"]),
+                        replica_score=item["replica_score"],
+                        oos_min_trades_abs=args.oos_min_trades_abs,
+                        oos_trade_ratio_floor=args.oos_trade_ratio_floor,
+                    )
+                rerank_candidates.sort(key=lambda item: item.get("_oos_rerank_key", tuple()), reverse=True)
+                selection_source = rerank_candidates
+                oos_rerank_applied = True
+                oos_rerank_pool_evaluated = len(rerank_candidates)
+
             selected: list[dict] = []
-            for pick_idx, item in enumerate(ranked[: max(1, args.top_per_player)]):
-                oos_metrics = None
-                if oos_file:
+            for pick_idx, item in enumerate(selection_source[:top_n]):
+                oos_metrics = item.get("oos_metrics")
+                if oos_file and oos_metrics is None:
                     oos_metrics = _evaluate_candidate(
                         service,
                         profile=profile,
@@ -960,6 +1036,8 @@ def run_replica_search(args: argparse.Namespace) -> int:
                 {
                     "profile": asdict(profile),
                     "evaluated_candidates": len(ranked),
+                    "oos_rerank_applied": oos_rerank_applied,
+                    "oos_rerank_pool_evaluated": oos_rerank_pool_evaluated,
                     "selected": selected,
                 }
             )
@@ -1015,6 +1093,12 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
         help="candidate count evaluated per player",
     )
     parser.add_argument("--top-per-player", type=int, default=1, help="top candidates to keep per player")
+    parser.add_argument(
+        "--oos-rerank-pool",
+        type=int,
+        default=0,
+        help="if > top-per-player, evaluate OOS on the top-N BT candidates and rerank by OOS-first key",
+    )
     parser.add_argument("--seed", type=int, default=20260220, help="deterministic seed")
     parser.add_argument(
         "--indicators",

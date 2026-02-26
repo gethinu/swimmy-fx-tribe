@@ -437,13 +437,21 @@
                             (let ((sharpe (float (getf cached :sharpe 0.0)))
                                   (pf (float (getf cached :profit-factor 0.0)))
                                   (wr (float (getf cached :win-rate 0.0)))
-                                  (trades (getf cached :trades 0)))
+                                  (trades (getf cached :trades 0))
+                                  (max-dd (float (getf cached :max-dd 0.0))))
                               (setf (strategy-sharpe strat) sharpe
                                     (strategy-profit-factor strat) pf
                                     (strategy-win-rate strat) wr
                                     (strategy-trades strat) trades)
-                              (when (< sharpe 0.1)
-                                (prune-to-graveyard strat "Cached Sharpe < 0.1")))))
+                              (let ((founder-recovery-pass
+                                      (and (fboundp 'founder-phase1-recovery-passed-p)
+                                           (ignore-errors
+                                             (founder-phase1-recovery-passed-p
+                                              strat sharpe pf trades max-dd)))))
+                                ;; Founder recovery survivors use a softer floor than generic RR prune.
+                                (when (and (< sharpe 0.1)
+                                           (not founder-recovery-pass))
+                                  (prune-to-graveyard strat "Cached Sharpe < 0.1"))))))
                         (let ((dispatch-state (request-backtest strat :candles snapshot :symbol sym :suffix "-RR")))
                           (if (backtest-dispatch-accepted-p dispatch-state)
                               (progn

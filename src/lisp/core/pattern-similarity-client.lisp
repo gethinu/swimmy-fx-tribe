@@ -13,8 +13,16 @@
 (defparameter *pattern-similarity-context* nil
   "ZMQ context for Pattern Similarity connection.")
 
-(defparameter *pattern-similarity-timeout-ms* 1000
-  "Timeout in milliseconds for Pattern Similarity queries.")
+(defparameter *pattern-similarity-timeout-ms*
+  (env-int-or "SWIMMY_PATTERN_SIMILARITY_TIMEOUT_MS" 30000)
+  "Configured timeout in milliseconds for Pattern Similarity queries.")
+
+(defun pattern-similarity-timeout-ms ()
+  "Return a safe timeout value (>=1000ms)."
+  (let ((timeout *pattern-similarity-timeout-ms*))
+    (if (and (integerp timeout) (> timeout 0))
+        (max 1000 timeout)
+        1000)))
 
 (defparameter *pattern-window-bars*
   '(("M5" . 120)
@@ -35,21 +43,26 @@
 
 (defun ensure-pattern-similarity-connection ()
   "Ensure ZMQ connection to Pattern Similarity Service is active."
-  (unless *pattern-similarity-context*
-    (setf *pattern-similarity-context* (pzmq:ctx-new)))
-  (unless *pattern-similarity-socket*
-    (setf *pattern-similarity-socket* (pzmq:socket *pattern-similarity-context* :req))
-    (pzmq:connect *pattern-similarity-socket* *pattern-similarity-endpoint*)
-    (pzmq:setsockopt *pattern-similarity-socket* :rcvtimeo *pattern-similarity-timeout-ms*)
-    (pzmq:setsockopt *pattern-similarity-socket* :sndtimeo *pattern-similarity-timeout-ms*)
-    (format t "[PATTERN-CLIENT] Connected to Pattern Similarity at ~a~%"
-            *pattern-similarity-endpoint*)))
+  (let ((timeout-ms (pattern-similarity-timeout-ms)))
+    (unless *pattern-similarity-context*
+      (setf *pattern-similarity-context* (pzmq:ctx-new)))
+    (unless *pattern-similarity-socket*
+      (setf *pattern-similarity-socket* (pzmq:socket *pattern-similarity-context* :req))
+      (pzmq:connect *pattern-similarity-socket* *pattern-similarity-endpoint*)
+      (pzmq:setsockopt *pattern-similarity-socket* :rcvtimeo timeout-ms)
+      (pzmq:setsockopt *pattern-similarity-socket* :sndtimeo timeout-ms)
+      (format t "[PATTERN-CLIENT] Connected to Pattern Similarity at ~a~%"
+              *pattern-similarity-endpoint*))))
+
+(defun %reset-pattern-similarity-socket ()
+  "Close and clear REQ socket only."
+  (when *pattern-similarity-socket*
+    (ignore-errors (pzmq:close *pattern-similarity-socket*)))
+  (setf *pattern-similarity-socket* nil))
 
 (defun close-pattern-similarity-client ()
   "Close Pattern Similarity sockets/context."
-  (when *pattern-similarity-socket*
-    (ignore-errors (pzmq:close *pattern-similarity-socket*))
-    (setf *pattern-similarity-socket* nil))
+  (%reset-pattern-similarity-socket)
   (when *pattern-similarity-context*
     (ignore-errors (pzmq:ctx-term *pattern-similarity-context*))
     (setf *pattern-similarity-context* nil)))
@@ -92,24 +105,27 @@
       (setf payload (append payload `((intended_direction . ,intended-direction)))))
     (encode-sexp payload)))
 
+(defun %pattern-similarity-query-once (msg)
+  "Send one QUERY request and parse one response."
+  (pzmq:send *pattern-similarity-socket* msg)
+  (let ((resp (pzmq:recv-string *pattern-similarity-socket*)))
+    (safe-read-sexp resp :package :swimmy.core)))
+
 (defun pattern-similarity-query (symbol timeframe candles &key (k 30) as-of direction)
   "Send QUERY to Pattern Similarity Service.
 
 Returns parsed S-expression (alist) on success, or NIL on error."
-  (ensure-pattern-similarity-connection)
-  (handler-case
-      (let* ((msg (build-pattern-similarity-query-request
-                   symbol timeframe candles :k k :as-of as-of :direction direction)))
-        (pzmq:send *pattern-similarity-socket* msg)
-        (let ((resp (pzmq:recv-string *pattern-similarity-socket*)))
-          (safe-read-sexp resp :package :swimmy.core)))
-    (error (e)
-      (format t "[PATTERN-CLIENT] Error: ~a~%" e)
-      ;; Force reconnect next time (REQ socket can desync after timeout).
-      (when *pattern-similarity-socket*
-        (ignore-errors (pzmq:close *pattern-similarity-socket*)))
-      (setf *pattern-similarity-socket* nil)
-      nil)))
+  (let ((msg (build-pattern-similarity-query-request
+              symbol timeframe candles :k k :as-of as-of :direction direction)))
+    (loop for attempt from 1 to 2 do
+      (ensure-pattern-similarity-connection)
+      (handler-case
+          (return (%pattern-similarity-query-once msg))
+        (error (e)
+          (format t "[PATTERN-CLIENT] Error (attempt ~d/2): ~a~%" attempt e)
+          ;; Force reconnect on next attempt (REQ socket can desync after timeout).
+          (%reset-pattern-similarity-socket)))
+      finally (return nil))))
 
 (defun %history->query-candles (history timeframe)
   "Convert newest-first HISTORY into oldest->newest candle list for TIMEFRAME."

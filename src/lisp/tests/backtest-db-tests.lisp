@@ -570,6 +570,88 @@
           (ignore-errors (close-db-connection))
           (ignore-errors (delete-file tmp-db)))))))
 
+(deftest test-refresh-strategy-metrics-syncs-active-sexp-local-state
+  "refresh-strategy-metrics-from-db should sync revalidation/breeding local state from DB data_sexp for active ranks."
+  (let* ((name "TEST-REFRESH-ACTIVE-SEXP-SYNC")
+         (tmp-db (format nil "/tmp/swimmy-refresh-active-sexp-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*db-active-kb-reconcile-enabled* nil)
+          (swimmy.school::*kb-active-db-reconcile-enabled* nil)
+          (swimmy.school::*db-active-library-reconcile-enabled* nil)
+          (swimmy.school::*db-archive-library-reconcile-enabled* nil)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let* ((local (make-strategy :name name
+                                         :symbol "USDJPY"
+                                         :timeframe 60
+                                         :direction :BOTH
+                                         :rank :legend
+                                         :revalidation-pending t
+                                         :breeding-count 0
+                                         :sharpe 0.1))
+                   (db-row (make-strategy :name name
+                                          :symbol "USDJPY"
+                                          :timeframe 60
+                                          :direction :BOTH
+                                          :rank :legend
+                                          :revalidation-pending nil
+                                          :breeding-count 17
+                                          :sharpe 1.4)))
+              (setf *strategy-knowledge-base* (list local))
+              (upsert-strategy db-row)
+              (swimmy.school::refresh-strategy-metrics-from-db :force t)
+              (assert-false (swimmy.school::strategy-revalidation-pending local)
+                            "Expected local legend revalidation flag to follow DB data_sexp")
+              (assert-equal 17 (or (swimmy.school::strategy-breeding-count local) 0)
+                            "Expected local breeding-count to follow DB data_sexp")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-refresh-strategy-metrics-keeps-local-legend-on-db-rank-drift
+  "refresh-strategy-metrics-from-db should not demote local :LEGEND from stale DB non-legend rank."
+  (let* ((name "TEST-REFRESH-LEGEND-RANK-DRIFT")
+         (tmp-db (format nil "/tmp/swimmy-refresh-legend-drift-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*db-active-kb-reconcile-enabled* nil)
+          (swimmy.school::*kb-active-db-reconcile-enabled* nil)
+          (swimmy.school::*db-active-library-reconcile-enabled* nil)
+          (swimmy.school::*db-archive-library-reconcile-enabled* nil)
+          (*default-pathname-defaults* #P"/tmp/")
+          (*strategy-knowledge-base* nil)
+          (swimmy.globals:*evolved-strategies* nil))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (let* ((local (make-strategy :name name
+                                         :symbol "USDJPY"
+                                         :timeframe 60
+                                         :direction :BOTH
+                                         :rank :legend
+                                         :revalidation-pending nil
+                                         :sharpe 0.1))
+                   (db-row (make-strategy :name name
+                                          :symbol "USDJPY"
+                                          :timeframe 60
+                                          :direction :BOTH
+                                          :rank :B
+                                          :revalidation-pending nil
+                                          :sharpe 0.2)))
+              (setf *strategy-knowledge-base* (list local))
+              (upsert-strategy db-row)
+              (swimmy.school::refresh-strategy-metrics-from-db :force t)
+              (assert-equal :legend (strategy-rank local)
+                            "Expected stale DB rank not to demote local :LEGEND")))
+        (ignore-errors (close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-refresh-strategy-metrics-reconciles-missing-active-kb
   "refresh-strategy-metrics-from-db should hydrate missing active DB strategies into KB."
   (let* ((name-a "TEST-REFRESH-RECON-A")
@@ -732,6 +814,161 @@
                               "Expected stale archive file to be deleted"))))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-reconcile-archive-library-with-db-skips-hydration-when-canonical-count-matches
+  "Sanitized-name collisions should not trigger hydration scans when canonical archive counts already match."
+  (let* ((name-a "TEST/ARCHIVE/CANONICAL")
+         (name-b "TEST_ARCHIVE_CANONICAL")
+         (canonical-name "TEST_ARCHIVE_CANONICAL")
+         (tmp-db (format nil "/tmp/swimmy-archive-canonical-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-archive-canonical-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*last-db-archive-library-reconcile-time* 0)
+          (*strategy-knowledge-base* nil))
+      (let ((orig-has-name (symbol-function 'swimmy.school::%library-archive-has-name-p))
+            (has-name-calls 0))
+        (unwind-protect
+            (progn
+              (swimmy.school::init-db)
+              (swimmy.persistence:init-library)
+              (let ((now (get-universal-time)))
+                ;; Insert two distinct DB names that sanitize to the same archive filename.
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-a ":GRAVEYARD" "USDJPY" "BOTH" "(archive row A)" now)
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-b ":RETIRED" "USDJPY" "BOTH" "(archive row B)" now))
+              ;; Library already has the single canonical filename produced by sanitize-filename.
+              (let ((existing (merge-pathnames (format nil "GRAVEYARD/~a.lisp" canonical-name)
+                                               swimmy.persistence::*library-path*)))
+                (ensure-directories-exist existing)
+                (with-open-file (out existing :direction :output :if-exists :supersede :if-does-not-exist :create)
+                  (write-string "(canonical library archive file)" out)
+                  (terpri out)))
+              (setf (symbol-function 'swimmy.school::%library-archive-has-name-p)
+                    (lambda (name &optional (root swimmy.persistence::*library-path*))
+                      (incf has-name-calls)
+                      (funcall orig-has-name name root)))
+              (let ((summary (swimmy.school::reconcile-archive-library-with-db
+                              :max-additions 100
+                              :interval 0
+                              :now (get-universal-time))))
+                (assert-equal 0 (or (getf summary :added) 0)
+                              "Expected no hydration when canonical counts already match")
+                (assert-equal 0 has-name-calls
+                              "Expected hydration scan to be skipped when canonical counts match")))
+          (setf (symbol-function 'swimmy.school::%library-archive-has-name-p) orig-has-name)
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
+(deftest test-reconcile-archive-library-with-db-hydration-avoids-per-row-file-probe
+  "Hydration path should use canonical archive index, not per-row probe-file checks."
+  (let* ((name-a "TEST-ARCHIVE-HYDRATE-A")
+         (name-b "TEST-ARCHIVE-HYDRATE-B")
+         (tmp-db (format nil "/tmp/swimmy-archive-hydrate-fast-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-archive-hydrate-fast-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*last-db-archive-library-reconcile-time* 0)
+          (*strategy-knowledge-base* nil))
+      (let ((orig-has-name (symbol-function 'swimmy.school::%library-archive-has-name-p)))
+        (unwind-protect
+            (progn
+              (swimmy.school::init-db)
+              (swimmy.persistence:init-library)
+              (let ((now (get-universal-time)))
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-a ":GRAVEYARD" "USDJPY" "BOTH" "(archive hydrate row A)" now)
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-b ":RETIRED" "USDJPY" "BOTH" "(archive hydrate row B)" now))
+              ;; Old implementation probes filesystem per DB row.
+              ;; New implementation should rely on a prebuilt canonical name index.
+              (setf (symbol-function 'swimmy.school::%library-archive-has-name-p)
+                    (lambda (&rest _args)
+                      (declare (ignore _args))
+                      (error "per-row archive probe should not be called during hydration")))
+              (let ((summary (swimmy.school::reconcile-archive-library-with-db
+                              :max-additions 10
+                              :interval 0
+                              :now (get-universal-time))))
+                (assert-equal 2 (or (getf summary :added) 0)
+                              "Expected both missing archive files to be hydrated"))
+              (assert-true
+               (probe-file (merge-pathnames (format nil "GRAVEYARD/~a.lisp" name-a)
+                                            swimmy.persistence::*library-path*))
+               "Expected GRAVEYARD hydrate file to exist")
+              (assert-true
+               (probe-file (merge-pathnames (format nil "RETIRED/~a.lisp" name-b)
+                                            swimmy.persistence::*library-path*))
+               "Expected RETIRED hydrate file to exist"))
+          (setf (symbol-function 'swimmy.school::%library-archive-has-name-p) orig-has-name)
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
+
+(deftest test-reconcile-archive-library-with-db-hydration-uses-keyset-pagination
+  "Hydration query should use rowid keyset paging and avoid canonical full-scan materialization query."
+  (let* ((name-a "TEST-ARCHIVE-PAGE-A")
+         (name-b "TEST-ARCHIVE-PAGE-B")
+         (tmp-db (format nil "/tmp/swimmy-archive-hydrate-page-~a.db" (get-universal-time)))
+         (tmp-lib (format nil "/tmp/swimmy-archive-hydrate-page-~a/" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.persistence::*library-path* (merge-pathnames tmp-lib #P"/"))
+          (swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::*last-db-archive-library-reconcile-time* 0)
+          (swimmy.school::*db-archive-library-reconcile-page-size* 1)
+          (*strategy-knowledge-base* nil))
+      (let ((orig-execute-to-list (symbol-function 'swimmy.school::execute-to-list))
+            (queries nil))
+        (unwind-protect
+            (progn
+              (swimmy.school::init-db)
+              (swimmy.persistence:init-library)
+              (let ((now (get-universal-time)))
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-a ":GRAVEYARD" "USDJPY" "BOTH" "(archive page row A)" now)
+                (execute-non-query
+                 "INSERT INTO strategies (name, rank, symbol, direction, data_sexp, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?)"
+                 name-b ":RETIRED" "USDJPY" "BOTH" "(archive page row B)" now))
+              (setf (symbol-function 'swimmy.school::execute-to-list)
+                    (lambda (sql &rest params)
+                      (push sql queries)
+                      (apply orig-execute-to-list sql params)))
+              (let ((summary (swimmy.school::reconcile-archive-library-with-db
+                              :max-additions 2
+                              :interval 0
+                              :now (get-universal-time))))
+                (assert-equal 2 (or (getf summary :added) 0)
+                              "Expected both missing archive files to be hydrated"))
+              (assert-true
+               (some (lambda (sql)
+                       (search "ORDER BY rowid DESC" sql :test #'char-equal))
+                     queries)
+               "Expected hydration scan to use rowid-desc paging query")
+              (assert-false
+               (some (lambda (sql)
+                       (search "GROUP BY REPLACE(REPLACE(name, '/', '_'), CHAR(92), '_')" sql
+                               :test #'char-equal))
+                     queries)
+               "Expected hydration path to avoid full canonical GROUP BY materialization query"))
+          (setf (symbol-function 'swimmy.school::execute-to-list) orig-execute-to-list)
+          (ignore-errors (close-db-connection))
+          (ignore-errors (delete-file tmp-db)))))))
 
 (deftest test-stagnant-crank-batched-notification
   "Stagnant C-Rank soft-kill should batch notifications and flush hourly."

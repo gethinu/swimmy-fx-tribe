@@ -1,6 +1,7 @@
 import unittest
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tools.xau_autobot_cycle_compare import (
@@ -13,6 +14,8 @@ from tools.xau_autobot_cycle_compare import (
     pick_cycle_summary,
     pick_cycle_summary_or_none,
     pick_skip_row_or_none,
+    should_notify_skip,
+    update_skip_notify_state,
 )
 
 
@@ -103,6 +106,38 @@ class TestXauAutoBotCycleCompare(unittest.TestCase):
         self.assertIn("--market-hours-only", cmd)
         self.assertIn("--write-summary", cmd)
         self.assertIn("data/reports/xau_autobot_cycle_summary_60d.json", cmd)
+
+    def test_should_notify_skip_market_closed_respects_cooldown(self):
+        output = {"action": "SKIP", "reason": "market_closed"}
+        now = datetime(2026, 2, 22, 12, 0, tzinfo=timezone.utc)
+
+        state = {}
+        self.assertTrue(
+            should_notify_skip(
+                output=output,
+                state=state,
+                now_utc=now,
+                cooldown_sec=86400,
+            )
+        )
+
+        state = update_skip_notify_state(output=output, state=state, now_utc=now)
+        self.assertFalse(
+            should_notify_skip(
+                output=output,
+                state=state,
+                now_utc=datetime(2026, 2, 22, 15, 0, tzinfo=timezone.utc),
+                cooldown_sec=86400,
+            )
+        )
+        self.assertTrue(
+            should_notify_skip(
+                output=output,
+                state=state,
+                now_utc=datetime(2026, 2, 23, 12, 1, tzinfo=timezone.utc),
+                cooldown_sec=86400,
+            )
+        )
 
 
 if __name__ == "__main__":

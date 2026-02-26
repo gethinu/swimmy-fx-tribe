@@ -93,6 +93,117 @@ def _is_session_allowed(hour_utc: int, start: int, end: int) -> bool:
     return hour_utc >= start or hour_utc <= end
 
 
+def _detect_regime(
+    *,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    trend_threshold: float,
+) -> str:
+    if atr_value <= 0.0:
+        return "range"
+    if trend_threshold <= 0.0:
+        return "trend"
+    trend_strength = abs(ema_fast - ema_slow) / atr_value
+    return "trend" if trend_strength >= trend_threshold else "range"
+
+
+def _trend_signal(
+    *,
+    last_close: float,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    pullback_atr: float,
+) -> str:
+    if atr_value <= 0.0:
+        return "HOLD"
+    pull = atr_value * pullback_atr
+    if ema_fast > ema_slow and last_close <= ema_fast - pull:
+        return "BUY"
+    if ema_fast < ema_slow and last_close >= ema_fast + pull:
+        return "SELL"
+    return "HOLD"
+
+
+def _reversion_signal(
+    *,
+    last_close: float,
+    ema_anchor: float,
+    atr_value: float,
+    reversion_atr: float,
+) -> str:
+    if atr_value <= 0.0 or reversion_atr <= 0.0:
+        return "HOLD"
+    distance = atr_value * reversion_atr
+    if last_close <= ema_anchor - distance:
+        return "BUY"
+    if last_close >= ema_anchor + distance:
+        return "SELL"
+    return "HOLD"
+
+
+def _decide_signal_with_mode(
+    *,
+    strategy_mode: str,
+    last_close: float,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    pullback_atr: float,
+    reversion_atr: float,
+    trend_threshold: float,
+) -> Tuple[str, str]:
+    mode = str(strategy_mode or "trend").strip().lower()
+    if mode == "trend":
+        return (
+            _trend_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=pullback_atr,
+            ),
+            "trend",
+        )
+    if mode == "reversion":
+        return (
+            _reversion_signal(
+                last_close=last_close,
+                ema_anchor=ema_slow,
+                atr_value=atr_value,
+                reversion_atr=reversion_atr,
+            ),
+            "reversion",
+        )
+    regime = _detect_regime(
+        ema_fast=ema_fast,
+        ema_slow=ema_slow,
+        atr_value=atr_value,
+        trend_threshold=trend_threshold,
+    )
+    if regime == "trend":
+        return (
+            _trend_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=pullback_atr,
+            ),
+            "trend",
+        )
+    return (
+        _reversion_signal(
+            last_close=last_close,
+            ema_anchor=ema_slow,
+            atr_value=atr_value,
+            reversion_atr=reversion_atr,
+        ),
+        "reversion",
+    )
+
+
 def _simulate_gross_returns(
     cfg: Dict[str, float],
     *,
@@ -112,6 +223,11 @@ def _simulate_gross_returns(
     end = min(end_idx - 1, len(closes) - 1)
 
     atr_pct = [(atr_values[i] / closes[i]) if closes[i] > 0.0 else 0.0 for i in range(len(closes))]
+    strategy_mode = str(cfg.get("strategy_mode", "trend")).strip().lower()
+    regime_trend_threshold = float(cfg.get("regime_trend_threshold", 1.2))
+    reversion_atr = float(cfg.get("reversion_atr", 0.8))
+    reversion_sl_atr = float(cfg.get("reversion_sl_atr", cfg.get("sl_atr", 1.2)))
+    reversion_tp_atr = float(cfg.get("reversion_tp_atr", cfg.get("tp_atr", 1.2)))
 
     position = 0
     entry = 0.0
@@ -150,17 +266,24 @@ def _simulate_gross_returns(
                 if ratio < float(cfg["min_atr_ratio_to_median"]) or ratio > float(cfg["max_atr_ratio_to_median"]):
                     continue
 
-        pull = atr_values[i] * float(cfg["pullback_atr"])
-        signal = 0
-        if ema_fast[i] > ema_slow[i] and closes[i] <= ema_fast[i] - pull:
-            signal = 1
-        elif ema_fast[i] < ema_slow[i] and closes[i] >= ema_fast[i] + pull:
-            signal = -1
+        signal_text, signal_source = _decide_signal_with_mode(
+            strategy_mode=strategy_mode,
+            last_close=closes[i],
+            ema_fast=ema_fast[i],
+            ema_slow=ema_slow[i],
+            atr_value=atr_values[i],
+            pullback_atr=float(cfg["pullback_atr"]),
+            reversion_atr=reversion_atr,
+            trend_threshold=regime_trend_threshold,
+        )
+        signal = 1 if signal_text == "BUY" else -1 if signal_text == "SELL" else 0
 
         if position == 0 and signal != 0:
             entry = opens[i + 1]
-            sl_dist = atr_values[i] * float(cfg["sl_atr"])
-            tp_dist = atr_values[i] * float(cfg["tp_atr"])
+            sl_atr = reversion_sl_atr if signal_source == "reversion" else float(cfg["sl_atr"])
+            tp_atr = reversion_tp_atr if signal_source == "reversion" else float(cfg["tp_atr"])
+            sl_dist = atr_values[i] * sl_atr
+            tp_dist = atr_values[i] * tp_atr
             if signal == 1:
                 sl = entry - sl_dist
                 tp = entry + tp_dist

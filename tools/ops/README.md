@@ -14,6 +14,7 @@ This directory contains operator-facing scripts for backtest, reporting, and mai
 | `reseed_active_b.py` | Reseed `:B` from archive (`:GRAVEYARD/:RETIRED`) by top-N per category. |
 | `cpcv_smoke.py` | Send one-off CPCV smoke messages (`runtime` / `criteria`). |
 | `order_open_smoke.py` | Send ORDER_OPEN sink-guard smoke cases (`INVALID_INSTRUMENT`, `MISSING_INSTRUMENT`, `INVALID_COMMENT_FORMAT`). |
+| `forward_probe_watch.py` | Monitor `deployment_gate_status.forward_trades` growth and alert when hourly delta is zero. |
 
 ## CPCV smoke checks
 
@@ -68,6 +69,28 @@ By default it sends only reject-path cases and skips live order placement.
 # Include valid-order case (may open a real position)
 .venv/bin/python3 tools/ops/order_open_smoke.py \
   --cases all --allow-live-order --send-count 5
+```
+
+## Forward probe watch
+
+Use this to detect `FORWARD_RUNNING` stagnation (`forward_trades` growth = 0 over 1h window).
+
+```bash
+# First run bootstraps state file (no alert)
+.venv/bin/python3 tools/ops/forward_probe_watch.py \
+  --strategy Bred-Bred--518-Gen37-N3980103299-243
+
+# Hourly check + Discord alert when stalled
+.venv/bin/python3 tools/ops/forward_probe_watch.py \
+  --strategy Bred-Bred--518-Gen37-N3980103299-243 \
+  --notify \
+  --fail-on-alert
+```
+
+Systemd hourly timer:
+
+```bash
+sudo bash tools/install_forward_probe_watch_service.sh
 ```
 
 ## Finalize report (safe default)

@@ -156,16 +156,20 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "OOS Sharpe lower bound used for bonus normalization.")
 (defparameter *breeder-priority-oos-sharpe-ceiling* 1.20
   "OOS Sharpe upper bound used for bonus normalization.")
+(defparameter *breeder-priority-oos-bonus-requires-a-base* t
+  "When T, A-base未達の親には OOS bonus を減衰適用する（OOS単独優先の抑制）。")
+(defparameter *breeder-priority-oos-bonus-pre-a-scale* 0.20
+  "Multiplier (0..1) applied to OOS bonus for parents that fail A-base criteria.")
 (defparameter *breeder-priority-threshold-penalty-weight* 0.80
   "Global multiplier for breeder priority threshold deficits.")
-(defparameter *breeder-priority-min-sharpe* 0.15
-  "Minimum Stage1 Sharpe expected for breeding parent priority.")
-(defparameter *breeder-priority-min-pf* 1.05
-  "Minimum Stage1 PF expected for breeding parent priority.")
-(defparameter *breeder-priority-min-wr* 0.35
-  "Minimum Stage1 WR expected for breeding parent priority.")
-(defparameter *breeder-priority-max-dd* 0.25
-  "Maximum Stage1 maxdd expected for breeding parent priority.")
+(defparameter *breeder-priority-min-sharpe* 0.45
+  "Minimum A-base Sharpe expected for breeding parent priority.")
+(defparameter *breeder-priority-min-pf* 1.30
+  "Minimum A-base PF expected for breeding parent priority.")
+(defparameter *breeder-priority-min-wr* 0.43
+  "Minimum A-base WR expected for breeding parent priority.")
+(defparameter *breeder-priority-max-dd* 0.16
+  "Maximum A-base maxdd expected for breeding parent priority.")
 (defparameter *breeder-priority-min-oos-sharpe* 0.35
   "Minimum OOS Sharpe expected for breeder edge confidence.")
 (defparameter *breeder-priority-penalty-weight-sharpe* 0.25
@@ -240,6 +244,18 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
   "Additive partner score bonus when candidate timeframe differs from parent.")
 (defparameter *breeder-timeframe-fallback-minutes* 60
   "Fallback timeframe (minutes) when parent timeframe is missing/invalid.")
+(defparameter *breeder-timeframe-excluded-minutes* '(5)
+  "Breeder child TF policy exclusions (minutes). Default excludes M5 from S-flow lanes.")
+(defparameter *breeder-timeframe-priority-minutes* '(60 300)
+  "Breeder child TF policy priorities (minutes). Default prefers H1/H5 lanes.")
+(defparameter *breeder-timeframe-short-parent-max-minutes* 30
+  "Short-parent threshold (minutes). Used to suppress M15/M30 lock-in in S-flow.")
+(defparameter *breeder-timeframe-short-parent-mutation-floor* 0.55
+  "Minimum mutation rate (0..1) when both parents are short timeframe.")
+(defparameter *breeder-timeframe-short-parent-priority-bonus* 0.75
+  "Additional partner score bonus when short-TF parent pairs with priority TF lane (e.g. H1/H5).")
+(defparameter *breeder-timeframe-short-parent-short-penalty* 0.75
+  "Partner score penalty when short-TF parent pairs again with short TF candidate.")
 (defparameter *breeder-timeframe-prioritize-underrepresented* t
   "When T, TF mutation prefers the least-populated timeframe among candidates.")
 (defvar *breeder-active-timeframe-counts-cache* nil
@@ -264,16 +280,66 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                         fallback)))
     (max 1 (round (or candidate 60)))))
 
+(defun maybe-normalize-breeder-timeframe (tf)
+  "Normalize timeframe to minutes(int) or return NIL when TF cannot be resolved."
+  (let ((resolved (cond
+                    ((and (fboundp 'get-tf-minutes))
+                     (ignore-errors (get-tf-minutes tf)))
+                    ((numberp tf) tf)
+                    (t nil))))
+    (when (and (numberp resolved) (> resolved 0))
+      (round resolved))))
+
+(defun normalize-breeder-timeframe-list (items)
+  "Normalize and deduplicate timeframe list without fallback insertion."
+  (remove-duplicates
+   (loop for item in (or items '())
+         for normalized = (maybe-normalize-breeder-timeframe item)
+         when normalized collect normalized)
+   :test #'eql))
+
+(defun breeder-short-timeframe-p (tf)
+  "Return T when TF is within configured short-parent threshold."
+  (let ((threshold (or (maybe-normalize-breeder-timeframe
+                        *breeder-timeframe-short-parent-max-minutes*)
+                       30)))
+    (and (numberp tf)
+         (<= tf threshold))))
+
+(defun breeder-priority-timeframe-p (tf)
+  "Return T when TF is in configured priority lane."
+  (let ((priority (normalize-breeder-timeframe-list
+                   *breeder-timeframe-priority-minutes*)))
+    (member tf priority :test #'eql)))
+
+(defun breeder-timeframe-policy-candidates (candidates)
+  "Apply breeder timeframe exclusions and priority ordering."
+  (let* ((normalized (normalize-breeder-timeframe-list candidates))
+         (excluded (normalize-breeder-timeframe-list
+                    *breeder-timeframe-excluded-minutes*))
+         (allowed (remove-if (lambda (tf)
+                               (member tf excluded :test #'eql))
+                             normalized))
+         (priority-order (normalize-breeder-timeframe-list
+                          *breeder-timeframe-priority-minutes*))
+         (priority (remove-if-not (lambda (tf)
+                                    (member tf allowed :test #'eql))
+                                  priority-order))
+         (rest (remove-if (lambda (tf)
+                            (member tf priority :test #'eql))
+                          allowed)))
+    (append priority rest)))
+
 (defun breeder-timeframe-mutation-options ()
   "Return bounded TF mutation candidates in minutes."
   (let ((raw-options (if (fboundp 'get-tf-mutation-options)
                          (ignore-errors (get-tf-mutation-options))
                          nil)))
-    (remove-duplicates
-     (mapcar #'normalize-breeder-timeframe
-             (or (and (listp raw-options) raw-options)
-                 '(5 15 30 60 240 1440 10080 43200)))
-     :test #'eql)))
+    (or (breeder-timeframe-policy-candidates
+         (or (and (listp raw-options) raw-options)
+             '(5 15 30 60 240 1440 10080 43200)))
+        (breeder-timeframe-policy-candidates '(60 300 15 30 240 1440 10080 43200))
+        '(60 300))))
 
 (defun breeder-active-rank-p (rank)
   "Return T when rank is considered active for breeder TF balancing."
@@ -333,38 +399,72 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
                             (float (or *breeder-timeframe-mutation-same-parent-rate* 0.0))
                             0.0
                             1.0))
-         (mutation-rate (if (= p1-tf p2-tf)
-                            (max base-mutation-rate same-parent-rate)
-                            base-mutation-rate))
+         (short-parent-floor (clamp-breeder-float
+                              (float (or *breeder-timeframe-short-parent-mutation-floor* 0.0))
+                              0.0
+                              1.0))
+         (short-parents-p (and (breeder-short-timeframe-p p1-tf)
+                               (breeder-short-timeframe-p p2-tf)))
+         (base-selected-mutation-rate (if (= p1-tf p2-tf)
+                                          (max base-mutation-rate same-parent-rate)
+                                          base-mutation-rate))
+         (mutation-rate (if short-parents-p
+                            (max base-selected-mutation-rate short-parent-floor)
+                            base-selected-mutation-rate))
          (crossover-p (and (/= p1-tf p2-tf)
                            (< (random 1.0) crossover-rate)))
          (base-tf (if crossover-p p2-tf p1-tf))
          (mutation-p (< (random 1.0) mutation-rate))
-         (pool (remove-duplicates
+         (pool (breeder-timeframe-policy-candidates
                 (append (list p1-tf p2-tf)
-                        (breeder-timeframe-mutation-options))
-                :test #'eql))
-         (mutation-candidates (remove base-tf pool :test #'eql)))
-    (cond
-      ((and mutation-p mutation-candidates)
-       (values (or (pick-breeder-timeframe-mutation-candidate mutation-candidates)
-                   base-tf)
-               :mutation
-               p1-tf
-               p2-tf))
-      (crossover-p
-       (values base-tf :crossover p1-tf p2-tf))
-      (t
-       (values base-tf :inherit p1-tf p2-tf)))))
+                        (breeder-timeframe-mutation-options))))
+         (safe-pool (or pool '(60 300)))
+         (policy-base (if (member base-tf safe-pool :test #'eql)
+                          base-tf
+                          (car safe-pool)))
+         (base-policy-changed-p (/= policy-base base-tf))
+         (mutation-candidates (remove policy-base safe-pool :test #'eql)))
+    (labels ((finalize-tf (candidate mode)
+               (let* ((resolved (if (member candidate safe-pool :test #'eql)
+                                    candidate
+                                    (car safe-pool)))
+                      (policy-mode-p (or (/= resolved candidate)
+                                         (and (member mode '(:inherit :crossover) :test #'eq)
+                                              base-policy-changed-p))))
+                 (values resolved
+                         (if policy-mode-p :policy mode)
+                         p1-tf
+                         p2-tf))))
+      (cond
+        ((and mutation-p mutation-candidates)
+         (finalize-tf (or (pick-breeder-timeframe-mutation-candidate mutation-candidates)
+                          policy-base)
+                      :mutation))
+        (crossover-p
+         (finalize-tf policy-base :crossover))
+        (t
+         (finalize-tf policy-base :inherit))))))
 
 (defun breeding-timeframe-diversity-bonus (parent candidate)
-  "Return additive partner score bonus when candidate timeframe differs from parent."
+  "Return additive partner score adjustment for TF diversity and short-parent lane bias."
   (let* ((bonus (float (or *breeder-timeframe-diversity-bonus* 0.0) 1.0))
          (parent-tf (normalize-breeder-timeframe (strategy-timeframe parent)))
-         (candidate-tf (normalize-breeder-timeframe (strategy-timeframe candidate) parent-tf)))
-    (if (and (> bonus 0.0) (/= parent-tf candidate-tf))
-        bonus
-        0.0)))
+         (candidate-tf (normalize-breeder-timeframe (strategy-timeframe candidate) parent-tf))
+         (base-diversity (if (and (> bonus 0.0) (/= parent-tf candidate-tf))
+                             bonus
+                             0.0))
+         (short-parent-p (breeder-short-timeframe-p parent-tf))
+         (candidate-short-p (breeder-short-timeframe-p candidate-tf))
+         (candidate-priority-p (breeder-priority-timeframe-p candidate-tf))
+         (priority-bonus (if (and short-parent-p candidate-priority-p)
+                             (float (or *breeder-timeframe-short-parent-priority-bonus* 0.0) 1.0)
+                             0.0))
+         (short-penalty (if (and short-parent-p candidate-short-p (not candidate-priority-p))
+                            (float (or *breeder-timeframe-short-parent-short-penalty* 0.0) 1.0)
+                            0.0)))
+    (+ base-diversity
+       priority-bonus
+       (- short-penalty))))
 
 (defun strategy-a-or-above-p (strategy)
   "Return T when STRATEGY is rank A/S/LEGEND (or higher)."
@@ -575,8 +675,21 @@ Keeps B-rank throughput focused on A gates while pushing A/S genetics toward S r
          (lo (float *breeder-priority-oos-sharpe-floor* 1.0))
          (hi (float *breeder-priority-oos-sharpe-ceiling* 1.0))
          (span (max 1.0e-6 (- hi lo)))
-         (normalized (clamp-breeder-float (/ (- raw lo) span) 0.0 1.0)))
-    (* (float *breeder-priority-oos-sharpe-weight* 1.0) normalized)))
+         (normalized (clamp-breeder-float (/ (- raw lo) span) 0.0 1.0))
+         (a-base-pass
+           (if (and *breeder-priority-oos-bonus-requires-a-base*
+                    (fboundp 'check-rank-criteria))
+               (ignore-errors
+                 (check-rank-criteria strategy :A :include-oos nil :include-cpcv nil))
+               t))
+         (pre-a-scale (clamp-breeder-float
+                       (float (or *breeder-priority-oos-bonus-pre-a-scale* 0.20) 1.0)
+                       0.0 1.0))
+         (scale (if (or (not *breeder-priority-oos-bonus-requires-a-base*)
+                        a-base-pass)
+                    1.0
+                    pre-a-scale)))
+    (* (float *breeder-priority-oos-sharpe-weight* 1.0) normalized scale)))
 
 (defun breeder-priority-threshold-penalty (strategy)
   "Return additive penalty for Stage1/OOS threshold deficits."
@@ -1213,9 +1326,6 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                    (or (strategy-generation p1) 0) (strategy-name p1) (or (strategy-sharpe p1) 0)
                                    (or (strategy-generation p2) 0) (strategy-name p2) (or (strategy-sharpe p2) 0))
                            (let ((child (breed-strategies p1 p2)))
-                             (increment-breeding-count p1)
-                             (increment-breeding-count p2)
-
                              ;; V49.2: Inherit Regime Intent
                              (setf (strategy-regime-intent child)
                                    (or (when (boundp '*current-regime*) *current-regime*)
@@ -1226,6 +1336,8 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                  (add-to-kb child :breeder :require-bt t :notify nil)
                                (if accepted
                                    (let ((effective-status (or status :added)))
+                                     (increment-breeding-count p1)
+                                     (increment-breeding-count p2)
                                      (note-breeding-pair-success p1 p2)
                                      (if (eq effective-status :queued-phase1)
                                          (format t "[BREEDER] ⏳ Candidate queued for Phase1: ~a (Gen~d)~%"
@@ -1268,7 +1380,22 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
       (if regime-foundp
           (setf (gethash category *regime-pools*) pool)
         (setf (gethash category *category-pools*) pool)))
-    (when (> (length pool) limit)
+    (labels ((founder-overflow-protected-p (strat)
+               (let ((sharpe (or (strategy-sharpe strat) 0.0))
+                     (pf (or (strategy-profit-factor strat) 0.0))
+                     (trades (or (strategy-trades strat) 0))
+                     (max-dd (or (strategy-max-dd strat) 1.0)))
+                 (and (eq (strategy-rank strat) :B)
+                      (fboundp 'founder-phase1-recovery-passed-p)
+                      (ignore-errors
+                        (founder-phase1-recovery-passed-p strat sharpe pf trades max-dd)))))
+             (overflow-cullable-b-p (strat)
+               ;; Contract: Overflow deathmatch culls B-rank only.
+               ;; Never cull A/S/LEGEND (or immortal) here.
+               (and (eq (strategy-rank strat) :B)
+                    (not (strategy-immortal strat))
+                    (not (founder-overflow-protected-p strat)))))
+      (when (> (length pool) limit)
       ;; Sort by composite score (High to Low)
       (let ((sorted (sort (copy-list pool) #'>
                           :key (lambda (s)
@@ -1277,8 +1404,15 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                         :profit-factor (strategy-profit-factor s)
                                         :win-rate (strategy-win-rate s)
                                         :max-dd (strategy-max-dd s)))))))
-        (setf survivors (subseq sorted 0 limit))
-        (setf victims (subseq sorted limit))
+        (let* ((protected (remove-if #'overflow-cullable-b-p sorted))
+               (cullable (remove-if-not #'overflow-cullable-b-p sorted))
+               (cullable-limit (max 0 (- limit (length protected))))
+               (cullable-keep (min cullable-limit (length cullable))))
+          (when (> (length protected) limit)
+            (format t "[DEATHMATCH] 🛡️ Overflow protected-only set exceeds limit: keep=~d limit=~d category=~a~%"
+                    (length protected) limit category))
+          (setf survivors (append protected (subseq cullable 0 cullable-keep)))
+          (setf victims (nthcdr cullable-keep cullable)))
         
         ;; Update the source pool used for culling.
         (if regime-foundp
@@ -1302,7 +1436,7 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
               (progn
                 (init-db)
                 (execute-non-query "UPDATE strategies SET rank = ':GRAVEYARD' WHERE name = ?" (strategy-name victim)))
-            (error () nil)))))))
+            (error () nil))))))))
 
 (defun notify-death (strat reason)
   "Musk: 'I want to see Death.'"

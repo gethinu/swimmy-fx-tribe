@@ -873,27 +873,35 @@ class BacktestService:
         """Close pipes and terminate a guardian process to prevent FD leaks."""
         if not proc:
             return
-        try:
-            if proc.stdin:
-                proc.stdin.close()
-        except Exception:
-            pass
-        try:
-            if proc.stdout:
-                proc.stdout.close()
-        except Exception:
-            pass
-        try:
-            if proc.poll() is None:
+        running = False
+        with contextlib.suppress(Exception):
+            running = proc.poll() is None
+
+        if running:
+            # Signal EOF to help guardian exit cleanly before we close stdout.
+            with contextlib.suppress(Exception):
+                if proc.stdin:
+                    proc.stdin.close()
+
+            try:
                 proc.terminate()
                 proc.wait(timeout=2)
-        except Exception:
-            try:
-                proc.kill()
             except Exception:
-                pass
+                with contextlib.suppress(Exception):
+                    proc.kill()
+            with contextlib.suppress(Exception):
+                proc.wait(timeout=0.5)
+
+        exited = False
         with contextlib.suppress(Exception):
-            proc.wait(timeout=0.5)
+            exited = proc.poll() is not None
+        if exited:
+            with contextlib.suppress(Exception):
+                if proc.stdout:
+                    proc.stdout.close()
+            with contextlib.suppress(Exception):
+                if proc.stdin:
+                    proc.stdin.close()
 
     def _reset_guardian_process(self, proc=None):
         """Reset thread-local guardian process (or explicit process handle)."""

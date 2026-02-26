@@ -1,9 +1,16 @@
 import unittest
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
+import tools.xau_autobot_live_report as live_report
 from tools.xau_autobot_live_report import (
+    _fetch_mt5_deals,
     aggregate_closed_positions,
     build_filter_diagnostics,
+    load_latest_runtime_metrics,
     should_notify_threshold,
     summarize_closed_positions,
     update_notify_state,
@@ -25,6 +32,7 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         swap=0.0,
         commission=0.0,
         fee=0.0,
+        reason=0,
     ):
         return SimpleNamespace(
             symbol=symbol,
@@ -38,14 +46,15 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
             swap=swap,
             commission=commission,
             fee=fee,
+            reason=reason,
         )
 
     def test_aggregate_closed_positions_sums_entry_and_exit_costs(self):
         deals = [
             self._deal(position_id=101, entry=0, time=1, commission=-1.0),
-            self._deal(position_id=101, entry=1, time=2, profit=10.0, commission=-1.0),
+            self._deal(position_id=101, entry=1, time=2, profit=10.0, commission=-1.0, reason=5),
             self._deal(position_id=202, entry=0, time=3, commission=-1.0),
-            self._deal(position_id=202, entry=1, time=4, profit=-5.0, commission=-1.0),
+            self._deal(position_id=202, entry=1, time=4, profit=-5.0, commission=-1.0, reason=4),
         ]
 
         closed = aggregate_closed_positions(
@@ -58,6 +67,8 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertEqual(len(closed), 2)
         self.assertAlmostEqual(closed[0]["net_profit"], 8.0, places=6)
         self.assertAlmostEqual(closed[1]["net_profit"], -7.0, places=6)
+        self.assertEqual(closed[0]["close_reason"], "TP")
+        self.assertEqual(closed[1]["close_reason"], "SL")
 
     def test_aggregate_closed_positions_filters_symbol_magic_and_comment(self):
         deals = [
@@ -138,11 +149,11 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
 
     def test_summarize_closed_positions_builds_kpis(self):
         closed = [
-            {"position_id": 1, "close_time": 1, "net_profit": 10.0},
-            {"position_id": 2, "close_time": 2, "net_profit": -4.0},
-            {"position_id": 3, "close_time": 3, "net_profit": 3.0},
+            {"position_id": 1, "close_time": 1, "net_profit": 10.0, "close_reason": "TP"},
+            {"position_id": 2, "close_time": 2, "net_profit": -4.0, "close_reason": "SL"},
+            {"position_id": 3, "close_time": 3, "net_profit": 3.0, "close_reason": "TP"},
         ]
-        summary = summarize_closed_positions(closed)
+        summary = summarize_closed_positions(closed, window_days=2.0)
 
         self.assertEqual(summary["closed_positions"], 3)
         self.assertAlmostEqual(summary["net_profit"], 9.0, places=6)
@@ -151,6 +162,11 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         self.assertAlmostEqual(summary["win_rate"], 2.0 / 3.0, places=8)
         self.assertAlmostEqual(summary["profit_factor"], 13.0 / 4.0, places=8)
         self.assertAlmostEqual(summary["max_drawdown_abs"], 4.0, places=6)
+        self.assertAlmostEqual(summary["closed_per_day"], 1.5, places=8)
+        self.assertEqual(summary["close_reason_counts"]["tp"], 2.0)
+        self.assertEqual(summary["close_reason_counts"]["sl"], 1.0)
+        self.assertEqual(summary["close_reason_counts"]["other"], 0.0)
+        self.assertAlmostEqual(summary["tp_sl_ratio"], 2.0, places=8)
 
     def test_build_filter_diagnostics_counts_stages(self):
         deals = [
@@ -210,6 +226,67 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         )
         self.assertIn("threshold_notified", updated)
         self.assertIn("30", updated["threshold_notified"])
+
+    def test_load_latest_runtime_metrics_returns_latest_snapshot(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "runtime.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"timestamp_utc":"2026-02-26T00:00:00+00:00","runtime_metrics":{"gate_check_count":3,"gate_reject_gap_count":1,"gap_reject_rate":0.3333333333,"signal_counts":{"BUY":1,"SELL":1,"HOLD":1}}}',
+                        '{"timestamp_utc":"2026-02-26T01:00:00+00:00","runtime_metrics":{"gate_check_count":7,"gate_reject_gap_count":2,"gap_reject_rate":0.2857142857,"signal_counts":{"BUY":2,"SELL":2,"HOLD":3}}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = load_latest_runtime_metrics(path)
+
+        self.assertIsNotNone(metrics)
+        self.assertEqual(metrics["gate_check_count"], 7)
+        self.assertEqual(metrics["gate_reject_gap_count"], 2)
+        self.assertAlmostEqual(metrics["gap_reject_rate"], 2.0 / 7.0, places=8)
+        self.assertEqual(metrics["signal_counts"]["BUY"], 2)
+        self.assertEqual(metrics["signal_counts"]["SELL"], 2)
+        self.assertEqual(metrics["signal_counts"]["HOLD"], 3)
+
+    def test_load_latest_runtime_metrics_returns_none_when_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "missing.jsonl"
+            self.assertIsNone(load_latest_runtime_metrics(path))
+
+    def test_fetch_mt5_deals_retries_ipc_timeout_initialize(self):
+        class FakeMt5:
+            def __init__(self):
+                self.init_calls = 0
+                self.shutdown_calls = 0
+
+            def initialize(self):
+                self.init_calls += 1
+                return self.init_calls >= 3
+
+            def last_error(self):
+                return (-10005, "IPC timeout")
+
+            def history_deals_get(self, _start, _end):
+                return []
+
+            def shutdown(self):
+                self.shutdown_calls += 1
+
+        fake_mt5 = FakeMt5()
+        start = datetime(2026, 2, 26, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 26, 1, 0, tzinfo=timezone.utc)
+
+        with mock.patch.object(live_report, "mt5", fake_mt5), mock.patch(
+            "tools.xau_autobot_live_report.time.sleep", return_value=None
+        ):
+            deals = _fetch_mt5_deals(start_utc=start, end_utc=end)
+
+        self.assertEqual(deals, [])
+        self.assertEqual(fake_mt5.init_calls, 3)
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
 
 
 if __name__ == "__main__":

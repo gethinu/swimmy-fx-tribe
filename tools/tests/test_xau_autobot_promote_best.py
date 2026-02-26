@@ -189,6 +189,46 @@ class TestXauAutoBotPromoteBest(unittest.TestCase):
             self.assertEqual(path, fresh_zero)
             self.assertEqual(summary.get("closed_positions"), 0.0)
 
+    def test_resolve_live_summary_requires_magic_and_comment_prefix_match(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            newer_mismatch = d / "xau_autobot_live_report_20260220_120000_7d.json"
+            older_match = d / "xau_autobot_live_report_20260219_120000_7d.json"
+            newer_mismatch.write_text(
+                json.dumps(
+                    {
+                        "magic": 560070,
+                        "comment_prefix": "xau_autobot_tuned_auto",
+                        "summary": {"closed_positions": 22.0, "profit_factor": 1.2},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            older_match.write_text(
+                json.dumps(
+                    {
+                        "magic": 560072,
+                        "comment_prefix": "xau_autobot_trial_v2_20260222",
+                        "summary": {"closed_positions": 11.0, "profit_factor": 1.1},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            now = datetime(2026, 2, 21, 0, 0, tzinfo=timezone.utc)
+            os.utime(older_match, (float(now.timestamp() - 120), float(now.timestamp() - 120)))
+            os.utime(newer_mismatch, (float(now.timestamp() - 60), float(now.timestamp() - 60)))
+
+            path, summary = resolve_live_summary(
+                live_report="",
+                live_reports_dir=d,
+                max_age_hours=24.0,
+                now_utc=now,
+                expected_magic=560072,
+                expected_comment_prefix="xau_autobot_trial_v2_20260222",
+            )
+            self.assertEqual(path, older_match)
+            self.assertEqual(summary.get("closed_positions"), 11.0)
+
     def test_build_period_scoreboard_sorted_desc(self):
         rows = [
             {

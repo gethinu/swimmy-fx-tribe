@@ -21,11 +21,14 @@ from sexp_utils import parse_sexp_alist
 # Isolate tick persistence away from the real repo `data/`.
 _tmp = tempfile.TemporaryDirectory()
 os.environ["SWIMMY_TICKS_DIR"] = str(Path(_tmp.name) / "ticks")
+os.environ["SWIMMY_MAX_CANDLES_PER_SYMBOL"] = "12345"
 
 import data_keeper
 
 
 def main():
+    assert data_keeper.MAX_CANDLES_PER_SYMBOL == 12345
+
     response = data_keeper.handle_request_sexp(
         '((type . "DATA_KEEPER") (schema_version . 1) (action . "STATUS"))'
     )

@@ -178,7 +178,7 @@
   (let ((good-strat (cl-user::make-strategy 
                       :name "GoodB" 
                       :sharpe 0.15 :profit-factor 1.1 
-                      :win-rate 0.35 :max-dd 0.25))
+                      :win-rate 0.35 :max-dd 0.24))
         (bad-strat (cl-user::make-strategy 
                      :name "BadB" 
                      :sharpe 0.05 :profit-factor 0.8 

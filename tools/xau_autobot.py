@@ -36,6 +36,26 @@ DISCORD_WEBHOOK_ENV_KEYS: Tuple[str, ...] = (
 )
 JST = timezone(timedelta(hours=9))
 WAIT_ACTIONS = {"SKIP", "BLOCKED", "HOLD"}
+MT5_COMMENT_MAX_LEN = 31
+STRATEGY_MODES = {"trend", "reversion", "hybrid"}
+DEFAULT_RUNTIME_JOURNAL_PATH = "data/reports/xau_autobot_runtime_journal_latest.jsonl"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def validate_trade_comment(comment: str, *, max_len: int = MT5_COMMENT_MAX_LEN) -> str:
+    text = str(comment or "").strip()
+    if not text:
+        raise ValueError("comment must not be empty")
+    if len(text) > max_len:
+        raise ValueError(f"comment exceeds MT5 max length {max_len}: len={len(text)} comment={text!r}")
+    return text
+
+
+def validate_strategy_mode(mode: str) -> str:
+    text = str(mode or "trend").strip().lower()
+    if text not in STRATEGY_MODES:
+        raise ValueError(f"unsupported strategy_mode: {mode}")
+    return text
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -137,6 +157,90 @@ def _build_discord_headers() -> Dict[str, str]:
     return {
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; xau-autobot-live/1.0)",
+    }
+
+
+def runtime_journal_path_from_env() -> str:
+    raw = os.getenv("XAU_AUTOBOT_RUNTIME_JOURNAL_PATH", "").strip()
+    candidate = raw or DEFAULT_RUNTIME_JOURNAL_PATH
+    path = Path(candidate).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return str(path)
+
+
+def append_runtime_journal(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True))
+        f.write("\n")
+
+
+def _new_runtime_metrics() -> Dict[str, Any]:
+    return {
+        "gate_check_count": 0,
+        "gate_reject_gap_count": 0,
+        "signal_counts": {"BUY": 0, "SELL": 0, "HOLD": 0},
+    }
+
+
+def _runtime_signal_label(payload: Dict[str, Any]) -> str:
+    action = str(payload.get("action", "")).upper()
+    if action == "ORDER":
+        side = str(payload.get("side", "")).upper()
+        if side in {"BUY", "SELL"}:
+            return side
+        return "HOLD"
+
+    signal = str(payload.get("signal", "")).upper()
+    if signal in {"BUY", "SELL"}:
+        return signal
+    if action == "HOLD":
+        return "HOLD"
+    return ""
+
+
+def update_runtime_metrics(metrics: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not bool(payload.get("gap_gate_checked", False)):
+        return metrics
+
+    metrics["gate_check_count"] = int(metrics.get("gate_check_count", 0)) + 1
+    if str(payload.get("reason", "")).lower() == "ema_gap_out_of_range":
+        metrics["gate_reject_gap_count"] = int(metrics.get("gate_reject_gap_count", 0)) + 1
+
+    signal_counts = metrics.get("signal_counts", {})
+    if not isinstance(signal_counts, dict):
+        signal_counts = {"BUY": 0, "SELL": 0, "HOLD": 0}
+        metrics["signal_counts"] = signal_counts
+    for key in ("BUY", "SELL", "HOLD"):
+        signal_counts[key] = int(signal_counts.get(key, 0))
+
+    label = _runtime_signal_label(payload)
+    if label in signal_counts:
+        signal_counts[label] = int(signal_counts.get(label, 0)) + 1
+    return metrics
+
+
+def runtime_metrics_snapshot(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    gate_check_count = int(metrics.get("gate_check_count", 0))
+    gate_reject_gap_count = int(metrics.get("gate_reject_gap_count", 0))
+    signal_counts_raw = metrics.get("signal_counts", {})
+    signal_counts = signal_counts_raw if isinstance(signal_counts_raw, dict) else {}
+    out_signal_counts = {
+        "BUY": int(signal_counts.get("BUY", 0)),
+        "SELL": int(signal_counts.get("SELL", 0)),
+        "HOLD": int(signal_counts.get("HOLD", 0)),
+    }
+    gap_reject_rate = (
+        float(gate_reject_gap_count) / float(gate_check_count)
+        if gate_check_count > 0
+        else 0.0
+    )
+    return {
+        "gate_check_count": gate_check_count,
+        "gate_reject_gap_count": gate_reject_gap_count,
+        "gap_reject_rate": gap_reject_rate,
+        "signal_counts": out_signal_counts,
     }
 
 
@@ -503,6 +607,106 @@ def decide_signal(
     return "HOLD"
 
 
+def detect_regime(
+    *,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    trend_threshold: float,
+) -> str:
+    if atr_value <= 0.0:
+        return "range"
+    if trend_threshold <= 0.0:
+        return "trend"
+    trend_strength = abs(ema_fast - ema_slow) / atr_value
+    if trend_strength >= trend_threshold:
+        return "trend"
+    return "range"
+
+
+def decide_reversion_signal(
+    *,
+    last_close: float,
+    ema_anchor: float,
+    atr_value: float,
+    reversion_atr: float,
+) -> str:
+    if atr_value <= 0.0 or reversion_atr <= 0.0:
+        return "HOLD"
+    distance = atr_value * reversion_atr
+    if last_close <= (ema_anchor - distance):
+        return "BUY"
+    if last_close >= (ema_anchor + distance):
+        return "SELL"
+    return "HOLD"
+
+
+def decide_signal_with_mode(
+    *,
+    strategy_mode: str,
+    last_close: float,
+    ema_fast: float,
+    ema_slow: float,
+    atr_value: float,
+    pullback_atr: float,
+    reversion_atr: float,
+    trend_threshold: float,
+) -> Dict[str, str]:
+    mode = validate_strategy_mode(strategy_mode)
+    if mode == "trend":
+        return {
+            "regime": "trend",
+            "source": "trend",
+            "signal": decide_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=pullback_atr,
+            ),
+        }
+    if mode == "reversion":
+        return {
+            "regime": "range",
+            "source": "reversion",
+            "signal": decide_reversion_signal(
+                last_close=last_close,
+                ema_anchor=ema_slow,
+                atr_value=atr_value,
+                reversion_atr=reversion_atr,
+            ),
+        }
+
+    regime = detect_regime(
+        ema_fast=ema_fast,
+        ema_slow=ema_slow,
+        atr_value=atr_value,
+        trend_threshold=trend_threshold,
+    )
+    if regime == "trend":
+        return {
+            "regime": regime,
+            "source": "trend",
+            "signal": decide_signal(
+                last_close=last_close,
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                atr_value=atr_value,
+                pullback_atr=pullback_atr,
+            ),
+        }
+    return {
+        "regime": regime,
+        "source": "reversion",
+        "signal": decide_reversion_signal(
+            last_close=last_close,
+            ema_anchor=ema_slow,
+            atr_value=atr_value,
+            reversion_atr=reversion_atr,
+        ),
+    }
+
+
 def build_sl_tp(
     *,
     side: str,
@@ -556,9 +760,14 @@ class BotConfig:
     fast_ema: int = 20
     slow_ema: int = 80
     atr_period: int = 14
+    strategy_mode: str = "trend"
+    regime_trend_threshold: float = 1.2
     pullback_atr: float = 0.6
+    reversion_atr: float = 0.8
     sl_atr: float = 1.5
     tp_atr: float = 2.0
+    reversion_sl_atr: float = 1.2
+    reversion_tp_atr: float = 1.2
     lot: float = 0.01
     max_spread_points: float = 80.0
     max_positions: int = 1
@@ -568,6 +777,8 @@ class BotConfig:
     atr_filter_min_samples: int = 120
     min_atr_ratio_to_median: float = 0.0
     max_atr_ratio_to_median: float = 999.0
+    min_ema_gap_over_atr: float = 0.9
+    max_ema_gap_over_atr: float = 2.5
     deviation: int = 30
     magic: int = 560061
     comment: str = "xau_autobot_v1"
@@ -578,6 +789,15 @@ class BotConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BotConfig":
+        comment = validate_trade_comment(str(data.get("comment", "xau_autobot_v1")))
+        strategy_mode = validate_strategy_mode(str(data.get("strategy_mode", "trend")))
+        min_ema_gap_over_atr = float(data.get("min_ema_gap_over_atr", 0.9))
+        max_ema_gap_over_atr = float(data.get("max_ema_gap_over_atr", 2.5))
+        if max_ema_gap_over_atr < min_ema_gap_over_atr:
+            raise ValueError(
+                f"max_ema_gap_over_atr must be >= min_ema_gap_over_atr: "
+                f"{max_ema_gap_over_atr} < {min_ema_gap_over_atr}"
+            )
         return cls(
             symbol=str(data.get("symbol", "XAUUSD")),
             timeframe=str(data.get("timeframe", "M5")),
@@ -585,9 +805,14 @@ class BotConfig:
             fast_ema=int(data.get("fast_ema", 20)),
             slow_ema=int(data.get("slow_ema", 80)),
             atr_period=int(data.get("atr_period", 14)),
+            strategy_mode=strategy_mode,
+            regime_trend_threshold=float(data.get("regime_trend_threshold", 1.2)),
             pullback_atr=float(data.get("pullback_atr", 0.6)),
+            reversion_atr=float(data.get("reversion_atr", 0.8)),
             sl_atr=float(data.get("sl_atr", 1.5)),
             tp_atr=float(data.get("tp_atr", 2.0)),
+            reversion_sl_atr=float(data.get("reversion_sl_atr", data.get("sl_atr", 1.2))),
+            reversion_tp_atr=float(data.get("reversion_tp_atr", data.get("tp_atr", 1.2))),
             lot=float(data.get("lot", 0.01)),
             max_spread_points=float(data.get("max_spread_points", 80.0)),
             max_positions=int(data.get("max_positions", 1)),
@@ -597,9 +822,11 @@ class BotConfig:
             atr_filter_min_samples=int(data.get("atr_filter_min_samples", 120)),
             min_atr_ratio_to_median=float(data.get("min_atr_ratio_to_median", 0.0)),
             max_atr_ratio_to_median=float(data.get("max_atr_ratio_to_median", 999.0)),
+            min_ema_gap_over_atr=min_ema_gap_over_atr,
+            max_ema_gap_over_atr=max_ema_gap_over_atr,
             deviation=int(data.get("deviation", 30)),
             magic=int(data.get("magic", 560061)),
-            comment=str(data.get("comment", "xau_autobot_v1")),
+            comment=comment,
             dry_run=bool(data.get("dry_run", True)),
             once=bool(data.get("once", True)),
             poll_seconds=int(data.get("poll_seconds", 15)),
@@ -674,6 +901,65 @@ class Mt5Gateway:
                 return True
         return False
 
+    def _default_filling_modes(self) -> List[int]:
+        assert mt5 is not None
+        modes: List[int] = []
+        for attr in ("ORDER_FILLING_IOC", "ORDER_FILLING_FOK", "ORDER_FILLING_RETURN"):
+            raw = getattr(mt5, attr, None)
+            if raw is None:
+                continue
+            mode = int(raw)
+            if mode not in modes:
+                modes.append(mode)
+        return modes
+
+    def _order_send_with_filling_fallback(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        assert mt5 is not None
+        base_request = dict(request)
+        preferred = base_request.get("type_filling")
+        base_request.pop("type_filling", None)
+
+        fill_modes: List[int] = []
+        if preferred is not None:
+            fill_modes.append(int(preferred))
+        for mode in self._default_filling_modes():
+            if mode not in fill_modes:
+                fill_modes.append(mode)
+
+        invalid_fill_retcode = int(getattr(mt5, "TRADE_RETCODE_INVALID_FILL", 10030))
+        attempts: List[Dict[str, Any]] = []
+        last_request = dict(request)
+        last_result: Optional[Dict[str, Any]] = None
+
+        for fill_mode in fill_modes:
+            attempt_request = dict(base_request)
+            attempt_request["type_filling"] = fill_mode
+            last_request = dict(attempt_request)
+            result = mt5.order_send(attempt_request)
+            if result is None:
+                attempts.append({"type_filling": fill_mode, "retcode": -1, "error": str(mt5.last_error())})
+                continue
+
+            result_dict = result._asdict()
+            retcode = int(result_dict.get("retcode", -1))
+            attempts.append({"type_filling": fill_mode, "retcode": retcode})
+            last_result = dict(result_dict)
+            if retcode == invalid_fill_retcode:
+                continue
+
+            result_dict["request"] = attempt_request
+            if len(attempts) > 1:
+                result_dict["filling_attempts"] = attempts
+            return result_dict
+
+        if last_result is not None:
+            out = dict(last_result)
+            out["request"] = last_request
+            if attempts:
+                out["filling_attempts"] = attempts
+            return out
+        return {"retcode": -1, "error": str(mt5.last_error()), "request": last_request, "filling_attempts": attempts}
+
     def close_opposite_positions(self, signal: str) -> List[Dict[str, Any]]:
         assert mt5 is not None
         ask, bid, _point = self.get_tick_context()
@@ -714,20 +1000,8 @@ class Mt5Gateway:
                     }
                 )
                 continue
-            result = mt5.order_send(request)
-            if result is None:
-                results.append(
-                    {
-                        "retcode": -1,
-                        "error": str(mt5.last_error()),
-                        "closed_side": side,
-                        "request": request,
-                    }
-                )
-                continue
-            result_dict = result._asdict()
+            result_dict = self._order_send_with_filling_fallback(request)
             result_dict["closed_side"] = side
-            result_dict["request"] = request
             results.append(result_dict)
         return results
 
@@ -762,12 +1036,7 @@ class Mt5Gateway:
         }
         if self.config.dry_run:
             return {"retcode": 0, "dry_run": True, "request": request}
-        result = mt5.order_send(request)
-        if result is None:
-            return {"retcode": -1, "error": str(mt5.last_error()), "request": request}
-        result_dict = result._asdict()
-        result_dict["request"] = request
-        return result_dict
+        return self._order_send_with_filling_fallback(request)
 
 
 def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optional[int]) -> Tuple[Dict[str, Any], int]:
@@ -782,11 +1051,12 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
                 "action": "SKIP",
                 "reason": "not_enough_bars",
                 "symbol": config.symbol,
+                "gap_gate_checked": False,
             }, fallback_time
         raise
     bar_time = int(rates["time"][-1])
     if last_bar_time is not None and bar_time == last_bar_time:
-        return {"action": "SKIP", "reason": "no_new_bar"}, bar_time
+        return {"action": "SKIP", "reason": "no_new_bar", "gap_gate_checked": False}, bar_time
 
     closes = rates["close"]
     highs = rates["high"]
@@ -805,6 +1075,7 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "hour_utc": hour_utc,
             "session_start_hour_utc": config.session_start_hour_utc,
             "session_end_hour_utc": config.session_end_hour_utc,
+            "gap_gate_checked": False,
         }, bar_time
 
     ema_fast = ema_last(closes, config.fast_ema)
@@ -812,6 +1083,7 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
     atr_values = atr_series(highs, lows, closes, config.atr_period)
     atr_value = atr_values[-1] if atr_values else 0.0
     atr_pct_values = atr_pct_series(atr_values, closes)
+    ema_gap_over_atr = abs(ema_fast - ema_slow) / atr_value if atr_value > 0.0 else 0.0
     if not volatility_filter_pass(
         atr_pct_values=atr_pct_values,
         min_ratio_to_median=config.min_atr_ratio_to_median,
@@ -826,14 +1098,47 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "atr_pct": atr_pct_values[-1] if atr_pct_values else 0.0,
             "min_ratio_to_median": config.min_atr_ratio_to_median,
             "max_ratio_to_median": config.max_atr_ratio_to_median,
+            "gap_gate_checked": False,
         }, bar_time
-    signal = decide_signal(
+    if atr_value <= 0.0:
+        return {
+            "action": "HOLD",
+            "reason": "atr_unavailable",
+            "symbol": config.symbol,
+            "ema_fast": ema_fast,
+            "ema_slow": ema_slow,
+            "atr": atr_value,
+            "ema_gap_over_atr": ema_gap_over_atr,
+            "min_ema_gap_over_atr": config.min_ema_gap_over_atr,
+            "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+            "gap_gate_checked": True,
+        }, bar_time
+    if not (config.min_ema_gap_over_atr <= ema_gap_over_atr <= config.max_ema_gap_over_atr):
+        return {
+            "action": "HOLD",
+            "reason": "ema_gap_out_of_range",
+            "symbol": config.symbol,
+            "ema_fast": ema_fast,
+            "ema_slow": ema_slow,
+            "atr": atr_value,
+            "ema_gap_over_atr": ema_gap_over_atr,
+            "min_ema_gap_over_atr": config.min_ema_gap_over_atr,
+            "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+            "gap_gate_checked": True,
+        }, bar_time
+    signal_ctx = decide_signal_with_mode(
+        strategy_mode=config.strategy_mode,
         last_close=closes[-1],
         ema_fast=ema_fast,
         ema_slow=ema_slow,
         atr_value=atr_value,
         pullback_atr=config.pullback_atr,
+        reversion_atr=config.reversion_atr,
+        trend_threshold=config.regime_trend_threshold,
     )
+    signal = str(signal_ctx.get("signal", "HOLD"))
+    signal_source = str(signal_ctx.get("source", "trend"))
+    regime = str(signal_ctx.get("regime", "trend"))
     ask, bid, point = gateway.get_tick_context()
     spread_points = (ask - bid) / point
     open_positions = gateway.open_positions()
@@ -844,8 +1149,13 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "ema_fast": ema_fast,
             "ema_slow": ema_slow,
             "atr": atr_value,
+            "ema_gap_over_atr": ema_gap_over_atr,
+            "strategy_mode": config.strategy_mode,
+            "regime": regime,
+            "signal_source": signal_source,
             "spread_points": spread_points,
             "open_positions": open_positions,
+            "gap_gate_checked": True,
         }, bar_time
 
     if gateway.has_opposite_position(signal):
@@ -857,16 +1167,24 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
                 "reason": "opposite_close_failed",
                 "symbol": config.symbol,
                 "signal": signal,
+                "regime": regime,
+                "signal_source": signal_source,
+                "ema_gap_over_atr": ema_gap_over_atr,
                 "open_positions": remaining_positions,
                 "close_results": close_results,
+                "gap_gate_checked": True,
             }, bar_time
         return {
             "action": "CLOSE",
             "symbol": config.symbol,
             "signal": signal,
+            "regime": regime,
+            "signal_source": signal_source,
+            "ema_gap_over_atr": ema_gap_over_atr,
             "spread_points": spread_points,
             "close_results": close_results,
             "open_positions": remaining_positions,
+            "gap_gate_checked": True,
         }, bar_time
 
     if not can_open_trade(
@@ -879,30 +1197,41 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "action": "BLOCKED",
             "symbol": config.symbol,
             "signal": signal,
+            "regime": regime,
+            "signal_source": signal_source,
+            "ema_gap_over_atr": ema_gap_over_atr,
             "spread_points": spread_points,
             "max_spread_points": config.max_spread_points,
             "open_positions": open_positions,
             "max_positions": config.max_positions,
+            "gap_gate_checked": True,
         }, bar_time
 
     entry_price = ask if signal == "BUY" else bid
+    sl_atr = config.reversion_sl_atr if signal_source == "reversion" else config.sl_atr
+    tp_atr = config.reversion_tp_atr if signal_source == "reversion" else config.tp_atr
     sl, tp = build_sl_tp(
         side=signal,
         entry_price=entry_price,
         atr_value=atr_value,
-        sl_atr=config.sl_atr,
-        tp_atr=config.tp_atr,
+        sl_atr=sl_atr,
+        tp_atr=tp_atr,
     )
     order_result = gateway.send_market_order(signal, sl=sl, tp=tp)
     return {
         "action": "ORDER",
         "symbol": config.symbol,
         "side": signal,
+        "regime": regime,
+        "signal_source": signal_source,
+        "ema_gap_over_atr": ema_gap_over_atr,
+        "strategy_mode": config.strategy_mode,
         "entry_price": entry_price,
         "sl": sl,
         "tp": tp,
         "spread_points": spread_points,
         "order_result": order_result,
+        "gap_gate_checked": True,
     }, bar_time
 
 
@@ -939,6 +1268,8 @@ def resolve_config_path(path: str, default_candidates: Tuple[str, ...] = DEFAULT
 def run(config: BotConfig) -> None:
     notifier = SessionBlockNotifier.from_env()
     live_guard = LiveUnderperformanceGuard.from_env()
+    runtime_metrics = _new_runtime_metrics()
+    runtime_journal_path = Path(runtime_journal_path_from_env())
     gateway = Mt5Gateway(config)
     gateway.connect()
     try:
@@ -948,7 +1279,23 @@ def run(config: BotConfig) -> None:
             guard_payload = live_guard.check()
             if guard_payload is not None:
                 now_unix = int(time.time())
+                guard_payload["timestamp_utc"] = datetime.fromtimestamp(now_unix, tz=timezone.utc).isoformat()
+                guard_payload["runtime_metrics"] = runtime_metrics_snapshot(runtime_metrics)
                 print(json.dumps(guard_payload, ensure_ascii=True))
+                try:
+                    append_runtime_journal(runtime_journal_path, guard_payload)
+                except (OSError, TypeError, ValueError) as exc:
+                    print(
+                        json.dumps(
+                            {
+                                "action": "WARN",
+                                "reason": "runtime_journal_write_failed",
+                                "journal_path": str(runtime_journal_path),
+                                "error": str(exc),
+                            },
+                            ensure_ascii=True,
+                        )
+                    )
                 notifier.maybe_notify(guard_payload, config=config, bar_time=now_unix)
                 cycles += 1
                 if config.once:
@@ -959,7 +1306,24 @@ def run(config: BotConfig) -> None:
                 continue
 
             payload, last_bar_time = evaluate_once(config, gateway, last_bar_time)
+            update_runtime_metrics(runtime_metrics, payload)
+            payload["timestamp_utc"] = datetime.fromtimestamp(last_bar_time, tz=timezone.utc).isoformat()
+            payload["runtime_metrics"] = runtime_metrics_snapshot(runtime_metrics)
             print(json.dumps(payload, ensure_ascii=True))
+            try:
+                append_runtime_journal(runtime_journal_path, payload)
+            except (OSError, TypeError, ValueError) as exc:
+                print(
+                    json.dumps(
+                        {
+                            "action": "WARN",
+                            "reason": "runtime_journal_write_failed",
+                            "journal_path": str(runtime_journal_path),
+                            "error": str(exc),
+                        },
+                        ensure_ascii=True,
+                    )
+                )
             notifier.maybe_notify(payload, config=config, bar_time=last_bar_time)
             cycles += 1
             if config.once:

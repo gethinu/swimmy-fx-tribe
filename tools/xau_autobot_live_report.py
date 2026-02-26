@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -22,6 +23,10 @@ except Exception:
 BUY_DEAL_TYPE = 0
 SELL_DEAL_TYPE = 1
 EXIT_ENTRIES = {1, 2, 3}
+DEAL_REASON_SL = 4
+DEAL_REASON_TP = 5
+DEFAULT_RUNTIME_JOURNAL_PATH = "data/reports/xau_autobot_runtime_journal_latest.jsonl"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass
@@ -31,6 +36,16 @@ class PositionAggregate:
     close_time: int = 0
     deal_count: int = 0
     exit_deals: int = 0
+    close_reason_code: int = 0
+    close_reason: str = "OTHER"
+
+
+def _normalize_close_reason(reason_code: int) -> str:
+    if int(reason_code) == DEAL_REASON_TP:
+        return "TP"
+    if int(reason_code) == DEAL_REASON_SL:
+        return "SL"
+    return "OTHER"
 
 
 def _deal_value(deal: Any, key: str, default: Any = None) -> Any:
@@ -163,6 +178,9 @@ def aggregate_closed_positions(
             t = _to_int(_deal_value(deal, "time", 0), default=0)
             if t > agg.close_time:
                 agg.close_time = t
+                deal_reason = _to_int(_deal_value(deal, "reason", 0), default=0)
+                agg.close_reason_code = int(deal_reason)
+                agg.close_reason = _normalize_close_reason(deal_reason)
 
     closed = [item for item in by_position.values() if item.exit_deals > 0]
     closed.sort(key=lambda x: x.close_time)
@@ -176,6 +194,8 @@ def aggregate_closed_positions(
                 "net_profit": float(item.net_profit),
                 "deal_count": int(item.deal_count),
                 "exit_deals": int(item.exit_deals),
+                "close_reason_code": int(item.close_reason_code),
+                "close_reason": str(item.close_reason),
             }
         )
     return out
@@ -251,19 +271,44 @@ def _max_drawdown_abs(pnls: Iterable[float]) -> float:
     return max_dd
 
 
-def summarize_closed_positions(closed_positions: Sequence[Dict[str, Any]]) -> Dict[str, float]:
+def summarize_closed_positions(
+    closed_positions: Sequence[Dict[str, Any]],
+    *,
+    window_days: float = 0.0,
+) -> Dict[str, Any]:
     pnls = [float(item.get("net_profit", 0.0)) for item in closed_positions]
     wins = [x for x in pnls if x > 0.0]
     losses = [x for x in pnls if x < 0.0]
     gross_profit = sum(wins)
     gross_loss = sum(losses)
     closed_count = len(pnls)
+    close_reason_counts = {"tp": 0.0, "sl": 0.0, "other": 0.0}
+    for item in closed_positions:
+        close_reason = str(item.get("close_reason", "OTHER")).upper()
+        if close_reason == "TP":
+            close_reason_counts["tp"] += 1.0
+        elif close_reason == "SL":
+            close_reason_counts["sl"] += 1.0
+        else:
+            close_reason_counts["other"] += 1.0
 
     profit_factor = 0.0
     if losses:
         profit_factor = gross_profit / abs(gross_loss)
     elif wins:
         profit_factor = 99.0
+
+    closed_per_day = 0.0
+    if window_days > 0.0:
+        closed_per_day = float(closed_count) / float(window_days)
+
+    tp_count = float(close_reason_counts.get("tp", 0.0))
+    sl_count = float(close_reason_counts.get("sl", 0.0))
+    tp_sl_ratio = 0.0
+    if sl_count > 0.0:
+        tp_sl_ratio = tp_count / sl_count
+    elif tp_count > 0.0:
+        tp_sl_ratio = 99.0
 
     return {
         "closed_positions": float(closed_count),
@@ -275,6 +320,9 @@ def summarize_closed_positions(closed_positions: Sequence[Dict[str, Any]]) -> Di
         "avg_loss": (float(gross_loss) / float(len(losses))) if losses else 0.0,
         "profit_factor": float(profit_factor),
         "max_drawdown_abs": float(_max_drawdown_abs(pnls)),
+        "closed_per_day": float(closed_per_day),
+        "close_reason_counts": close_reason_counts,
+        "tp_sl_ratio": float(tp_sl_ratio),
     }
 
 
@@ -394,10 +442,112 @@ def _parse_utc(value: str) -> datetime:
     return dt
 
 
+def _parse_utc_optional(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return _parse_utc(text)
+    except Exception:
+        return None
+
+
+def _normalize_runtime_metrics(metrics: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(metrics, dict):
+        return None
+    gate_check_count = _to_int(metrics.get("gate_check_count"), default=-1)
+    gate_reject_gap_count = _to_int(metrics.get("gate_reject_gap_count"), default=-1)
+    if gate_check_count < 0 or gate_reject_gap_count < 0:
+        return None
+    signal_counts_raw = metrics.get("signal_counts", {})
+    signal_counts = signal_counts_raw if isinstance(signal_counts_raw, dict) else {}
+    gap_reject_rate = _to_float(metrics.get("gap_reject_rate"), default=0.0)
+    if gate_check_count > 0 and (gap_reject_rate <= 0.0):
+        gap_reject_rate = float(gate_reject_gap_count) / float(gate_check_count)
+    return {
+        "gate_check_count": int(gate_check_count),
+        "gate_reject_gap_count": int(gate_reject_gap_count),
+        "gap_reject_rate": float(gap_reject_rate),
+        "signal_counts": {
+            "BUY": int(_to_int(signal_counts.get("BUY"), 0)),
+            "SELL": int(_to_int(signal_counts.get("SELL"), 0)),
+            "HOLD": int(_to_int(signal_counts.get("HOLD"), 0)),
+        },
+    }
+
+
+def load_latest_runtime_metrics(runtime_journal_path: Path) -> Optional[Dict[str, Any]]:
+    path = Path(runtime_journal_path)
+    if not path.exists() or not path.is_file():
+        return None
+
+    latest_index = -1
+    latest_ts: Optional[datetime] = None
+    latest_snapshot: Optional[Dict[str, Any]] = None
+    with path.open("r", encoding="utf-8", errors="ignore") as f:
+        for index, raw in enumerate(f):
+            line = raw.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            snapshot = _normalize_runtime_metrics(payload.get("runtime_metrics"))
+            if snapshot is None:
+                continue
+            ts = (
+                _parse_utc_optional(payload.get("timestamp_utc"))
+                or _parse_utc_optional(payload.get("timestamp"))
+                or _parse_utc_optional(payload.get("generated_at"))
+            )
+            if latest_snapshot is None:
+                latest_snapshot = snapshot
+                latest_ts = ts
+                latest_index = index
+                continue
+            if ts is None:
+                if latest_ts is None and index > latest_index:
+                    latest_snapshot = snapshot
+                    latest_index = index
+                continue
+            if latest_ts is None or ts >= latest_ts:
+                latest_snapshot = snapshot
+                latest_ts = ts
+                latest_index = index
+    return latest_snapshot
+
+
+def resolve_runtime_journal_path(cli_value: str) -> Path:
+    candidate = (
+        str(cli_value or "").strip()
+        or os.getenv("XAU_AUTOBOT_RUNTIME_JOURNAL_PATH", "").strip()
+        or DEFAULT_RUNTIME_JOURNAL_PATH
+    )
+    path = Path(candidate).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path
+
+
 def _fetch_mt5_deals(*, start_utc: datetime, end_utc: datetime) -> List[Any]:
     if mt5 is None:
         raise RuntimeError("MetaTrader5 Python package is missing. Install with `pip install MetaTrader5`.")
-    if not mt5.initialize():
+    max_init_attempts = 3
+    initialized = False
+    for attempt in range(max_init_attempts):
+        if mt5.initialize():
+            initialized = True
+            break
+        err = mt5.last_error()
+        err_code = _to_int(err[0], default=0) if isinstance(err, (tuple, list)) and err else 0
+        if err_code == -10005 and attempt + 1 < max_init_attempts:
+            time.sleep(1.0)
+            continue
+        raise RuntimeError(f"mt5.initialize() failed: {err}")
+    if not initialized:
         raise RuntimeError(f"mt5.initialize() failed: {mt5.last_error()}")
     try:
         deals = mt5.history_deals_get(start_utc, end_utc)
@@ -459,6 +609,7 @@ def main() -> None:
     parser.add_argument("--notify-threshold-closed", type=int, default=0)
     parser.add_argument("--notify-webhook", default="")
     parser.add_argument("--notify-state-path", default="data/reports/xau_autobot_live_notify_state.json")
+    parser.add_argument("--runtime-journal-path", default="")
     parser.add_argument("--write-report", default="")
     args = parser.parse_args()
 
@@ -477,7 +628,8 @@ def main() -> None:
         magic=args.magic,
         comment_prefix=args.comment_prefix,
     )
-    summary = summarize_closed_positions(closed_positions)
+    window_days = float((end_utc - start_utc).total_seconds() / 86400.0)
+    summary = summarize_closed_positions(closed_positions, window_days=window_days)
     open_snapshot = _fetch_open_positions_snapshot(
         symbol=args.symbol,
         magic=args.magic,
@@ -495,6 +647,11 @@ def main() -> None:
         "summary": summary,
         "open_snapshot": open_snapshot,
     }
+    runtime_journal_path = resolve_runtime_journal_path(args.runtime_journal_path)
+    runtime_metrics = load_latest_runtime_metrics(runtime_journal_path)
+    if runtime_metrics is not None:
+        output["runtime_metrics"] = runtime_metrics
+        output["runtime_metrics_source"] = str(runtime_journal_path)
     if args.diagnostics:
         output["diagnostics"] = build_filter_diagnostics(
             deals=deals,

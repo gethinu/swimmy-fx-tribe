@@ -494,28 +494,39 @@ When deviation is omitted, use dev=2.0."
 
 (defun select-strategies-for-regime (regime strategies)
   "Select strategies appropriate for the current market regime (Layered Selection)"
-  (let ((target-categories 
-         (case regime
-           ((:trend-early :trend-mature) '(:trend :breakout))
-           ;; Category taxonomy is :trend/:reversion/:breakout/:scalp (see DSL strategy struct).
-           ;; Keep regime mapping aligned with real categories to avoid scanning 0 candidates live.
-           ((:trend-exhausted) '(:reversion :scalp))
-           ((:range-expansion :ranging) '(:reversion :scalp))
-           ((:range-compression) '(:breakout :trend))
-           ;; V45: Don't fully halt - allow LEGEND + scalp with warning (Opus 2026-01-20)
-           ((:volatile-spike :illiquid) 
-            (format t "[L] ⚠️ MARKET CAUTION (~a). Limiting to LEGEND/scalp strategies.~%" regime)
-            '(:scalp :legend))  ;; Allow defensive trading
-           (t '(:trend :reversion))))) ;; Default generic
+  (labels ((legend-strategy-p (s)
+             (let* ((rank (and s (fboundp 'strategy-rank) (strategy-rank s)))
+                    (rank-token (cond
+                                  ((null rank) "")
+                                  ((keywordp rank) (string-upcase (symbol-name rank)))
+                                  ((symbolp rank) (string-upcase (symbol-name rank)))
+                                  ((stringp rank) (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return #\:) rank)))
+                                  (t (string-upcase (format nil "~a" rank))))))
+               (or (string= rank-token "LEGEND")
+                   ;; Backward compatibility for legacy naming conventions.
+                   (search "LEGEND" (or (strategy-name s) "") :test #'char-equal)))))
+    (let ((target-categories
+           (case regime
+             ((:trend-early :trend-mature) '(:trend :breakout))
+             ;; Category taxonomy is :trend/:reversion/:breakout/:scalp (see DSL strategy struct).
+             ;; Keep regime mapping aligned with real categories to avoid scanning 0 candidates live.
+             ((:trend-exhausted) '(:reversion :scalp))
+             ((:range-expansion :ranging) '(:reversion :scalp))
+             ((:range-compression) '(:breakout :trend))
+             ;; V45: Don't fully halt - allow LEGEND + scalp with warning (Opus 2026-01-20)
+             ((:volatile-spike :illiquid)
+              (format t "[L] ⚠️ MARKET CAUTION (~a). Limiting to LEGEND/scalp strategies.~%" regime)
+              '(:scalp :legend))  ;; Allow defensive trading
+             (t '(:trend :reversion))))) ;; Default generic
 
-    (remove-if-not 
-     (lambda (s) 
-       (let ((regime-class (if (fboundp 'strategy-regime-class)
-                               (strategy-regime-class s)
-                               (strategy-category s))))
-         (or (member regime-class target-categories)
-             (search "LEGEND" (strategy-name s))))) ;; Always check legends
-     strategies)))
+      (remove-if-not
+       (lambda (s)
+         (let ((regime-class (if (fboundp 'strategy-regime-class)
+                                 (strategy-regime-class s)
+                                 (strategy-category s))))
+           (or (member regime-class target-categories)
+               (legend-strategy-p s)))) ;; Always check legends
+       strategies))))
 
 (defun collect-strategy-signals (symbol history)
   "Evaluate Context-Aware subset of strategies and return triggered signals"
@@ -526,10 +537,16 @@ When deviation is omitted, use dev=2.0."
                              (active-strategy-p s)
                              t))
                        *strategy-knowledge-base*))
-         (candidates (select-strategies-for-regime regime active-pool))
+         (regime-candidates (select-strategies-for-regime regime active-pool))
+         (candidates (if (and (null regime-candidates) active-pool)
+                         active-pool
+                         regime-candidates))
          (signals nil))
     
     ;; Log selection count for debugging
+    (when (and (null regime-candidates) active-pool)
+      (format t "[L] ⚠️ Regime pool empty for ~a; fallback to active pool (~d).~%"
+              regime (length active-pool)))
     (format t "[L] Regime: ~a | Scanning ~d/~d strategies~%" 
             regime (length candidates) (length active-pool))
 

@@ -2,6 +2,311 @@
 
 ## 現在の状態
 - **稼働フェーズ**: V50.6 (Structured Telemetry) - 2026-02-03
+- **V50.8 KPI再設定（2026-02-26）**:
+  - 収益KPIを `月利10%` から **主KPI: 月利3% / ストレッチ: 月利5%** へ再設定。
+  - `monthly10` 表記の成果物は履歴として保持し、運用判定は `3%/5%` 基準を正本とする。
+- **V50.8-P5.15 実装整合（2026-02-26）**:
+  - `tools/xau_autobot.py` の `ema_gap_over_atr` レンジゲート（既定 `0.9..2.5`）を実コードへ適用する。
+  - `tools/xau_autobot_trial_judge.py` の判定出力を `readiness/performance` 分割へ統一し、`min_closed_positions` 既定を `12` に合わせる。
+- **V50.8-P5.16 観測メトリクス追加（2026-02-26）**:
+  - `tools/xau_autobot.py` の実行payloadへ runtime 集計（`gate_check_count`, `gate_reject_gap_count`, `signal_counts`）を同梱し、gapゲート導入効果を運用ログで定量確認できる状態を正本とする。
+  - `tools/xau_autobot_live_report.py` の summary に `closed_per_day`, `close_reason_counts(tp/sl/other)`, `tp_sl_ratio` を追加し、14日/30日窓の回転率と SL偏重の可観測性を強化する。
+- **V50.8-P5.17 運用監査判定自動化（2026-02-26）**:
+  - 監査CLI `tools/xau_autobot_operational_audit.py` を正本化し、3日窓で `gap_reject_rate / tp_sl_ratio / closed_per_day / expectancy` を集計して `PASS/WARN/FAIL` を自動判定する。
+  - 修正ガイドは判定パターン `A/B/C`（過剰制限・弱ゲート・RR不整合）を出力し、次の設定変更をルール化する。
+  - `tools/xau_autobot.py` は各サイクルpayloadを runtime journal（JSONL）へ追記し、`runtime_metrics` の監査母集団を継続保存する。
+- **V50.8-P5.18 runtime観測連続性修復（2026-02-26）**:
+  - `tools/xau_autobot.py` の runtime journal 既定パスを repo-root 基準の絶対解決へ固定し、実行cwd差分で `runtime_metrics` 保存先が漂流しない状態を正本とする。
+  - `tools/xau_autobot_live_report.py` は最新 runtime snapshot を `runtime_metrics` として同梱し、trial日次レポート単体でも gap ゲート稼働状況を監査可能にする。
+  - `tools/xau_autobot_operational_audit.py` は runtime journal 欠損時に live report 同梱の `runtime_metrics` を fallback 集計し、`snapshot_count=0` による観測断絶を回避する。
+- **V50.8 Timeframe Mapping整合（2026-02-26）**:
+  - `tools/xau_autobot_optimize.py` の `--interval` を出力configの `timeframe` と整合させる（例: `15m->M15`, `60m/1h->H1`, `4h->H4`）。
+  - 非対応intervalは fail-closed で拒否し、最適化条件とライブ実行足の乖離を防止する。
+- **V50.8 M5除外探索（2026-02-26）**:
+  - `M15/H1` を60dで再最適化し、trial候補を分離作成（`magic=560186/560187`）。
+  - readiness 比較:
+    - `M15`: `trades=116`, `PF=1.972`, `total_return=0.2493`（GO）
+    - `H1`: `trades=20`, `PF=2.2239`, `total_return=0.0649`（GO, ただし件数薄）
+  - 新規 trial config:
+    - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_m15.json`
+    - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_h1.json`
+- **V50.8 月次判定schema正規化（2026-02-26）**:
+  - `v50_8_monthly_decision_*.json` の正本判定キーを **主KPI 3% / ストレッチ 5%** に統一する。
+  - `monthly_10pct_reached` は履歴互換キーとして保持し、運用判定には使わない。
+- **IHトラック停止（2026-02-26, user option=1）**:
+  - `IH monthly` 系（`ih_opt_*`）の新規 run 起票と追加ゲートを停止。
+  - 既存 `P6/P6.3` は postmortem として保持し、改善投資は `XAU単独トラック` に集中する。
+- **Legend lifecycle hotfix（2026-02-26）**:
+  - root cause: `swimmy-school` が旧プロセスで動作中に overflow deathmatch が実行され、Legend名戦略が `GRAVEYARD` へ再流出した。
+  - **Legend Phase1 revalidation immutability 契約**: `handle-v2-result` の Phase1 経路は `:LEGEND` 戦略を `:B/:GRAVEYARD` へ遷移させない。再検証はメトリクス更新のみ行い、ランクは `:LEGEND` を維持する。
+  - **No-op ensure-rank DB resurrection 契約**: `ensure-rank` は `old-rank == new-rank` の no-op ケースでも、DB rank が archived（`:GRAVEYARD/:RETIRED`）かつ target が active（`B/A/S/LEGEND`）なら DB rank を自己修復（upsert）する。
+- **CPCV criteria-fail 再投入契約（2026-02-26）**:
+  - root cause: `run-a-rank-cpcv-batch` が `:criteria-fail` を「シグネチャ変更がない限り再投入不可」と扱い、A候補が長時間 `Skipped ... dispatch cooldown` で固定化するケースを確認。
+  - 契約:
+    - `:criteria-fail` は専用TTL経過後に再投入可能（`*cpcv-criteria-fail-retry-interval*`）。
+    - `:runtime-fail/:inflight` は従来どおり `*cpcv-strategy-retry-interval*` で再試行。
+    - `:passed` はシグネチャ変更がない限り再投入しない。
+  - 目的: 無期限ロックを避けつつ、CPCV連打によるスループット浪費を抑制する。
+  - interface 変更なし（`INTERFACES.md` 更新不要）。
+- **V50.7 B1R探索スナップショット（2026-02-24）**:
+  - `A9`（taiki seed47直撃）は `fix6d` で `top3_oos_ok=1` を確認し、完了条件を達成。
+  - `A11`（taiki seed23追補, fix6e）は `top3_oos_ok=1`（`vwapvr@720` が `oos_ok=true`）を確認し、seed23回復を実測。
+  - `A12`（fix10ミックス最終評価）で `both_players_pass_count=4/5`（`fix10_overlap={11,23,47,83}`）を達成し、`b1r_completed=true` を確認。
+  - `A13`（Armada OOS再ランク実装）で `--oos-rerank-pool` を導入し、`fix10a`（seed47）で `top3_oos_ok=1` の回復を実測。
+  - `A14`（C1 refresh fix10反映版）で `strict={投入可:0, 保留:4, 再探索:1}`、`proxy={投入可:0, 保留:5, 再探索:0}` を確認。`deploy_decision` は両ビューとも `保留`。
+  - `A15`（L3 paper readiness更新）で `armada_paper_readiness_20260223_fix10refresh.json` を生成し、`decision=HOLD`（`paper_trade_count=0/20`, `slippage_samples=0/20`）を確認。
+  - `A17`（paper evidence現況, 2026-02-24）で `trade_logs.execution_mode={SHADOW:0, PAPER:0, LIVE:1}` を再確認。`primary (SHADOW+PAPER)=0/20` のまま未進捗。
+  - `A19` 追補（`armada_paper_readiness_20260224_followup2.json`, `generated_at=2026-02-24T12:56:29Z`）でも `decision=HOLD`（`paper_trade_count=0/20`, `slippage_samples=0/20`）を再確認。`swimmy-armada-paper-readiness.service` 手動実行でも `status=0/SUCCESS` かつ `armada_paper_readiness_20260224_fix10refresh.json`（`generated_at=2026-02-24T12:58:06Z`）を確認。
+  - `A20`（A-rank復帰とpaper evidence再開）は完了。`reseed_active_b.py` 実適用後に `:A>=1` を維持（最新実測 `:A=4`）し、`trade_logs.execution_mode={LIVE:1, SHADOW:2, PAPER:0}` で条件2（`SHADOW/PAPER` 増分）も達成。
+  - founder 3通貨監視（`founder_rank_watch_20260223_121322`）は `sample 169`（`2026-02-24 03:35 JST`）以降 `B=1/Graveyard=2` へ逸脱。根因は `A/B conformance` ではなく `Operation Black Death (Low Sharpe)`。
+  - founder 再監視（`founder_rank_watch_20260224_114359.service`）では、`sample 16`（`2026-02-24 22:06 JST`）で一時 `B=0/Graveyard=3` を観測。`cull-pool-overflow` の Founder保護欠落を是正後、`sample 17`（`2026-02-24 22:11 JST`）で `B=3/Graveyard=0` 復帰を確認。
+  - `prune-low-sharpe-strategies` に founder recovery 例外（`founder-phase1-recovery-passed-p`）を追加し、`Phase1 recovery` と prune 経路の整合を修正済み（単体回帰テストで確認）。
+  - `A19` は再評価完了。`armada_paper_readiness_20260225_runtime_window_default.json`（`generated_at=2026-02-25T03:11:21.387053+00:00`）で `decision=GO` を確認。
+    - 判定条件は `Synthetic-Close-Probe-*` を除外し、runtime guard を直近 `20` 件（`runtime_window_trade_count=20`, `runtime_window_net_pnl=1.1031132936477661`）で評価。
+    - `swimmy-armada-paper-readiness.timer` は `disabled` のまま（定期実行は停止維持、必要時に手動再計測）。
+  - 方針確定（2026-02-25）:
+    - ユーザー選択 `option=2` により「再評価GOを採用」を正本化。
+    - 同日午前の打ち切り判断は履歴扱いとし、運用継続判断は `A19再評価GO` を優先する。
+  - 収益化トラックは期限固定で運用（ユーザー承認, 2026-02-25 JST）:
+    - `2026-03-03 23:59 JST`: `paper_trade_count>=20` かつ `slippage_sample_count>=20` 未達なら停止。
+    - `2026-03-17 23:59 JST`: fixed forward 判定で `net_pnl>0` かつ `PF>=1.10` 未達なら停止。
+    - `2026-03-18 JST`: 継続/撤退を最終決定（未達ならEA運用停止）。
+  - `V50.8` 実行開始（2026-02-25）:
+    - baseline: `data/reports/v50_8_baseline_20260225.json`
+    - candidate rank: `data/reports/v50_8_candidate_rank_20260225.json`（最新選抜 `period=30d`, 月利換算 `10.0742%`）
+    - trial judge: `data/reports/v50_8_trial_judge_trial_v2_20260225_v50_8_30d.json`（`INVALID_TRIAL`, `window_days=0.00038194877314814816`、開始直後）
+    - cycle再確認で `data/reports/xau_autobot_cycle_summary_20260224_repush_30d.json` の `monthly_return_est_pct=10.0742`（`trades=89`, `pf=1.7745`）を確認し、`V50.8-P2` 正本runを `trial_v2_20260225_v50_8_30d` へ切替。
+  - `V50.8-P2` 追補（2026-02-25）:
+    - 実運用runを `trial_v2_20260225_v50_8_30d` へ切替（config: `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d.json`）。
+    - `xau_autobot_live_loop.ps1` は `magic=560075`, `comment=xau_autobot_trial_v2_20260225_v50_8_30d` で稼働中。
+    - 最新 `data/reports/v50_8_trial_judge_trial_v2_20260225_v50_8_30d.json` は `INVALID_TRIAL`（開始直後, `window_days=0.00038194877314814816`）。
+  - `V50.8-P4` 追補（2026-02-25, identity整合プローブ）:
+    - `trial_v2_20260225_identity_probe`（config: `tools/configs/xau_autobot.tuned_auto_active.json`）で trial judge を実行。
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260225_identity_probe.json` は `trial_valid=true`, `verdict=NO_GO`（`window_days=14.0`）。
+    - 実測: `closed_positions=27`, `pf=0.6023`, `win_rate=0.2963`, `net_profit=-12355.0`。
+    - `after_magic_filter=53`, `after_comment_prefix_filter=27` を確認し、主因は identity不一致ではなく実成績不足（PF/WR/Net）と確定。
+  - `V50.8-P5` 追補（2026-02-25, 収益改善ラウンド1・再最適化）:
+    - 30d向けに entry制約を絞った再最適化を実施（`candidate_count=1296`）。
+    - 成果物:
+      - `data/reports/xau_autobot_optimize_20260225_v50_8_p5_r1.jsonl`
+      - `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r1.json`
+    - rank1候補:
+      - `fast/slow=30/140`, `pullback_atr=0.3`, `sl/tp=2.0/3.0`, `session=8-17`, `atr_band=0.95-1.30`, `score=0.5536`
+    - 運用判断:
+      - 実運用runは `trial_v2_20260225_v50_8_30d` を維持（14日窓リセット回避）。
+      - `r1` は次回切替候補として保持。
+    - `V50.8-P5.3` 追補（2026-02-25, controlled cutover 実施）:
+      - 実運用runを `trial_v2_20260225_v50_8_30d_r1` へ切替。
+      - `xau_autobot_live_loop.ps1` は `magic=560076`, `comment=xau_autobot_trial_v2_20260225_v50_8_30d_r1` で稼働中。
+      - `data/reports/xau_autobot_trial_v2_current_run.json` を `run_id=trial_v2_20260225_v50_8_30d_r1` へ更新。
+      - `data/reports/xau_autobot_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` は `INVALID_TRIAL`（開始直後, `window_days=0.0005366872453703703`）。
+      - `data/reports/v50_8_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `data/reports/v50_8_monthly_decision_20260225.json` を更新（`decision=NO_GO` 継続）。
+      - interface 変更はなく、`INTERFACES.md` 更新は不要。
+    - `V50.8-P5.4` 追補（2026-02-26, single-runner clean-up 実施）:
+      - root cause: Windows 側で `xau_autobot.py --live` が複数config（`trial_v2_20260222`/`tuned_auto_active`/`live_named_*`/旧trial）で同時稼働し、trial 集計が混線。
+      - `Swimmy-XAU-Cycle` を `Disabled` へ変更し、Startup launcher `Swimmy-XAU-Exec.vbs` を `.disabled_20260226_084917` へ退避。
+      - 競合プロセスを停止し、稼働を `trial_v2_20260225_v50_8_30d_r1` の1本へ収束。
+      - 再評価（`2026-02-25T23:52:17Z`）:
+        - live report: `total_deals=16`, `after_symbol_filter=16`, `after_magic_filter=0`, `after_comment_prefix_filter=0`
+        - trial judge: `INVALID_TRIAL`, `window_days=0.7154219328703704`, `closed_positions=0`
+      - 含意:
+        - 計測混線は解消。未達主因は「trial対象（magic/comment一致）の約定未発生」。
+    - 次アクション（V50.8-P5.5, 実行予定）:
+      - 単発診断で `r1` は `BLOCKED:session`（UTC=2, 許可帯 8-17）を確認。
+      - 24h化プローブでも `BLOCKED:volatility` を確認。
+      - trial 計測母集団の確保を優先し、`r2` を `24h session + ATR比フィルタ緩和` で起動する。
+      - interface 変更はなく、`INTERFACES.md` 更新は不要。
+    - `V50.8-P5.5` 追補（2026-02-26, entry unblocking 実施）:
+      - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2.json` を追加。
+      - 変更点: `session=0-23`, `atr_ratio_filter=0.0-999.0`, `magic/comment=560077/xau_autobot_trial_v2_20260226_v50_8_30d_r2`。
+      - 実運用runを `trial_v2_20260226_v50_8_30d_r2` へ切替し、**XAU trial 対象config**（`..._30d_r2.json`）の単独稼働を確認。
+      - 再評価（`2026-02-26T00:07:00Z`）:
+        - `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.0006847736574074074`
+        - `summary={closed_positions:0, profit_factor:0.0, win_rate:0.0, net_profit:0.0}`
+      - 更新成果物:
+        - `xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r2.json`
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_r2.json`
+    - `V50.8-P5.5` 追補（2026-02-26, dual-run 並走）:
+      - `r1`（本線）と `r2`（探索）を並走起動。
+        - `r1` config: `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r1.json`（`magic=560076`）
+        - `r2` config: `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r2.json`（`magic=560077`）
+      - run meta を分離:
+        - 正本（本線）: `data/reports/xau_autobot_trial_v2_current_run.json` -> `trial_v2_20260225_v50_8_30d_r1`
+        - 副本（探索）: `data/reports/xau_autobot_trial_v2_current_run_r2.json` -> `trial_v2_20260225_v50_8_30d_r2`
+      - 最新判定（2026-02-26 00:01 UTC）:
+        - `r1`: `window_days=0.7221140405324074`, `verdict=INVALID_TRIAL`, `closed_positions=0`
+        - `r2`: `window_days=0.00015801098379629629`, `verdict=INVALID_TRIAL`, `closed_positions=0`
+      - 集約レポート: `data/reports/v50_8_dual_run_status_20260226.json`
+    - `V50.8-P5.6` 追補（2026-02-26, root cause確定）:
+      - trial config の `comment` が MT5上限31文字を超過しており、`xau_autobot.py` 起動時に fail-closed で停止することを再現確認。
+        - 対象: `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r1.json` / `..._r2.json` / `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2.json` / `..._r3.json`
+        - 実測: 各 `comment` 長 = 42 文字（例: `xau_autobot_trial_v2_20260226_v50_8_30d_r2`）
+        - 再現: `python3 tools/xau_autobot.py --config tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2.json --poll-seconds 10 --loop --live`
+        - 例外: `ValueError: comment exceeds MT5 max length 31`
+      - 含意:
+        - trial run は「entry条件」以前に起動時点で停止しうるため、`closed_positions=0` の主因に設定不整合が混在。
+      - 対応方針:
+        - `comment` を 31文字以下に修正し、trial start 経路にも preflight を追加して再発防止（fail-closedを起動前に顕在化）。
+      - ホットフィックス適用（2026-02-26）:
+        - `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r1.json`:
+          - `comment: xaut_v2_250225_30d_r1`（21文字）
+        - `tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r2.json`:
+          - `comment: xaut_v2_250225_30d_r2`（21文字）
+        - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2.json`:
+          - `comment: xaut_v2_250226_30d_r2`（21文字）
+        - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r3.json`:
+          - `comment: xaut_v2_250226_30d_r3`（21文字）
+      - 検証:
+        - 全 `tools/configs/xau_autobot.trial_v2_*.json` の comment 長が `<=31` を満たすことを確認。
+        - `python3 tools/xau_autobot.py --config tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2.json --poll-seconds 10 --loop --live` で
+          `comment exceeds MT5 max length` は再発せず、次段の `MetaTrader5 Python package is missing`（WSL環境差分）まで進むことを確認。
+      - 再発防止実装:
+        - `tools/xau_autobot_trial_v2_start.sh` に preflight を追加し、trial起動前に config を検証。
+        - `reason=trial_config_invalid_comment_length` / `trial_config_not_found` / `trial_config_invalid_json` を明示して fail-closed。
+        - `tools/tests/test_xau_autobot_trial_v2_start.py` を追加し、31文字超 comment が run meta 書き込み前に拒否されることを回帰テスト化。
+    - `V50.8-P5.6` 追補（2026-02-26, r2sc close反映）:
+      - `trial_v2_20260226_v50_8_30d_r2sc` を再評価し、`trial_valid=true` / `verdict=NO_GO` を確認（`INVALID_TRIAL` は脱却）。
+      - 実測（`xau_autobot_live_report_trial_v2_20260226_v50_8_30d_r2sc.json`）:
+        - `closed_positions=3`
+        - `net_profit=-5232.0`
+        - `diagnostics={after_magic_filter:6, after_comment_prefix_filter:3}`
+      - 含意:
+        - `comment長/truncation` 起因の集計不一致は解消済み。
+        - 現在の未達主因は純粋に実運用成績不足（PF/WR/Net）であり、次段はパラメータローテーションの成績改善に集中できる。
+    - `V50.8-P5.7` 追補（2026-02-26, r1sc ローテーション）:
+      - `r2sc` は `trial_valid=true` まで進んだ一方、`closed_positions=3`, `net_profit=-5232.0` で `verdict=NO_GO`。
+      - 改善ラウンド継続として `trial_v2_20260226_v50_8_30d_r1sc` へローテーション。
+        - config: `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r1sc.json`
+        - `magic/comment`: `560080/xaut_v2_260226_r1sc`
+      - 初回再評価（起動直後）:
+        - `xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r1sc.json`
+        - `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.00593607337962963`, `closed_positions=0`
+      - 含意:
+        - 発注経路は有効（`BLOCKED` ではなく `HOLD` 観測）だが、run窓初期のため判定は未成熟。
+    - `V50.8-P5.8` 追補（2026-02-26, r1s2 daily judge refresh）:
+      - `trial_v2_20260226_v50_8_30d_r1s2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。
+      - 反映:
+        - `xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r1s2.json`
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r1s2.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_r1s2.json`
+        - `xau_autobot_trial_watchdog_trial_v2_20260226_v50_8_30d_r1s2.json`
+      - 現況:
+        - `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.0033762395138888885/14`
+        - `summary={closed_positions:0, profit_factor:0.0, win_rate:0.0, net_profit:0.0}`
+        - `watchdog={decision:CONTINUE, triggered:false, window_hours:0.08102974833333333/24}`
+        - `decision=NO_GO`, `actual_monthly_return_pct=0.0`
+      - 単発シグナル診断:
+        - `xau_autobot_live_loop.ps1 -Live -Once` は `action=HOLD`（`BLOCKED` ではない）。
+      - 含意:
+        - 現状は reject/guard block ではなく、シグナル未成立による待機。
+    - `V50.8-P5.9` 追補（2026-02-26, r2sc 副run再開）:
+      - `r1s2` を本線のまま維持し、`r2sc` を `current_run_r2`（lock分離）で再起動。
+      - `xau_autobot_trial_v2_current_run_r2.json` は `run_id=trial_v2_20260226_v50_8_30d_r2sc`, `started_at_utc=2026-02-26T11:15:39.881278+00:00`。
+      - 再評価:
+        - `xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r2sc.json`
+        - `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.00036742836805555554`
+        - `watchdog={decision:CONTINUE, triggered:false, window_hours:0.008818280833333332/24}`
+      - 集約更新:
+        - `v50_8_dual_run_status_20260226.json` を `primary=r1s2`, `secondary=r2sc` で再生成。
+      - 稼働確認:
+        - `...xau_autobot.trial_v2_20260226_v50_8_30d_r1s2.json` と `...r2sc.json` の live loop 2本が同時稼働。
+      - 含意:
+        - KPI 判定正本は `r1s2` のまま、`r2sc` は約定発生観測用トラックとして運用。
+    - `V50.8-P5.10` 追補（2026-02-26, r2rv 探索ローテーション）:
+      - entry発生優先探索として `r2a`（trend）を生成したが、単発診断は `action=HOLD` で不採用。
+      - `reversion` 探索config `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r2rv.json` を追加（`magic=560083`, `comment=xaut_v2_260226_r2rv`）。
+      - `xau_autobot_live_loop.ps1 -Live -Once` で `action=ORDER`, `retcode=10009 (Request executed)` を確認。
+      - 副runを `trial_v2_20260226_v50_8_30d_r2rv` へ切替:
+        - `xau_autobot_trial_v2_current_run_r2.json` を更新（run_id/config/started_at 反映）。
+        - `xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r2rv.json` / `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2rv.json` / `v50_8_gap_analysis_20260226_runtime_r2rv.json` を生成。
+      - 2本集約:
+        - `v50_8_dual_run_status_20260226.json` を `primary=r1s2`, `secondary=r2rv` へ更新。
+      - 観測:
+        - `r2rv` live report は `open_snapshot={open_positions:1, open_volume:0.01, open_floating_profit:-120.0}`（建玉あり）を確認。
+      - 含意:
+        - 探索runは「約定可能性」から「クローズ実績取得」フェーズへ移行。
+    - `V50.8-P5.11` 追補（2026-02-26, r1s2/r2rv daily refresh #2）:
+      - `r1s2`（本線）/`r2rv`（探索）を再評価し、`v50_8_trial_judge_*`・`v50_8_gap_analysis_*`・`v50_8_dual_run_status_20260226.json`・`v50_8_monthly_decision_20260225.json` を再同期。
+      - 現況:
+        - `r1s2`: `verdict=INVALID_TRIAL`, `trial_valid=false`, `window_days=0.03507241158564815`, `closed_positions=0`
+        - `r2rv`: `verdict=INVALID_TRIAL`, `trial_valid=false`, `window_days=0.004892941828703704`, `closed_positions=0`
+      - `r2rv` ランタイム:
+        - `xau_autobot_live_report_trial_v2_20260226_v50_8_30d_r2rv.json` で `open_snapshot={open_positions:1, open_volume:0.01, open_floating_profit:80.0}`。
+      - 含意:
+        - `r2rv` は建玉維持フェーズで、クローズ確定（`closed_positions>0`）まで KPI 指標は進展しない。
+    - `V50.8-P5.12` 追補（2026-02-26, r2rv monitoring loop）:
+      - `r2rv` を約20秒間隔で5サイクル監視し、`closed_positions>0` を待機。
+      - 監視中 `open_floating_profit` 推移:
+        - `404 -> 512 -> 496 -> 488 -> -276`
+      - 同期更新:
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r1s2.json`
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2rv.json`
+        - `v50_8_gap_analysis_20260226_runtime_r1s2.json`
+        - `v50_8_gap_analysis_20260226_runtime_r2rv.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_monthly_decision_20260225.json`
+      - 現況:
+        - `r1s2`: `verdict=INVALID_TRIAL`, `window_days=0.03716072996527778`, `closed_positions=0`
+        - `r2rv`: `verdict=INVALID_TRIAL`, `window_days=0.008349592465277778`, `closed_positions=0`
+        - `r2rv` は `open_positions=1` を維持（`open_floating_profit=-276.0`）。
+      - 含意:
+        - 監視ウィンドウ内ではクローズ未発生。KPI判定は `NO_GO` 継続。
+    - `V50.8-P5.13` 追補（2026-02-26, r1s2/r3 daily refresh #2）:
+      - 副run を `r3` として再評価し、`v50_8_trial_judge_*`・`v50_8_gap_analysis_*`・`v50_8_dual_run_status_20260226.json`・`v50_8_monthly_decision_20260225.json` を再同期。
+      - 現況:
+        - `r1s2`: `verdict=INVALID_TRIAL`, `window_days=0.09867541818287036`, `closed_positions=0`, `open_positions=1`, `open_floating_profit=909.0`
+        - `r3`: `verdict=INVALID_TRIAL`, `window_days=0.026244582094907407`, `closed_positions=0`, `open_positions=1`, `open_floating_profit=950.0`
+      - watchdog:
+        - `r1s2`: `window_hours=2.3682100363888887`, `decision=CONTINUE`
+        - `r3`: `window_hours=0.6379718408333334`, `decision=CONTINUE`
+      - 判定:
+        - 本線 `r1s2` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
+    - `V50.8-P5.14` 追補（2026-02-26, r1s2/r3 refresh #3 + run-meta正規化）:
+      - 実行実態を再確認し、副run正本を `r3` に固定。
+        - live loop: `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_r1s2.json` + `..._r3.json`
+        - run meta副本: `data/reports/xau_autobot_trial_v2_current_run_r2.json` は `run_id=trial_v2_20260226_v50_8_30d_r3`
+      - `r1s2` / `r3` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、以下を再同期:
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r1s2.json`
+        - `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r3.json`
+        - `v50_8_gap_analysis_20260226_runtime_r1s2.json`
+        - `v50_8_gap_analysis_20260226_runtime_r3.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_monthly_decision_20260225.json`
+      - 併せて primary 別名メタを同期:
+        - `xau_autobot_trial_v2_current_run_r1.json` を `xau_autobot_trial_v2_current_run.json` と同一化。
+      - 現況:
+        - `r1s2`: `verdict=INVALID_TRIAL`, `window_days=0.10073652298611112`, `closed_positions=0`, `open_positions=1`, `open_floating_profit=1403.0`
+        - `r3`: `verdict=INVALID_TRIAL`, `window_days=0.028305582743055554`, `closed_positions=0`, `open_positions=1`, `open_floating_profit=1443.0`
+      - watchdog:
+        - `r1s2`: `window_hours=2.4176765516666667`, `decision=CONTINUE`
+        - `r3`: `window_hours=0.6793339858333333`, `decision=CONTINUE`
+      - 判定:
+        - KPI 判定正本（本線 `r1s2`）は `decision=NO_GO` 継続。
+  - `V50.8-P6` 追補（2026-02-25, IH monthly10ゲート）:
+    - 既存forward 3ランを `tools/mt5_ih_promotion_gate.py`（`monthly>=10%`）で一括評価し、`data/reports/v50_8_mt5_monthly10_scan_20260225.json` を生成。
+    - 判定は `accepted_count=0`。best は `ih_opt_monthly3_20260224_224129` でも `monthly_cagr_pct=2.3078`（`trades=3`, `PF=0.0`）。
+    - `ih_opt_monthly10_20260225_001800_utf16.ini` 起動は Terminal log で確認済み（`2026-02-25 14:06:44 JST` 初期化、`14:06:52 JST` testing started）。
+    - `logs/mt5_monthly10_wait_and_gate_20260225_215746.log` で `reports detected, running gate` を確認し、判定 `data/reports/mt5/ih_opt_monthly10_20260225_001800.decision.json` を生成。
+    - 判定は `accept_for_promotion=false`（`monthly_cagr_pct=2.2477`, `trades=3`, `PF=0.0`, `DD=11.0348`）。
+    - `v50_8_mt5_monthly10_scan_20260225.json` を再生成し、`decision_files=4` へ更新（`accepted_count=0` 維持）。
+    - runtime進捗スナップショット `data/reports/v50_8_monthly10_runtime_status_20260225.json` は `latest_progress_pct=99`（`07:42 JST`）、`completed=true`。
+    - `ih_opt_monthly15_20260225_152054` は完了（2026-02-26 17:14 JST gate完了）。
+      - `logs/mt5_monthly15_wait_and_gate_20260226_084916.log` で `reports detected, running gate` を確認。
+      - 判定: `data/reports/mt5/ih_opt_monthly15_20260225_152054.decision.json`
+      - 結果: `accept_for_promotion=false`（`monthly_cagr_pct=2.2929`, `trades=3`, `PF=0.0`, `DD=10.7971`）。
+      - runtime: `data/reports/v50_8_monthly15_runtime_status_20260226.json` は `completed=true`。
+  - `V50.8-P6.3` 追補（2026-02-26, KPI 3%再判定）:
+    - 既存5ランへ `min_monthly_return_pct=3.0` を適用して再評価。
+    - 成果物:
+      - `data/reports/mt5/*.monthly3target.decision.json`（5件）
+      - `data/reports/v50_8_mt5_monthly3target_scan_20260226.json`
+    - 結果:
+      - `accepted_count=0`（`decision_files=5`）
+      - best は `ih_opt_monthly3_20260224_224129.monthly3target.decision.json`（`monthly_cagr_pct=2.3078`, `trades=3`, `PF=0.0`）。
+  - `fix7b` は guardian 側 `Broken pipe (os error 32)` により出力欠損（`FAILED_PARTIAL`）だが、B1R達成判定は `fix10` 系成果物を正本とする。
 - **Rust (Guardian)**: `V15.x` Full Duplex, Risk Gate実装済み。Daily Loss Limit: -¥5000。
 - **MQL5 (Bridge)**: `V15.2` Multi-TF対応。
 - **Lisp (Brain/School)**: `V50.6` Pure Lisp Daemon。SQLite移行完了。
@@ -17,6 +322,21 @@
 - **Dispatcher invalid S式可観測性契約**: `Unsafe/invalid SEXP` ログには payload 先頭プレビュー（`head`）を含め、破損入力の発生源をログだけで特定できる状態を正本とする。
 - **Polymarket OpenClaw（任意）**: Polymarket（予測市場）向けの自動エントリーサブシステム。cycle/signal-sync は user systemd、status/notifier は systemd(system) を使用し、成果物は `data/reports/polymarket_openclaw_live/` に保存する（FX コアとは独立）。
 - **XAU AutoBot（任意・別系統）**: FXコア（Rust/Lisp）とは独立した MT5 補助運用。`Swimmy-XAU-Cycle` は最適化/プローブ/active config 更新のみを担当し、**実注文の正本は `Swimmy-XAU-Exec`（ONLOGON）または Startup launcher (`Swimmy-XAU-Exec.vbs`) で `tools/windows/xau_autobot_live_loop.ps1 -Live` を常駐起動すること**。`-Live` 未指定は `dry_run` となり注文は送信されない。
+- **XAU Trial Isolated-Metrics 契約（V50.8-P5.4/P5.6）**: trial 判定は `magic + comment_prefix` 一致データのみを正本とし、他 run（`live_named_*`/`uncorr_*` 等）の並走を許容する。fail-closed 対象は「trial対象 run の不在・設定不整合（magic/comment）」であり、非trial run の存在自体は異常扱いにしない。
+- **XAU Trial Zero-Trade Fail-Closed 契約（V50.8-P5）**: trial 実運用は `window_hours>=24` かつ `closed_positions<=0` を検知した時点で `NO_GO` とし、同一設定の継続を禁止する。`tools/xau_autobot_trial_watchdog.py` を正本監視とし、条件成立時は次候補configへの自動ローテーション（run_id再発行 + live loop再起動）を許可する。
+- **XAU Trial Dual-Run 契約（V50.8-P5.5）**: `r1`（本線・KPI判定）と `r2`（探索・約定発生優先）を並走可能とする。`r1` は `data/reports/xau_autobot_trial_v2_current_run.json` を正本、`r2` は `data/reports/xau_autobot_trial_v2_current_run_r2.json` を副本とし、lock file も分離する。KPI最終判定は `r1` の trial judge を正本にし、`r2` は切替判定材料として扱う。
+- **XAU MT5 Comment Length 契約（V50.8-P5.6）**: `xau_autobot.py` の発注 comment は MT5 制約に合わせて **31文字以下**を必須とする。31文字超の comment は fail-closed（起動/最適化時にエラー）とし、`ORDER_SEND` での `Invalid "comment" argument` を再発させない。加えて trial 集計の `comment_prefix` は MT5履歴側の実効値に合わせ **先頭16文字**を正本とする。
+- **XAU Trial Comment-Prefix Continuity 契約（V50.8-P5.15）**: magic を再利用する run ローテーションでは、comment_prefix を不用意に変更しない。変更が必要な場合は `magic` も同時に更新する。`magic` だけ一致して `comment_prefix` が不一致の約定を大量発生させる状態（`after_magic_filter>0` かつ `after_comment_prefix_filter=0`）を運用上の不整合として扱う。
+- **XAU Trend Gap Range Gate 契約（V50.8-P5.15）**: `xau_autobot.py` はエントリー判定前に `ema_gap_over_atr = abs(ema_fast - ema_slow) / atr` を算出し、`min_ema_gap_over_atr <= ema_gap_over_atr <= max_ema_gap_over_atr` のレンジ外は `HOLD/BLOCKED` として新規発注しない。既定値は `0.9..2.5`（弱トレンド誤爆と過伸展逆行の両端を回避）を正本とし、configで上書き可能とする。
+- **XAU Trial KPI Split 契約（V50.8-P5.15）**: trial judge は `trial_valid`（identity整合）と `NO_GO/GO` 判定を分離し、KPIを `readiness`（`window_days` と `closed_positions`）と `performance`（`PF/WR/net_profit`）に分割して出力する。既定の readiness 件数は `closed_positions>=12`（14日窓）を正本とし、`XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS` で厳格値（例:14）へ上書き可能とする。
+- **XAU Gap Gate Runtime Metrics 契約（V50.8-P5.16）**: `xau_autobot.py` は各サイクルpayloadに `runtime_metrics`（`gate_check_count`, `gate_reject_gap_count`, `gap_reject_rate`, `signal_counts`）を累積同梱する。`gate_check_count` は gap 判定を実行したバーのみを加算し、`gate_reject_gap_count` は `reason=ema_gap_out_of_range` のときのみ加算する。
+- **XAU Trial Summary Close-Reason 契約（V50.8-P5.16）**: `xau_autobot_live_report.py` の summary は closed positions の `close_reason_counts`（`tp/sl/other`）と `tp_sl_ratio`、`closed_per_day` を出力する。`net_profit` は従来どおり closed positions のみを正本にする（floating損益を混在させない）。
+- **XAU Operational Audit Gate 契約（V50.8-P5.17）**: `tools/xau_autobot_operational_audit.py` は既定3日窓で 4 指標を監査し、`gap_reject_rate=0.15..0.45`, `tp_sl_ratio>=0.7`, `closed_per_day>=0.7`, `expectancy>0` を PASS 基準とする。データ不足時は `status=INSUFFICIENT_DATA` を返し、推測で合否を確定しない。
+- **XAU Runtime Journal 契約（V50.8-P5.17）**: `xau_autobot.py` は実行payloadに `timestamp_utc` を付与し、`XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`（既定: `data/reports/xau_autobot_runtime_journal_latest.jsonl`）へ JSONL 追記する。journal書き込み失敗は取引ロジックを停止させず、`WARN` 可観測化で継続する。
+- **XAU Runtime Metrics 連続性契約（V50.8-P5.18）**:
+  - runtime journal の既定保存先は `tools/xau_autobot.py` の repo-root から解決した `data/reports/xau_autobot_runtime_journal_latest.jsonl` とし、実行cwd依存の相対解決を正本から外す。
+  - `xau_autobot_live_report.py` は `runtime_metrics`（`gate_check_count/gate_reject_gap_count/gap_reject_rate/signal_counts`）を top-level に同梱し、`runtime_metrics_source` を併記する。
+  - `xau_autobot_operational_audit.py` は runtime journal に snapshot がない場合、live report の `runtime_metrics` から fallback 集計し、`runtime_metrics.source=live_report.runtime_metrics` を明示する。
 - **Structured Telemetry**: `/home/swimmy/swimmy/logs/swimmy.json.log` にJSONL統合（`log_type="telemetry"`、10MBローテ）。
 - **Telemetry Write Fallback**: 主要ログ `/home/swimmy/swimmy/logs/swimmy.json.log` へ書けない場合は `data/memory/swimmy.telemetry.fallback.jsonl` へフォールバックし、イベントロストを抑止する。
 - **Execution Spread/Slippage Telemetry**: 注文時の `entry_bid/entry_ask/spread_pips` をログ化し、`TRADE_CLOSED` に `entry_price` が含まれる場合はスリッページ(pips)も算出・記録する。スプレッドが上限超過の場合は `execution.spread_reject` として拒否理由を記録する。
@@ -73,14 +393,22 @@
 - **OOS Queue 計上**: `sent/retry` は「Backtest dispatch を受理した要求」のみ計上する。送信拒否/スロットル時は `sent` に残さず `error` として再試行対象に戻す。
 - **OOS Status 表示**: `oos_status.txt`/Evolution Report の OOS 行は、`report-oos-db-metrics`（DB集計）に加えて `report-oos-failure-stats`（`data/send/db`）と `report-oos-metrics`（latency avg/min/max）を表示し、固定ゼロ値を出さない。
 - **OOS 固定期間契約**: A向け OOS dispatch は `*oos-test-ratio*` の可変比率を正本にせず、`*oos-fixed-window-days*`（既定180日）で `end_ts - window` を基準に算出する。データが短い場合は利用可能な最古timestampまでを OOS 開始とし、範囲欠落で dispatch 失敗にしない。
+- **Armada Replica OOS再ランク契約（V50.7-A10）**: `tools/ops/armada_player_replica.py` は `--oos-rerank-pool`（既定 `0`）を受理する。`no-oos` ではなく、かつ `oos-rerank-pool > top-per-player` の場合に限り、BT `selection_score` 上位 N 件（N=`oos-rerank-pool`）へ先行 OOS 評価を実施し、`oos_ok` 優先のキー（`oos_ok -> OOS PF -> OOS Sharpe -> OOS trades -> selection_score -> replica_score`）で再ランクして最終 `top-per-player` を確定する。`cpcv` は最終選抜後の候補に対してのみ評価する（pool全件には適用しない）。
 - **実運用 Go/No-Go 契約（Rankと分離）**: Rank（B/A/S）は研究評価、ライブ投入可否は `deployment_gate_status` を正本として判定する。最小契約は `OOS pass` + `forward_days>=30` + `forward_trades>=300` + `forward_sharpe>=0.70` + `forward_pf>=1.50`。判定は `BLOCKED_OOS` / `FORWARD_RUNNING` / `FORWARD_FAIL` / `LIVE_READY` を使う。
 - **Forward Evidence Source 契約**: `forward_trades/forward_sharpe/forward_pf` は paper-forward を正本とし、`trade_logs.execution_mode` の `SHADOW/PAPER` を優先的に集計する。互換目的で `LIVE` も含められるが、`LIVE_READY` 判定に「LIVE実績のみ」を必須条件として使わない（循環ゲート防止）。
+- **Shadow Paper Timeout Close 契約**: `close-a-rank-shadow-positions` は `SL/TP` 到達に加え、`opened_at` から `*shadow-max-hold-seconds*`（既定 3600 秒）を超えた shadow slot を timeout close し、`execution_mode=:shadow`・`hit=:timeout` で `trade_logs` に記録する。これにより shadow 証拠が「未決済滞留」で停止し続けない状態を正本とする。
 - **Forward Status 表示**: `data/reports/forward_status.txt` を正本として保持し、Evolution Report に Forward Go/No-Go 集計（LIVE_READY件数、FORWARD_RUNNING件数、失敗理由）を表示する。
 - **Legacy WFV 隔離契約**: WFV（`_IS/_OOS`）は分析専用とし、`move-strategy` / Rank遷移 / archive移動に関与させない。既定は `*wfv-enabled*=nil` で、明示有効化時も「分析テレメトリの記録」のみ許可する。
 - **Notifications**: Max Age Retirement と Stagnant C-Rank の `Strategy Soft-Killed (Cooldown)` は個別通知を抑制し、**1時間ごと**に「合計件数＋上位5件名」でサマリ送信。
 - **School Heartbeat Tick**: `data/heartbeat/school.tick` は School の独立tick（既定60秒）で更新する。長時間サイクル中でも heartbeat を更新し、Evolution report staleness alert の `heartbeat_age` がサイクル完了待ちで誤検知しないようにする。
 - **School Wisdom Cadence**: `phase-7-wisdom-update` は毎サイクル実行しない。`SWIMMY_WISDOM_UPDATE_INTERVAL_SEC`（既定1800秒）で間隔制御し、重い `analyze-veterans` を常時経路から外す。
+- **School Rank Evaluation Cadence**: `phase-4-purge` の `run-rank-evaluation` は毎サイクル実行しない。`SWIMMY_RANK_EVAL_INTERVAL_SEC`（既定60秒）で間隔制御し、初回は即時実行・interval 未満はスキップする（毎秒ループでの A/B 昇降格スラッシングを抑止）。
 - **School Wisdom メモリ契約**: `analyze-veterans` は `unique-strats/candidates/copy-list+sort` の大規模中間リストを作らず、単一パス（de-dup + filter）で `Top-N`（既定50）だけを保持する。大量KB時の一時メモリ膨張を抑える。
+- **Pattern Similarity Client Timeout 契約**: Lisp REQ client timeout は `SWIMMY_PATTERN_SIMILARITY_TIMEOUT_MS`（ms, 既定30000）を正本とし、`<1000` は `1000` へ丸める。サービス遅延時の即時 `EAGAIN` 連打で gate が常時 `UNAVAILABLE` になる状態を抑制する。timeout/error 時は REQ socket を再接続して同一 `QUERY` を1回だけ再試行し、再試行も失敗した場合のみ `GATEWAY_UNREACHABLE` を返す。
+- **Pattern Similarity Query Metrics 契約**: `tools/pattern_similarity_service.py` は `QUERY` ごとの処理時間を rolling window で集計し、`STATUS.query_metrics` として `count/ok_count/error_count/avg_ms/p50_ms/p95_ms/max_ms/last_ms/last_error/updated_at` を返す。window は `SWIMMY_PATTERN_QUERY_METRICS_WINDOW`（既定200）で制御し、遅延源の可観測性を維持する。
+- **Pattern Similarity Startup Liveness 契約**: `tools/pattern_similarity_service.py` は起動時に `:5564` REP socket を先に bind し、`data/patterns/` の初期 index load はバックグラウンドで継続する。初期ロード状態は `STATUS.index_loader`（`status/started_at/finished_at/loaded/error`）で可視化し、ロード完了前の `QUERY` は `No index for symbol/timeframe` を返して fail-closed する（service 自体は応答不能にしない）。
+- **Pattern Similarity Backend Warmup 契約**: embedding backend（clip/vector）の初期化は起動時バックグラウンドで行い、状態を `STATUS.backend_loader`（`status/started_at/finished_at/clip_ready/vector_ready/error`）で可視化する。`QUERY` 経路で cold-load を同期実行して応答を長時間ブロックしない。
+- **Pattern Similarity Backend Degradation 契約**: `QUERY` は重み付き優先 backend が load中/失敗で利用できない場合でも、他 backend が利用可能なら fail-soft で等重みフォールバックする。全backendが利用不可のときのみ `search error: no usable backend` を返す。
 - **KB統合収集の計算量契約**: `collect-all-strategies-unpruned` は DB + Library の重複統合を `strategy_name` ハッシュ集合で処理し、重複除外を O(n) で維持する。重複名がある場合は DB 側を正として保持する。
 - **Strategy Lookup Index 契約**: `init-db` は `strategies` に `idx_strategies_rank_sharpe (rank, sharpe)` と `idx_strategies_category_rank (timeframe, direction, symbol, rank)` を必須作成し、ランク検索とカテゴリ別選抜の全表走査を回避する。
 - **Evolution Daemon 表示**: Evolution Report の `System Status` 行は固定文言ではなく、`systemctl is-active swimmy-evolution.service` を正本に表示する。`systemctl` 取得不能時のみ heartbeat 更新時刻で補助判定し、停止中に `Active` と誤表示しない。
@@ -132,11 +460,15 @@
   - `DryRun gate`: `execution.slippage` 由来の `slippage_pips` 実測値の `p95(abs(slippage_pips))` を使い、`p95 <= *max-spread-pips*` を必須とする（サンプル不足時は不合格）。
     - 実装既定: 戦略ごとに `execution.slippage` を蓄積し、**20サンプル以上**で `p95` を算出する（不足時は不合格）。
     - **証拠収集（約定確認時）**: MT5 が `POSITIONS` に `entry_price` を含める環境では、Pending→Slot 昇格（約定確認）時に `entry_price` を使って slippage を算出し、DryRun slippage サンプルへ追加できる（trade close を待たずに証拠を蓄積）。
+    - **証拠収集（shadow close）**: shadow slot のクローズ時は、slot が保持する `entry_bid/entry_ask/entry` から `slippage-pips-from-fill` を算出し、`dryrun_slippage_samples` へ追加する。shadow fill は quote fill 前提のため、通常は `0.0` 近傍のサンプルになる。
     - 永続化方針: `dryrun_slippage_samples` テーブルへ保存し、戦略ごとに最新 `*dryrun-slippage-sample-cap*` 件（既定200件）を保持する。再起動後もゲート判定を継続できるようにする。
     - 削除ポリシー: `*dryrun-slippage-max-age-seconds*` が正の値のとき、`dryrun_slippage_samples` の古い行（`observed_at` が保持期間外）を戦略単位で削除する。`NIL` は期間削除を無効化。
 - **選抜/投票スコア**: Selection Score は Sharpe + PF + WR + (1-MaxDD) を合成（重み: 0.4 / 0.25 / 0.2 / 0.15）。投票ウェイトは `1.0 + 0.6*score` を `0.3–2.0` にクランプ。
 - **Graveyard/Retiredの正**: Evolution ReportはDB、Libraryはドリフト検知の正本（`data/library/GRAVEYARD/*.lisp` / `RETIRED/*.lisp`）。
+- **Graveyard Cache 取得契約**: `load-graveyard-cache` は `strategies` から `sl/tp/symbol` の構造化列を優先取得し、`data_sexp` の全件デシリアライズを通常経路で行わない。列取得が使えない環境のみ `data_sexp` 経路へフォールバックする。
 - **Archive Drift Reconcile 契約**: `tools/ops/reconcile_archive_db.py` は Library→DB 補完だけでなく、DB側余剰アーカイブ名（DB-only）件数を可視化する。必要時はオプションで DB-only 行をバックアップテーブルへ退避してから prune できる（既定は非破壊）。
+- **Archive Reconcile Canonical Count 契約**: `reconcile-archive-library-with-db` の DB↔Library 比較は `count(*)`（行数）ではなく `strategy_name` の canonical 件数を正本とする。`strategies` 側に同名 archive 行が重複していても差分ゼロ時は hydration ループへ入らず、全件ファイル存在チェックの長時間走査を起こさない。
+- **Archive Reconcile Streaming Hydration 契約**: `reconcile-archive-library-with-db` の hydration 候補取得は archive 全件の一括 materialize を禁止し、`rowid DESC` の keyset paging（小ページ反復）で必要件数（`gap` と `max-additions`）に達した時点で停止する。archive-heavy DB（数十万行）でも 1 サイクル内で GC/CPU 張り付きによる `Cycle Complete` 停滞を起こさないことを正本とする。
 - **B案方針**: 内部ZMQ＋補助サービス境界をS式へ統一。**ZMQはS式のみでJSONは受理しない**。外部API境界はJSON維持。**ローカル保存はS式即時単独（backtest_cache/system_metrics/live_statusを .sexp に統一）**。Structured TelemetryはJSONLログに集約。
 - **MT5プロトコル**: Brain→MT5 は S式を正本（ORDER_OPEN は `instrument` + `side`）。
 - **Executor Pending契約**: `swimmy.globals:*pending-orders*`（UUID→(timestamp,retry,msg)）の `msg` は `ORDER_OPEN` V2 の `instrument/side/lot` を正本キーとして扱う。`ORDER_ACK` / `ORDER_REJECT` 受信時は同一UUIDの pending を即時除去し、retry/timeout へ残存させない。
@@ -177,6 +509,8 @@
 - **OOS Result Apply Fallback 契約**: `BACKTEST_RESULT` の `-OOS` 結果適用時、受信側は in-memory `find-strategy` 失敗だけで `Strategy not found` としない。`strategies.data_sexp`（DB）から当該戦略を復元できる場合は OOS 指標更新/queue完了/昇格判定を継続し、in-memory と DB の双方で不在のときのみ `oos_queue=error` とする。
 - **Backtest Request Contract**: `BACKTEST` 要求は `request_id` を必須とする。`request-backtest-v2`（Phase1 Screening）を含むすべての送信経路で相関IDを付与し、欠落時の `request_id="MISSING"` error結果を通常評価メトリクスとして扱わない。
 - **Phase1 Result 名正規化契約**: `BACKTEST_RESULT.result.strategy_name` が `*_P1` の場合、受信側は `"_P1"` を除去した基底名で `apply-backtest-result` / DB更新を行う。`_P1` 結果は RR/QUAL の進捗バッファに加算しない。
+- **Founder Recovery Prune 保護契約**: `prune-low-sharpe-strategies` は `B` ランク戦略でも、`founder-phase1-recovery-passed-p` を満たす founder 候補（例: `Hunted-*`）を `Operation Black Death (Low Sharpe)` で `:graveyard` に落とさない。Phase1 recovery で一度 `:B` を許可した評価軸（Sharpe/PF/Trades/MaxDD）と prune 経路を整合させる。
+- **Founder Recovery Overflow Culling 保護契約**: `cull-pool-overflow`（DEATHMATCH）は founder recovery 条件（`founder-phase1-recovery-passed-p`）を満たす `:B` 戦略を overflow victim に選ばない。pool上限超過時は非保護候補を優先して cull し、Founder回復直後の再埋葬を防ぐ。
 - **Backtest Result 末尾サフィックス正規化契約**: `BACKTEST_RESULT.result.strategy_name` の `-RR/-QUAL/-OOS/_P1` 正規化は末尾一致のみで実施する。基底名中の `-QUAL-...` などは削除せず、`<base-with-QUAL-token>-QUAL` のような名称でも基底名を破壊しない。
 - **Backtest Bool 正規化契約**: Backtest/CPCV の内部S式で `filter_enabled` などの bool は `#t/#f` を正本とする。`t/nil` シンボルが混入する入力は Backtest Service で正規化して Guardian へ中継する。S式の構文正規化に失敗した場合でも、既知 bool キー（例: `filter_enabled`）はフォールバックで `t/nil`→`#t/#f` へ置換して Guardian へ渡す。
 - **Backtest Service 運用整合契約**: `swimmy-backtest.service` を正本とし、systemd が inactive の状態で 5580 に手動 `backtest_service.py` が LISTEN している状態をドリフトとして扱う。監査で検知し、運用に修復を促す。
@@ -200,6 +534,10 @@
 - **Breeder Phase1 必須化**: `add-to-kb` は `source=:breeder` かつ `require-bt=T` の場合、（startup除く）Sharpe値に関わらず `run-phase-1-screening` を必ず要求し、初期ランクを `:incubator` に固定する。Phase1結果でのみ `:B/:graveyard` へ遷移させる。
 - **Breeder 呼び出し契約**: `run-breeding-cycle` は Breeder生成物投入時に `add-to-kb(... :source :breeder :require-bt t)` を使用し、運用経路で上記 Phase1 必須化を常時有効にする。
 - **Legend交配統合契約**: `run-legend-breeding` の子戦略投入は直接 `push` を禁止し、`add-to-kb(... :source :breeder :require-bt t)` 経由に統一する。Legend由来の子も通常Breeder childと同じ検証フロー（Phase1）を通す。
+- **Breeder 親カウント計上契約**: `increment-breeding-count` は `add-to-kb` が受理（`:added` または `:queued-phase1`）した親ペアに対してのみ実行する。`add-to-kb` reject 経路（duplicate/correlation/graveyard など）で親の breeding quota を消費しない。
+- **Legend Breeding 完了件数契約**: `run-legend-breeding` の完了件数は「即時KB投入」だけでなく `:queued-phase1` 受理も含めた accepted child 件数を返す。Phase1 queue の進捗を `0 children` と誤表示しない。
+- **Breeding Cadence 契約**: `phase-6-breeding` は `SWIMMY_BREEDING_CYCLE_INTERVAL_SEC`（既定60秒）で実行間隔を制御し、1秒ループごとの交配を行わない。interval未達時は breeding phase をスキップして fail-soft 継続する。
+- **Phase1 Pending 永続化契約**: `add-to-kb` が `:queued-phase1` で admission defer する場合でも、候補戦略を `rank=nil` のまま `strategies` へ upsert してから `run-phase-1-screening` を送信する。これによりプロセス再起動や pending map 消失後でも `handle-v2-result` の DB fallback（`%load-strategy-from-db-for-phase1`）で結果適用を継続できる状態を正本とする。
 - **Breeder PF回復圧契約**: 低PF・WR充足ペア（`avg_pf <= 1.15` かつ `avg_wr >= 0.43`）では PF回復モードを強制し、通常の PF bias より高い RR floor と scale floor を適用する。PF不足が主因のカテゴリで Sharpe偏重交配を抑え、PF改善方向を優先する。
 - **Breeder 補完ペア距離ゲート契約**: 遺伝距離ゲートは通常ペアを `>=0.03` で維持しつつ、PF/WR 補完ペアは `>=0.01`、partial recovery ペアは `>=0.02` まで緩和する。`indicators=nil` 個体が多い局面で補完交配が `too similar` で飢餓化しないことを正本とする。
 - **Scout語彙廃止契約**: 新規作成/デフォルト/フォールバックで `:scout` を生成しない。未移行データ互換として `:scout` は `:incubator` と同等に扱うが、遷移先・表示・保存は `:incubator` を正本とする。
@@ -208,9 +546,15 @@
 - **B-Rank Culling スコア契約**: prune順は Sharpe 偏重にせず、A Stage1 基準（Sharpe/PF/WR/MaxDD）からの欠損度にペナルティを与える。A基準から遠い B を優先的に cull し、A基準に近い B 基盤を残す。
 - **B-Rank Culling PF優先契約**: A基準欠損ペナルティは PF不足を最優先で重く扱う（PF欠損 > WR/Sharpe/MaxDD）。Sharpe高値でも PF未達のBが残留し続けるドリフトを抑え、A Stage1 `PF>=1.30` 通過候補の比率改善を優先する。
 - **B-Rank Culling PF帯優先契約**: B基盤の保持順は `A PF pass (PF>=1.30)` → `PF near [1.24,1.30)` → `others` を優先し、同一帯内で culling score を比較する。PF帯をまたいで Sharpe 単独で逆転させない。
+- **B-Rank Bootstrap Window 契約**: `run-b-rank-culling-for-category` の bootstrap は `count < culling-threshold` でも「A母集団が小さい間」は継続する。既定 `*culling-bootstrap-max-a-count*` は `8` とし、`A<=8` までは below-threshold カテゴリで B→A 昇格キューを止めない。
 - **Rank整合スイープ契約（A/B/S）**: `run-rank-evaluation` は trade-evidence floor と S conformance に加え、A/B の基準逸脱も毎サイクルで是正する。A基準不適合は `:B` へ降格し、B基準不適合は `:graveyard` へ遷移させる（「基準外ランク残留」を許容しない）。
 - **Rank conformance 日次比較契約**: `tools/check_rank_conformance.py` は昇降格差分を「前回実行比」ではなく「前日スナップショット比」で算出する。履歴ディレクトリ（`data/reports/rank_conformance/`）から前日以前の最新レポートを基準として `promotion_count/demotion_count/by_route` を出力し、同日内の再実行で差分が消える状態を防ぐ。
 - **Breeder Edge-First 選抜契約**: 親選抜 `strategy-breeding-priority-score` は rank/generation のみで優先しない。Stage1品質（Sharpe/PF/WR/MaxDD）と OOS 実績を重み付けし、閾値未達ペナルティを与えて「再現性の弱い親」への交配偏重を抑制する。
+- **Breeder A-Base Priority 契約**: 親選抜の閾値ペナルティ既定値は B 基準ではなく A Stage1 基準（`Sharpe>=0.45/PF>=1.30/WR>=43%/MaxDD<16%`）に合わせる。ランク閾値自体は変更せず、交配順位づけだけを A 到達寄りへ最適化する。
+- **Breeder OOS Bonus Guard 契約**: `strategy-breeding-priority-score` の OOS ボーナスは、A-base 未達の親では減衰（既定 0.20x）して適用する。低Sharpe個体が OOS 単独で過優先されるドリフトを抑制し、A/S 生成フローを fail-soft で安定化する。
+- **Breeder Timeframe Focus 契約（S-flow）**: Sランク生成フローの既定では `M5` を breeder 子時間足から除外する。`*breeder-timeframe-excluded-minutes*` は既定 `(5)`、`*breeder-timeframe-priority-minutes*` は既定 `(60 300)`（`H1/H5`）とし、親由来の base TF が除外対象でも child は許可TFへフォールバックして `M5` 固定化を避ける。
+- **Breeder Short-TF Mutation Floor 契約（S-flow）**: 親時間足が両方とも短期（既定 `<=30m`）の場合、child TF 選択の mutation rate に下限（`*breeder-timeframe-short-parent-mutation-floor*`、既定 `0.55`）を適用する。`M15/M30` 固定化を抑制し、`H1/H5` 優先プールへの遷移確率を fail-soft で引き上げる。
+- **Breeder Short-TF Partner Bias 契約（S-flow）**: 親時間足が短期（既定 `<=30m`）のとき、親ペア選抜 `breeding-partner-score` は `H1/H5` 優先lane候補へ加点し、短期候補（`M15/M30`）へ減点する。これにより mutation 以前の親選抜段階で短TF同士の再結合を抑え、S向け中期足探索を前段から促進する。
 - **Breeder 親品質ハードゲート契約**: `can-breed-p` は非Legend親に対して Stage1 B 基準（Sharpe/PF/WR/MaxDD）を必須化する。優先度ペナルティのみで弱エッジ親を交配に残す fail-open を禁止し、基準未達親は fail-closed で親候補から除外する。`run-breeding-cycle` と `run-legend-breeding`（B側親）も同じ `can-breed-p` で足並みを揃える。
 - **Breeder OOSハードゲート契約**: `can-breed-p` は A/S 親に `OOS Sharpe >= 0.35` を必須化する。OOS 欠落または閾値未達の A/S 親は fail-closed で交配対象から除外し、研究ランクのみでの親流入を抑止する。
 - **Breeder ランク整合ハードゲート契約**: `can-breed-p` は A/S 親に対して「自ランク基準への適合」を必須化する。A親は A基準（TradeEvidence/A Stage1/OOS）未達なら fail-closed、S親は S基準（TradeEvidence/S Stage1/CPCV）未達なら fail-closed で交配対象から除外する。
@@ -229,6 +573,7 @@
 - **Band Alias Binding契約**: `evaluate-strategy-signal` は `BOLLINGER` を `BB` 同義として扱い、`UPPER-BAND/LOWER-BAND`（および `*-PREV`）を alias 束縛する。`bb-upper/bb-lower` 系と `upper-band/lower-band` 系が混在しても `unbound variable` で評価停止しない。
 - **Logic Symbol Package Normalization契約**: `evaluate-strategy-signal` は `entry/exit` ロジック中の参照シンボルを package 非依存で解決する。`COMMON-LISP-USER::SMA-20` や `SWIMMY.TESTS::LOWER-BAND` のような外部packageシンボルでも、同名の評価用束縛へ alias 解決し `unbound variable` で評価停止しない。
 - **Signal Candidate Scope契約**: `collect-strategy-signals` は active rank（`:B/:A/:S/:LEGEND`）のみを評価対象にする。`:GRAVEYARD/:RETIRED/NIL` rank は評価ループへ入れず、エラー連打とCPU飽和を抑止する。
+- **Shadow Paper Timeout Close 契約**: `close-a-rank-shadow-positions` は SL/TP ヒットに加えて、shadow保持時間が上限を超えた場合も `:timeout` 理由でクローズし、`trade_logs.execution_mode='SHADOW'` の学習行を必ず記録する。保持上限は `*shadow-max-hold-seconds*`（秒）で制御し、`<=0` は timeout 無効とする。
 - **Legacy Keyword Logic Normalization契約**: `evaluate-strategy-signal` は legacy shorthand（例: `((:RSI-BELOW 10))`, `((:RSI-ABOVE 90))`, `((:CROSS-OVER :SMA 50 :SMA 200))`, `((:CROSS-UNDER ...))`）を正規化してから評価する。`illegal function call`/compile-error ストームを防ぎ、旧Legend定義を fail-open ではなく安全に解釈する。
 - **Backtest Debug**: `SWIMMY_BACKTEST_DEBUG_RECV=1` で受信状況を `data/reports/backtest_debug.log` に追記（内部ZMQはS式のみのため、Backtest Serviceの戻りもS式であることが前提）。
 - **Backtest Option値**: Guardian `--backtest-only` の `Option<T>` は「空/1要素リスト」で表現（例: `(data_id "USDJPY_M1")` / `(data_id)` / `(start_time 1700000000)`）。
@@ -239,6 +584,73 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-26**: V50.8-P5.16（monthly decision KPI schema正規化）を反映。`v50_8_monthly_decision_20260225.json` の `kpi_target` を `primary=3.0 / stretch=5.0` へ更新し、`monthly_primary_3pct_reached` / `monthly_stretch_5pct_reached` / `target_gap_primary_pct` / `target_gap_stretch_pct` を追加。`monthly_10pct_reached` は互換保持のみとし、本線判定は `decision=NO_GO` を維持。
+- **2026-02-26**: V50.8-P5.15（trial KPI分離 + trend gapレンジ導入）を反映。XAU trial の判定契約を `readiness/performance` 分離へ更新し、judge既定の `min_closed_positions` を 14日窓 `12` へ調整（環境変数で上書き可）。あわせて `xau_autobot.py` に `ema_gap_over_atr` レンジゲート（既定 `0.9..2.5`）を導入し、弱トレンド誤爆と過伸展逆行を同時に抑制する方針を正本化。
+- **2026-02-26**: V50.8-P5.14（r1s2/r3 refresh #3 + run-meta正規化）を反映。実行実態が `r1s2+r3` であることを再確認し、`xau_autobot_trial_v2_current_run_r2.json` の `run_id=r3` と整合する形で副run正本を `r3` に固定。`v50_8_trial_judge_*`（`r1s2/r3`）・`v50_8_gap_analysis_20260226_runtime_r1s2.json`・`v50_8_gap_analysis_20260226_runtime_r3.json`・`v50_8_dual_run_status_20260226.json`・`v50_8_monthly_decision_20260225.json` を再同期し、`xau_autobot_trial_v2_current_run_r1.json` も primary 正本へ同期。現況は `r1s2 window_days=0.10073652298611112`、`r3 window_days=0.028305582743055554`、両runとも `closed_positions=0` / `verdict=INVALID_TRIAL`、watchdog は `CONTINUE`、本線 `decision=NO_GO` を維持。
+- **2026-02-26**: V50.8-P5.13（r1s2/r3 daily refresh #2）を反映。`r1s2`/`r3` を再評価し、`v50_8_trial_judge_*`・`v50_8_gap_analysis_*`・`v50_8_dual_run_status_20260226.json`・`v50_8_monthly_decision_20260225.json` を同期更新。現況は `r1s2 window_days=0.09868`、`r3 window_days=0.02624`、いずれも `closed_positions=0` / `verdict=INVALID_TRIAL`、watchdog は `CONTINUE`、本線判定 `decision=NO_GO` を維持。
+- **2026-02-26**: ユーザー選択 `option=1` を反映し、IHトラックを停止。`ih_opt_*` の新規 run/追加ゲートを凍結し、`V50.8` の改善対象を `XAU単独トラック` へ一本化。
+- **2026-02-26**: V50.8-P5.12（r2rv monitoring loop）を反映。`r2rv` を5サイクル監視したが `closed_positions=0` のまま。`open_floating_profit` は `404 -> 512 -> 496 -> 488 -> -276` と変動し、建玉は維持。`v50_8_*` 判定/ギャップ/dual-run/月次判定を再同期し、`decision=NO_GO` を維持。
+- **2026-02-26**: V50.8-P5.11（r1s2/r2rv daily refresh #2）を反映。`r1s2` は `window_days=0.03507` で `INVALID_TRIAL` 継続、`r2rv` は `window_days=0.00489` で `INVALID_TRIAL` 継続。`r2rv` live report の `open_snapshot` は `open_positions=1`, `open_floating_profit=80.0` を観測。`v50_8_monthly_decision_20260225.json` は本線 `r1s2` 基準で再同期し `decision=NO_GO` を維持。
+- **2026-02-26**: V50.8 KPI再設定（Option 3）を反映。収益KPIを **主KPI: 月利3% / ストレッチ: 月利5%** に更新し、`monthly10` 表記は履歴参照に格下げ。
+- **2026-02-26**: V50.8-P6.3（KPI 3%再判定）を反映。既存5ランを `tools/mt5_ih_promotion_gate.py`（`monthly>=3%`, `trades>=5`, `PF>=1.0`, `DD<=12%`, `forward_days=366`）で再評価し、`data/reports/v50_8_mt5_monthly3target_scan_20260226.json` を生成。結果は `decision_files=5`, `accepted_count=0`、best は `ih_opt_monthly3_20260224_224129.monthly3target.decision.json`（`monthly_cagr_pct=2.3078`, `trades=3`, `PF=0.0`）。
+- **2026-02-26**: V50.8-P6（monthly15 runtime）を完了更新。`logs/mt5_monthly15_wait_and_gate_20260226_084916.log` で `17:14 JST` の `reports detected, running gate` を確認し、`data/reports/mt5/ih_opt_monthly15_20260225_152054.decision.json` を生成。判定は `accept_for_promotion=false`（`monthly_cagr_pct=2.2929`, `trades=3`, `PF=0.0`, `DD=10.7971`）、`data/reports/v50_8_monthly15_runtime_status_20260226.json` は `completed=true`。
+- **2026-02-26**: V50.8-P5.10（r2rv探索ローテーション）を反映。`r2a`（trend）は `HOLD` のため見送り、`reversion` 構成 `r2rv`（`magic=560083`）へ切替。単発診断で `ORDER(retcode=10009)` を確認し、`r2rv` live report に `open_positions=1` を観測。`v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2rv.json` / `v50_8_gap_analysis_20260226_runtime_r2rv.json` / `v50_8_dual_run_status_20260226.json`（`primary=r1s2`, `secondary=r2rv`）を更新。
+- **2026-02-26**: V50.8-P5.9（r2sc副run再開）を反映。`r1s2` 本線を維持したまま `r2sc` を `xau_autobot_trial_v2_current_run_r2.json`（lock分離）で再起動し、2本の live loop 並走を復帰。`xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r2sc.json` は再起動直後のため `verdict=INVALID_TRIAL`（`window_days=0.000367`）、watchdog は `CONTINUE` を確認。`v50_8_dual_run_status_20260226.json` を `primary=r1s2`, `secondary=r2sc` へ再生成。
+- **2026-02-26**: V50.8-P5.8（r1s2 daily judge refresh）を反映。`trial_v2_20260226_v50_8_30d_r1s2` を再評価し、`window_days=0.003376/14`・`closed_positions=0` のため `verdict=INVALID_TRIAL` を確認。`v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r1s2.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260226_runtime_r1s2.json` / `xau_autobot_trial_watchdog_trial_v2_20260226_v50_8_30d_r1s2.json` を同期更新。単発診断 `xau_autobot_live_loop.ps1 -Live -Once` は `action=HOLD` で、`session/volatility/comment` 由来の BLOCKED/REJECT ではなくシグナル待機が主因と判定。
+- **2026-02-26**: V50.8-P5.7（r1scローテーション）を反映。`r2sc` の `trial_valid=true` / `net_profit=-5232` を受けて `trial_v2_20260226_v50_8_30d_r1sc`（`magic=560080`）へ切替。`v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r1sc.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260226_runtime_r1sc.json` を同期更新。trial 運用契約は single-runner 固定から `magic/comment_prefix` 分離計測（並走許容）へ更新。
+- **2026-02-26**: V50.8-P5.6（r2sc close反映）を更新。`trial_v2_20260226_v50_8_30d_r2sc` で `closed_positions=3` を確認し、judge は `trial_valid=true` / `verdict=NO_GO`（`window_days=0.4233`）。`v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2sc.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260226_runtime_r2sc.json` を同期更新。
+- **2026-02-26**: V50.8-P5.6（MT5 comment 制約対応）を反映。`r2` の実バー診断で `action=ORDER` が出る一方、`order_result.error=(-2, 'Invalid "comment" argument')` により発注が全拒否される root cause を確認。`r2sc` へ切替後は `magic=560079` の実ポジションが立つことを確認（発注経路復旧）。あわせて `xau_autobot_trial_v2_eval.sh` の `comment_prefix` を先頭16文字へ正規化し、MT5履歴 comment truncation と trial 集計条件を一致させた（INTERFACES変更なし）。
+- **2026-02-26**: Sランク生成フロー最適化（TFフォーカス）を反映。breeder の既定時間足方針を `M5` 除外・`H1/H5` 優先へ更新し、`*breeder-timeframe-excluded-minutes*=(5)` / `*breeder-timeframe-priority-minutes*=(60 300)` を正本化。親TFが除外対象でも child は許可TFへフォールバックし、`M5` への再固定を回避する契約を追加（INTERFACES変更なし）。
+- **2026-02-26**: Sランク生成フロー最適化（短TF補正）を反映。`*breeder-timeframe-short-parent-max-minutes*=30` / `*breeder-timeframe-short-parent-mutation-floor*=0.55` を導入し、親が `M15/M30` に偏る局面で child の mutation rate 下限を適用する契約を追加。短TF親ペアの `M15/M30` 固定化を抑制し、`H1/H5` 優先プールへの遷移を促進する（INTERFACES変更なし）。
+- **2026-02-26**: Sランク生成フロー最適化（短TF親ペア選抜補正）を反映。`breeding-partner-score` に短TF親向け lane bias を追加し、`H1/H5` 優先候補へ加点、`M15/M30` 短TF候補へ減点する契約を正本化。mutation 段だけでなく親選抜段から短TF再結合を抑制し、中期足探索の比率を引き上げる（INTERFACES変更なし）。
+- **2026-02-26**: V50.8-P5（r2 daily judge refresh #2）を更新。`trial_v2_20260226_v50_8_30d_r2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`window_days=0.0088/14`、`closed_positions=0`、`verdict=INVALID_TRIAL` を確認。`xau_autobot_trial_watchdog_trial_v2_20260226_v50_8_30d_r2.json` は `decision=CONTINUE`（`window_hours=0.2114/24`, `triggered=false`）で、zero-trade fail-closed は未発火。`v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260226_runtime_r2.json` を同期更新。
+- **2026-02-26**: V50.8-P5.5（entry unblocking / r2正本化）を反映。`xau_autobot.trial_v2_20260226_v50_8_30d_r2.json`（`session=0-23`, `atr_ratio_filter=0.0-999.0`, `magic=560077`）を追加し、run を `trial_v2_20260226_v50_8_30d_r2` へ切替。Windows 側では他シンボル運用（`USDJPY/EURUSD`）が別途稼働中だが、**XAU trial 対象config は `..._30d_r2` のみ**を確認。`xau_autobot_trial_judge_trial_v2_20260226_v50_8_30d_r2.json` / `v50_8_trial_judge_trial_v2_20260226_v50_8_30d_r2.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260226_runtime_r2.json` を更新（開始直後のため `INVALID_TRIAL`、`decision=NO_GO` 継続）。
+- **2026-02-26**: V50.8-P5.5（dual-run 並走）を反映。`r1`（`..._r1.json`/`magic=560076`）と `r2`（`..._r2.json`/`magic=560077`）の live loop を同時起動し、run meta を `xau_autobot_trial_v2_current_run.json`（本線）と `xau_autobot_trial_v2_current_run_r2.json`（探索）に分離。`xau_autobot_trial_judge_trial_v2_20260225_v50_8_30d_r2.json` / `v50_8_trial_judge_trial_v2_20260225_v50_8_30d_r2.json` を生成し、`v50_8_dual_run_status_20260226.json` を追加。
+- **2026-02-26**: V50.8-P5 の日次 judge を再更新（#8）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.7211/14` へ進行。`closed_positions=0` のため `INVALID_TRIAL` / `NO_GO` は継続し、`diagnostics={history_deals_scanned:16, after_magic_filter:0, after_comment_prefix_filter:0, top_magics:[560190,560160,560145]}` を確認。`v50_8_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `v50_8_monthly_decision_20260225.json` / `v50_8_gap_analysis_20260225_runtime_r1.json` を最新 judge へ再同期。
+- **2026-02-26**: V50.8-P5.4（single-runner clean-up）を反映。Windows 側の `xau_autobot.py --live` 多重起動（`trial_v2_20260222`/`tuned_auto_active`/`live_named_*`/旧trial）を停止し、`trial_v2_20260225_v50_8_30d_r1` 単独稼働へ収束。`Swimmy-XAU-Cycle` を `Disabled`、Startup の `Swimmy-XAU-Exec.vbs` を `.disabled_20260226_084917` へ退避。再評価で混線は解消したが、trial対象約定は未発生（`after_magic_filter=0`, `after_comment_prefix_filter=0`）のため `INVALID_TRIAL` / `decision=NO_GO` 継続。
+- **2026-02-26**: V50.8-P6.2 を完了更新。`ih_opt_monthly10_20260225_001800.xml/.forward.xml` の生成と `logs/mt5_monthly10_wait_and_gate_20260225_215746.log` の gate完了を確認し、`data/reports/mt5/ih_opt_monthly10_20260225_001800.decision.json` を正本化。結果は `accept_for_promotion=false`（`monthly_cagr_pct=2.2477`, `trades=3`, `PF=0.0`, `DD=11.0348`）。`v50_8_monthly10_runtime_status_20260225.json` は `latest_progress_pct=99`, `completed=true` へ更新し、`v50_8_mt5_monthly10_scan_20260225.json` は `decision_files=4`（`accepted_count=0`）へ再集約。
+- **2026-02-26**: V50.8-P5 の日次 judge を再更新（#7）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.7125/14` へ進行。`closed_positions=0` のため `INVALID_TRIAL` / `NO_GO` は継続し、`diagnostics={history_deals_scanned:16, after_magic_filter:0, after_comment_prefix_filter:0}` を確認。
+- **2026-02-25**: Sランク生成フロー最適化（分離トラック）を追補。`run-b-rank-culling-for-category` の bootstrap 上限既定値を `A<=8` へ拡張し、`B<count threshold` でも A母集団が小さい間は B→A 昇格キューを継続する契約を追加（閾値本体・INTERFACES変更なし）。
+- **2026-02-25**: Sランク生成フロー最適化（分離トラック）を反映。`school-breeder` の親選抜ペナルティ既定値を A Stage1 基準（`0.45/1.30/0.43/0.16`）へ更新し、A-base 未達親の OOS ボーナスは既定 `0.20x` に減衰する契約を追加。ランク閾値・INTERFACES 変更はなし。
+- **2026-02-25**: V50.8-P5 の日次 judge を再更新（#5）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.2614/14` まで進行。`closed_positions=0` のため `INVALID_TRIAL` / `NO_GO` は継続し、`v50_8_monthly_decision_20260225.json` と `v50_8_gap_analysis_20260225_runtime_r1.json` を更新。
+- **2026-02-25**: V50.8-P5 の日次 judge を再更新（#4）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.2571/14` まで進行。`closed_positions=0` のため `INVALID_TRIAL` / `NO_GO` は継続し、`v50_8_monthly_decision_20260225.json` と `v50_8_gap_analysis_20260225_runtime_r1.json` を更新。
+- **2026-02-25**: V50.8-P6.2 runtime 進捗を再更新。`ih_opt_monthly10_20260225_001800` は `AutoTesting 57%`（`21:55 JST`）に到達し、推定完了は `2026-02-26 03:44 JST`。`monthly10 decision json` は未生成で待機継続（active wait log: `mt5_monthly10_wait_and_gate_20260225_215746.log`）。
+- **2026-02-25**: V50.8-P5 の日次 judge を再更新（#3）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.2333/14` まで進行、`closed_positions=0` により `INVALID_TRIAL` / `NO_GO` 継続。`v50_8_monthly_decision_20260225.json` と `v50_8_gap_analysis_20260225_runtime_r1.json` を更新。
+- **2026-02-25**: V50.8-P6.2 runtime 進捗を再更新。`ih_opt_monthly10_20260225_001800` は `AutoTesting 51%`（`21:14 JST`）に到達し、推定完了は `2026-02-26 03:56 JST`。`monthly10 decision json` は未生成で待機継続。
+- **2026-02-25**: V50.8-P5 の日次 judge を再更新（#2）。`trial_v2_20260225_v50_8_30d_r1` の再評価で `window_days=0.1552/14` まで進行、`closed_positions=0` のため `INVALID_TRIAL` / `NO_GO` は継続。`v50_8_monthly_decision_20260225.json` と `v50_8_gap_analysis_20260225_runtime_r1.json` を更新。
+- **2026-02-25**: V50.8-P6.2 runtime 進捗を再更新。`ih_opt_monthly10_20260225_001800` は `AutoTesting 35%`（`19:24 JST`）に到達し、推定完了は `2026-02-26 04:54 JST`。`monthly10 decision json` は未生成で待機継続。
+- **2026-02-25**: V50.8-P5 の日次 judge 更新を反映。`XAU_AUTOBOT_TRIAL_RUN_ID=trial_v2_20260225_v50_8_30d_r1 tools/xau_autobot_trial_v2_eval.sh` を再実行し、`xau_autobot_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `v50_8_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `v50_8_monthly_decision_20260225.json` を更新。現況は `INVALID_TRIAL`（`window_days=0.0226/14`、約定0件）で `decision=NO_GO` 継続。`v50_8_gap_analysis_20260225_runtime_r1.json` を追加。
+- **2026-02-25**: V50.8-P6.2 runtime 進捗を再計測。`v50_8_monthly10_runtime_status_20260225.json` を更新し、`ih_opt_monthly10_20260225_001800` の最新進捗 `13%`（`16:12:43 JST`）と推定完了 `2026-02-26 05:07 JST` を記録。`mt5_monthly10_wait_and_gate_20260225_141236.log` は report 生成待機継続。
+- **2026-02-25**: V50.8-P5.3（controlled cutover）を反映。実運用runを `trial_v2_20260225_v50_8_30d_r1` へ切替し、`tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d_r1.json` で `xau_autobot_live_loop.ps1 -Live` が稼働する状態を正本化。`xau_autobot_trial_v2_current_run.json` を更新し、`xau_autobot_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `v50_8_trial_judge_trial_v2_20260225_v50_8_30d_r1.json` / `v50_8_monthly_decision_20260225.json` を再生成（開始直後のため `INVALID_TRIAL`、`decision=NO_GO` 継続）。
+- **2026-02-25**: V50.8-P5（再最適化ラウンド1）を反映。`xau_autobot_optimize_20260225_v50_8_p5_r1.jsonl` を追加し、entry制約を絞った 30d 候補 `xau_autobot.trial_v2_20260225_v50_8_30d_r1.json` を生成。rank1 は `pullback_atr=0.3 / sl_tp=2.0/3.0 / session=8-17 / atr_band=0.95-1.30`。実運用runは窓維持のため据え置き。
+- **2026-02-25**: V50.8-P6.2 の runtime進捗可視化を追加。`data/reports/v50_8_monthly10_runtime_status_20260225.json` を生成し、`ih_opt_monthly10_20260225_001800` の最新進捗 `52%` と推定完了時刻 `2026-02-26 03:54 JST`（線形近似）を記録。
+- **2026-02-25**: V50.8-P6（IH monthly10ゲート）を反映。`data/reports/v50_8_mt5_monthly10_scan_20260225.json` を追加し、既存forward 3ランの `monthly>=10%` 判定が `accepted_count=0`（best `monthly_cagr_pct=2.3078`）であることを正本化。`ih_opt_monthly10_20260225_001800` は Terminal log で start config 起動と `Tester automatical testing started` を確認済みで、`logs/mt5_monthly10_wait_and_gate_20260225_141236.log` にて report生成待機中（`xml/.forward.xml` 未生成）。
+- **2026-02-25**: V50.8-P2 を `30d` 候補へ切替。`tools/configs/xau_autobot.trial_v2_20260225_v50_8_30d.json` を追加し、run_id を `trial_v2_20260225_v50_8_30d` へ更新。`xau_autobot_trial_v2_current_run.json` の正本を更新し、`xau_autobot_live_loop.ps1 -Live` が `magic=560075/comment=xau_autobot_trial_v2_20260225_v50_8_30d` で稼働していることを確認。`v50_8_candidate_rank_20260225.json` は `30d`（`monthly_return_est_pct=10.0742`）選抜へ更新し、`v50_8_trial_judge_trial_v2_20260225_v50_8_30d.json` / `v50_8_monthly_decision_20260225.json` を再生成（現時点は `INVALID_TRIAL` のため `decision=NO_GO`）。
+- **2026-02-25**: V50.8-P4（identity整合プローブ）を反映。`trial_v2_20260225_identity_probe` の 14日判定で `trial_valid=true` かつ `verdict=NO_GO` を確認し、`after_magic_filter/comment_prefix_filter` は通過（`53/27`）。未達の主因を `PF/WR/net_profit` 不足へ更新。`data/reports/v50_8_gap_analysis_20260225.json` を追加。
+- **2026-02-25**: V50.8-P2 run切替を反映。`tools/configs/xau_autobot.trial_v2_20260225_v50_8.json` を追加し、run_id を `trial_v2_20260225_v50_8` へ更新。あわせて `tools/xau_autobot_trial_v2_eval.sh` は `XAU_AUTOBOT_TRIAL_CONFIG` 未指定時に run metadata の `trial_config` を優先するよう修正し、評価時の `symbol/magic/comment_prefix` を run_id と整合させた。回帰テスト `tools/tests/test_xau_autobot_trial_v2_eval.py` は `3 passed`。`v50_8_trial_judge_trial_v2_20260225_v50_8.json` と `v50_8_monthly_decision_20260225.json` を更新（`NO_GO` 継続）。
+- **2026-02-25**: 方針競合を解消。ユーザー選択 `option=2` により `A19再評価GO` を正本化し、`V50.8` を継続トラックとして更新（打ち切り判断は履歴扱い）。
+- **2026-02-25**: V50.8-P0/P1/P2 初回実行を反映。`v50_8_baseline_20260225.json`（基準固定）、`v50_8_candidate_rank_20260225.json`（候補再ランク）、`v50_8_trial_judge_trial_v2_20260224_60d_manualcheck.json`（trial判定）を追加。P2は `INVALID_TRIAL`（identity不一致）で継続監視。
+- **2026-02-25**: 収益化トラックの期限付き運用契約（ユーザー承認）を反映。`2026-03-03`（paper/slippage証拠ゲート）・`2026-03-17`（forward損益ゲート）・`2026-03-18`（最終Go/Stop判定）を固定し、無期限継続を禁止。
+- **2026-02-25**: `tools/ops/armada_paper_readiness.py` を更新し、`Synthetic-Close-Probe-*` をデフォルト除外、runtime guard を直近N件（既定20）で判定するよう変更。`tools/tests/test_armada_paper_readiness.py` に3件追加し `6 passed` を確認。実DB再計測 `data/reports/armada_paper_readiness_20260225_runtime_window_default.json` で `decision=GO`（`runtime_window_net_pnl=1.103113...`）を確認。
+- **2026-02-25**: V50.7-A19 の打ち切りを反映。`swimmy-armada-paper-readiness.timer/service` を停止し、timer を `disabled` へ変更。`A19` は未達（`paper=2/20`, `slippage=0/20`）のまま終了し、次トラックを `V50.8`（主KPI: 月利10%）へ移行。
+- **2026-02-24**: V50.7-A19 追補6を反映。`trade_logs.execution_mode={LIVE:1, SHADOW:2, PAPER:0}` を再確認し、`swimmy-armada-paper-readiness.service` 手動実行で `data/reports/armada_paper_readiness_20260224_fix10refresh.json`（`generated_at=2026-02-24T13:47:07.263282+00:00`）を更新。`decision=HOLD`（`paper_trade_count=2/20`, `slippage_sample_count=0/20`）継続を正本化。
+- **2026-02-24**: V50.7-A20 を完了更新。`trade_logs.execution_mode={LIVE:1, SHADOW:2, PAPER:0}` を確認し、`data/reports/armada_paper_readiness_20260224_a20_timeoutfix.json`（`generated_at=2026-02-24T13:44:55.827558+00:00`）で `paper_trade_count=2/20` まで進捗したことを正本化。
+- **2026-02-24**: shadow evidence 停滞対策を追加。`close-a-rank-shadow-positions` に `*shadow-max-hold-seconds*`（既定3600秒）超過時の timeout close（`hit=:timeout`）を実装し、`test-close-a-rank-shadow-positions-closes-timeout-slot` の RED/GREEN と shadow回帰4件の通過を確認。
+- **2026-02-24**: founder overflow回帰を修正。`cull-pool-overflow` が founder recovery 候補を保護せず `DEATHMATCH` で `:GRAVEYARD` 化していたため、保護条件を追加。RED/GREEN は `test-breeder-cull-protects-founder-recovery-candidate` で確認し、`sample 17`（22:11 JST）で `B=3/Graveyard=0` 復帰を確認。
+- **2026-02-24**: V50.7-A20 初動を反映。`reseed_active_b.py` 実適用（`updated=142`）と service 再読込後、`strategies.rank` 実測が `:A=5` まで復帰。A20は「A復帰」達成、残件は `SHADOW/PAPER` 証拠増分。
+- **2026-02-24**: V50.7-A20 を起票。`A-rank=0`（`B=2, LEGEND=61`）と `SHADOW/PAPER=0` を実測し、A19完了条件の前提不足を明文化。`reseed_active_b.py --dry-run`（`would_update=142`）を次アクション候補として追加。
+- **2026-02-24**: V50.7-A19 追補2を反映。`data/reports/armada_paper_readiness_20260224_followup2.json`（`generated_at=2026-02-24T12:56:29Z`）を追加し、`decision=HOLD` 継続を確認。あわせて `swimmy-armada-paper-readiness.service` 手動実行 `status=0/SUCCESS` と `armada_paper_readiness_20260224_fix10refresh.json` 更新（`generated_at=2026-02-24T12:58:06Z`）を確認。
+- **2026-02-24**: V50.7-A19 の自動実行基盤を追加。`tools/ops/armada_paper_readiness_runner.sh` と `swimmy-armada-paper-readiness.service/timer`、`tools/install_armada_paper_readiness_service.sh` を正本化し、`L3 paper readiness` を日次バッチ実行できる運用経路を追加。runner の既定入力は固定日付ではなく `fix10` 系最新レポートを自動解決する。`SWIMMY_SYSTEMD_SCOPE=user` で timer を有効化し、service 手動起動 `status=0/SUCCESS` まで確認済み。
+- **2026-02-24**: founder 3通貨再監視ジョブを再起動。`founder_rank_watch_20260224_114359.service`（transient）を起動し、`data/reports/founder_rank_watch_20260224_114359.jsonl` へ記録開始。初回サンプルは `B=1/Graveyard=2`（`drift=True`）で、再発停止確認は継続中。
+- **2026-02-24**: V50.7-A19 追補を反映。`data/reports/armada_paper_readiness_20260224_followup.json` を生成し、`decision=HOLD`（`paper_evidence_shortage: 0/20`, `slippage_samples_shortage: 0/20`）継続を正本化。
+- **2026-02-24**: V50.7-A17（L3 paper evidence 現況スナップショット）を反映。`trade_logs.execution_mode={SHADOW:0, PAPER:0, LIVE:1}` を確認し、`primary (SHADOW+PAPER)=0/20` の未進捗を正本化。
+- **2026-02-24**: founder 3通貨監視の再評価を反映。`founder_rank_watch_20260223_121322.jsonl` で `sample 169` 以降 `B=1/Graveyard=2` 逸脱を確認し、`journalctl` で `Operation Black Death (Low Sharpe)` による `B->GRAVEYARD` 実 demote を根因として確定。`school-pruning.lisp` に founder recovery 例外を追加し、`test-prune-low-sharpe-keeps-founder-recovery-candidate` を正本化。
+- **2026-02-23**: V50.7-A15（L3 paper readiness更新）を反映。`data/reports/armada_paper_readiness_20260223_fix10refresh.json` を追加し、`decision=HOLD`（`paper_evidence_shortage: 0/20`, `slippage_samples_shortage: 0/20`）を正本化。
+- **2026-02-23**: V50.7-A14（C1 refresh fix10反映版）を反映。`b1r_completed=true` を投入判定へ反映し、strict/proxy とも `deploy_decision=保留` を確認（主要残課題: `strict bt_ok=0` と `L3 paper evidence`）。
+- **2026-02-23**: V50.7-A12 の最終評価を反映。`fix10` ミックスで `both_players_pass_count=4/5`（`b1r_completed=true`）を確認し、B1R完了扱いへ更新。
+- **2026-02-23**: V50.7-A13（Armada OOS再ランク）を反映。`tools/ops/armada_player_replica.py` の `--oos-rerank-pool` 実装と `fix10a` seed47 回復実測（`top3_oos_ok=1`）を正本化。
+- **2026-02-23**: V50.7-A9/A10/A11 の実行結果を反映。`A9` は `fix6d` で達成、`A10` は `3/5` 到達だが未完、`A11`（seed23/fix6e）で `top3_oos_ok=1` を確認。
+- **2026-02-23**: `fix7b`（seed47 hold-bars=1.2..6.0）は `Broken pipe (os error 32)` で出力未生成となる `FAILED_PARTIAL` 扱いを正本化（`armada_b1r_fix7_seed47_evaluation_20260223.json`）。
 - **2026-02-20**: Trade close 経路の narrative 依存を廃止。`generate-trade-result-narrative` ではなく fixed template 通知を正本化。
 - **2026-02-20**: `TRADE_CLOSED` 学習文脈の正本を payload に統一し、Executor の slot allocation 補完依存を削減する方針を正本化。
 - **2026-02-20**: Allocation 用語を `warrior` から `slot` へ移行する方針を追加。`Execution Slot Allocation` を正本語彙として運用・実装・通知文言を統一する。
@@ -500,6 +912,10 @@
 ## Legend運用メモ (2026-02-01)
 - V3.0「61-STRATEGY SIGNAL SYSTEM」を初期化時に自動復元＆再検証キュー投入（`initialize-system` / `tools/restore_legend_61.lisp`）。重複はHighlanderで排除。
 - 再検証完了まで `strategy-revalidation-pending` を立て、Breedingから除外。BACKTEST_RESULT 適用時に自動クリア。
+- **Legend revalidation 状態同期契約（split-brain防止）**: `refresh-strategy-metrics-from-db` は Active rank（B/A/S/LEGEND）について `data_sexp` 由来の `strategy-revalidation-pending` と `strategy-breeding-count` も同期する。これにより `BACKTEST_RESULT` を別デーモン（brain）が消費する構成でも、school 側の in-memory フラグが stale のまま固定化されないことを正本とする。
+- **Legend rank 同期ガード契約（immutability）**: `refresh-strategy-metrics-from-db` は DB rank 同期時に local `:LEGEND` を non-legend（`:B/:A/:S/NIL` など）へ上書き降格しない。明示的に許可される遷移は `:LEGEND -> :LEGEND-ARCHIVE` のみとし、DB側の stale rank による Legend 崩壊を fail-closed で防ぐ。
+- **Legend restore DB resurrection 契約**: `restore-legend-61` は in-memory で既に `:LEGEND` の戦略でも、DB側 rank が `:GRAVEYARD/:RETIRED` のままなら起動時に `:LEGEND` へ自己修復（upsert）する。`old-rank == new-rank` で `ensure-rank` が no-op になっても、DB rank と Library rank のsplit-brainを放置しない。
+- **Legend overflow immunity 契約**: `cull-pool-overflow`（Deathmatch overflow）は `:B` 以外（特に `:LEGEND/:A/:S` と `immortal`）を犠牲対象にしない。Pool上限超過時は「cullable Bのみ」から淘汰し、保護対象を `:GRAVEYARD` へ直接更新しない。
 - LEGENDは墓場送りをブロック。弱いLegendは `archive-weak-legends` で `:legend-archive` として退避可能（`data/library/LEGEND-ARCHIVE/`）。LEGEND-ARCHIVE もロード対象に追加。
 - `swimmy-school.service` の `ExecStartPre` で `tools/restore_legend_61.lisp` を実行し、起動時に Legends を自動復元＆再検証フラグセット（BACKTESTは本起動後に送信）。
 - Breeding時のLegend占有率を各カテゴリ上位5本に制限、遺伝的距離しきい値を0.35へ強化。
@@ -542,8 +958,10 @@
 - Discord webhook は `config/.env.systemd` に隔離し、`chmod 600` で保護する（notifier/status は `.env` を読まない）。
 
 ## 次アクション
-1. ドキュメント体系化（進行中）
-2. 統合テスト手順の確立
+1. `2026-03-03 23:59 JST` までに `paper_trade_count>=20` かつ `slippage_sample_count>=20` を満たす（未達は停止）。
+2. `2026-03-17 23:59 JST` までに fixed forward 判定 `net_pnl>0` かつ `PF>=1.10` を満たす（未達は停止）。
+3. `2026-03-18 JST` に EA継続/停止を最終決定する（未達なら停止）。
+4. founder 3通貨再監視（`founder_rank_watch_20260224_114359`）は別トラックで継続し、`B=3/Graveyard=0` の維持を確認する。
 
 ## リスク
 - **複雑性**: 3言語 + SQLite + Python(Data Keeper) の複合システム。

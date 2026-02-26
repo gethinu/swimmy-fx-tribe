@@ -1,18 +1,25 @@
 import unittest
 import tempfile
 import os
+import json
 from unittest import mock
 from pathlib import Path
 from datetime import datetime, timezone
 
+import tools.xau_autobot as xau_autobot_module
 from tools.xau_autobot import (
     BotConfig,
     LiveUnderperformanceGuard,
+    Mt5Gateway,
+    append_runtime_journal,
     atr_last,
     atr_pct_series,
     build_sl_tp,
     can_open_trade,
+    detect_regime,
     decide_signal,
+    decide_signal_with_mode,
+    decide_reversion_signal,
     ema_last,
     evaluate_once,
     extract_live_underperforming_signal,
@@ -22,8 +29,11 @@ from tools.xau_autobot import (
     session_window_jst_label,
     should_send_session_block_notification,
     should_send_wait_summary_notification,
+    runtime_journal_path_from_env,
+    validate_trade_comment,
     wait_reason_key,
     volatility_filter_pass,
+    update_runtime_metrics,
 )
 
 
@@ -67,6 +77,84 @@ class TestXauAutoBotMath(unittest.TestCase):
             pullback_atr=0.5,
         )
         self.assertEqual(side, "HOLD")
+
+    def test_detect_regime_trend_and_range(self):
+        self.assertEqual(
+            detect_regime(
+                ema_fast=2002.0,
+                ema_slow=1998.0,
+                atr_value=2.0,
+                trend_threshold=1.5,
+            ),
+            "trend",
+        )
+        self.assertEqual(
+            detect_regime(
+                ema_fast=2000.2,
+                ema_slow=1999.8,
+                atr_value=2.0,
+                trend_threshold=1.5,
+            ),
+            "range",
+        )
+
+    def test_decide_reversion_signal(self):
+        self.assertEqual(
+            decide_reversion_signal(
+                last_close=1996.0,
+                ema_anchor=2000.0,
+                atr_value=2.0,
+                reversion_atr=1.5,
+            ),
+            "BUY",
+        )
+        self.assertEqual(
+            decide_reversion_signal(
+                last_close=2004.0,
+                ema_anchor=2000.0,
+                atr_value=2.0,
+                reversion_atr=1.5,
+            ),
+            "SELL",
+        )
+        self.assertEqual(
+            decide_reversion_signal(
+                last_close=2001.0,
+                ema_anchor=2000.0,
+                atr_value=2.0,
+                reversion_atr=1.5,
+            ),
+            "HOLD",
+        )
+
+    def test_decide_signal_with_mode_hybrid_switches_by_regime(self):
+        trend = decide_signal_with_mode(
+            strategy_mode="hybrid",
+            last_close=1979.0,
+            ema_fast=1982.0,
+            ema_slow=1978.0,
+            atr_value=2.0,
+            pullback_atr=1.0,
+            reversion_atr=1.0,
+            trend_threshold=1.0,
+        )
+        self.assertEqual(trend["regime"], "trend")
+        self.assertEqual(trend["source"], "trend")
+        self.assertEqual(trend["signal"], "BUY")
+
+        ranging = decide_signal_with_mode(
+            strategy_mode="hybrid",
+            last_close=1997.5,
+            ema_fast=2000.2,
+            ema_slow=1999.8,
+            atr_value=2.0,
+            pullback_atr=1.0,
+            reversion_atr=1.0,
+            trend_threshold=1.0,
+        )
+        self.assertEqual(ranging["regime"], "range")
+        self.assertEqual(ranging["source"], "reversion")
+        self.assertEqual(ranging["signal"], "BUY")
 
     def test_build_sl_tp_buy_and_sell(self):
         buy_sl, buy_tp = build_sl_tp(
@@ -212,6 +300,42 @@ class TestXauAutoBotMath(unittest.TestCase):
             )
         )
 
+    def test_update_runtime_metrics_counts_gap_rejects_and_signals(self):
+        metrics = {
+            "gate_check_count": 0,
+            "gate_reject_gap_count": 0,
+            "signal_counts": {"BUY": 0, "SELL": 0, "HOLD": 0},
+        }
+        update_runtime_metrics(
+            metrics,
+            {
+                "action": "HOLD",
+                "reason": "ema_gap_out_of_range",
+                "gap_gate_checked": True,
+            },
+        )
+        update_runtime_metrics(
+            metrics,
+            {
+                "action": "ORDER",
+                "side": "BUY",
+                "gap_gate_checked": True,
+            },
+        )
+        update_runtime_metrics(
+            metrics,
+            {
+                "action": "BLOCKED",
+                "reason": "session",
+                "gap_gate_checked": False,
+            },
+        )
+        self.assertEqual(metrics["gate_check_count"], 2)
+        self.assertEqual(metrics["gate_reject_gap_count"], 1)
+        self.assertEqual(metrics["signal_counts"]["HOLD"], 1)
+        self.assertEqual(metrics["signal_counts"]["BUY"], 1)
+        self.assertEqual(metrics["signal_counts"]["SELL"], 0)
+
 
 class TestXauAutoBotConfig(unittest.TestCase):
     def test_config_defaults(self):
@@ -220,6 +344,71 @@ class TestXauAutoBotConfig(unittest.TestCase):
         self.assertEqual(cfg.timeframe, "M5")
         self.assertEqual(cfg.max_positions, 1)
         self.assertGreater(cfg.max_spread_points, 0.0)
+        self.assertAlmostEqual(cfg.min_ema_gap_over_atr, 0.9, places=6)
+        self.assertAlmostEqual(cfg.max_ema_gap_over_atr, 2.5, places=6)
+
+    def test_config_supports_hybrid_mode_fields(self):
+        cfg = BotConfig.from_dict(
+            {
+                "strategy_mode": "hybrid",
+                "regime_trend_threshold": 1.1,
+                "reversion_atr": 1.3,
+                "reversion_sl_atr": 1.0,
+                "reversion_tp_atr": 1.4,
+            }
+        )
+        self.assertEqual(cfg.strategy_mode, "hybrid")
+        self.assertAlmostEqual(cfg.regime_trend_threshold, 1.1, places=6)
+        self.assertAlmostEqual(cfg.reversion_atr, 1.3, places=6)
+        self.assertAlmostEqual(cfg.reversion_sl_atr, 1.0, places=6)
+        self.assertAlmostEqual(cfg.reversion_tp_atr, 1.4, places=6)
+
+    def test_config_rejects_invalid_strategy_mode(self):
+        with self.assertRaises(ValueError):
+            BotConfig.from_dict({"strategy_mode": "unsupported"})
+
+    def test_validate_trade_comment_accepts_31_chars(self):
+        comment = "x" * 31
+        self.assertEqual(validate_trade_comment(comment), comment)
+
+    def test_validate_trade_comment_rejects_over_31_chars(self):
+        with self.assertRaises(ValueError):
+            validate_trade_comment("x" * 32)
+
+    def test_bot_config_rejects_over_31_char_comment(self):
+        with self.assertRaises(ValueError):
+            BotConfig.from_dict({"comment": "x" * 32})
+
+    def test_runtime_journal_path_from_env_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            path = Path(runtime_journal_path_from_env())
+        expected = (
+            Path(xau_autobot_module.__file__).resolve().parent.parent
+            / "data/reports/xau_autobot_runtime_journal_latest.jsonl"
+        )
+        self.assertEqual(path, expected)
+        self.assertTrue(path.is_absolute())
+
+    def test_runtime_journal_path_from_env_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {"XAU_AUTOBOT_RUNTIME_JOURNAL_PATH": "data/reports/custom_runtime_journal.jsonl"},
+            clear=True,
+        ):
+            path = Path(runtime_journal_path_from_env())
+        expected = Path(xau_autobot_module.__file__).resolve().parent.parent / "data/reports/custom_runtime_journal.jsonl"
+        self.assertEqual(path, expected)
+        self.assertTrue(path.is_absolute())
+
+    def test_append_runtime_journal_appends_json_line(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "runtime.jsonl"
+            append_runtime_journal(out, {"action": "HOLD", "timestamp_utc": "2026-02-26T00:00:00+00:00"})
+            append_runtime_journal(out, {"action": "ORDER", "timestamp_utc": "2026-02-26T00:05:00+00:00"})
+            lines = out.read_text(encoding="utf-8").strip().splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertEqual(json.loads(lines[0])["action"], "HOLD")
+            self.assertEqual(json.loads(lines[1])["action"], "ORDER")
 
     def test_resolve_config_path_prefers_explicit(self):
         with tempfile.TemporaryDirectory() as td:
@@ -406,6 +595,8 @@ class TestXauAutoBotLiveBehavior(unittest.TestCase):
                 "session_end_hour_utc": 23,
                 "min_atr_ratio_to_median": 0.0,
                 "max_atr_ratio_to_median": 999.0,
+                "min_ema_gap_over_atr": 0.0,
+                "max_ema_gap_over_atr": 999.0,
                 "max_spread_points": 80.0,
                 "max_positions": 1,
             }
@@ -469,6 +660,139 @@ class TestXauAutoBotLiveBehavior(unittest.TestCase):
         self.assertEqual(payload["action"], "SKIP")
         self.assertEqual(payload["reason"], "not_enough_bars")
         self.assertEqual(bar_time, 0)
+
+    def test_evaluate_once_holds_when_ema_gap_is_outside_range(self):
+        config = BotConfig.from_dict(
+            {
+                "symbol": "XAUUSD",
+                "fast_ema": 1,
+                "slow_ema": 3,
+                "atr_period": 2,
+                "pullback_atr": 0.0,
+                "session_start_hour_utc": 0,
+                "session_end_hour_utc": 23,
+                "min_atr_ratio_to_median": 0.0,
+                "max_atr_ratio_to_median": 999.0,
+                "min_ema_gap_over_atr": 0.9,
+                "max_ema_gap_over_atr": 2.5,
+                "max_spread_points": 80.0,
+                "max_positions": 1,
+            }
+        )
+        gateway = _FakeGateway(
+            rates=self._rates(),
+            open_positions=0,
+            has_opposite=False,
+            close_results=[],
+            open_positions_after_close=0,
+        )
+
+        payload, _ = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "HOLD")
+        self.assertEqual(payload["reason"], "ema_gap_out_of_range")
+        self.assertTrue(payload["gap_gate_checked"])
+        self.assertAlmostEqual(payload["ema_gap_over_atr"], 0.78125, places=5)
+        self.assertEqual(len(gateway.orders), 0)
+
+
+class _FakeOrderResult:
+    def __init__(self, **kwargs):
+        self._payload = dict(kwargs)
+
+    def _asdict(self):
+        return dict(self._payload)
+
+
+class _FakeMt5OrderApi:
+    TRADE_ACTION_DEAL = 1
+    ORDER_TYPE_BUY = 0
+    ORDER_TYPE_SELL = 1
+    ORDER_TIME_GTC = 0
+    ORDER_FILLING_FOK = 0
+    ORDER_FILLING_IOC = 1
+    ORDER_FILLING_RETURN = 2
+    POSITION_TYPE_BUY = 0
+    POSITION_TYPE_SELL = 1
+    TRADE_RETCODE_INVALID_FILL = 10030
+
+    def __init__(self):
+        self._positions = []
+        self._order_send_results = []
+        self.order_requests = []
+
+    def symbol_info_tick(self, _symbol):
+        return mock.Mock(ask=100.2, bid=100.0)
+
+    def symbol_info(self, _symbol):
+        return mock.Mock(point=0.1)
+
+    def positions_get(self, symbol=None):
+        _ = symbol
+        return list(self._positions)
+
+    def order_send(self, request):
+        self.order_requests.append(dict(request))
+        if self._order_send_results:
+            return self._order_send_results.pop(0)
+        return _FakeOrderResult(retcode=10009, comment="Request executed")
+
+    def last_error(self):
+        return (0, "ok")
+
+
+class TestMt5GatewayFillingFallback(unittest.TestCase):
+    def _base_config(self):
+        return BotConfig.from_dict(
+            {
+                "symbol": "USDJPY",
+                "comment": "uncorr_fx_usdjpy_h1",
+                "dry_run": False,
+                "once": True,
+            }
+        )
+
+    def test_send_market_order_retries_when_ioc_is_rejected(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5._order_send_results = [
+            _FakeOrderResult(retcode=10030, comment="Unsupported filling mode"),
+            _FakeOrderResult(retcode=10009, comment="Request executed"),
+        ]
+        cfg = self._base_config()
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            result = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+
+        self.assertEqual(result["retcode"], 10009)
+        self.assertEqual(result["request"]["type_filling"], fake_mt5.ORDER_FILLING_FOK)
+        self.assertEqual([r["type_filling"] for r in fake_mt5.order_requests], [1, 0])
+
+    def test_close_opposite_positions_retries_when_ioc_is_rejected(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5._positions = [mock.Mock(type=0, magic=560061, volume=0.01, ticket=1234)]
+        fake_mt5._order_send_results = [
+            _FakeOrderResult(retcode=10030, comment="Unsupported filling mode"),
+            _FakeOrderResult(retcode=10009, comment="Request executed"),
+        ]
+        cfg = BotConfig.from_dict(
+            {
+                "symbol": "USDJPY",
+                "magic": 560061,
+                "comment": "uncorr_fx_usdjpy_h1",
+                "dry_run": False,
+                "once": True,
+            }
+        )
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            results = gateway.close_opposite_positions("SELL")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["retcode"], 10009)
+        self.assertEqual(results[0]["request"]["type_filling"], fake_mt5.ORDER_FILLING_FOK)
+        self.assertEqual([r["type_filling"] for r in fake_mt5.order_requests], [1, 0])
 
 
 if __name__ == "__main__":

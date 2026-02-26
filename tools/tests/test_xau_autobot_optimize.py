@@ -1,6 +1,6 @@
 import unittest
 
-from tools.xau_autobot_optimize import candidate_to_config, score_candidate
+from tools.xau_autobot_optimize import candidate_to_config, interval_to_timeframe, score_candidate
 
 
 class TestXauAutoBotOptimize(unittest.TestCase):
@@ -35,6 +35,51 @@ class TestXauAutoBotOptimize(unittest.TestCase):
         self.assertEqual(cfg["max_atr_ratio_to_median"], 1.4)
         self.assertEqual(cfg["magic"], 560099)
         self.assertEqual(cfg["comment"], "xau_autobot_opt")
+
+    def test_candidate_to_config_rejects_comment_over_31_chars(self):
+        candidate = (24, 140, 0.2, 1.5, 2.5, 7, 19, 0.9, 1.4)
+        with self.assertRaises(ValueError):
+            candidate_to_config(candidate, magic=560099, comment="x" * 32)
+
+    def test_candidate_to_config_supports_hybrid_strategy_fields(self):
+        candidate = (
+            24,
+            160,
+            0.2,
+            1.5,
+            2.5,
+            7,
+            19,
+            0.9,
+            1.4,
+            "hybrid",
+            1.1,
+            1.2,
+            1.0,
+            1.4,
+        )
+        cfg = candidate_to_config(candidate, magic=560100, comment="xau_hybrid_opt")
+        self.assertEqual(cfg["strategy_mode"], "hybrid")
+        self.assertEqual(cfg["regime_trend_threshold"], 1.1)
+        self.assertEqual(cfg["reversion_atr"], 1.2)
+        self.assertEqual(cfg["reversion_sl_atr"], 1.0)
+        self.assertEqual(cfg["reversion_tp_atr"], 1.4)
+
+    def test_candidate_to_config_allows_timeframe_override(self):
+        candidate = (24, 140, 0.2, 1.5, 2.5, 7, 19, 0.9, 1.4)
+        cfg = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="M15")
+        self.assertEqual(cfg["timeframe"], "M15")
+
+    def test_interval_to_timeframe_maps_supported_values(self):
+        self.assertEqual(interval_to_timeframe("5m"), "M5")
+        self.assertEqual(interval_to_timeframe("15m"), "M15")
+        self.assertEqual(interval_to_timeframe("60m"), "H1")
+        self.assertEqual(interval_to_timeframe("1h"), "H1")
+        self.assertEqual(interval_to_timeframe("4h"), "H4")
+
+    def test_interval_to_timeframe_rejects_unsupported_value(self):
+        with self.assertRaises(ValueError):
+            interval_to_timeframe("2h")
 
 
 if __name__ == "__main__":

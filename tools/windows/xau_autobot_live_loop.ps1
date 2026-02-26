@@ -13,6 +13,9 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = Resolve-Path (Join-Path $scriptDir "..\..")
 }
 Set-Location $RepoRoot
+if ([string]::IsNullOrWhiteSpace($env:XAU_AUTOBOT_RUNTIME_JOURNAL_PATH)) {
+    $env:XAU_AUTOBOT_RUNTIME_JOURNAL_PATH = Join-Path $RepoRoot "data/reports/xau_autobot_runtime_journal_latest.jsonl"
+}
 
 $args = @("tools/xau_autobot.py", "--config", $ConfigPath, "--poll-seconds", $PollSeconds.ToString())
 if (-not $Once) {

@@ -34,16 +34,21 @@ input double   InpOBTouchBufferPoints = 30.0;
 
 // Risk controls
 input double   InpRiskPerTradePct = 0.5;       // 0.5% equity risk per trade
+input int      InpATRPeriod = 14;
+input double   InpSL_ATR_Mult = 2.0;
+input double   InpTP_ATR_Mult = 3.0;
 input int      InpMaxOpenPositionsTotal = 3;
 input bool     InpOnePositionPerSymbol = true;
 input int      InpMaxTradesPerSymbolPerDay = 2; // Daily cap per symbol
 input int      InpMinBarsBetweenEntries = 4;    // Cooldown bars on exec timeframe
 input double   InpDailyDdStopPct = 2.0;        // stop entries after daily DD >= 2%
-input double   InpSLAtrBufferMult = 0.5;       // SL = OB outer + 0.5*ATR14
+input double   InpSLAtrBufferMult = 0.5;       // legacy parameter (kept for .set compatibility)
 
 // Safety / execution tuning
 input int      InpSlippagePoints = 30;
-input double   InpMaxSpreadPoints = 120.0;    // Skip entries when spread exceeds this threshold
+input double   InpMaxSpreadPoints = 25.0;      // broker point-based spread gate
+input int      InpTradeStartHour = 7;          // server time
+input int      InpTradeEndHour = 22;           // server time
 input bool     InpVerboseLog = true;
 
 CTrade g_trade;
@@ -162,15 +167,23 @@ bool IsEntryAllowedByTradeMode(const string symbol, const bool is_buy) {
    return true;
 }
 
-bool SpreadWithinLimit(const string symbol) {
-   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
-   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   if(bid <= 0.0 || ask <= 0.0) return false;
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   if(point <= 0.0) point = _Point;
-   if(point <= 0.0) return false;
-   double spread_points = (ask - bid) / point;
-   return (spread_points <= InpMaxSpreadPoints);
+bool SpreadOK(const string symbol) {
+   long spread = 0;
+   if(!SymbolInfoInteger(symbol, SYMBOL_SPREAD, spread)) return false;
+   return ((double)spread <= InpMaxSpreadPoints);
+}
+
+bool TimeOK() {
+   MqlDateTime t;
+   TimeToStruct(TimeCurrent(), t);
+
+   if(InpTradeStartHour == InpTradeEndHour) return true;
+
+   if(InpTradeStartHour < InpTradeEndHour) {
+      return (t.hour >= InpTradeStartHour && t.hour < InpTradeEndHour);
+   }
+
+   return (t.hour >= InpTradeStartHour || t.hour < InpTradeEndHour);
 }
 
 bool ParseSymbols() {
@@ -319,6 +332,23 @@ bool ComputeAtr(const string symbol,
 
    out_val = buf[0];
    return (out_val > 0.0);
+}
+
+double GetATR(const string symbol, int period) {
+   if(period <= 0) return 0.0;
+
+   int h = iATR(symbol, InpExecTF, period);
+   if(h == INVALID_HANDLE) return 0.0;
+
+   double buf[];
+   ArraySetAsSeries(buf, true);
+   if(CopyBuffer(h, 0, 0, 2, buf) < 2) {
+      IndicatorRelease(h);
+      return 0.0;
+   }
+
+   IndicatorRelease(h);
+   return buf[0];
 }
 
 bool ComputeVolumeStats(const string symbol,
@@ -487,76 +517,34 @@ bool ConfirmExecReversal(const string symbol,
 //+------------------------------------------------------------------+
 //| Risk / sizing                                                     |
 //+------------------------------------------------------------------+
-bool ComputeLotByRisk(const string symbol,
-                      double entry,
-                      double sl,
-                      double risk_pct,
-                      double &lot) {
-   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-   if(eq <= 0.0) return false;
+double CalcLotByRisk(const string symbol, double riskPct, double sl_points) {
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double risk_money = equity * (riskPct / 100.0);
 
-   double risk_money = eq * (risk_pct / 100.0);
-   if(risk_money <= 0.0) return false;
-
-   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
    double tick_value = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-   if(tick_size <= 0.0 || tick_value <= 0.0) return false;
+   double tick_size = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tick_value <= 0.0 || tick_size <= 0.0 || sl_points <= 0.0) return 0.0;
 
-   double dist = MathAbs(entry - sl);
-   if(dist <= 0.0) return false;
+   double point = SafePoint(symbol);
+   if(point <= 0.0) return 0.0;
 
-   double money_per_lot = (dist / tick_size) * tick_value;
-   if(money_per_lot <= 0.0) return false;
+   double sl_price_distance = sl_points * point;
+   double loss_per_lot = (sl_price_distance / tick_size) * tick_value;
+   if(loss_per_lot <= 0.0) return 0.0;
 
-   lot = risk_money / money_per_lot;
-
-   double min_lot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
-   double max_lot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double lot = risk_money / loss_per_lot;
+   double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
    double step = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   if(minLot <= 0.0 || maxLot <= 0.0) return 0.0;
    if(step <= 0.0) step = 0.01;
 
+   lot = MathMax(minLot, MathMin(maxLot, lot));
    lot = MathFloor(lot / step) * step;
-   if(lot < min_lot) lot = min_lot;
-   if(lot > max_lot) lot = max_lot;
-
    NormalizeVolumeDigits(symbol, lot);
-   return (lot >= min_lot);
-}
+   if(lot < minLot) return 0.0;
 
-bool ComputeStopsAndTarget(const string symbol,
-                           bool bullish,
-                           const ZoneData &zone,
-                           double atr14,
-                           double &sl,
-                           double &tp) {
-   double point = SafePoint(symbol);
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-
-   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
-   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   if(bid <= 0.0 || ask <= 0.0) return false;
-
-   double entry = bullish ? ask : bid;
-   double buffer = InpSLAtrBufferMult * atr14;
-   if(buffer <= 0.0) buffer = 20.0 * point;
-
-   if(bullish) {
-      if(!zone.bullish_valid || !zone.bearish_valid) return false;
-      sl = zone.bullish_low - buffer;
-      tp = zone.bearish_low; // opposite OB as primary target
-      if(tp <= entry) return false;
-      if(sl >= entry) return false;
-   } else {
-      if(!zone.bearish_valid || !zone.bullish_valid) return false;
-      sl = zone.bearish_high + buffer;
-      tp = zone.bullish_high;
-      if(tp >= entry) return false;
-      if(sl <= entry) return false;
-   }
-
-   sl = NormalizeDouble(sl, digits);
-   tp = NormalizeDouble(tp, digits);
-   return true;
+   return lot;
 }
 
 //+------------------------------------------------------------------+
@@ -655,14 +643,13 @@ bool TryBuildSignal(const string symbol,
 //+------------------------------------------------------------------+
 bool SubmitOrder(const string symbol,
                  bool is_buy,
-                 const ZoneData &zone,
                  double atr14) {
    if(!IsEntryAllowedByTradeMode(symbol, is_buy)) {
       LogDebug(symbol + " trade mode rejected side");
       return false;
    }
 
-   if(!SpreadWithinLimit(symbol)) {
+   if(!SpreadOK(symbol)) {
       LogDebug(symbol + " spread filter rejected");
       return false;
    }
@@ -672,16 +659,35 @@ bool SubmitOrder(const string symbol,
    if(bid <= 0.0 || ask <= 0.0) return false;
 
    double entry = is_buy ? ask : bid;
-
-   double sl = 0.0;
-   double tp = 0.0;
-   if(!ComputeStopsAndTarget(symbol, is_buy, zone, atr14, sl, tp)) {
-      LogDebug(symbol + " stop/target invalid for institutional mode");
+   double atr = atr14;
+   if(atr <= 0.0) {
+      atr = GetATR(symbol, InpATRPeriod);
+   }
+   if(atr <= 0.0) {
+      LogDebug(symbol + " ATR unavailable");
       return false;
    }
 
-   double lot = 0.0;
-   if(!ComputeLotByRisk(symbol, entry, sl, InpRiskPerTradePct, lot)) {
+   double point = SafePoint(symbol);
+   if(point <= 0.0) return false;
+
+   double sl_points = (InpSL_ATR_Mult * atr) / point;
+   double tp_points = (InpTP_ATR_Mult * atr) / point;
+   if(sl_points <= 0.0 || tp_points <= 0.0) return false;
+
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double sl = 0.0;
+   double tp = 0.0;
+   if(is_buy) {
+      sl = NormalizeDouble(entry - (sl_points * point), digits);
+      tp = NormalizeDouble(entry + (tp_points * point), digits);
+   } else {
+      sl = NormalizeDouble(entry + (sl_points * point), digits);
+      tp = NormalizeDouble(entry - (tp_points * point), digits);
+   }
+
+   double lot = CalcLotByRisk(symbol, InpRiskPerTradePct, sl_points);
+   if(lot <= 0.0) {
       LogDebug(symbol + " lot calculation failed");
       return false;
    }
@@ -709,6 +715,11 @@ bool SubmitOrder(const string symbol,
 }
 
 void ProcessSymbol(const string symbol) {
+   if(!TimeOK()) {
+      LogDebug("Trading session filter active.");
+      return;
+   }
+
    if(DailyDdStopped()) {
       LogDebug("Daily DD stop active. Skip new entries.");
       return;
@@ -766,7 +777,7 @@ void ProcessSymbol(const string symbol) {
       return;
    }
 
-   if(SubmitOrder(symbol, is_buy, zone, atr14)) {
+   if(SubmitOrder(symbol, is_buy, atr14)) {
       g_states[idx].last_entry_bar_time = last_closed_exec_bar;
       g_states[idx].trades_today++;
    }

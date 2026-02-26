@@ -1,0 +1,13 @@
+[Unit]
+Description=Swimmy Forward Probe Watch (hourly growth check)
+After=network.target
+
+[Service]
+Type=oneshot
+User=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/tools/ops/forward_probe_watch_runner.sh
+Environment=HOME=/home/swimmy
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
+StandardOutput=append:/home/swimmy/swimmy/logs/forward_probe_watch.log
+StandardError=append:/home/swimmy/swimmy/logs/forward_probe_watch.log

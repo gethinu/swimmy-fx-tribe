@@ -33,6 +33,12 @@
 
 (defparameter *last-wfv-qualify-time* 0)
 
+(defvar *last-rank-eval-time* 0
+  "Unix timestamp of the last rank evaluation run.")
+
+(defvar *last-breeding-cycle-time* 0
+  "Unix timestamp of the last breeding phase run.")
+
 (defun maybe-run-wfv-qualification ()
   (let ((now (get-universal-time)))
     (unless (and (boundp 'swimmy.core::*wfv-enabled*) swimmy.core::*wfv-enabled*)
@@ -65,25 +71,30 @@
   "Run WFV Qualification (Native Lisp Loop)"
   (maybe-run-wfv-qualification))
 
-(defun phase-4-purge ()
+(defun phase-4-purge (&key (now (get-universal-time)))
   "Run The Selector (Native Lisp Battle Royale)
    V49.0: Switch to Rank System (run-rank-evaluation).
    Legacy 'execute-proving-grounds' replaced."
-  (format t "[CONNECTOR] [Phase 4] The Proving Grounds (Rank System V49)...~%")
-  ;; V49.0: Fix A-Rank 0 issue by running the correct evaluation logic
-  (when (fboundp 'run-rank-evaluation)
+  ;; Run expensive A/B/S conformance on interval instead of every 1s cycle.
+  (when (and (fboundp 'run-rank-evaluation)
+             (should-run-rank-evaluation-p now))
+    (format t "[CONNECTOR] [Phase 4] The Proving Grounds (Rank System V49)...~%")
+    (setf *last-rank-eval-time* now)
+    ;; V49.0: Fix A-Rank 0 issue by running the correct evaluation logic
     (run-rank-evaluation)))
 
 ;; P8: phase-5-recruit DELETED
 
-(defun phase-6-breeding ()
+(defun phase-6-breeding (&key (now (get-universal-time)))
   "Evolution (Breeding & Selection)"
-  (format t "~%[CONNECTOR] [Phase 6] Evolution (Native Breeding)...~%")
-  ;; V24: Directly call the native breeder
-  (run-breeding-cycle)
-  ;; V48.7: Integrate Legend Breeding (Owner's Request)
-  (when (fboundp 'run-legend-breeding)
-    (run-legend-breeding)))
+  (when (should-run-breeding-cycle-p now)
+    (setf *last-breeding-cycle-time* now)
+    (format t "~%[CONNECTOR] [Phase 6] Evolution (Native Breeding)...~%")
+    ;; V24: Directly call the native breeder
+    (run-breeding-cycle)
+    ;; V48.7: Integrate Legend Breeding (Owner's Request)
+    (when (fboundp 'run-legend-breeding)
+      (run-legend-breeding))))
 
 (defun phase-3-5-cpcv-validate ()
   "V48.0: CPCV Validation Phase - Promote A-RANK → S-RANK via CPCV"
@@ -102,6 +113,26 @@
               parsed
               default))
         default)))
+
+(defparameter *rank-eval-interval-sec*
+  (%connector-env-int-or "SWIMMY_RANK_EVAL_INTERVAL_SEC" 60)
+  "Minimum seconds between rank evaluation runs.")
+
+(defun should-run-rank-evaluation-p (&optional (now (get-universal-time)))
+  "Return T when rank evaluation interval has elapsed."
+  (let ((interval (max 1 (or *rank-eval-interval-sec* 60))))
+    (or (<= *last-rank-eval-time* 0)
+        (>= (- now *last-rank-eval-time*) interval))))
+
+(defparameter *breeding-cycle-interval-sec*
+  (%connector-env-int-or "SWIMMY_BREEDING_CYCLE_INTERVAL_SEC" 60)
+  "Minimum seconds between breeding phase runs.")
+
+(defun should-run-breeding-cycle-p (&optional (now (get-universal-time)))
+  "Return T when breeding interval has elapsed."
+  (let ((interval (max 1 (or *breeding-cycle-interval-sec* 60))))
+    (or (<= *last-breeding-cycle-time* 0)
+        (>= (- now *last-breeding-cycle-time*) interval))))
 
 (defparameter *wisdom-update-interval-sec*
   (%connector-env-int-or "SWIMMY_WISDOM_UPDATE_INTERVAL_SEC" 1800)

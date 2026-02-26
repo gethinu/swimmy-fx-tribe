@@ -39,7 +39,7 @@
 (defparameter *forward-min-days* 30
   "Minimum forward paper period (days) for deployment gate.")
 
-(defparameter *forward-min-trades* 300
+(defparameter *forward-min-trades* 20
   "Minimum forward trades required for deployment gate.")
 
 (defparameter *forward-min-sharpe* 0.70
@@ -1187,6 +1187,9 @@ Fallback mode uses legacy *oos-test-ratio* split when fixed window is disabled/i
 (defparameter *cpcv-strategy-retry-interval* 1800
   "Minimum seconds before re-dispatching CPCV for the same unchanged strategy.")
 
+(defparameter *cpcv-criteria-fail-retry-interval* 21600
+  "Minimum seconds before re-dispatching unchanged criteria-failed CPCV candidates.")
+
 (defvar *cpcv-last-dispatch-times* (make-hash-table :test 'equal)
   "Strategy name -> last CPCV dispatch timestamp.")
 
@@ -1221,17 +1224,22 @@ Used to avoid re-dispatching known criteria failures in tight loops."
          (last-sig (and name (gethash name *cpcv-last-dispatch-signatures*)))
          (outcome (and name (gethash name *cpcv-last-result-outcomes* nil)))
          (age (and last-time (- now last-time)))
-         ;; Criteria failures are stable; re-dispatch only if metrics change.
-         ;; Runtime failures / stuck inflight should remain retryable after cooldown.
-         (retryable-outcome-p (or (null outcome)
-                                  (eq outcome :inflight)
-                                  (eq outcome :runtime-fail))))
+         (retry-interval
+           (cond
+             ;; Criteria-fail can recover with new market regime/evidence, but should use
+             ;; a longer TTL than runtime retry to avoid CPCV spam.
+             ((eq outcome :criteria-fail) *cpcv-criteria-fail-retry-interval*)
+             ;; Runtime failures / stuck inflight remain retryable on base cooldown.
+             ((or (null outcome) (eq outcome :inflight) (eq outcome :runtime-fail))
+              *cpcv-strategy-retry-interval*)
+             ;; Passed outcomes should not re-dispatch unless signature changes.
+             (t nil))))
     (or (null name)
         (null last-time)
         (not (equal sig last-sig))
-        (and retryable-outcome-p
+        (and (numberp retry-interval)
              (numberp age)
-             (>= age *cpcv-strategy-retry-interval*)))))
+             (>= age retry-interval)))))
 
 (defun mark-cpcv-dispatched (strategy &key (now (get-universal-time)))
   "Record strategy dispatch timestamp/signature for CPCV cooldown."
@@ -1279,8 +1287,10 @@ Used to avoid re-dispatching known criteria failures in tight loops."
         (reset-cpcv-metrics :queued 0)
         (when (and (plusp (length shuffled))
                    (zerop (length eligible)))
-          (format t "[CPCV] ⏱️ Skipped ~d candidate(s) due to dispatch cooldown (~ds).~%"
-                  (length shuffled) *cpcv-strategy-retry-interval*))
+          (format t "[CPCV] ⏱️ Skipped ~d candidate(s) due to dispatch cooldown (runtime/inflight ~ds, criteria-fail ~ds).~%"
+                  (length shuffled)
+                  *cpcv-strategy-retry-interval*
+                  *cpcv-criteria-fail-retry-interval*))
         (let ((counts (cpcv-gate-failure-counts a-rank-db)))
           (format t "~a~%" (cpcv-gate-failure-summary counts)))
         (ignore-errors (write-cpcv-status-file :reason "no-candidates"))

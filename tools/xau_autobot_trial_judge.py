@@ -86,12 +86,14 @@ def evaluate_trial_report(
     win_rate = _as_float(summary.get("win_rate"), 0.0)
     net_profit = _as_float(summary.get("net_profit"), 0.0)
 
-    checks = {
+    readiness_checks = {
         "window_days": window_days >= float(min_days),
         "closed_positions": closed_positions >= float(min_closed_positions),
+    }
+    performance_checks = {
         "profit_factor": profit_factor >= float(min_profit_factor),
         "win_rate": win_rate >= float(min_win_rate),
-        "net_profit": net_profit > float(min_net_profit),
+        "net_profit": net_profit >= float(min_net_profit),
     }
     invalid_reasons = []
     if "after_magic_filter" in diagnostics and _as_float(diagnostics.get("after_magic_filter"), -1.0) <= 0.0:
@@ -102,6 +104,12 @@ def evaluate_trial_report(
         invalid_reasons.append("after_comment_prefix_filter")
     trial_valid = len(invalid_reasons) == 0
 
+    checks = {
+        **readiness_checks,
+        **performance_checks,
+    }
+    readiness_failed_checks = [name for name, ok in readiness_checks.items() if not ok]
+    performance_failed_checks = [name for name, ok in performance_checks.items() if not ok]
     failed_checks = [name for name, ok in checks.items() if not ok]
     verdict = "GO"
     if not trial_valid:
@@ -126,6 +134,14 @@ def evaluate_trial_report(
             "min_win_rate": float(min_win_rate),
             "min_net_profit": float(min_net_profit),
         },
+        "readiness": {
+            "checks": readiness_checks,
+            "failed_checks": readiness_failed_checks,
+        },
+        "performance": {
+            "checks": performance_checks,
+            "failed_checks": performance_failed_checks,
+        },
         "checks": checks,
         "failed_checks": failed_checks,
     }
@@ -145,7 +161,7 @@ def main() -> None:
     parser.add_argument("--reports-dir", default="data/reports")
     parser.add_argument("--max-age-hours", type=float, default=168.0)
     parser.add_argument("--min-days", type=float, default=14.0)
-    parser.add_argument("--min-closed-positions", type=float, default=30.0)
+    parser.add_argument("--min-closed-positions", type=float, default=12.0)
     parser.add_argument("--min-profit-factor", type=float, default=1.10)
     parser.add_argument("--min-win-rate", type=float, default=0.42)
     parser.add_argument("--min-net-profit", type=float, default=0.0)

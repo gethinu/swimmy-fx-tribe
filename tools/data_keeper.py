@@ -55,9 +55,9 @@ def _env_int(key: str, default: int) -> int:
         return default
 
 ZMQ_PORT = _env_int("SWIMMY_PORT_DATA_KEEPER", 5561)
-# buffer to 5M candles (Sufficient for ~10 years M1)
-# M1 was causing OOM with 10M limit.
-MAX_CANDLES_PER_SYMBOL = 500_000
+# M1 buffer per symbol (env-tunable for memory control).
+# Historical defaults were reduced to avoid OOM in long-running services.
+MAX_CANDLES_PER_SYMBOL = max(1_000, _env_int("SWIMMY_MAX_CANDLES_PER_SYMBOL", 500_000))
 MAX_TICKS_PER_SYMBOL = _env_int("SWIMMY_MAX_TICKS_PER_SYMBOL", 200_000)
 SUPPORTED_SYMBOLS = ["USDJPY", "EURUSD", "GBPUSD"]
 TIMEOUT_SEC = 5

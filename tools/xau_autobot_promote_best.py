@@ -31,6 +31,15 @@ def _as_float(value: object, default: float = 0.0) -> float:
         return default
 
 
+def _as_int(value: object, default: int = -1) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _build_live_summary_from_report(data: Dict[str, object]) -> Dict[str, float]:
     summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
     return {
@@ -41,13 +50,40 @@ def _build_live_summary_from_report(data: Dict[str, object]) -> Dict[str, float]
     }
 
 
-def _load_live_report(path: Path) -> Optional[Dict[str, float]]:
+def _identity_matches(
+    payload: Dict[str, object],
+    *,
+    expected_magic: Optional[int],
+    expected_comment_prefix: str,
+) -> bool:
+    if expected_magic is not None:
+        if _as_int(payload.get("magic"), default=-1) != int(expected_magic):
+            return False
+    expected_prefix = expected_comment_prefix.strip()
+    if expected_prefix:
+        if str(payload.get("comment_prefix", "")).strip() != expected_prefix:
+            return False
+    return True
+
+
+def _load_live_report(
+    path: Path,
+    *,
+    expected_magic: Optional[int] = None,
+    expected_comment_prefix: str = "",
+) -> Optional[Dict[str, float]]:
     try:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         return None
     if not isinstance(data, dict):
+        return None
+    if not _identity_matches(
+        data,
+        expected_magic=expected_magic,
+        expected_comment_prefix=expected_comment_prefix,
+    ):
         return None
     return _build_live_summary_from_report(data)
 
@@ -63,6 +99,8 @@ def resolve_live_summary(
     live_reports_dir: Path,
     max_age_hours: float = 48.0,
     now_utc: Optional[datetime] = None,
+    expected_magic: Optional[int] = None,
+    expected_comment_prefix: str = "",
 ) -> Tuple[Optional[Path], Dict[str, float]]:
     if now_utc is None:
         now_utc = datetime.now(timezone.utc)
@@ -70,7 +108,11 @@ def resolve_live_summary(
     explicit = str(live_report or "").strip()
     if explicit:
         explicit_path = Path(explicit)
-        summary = _load_live_report(explicit_path)
+        summary = _load_live_report(
+            explicit_path,
+            expected_magic=expected_magic,
+            expected_comment_prefix=expected_comment_prefix,
+        )
         return (explicit_path, summary or {})
 
     candidates = sorted(
@@ -82,7 +124,11 @@ def resolve_live_summary(
     valid: List[Tuple[Path, Dict[str, float]]] = []
     nonzero: List[Tuple[Path, Dict[str, float]]] = []
     for candidate in candidates:
-        summary = _load_live_report(candidate)
+        summary = _load_live_report(
+            candidate,
+            expected_magic=expected_magic,
+            expected_comment_prefix=expected_comment_prefix,
+        )
         if summary is None:
             continue
         if max_age_hours > 0.0:
@@ -372,6 +418,40 @@ def _source_config_from_period(period: str, config_dir: Path) -> Path:
     return config_dir / f"xau_autobot.tuned_auto_gc_m5_{period}.json"
 
 
+def _load_source_identity(path: Path) -> Tuple[Optional[int], str]:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return (None, "")
+    if not isinstance(payload, dict):
+        return (None, "")
+    magic_raw = payload.get("magic")
+    comment_prefix = str(payload.get("comment", "")).strip()
+    if magic_raw is None or comment_prefix == "":
+        return (None, "")
+    return (_as_int(magic_raw, default=-1), comment_prefix)
+
+
+def _infer_expected_live_identity(rows: Sequence[Dict[str, object]], config_dir: Path) -> Tuple[int, str]:
+    identities: set[Tuple[int, str]] = set()
+    for row in rows:
+        period = str(row.get("period", "")).strip()
+        if not period:
+            continue
+        cfg = _source_config_from_period(period, config_dir)
+        magic, comment_prefix = _load_source_identity(cfg)
+        if magic is None or magic < 0 or comment_prefix == "":
+            continue
+        identities.add((int(magic), comment_prefix))
+
+    if not identities:
+        raise RuntimeError("could not infer live report identity from period configs")
+    if len(identities) > 1:
+        raise RuntimeError("multiple live report identities found in period configs")
+    return next(iter(identities))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Promote best XAU period config to active config")
     parser.add_argument("--comparison", default="data/reports/xau_autobot_cycle_comparison.json")
@@ -405,11 +485,21 @@ def main() -> None:
 
     data = _load_comparison(comparison_path)
     rows = _extract_period_rows(data)
+    if not rows:
+        raise RuntimeError("no period rows")
+    expected_magic, expected_comment_prefix = _infer_expected_live_identity(rows, config_dir)
     live_report_path, live_summary = resolve_live_summary(
         live_report=args.live_report,
         live_reports_dir=live_reports_dir,
         max_age_hours=float(args.live_max_age_hours),
+        expected_magic=expected_magic,
+        expected_comment_prefix=expected_comment_prefix,
     )
+    if not live_summary:
+        raise RuntimeError(
+            "no live report matched expected identity "
+            f"(magic={expected_magic}, comment_prefix={expected_comment_prefix})"
+        )
     scoreboard = build_period_scoreboard(rows, live_summary=live_summary)
     if not scoreboard:
         raise RuntimeError("no period rows")
@@ -453,6 +543,10 @@ def main() -> None:
         "best_row": best,
         "scoreboard": scoreboard,
         "live_max_age_hours": float(args.live_max_age_hours),
+        "live_identity": {
+            "expected_magic": int(expected_magic),
+            "expected_comment_prefix": expected_comment_prefix,
+        },
         "live_underperformance_thresholds": {
             "min_closed_positions": float(args.live_min_closed_positions),
             "min_live_profit_factor": float(args.live_min_profit_factor),
