@@ -218,6 +218,7 @@ LIVE_REPORT_ARGS=(
   --symbol "$SYMBOL"
   --magic "$MAGIC"
   --comment-prefix "$COMMENT_PREFIX"
+  --run-id "$TRIAL_RUN_ID"
   --runtime-journal-path "$RUNTIME_JOURNAL_PATH"
   --include-details
   --diagnostics

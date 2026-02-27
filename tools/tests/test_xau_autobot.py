@@ -26,6 +26,7 @@ from tools.xau_autobot import (
     is_session_allowed,
     next_session_open_utc,
     resolve_config_path,
+    runtime_trial_run_id_from_env,
     session_window_jst_label,
     should_send_session_block_notification,
     should_send_wait_summary_notification,
@@ -400,6 +401,125 @@ class TestXauAutoBotConfig(unittest.TestCase):
         self.assertEqual(path, expected)
         self.assertTrue(path.is_absolute())
 
+    def test_runtime_trial_run_id_prefers_env_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            meta = Path(td) / "current_run.json"
+            meta.write_text(
+                json.dumps(
+                    {
+                        "run_id": "trial_v2_from_meta",
+                        "trial_config": "tools/configs/a.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "XAU_AUTOBOT_TRIAL_RUN_ID": "trial_v2_from_env",
+                    "XAU_AUTOBOT_TRIAL_RUN_META_PATH": str(meta),
+                },
+                clear=True,
+            ):
+                run_id = runtime_trial_run_id_from_env(config_path="tools/configs/a.json")
+        self.assertEqual(run_id, "trial_v2_from_env")
+
+    def test_runtime_trial_run_id_falls_back_to_meta_when_env_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            meta = Path(td) / "current_run.json"
+            meta.write_text(
+                json.dumps(
+                    {
+                        "run_id": "trial_v2_from_meta",
+                        "trial_config": "tools/configs/xau_autobot.trial_v2_test.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                os.environ,
+                {"XAU_AUTOBOT_TRIAL_RUN_META_PATH": str(meta)},
+                clear=True,
+            ):
+                run_id = runtime_trial_run_id_from_env(
+                    config_path="/repo/tools/configs/xau_autobot.trial_v2_test.json"
+                )
+        self.assertEqual(run_id, "trial_v2_from_meta")
+
+    def test_runtime_trial_run_id_ignores_meta_when_config_mismatch(self):
+        with tempfile.TemporaryDirectory() as td:
+            meta = Path(td) / "current_run.json"
+            meta.write_text(
+                json.dumps(
+                    {
+                        "run_id": "trial_v2_from_meta",
+                        "trial_config": "tools/configs/other_config.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                os.environ,
+                {"XAU_AUTOBOT_TRIAL_RUN_META_PATH": str(meta)},
+                clear=True,
+            ):
+                run_id = runtime_trial_run_id_from_env(
+                    config_path="/repo/tools/configs/xau_autobot.trial_v2_test.json"
+                )
+        self.assertEqual(run_id, "")
+
+    def test_runtime_trial_run_id_scans_variant_meta_files_when_default_mismatch(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            reports = root / "data" / "reports"
+            reports.mkdir(parents=True, exist_ok=True)
+            (reports / "xau_autobot_trial_v2_current_run.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "trial_v2_primary",
+                        "trial_config": "tools/configs/xau_autobot.primary.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (reports / "xau_autobot_trial_v2_current_run_r2.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "trial_v2_r2_match",
+                        "trial_config": "tools/configs/xau_autobot.target.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(xau_autobot_module, "REPO_ROOT", root):
+                with mock.patch.dict(os.environ, {}, clear=True):
+                    run_id = runtime_trial_run_id_from_env(
+                        config_path="/repo/tools/configs/xau_autobot.target.json"
+                    )
+        self.assertEqual(run_id, "trial_v2_r2_match")
+
+    def test_runtime_trial_run_id_returns_empty_when_no_variant_meta_matches(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            reports = root / "data" / "reports"
+            reports.mkdir(parents=True, exist_ok=True)
+            for suffix in ("", "_r1", "_r2", "_r3"):
+                (reports / f"xau_autobot_trial_v2_current_run{suffix}.json").write_text(
+                    json.dumps(
+                        {
+                            "run_id": f"trial_v2{suffix or '_primary'}",
+                            "trial_config": "tools/configs/xau_autobot.other.json",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            with mock.patch.object(xau_autobot_module, "REPO_ROOT", root):
+                with mock.patch.dict(os.environ, {}, clear=True):
+                    run_id = runtime_trial_run_id_from_env(
+                        config_path="/repo/tools/configs/xau_autobot.target.json"
+                    )
+        self.assertEqual(run_id, "")
+
     def test_append_runtime_journal_appends_json_line(self):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "runtime.jsonl"
@@ -712,20 +832,31 @@ class _FakeMt5OrderApi:
     ORDER_FILLING_FOK = 0
     ORDER_FILLING_IOC = 1
     ORDER_FILLING_RETURN = 2
+    SYMBOL_FILLING_FOK = 1
+    SYMBOL_FILLING_IOC = 2
     POSITION_TYPE_BUY = 0
     POSITION_TYPE_SELL = 1
+    TRADE_RETCODE_DONE = 10009
     TRADE_RETCODE_INVALID_FILL = 10030
 
     def __init__(self):
         self._positions = []
         self._order_send_results = []
         self.order_requests = []
+        self.unsupported_filling_modes = set()
+        self.symbol_filling_mode = self.SYMBOL_FILLING_FOK | self.SYMBOL_FILLING_IOC
+        self.initialize_calls = 0
+        self.shutdown_calls = 0
+        self.symbol_select_calls = []
+        self.initialize_success = True
+        self.symbol_select_success = True
+        self._last_error = (0, "ok")
 
     def symbol_info_tick(self, _symbol):
         return mock.Mock(ask=100.2, bid=100.0)
 
     def symbol_info(self, _symbol):
-        return mock.Mock(point=0.1)
+        return mock.Mock(point=0.1, filling_mode=self.symbol_filling_mode)
 
     def positions_get(self, symbol=None):
         _ = symbol
@@ -733,12 +864,42 @@ class _FakeMt5OrderApi:
 
     def order_send(self, request):
         self.order_requests.append(dict(request))
+        fill_mode = int(request.get("type_filling", -1))
+        if fill_mode in self.unsupported_filling_modes:
+            self._last_error = (0, "ok")
+            return _FakeOrderResult(retcode=10030, comment="Unsupported filling mode")
         if self._order_send_results:
-            return self._order_send_results.pop(0)
-        return _FakeOrderResult(retcode=10009, comment="Request executed")
+            out = self._order_send_results.pop(0)
+            payload = out._asdict()
+            if int(payload.get("retcode", 0)) == 5:
+                self._last_error = (1, "Success")
+            else:
+                self._last_error = (0, "ok")
+            return out
+        self._last_error = (0, "ok")
+        return _FakeOrderResult(retcode=self.TRADE_RETCODE_DONE, comment="Request executed")
 
     def last_error(self):
-        return (0, "ok")
+        return self._last_error
+
+    def initialize(self):
+        self.initialize_calls += 1
+        if self.initialize_success:
+            self._last_error = (0, "ok")
+            return True
+        self._last_error = (1000, "initialize failed")
+        return False
+
+    def shutdown(self):
+        self.shutdown_calls += 1
+
+    def symbol_select(self, symbol, enable):
+        self.symbol_select_calls.append((symbol, bool(enable)))
+        if self.symbol_select_success:
+            self._last_error = (0, "ok")
+            return True
+        self._last_error = (1001, "symbol_select failed")
+        return False
 
 
 class TestMt5GatewayFillingFallback(unittest.TestCase):
@@ -754,10 +915,8 @@ class TestMt5GatewayFillingFallback(unittest.TestCase):
 
     def test_send_market_order_retries_when_ioc_is_rejected(self):
         fake_mt5 = _FakeMt5OrderApi()
-        fake_mt5._order_send_results = [
-            _FakeOrderResult(retcode=10030, comment="Unsupported filling mode"),
-            _FakeOrderResult(retcode=10009, comment="Request executed"),
-        ]
+        fake_mt5.symbol_filling_mode = fake_mt5.SYMBOL_FILLING_IOC
+        fake_mt5.unsupported_filling_modes = {fake_mt5.ORDER_FILLING_IOC}
         cfg = self._base_config()
         gateway = Mt5Gateway(cfg)
 
@@ -768,13 +927,42 @@ class TestMt5GatewayFillingFallback(unittest.TestCase):
         self.assertEqual(result["request"]["type_filling"], fake_mt5.ORDER_FILLING_FOK)
         self.assertEqual([r["type_filling"] for r in fake_mt5.order_requests], [1, 0])
 
+    def test_send_market_order_uses_symbol_supported_mode_first(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5.symbol_filling_mode = fake_mt5.SYMBOL_FILLING_FOK
+        fake_mt5.unsupported_filling_modes = {fake_mt5.ORDER_FILLING_IOC}
+        cfg = self._base_config()
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            result = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+
+        self.assertEqual(result["retcode"], 10009)
+        self.assertEqual([r["type_filling"] for r in fake_mt5.order_requests], [fake_mt5.ORDER_FILLING_FOK])
+
+    def test_send_market_order_caches_successful_filling_mode(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5.symbol_filling_mode = 0
+        fake_mt5.unsupported_filling_modes = {fake_mt5.ORDER_FILLING_FOK}
+        cfg = self._base_config()
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            first = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+            second = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+
+        self.assertEqual(first["retcode"], 10009)
+        self.assertEqual(second["retcode"], 10009)
+        self.assertEqual(
+            [r["type_filling"] for r in fake_mt5.order_requests],
+            [fake_mt5.ORDER_FILLING_FOK, fake_mt5.ORDER_FILLING_IOC, fake_mt5.ORDER_FILLING_IOC],
+        )
+
     def test_close_opposite_positions_retries_when_ioc_is_rejected(self):
         fake_mt5 = _FakeMt5OrderApi()
         fake_mt5._positions = [mock.Mock(type=0, magic=560061, volume=0.01, ticket=1234)]
-        fake_mt5._order_send_results = [
-            _FakeOrderResult(retcode=10030, comment="Unsupported filling mode"),
-            _FakeOrderResult(retcode=10009, comment="Request executed"),
-        ]
+        fake_mt5.symbol_filling_mode = fake_mt5.SYMBOL_FILLING_IOC
+        fake_mt5.unsupported_filling_modes = {fake_mt5.ORDER_FILLING_IOC}
         cfg = BotConfig.from_dict(
             {
                 "symbol": "USDJPY",
@@ -793,6 +981,46 @@ class TestMt5GatewayFillingFallback(unittest.TestCase):
         self.assertEqual(results[0]["retcode"], 10009)
         self.assertEqual(results[0]["request"]["type_filling"], fake_mt5.ORDER_FILLING_FOK)
         self.assertEqual([r["type_filling"] for r in fake_mt5.order_requests], [1, 0])
+
+    def test_send_market_order_retries_once_after_disk_error(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5._order_send_results = [
+            _FakeOrderResult(retcode=5, comment="Disk error"),
+            _FakeOrderResult(retcode=10009, comment="Request executed"),
+        ]
+        cfg = self._base_config()
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            result = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+
+        self.assertEqual(result["retcode"], 10009)
+        self.assertTrue(result.get("reconnect_retried"))
+        self.assertTrue(result.get("reconnect_success"))
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
+        self.assertEqual(fake_mt5.initialize_calls, 1)
+        self.assertEqual(fake_mt5.symbol_select_calls, [("USDJPY", True)])
+        self.assertEqual(len(fake_mt5.order_requests), 2)
+
+    def test_send_market_order_keeps_failure_when_reconnect_fails(self):
+        fake_mt5 = _FakeMt5OrderApi()
+        fake_mt5.initialize_success = False
+        fake_mt5._order_send_results = [
+            _FakeOrderResult(retcode=5, comment="Disk error"),
+        ]
+        cfg = self._base_config()
+        gateway = Mt5Gateway(cfg)
+
+        with mock.patch("tools.xau_autobot.mt5", fake_mt5):
+            result = gateway.send_market_order("BUY", sl=99.0, tp=101.0)
+
+        self.assertEqual(result["retcode"], 5)
+        self.assertTrue(result.get("reconnect_retried"))
+        self.assertFalse(result.get("reconnect_success"))
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
+        self.assertEqual(fake_mt5.initialize_calls, 1)
+        self.assertEqual(fake_mt5.symbol_select_calls, [])
+        self.assertEqual(len(fake_mt5.order_requests), 1)
 
 
 if __name__ == "__main__":

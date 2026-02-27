@@ -434,9 +434,11 @@ def test_eval_prefers_trial_config_from_run_metadata_when_env_not_set() -> None:
         assert "--magic" in args
         assert "--comment-prefix" in args
         assert "--symbol" in args
+        assert "--run-id" in args
         assert args[args.index("--symbol") + 1] == "XAUUSD"
         assert args[args.index("--magic") + 1] == "560074"
         assert args[args.index("--comment-prefix") + 1] == "xau_autobot_tria"
+        assert args[args.index("--run-id") + 1] == run_id
 
 
 def test_eval_invokes_watchdog_when_enabled() -> None:

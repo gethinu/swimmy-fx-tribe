@@ -132,7 +132,14 @@ def _summarize_runtime_snapshots(
     gate_checks = 0
     gap_rejects = 0
     signal_counts = {"BUY": 0, "SELL": 0, "HOLD": 0}
-    if len(snapshots) >= 2:
+    if len(snapshots) == 1:
+        only = snapshots[0][1]
+        gate_checks = int(max(0, only["gate_check_count"]))
+        gap_rejects = int(max(0, only["gate_reject_gap_count"]))
+        signal_counts["BUY"] = int(max(0, only["buy"]))
+        signal_counts["SELL"] = int(max(0, only["sell"]))
+        signal_counts["HOLD"] = int(max(0, only["hold"]))
+    elif len(snapshots) >= 2:
         prev = snapshots[0][1]
         for _ts, cur in snapshots[1:]:
             gate_checks += _delta_with_reset(cur["gate_check_count"], prev["gate_check_count"])
@@ -178,7 +185,11 @@ def load_runtime_metrics(
             if snapshot is None:
                 continue
             snapshots.append((ts, snapshot))
-    return _summarize_runtime_snapshots(snapshots, source_file_count=len(paths))
+    return _summarize_runtime_snapshots(
+        snapshots,
+        source_file_count=len(paths),
+        source="journal",
+    )
 
 
 def load_runtime_metrics_from_live_reports(
@@ -212,6 +223,35 @@ def load_runtime_metrics_from_live_reports(
         source_file_count=len(paths),
         source="live_report.runtime_metrics",
     )
+
+
+def resolve_runtime_metrics_with_fallback(
+    *,
+    runtime_globs: List[str],
+    live_globs: List[str],
+    start_utc: datetime,
+    end_utc: datetime,
+    run_id_filter: str,
+) -> Tuple[Dict[str, Any], str, str]:
+    journal_metrics = load_runtime_metrics(
+        runtime_globs=runtime_globs,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        run_id_filter=run_id_filter,
+    )
+    journal_source = str(journal_metrics.get("source", "journal") or "journal")
+    if int(journal_metrics.get("snapshot_count", 0)) > 0:
+        return journal_metrics, journal_source, ""
+
+    fallback = load_runtime_metrics_from_live_reports(
+        live_globs=live_globs,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        run_id_filter=run_id_filter,
+    )
+    if int(fallback.get("snapshot_count", 0)) > 0:
+        return fallback, str(fallback.get("source", "live_report.runtime_metrics")), "journal_snapshot_count_zero"
+    return journal_metrics, journal_source, "journal_snapshot_count_zero"
 
 
 def _load_json_object(path: Path) -> Optional[Dict[str, Any]]:
@@ -421,27 +461,19 @@ def main() -> None:
         "data/reports/xau_autobot_live_report_trial_v2_*.json",
     ]
 
-    runtime_metrics = load_runtime_metrics(
-        runtime_globs=runtime_globs,
-        start_utc=start_utc,
-        end_utc=now_utc,
-        run_id_filter=str(args.run_id_filter),
-    )
     live_metrics = load_live_metrics(
         live_globs=live_globs,
         start_utc=start_utc,
         end_utc=now_utc,
         run_id_filter=str(args.run_id_filter),
     )
-    if int(runtime_metrics.get("snapshot_count", 0)) == 0:
-        fallback_runtime_metrics = load_runtime_metrics_from_live_reports(
-            live_globs=live_globs,
-            start_utc=start_utc,
-            end_utc=now_utc,
-            run_id_filter=str(args.run_id_filter),
-        )
-        if int(fallback_runtime_metrics.get("snapshot_count", 0)) > 0:
-            runtime_metrics = fallback_runtime_metrics
+    runtime_metrics, runtime_metrics_source, runtime_metrics_fallback_reason = resolve_runtime_metrics_with_fallback(
+        runtime_globs=runtime_globs,
+        live_globs=live_globs,
+        start_utc=start_utc,
+        end_utc=now_utc,
+        run_id_filter=str(args.run_id_filter),
+    )
     verdict = evaluate_audit_status(runtime_metrics=runtime_metrics, live_metrics=live_metrics)
 
     output = {
@@ -453,6 +485,8 @@ def main() -> None:
         },
         "run_id_filter": str(args.run_id_filter or ""),
         "runtime_metrics": runtime_metrics,
+        "runtime_metrics_source": runtime_metrics_source,
+        "runtime_metrics_fallback_reason": runtime_metrics_fallback_reason,
         "live_metrics": live_metrics,
         **verdict,
     }

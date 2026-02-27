@@ -7,7 +7,7 @@
   "atr_period": 14,
   "strategy_mode": "trend",
   "regime_trend_threshold": 1.2,
-  "pullback_atr": 0.1,
+  "pullback_atr": 0.2,
   "reversion_atr": 0.8,
   "sl_atr": 1.5,
   "tp_atr": 2.5,

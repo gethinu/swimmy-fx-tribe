@@ -327,11 +327,11 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (median_sharpe . 0.55)
             (median_pf . 1.52)
             (median_wr . 0.47)
-            (median_maxdd . 0.12)
+            (median_maxdd . 0.10)
             (path_count . 20)
-            (passed_count . 12)
-            (failed_count . 8)
-            (pass_rate . 0.60)
+            (passed_count . 15)
+            (failed_count . 5)
+            (pass_rate . 0.75)
             (is_passed . true)
             ;; optional: トレード一覧（巨大メッセージ時は省略可）
             ;; trade_list は BACKTEST_RESULT と同一形式
@@ -353,6 +353,8 @@ Backtest Service は `request_id` が欠落した BACKTEST を受け取った場
             (trades_truncated . false)
             (trades_ref . "RID-123"))))
 ```
+**Notes**:
+- `is_passed` は S Stage2 gate の真偽（`pass_rate >= 0.70` かつ `median_maxdd < 0.12`）を表す。
 
 ### 6. Data Keeper Service (Port 5561)
 ヒストリカルデータの参照/保存を担当する補助サービス（Python）。  
@@ -907,14 +909,20 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `ema_gap_over_atr = abs(ema_fast - ema_slow) / atr` を算出し、`atr<=0` または `ema_gap_over_atr` が上記レンジ外なら `HOLD` を返す（新規発注しない）。
 - **実行payload（追加）**:
   - `timestamp_utc`（ISO8601, UTC）
-  - `runtime_metrics.gate_check_count`（gapゲート判定を実行した累積回数）
+  - `runtime_metrics.gate_check_count`（bar確定サイクルで `gap_gate_checked=true` になった累積回数）
   - `runtime_metrics.gate_reject_gap_count`（`reason=ema_gap_out_of_range` の累積回数）
   - `runtime_metrics.gap_reject_rate`（`gate_reject_gap_count / gate_check_count`）
   - `runtime_metrics.signal_counts`（`BUY/SELL/HOLD` の累積件数）
+  - `runtime_metrics.snapshot_time_utc` / `runtime_metrics.run_id` / `runtime_metrics.magic` / `runtime_metrics.schema_version`
 - **runtime journal**:
   - `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`（既定: `data/reports/xau_autobot_runtime_journal_latest.jsonl`）
   - 既定値および相対パスは repo-root 基準で絶対解決する（実行cwd依存にしない）。
   - 各サイクルpayloadをJSONLで追記する（監査用途）。
+- **trial run_id 解決契約**:
+  - `XAU_AUTOBOT_TRIAL_RUN_ID` が指定されている場合はそれを最優先で採用する。
+  - 未指定時は `XAU_AUTOBOT_TRIAL_RUN_META_PATH`（既定: `data/reports/xau_autobot_trial_v2_current_run.json`）を参照し、`run_id` をフォールバック採用する。
+  - フォールバック時は `--config` のファイル名と run meta の `trial_config` ファイル名が一致する場合のみ採用し、別runへの誤帰属（run混線）を防ぐ。
+  - `XAU_AUTOBOT_TRIAL_RUN_META_PATH` が未指定かつ既定 meta 不一致の場合は、`xau_autobot_trial_v2_current_run_r1.json` / `..._r2.json` / `..._r3.json` を追加探索し、`trial_config` 一致する run_id のみ採用する（不一致時は空のまま fail-closed）。
 
 ### `tools/xau_autobot_optimize.py`
 - **出力整合契約（interval/timeframe）**:
@@ -955,6 +963,7 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 ### `tools/xau_autobot_live_report.py`
 - **入力引数（追加）**:
   - `--runtime-journal-path`（任意。未指定時は `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`、さらに未指定なら repo-root 基準 `data/reports/xau_autobot_runtime_journal_latest.jsonl`）
+  - `--run-id`（任意。runtime journal から同run snapshotを優先抽出）
 - **summary（追加）**:
   - `closed_per_day`（`closed_positions / window_days`）
   - `close_reason_counts`（`tp/sl/other`）
@@ -962,6 +971,7 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 - **top-level出力（追加）**:
   - `runtime_metrics`（latest runtime snapshot。`gate_check_count/gate_reject_gap_count/gap_reject_rate/signal_counts`）
   - `runtime_metrics_source`（採用した journal パス）
+  - `run_id`（trial run識別子。指定時）
 - **算出契約**:
   - `net_profit` は closed positions のみを正本とし、`open_snapshot.open_floating_profit` を混在させない。
 
@@ -981,9 +991,11 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `metrics.expectancy`
   - `checks`（各閾値判定）
   - `recommendations`（`A/B/C` パターン対応）
+  - `runtime_metrics_source`（`journal` または `live_report.runtime_metrics`）
+  - `runtime_metrics_fallback_reason`（fallback時の理由）
 - **fallback契約（追加）**:
   - runtime journal の snapshot が 0 件のとき、`xau_autobot_live_report_trial_v2_*.json` の top-level `runtime_metrics` を fallback 集計に利用する。
-  - fallback 利用時は `runtime_metrics.source=live_report.runtime_metrics` を出力し、観測元を明示する。
+  - fallback 利用時は `runtime_metrics_source=live_report.runtime_metrics` と `runtime_metrics_fallback_reason=journal_snapshot_count_zero` を出力し、観測元を明示する。
 
 ## 運用監査CLIインターフェース
 `tools/system_audit.sh` が実行するローカル監査コマンドのうち、live trade-close 整合に関する契約を以下に定義する。

@@ -39,7 +39,9 @@ WAIT_ACTIONS = {"SKIP", "BLOCKED", "HOLD"}
 MT5_COMMENT_MAX_LEN = 31
 STRATEGY_MODES = {"trend", "reversion", "hybrid"}
 DEFAULT_RUNTIME_JOURNAL_PATH = "data/reports/xau_autobot_runtime_journal_latest.jsonl"
+DEFAULT_TRIAL_RUN_META_PATH = "data/reports/xau_autobot_trial_v2_current_run.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
+RUNTIME_METRICS_SCHEMA_VERSION = 1
 
 
 def validate_trade_comment(comment: str, *, max_len: int = MT5_COMMENT_MAX_LEN) -> str:
@@ -242,6 +244,81 @@ def runtime_metrics_snapshot(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "gap_reject_rate": gap_reject_rate,
         "signal_counts": out_signal_counts,
     }
+
+
+def _config_basename(path_str: str) -> str:
+    text = str(path_str or "").strip()
+    if not text:
+        return ""
+    return Path(text.replace("\\", "/")).name.lower()
+
+
+def trial_run_meta_path_from_env() -> Path:
+    raw = os.getenv("XAU_AUTOBOT_TRIAL_RUN_META_PATH", "").strip()
+    candidate = raw or DEFAULT_TRIAL_RUN_META_PATH
+    path = Path(candidate).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path
+
+
+def _run_id_from_meta_path(meta_path: Path, *, expected_config: str) -> str:
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+
+    run_id = str(payload.get("run_id", "")).strip()
+    if not run_id:
+        return ""
+
+    meta_config = _config_basename(str(payload.get("trial_config", "")))
+    if expected_config and meta_config and expected_config != meta_config:
+        return ""
+    return run_id
+
+
+def runtime_trial_run_id_from_env(*, config_path: str = "") -> str:
+    explicit = str(os.getenv("XAU_AUTOBOT_TRIAL_RUN_ID", "")).strip()
+    if explicit:
+        return explicit
+
+    expected_config = _config_basename(config_path)
+    meta_path = trial_run_meta_path_from_env()
+    run_id = _run_id_from_meta_path(meta_path, expected_config=expected_config)
+    if run_id:
+        return run_id
+
+    explicit_meta = str(os.getenv("XAU_AUTOBOT_TRIAL_RUN_META_PATH", "")).strip()
+    if explicit_meta:
+        return ""
+
+    reports_dir = REPO_ROOT / "data" / "reports"
+    for suffix in ("_r1", "_r2", "_r3"):
+        candidate = reports_dir / f"xau_autobot_trial_v2_current_run{suffix}.json"
+        if candidate == meta_path:
+            continue
+        run_id = _run_id_from_meta_path(candidate, expected_config=expected_config)
+        if run_id:
+            return run_id
+    return run_id
+
+
+def runtime_metrics_with_metadata(
+    metrics: Dict[str, Any],
+    *,
+    snapshot_time_utc: str,
+    run_id: str,
+    config: "BotConfig",
+) -> Dict[str, Any]:
+    out = runtime_metrics_snapshot(metrics)
+    out["snapshot_time_utc"] = str(snapshot_time_utc)
+    out["run_id"] = str(run_id)
+    out["magic"] = int(config.magic)
+    out["schema_version"] = int(RUNTIME_METRICS_SCHEMA_VERSION)
+    return out
 
 
 def _load_json_object(path: Path) -> Dict[str, Any]:
@@ -837,6 +914,7 @@ class BotConfig:
 class Mt5Gateway:
     def __init__(self, config: BotConfig):
         self.config = config
+        self._preferred_filling_mode: Optional[int] = None
 
     def connect(self) -> None:
         if mt5 is None:
@@ -903,15 +981,80 @@ class Mt5Gateway:
 
     def _default_filling_modes(self) -> List[int]:
         assert mt5 is not None
-        modes: List[int] = []
-        for attr in ("ORDER_FILLING_IOC", "ORDER_FILLING_FOK", "ORDER_FILLING_RETURN"):
+        base_modes: List[int] = []
+        for attr in ("ORDER_FILLING_FOK", "ORDER_FILLING_IOC", "ORDER_FILLING_RETURN"):
             raw = getattr(mt5, attr, None)
             if raw is None:
                 continue
             mode = int(raw)
+            if mode not in base_modes:
+                base_modes.append(mode)
+
+        symbol_modes: List[int] = []
+        symbol_info = mt5.symbol_info(self.config.symbol)
+        raw_symbol_filling_mode = int(getattr(symbol_info, "filling_mode", 0) or 0) if symbol_info is not None else 0
+        if raw_symbol_filling_mode > 0:
+            fill_pairs = (
+                ("ORDER_FILLING_FOK", "SYMBOL_FILLING_FOK", 1),
+                ("ORDER_FILLING_IOC", "SYMBOL_FILLING_IOC", 2),
+            )
+            for order_attr, symbol_attr, fallback_flag in fill_pairs:
+                order_fill = getattr(mt5, order_attr, None)
+                if order_fill is None:
+                    continue
+                symbol_flag = int(getattr(mt5, symbol_attr, fallback_flag))
+                if raw_symbol_filling_mode & symbol_flag:
+                    mode = int(order_fill)
+                    if mode not in symbol_modes:
+                        symbol_modes.append(mode)
+
+        modes: List[int] = []
+        if self._preferred_filling_mode is not None:
+            modes.append(int(self._preferred_filling_mode))
+        for mode in symbol_modes:
+            if mode not in modes:
+                modes.append(mode)
+        for mode in base_modes:
             if mode not in modes:
                 modes.append(mode)
         return modes
+
+    def _initial_filling_mode(self) -> int:
+        assert mt5 is not None
+        modes = self._default_filling_modes()
+        if modes:
+            return int(modes[0])
+        fallback = getattr(mt5, "ORDER_FILLING_IOC", None)
+        if fallback is None:
+            raise RuntimeError("MT5 ORDER_FILLING constants are unavailable")
+        return int(fallback)
+
+    def _is_success_retcode(self, retcode: int) -> bool:
+        assert mt5 is not None
+        success_codes = (
+            int(getattr(mt5, "TRADE_RETCODE_DONE", 10009)),
+            int(getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)),
+            int(getattr(mt5, "TRADE_RETCODE_PLACED", 10008)),
+        )
+        return int(retcode) in success_codes
+
+    def _is_disk_error_result(self, result_dict: Dict[str, Any]) -> bool:
+        retcode = int(result_dict.get("retcode", -1))
+        comment = str(result_dict.get("comment", "")).lower()
+        return retcode == 5 or "disk error" in comment
+
+    def _reconnect_for_order_retry(self) -> Tuple[bool, str]:
+        assert mt5 is not None
+        try:
+            mt5.shutdown()
+        except Exception:
+            # Best effort: continue with initialize attempt even when shutdown reports errors.
+            pass
+        if not mt5.initialize():
+            return False, f"initialize_failed:{mt5.last_error()}"
+        if not mt5.symbol_select(self.config.symbol, True):
+            return False, f"symbol_select_failed:{mt5.last_error()}"
+        return True, "ok"
 
     def _order_send_with_filling_fallback(self, request: Dict[str, Any]) -> Dict[str, Any]:
         assert mt5 is not None
@@ -942,11 +1085,68 @@ class Mt5Gateway:
 
             result_dict = result._asdict()
             retcode = int(result_dict.get("retcode", -1))
-            attempts.append({"type_filling": fill_mode, "retcode": retcode})
+            result_dict["mt5_last_error"] = str(mt5.last_error())
+            attempts.append(
+                {
+                    "type_filling": fill_mode,
+                    "retcode": retcode,
+                    "mt5_last_error": result_dict["mt5_last_error"],
+                }
+            )
             last_result = dict(result_dict)
             if retcode == invalid_fill_retcode:
+                if self._preferred_filling_mode == fill_mode:
+                    self._preferred_filling_mode = None
                 continue
 
+            if self._is_disk_error_result(result_dict):
+                reconnect_ok, reconnect_detail = self._reconnect_for_order_retry()
+                if reconnect_ok:
+                    retry_result = mt5.order_send(attempt_request)
+                    if retry_result is not None:
+                        retry_dict = retry_result._asdict()
+                        retry_retcode = int(retry_dict.get("retcode", -1))
+                        retry_dict["mt5_last_error"] = str(mt5.last_error())
+                        attempts.append(
+                            {
+                                "type_filling": fill_mode,
+                                "retcode": retry_retcode,
+                                "mt5_last_error": retry_dict["mt5_last_error"],
+                                "reconnect_retry": True,
+                            }
+                        )
+                        last_result = dict(retry_dict)
+                        if retry_retcode == invalid_fill_retcode:
+                            if self._preferred_filling_mode == fill_mode:
+                                self._preferred_filling_mode = None
+                            continue
+                        if self._is_success_retcode(retry_retcode):
+                            self._preferred_filling_mode = fill_mode
+                        retry_dict["request"] = attempt_request
+                        retry_dict["reconnect_retried"] = True
+                        retry_dict["reconnect_success"] = True
+                        retry_dict["reconnect_detail"] = reconnect_detail
+                        if attempts:
+                            retry_dict["filling_attempts"] = attempts
+                        return retry_dict
+                    attempts.append(
+                        {
+                            "type_filling": fill_mode,
+                            "retcode": -1,
+                            "error": str(mt5.last_error()),
+                            "reconnect_retry": True,
+                        }
+                    )
+                result_dict["request"] = attempt_request
+                result_dict["reconnect_retried"] = True
+                result_dict["reconnect_success"] = bool(reconnect_ok)
+                result_dict["reconnect_detail"] = reconnect_detail
+                if attempts:
+                    result_dict["filling_attempts"] = attempts
+                return result_dict
+
+            if self._is_success_retcode(retcode):
+                self._preferred_filling_mode = fill_mode
             result_dict["request"] = attempt_request
             if len(attempts) > 1:
                 result_dict["filling_attempts"] = attempts
@@ -988,7 +1188,7 @@ class Mt5Gateway:
                 "magic": self.config.magic,
                 "comment": f"{self.config.comment}_close",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": self._initial_filling_mode(),
             }
             if self.config.dry_run:
                 results.append(
@@ -1032,7 +1232,7 @@ class Mt5Gateway:
             "magic": self.config.magic,
             "comment": self.config.comment,
             "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": self._initial_filling_mode(),
         }
         if self.config.dry_run:
             return {"retcode": 0, "dry_run": True, "request": request}
@@ -1265,11 +1465,13 @@ def resolve_config_path(path: str, default_candidates: Tuple[str, ...] = DEFAULT
     return ""
 
 
-def run(config: BotConfig) -> None:
+def run(config: BotConfig, *, config_path: str = "") -> None:
     notifier = SessionBlockNotifier.from_env()
     live_guard = LiveUnderperformanceGuard.from_env()
     runtime_metrics = _new_runtime_metrics()
     runtime_journal_path = Path(runtime_journal_path_from_env())
+    trial_run_id = runtime_trial_run_id_from_env(config_path=config_path)
+    comment_prefix = str(config.comment[:16])
     gateway = Mt5Gateway(config)
     gateway.connect()
     try:
@@ -1279,8 +1481,18 @@ def run(config: BotConfig) -> None:
             guard_payload = live_guard.check()
             if guard_payload is not None:
                 now_unix = int(time.time())
-                guard_payload["timestamp_utc"] = datetime.fromtimestamp(now_unix, tz=timezone.utc).isoformat()
-                guard_payload["runtime_metrics"] = runtime_metrics_snapshot(runtime_metrics)
+                snapshot_time_utc = datetime.fromtimestamp(now_unix, tz=timezone.utc).isoformat()
+                guard_payload["timestamp_utc"] = snapshot_time_utc
+                guard_payload["run_id"] = trial_run_id
+                guard_payload["magic"] = int(config.magic)
+                guard_payload["comment"] = str(config.comment)
+                guard_payload["comment_prefix"] = comment_prefix
+                guard_payload["runtime_metrics"] = runtime_metrics_with_metadata(
+                    runtime_metrics,
+                    snapshot_time_utc=snapshot_time_utc,
+                    run_id=trial_run_id,
+                    config=config,
+                )
                 print(json.dumps(guard_payload, ensure_ascii=True))
                 try:
                     append_runtime_journal(runtime_journal_path, guard_payload)
@@ -1307,8 +1519,18 @@ def run(config: BotConfig) -> None:
 
             payload, last_bar_time = evaluate_once(config, gateway, last_bar_time)
             update_runtime_metrics(runtime_metrics, payload)
-            payload["timestamp_utc"] = datetime.fromtimestamp(last_bar_time, tz=timezone.utc).isoformat()
-            payload["runtime_metrics"] = runtime_metrics_snapshot(runtime_metrics)
+            snapshot_time_utc = datetime.fromtimestamp(last_bar_time, tz=timezone.utc).isoformat()
+            payload["timestamp_utc"] = snapshot_time_utc
+            payload["run_id"] = trial_run_id
+            payload["magic"] = int(config.magic)
+            payload["comment"] = str(config.comment)
+            payload["comment_prefix"] = comment_prefix
+            payload["runtime_metrics"] = runtime_metrics_with_metadata(
+                runtime_metrics,
+                snapshot_time_utc=snapshot_time_utc,
+                run_id=trial_run_id,
+                config=config,
+            )
             print(json.dumps(payload, ensure_ascii=True))
             try:
                 append_runtime_journal(runtime_journal_path, payload)
@@ -1348,7 +1570,7 @@ def main() -> None:
         config.poll_seconds = args.poll_seconds
     if args.max_cycles >= 0:
         config.max_cycles = args.max_cycles
-    run(config)
+    run(config, config_path=config_path)
 
 
 if __name__ == "__main__":

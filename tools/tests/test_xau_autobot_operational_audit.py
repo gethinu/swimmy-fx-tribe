@@ -7,6 +7,7 @@ from tools.xau_autobot_operational_audit import (
     load_live_metrics,
     load_runtime_metrics,
     load_runtime_metrics_from_live_reports,
+    resolve_runtime_metrics_with_fallback,
 )
 
 
@@ -59,6 +60,40 @@ def test_load_runtime_metrics_handles_counter_reset(tmp_path: Path) -> None:
     assert metrics["signal_counts"]["BUY"] == 3
     assert metrics["signal_counts"]["SELL"] == 2
     assert metrics["signal_counts"]["HOLD"] == 4
+
+
+def test_load_runtime_metrics_uses_single_snapshot_as_current_total(tmp_path: Path) -> None:
+    runtime_file = tmp_path / "runtime_single.jsonl"
+    runtime_file.write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-02-26T00:00:00+00:00",
+                "runtime_metrics": {
+                    "gate_check_count": 12,
+                    "gate_reject_gap_count": 3,
+                    "signal_counts": {"BUY": 4, "SELL": 3, "HOLD": 5},
+                },
+            },
+            ensure_ascii=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = load_runtime_metrics(
+        runtime_globs=[str(runtime_file)],
+        start_utc=datetime(2026, 2, 25, 0, 0, tzinfo=timezone.utc),
+        end_utc=datetime(2026, 2, 27, 0, 0, tzinfo=timezone.utc),
+        run_id_filter="",
+    )
+
+    assert metrics["snapshot_count"] == 1
+    assert metrics["gate_check_count"] == 12
+    assert metrics["gate_reject_gap_count"] == 3
+    assert abs(metrics["gap_reject_rate"] - 0.25) < 1e-9
+    assert metrics["signal_counts"]["BUY"] == 4
+    assert metrics["signal_counts"]["SELL"] == 3
+    assert metrics["signal_counts"]["HOLD"] == 5
 
 
 def test_load_live_metrics_uses_latest_per_day(tmp_path: Path) -> None:
@@ -208,3 +243,79 @@ def test_evaluate_audit_status_insufficient_data() -> None:
         },
     )
     assert result["status"] == "INSUFFICIENT_DATA"
+
+
+def test_resolve_runtime_metrics_with_fallback_prefers_journal(tmp_path: Path) -> None:
+    runtime_file = tmp_path / "runtime.jsonl"
+    runtime_file.write_text(
+        "\n".join(
+            [
+                '{"timestamp_utc":"2026-02-26T00:00:00+00:00","runtime_metrics":{"gate_check_count":3,"gate_reject_gap_count":1,"signal_counts":{"BUY":1,"SELL":1,"HOLD":1}}}',
+                '{"timestamp_utc":"2026-02-26T01:00:00+00:00","runtime_metrics":{"gate_check_count":8,"gate_reject_gap_count":2,"signal_counts":{"BUY":2,"SELL":2,"HOLD":4}}}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_json(
+        tmp_path / "xau_autobot_live_report_trial_v2_a.json",
+        {
+            "timestamp": "2026-02-26T01:30:00+00:00",
+            "runtime_metrics": {
+                "gate_check_count": 99,
+                "gate_reject_gap_count": 99,
+                "signal_counts": {"BUY": 99, "SELL": 99, "HOLD": 99},
+            },
+        },
+    )
+
+    runtime_metrics, source, reason = resolve_runtime_metrics_with_fallback(
+        runtime_globs=[str(runtime_file)],
+        live_globs=[str(tmp_path / "xau_autobot_live_report_trial_v2_*.json")],
+        start_utc=datetime(2026, 2, 26, 0, 0, tzinfo=timezone.utc),
+        end_utc=datetime(2026, 2, 26, 23, 59, tzinfo=timezone.utc),
+        run_id_filter="",
+    )
+
+    assert source == "journal"
+    assert reason == ""
+    assert runtime_metrics["gate_check_count"] == 5
+    assert runtime_metrics["gate_reject_gap_count"] == 1
+
+
+def test_resolve_runtime_metrics_with_fallback_uses_live_snapshot(tmp_path: Path) -> None:
+    _write_json(
+        tmp_path / "xau_autobot_live_report_trial_v2_a.json",
+        {
+            "timestamp": "2026-02-26T01:00:00+00:00",
+            "runtime_metrics": {
+                "gate_check_count": 5,
+                "gate_reject_gap_count": 1,
+                "signal_counts": {"BUY": 2, "SELL": 1, "HOLD": 2},
+            },
+        },
+    )
+    _write_json(
+        tmp_path / "xau_autobot_live_report_trial_v2_b.json",
+        {
+            "timestamp": "2026-02-26T03:00:00+00:00",
+            "runtime_metrics": {
+                "gate_check_count": 8,
+                "gate_reject_gap_count": 3,
+                "signal_counts": {"BUY": 3, "SELL": 2, "HOLD": 3},
+            },
+        },
+    )
+
+    runtime_metrics, source, reason = resolve_runtime_metrics_with_fallback(
+        runtime_globs=[str(tmp_path / "missing_runtime*.jsonl")],
+        live_globs=[str(tmp_path / "xau_autobot_live_report_trial_v2_*.json")],
+        start_utc=datetime(2026, 2, 26, 0, 0, tzinfo=timezone.utc),
+        end_utc=datetime(2026, 2, 26, 23, 59, tzinfo=timezone.utc),
+        run_id_filter="",
+    )
+
+    assert source == "live_report.runtime_metrics"
+    assert reason == "journal_snapshot_count_zero"
+    assert runtime_metrics["gate_check_count"] == 3
+    assert runtime_metrics["gate_reject_gap_count"] == 2

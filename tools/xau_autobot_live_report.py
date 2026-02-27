@@ -452,7 +452,7 @@ def _parse_utc_optional(value: Any) -> Optional[datetime]:
         return None
 
 
-def _normalize_runtime_metrics(metrics: Any) -> Optional[Dict[str, Any]]:
+def _normalize_runtime_metrics(metrics: Any, *, payload: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     if not isinstance(metrics, dict):
         return None
     gate_check_count = _to_int(metrics.get("gate_check_count"), default=-1)
@@ -464,6 +464,17 @@ def _normalize_runtime_metrics(metrics: Any) -> Optional[Dict[str, Any]]:
     gap_reject_rate = _to_float(metrics.get("gap_reject_rate"), default=0.0)
     if gate_check_count > 0 and (gap_reject_rate <= 0.0):
         gap_reject_rate = float(gate_reject_gap_count) / float(gate_check_count)
+    payload_obj = payload if isinstance(payload, dict) else {}
+    snapshot_time_utc = str(
+        metrics.get("snapshot_time_utc")
+        or payload_obj.get("timestamp_utc")
+        or payload_obj.get("timestamp")
+        or payload_obj.get("generated_at")
+        or ""
+    )
+    run_id = str(metrics.get("run_id") or payload_obj.get("run_id") or payload_obj.get("trial_run_id") or "")
+    magic = _to_int(metrics.get("magic"), default=_to_int(payload_obj.get("magic"), default=-1))
+    schema_version = _to_int(metrics.get("schema_version"), default=1)
     return {
         "gate_check_count": int(gate_check_count),
         "gate_reject_gap_count": int(gate_reject_gap_count),
@@ -473,10 +484,34 @@ def _normalize_runtime_metrics(metrics: Any) -> Optional[Dict[str, Any]]:
             "SELL": int(_to_int(signal_counts.get("SELL"), 0)),
             "HOLD": int(_to_int(signal_counts.get("HOLD"), 0)),
         },
+        "snapshot_time_utc": snapshot_time_utc,
+        "run_id": run_id,
+        "magic": int(magic),
+        "schema_version": int(schema_version),
     }
 
 
-def load_latest_runtime_metrics(runtime_journal_path: Path) -> Optional[Dict[str, Any]]:
+def _runtime_snapshot_matches(
+    snapshot: Dict[str, Any],
+    *,
+    expected_run_id: str,
+    expected_magic: int,
+) -> bool:
+    if expected_run_id:
+        if str(snapshot.get("run_id", "")).strip() != expected_run_id:
+            return False
+    if expected_magic >= 0:
+        if _to_int(snapshot.get("magic"), default=-1) != int(expected_magic):
+            return False
+    return True
+
+
+def load_latest_runtime_metrics(
+    runtime_journal_path: Path,
+    *,
+    expected_run_id: str = "",
+    expected_magic: int = -1,
+) -> Optional[Dict[str, Any]]:
     path = Path(runtime_journal_path)
     if not path.exists() or not path.is_file():
         return None
@@ -495,8 +530,14 @@ def load_latest_runtime_metrics(runtime_journal_path: Path) -> Optional[Dict[str
                 continue
             if not isinstance(payload, dict):
                 continue
-            snapshot = _normalize_runtime_metrics(payload.get("runtime_metrics"))
+            snapshot = _normalize_runtime_metrics(payload.get("runtime_metrics"), payload=payload)
             if snapshot is None:
+                continue
+            if not _runtime_snapshot_matches(
+                snapshot,
+                expected_run_id=str(expected_run_id or "").strip(),
+                expected_magic=int(expected_magic),
+            ):
                 continue
             ts = (
                 _parse_utc_optional(payload.get("timestamp_utc"))
@@ -610,6 +651,7 @@ def main() -> None:
     parser.add_argument("--notify-webhook", default="")
     parser.add_argument("--notify-state-path", default="data/reports/xau_autobot_live_notify_state.json")
     parser.add_argument("--runtime-journal-path", default="")
+    parser.add_argument("--run-id", default="")
     parser.add_argument("--write-report", default="")
     args = parser.parse_args()
 
@@ -647,8 +689,14 @@ def main() -> None:
         "summary": summary,
         "open_snapshot": open_snapshot,
     }
+    if str(args.run_id or "").strip():
+        output["run_id"] = str(args.run_id).strip()
     runtime_journal_path = resolve_runtime_journal_path(args.runtime_journal_path)
-    runtime_metrics = load_latest_runtime_metrics(runtime_journal_path)
+    runtime_metrics = load_latest_runtime_metrics(
+        runtime_journal_path,
+        expected_run_id=str(args.run_id or "").strip(),
+        expected_magic=int(args.magic),
+    )
     if runtime_metrics is not None:
         output["runtime_metrics"] = runtime_metrics
         output["runtime_metrics_source"] = str(runtime_journal_path)

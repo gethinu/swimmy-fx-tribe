@@ -11,6 +11,7 @@ from tools.xau_autobot_live_report import (
     aggregate_closed_positions,
     build_filter_diagnostics,
     load_latest_runtime_metrics,
+    resolve_runtime_journal_path,
     should_notify_threshold,
     summarize_closed_positions,
     update_notify_state,
@@ -255,6 +256,40 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "missing.jsonl"
             self.assertIsNone(load_latest_runtime_metrics(path))
+
+    def test_load_latest_runtime_metrics_prefers_matching_run_id_and_magic(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "runtime.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"timestamp_utc":"2026-02-26T00:00:00+00:00","run_id":"trial_other","magic":560001,"runtime_metrics":{"gate_check_count":3,"gate_reject_gap_count":1,"gap_reject_rate":0.3333333333,"signal_counts":{"BUY":1,"SELL":1,"HOLD":1},"snapshot_time_utc":"2026-02-26T00:00:00+00:00","run_id":"trial_other","magic":560001,"schema_version":1}}',
+                        '{"timestamp_utc":"2026-02-26T01:00:00+00:00","run_id":"trial_target","magic":560084,"runtime_metrics":{"gate_check_count":11,"gate_reject_gap_count":2,"gap_reject_rate":0.1818181818,"signal_counts":{"BUY":3,"SELL":3,"HOLD":5},"snapshot_time_utc":"2026-02-26T01:00:00+00:00","run_id":"trial_target","magic":560084,"schema_version":1}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = load_latest_runtime_metrics(path, expected_run_id="trial_target", expected_magic=560084)
+
+        self.assertIsNotNone(metrics)
+        self.assertEqual(metrics["gate_check_count"], 11)
+        self.assertEqual(metrics["gate_reject_gap_count"], 2)
+        self.assertEqual(metrics["run_id"], "trial_target")
+        self.assertEqual(metrics["magic"], 560084)
+        self.assertEqual(metrics["schema_version"], 1)
+        self.assertEqual(metrics["snapshot_time_utc"], "2026-02-26T01:00:00+00:00")
+
+    def test_resolve_runtime_journal_path_uses_repo_root_for_relative_path(self):
+        with mock.patch.dict(
+            live_report.os.environ,
+            {"XAU_AUTOBOT_RUNTIME_JOURNAL_PATH": "data/reports/custom_runtime.jsonl"},
+            clear=True,
+        ):
+            path = resolve_runtime_journal_path("")
+        self.assertTrue(path.is_absolute())
+        self.assertTrue(str(path).endswith("data/reports/custom_runtime.jsonl"))
 
     def test_fetch_mt5_deals_retries_ipc_timeout_initialize(self):
         class FakeMt5:
