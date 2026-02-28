@@ -217,6 +217,28 @@ print(json.dumps(payload, ensure_ascii=True))
 PY
 fi
 
+if [[ "${1:-}" == */xau_autobot_live_loop_guard.py ]]; then
+  exec python3 - "$@" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+args = sys.argv[1:]
+capture_path = os.environ.get("FAKE_LOOP_GUARD_ARGS_PATH", "")
+if capture_path:
+    Path(capture_path).write_text(json.dumps(args, ensure_ascii=True), encoding="utf-8")
+payload = {
+    "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+    "status": "HEALTHY",
+}
+print(json.dumps(payload, ensure_ascii=True))
+exit_code = int(str(os.environ.get("FAKE_LOOP_GUARD_EXIT_CODE", "0") or "0"))
+raise SystemExit(exit_code)
+PY
+fi
+
 exec python3 "$@"
 """
     path.write_text(script, encoding="utf-8")
@@ -517,6 +539,175 @@ def test_eval_invokes_watchdog_when_enabled() -> None:
         assert "--write-report" in args
 
 
+def test_eval_invokes_live_loop_guard_by_default() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_live_loop_guard_default"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        loop_guard_args_path = tempdir / "loop_guard_args.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "FAKE_LOOP_GUARD_ARGS_PATH": str(loop_guard_args_path),
+            }
+        )
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert loop_guard_args_path.exists()
+        args = json.loads(loop_guard_args_path.read_text(encoding="utf-8"))
+        assert "--report-path" in args
+        assert "--include-r3" not in args
+
+
+def test_eval_passes_include_r3_to_live_loop_guard_when_enabled() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_live_loop_guard_r3"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        loop_guard_args_path = tempdir / "loop_guard_args_r3.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_INCLUDE_R3": "1",
+                "FAKE_LOOP_GUARD_ARGS_PATH": str(loop_guard_args_path),
+            }
+        )
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert loop_guard_args_path.exists()
+        args = json.loads(loop_guard_args_path.read_text(encoding="utf-8"))
+        assert "--include-r3" in args
+
+
+def test_eval_skips_live_loop_guard_when_disabled() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_live_loop_guard_disabled"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        loop_guard_args_path = tempdir / "loop_guard_args_disabled.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED": "0",
+                "FAKE_LOOP_GUARD_ARGS_PATH": str(loop_guard_args_path),
+            }
+        )
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert not loop_guard_args_path.exists()
+
+
 def test_eval_passes_default_min_closed_positions_12_to_judge() -> None:
     with tempfile.TemporaryDirectory() as td:
         tempdir = Path(td)
@@ -634,3 +825,274 @@ def test_eval_retries_live_report_on_transient_failure() -> None:
         assert judge_report.exists()
         assert call_count_path.exists()
         assert int(call_count_path.read_text(encoding="utf-8").strip()) >= 2
+
+
+def test_eval_passes_monthly_only_judge_args() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_monthly_only_args"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        judge_args_path = tempdir / "judge_args.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "XAU_AUTOBOT_TRIAL_DECISION_MODE": "monthly_only",
+                "XAU_AUTOBOT_TRIAL_MIN_MONTHLY_RETURN_PCT": "3.0",
+                "XAU_AUTOBOT_TRIAL_MONTHLY_ACCOUNT_BALANCE": "59684.0",
+                "FAKE_JUDGE_ARGS_PATH": str(judge_args_path),
+            }
+        )
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert judge_args_path.exists()
+        args = json.loads(judge_args_path.read_text(encoding="utf-8"))
+        assert "--decision-mode" in args
+        assert args[args.index("--decision-mode") + 1] == "monthly_only"
+        assert "--min-monthly-return-pct" in args
+        assert args[args.index("--min-monthly-return-pct") + 1] == "3.0"
+        assert "--monthly-account-balance" in args
+        assert args[args.index("--monthly-account-balance") + 1] == "59684.0"
+
+
+def test_eval_defaults_to_monthly_only_with_probe_balance() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        probe_path = tempdir / "mt5_account_probe.json"
+        probe_path.write_text(
+            json.dumps({"balance": 65432.0}, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_defaults_monthly_only"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        judge_args_path = tempdir / "judge_args.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "XAU_AUTOBOT_TRIAL_MONTHLY_ACCOUNT_PROBE_PATH": str(probe_path),
+                "FAKE_JUDGE_ARGS_PATH": str(judge_args_path),
+            }
+        )
+        env.pop("XAU_AUTOBOT_TRIAL_DECISION_MODE", None)
+        env.pop("XAU_AUTOBOT_TRIAL_MIN_DAYS", None)
+        env.pop("XAU_AUTOBOT_TRIAL_MONTHLY_ACCOUNT_BALANCE", None)
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert judge_args_path.exists()
+        args = json.loads(judge_args_path.read_text(encoding="utf-8"))
+        assert "--decision-mode" in args
+        assert args[args.index("--decision-mode") + 1] == "monthly_only"
+        assert "--min-days" in args
+        assert args[args.index("--min-days") + 1] == "30"
+        assert "--monthly-account-balance" in args
+        assert args[args.index("--monthly-account-balance") + 1] == "65432.0"
+
+
+def test_eval_defaults_to_rolling_45d_for_m45_timeframe() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        trial_config = tempdir / "trial_config_m45.json"
+        trial_config.write_text(
+            json.dumps(
+                {
+                    "symbol": "XAUUSD",
+                    "timeframe": "M45",
+                    "magic": 560072,
+                    "comment": "xau_autobot_trial_v2_20260222",
+                },
+                ensure_ascii=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        run_id = "trial_v2_defaults_rolling_45d"
+        live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+        judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+        live_latest = tempdir / "xau_autobot_live_report_trial_v2_latest.json"
+        judge_latest = tempdir / "xau_autobot_trial_judge.json"
+        judge_args_path = tempdir / "judge_args.json"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "XAU_AUTOBOT_PYTHON": str(fake_python),
+                "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                "FAKE_JUDGE_ARGS_PATH": str(judge_args_path),
+            }
+        )
+        env.pop("XAU_AUTOBOT_TRIAL_DECISION_MODE", None)
+        env.pop("XAU_AUTOBOT_TRIAL_MIN_DAYS", None)
+
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert proc.returncode == 1
+        assert judge_args_path.exists()
+        args = json.loads(judge_args_path.read_text(encoding="utf-8"))
+        assert "--decision-mode" in args
+        assert args[args.index("--decision-mode") + 1] == "rolling_45d"
+        assert "--min-days" in args
+        assert args[args.index("--min-days") + 1] == "45"
+
+
+def test_eval_defaults_to_tf_specific_mode_mapping() -> None:
+    expected = {
+        "M20": ("monthly_only", "30", "default"),
+        "H2": ("rolling_45d", "45", "h2"),
+        "H3": ("rolling_60d", "60", "h3"),
+        "H5": ("rolling_60d", "60", "h5"),
+    }
+    with tempfile.TemporaryDirectory() as td:
+        tempdir = Path(td)
+        fake_python = tempdir / "fake_python.sh"
+        _write_fake_python(fake_python)
+
+        for timeframe, (decision_mode, min_days, audit_profile) in expected.items():
+            run_id = f"trial_v2_defaults_{timeframe.lower()}"
+            trial_config = tempdir / f"trial_config_{timeframe.lower()}.json"
+            trial_config.write_text(
+                json.dumps(
+                    {
+                        "symbol": "XAUUSD",
+                        "timeframe": timeframe,
+                        "magic": 560072,
+                        "comment": "xau_autobot_trial_v2_20260222",
+                    },
+                    ensure_ascii=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            live_report = tempdir / f"xau_autobot_live_report_{run_id}.json"
+            judge_report = tempdir / f"xau_autobot_trial_judge_{run_id}.json"
+            live_latest = tempdir / f"xau_autobot_live_report_trial_v2_latest_{timeframe.lower()}.json"
+            judge_latest = tempdir / f"xau_autobot_trial_judge_{timeframe.lower()}.json"
+            judge_args_path = tempdir / f"judge_args_{timeframe.lower()}.json"
+
+            env = dict(os.environ)
+            env.update(
+                {
+                    "XAU_AUTOBOT_PYTHON": str(fake_python),
+                    "XAU_AUTOBOT_TRIAL_CONFIG": str(trial_config),
+                    "XAU_AUTOBOT_TRIAL_RUN_ID": run_id,
+                    "XAU_AUTOBOT_TRIAL_LIVE_REPORT": str(live_report),
+                    "XAU_AUTOBOT_TRIAL_JUDGE_REPORT": str(judge_report),
+                    "XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST": str(live_latest),
+                    "XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST": str(judge_latest),
+                    "FAKE_JUDGE_ARGS_PATH": str(judge_args_path),
+                }
+            )
+            env.pop("XAU_AUTOBOT_TRIAL_DECISION_MODE", None)
+            env.pop("XAU_AUTOBOT_TRIAL_MIN_DAYS", None)
+
+            proc = subprocess.run(
+                ["bash", str(SCRIPT)],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            assert proc.returncode == 1
+            assert judge_args_path.exists()
+            args = json.loads(judge_args_path.read_text(encoding="utf-8"))
+            assert "--decision-mode" in args
+            assert args[args.index("--decision-mode") + 1] == decision_mode
+            assert "--min-days" in args
+            assert args[args.index("--min-days") + 1] == min_days
+            assert '"reason":"trial_eval_effective_contract"' in proc.stdout
+            assert f'"effective_timeframe":"{timeframe}"' in proc.stdout
+            assert f'"effective_decision_mode":"{decision_mode}"' in proc.stdout
+            assert f'"effective_min_days":"{min_days}"' in proc.stdout
+            assert f'"effective_audit_profile":"{audit_profile}"' in proc.stdout

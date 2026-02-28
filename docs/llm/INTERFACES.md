@@ -905,19 +905,33 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 - **設定キー**:
   - `min_ema_gap_over_atr`（既定: `0.9`）
   - `max_ema_gap_over_atr`（既定: `2.5`）
+- **実行モード契約**:
+  - CLI `--mode` は `live|research` を受理し、既定は `live`。
+  - `live` は MT5 実行経路（発注可）として扱い、研究専用TFは fail-closed で拒否する。
+  - `research` は研究経路の明示用であり、`tools/xau_autobot.py` は研究専用TF（`M45/H2/H3/H5`）の実行を受理しない。研究評価は `tools/xau_autobot_optimize.py` / `tools/xau_autobot_readiness.py` を正本とする。
+- **timeframe受理契約（live実行経路）**:
+  - `timeframe` は `M1/M5/M15/M20/M30/H1/H4` を受理する。
+  - `timeframe` が研究専用TF（`M45/H2/H3/H5`）または未知ラベルの場合は `ValueError("unsupported timeframe for live mode: ...")` で fail-closed する。
+  - 実行時は `MetaTrader5.TIMEFRAME_*` へ直接マップし、runtime の MT5 パッケージが当該定数を持たない場合も `ValueError("unsupported timeframe for live mode: ...")` で fail-closed する。
 - **判定契約**:
   - `ema_gap_over_atr = abs(ema_fast - ema_slow) / atr` を算出し、`atr<=0` または `ema_gap_over_atr` が上記レンジ外なら `HOLD` を返す（新規発注しない）。
 - **実行payload（追加）**:
   - `timestamp_utc`（ISO8601, UTC）
+  - `runtime_metrics.signal_eval_count`（シグナル評価の累積回数）
+  - `runtime_metrics.gap_reject_count`（gap条件で reject された累積回数）
+  - `runtime_metrics.spread_reject_count`（spread条件で reject された累積回数）
+  - `runtime_metrics.session_reject_count`（session条件で reject された累積回数）
+  - `runtime_metrics.maxpos_reject_count`（max_positions 条件で reject された累積回数）
+  - `runtime_metrics.gap_reject_rate`（`gap_reject_count / signal_eval_count`）
   - `runtime_metrics.gate_check_count`（bar確定サイクルで `gap_gate_checked=true` になった累積回数）
   - `runtime_metrics.gate_reject_gap_count`（`reason=ema_gap_out_of_range` の累積回数）
-  - `runtime_metrics.gap_reject_rate`（`gate_reject_gap_count / gate_check_count`）
   - `runtime_metrics.signal_counts`（`BUY/SELL/HOLD` の累積件数）
   - `runtime_metrics.snapshot_time_utc` / `runtime_metrics.run_id` / `runtime_metrics.magic` / `runtime_metrics.schema_version`
 - **runtime journal**:
   - `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH`（既定: `data/reports/xau_autobot_runtime_journal_latest.jsonl`）
   - 既定値および相対パスは repo-root 基準で絶対解決する（実行cwd依存にしない）。
   - 各サイクルpayloadをJSONLで追記する（監査用途）。
+  - `--mode research` は `runtime_journal` 追記を既定で有効化し、観測欠損時でも `gap_reject_rate` の監査母集団を確保する。
 - **trial run_id 解決契約**:
   - `XAU_AUTOBOT_TRIAL_RUN_ID` が指定されている場合はそれを最優先で採用する。
   - 未指定時は `XAU_AUTOBOT_TRIAL_RUN_META_PATH`（既定: `data/reports/xau_autobot_trial_v2_current_run.json`）を参照し、`run_id` をフォールバック採用する。
@@ -927,14 +941,255 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 ### `tools/xau_autobot_optimize.py`
 - **出力整合契約（interval/timeframe）**:
   - `--write-config` で書き出す JSON の `timeframe` は `--interval` から自動正規化する。
+  - `M45/H2/H3/H5` は **研究専用TF** として optimize/readiness で受理する（live投入は別ゲート）。
   - 対応:
-    - `1m -> M1`
-    - `5m -> M5`
-    - `15m -> M15`
-    - `30m -> M30`
-    - `60m/1h -> H1`
-    - `240m/4h -> H4`
-  - 非対応interval（例: `2h`）は fail-closed で `ValueError` を返し、最適化条件とライブ実行足の不一致を防止する。
+    - `1m/m1 -> M1`
+    - `5m/m5 -> M5`
+    - `15m/m15 -> M15`
+    - `20m/m20 -> M20`
+    - `30m/m30 -> M30`
+    - `45m/m45 -> M45`
+    - `60m/m60/1h/h1 -> H1`
+    - `120m/m120/2h/h2 -> H2`
+    - `180m/m180/3h/h3 -> H3`
+    - `240m/m240/4h/h4 -> H4`
+    - `300m/m300/5h/h5 -> H5`
+    - `3600m/m3600/60h/h60 -> H60`
+    - `1d/d1 -> D1`
+    - `1wk/1w/w1 -> W1`
+    - `1mo/mn/mn1/month -> MN`
+  - 非対応interval（例: `7m`）は fail-closed で `ValueError` を返し、最適化条件と実行足の不一致を防止する。
+- **データソース契約（research）**:
+  - `--data-source` は `auto|yahoo|mt5_csv` を受理する（既定: `auto`）。
+  - `--source-csv` は `--data-source mt5_csv` のとき必須。入力は `timestamp,open,high,low,close`（追加列は無視）を受理する。
+  - `mt5_csv` は raw CSV を period 末尾期間（例: `240d/365d`）へ切り出して使用し、非標準TF（`M45/H2/H3/H5`）は `xau_autobot_data.py` の UTC アンカー再集約契約へ委譲する。
+  - `--data-source mt5_csv` で `--source-csv` が未指定、またはCSVが空の場合は fail-closed で `RuntimeError` を返す。
+
+### `tools/xau_autobot_data.py`
+- **非標準TFリサンプル契約（research-only）**:
+  - `M45/H5` を含む非標準TFは、下位足を UTC アンカー固定で再集約する。
+  - 既定契約:
+    - `RESAMPLE_ANCHOR = UTC_00:00`
+    - `RESAMPLE_OFFSET_MINUTES = 0`
+  - 例（H5）:
+    - バー境界は `00:00/05:00/10:00/15:00/20:00 UTC` で固定する。
+  - 目的:
+    - ブローカー/取得環境差でバー境界が変わることによる、同一configの非再現化を防止する。
+  - fail-closed:
+    - 未対応アンカー指定は `ValueError` で拒否する。
+- **MT5 CSV 入力契約（research-only）**:
+  - `load_ohlc(..., data_source="mt5_csv", source_csv_path="<path>")` を受理する。
+  - CSVは `timestamp`（Unix秒または `%Y.%m.%d %H:%M:%S`）を先頭列として解釈し、`open/high/low/close` を必須とする（追加列は無視）。
+  - 期間は `period` の末尾窓で切り出す（例: `period=365d` は最新バー基準で365日）。
+  - `source_csv_path` 未指定・空CSV・OHLC不足は fail-closed (`RuntimeError`)。
+
+### `tools/xau_autobot_readiness.py`
+- **runtime journal（research）**:
+  - readiness は実行ごとに runtime 観測カウンタを算出し、`runtime_metrics` として report へ同梱する。
+  - 最小カウンタ:
+    - `signal_eval_count`
+    - `gap_reject_count`
+    - `spread_reject_count`
+    - `session_reject_count`
+    - `maxpos_reject_count`
+  - `gap_reject_rate = gap_reject_count / signal_eval_count` を report/runtime journal の両方で保持する。
+  - research 実行時は runtime journal 追記を既定 ON とし、監査時に `gap_reject_rate` を N/A にしない。
+- **research-only hybrid reversion guard（追加）**:
+  - `strategy_mode=hybrid` のとき、reversion シグナルの実行可否を追加条件で制限できる。
+  - optional config keys:
+    - `reversion_max_atr_ratio_to_median`
+    - `reversion_max_ema_gap_over_atr`
+  - 両方を満たすときのみ reversion を許可し、未達時は `HOLD` 扱いにする。
+  - 既定（未指定）は fail-open 互換（制限なし）を維持する。
+  - 本契約は **research評価専用**（optimize/readiness比較）で、live 実行経路の契約は変更しない。
+- **データソース契約（research）**:
+  - `--data-source` は `auto|yahoo|mt5_csv` を受理する（既定: `auto`）。
+  - `--source-csv` は `--data-source mt5_csv` のとき必須。`xau_autobot_data.py` の MT5 CSV 契約に従って OHLC を取得する。
+  - `mt5_csv` 使用時も `runtime_journal` と `runtime_metrics` 契約（gap_reject_rate 可観測性）は不変。
+
+### `tools/xau_autobot_regime_switch_eval.py`（research-only）
+- **目的**:
+  - `M45` を司令塔にした `M5` 執行の regime-switch（`TREND/REVERSION`）評価を、rolling窓で再現可能に比較する。
+- **入力契約**:
+  - `--baseline-config`（E0用、単一 `M5` executor config）
+  - `--regime-switch-config`（E2用、`M5` trend/reversion モード統合config）
+  - `--m45-config`（bias/regime 参照用）
+  - `--source-csv`（`mt5_csv`、必須）
+  - `--period`（例: `365d`）
+  - `--cost-sides`（例: `0.0003` または `0.0002,0.0003,0.0004`）
+  - `--window-days`, `--step-days`, `--closed-floor`, `--pf-floor`, `--max-dd-ceiling`
+- **regime-switch 判定契約**:
+  - `switch_trend_strength_high` 以上で `TREND`。
+  - `switch_trend_strength_low` 以下で `REVERSION`。
+  - その中間は前モード維持（hysteresis）。
+  - `TREND` モードでは `M45 bias` と同方向のみ執行許可。
+  - `REVERSION` モードでは trend direction bias を強制しない。
+- **出力契約**:
+  - JSON: experiment ごとの `window_count/pass_window_count/fail_*_count/worst_*` と窓詳細。
+  - TSV: 1行1実験xコストの summary。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m5_regime_switch_v1.json`
+- **schema（research evaluator 専用）**:
+  - `symbol`, `timeframe`（`M5`）
+  - `switch_trend_strength_high`, `switch_trend_strength_low`, `switch_initial_mode`
+  - `trend_mode`: 既存 executor key 群（`fast_ema/slow_ema/atr_period/session/atr_ratio/ema_gap/pullback/sl_tp/...`）
+  - `reversion_mode`: 同上（`strategy_mode=reversion` 想定）
+  - 本configは `xau_autobot_regime_switch_eval.py` 専用であり、`tools/xau_autobot.py` live実行の直接入力契約には含めない。
+
+### `tools/xau_autobot_m20_bias_gate_eval.py`（research-only）
+- **目的**:
+  - `M20` 執行（E3）と `M20 + M45 bias gate`（E4）を同一データ/同一窓で比較し、`pass_window_count` と PF/DD 劣化要因を診断する。
+- **入力契約**:
+  - `--executor-config`（E3: M20単体）
+  - `--gated-config`（E4: M20 + M45 gate）
+  - `--switch-config`（optional, E8: M20 two-state executor）
+  - `--m45-config`（bias/regime 参照用）
+  - `--source-csv`（`mt5_csv`、必須）
+  - `--period`（例: `365d`）
+  - `--cost-sides`（例: `0.0003` または `0.0002,0.0003,0.0004`）
+  - `--window-days`, `--step-days`, `--closed-floor`, `--pf-floor`, `--max-dd-ceiling`
+- **M45 gate 契約**:
+  - `m45_bias_gate_policy`:
+    - `none`: gate 無効（E3）
+    - `block_opposite`: M45と逆方向シグナルのみ拒否（E4標準）
+    - `hard_lock`: M45同方向のみ許可（研究比較用）
+  - `m45_neutral_policy`:
+    - `allow_all`: `bias=NEUTRAL` では方向制限を適用しない
+    - `block_all`: `bias=NEUTRAL` は全シグナル拒否
+  - `m45_gate_min_strength_to_block_opposite`（optional）:
+    - `block_opposite/hard_lock` を適用する最小 `m45_regime_strength`。
+    - 未指定時は gate 常時有効、指定時は `strength >= threshold` のバーのみ有効。
+  - `m45_neutral_max_strength`（optional）:
+    - `m45_regime_strength < threshold` を `NEUTRAL` と扱う。
+  - `cooldown_m20_bars_after_bias_flip`（optional）:
+    - `m45_bias` 変化直後のエントリー停止バー数（M20バー単位）。
+  - `after_loss_cooldown_m20_bars`（optional）:
+    - `SL` クローズ後の新規エントリー停止バー数（M20バー単位）。
+    - E6正本では `SL` をトリガにし、`TP`/裁量クローズでは発火しない。
+  - `neutral_min_ema_gap_over_atr`（optional）:
+    - `NEUTRAL` 時のみ `min_ema_gap_over_atr` の下限を上書き。
+  - `neutral_pullback_atr`（optional）:
+    - `NEUTRAL` 時のみ `pullback_atr` を上書き。
+- **診断出力契約（追加）**:
+  - `mode_time_share`（`trend/reversion/neutral`）
+  - `gate_active_time_share`
+  - `trade_count_by_mode`
+  - `pf_by_mode`
+  - `reject_reason_breakdown`（`session/atr_ratio/ema_gap/bias_gate`）
+  - `cooldown_block_count`
+  - `loss_cooldown_trigger_count`
+  - `loss_cooldown_block_count`
+  - `loss_cooldown_block_bars_total`
+  - `loss_cooldown_block_time_share`
+  - `loss_streak_p95`
+- **E8 two-state regime switch 契約**:
+  - `--switch-config` 指定時は第3実験（`switch`）を追加し、`M45` 司令塔で `TREND/NON_TREND` を切替える。
+  - 状態遷移:
+    - `state=NON_TREND` かつ `m45_regime_strength >= switch_trend_on` で `TREND`
+    - `state=TREND` かつ `m45_regime_strength <= switch_trend_off` で `NON_TREND`
+    - それ以外は状態維持（hysteresis）
+  - `TREND` は `trend_mode` を使い、`M45` 逆方向のみ禁止（`block_opposite`）。
+  - `NON_TREND` は `non_trend_mode` を使い、bias gate は適用しない（両方向許可）。
+  - switch 診断として以下を追加出力する。
+    - `state_time_share`（`trend/non_trend`）
+    - `trade_count_by_state`
+    - `pf_by_state`
+    - `worst_active_window_breakdown`（`window_start/window_end`, `closed_by_state`, `pf_by_state`, `bias_gate_reject_count_trend`）
+- **active PF 契約（運用判定用）**:
+  - `pf_active` は各窓で `closed >= closed_floor` を満たす場合のみ定義する（未満は `null`）。
+  - summary で以下を追加出力する。
+    - `active_window_count`
+    - `worst_pf_active = min(pf_active)`（active窓のみ）
+    - `p05_pf_active`（active窓のみの5%点）
+    - `p05_closed`（全窓の `closed` の5%点）
+  - 目的:
+    - `closed` 不足窓（薄い窓）の `PF=0` が `worst_pf` を破壊する評価ノイズを分離し、運用判定に使えるテール指標を固定する。
+- **出力契約**:
+  - JSON: experiment ごとの `window_count/pass_window_count/fail_*_count/worst_*` と窓詳細（`pf_active` 含む）、および上記診断指標。
+  - TSV: 1行1実験xコストの summary。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1.json`
+- **schema（research evaluator / live共通 executor）**:
+  - 既存 executor key 群（`fast_ema/slow_ema/atr_period/session/atr_ratio/ema_gap/pullback/sl_tp/...`）
+  - `timeframe=M20`
+  - 既定では `m45_bias_gate_policy=none`, `m45_neutral_policy=allow_all`
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate.json`
+- **schema（research evaluator 専用）**:
+  - `timeframe=M20` の executor key を `trial_v2_20260228_m20_executor_v1.json` と共有。
+  - 追加 gate key:
+    - `m45_bias_gate_policy=block_opposite`
+    - `m45_neutral_policy=allow_all`
+  - 本configは評価比較用であり、live へ直接投入する場合は gate key を `tools/xau_autobot.py` 実行契約へ昇格するまでは無視される。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e5.json`
+- **schema（research evaluator 専用, E5）**:
+  - `trial_v2_20260228_m20_executor_v1_m45_softgate.json` と同一の executor key を共有。
+  - E5追加キー:
+    - `m45_gate_min_strength_to_block_opposite=2.35`
+    - `m45_neutral_max_strength=2.05`
+    - `cooldown_m20_bars_after_bias_flip=3`
+    - `neutral_min_ema_gap_over_atr=0.18`
+    - `neutral_pullback_atr=0.30`
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e6.json`
+- **schema（research evaluator 専用, E6）**:
+  - `trial_v2_20260228_m20_executor_v1_m45_softgate.json` と同一の executor key を共有。
+  - E6追加キー:
+    - `after_loss_cooldown_m20_bars=6`
+  - E6は E4最小差分（loss cooldown 追加のみ）で比較する。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_1.json`
+- **schema（research evaluator 専用, E7-1）**:
+  - `trial_v2_20260228_m20_executor_v1_m45_softgate.json` と同一の gate/entry 条件を共有。
+  - E7-1差分:
+    - `sl_atr=1.6`
+    - `tp_atr=2.9`
+  - 目的:
+    - R構造のみを変更し、`closed` を維持しながら `PF` の底上げを検証する。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_2.json`
+- **schema（research evaluator 専用, E7-2）**:
+  - `trial_v2_20260228_m20_executor_v1_m45_softgate.json` と同一の gate/exit 条件を共有。
+  - E7-2差分:
+    - `min_ema_gap_over_atr=0.15`
+    - `pullback_atr=0.23`
+  - 目的:
+    - ノイズ除去を強めつつ、`pullback` を浅くして `closed` の減少を抑える。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_3.json`
+- **schema（research evaluator 専用, E7-3）**:
+  - `trial_v2_20260228_m20_executor_v1_m45_softgate.json` と同一の gate 条件を共有。
+  - E7-3差分:
+    - `sl_atr=1.6`
+    - `tp_atr=2.9`
+    - `min_ema_gap_over_atr=0.15`
+    - `pullback_atr=0.23`
+  - 目的:
+    - E7-1（R改善）と E7-2（ノイズ除去）を合成した実戦候補を評価する。
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_regime_switch_e8.json`
+- **schema（research evaluator 専用, E8）**:
+  - `timeframe=M20`
+  - `switch_trend_on`, `switch_trend_off`, `switch_initial_state`（`trend|non_trend`）
+  - `trend_mode`: 既存 executor key 群（trend 用）
+  - `non_trend_mode`: 既存 executor key 群（reversion 用）
+  - gate 仕様は固定:
+    - `trend_mode` は `M45` 逆方向禁止（`block_opposite`）
+    - `non_trend_mode` は gate 無効（`none`）
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_regime_switch_e9_1.json`
+- **schema（research evaluator 専用, E9-1）**:
+  - `timeframe=M20`
+  - `switch_trend_on=2.35`, `switch_trend_off=2.25`, `switch_initial_state=non_trend`
+  - `trend_mode` と `non_trend_mode` は **同一executor（E7-1）** を使用する。
+  - 目的:
+    - executor切替を行わず、状態に応じた gate 適用だけを切替える。
+  - gate 仕様（evaluator固定）:
+    - `TREND` 状態: `block_opposite`
+    - `NON_TREND` 状態: `none`
+  - 比較対象:
+    - `E7-1`（常時 `block_opposite`） vs `E9-1`（状態依存 gate）
 
 ### `tools/xau_autobot_trial_judge.py`
 - **閾値引数の既定**:
@@ -943,6 +1198,11 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `--min-profit-factor` 既定 `1.10`
   - `--min-win-rate` 既定 `0.42`
   - `--min-net-profit` 既定 `0`
+- **decision_mode契約**:
+  - `composite`: 既存どおり readiness（`window_days`,`closed_positions`）+ performance（`PF`,`WR`,`net`）の複合判定。
+  - `monthly_only`: 既存どおり月利換算（`min_monthly_return_pct`）主体で判定。
+  - `rolling_45d`: 複合判定を維持しつつ `window_days>=45` を強制する（`min-days` が 45 未満でも 45 を採用）。
+  - `rolling_60d`: 複合判定を維持しつつ `window_days>=60` を強制する（`min-days` が 60 未満でも 60 を採用）。
 - **出力JSON（追加）**:
   - `readiness`: `window_days` と `closed_positions` の判定結果
   - `performance`: `profit_factor` / `win_rate` / `net_profit` の判定結果
@@ -957,8 +1217,24 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 - **Env既定値**:
   - `XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS` 未指定時は `12` を `xau_autobot_trial_judge.py` へ渡す。
   - `XAU_AUTOBOT_RUNTIME_JOURNAL_PATH` 未指定時は `$ROOT/data/reports/xau_autobot_runtime_journal_latest.jsonl` を live-report 収集へ引き渡す。
+  - `XAU_AUTOBOT_TRIAL_DECISION_MODE` 未指定時は config `timeframe` から自動選択する。
+    - `M45/H2 -> rolling_45d`
+    - `H3/H5 -> rolling_60d`
+    - その他 -> `monthly_only`
+  - `XAU_AUTOBOT_TRIAL_MIN_DAYS` 未指定時は decision_mode に応じて自動選択する。
+    - `rolling_45d -> 45`
+    - `rolling_60d -> 60`
+    - その他 -> `30`
+  - 実行開始時に `effective_timeframe / effective_decision_mode / effective_min_days / effective_audit_profile` を標準出力へ明示する（監査ログの暗黙仕様化を防ぐ）。
 - **上書き契約**:
   - 厳格運用時は `XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS=14`（または任意値）で上書き可能。
+
+### Research TF 昇格ゲート（契約）
+- `M45/H2/H3/H5` は research-only とし、live 実行経路へ直接投入しない。
+- live拡張検討（option2）に進むための最低条件:
+  - `M45`: `rolling_45d` で `closed>=8`, `PF>=1.20`, `net_profit>0`, `DD<=7%`
+  - `H2`: `rolling_45d` で `closed>=6`, `PF>=1.20`, `net_profit>0`, `DD<=7%`
+- `H3/H5` は `rolling_60d` で品質観測を継続し、単体live判定ではなく portfolio 貢献（PF改善/DD分散）で扱う。
 
 ### `tools/xau_autobot_live_report.py`
 - **入力引数（追加）**:
@@ -977,7 +1253,8 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 
 ### `tools/xau_autobot_operational_audit.py`
 - **入力引数**:
-  - `--days`（既定 `3`）
+  - `--profile`（既定 `default`。`default/m45/h2/h3/h5`）
+  - `--days`（任意。未指定時は profile 既定窓を使用: `default=3`, `m45/h2=7`, `h3/h5=14`）
   - `--runtime-log-glob`（既定: `data/reports/xau_autobot_runtime_journal*.jsonl`）
   - `--live-report-glob`（既定: `data/reports/xau_autobot_live_report_trial_v2_*.json`）
   - `--write-report`（既定: `data/reports/xau_autobot_operational_audit.json`）
@@ -993,9 +1270,18 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - `recommendations`（`A/B/C` パターン対応）
   - `runtime_metrics_source`（`journal` または `live_report.runtime_metrics`）
   - `runtime_metrics_fallback_reason`（fallback時の理由）
+- **profile別閾値契約**:
+  - `default`: `gap_reject_rate=0.15..0.45`, `tp_sl_ratio>=0.70`, `closed_per_day>=0.70`, `expectancy>0`
+  - `m45`: `gap_reject_rate=0.10..0.55`, `tp_sl_ratio>=1.00`, `closed_per_day>=0.20`, `expectancy>0`
+  - `h2`: `gap_reject_rate=0.10..0.60`, `tp_sl_ratio>=0.85`, `closed_per_day>=0.15`, `expectancy>0`
+  - `h3`: `gap_reject_rate=0.05..0.70`, `tp_sl_ratio>=1.20`, `closed_per_day>=0.07`, `expectancy>0`
+  - `h5`: `gap_reject_rate=0.05..0.70`, `tp_sl_ratio>=1.00`, `closed_per_day>=0.05`, `expectancy>0`
 - **fallback契約（追加）**:
   - runtime journal の snapshot が 0 件のとき、`xau_autobot_live_report_trial_v2_*.json` の top-level `runtime_metrics` を fallback 集計に利用する。
   - fallback 利用時は `runtime_metrics_source=live_report.runtime_metrics` と `runtime_metrics_fallback_reason=journal_snapshot_count_zero` を出力し、観測元を明示する。
+- **`gap_reject_rate` 分母契約**:
+  - 優先分母は `signal_eval_count`（research/live 共通の runtime 指標）。
+  - 互換データ（旧 schema）のみ存在する場合は `gate_check_count` を分母として扱う。
 
 ## 運用監査CLIインターフェース
 `tools/system_audit.sh` が実行するローカル監査コマンドのうち、live trade-close 整合に関する契約を以下に定義する。

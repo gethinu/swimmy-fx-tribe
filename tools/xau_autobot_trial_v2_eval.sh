@@ -7,12 +7,19 @@ cd "$ROOT"
 PYTHON_EXE="${XAU_AUTOBOT_PYTHON:-$ROOT/.venv/bin/python}"
 DEFAULT_TRIAL_CONFIG="$ROOT/tools/configs/xau_autobot.trial_v2_20260222.json"
 TRIAL_CONFIG_ENV="${XAU_AUTOBOT_TRIAL_CONFIG:-}"
-TRIAL_DAYS="${XAU_AUTOBOT_TRIAL_DAYS:-14}"
+TRIAL_DAYS="${XAU_AUTOBOT_TRIAL_DAYS:-30}"
 RUN_META_PATH="${XAU_AUTOBOT_TRIAL_RUN_META_PATH:-$ROOT/data/reports/xau_autobot_trial_v2_current_run.json}"
 WATCHDOG_ENABLED="${XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED:-0}"
+LIVE_LOOP_GUARD_ENABLED="${XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED:-1}"
+LIVE_LOOP_GUARD_INCLUDE_R3="${XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_INCLUDE_R3:-0}"
+LIVE_LOOP_GUARD_DRY_RUN="${XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_DRY_RUN:-0}"
+LIVE_LOOP_GUARD_FAIL_ON_ERROR="${XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_FAIL_ON_ERROR:-0}"
 LIVE_REPORT_RETRIES="${XAU_AUTOBOT_TRIAL_LIVE_REPORT_RETRIES:-3}"
 LIVE_REPORT_RETRY_SLEEP_SECONDS="${XAU_AUTOBOT_TRIAL_LIVE_REPORT_RETRY_SLEEP_SECONDS:-5}"
 RUNTIME_JOURNAL_PATH="${XAU_AUTOBOT_RUNTIME_JOURNAL_PATH:-$ROOT/data/reports/xau_autobot_runtime_journal_latest.jsonl}"
+TRIAL_MIN_DAYS_RAW="${XAU_AUTOBOT_TRIAL_MIN_DAYS:-}"
+TRIAL_DECISION_MODE_RAW="${XAU_AUTOBOT_TRIAL_DECISION_MODE:-}"
+TRIAL_MIN_MONTHLY_RETURN_PCT="${XAU_AUTOBOT_TRIAL_MIN_MONTHLY_RETURN_PCT:-3.0}"
 
 is_wsl_env() {
   if [ -n "${WSL_INTEROP:-}" ] || [ -n "${WSL_DISTRO_NAME:-}" ]; then
@@ -185,13 +192,65 @@ PY
   printf '%s' "$DEFAULT_TRIAL_CONFIG"
 }
 
+resolve_monthly_account_balance() {
+  "$PYTHON_EXE" - <<'PY' "$ROOT" "${XAU_AUTOBOT_TRIAL_MONTHLY_ACCOUNT_BALANCE:-}" "${XAU_AUTOBOT_TRIAL_MONTHLY_ACCOUNT_PROBE_PATH:-}"
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+explicit_raw = str(sys.argv[2] or "").strip()
+probe_path_raw = str(sys.argv[3] or "").strip()
+
+def parse_positive_float(value: str):
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if out > 0.0 else None
+
+explicit = parse_positive_float(explicit_raw)
+if explicit is not None:
+    print(float(explicit))
+    raise SystemExit(0)
+
+candidates = []
+if probe_path_raw:
+    candidates.append(Path(probe_path_raw))
+else:
+    candidates = sorted(
+        root.glob("data/reports/v50_8_mt5_account_probe_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+for path in candidates:
+    if not path.exists():
+        continue
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        continue
+    if not isinstance(payload, dict):
+        continue
+    balance = parse_positive_float(str(payload.get("balance", "")))
+    if balance is not None:
+        print(float(balance))
+        raise SystemExit(0)
+
+print(100000.0)
+PY
+}
+
 TRIAL_RUN_ID="$(resolve_trial_run_id)"
 TRIAL_CONFIG="$(resolve_trial_config)"
+MONTHLY_ACCOUNT_BALANCE="$(resolve_monthly_account_balance)"
 LIVE_REPORT_PATH="${XAU_AUTOBOT_TRIAL_LIVE_REPORT:-$ROOT/data/reports/xau_autobot_live_report_${TRIAL_RUN_ID}.json}"
 JUDGE_REPORT_PATH="${XAU_AUTOBOT_TRIAL_JUDGE_REPORT:-$ROOT/data/reports/xau_autobot_trial_judge_${TRIAL_RUN_ID}.json}"
 LIVE_REPORT_LATEST="${XAU_AUTOBOT_TRIAL_LIVE_REPORT_LATEST:-$ROOT/data/reports/xau_autobot_live_report_trial_v2_latest.json}"
 JUDGE_REPORT_LATEST="${XAU_AUTOBOT_TRIAL_JUDGE_REPORT_LATEST:-$ROOT/data/reports/xau_autobot_trial_judge.json}"
 WATCHDOG_REPORT_PATH="${XAU_AUTOBOT_TRIAL_WATCHDOG_WRITE_REPORT:-$ROOT/data/reports/xau_autobot_trial_watchdog_${TRIAL_RUN_ID}.json}"
+LIVE_LOOP_GUARD_REPORT_PATH="${XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_REPORT_PATH:-$ROOT/data/reports/xau_autobot_live_loop_guard_latest.json}"
 
 readarray -t CFG_VALUES < <("$PYTHON_EXE" - <<'PY' "$TRIAL_CONFIG"
 import json
@@ -204,15 +263,79 @@ print(str(int(cfg.get("magic", 560072))))
 comment = str(cfg.get("comment", "xau_autobot_trial_v2_20260222"))
 # MT5 deal history truncates comment field on some brokers; keep prefix filter in sync.
 print(comment[:16])
+print(str(cfg.get("timeframe", "M5")).strip().upper())
 PY
 )
 
 SYMBOL="${CFG_VALUES[0]}"
 MAGIC="${CFG_VALUES[1]}"
 COMMENT_PREFIX="${CFG_VALUES[2]}"
+TIMEFRAME="${CFG_VALUES[3]:-M5}"
 readarray -t WINDOW_VALUES < <(resolve_trial_window)
 TRIAL_START_UTC="${WINDOW_VALUES[0]:-}"
 TRIAL_END_UTC="${WINDOW_VALUES[1]:-}"
+
+resolve_trial_decision_mode() {
+  if [ -n "$TRIAL_DECISION_MODE_RAW" ]; then
+    printf '%s' "$TRIAL_DECISION_MODE_RAW"
+    return
+  fi
+  case "${TIMEFRAME^^}" in
+    M45|H2)
+      printf 'rolling_45d'
+      ;;
+    H3|H5)
+      printf 'rolling_60d'
+      ;;
+    *)
+      printf 'monthly_only'
+      ;;
+  esac
+}
+
+resolve_trial_min_days() {
+  if [ -n "$TRIAL_MIN_DAYS_RAW" ]; then
+    printf '%s' "$TRIAL_MIN_DAYS_RAW"
+    return
+  fi
+  case "$TRIAL_DECISION_MODE" in
+    rolling_45d)
+      printf '45'
+      ;;
+    rolling_60d)
+      printf '60'
+      ;;
+    *)
+      printf '30'
+      ;;
+  esac
+}
+
+resolve_trial_audit_profile() {
+  case "${TIMEFRAME^^}" in
+    M45)
+      printf 'm45'
+      ;;
+    H2)
+      printf 'h2'
+      ;;
+    H3)
+      printf 'h3'
+      ;;
+    H5)
+      printf 'h5'
+      ;;
+    *)
+      printf 'default'
+      ;;
+  esac
+}
+
+TRIAL_DECISION_MODE="$(resolve_trial_decision_mode)"
+TRIAL_MIN_DAYS="$(resolve_trial_min_days)"
+TRIAL_AUDIT_PROFILE="$(resolve_trial_audit_profile)"
+
+echo "{\"action\":\"INFO\",\"reason\":\"trial_eval_effective_contract\",\"effective_timeframe\":\"$TIMEFRAME\",\"effective_decision_mode\":\"$TRIAL_DECISION_MODE\",\"effective_min_days\":\"$TRIAL_MIN_DAYS\",\"effective_audit_profile\":\"$TRIAL_AUDIT_PROFILE\"}"
 
 LIVE_REPORT_ARGS=(
   --symbol "$SYMBOL"
@@ -265,6 +388,34 @@ run_live_report_once() {
   return 127
 }
 
+run_live_loop_guard_once() {
+  local guard_args=(
+    --repo-root "$ROOT"
+    --report-path "$LIVE_LOOP_GUARD_REPORT_PATH"
+  )
+  if [ "$LIVE_LOOP_GUARD_INCLUDE_R3" = "1" ]; then
+    guard_args+=(--include-r3)
+  fi
+  if [ "$LIVE_LOOP_GUARD_DRY_RUN" = "1" ]; then
+    guard_args+=(--dry-run)
+  fi
+  "$PYTHON_EXE" "$ROOT/tools/xau_autobot_live_loop_guard.py" "${guard_args[@]}"
+}
+
+LIVE_LOOP_GUARD_EXIT=0
+if [ "$LIVE_LOOP_GUARD_ENABLED" = "1" ]; then
+  set +e
+  run_live_loop_guard_once
+  LIVE_LOOP_GUARD_EXIT=$?
+  set -e
+  if [ "$LIVE_LOOP_GUARD_EXIT" -ne 0 ]; then
+    echo "{\"action\":\"WARN\",\"reason\":\"live_loop_guard_failed\",\"exit_code\":$LIVE_LOOP_GUARD_EXIT}" >&2
+    if [ "$LIVE_LOOP_GUARD_FAIL_ON_ERROR" = "1" ]; then
+      exit "$LIVE_LOOP_GUARD_EXIT"
+    fi
+  fi
+fi
+
 if ! [[ "$LIVE_REPORT_RETRIES" =~ ^[0-9]+$ ]] || [ "$LIVE_REPORT_RETRIES" -lt 1 ]; then
   LIVE_REPORT_RETRIES=1
 fi
@@ -300,11 +451,14 @@ JUDGE_EXIT_CODE=0
 set +e
 "$PYTHON_EXE" "$ROOT/tools/xau_autobot_trial_judge.py" \
   --live-report "$LIVE_REPORT_PATH" \
-  --min-days "${XAU_AUTOBOT_TRIAL_MIN_DAYS:-14}" \
+  --min-days "$TRIAL_MIN_DAYS" \
   --min-closed-positions "${XAU_AUTOBOT_TRIAL_MIN_CLOSED_POSITIONS:-12}" \
   --min-profit-factor "${XAU_AUTOBOT_TRIAL_MIN_PROFIT_FACTOR:-1.10}" \
   --min-win-rate "${XAU_AUTOBOT_TRIAL_MIN_WIN_RATE:-0.42}" \
   --min-net-profit "${XAU_AUTOBOT_TRIAL_MIN_NET_PROFIT:-0}" \
+  --decision-mode "$TRIAL_DECISION_MODE" \
+  --min-monthly-return-pct "$TRIAL_MIN_MONTHLY_RETURN_PCT" \
+  --monthly-account-balance "$MONTHLY_ACCOUNT_BALANCE" \
   --write-report "$JUDGE_REPORT_PATH" \
   --fail-on-no-go
 JUDGE_EXIT_CODE=$?

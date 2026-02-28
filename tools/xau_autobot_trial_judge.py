@@ -72,6 +72,9 @@ def evaluate_trial_report(
     min_profit_factor: float,
     min_win_rate: float,
     min_net_profit: float,
+    decision_mode: str = "composite",
+    min_monthly_return_pct: float = 3.0,
+    monthly_account_balance: float = 100000.0,
 ) -> Dict[str, object]:
     summary = report.get("summary", {}) if isinstance(report.get("summary"), dict) else {}
     diagnostics = report.get("diagnostics", {}) if isinstance(report.get("diagnostics"), dict) else {}
@@ -86,15 +89,49 @@ def evaluate_trial_report(
     win_rate = _as_float(summary.get("win_rate"), 0.0)
     net_profit = _as_float(summary.get("net_profit"), 0.0)
 
-    readiness_checks = {
-        "window_days": window_days >= float(min_days),
-        "closed_positions": closed_positions >= float(min_closed_positions),
-    }
-    performance_checks = {
-        "profit_factor": profit_factor >= float(min_profit_factor),
-        "win_rate": win_rate >= float(min_win_rate),
-        "net_profit": net_profit >= float(min_net_profit),
-    }
+    normalized_mode = str(decision_mode or "composite").strip().lower()
+    if normalized_mode not in {"composite", "monthly_only", "rolling_45d", "rolling_60d"}:
+        raise RuntimeError(f"unsupported decision mode: {decision_mode}")
+
+    monthly_valid = False
+    monthly_reason = ""
+    realized_return_pct: Optional[float] = None
+    monthly_return_pct: Optional[float] = None
+    if window_days <= 0.0:
+        monthly_reason = "invalid_window_days"
+    elif float(monthly_account_balance) <= 0.0:
+        monthly_reason = "invalid_monthly_account_balance"
+    else:
+        monthly_valid = True
+        realized_return_pct = (net_profit / float(monthly_account_balance)) * 100.0
+        monthly_return_pct = realized_return_pct * (30.0 / window_days)
+
+    if normalized_mode == "monthly_only":
+        readiness_checks = {
+            "window_days": window_days >= float(min_days),
+        }
+        performance_checks = {
+            "monthly_return_pct": (
+                bool(monthly_valid)
+                and monthly_return_pct is not None
+                and monthly_return_pct >= float(min_monthly_return_pct)
+            ),
+        }
+    else:
+        effective_min_days = float(min_days)
+        if normalized_mode == "rolling_45d":
+            effective_min_days = max(effective_min_days, 45.0)
+        elif normalized_mode == "rolling_60d":
+            effective_min_days = max(effective_min_days, 60.0)
+        readiness_checks = {
+            "window_days": window_days >= effective_min_days,
+            "closed_positions": closed_positions >= float(min_closed_positions),
+        }
+        performance_checks = {
+            "profit_factor": profit_factor >= float(min_profit_factor),
+            "win_rate": win_rate >= float(min_win_rate),
+            "net_profit": net_profit >= float(min_net_profit),
+        }
     invalid_reasons = []
     if "after_magic_filter" in diagnostics and _as_float(diagnostics.get("after_magic_filter"), -1.0) <= 0.0:
         invalid_reasons.append("after_magic_filter")
@@ -118,6 +155,7 @@ def evaluate_trial_report(
         verdict = "NO_GO"
     return {
         "verdict": verdict,
+        "decision_mode": normalized_mode,
         "trial_valid": trial_valid,
         "invalid_reasons": invalid_reasons,
         "window_days": window_days,
@@ -127,12 +165,22 @@ def evaluate_trial_report(
             "win_rate": win_rate,
             "net_profit": net_profit,
         },
+        "monthly": {
+            "valid": bool(monthly_valid),
+            "reason": str(monthly_reason),
+            "account_balance": float(monthly_account_balance),
+            "realized_return_pct": realized_return_pct,
+            "monthly_return_pct": monthly_return_pct,
+        },
         "thresholds": {
             "min_days": float(min_days),
             "min_closed_positions": float(min_closed_positions),
             "min_profit_factor": float(min_profit_factor),
             "min_win_rate": float(min_win_rate),
             "min_net_profit": float(min_net_profit),
+            "decision_mode": normalized_mode,
+            "min_monthly_return_pct": float(min_monthly_return_pct),
+            "monthly_account_balance": float(monthly_account_balance),
         },
         "readiness": {
             "checks": readiness_checks,
@@ -165,6 +213,13 @@ def main() -> None:
     parser.add_argument("--min-profit-factor", type=float, default=1.10)
     parser.add_argument("--min-win-rate", type=float, default=0.42)
     parser.add_argument("--min-net-profit", type=float, default=0.0)
+    parser.add_argument(
+        "--decision-mode",
+        default="composite",
+        choices=["composite", "monthly_only", "rolling_45d", "rolling_60d"],
+    )
+    parser.add_argument("--min-monthly-return-pct", type=float, default=3.0)
+    parser.add_argument("--monthly-account-balance", type=float, default=100000.0)
     parser.add_argument("--write-report", default="data/reports/xau_autobot_trial_judge.json")
     parser.add_argument("--fail-on-no-go", action="store_true")
     args = parser.parse_args()
@@ -189,6 +244,9 @@ def main() -> None:
         min_profit_factor=float(args.min_profit_factor),
         min_win_rate=float(args.min_win_rate),
         min_net_profit=float(args.min_net_profit),
+        decision_mode=str(args.decision_mode),
+        min_monthly_return_pct=float(args.min_monthly_return_pct),
+        monthly_account_balance=float(args.monthly_account_balance),
     )
     output = {
         "generated_at": now_utc.isoformat(),

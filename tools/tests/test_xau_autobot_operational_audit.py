@@ -96,6 +96,50 @@ def test_load_runtime_metrics_uses_single_snapshot_as_current_total(tmp_path: Pa
     assert metrics["signal_counts"]["HOLD"] == 5
 
 
+def test_load_runtime_metrics_accepts_research_counter_schema(tmp_path: Path) -> None:
+    runtime_file = tmp_path / "runtime_research.jsonl"
+    rows = [
+        {
+            "timestamp_utc": "2026-02-26T00:00:00+00:00",
+            "runtime_metrics": {
+                "signal_eval_count": 10,
+                "gap_reject_count": 2,
+                "spread_reject_count": 1,
+                "session_reject_count": 3,
+                "maxpos_reject_count": 1,
+                "signal_counts": {"BUY": 3, "SELL": 2, "HOLD": 5},
+            },
+        },
+        {
+            "timestamp_utc": "2026-02-26T02:00:00+00:00",
+            "runtime_metrics": {
+                "signal_eval_count": 15,
+                "gap_reject_count": 5,
+                "spread_reject_count": 2,
+                "session_reject_count": 4,
+                "maxpos_reject_count": 2,
+                "signal_counts": {"BUY": 5, "SELL": 3, "HOLD": 7},
+            },
+        },
+    ]
+    runtime_file.write_text("".join(json.dumps(row, ensure_ascii=True) + "\n" for row in rows), encoding="utf-8")
+
+    metrics = load_runtime_metrics(
+        runtime_globs=[str(runtime_file)],
+        start_utc=datetime(2026, 2, 25, 0, 0, tzinfo=timezone.utc),
+        end_utc=datetime(2026, 2, 27, 0, 0, tzinfo=timezone.utc),
+        run_id_filter="",
+    )
+
+    assert metrics["snapshot_count"] == 2
+    assert metrics["signal_eval_count"] == 5
+    assert metrics["gap_reject_count"] == 3
+    assert abs(metrics["gap_reject_rate"] - 0.6) < 1e-9
+    assert metrics["spread_reject_count"] == 1
+    assert metrics["session_reject_count"] == 1
+    assert metrics["maxpos_reject_count"] == 1
+
+
 def test_load_live_metrics_uses_latest_per_day(tmp_path: Path) -> None:
     _write_json(
         tmp_path / "xau_autobot_live_report_trial_v2_20260226_a.json",
@@ -210,6 +254,43 @@ def test_evaluate_audit_status_pass() -> None:
     assert result["checks"]["closed_per_day"]["ok"] is True
     assert result["checks"]["expectancy"]["ok"] is True
     assert result["recommendations"] == []
+
+
+def test_evaluate_audit_status_h2_profile_passes_with_relaxed_thresholds() -> None:
+    result = evaluate_audit_status(
+        runtime_metrics={
+            "snapshot_count": 4,
+            "gap_reject_rate": 0.58,
+        },
+        live_metrics={
+            "report_count": 3,
+            "tp_sl_ratio": 0.9,
+            "closed_per_day": 0.2,
+            "expectancy": 0.1,
+        },
+        profile="h2",
+    )
+    assert result["status"] == "PASS"
+    assert result["checks"]["gap_reject_rate"]["ok"] is True
+    assert result["checks"]["closed_per_day"]["ok"] is True
+
+
+def test_evaluate_audit_status_h5_profile_requires_tp_sl_ratio_1_0() -> None:
+    result = evaluate_audit_status(
+        runtime_metrics={
+            "snapshot_count": 4,
+            "gap_reject_rate": 0.2,
+        },
+        live_metrics={
+            "report_count": 3,
+            "tp_sl_ratio": 0.95,
+            "closed_per_day": 0.08,
+            "expectancy": 0.1,
+        },
+        profile="h5",
+    )
+    assert result["status"] in {"WARN", "FAIL"}
+    assert result["checks"]["tp_sl_ratio"]["ok"] is False
 
 
 def test_evaluate_audit_status_pattern_a() -> None:

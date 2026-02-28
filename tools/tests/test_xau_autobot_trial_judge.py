@@ -157,6 +157,174 @@ class TestXauAutoBotTrialJudge(unittest.TestCase):
         self.assertEqual(result["verdict"], "GO")
         self.assertTrue(result["performance"]["checks"]["net_profit"])
 
+    def test_evaluate_trial_report_monthly_only_go_when_target_hit(self):
+        report = {
+            "start_utc": "2026-02-01T00:00:00+00:00",
+            "end_utc": "2026-03-03T00:00:00+00:00",
+            "summary": {
+                "closed_positions": 1.0,
+                "profit_factor": 0.7,
+                "win_rate": 0.2,
+                "net_profit": 3000.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=30.0,
+            min_closed_positions=999.0,
+            min_profit_factor=9.9,
+            min_win_rate=0.99,
+            min_net_profit=999999.0,
+            decision_mode="monthly_only",
+            min_monthly_return_pct=3.0,
+            monthly_account_balance=100000.0,
+        )
+        self.assertEqual(result["verdict"], "GO")
+        self.assertEqual(result["trial_valid"], True)
+        self.assertAlmostEqual(result["monthly"]["monthly_return_pct"], 3.0, places=6)
+        self.assertEqual(result["failed_checks"], [])
+
+    def test_evaluate_trial_report_monthly_only_no_go_when_target_miss(self):
+        report = {
+            "start_utc": "2026-02-01T00:00:00+00:00",
+            "end_utc": "2026-03-03T00:00:00+00:00",
+            "summary": {
+                "closed_positions": 200.0,
+                "profit_factor": 9.0,
+                "win_rate": 0.95,
+                "net_profit": 1000.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=30.0,
+            min_closed_positions=1.0,
+            min_profit_factor=1.0,
+            min_win_rate=0.1,
+            min_net_profit=-999.0,
+            decision_mode="monthly_only",
+            min_monthly_return_pct=3.0,
+            monthly_account_balance=100000.0,
+        )
+        self.assertEqual(result["verdict"], "NO_GO")
+        self.assertIn("monthly_return_pct", result["failed_checks"])
+
+    def test_evaluate_trial_report_rolling_45d_enforces_window_floor(self):
+        report = {
+            "start_utc": "2026-02-01T00:00:00+00:00",
+            "end_utc": "2026-03-03T00:00:00+00:00",  # 30 days
+            "summary": {
+                "closed_positions": 20.0,
+                "profit_factor": 1.5,
+                "win_rate": 0.5,
+                "net_profit": 1500.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=14.0,
+            min_closed_positions=8.0,
+            min_profit_factor=1.2,
+            min_win_rate=0.38,
+            min_net_profit=0.0,
+            decision_mode="rolling_45d",
+        )
+        self.assertEqual(result["verdict"], "NO_GO")
+        self.assertIn("window_days", result["failed_checks"])
+
+    def test_evaluate_trial_report_rolling_60d_go_when_all_checks_pass(self):
+        report = {
+            "start_utc": "2026-01-01T00:00:00+00:00",
+            "end_utc": "2026-03-05T00:00:00+00:00",  # 63 days
+            "summary": {
+                "closed_positions": 6.0,
+                "profit_factor": 1.3,
+                "win_rate": 0.40,
+                "net_profit": 1200.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=14.0,
+            min_closed_positions=4.0,
+            min_profit_factor=1.2,
+            min_win_rate=0.33,
+            min_net_profit=0.0,
+            decision_mode="rolling_60d",
+        )
+        self.assertEqual(result["verdict"], "GO")
+        self.assertEqual(result["failed_checks"], [])
+
+    def test_evaluate_trial_report_rolling_45d_boundary_allows_exact_45_days(self):
+        report = {
+            "start_utc": "2026-01-01T00:00:00+00:00",
+            "end_utc": "2026-02-15T00:00:00+00:00",  # exact 45 days
+            "summary": {
+                "closed_positions": 8.0,
+                "profit_factor": 1.2,
+                "win_rate": 0.4,
+                "net_profit": 100.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=30.0,
+            min_closed_positions=8.0,
+            min_profit_factor=1.2,
+            min_win_rate=0.38,
+            min_net_profit=0.0,
+            decision_mode="rolling_45d",
+        )
+        self.assertEqual(result["verdict"], "GO")
+        self.assertEqual(result["failed_checks"], [])
+
+    def test_evaluate_trial_report_rolling_60d_boundary_allows_exact_60_days(self):
+        report = {
+            "start_utc": "2026-01-01T00:00:00+00:00",
+            "end_utc": "2026-03-02T00:00:00+00:00",  # exact 60 days
+            "summary": {
+                "closed_positions": 4.0,
+                "profit_factor": 1.25,
+                "win_rate": 0.35,
+                "net_profit": 100.0,
+            },
+            "diagnostics": {
+                "after_magic_filter": 10.0,
+                "after_comment_prefix_filter": 10.0,
+            },
+        }
+        result = evaluate_trial_report(
+            report,
+            min_days=30.0,
+            min_closed_positions=4.0,
+            min_profit_factor=1.2,
+            min_win_rate=0.33,
+            min_net_profit=0.0,
+            decision_mode="rolling_60d",
+        )
+        self.assertEqual(result["verdict"], "GO")
+        self.assertEqual(result["failed_checks"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

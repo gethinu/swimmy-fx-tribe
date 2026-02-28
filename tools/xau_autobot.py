@@ -38,6 +38,8 @@ JST = timezone(timedelta(hours=9))
 WAIT_ACTIONS = {"SKIP", "BLOCKED", "HOLD"}
 MT5_COMMENT_MAX_LEN = 31
 STRATEGY_MODES = {"trend", "reversion", "hybrid"}
+LIVE_ACCEPT_TIMEFRAMES: Tuple[str, ...] = ("M1", "M5", "M15", "M20", "M30", "H1", "H4")
+RESEARCH_ACCEPT_TIMEFRAMES: Tuple[str, ...] = ("M45", "H2", "H3", "H5")
 DEFAULT_RUNTIME_JOURNAL_PATH = "data/reports/xau_autobot_runtime_journal_latest.jsonl"
 DEFAULT_TRIAL_RUN_META_PATH = "data/reports/xau_autobot_trial_v2_current_run.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,6 +60,34 @@ def validate_strategy_mode(mode: str) -> str:
     if text not in STRATEGY_MODES:
         raise ValueError(f"unsupported strategy_mode: {mode}")
     return text
+
+
+def _normalize_timeframe_label(timeframe: str) -> str:
+    text = str(timeframe or "").strip().upper()
+    if text == "":
+        raise ValueError("timeframe must not be empty")
+    return text
+
+
+def validate_runtime_timeframe_contract(timeframe: str, *, mode: str = "live") -> str:
+    normalized_mode = str(mode or "live").strip().lower()
+    if normalized_mode not in {"live", "research"}:
+        raise ValueError(f"unsupported mode: {mode}")
+    tf = _normalize_timeframe_label(timeframe)
+
+    if normalized_mode == "live":
+        if tf not in LIVE_ACCEPT_TIMEFRAMES:
+            raise ValueError(f"unsupported timeframe for live mode: {timeframe}")
+        return tf
+
+    if tf in RESEARCH_ACCEPT_TIMEFRAMES:
+        raise ValueError(
+            "unsupported timeframe for research mode execution: "
+            f"{timeframe} (use xau_autobot_optimize.py/readiness.py)"
+        )
+    if tf not in LIVE_ACCEPT_TIMEFRAMES:
+        raise ValueError(f"unsupported timeframe for research mode: {timeframe}")
+    return tf
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -180,6 +210,11 @@ def append_runtime_journal(path: Path, payload: Dict[str, Any]) -> None:
 
 def _new_runtime_metrics() -> Dict[str, Any]:
     return {
+        "signal_eval_count": 0,
+        "gap_reject_count": 0,
+        "spread_reject_count": 0,
+        "session_reject_count": 0,
+        "maxpos_reject_count": 0,
         "gate_check_count": 0,
         "gate_reject_gap_count": 0,
         "signal_counts": {"BUY": 0, "SELL": 0, "HOLD": 0},
@@ -203,11 +238,23 @@ def _runtime_signal_label(payload: Dict[str, Any]) -> str:
 
 
 def update_runtime_metrics(metrics: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+    action = str(payload.get("action", "")).upper()
+    reason = str(payload.get("reason", "")).lower()
+
+    if action == "BLOCKED" and reason == "session":
+        metrics["session_reject_count"] = int(metrics.get("session_reject_count", 0)) + 1
+    if action == "BLOCKED" and reason == "spread":
+        metrics["spread_reject_count"] = int(metrics.get("spread_reject_count", 0)) + 1
+    if action == "BLOCKED" and reason == "max_positions":
+        metrics["maxpos_reject_count"] = int(metrics.get("maxpos_reject_count", 0)) + 1
+
     if not bool(payload.get("gap_gate_checked", False)):
         return metrics
 
+    metrics["signal_eval_count"] = int(metrics.get("signal_eval_count", 0)) + 1
     metrics["gate_check_count"] = int(metrics.get("gate_check_count", 0)) + 1
-    if str(payload.get("reason", "")).lower() == "ema_gap_out_of_range":
+    if reason == "ema_gap_out_of_range":
+        metrics["gap_reject_count"] = int(metrics.get("gap_reject_count", 0)) + 1
         metrics["gate_reject_gap_count"] = int(metrics.get("gate_reject_gap_count", 0)) + 1
 
     signal_counts = metrics.get("signal_counts", {})
@@ -224,8 +271,13 @@ def update_runtime_metrics(metrics: Dict[str, Any], payload: Dict[str, Any]) -> 
 
 
 def runtime_metrics_snapshot(metrics: Dict[str, Any]) -> Dict[str, Any]:
-    gate_check_count = int(metrics.get("gate_check_count", 0))
-    gate_reject_gap_count = int(metrics.get("gate_reject_gap_count", 0))
+    signal_eval_count = int(metrics.get("signal_eval_count", metrics.get("gate_check_count", 0)))
+    gap_reject_count = int(metrics.get("gap_reject_count", metrics.get("gate_reject_gap_count", 0)))
+    spread_reject_count = int(metrics.get("spread_reject_count", 0))
+    session_reject_count = int(metrics.get("session_reject_count", 0))
+    maxpos_reject_count = int(metrics.get("maxpos_reject_count", 0))
+    gate_check_count = int(metrics.get("gate_check_count", signal_eval_count))
+    gate_reject_gap_count = int(metrics.get("gate_reject_gap_count", gap_reject_count))
     signal_counts_raw = metrics.get("signal_counts", {})
     signal_counts = signal_counts_raw if isinstance(signal_counts_raw, dict) else {}
     out_signal_counts = {
@@ -234,11 +286,16 @@ def runtime_metrics_snapshot(metrics: Dict[str, Any]) -> Dict[str, Any]:
         "HOLD": int(signal_counts.get("HOLD", 0)),
     }
     gap_reject_rate = (
-        float(gate_reject_gap_count) / float(gate_check_count)
-        if gate_check_count > 0
+        float(gap_reject_count) / float(signal_eval_count)
+        if signal_eval_count > 0
         else 0.0
     )
     return {
+        "signal_eval_count": signal_eval_count,
+        "gap_reject_count": gap_reject_count,
+        "spread_reject_count": spread_reject_count,
+        "session_reject_count": session_reject_count,
+        "maxpos_reject_count": maxpos_reject_count,
         "gate_check_count": gate_check_count,
         "gate_reject_gap_count": gate_reject_gap_count,
         "gap_reject_rate": gap_reject_rate,
@@ -816,17 +873,22 @@ def _tf_to_mt5(timeframe: str) -> int:
     if mt5 is None:
         raise RuntimeError("MetaTrader5 package is not available")
     mapping = {
-        "M1": mt5.TIMEFRAME_M1,
-        "M5": mt5.TIMEFRAME_M5,
-        "M15": mt5.TIMEFRAME_M15,
-        "M30": mt5.TIMEFRAME_M30,
-        "H1": mt5.TIMEFRAME_H1,
-        "H4": mt5.TIMEFRAME_H4,
+        "M1": "TIMEFRAME_M1",
+        "M5": "TIMEFRAME_M5",
+        "M15": "TIMEFRAME_M15",
+        "M20": "TIMEFRAME_M20",
+        "M30": "TIMEFRAME_M30",
+        "H1": "TIMEFRAME_H1",
+        "H4": "TIMEFRAME_H4",
     }
-    key = timeframe.upper()
-    if key not in mapping:
-        raise ValueError(f"unsupported timeframe: {timeframe}")
-    return mapping[key]
+    key = _normalize_timeframe_label(timeframe)
+    attr = mapping.get(key, "")
+    if attr == "":
+        raise ValueError(f"unsupported timeframe for live mode: {timeframe}")
+    value = getattr(mt5, attr, None)
+    if value is None:
+        raise ValueError(f"unsupported timeframe for live mode: {timeframe}")
+    return int(value)
 
 
 @dataclass
@@ -877,7 +939,7 @@ class BotConfig:
             )
         return cls(
             symbol=str(data.get("symbol", "XAUUSD")),
-            timeframe=str(data.get("timeframe", "M5")),
+            timeframe=_normalize_timeframe_label(str(data.get("timeframe", "M5"))),
             bars=int(data.get("bars", 300)),
             fast_ema=int(data.get("fast_ema", 20)),
             slow_ema=int(data.get("slow_ema", 80)),
@@ -1393,8 +1455,15 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
         open_positions=open_positions,
         max_positions=config.max_positions,
     ):
+        if spread_points > config.max_spread_points:
+            blocked_reason = "spread"
+        elif open_positions >= config.max_positions:
+            blocked_reason = "max_positions"
+        else:
+            blocked_reason = "spread_or_max_positions"
         return {
             "action": "BLOCKED",
+            "reason": blocked_reason,
             "symbol": config.symbol,
             "signal": signal,
             "regime": regime,
@@ -1443,6 +1512,7 @@ def _parse_args() -> argparse.Namespace:
         help="Path to JSON config file (default: auto-select active/tuned config)",
     )
     parser.add_argument("--live", action="store_true", help="Enable live order sending")
+    parser.add_argument("--mode", choices=["live", "research"], default="live", help="Execution contract mode")
     parser.add_argument("--loop", action="store_true", help="Run continuously on new bars")
     parser.add_argument("--poll-seconds", type=int, default=0, help="Polling interval in seconds")
     parser.add_argument("--max-cycles", type=int, default=-1, help="Stop after N loop cycles (0 = unlimited)")
@@ -1562,14 +1632,22 @@ def main() -> None:
     config_path = resolve_config_path(args.config)
     raw = _load_config(config_path)
     config = BotConfig.from_dict(raw)
+
+    if args.live and str(args.mode) == "research":
+        raise ValueError("unsupported combination: --live with --mode research")
+
     if args.live:
         config.dry_run = False
+    if str(args.mode) == "research":
+        config.dry_run = True
     if args.loop:
         config.once = False
     if args.poll_seconds > 0:
         config.poll_seconds = args.poll_seconds
     if args.max_cycles >= 0:
         config.max_cycles = args.max_cycles
+
+    config.timeframe = validate_runtime_timeframe_contract(config.timeframe, mode=str(args.mode))
     run(config, config_path=config_path)
 
 

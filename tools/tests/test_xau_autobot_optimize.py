@@ -1,6 +1,7 @@
 import unittest
+from unittest import mock
 
-from tools.xau_autobot_optimize import candidate_to_config, interval_to_timeframe, score_candidate
+from tools.xau_autobot_optimize import _load_ohlc, candidate_to_config, interval_to_timeframe, score_candidate
 
 
 class TestXauAutoBotOptimize(unittest.TestCase):
@@ -72,14 +73,65 @@ class TestXauAutoBotOptimize(unittest.TestCase):
 
     def test_interval_to_timeframe_maps_supported_values(self):
         self.assertEqual(interval_to_timeframe("5m"), "M5")
+        self.assertEqual(interval_to_timeframe("m20"), "M20")
+        self.assertEqual(interval_to_timeframe("m45"), "M45")
         self.assertEqual(interval_to_timeframe("15m"), "M15")
         self.assertEqual(interval_to_timeframe("60m"), "H1")
         self.assertEqual(interval_to_timeframe("1h"), "H1")
+        self.assertEqual(interval_to_timeframe("h2"), "H2")
+        self.assertEqual(interval_to_timeframe("h3"), "H3")
         self.assertEqual(interval_to_timeframe("4h"), "H4")
+        self.assertEqual(interval_to_timeframe("m60"), "H1")
+        self.assertEqual(interval_to_timeframe("h4"), "H4")
+        self.assertEqual(interval_to_timeframe("1d"), "D1")
+        self.assertEqual(interval_to_timeframe("d1"), "D1")
+        self.assertEqual(interval_to_timeframe("1wk"), "W1")
+        self.assertEqual(interval_to_timeframe("w1"), "W1")
+        self.assertEqual(interval_to_timeframe("1mo"), "MN")
+        self.assertEqual(interval_to_timeframe("month"), "MN")
+        self.assertEqual(interval_to_timeframe("h5"), "H5")
 
     def test_interval_to_timeframe_rejects_unsupported_value(self):
         with self.assertRaises(ValueError):
-            interval_to_timeframe("2h")
+            interval_to_timeframe("7m")
+
+    def test_candidate_to_config_allows_extended_research_timeframes(self):
+        candidate = (24, 140, 0.2, 1.5, 2.5, 7, 19, 0.9, 1.4)
+        d1 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="D1")
+        w1 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="W1")
+        mn = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="MN")
+        h5 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="H5")
+        h2 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="H2")
+        h3 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="H3")
+        m20 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="M20")
+        m45 = candidate_to_config(candidate, magic=560099, comment="xau_autobot_opt", timeframe="M45")
+        self.assertEqual(d1["timeframe"], "D1")
+        self.assertEqual(w1["timeframe"], "W1")
+        self.assertEqual(mn["timeframe"], "MN")
+        self.assertEqual(h5["timeframe"], "H5")
+        self.assertEqual(h2["timeframe"], "H2")
+        self.assertEqual(h3["timeframe"], "H3")
+        self.assertEqual(m20["timeframe"], "M20")
+        self.assertEqual(m45["timeframe"], "M45")
+
+    def test_load_ohlc_forwards_mt5_csv_source_to_data_loader(self):
+        expected = (["t"], [1.0], [1.1], [0.9], [1.0])
+        with mock.patch("tools.xau_autobot_optimize.load_ohlc", return_value=expected) as loader:
+            out = _load_ohlc(
+                "XAUUSD",
+                "365d",
+                "m45",
+                data_source="mt5_csv",
+                source_csv="/tmp/xau_m15.csv",
+            )
+        loader.assert_called_once_with(
+            ticker="XAUUSD",
+            period="365d",
+            interval="m45",
+            data_source="mt5_csv",
+            source_csv_path="/tmp/xau_m15.csv",
+        )
+        self.assertEqual(out, expected)
 
 
 if __name__ == "__main__":

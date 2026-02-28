@@ -2,6 +2,7 @@ import unittest
 import tempfile
 import os
 import json
+from types import SimpleNamespace
 from unittest import mock
 from pathlib import Path
 from datetime import datetime, timezone
@@ -32,9 +33,11 @@ from tools.xau_autobot import (
     should_send_wait_summary_notification,
     runtime_journal_path_from_env,
     validate_trade_comment,
+    validate_runtime_timeframe_contract,
     wait_reason_key,
     volatility_filter_pass,
     update_runtime_metrics,
+    _tf_to_mt5,
 )
 
 
@@ -656,6 +659,47 @@ class TestXauAutoBotConfig(unittest.TestCase):
             self.assertTrue(guard.enabled)
             self.assertEqual(guard.min_streak, 3)
             self.assertEqual(guard.max_report_age_hours, 12.0)
+
+
+class TestXauAutoBotTimeframeMapping(unittest.TestCase):
+    def _fake_mt5(self, *, with_m20: bool = True):
+        payload = {
+            "TIMEFRAME_M1": 1,
+            "TIMEFRAME_M5": 5,
+            "TIMEFRAME_M15": 15,
+            "TIMEFRAME_M30": 30,
+            "TIMEFRAME_H1": 60,
+            "TIMEFRAME_H4": 240,
+        }
+        if with_m20:
+            payload["TIMEFRAME_M20"] = 20
+        return SimpleNamespace(**payload)
+
+    def test_tf_to_mt5_supports_m20(self):
+        fake_mt5 = self._fake_mt5(with_m20=True)
+        with mock.patch.object(xau_autobot_module, "mt5", fake_mt5):
+            self.assertEqual(_tf_to_mt5("M20"), 20)
+            self.assertEqual(_tf_to_mt5("m20"), 20)
+
+    def test_tf_to_mt5_rejects_unknown_label(self):
+        fake_mt5 = self._fake_mt5(with_m20=True)
+        with mock.patch.object(xau_autobot_module, "mt5", fake_mt5):
+            with self.assertRaises(ValueError):
+                _tf_to_mt5("M45")
+
+    def test_tf_to_mt5_fail_closed_when_constant_is_missing(self):
+        fake_mt5 = self._fake_mt5(with_m20=False)
+        with mock.patch.object(xau_autobot_module, "mt5", fake_mt5):
+            with self.assertRaises(ValueError):
+                _tf_to_mt5("M20")
+
+    def test_validate_runtime_timeframe_contract_rejects_research_tf_in_live_mode(self):
+        with self.assertRaises(ValueError):
+            validate_runtime_timeframe_contract("H2", mode="live")
+
+    def test_validate_runtime_timeframe_contract_rejects_research_tf_in_research_mode(self):
+        with self.assertRaises(ValueError):
+            validate_runtime_timeframe_contract("H5", mode="research")
 
 
 class _FakeGateway:

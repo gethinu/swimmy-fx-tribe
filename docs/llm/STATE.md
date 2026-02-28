@@ -153,6 +153,661 @@
     - `alpha3_r3a`: `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.06190907834490741`, `closed_positions=0`
   - 月次判定は `NO_GO` 継続（`failed_window_days/failed_closed_positions/failed_profit_factor/failed_win_rate/failed_net_profit/actual_monthly_below_target`）。
   - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.51 monitor-only再同期 #19（2026-02-27 22:41 JST）**:
+  - 実稼働3run（`r3u_h1/r2v_h1/alpha3_r3a`）を run専用 runtime journal で再評価し、監査 `refresh9` と集約を再同期。
+  - 更新成果物:
+    - `xau_autobot_operational_audit_20260227_r3u_h1_refresh9.json`
+    - `xau_autobot_operational_audit_20260227_r2v_h1_refresh9.json`
+    - `xau_autobot_operational_audit_20260227_alpha3_r3a_refresh9.json`
+    - `v50_8_run_refresh_20260227_2241.json`
+  - 最新実測:
+    - `r3u_h1`: `trial_valid=true`, `verdict=NO_GO`, `window_days=0.5797619560300926`, `closed_positions=3`, `PF=0.6481`, `net_profit=-860`
+    - `r2v_h1`: `trial_valid=true`, `verdict=NO_GO`, `window_days=0.5659113637847222`, `closed_positions=23`, `PF=1.0182`, `net_profit=+126`
+    - `alpha3_r3a`: `trial_valid=false`, `verdict=INVALID_TRIAL`, `window_days=0.07554202921296296`, `closed_positions=0`
+  - 監査（3日窓）:
+    - `r3u_h1`: `status=FAIL`, `gap_reject_rate=0.01053740779768177`, `tp_sl_ratio=0.5`, `expectancy=-286.6667`
+    - `r2v_h1`: `status=WARN`, `gap_reject_rate=0.010626992561105207`, `tp_sl_ratio=0.7692307692307693`, `expectancy=5.4783`
+    - `alpha3_r3a`: `status=FAIL`, `runtime_metrics_source=live_report.runtime_metrics`, `runtime_metrics_fallback_reason=journal_snapshot_count_zero`
+  - 月次判定は `NO_GO` 継続（`failed_window_days/failed_closed_positions/failed_profit_factor/failed_win_rate/failed_net_profit/actual_monthly_below_target`）。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.52 live単独運用への縮退契約（2026-02-27）**:
+  - 目的: 直近実測で `r3u_h1` の性能劣化（`PF<1.0` かつ `net<0`）が継続したため、同時稼働リスクを下げる。
+  - 契約:
+    - live稼働は `trial_v2_20260227_v50_8_30d_r2v_h1` を正本runとする。
+    - `trial_v2_20260227_v50_8_30d_r3u_h1` と `trial_v2_20260227_alpha3_r3a` は live loop 停止（必要時のみ手動再開）。
+    - `data/reports/xau_autobot_trial_v2_current_run.json` は `r2v_h1` を指す。
+  - 判定系:
+    - `r2v_h1` の trial/judge は継続するが、`monthly_decision` 判定基準（3%/5%、min_days/min_pf等）は変更しない。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.53 live loop self-heal 契約（2026-02-27）**:
+  - 目的: Windows 側 `xau_autobot_live_loop.ps1 -Live` の欠落/多重を手動介入なしで収束させ、実行基盤の再現性を維持する。
+  - 契約:
+    - `tools/xau_autobot_live_loop_guard.py` を正本化し、期待run集合を run meta（既定 `xau_autobot_trial_v2_current_run.json` / `..._r2.json`、`..._r3.json` は `--include-r3` または `XAU_AUTOBOT_LIVE_GUARD_INCLUDE_R3=1` 時のみ）から解決する。
+    - 期待集合は `trial_config` 単位で正規化し、Windows の `powershell.exe ... xau_autobot_live_loop.ps1 ... -Live` 実プロセスを `config` ごとに照合する。
+    - 欠落（0件）は `xau_autobot_live_loop.ps1 -Live` を再起動し、多重（2件以上）は先頭1件を残して余剰を停止する。
+    - ガード結果は `data/reports/xau_autobot_live_loop_guard_latest.json` に保存し、`missing/duplicate/restarted/terminated` を可観測化する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.54 探索枠再開契約（2026-02-27）**:
+  - ユーザー指示により探索枠を再開し、`alpha3` 系は `r3a` から `r3b` へ切替える。
+  - 正本判定runは `r2v_h1` のまま維持し、探索枠の `trial/judge/audit` は判定正本から分離して運用する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.55 timeframe整合是正 + 広時間軸alpha探索契約（2026-02-27）**:
+  - 目的:
+    - `run_id` 命名と実際の `config.timeframe` の不一致（`r2v_h1` が `M5`）を是正する。
+    - `H4/D1/W1/MN` と `M60/H5` を含む時間軸探索で alpha 候補を拡張する。
+  - 契約:
+    - 運用run命名は `config.timeframe` 実値と一致させる（不一致ラベルを正本から除去）。
+    - 広時間軸探索は研究経路（`xau_autobot_optimize` / `xau_autobot_readiness`）で実施し、成果物は `data/reports` に集約する。
+    - データ取得互換として `H4` は `4h` で正規化し、`240m` 直指定による provider 非対応エラーを避ける。
+    - 非標準時間軸（例: `H5`）は研究評価を許容し、live投入可否は実行経路サポートと既存Go/No-Go基準で別判定する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.56 探索枠再開実施（alpha3_r3b, 2026-02-27 23:06 JST）**:
+  - `current_run_r3` を `trial_v2_20260227_alpha3_r3b` へ更新し、`r2v_h1` 本線を維持したまま `alpha3_r3b` を live 再開。
+  - 生成成果物:
+    - `data/reports/xau_autobot_live_report_trial_v2_20260227_alpha3_r3b.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260227_alpha3_r3b.json`
+    - `data/reports/xau_autobot_operational_audit_20260227_alpha3_r3b_refresh10.json`
+    - `data/reports/xau_autobot_operational_audit_20260227_alpha3_r3b_refresh10_now1606.json`
+    - `data/reports/v50_8_run_refresh_20260227_2306_r2v_alpha3r3b.json`
+  - 最新実測:
+    - Windows 実行系: `powershell=1`, `python=2`（`r2v_h1` + `alpha3_r3b`）
+    - `alpha3_r3b` live: `closed_positions=0`, `PF=0.0`, `win_rate=0.0`, `net_profit=0.0`, `gate_check_count=2`, `gap_reject_rate=0.0`
+    - judge: `trial_valid=false`, `verdict=INVALID_TRIAL`, `invalid_reasons={after_magic_filter, after_comment_prefix_filter}`, `window_days=0.002221914861111111`
+    - audit:
+      - `refresh10`: `status=FAIL`, `runtime_metrics_source=live_report.runtime_metrics`, `runtime_metrics_fallback_reason=journal_snapshot_count_zero`
+      - `refresh10_now1606`: `status=FAIL`, `runtime_metrics_source=journal`, `snapshot_count=8`, `gate_check_count=1`
+  - 判定:
+    - 観測/監査成果物は再開したが、`closed_positions=0` により readiness 未成立（`INVALID_TRIAL` 継続）。
+    - `runtime_metrics` timestamp と audit `now_utc` の整合ズレが残り、fallback 経路が発火し得る。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.57 変則時間足探索契約（M20/M45/H2/H3, 2026-02-27）**:
+  - 目的:
+    - `M5/H1` 固定探索から拡張し、`M20/M45/H2/H3` を研究経路（optimize/readiness）で比較可能にする。
+  - 契約:
+    - `tools/xau_autobot_data.py` の interval alias 正規化で、非provider足を下位足 resample に落として取得する。
+      - `M20 -> 5m x4`
+      - `M45 -> 15m x3`
+      - `H2 -> 60m x2`
+      - `H3 -> 60m x3`
+    - `tools/xau_autobot_optimize.py` の interval->timeframe 変換は上記4足を受理し、探索configへ反映する。
+    - 本契約は研究経路限定で、live投入可否は既存 Go/No-Go と実行系対応（MT5 timeframe対応）で別判定する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.58 変則時間足探索実施（M20/M45/H2/H3, 2026-02-27 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_data.py` に `m20/m45/h2/h3`（および `20m/45m/2h/3h/120m/180m`）の alias+resample を追加。
+    - `tools/xau_autobot_optimize.py` の interval->timeframe 変換と許容timeframeを `M20/M45/H2/H3` まで拡張。
+  - 回帰:
+    - `./.venv/bin/python -m unittest tools.tests.test_xau_autobot_data tools.tests.test_xau_autobot_optimize`
+    - `19 tests OK`。
+  - 生成成果物:
+    - optimize: `xau_autobot_optimize_20260227_tfscan2_{m20,m45,h2,h3}_60d.jsonl`
+    - readiness: `xau_autobot_readiness_20260227_tfscan2_{m20,m45,h2,h3}_cfg60_eval{45d,60d}.json`
+    - 集約: `xau_autobot_alpha_scan_20260227_tfscan2_midtf.json`
+  - 実測（45d/60d robust最小値）:
+    - `m20`: `pf_min=1.2175`, `return_min=0.0253`, `trades_min=26`, `max_dd_max=0.0487`
+    - `m45`: `pf_min=2.2377`, `return_min=0.0518`, `trades_min=10`
+    - `h2`: `pf_min=1.3024`, `return_min=0.0123`, `trades_min=6`
+    - `h3`: `pf_min=99.0`, `return_min=0.0477`, `trades_min=2`
+  - 判定:
+    - 件数フロア `trades_min>=20` では `m20` のみが信頼候補。
+    - `m45/h2/h3` は高PF表示でもサンプル不足のため探索継続（live判定対象外）。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.57 広時間軸alpha探索実施（2026-02-27 UTC）**:
+  - 実施:
+    - `m60/h4/h5/d1/w1/month` で `xau_autobot_optimize + readiness` を実行し、`data/reports/xau_autobot_alpha_scan_20260227_tfscan.json` へ集約。
+    - 上位4時間軸（`h5/d1/h4/m60`）は split 比率変更（`0.55/0.65/0.75`）の stress 再評価を実施し、`data/reports/xau_autobot_alpha_scan_20260227_tfscan_stress.json` を生成。
+  - 実測:
+    - 月利換算順位: `h5 (1.645%) > d1 (0.792%) > h4 (0.724%) > m60 (0.348%) > month (0.160%) > w1 (0.151%)`
+    - 保守（stress込み）順位: `h4 > m60 > h5 > d1 > w1 > month`
+    - `h4` は `oos_min_trades=15`・`PF=1.506`・`trades=68` で安定性が相対的に高い。
+  - 判定:
+    - 時間軸探索の次段は `h4` を安定重視の第一候補、`h5` をアップサイド候補として継続。
+    - `w1/month` は取引件数不足で採用保留。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.58 h4/h5 広帯域再探索契約（2026-02-27 UTC）**:
+  - 目的:
+    - ユーザー選択（Option 3）に基づき、`h4/h5` のパラメータ探索帯を拡張して alpha 発見確率を上げる。
+  - 契約:
+    - 対象は研究経路（`xau_autobot_optimize` / `xau_autobot_readiness`）に限定し、live正本runは即時変更しない。
+    - `h4/h5` それぞれで拡張グリッド最適化を実施し、`monthly_est` と `stress分割` を併記して比較する。
+    - 採用候補は「月利上位」と「安定性上位」を分離して提示する（単一指標に固定しない）。
+  - 実施:
+    - 拡張グリッド（`candidate_count=6912`）で `h4/h5` を再最適化し、`optimize/readiness(base+stress)` を再生成。
+    - 成果物:
+      - `xau_autobot_optimize_20260227_h4h5_wide2_{h4,h5}.jsonl`
+      - `xau_autobot_readiness_20260227_h4h5_wide2_{h4,h5}.json`
+      - `xau_autobot_readiness_20260227_h4h5_wide2_{h4,h5}_stress.json`
+      - `xau_autobot_alpha_scan_20260227_h4h5_wide2_summary.json`
+  - 実測（baseline tfscan 比較）:
+    - `h4`:
+      - `monthly_est: 0.724% -> 1.103%`（`+0.378%`）
+      - `PF: 1.506 -> 1.777`
+      - `trades: 68 -> 58`
+      - `merged_oos_min_trades: 15 -> 8`（安定性は悪化）
+    - `h5`:
+      - `monthly_est: 1.645% -> 1.654%`（`+0.009%`）
+      - `PF: 3.444 -> 3.472`
+      - `trades: 34 -> 34`（同等）
+      - `merged_oos_min_trades: 6 -> 6`（同等）
+  - 判定:
+    - `h5` はアップサイド指標で微改善。
+    - `h4` は月利/PF改善と引き換えに OOS 最小取引数が悪化し、安定性は後退。
+    - live 正本は据え置き、`h4=安定系(旧候補保持)` と `h5=上振れ探索(新候補)` を分離運用する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.59 trial_eval live loop guard 接続実装（2026-02-27）**:
+  - 目的:
+    - `P5.53` の self-heal guard を日次評価フローへ接続し、`trial_v2_eval` 実行時に live-loop 欠落/多重を自動収束させる。
+  - 実装:
+    - `tools/xau_autobot_trial_v2_eval.sh` に `run_live_loop_guard_once()` を追加し、live report 前に `tools/xau_autobot_live_loop_guard.py` を実行する。
+    - 既定は `enabled`（`XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=1`）で、`=0` で明示停止できる。
+    - `XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_INCLUDE_R3=1` のときのみ `--include-r3` を付与する。
+    - guard失敗時の既定は fail-open（`WARN + 評価継続`）とし、`XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_FAIL_ON_ERROR=1` 時のみ fail-closed とする。
+  - 回帰:
+    - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot_trial_v2_eval.py -k live_loop_guard` -> `3 passed`
+    - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot_trial_v2_eval.py` -> `11 passed`
+    - `./.venv/bin/python -m unittest tools.tests.test_xau_autobot_live_loop_guard tools.tests.test_xau_autobot_trial_watchdog` -> `10 tests OK`
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.60 3案同時実行契約（2026-02-27 UTC）**:
+  - 目的:
+    - ユーザー指示「ぜんぶやって」に基づき、以下を同時実行する。
+      - A: `h5_wide2` を exploration run へ投入
+      - B: `h4(旧安定候補)` と `h5_wide2` の並走
+      - C: `h4 strict (min OOS trades=45)` の再探索
+  - 契約:
+    - live 構成は `primary + secondary + r3` の3runを正本とし、`r2` に `h4安定`、`r3` に `h5_wide2` を割り当てる。
+    - run混線防止のため `magic/comment` を分離した trial config を新規作成する。
+    - `xau_autobot_live_loop_guard.py --include-r3` で process 収束（欠落再起動/多重停止）を実施する。
+    - `h4 strict` は研究経路で評価し、live正本切替は `trial/judge` の成立後に別判定とする。
+  - 実施:
+    - trial config追加:
+      - `xau_autobot.trial_v2_20260227_h4_stable_tfscan.json`（`magic=560422`, `comment=xh4stb_260227a`）
+      - `xau_autobot.trial_v2_20260227_h5_wide2_exp.json`（`magic=560423`, `comment=xh5w2_260227a`）
+    - run meta更新:
+      - `xau_autobot_trial_v2_current_run_r2.json` -> `trial_v2_20260227_h4_stable_tfscan`
+      - `xau_autobot_trial_v2_current_run_r3.json` -> `trial_v2_20260227_h5_wide2_exp`
+    - `xau_autobot_live_loop_guard.py --include-r3` で収束し、`expected_config_counts_post` が `primary/r2/r3 = 1/1/1` を確認。
+    - Option3 として `h4 strict (min-oos-trades=45)` を実行し、`xau_autobot_optimize_20260227_h4_strict45.jsonl` / `xau_autobot_readiness_20260227_h4_strict45*.json` を生成。
+  - 実測:
+    - `primary (trial_v2_20260227_v50_8_30d_r2v_m5)`:
+      - judge: `NO_GO`, `trial_valid=true`, `window_days=1.1201`, `closed=38`, `PF=0.5053`, `net=-10185`
+      - audit: `status=FAIL`
+    - `r2 (trial_v2_20260227_h4_stable_tfscan)`:
+      - judge: `INVALID_TRIAL`, `trial_valid=false`, `window_days=0.001185`, `closed=0`
+      - audit: `status=INSUFFICIENT_DATA`
+    - `r3 (trial_v2_20260227_h5_wide2_exp)`:
+      - judge: `INVALID_TRIAL`, `trial_valid=false`, `window_days=0.001232`, `closed=0`
+      - audit: `status=INSUFFICIENT_DATA`
+    - `h4 strict45`（研究評価）:
+      - `monthly_est=1.049%`, `PF=1.973`, `trades=46`, `oos_min_trades=9`
+      - baseline h4 대비 `monthly/PF` は改善するが `oos_min_trades` は `15 -> 9` へ悪化。
+    - `h5_wide2` live投入試行:
+      - `r3=h5_wide2_exp` は `live_loop_guard --dry-run` で継続的に `DEGRADED`（`h5` loop 欠落）を検知。
+      - 現行 live 実行経路では `H5` が未対応のため、`h5` は research-only として保持。
+      - fail-closed 対応として `r3` を `h4_strict45_exp` へ切替え、`primary/r2/r3=1/1/1` の `HEALTHY` 収束を確認。
+  - 判定:
+    - 3案の実行は完了。
+    - ただし `r2/r3` は開始直後で sample 不足、`primary` も `NO_GO` のため live 切替判定は保留。
+    - `h4 strict45` は PF 改善効果はあるがサンプル厚み不足を解消できず、研究候補として保持。
+    - `h5` は現行では research-only（live投入は実行経路拡張後に再判定）。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.61 M20本線化に向けたlive timeframe拡張契約（2026-02-28 UTC）**:
+  - 背景:
+    - `r2v_m5` は `PF/WR/net` が悪化し、監査 `status=FAIL` が継続している。
+    - `tfscan2_midtf` の信頼フロア（`trades_min>=20`）で候補成立するのは `m20` のみ。
+  - 契約:
+    - `tools/xau_autobot.py` の live実行経路で `timeframe=M20` を受理し、MT5 `TIMEFRAME_M20` へマップ可能にする。
+    - 未知timeframe、または runtime MT5 パッケージが該当 `TIMEFRAME_*` 定数を持たない場合は `ValueError` で fail-closed 維持。
+    - 既存受理足（`M1/M5/M15/M30/H1/H4`）の挙動は後方互換を維持する。
+  - `INTERFACES.md` 更新あり（xau_autobot live timeframe受理契約 / optimize mapping 契約の明文化）。
+- **V50.8-P5.62 M20 live実行対応 + E1中庸config作成（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot.py` の `_tf_to_mt5()` を拡張し、`M20` を `TIMEFRAME_M20` へマップ。
+    - `timeframe -> TIMEFRAME_*` 変換を属性名ベースに変更し、runtimeで該当定数が欠損している場合も `ValueError("unsupported timeframe: ...")` で fail-closed を維持。
+  - 回帰（TDD）:
+    - 追加テスト: `tools/tests/test_xau_autobot.py::TestXauAutoBotTimeframeMapping`
+      - `M20` 受理
+      - 未知足（`M45`）拒否
+      - `TIMEFRAME_M20` 欠損時 fail-closed
+    - 検証:
+      - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot.py -k "tf_to_mt5 or TimeframeMapping"` -> `3 passed`
+      - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot.py` -> `57 passed`
+  - E1中庸config:
+    - `tools/configs/xau_autobot.trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` を追加（`timeframe=M20`, `session=06-22`, `atr_ratio=0.85-1.55`, `ema_gap=0.12-1.8`, `pullback=0.25`, `sl/tp=1.7/2.6`, `hybrid`）。
+  - 事前検証（readiness）:
+    - `data/reports/xau_autobot_readiness_20260228_r2v_m20_e1_eval45d.json`
+      - `verdict=NO_GO`, `trades=121`, `PF=0.8680`, `return=-3.47%`, `max_dd=6.38%`
+    - `data/reports/xau_autobot_readiness_20260228_r2v_m20_e1_eval60d.json`
+      - `verdict=NO_GO`, `trades=148`, `PF=0.7729`, `return=-7.11%`, `max_dd=8.58%`
+  - 判定:
+    - M20 live実行そのものは技術的に可能になったが、今回の「中庸固定値」は過去45/60dでは優位性不足。
+    - 本線切替は `paper forward` で 3d/7d gate を確認してから判定する。
+- **V50.8-P5.63 M5停止 + M20(E1) 14日forward開始契約（2026-02-28 UTC）**:
+  - 目的:
+    - 本線を `r2v_m5` から `r2v_m20_e1` へ切替え、14日 forward 観測を開始する。
+  - 契約:
+    - primary run meta（`xau_autobot_trial_v2_current_run.json` / `..._r1.json`）は `trial_v2_20260228_v50_8_14d_r2v_m20_e1` を正本とする。
+    - 既存 `r2v_m5` live loop は停止し、primary の重複起動を残さない。
+    - `trial_v2_start.sh` で `trial_live=1` を維持したまま、config は `xau_autobot.trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` を使用する。
+    - 切替直後の評価は `INVALID_TRIAL` を許容し、3日観測（Observability/Readiness）を優先する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.64 M20 primary cutover実施（2026-02-28 UTC）**:
+  - 実施:
+    - `r2v_m5` primary live loop を停止し、`trial_v2_start.sh` で `trial_v2_20260228_v50_8_14d_r2v_m20_e1` を primary 起動。
+    - run meta を同期:
+      - `data/reports/xau_autobot_trial_v2_current_run.json`
+      - `data/reports/xau_autobot_trial_v2_current_run_r1.json`
+    - 初期評価を生成:
+      - `data/reports/xau_autobot_live_report_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+      - `data/reports/xau_autobot_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+      - `data/reports/xau_autobot_operational_audit_20260228_r2v_m20_e1_refresh1_now0355.json`
+      - mirror: `data/reports/v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+      - cutover refresh: `data/reports/v50_8_run_refresh_20260228_0358_r2v_m20_cutover.json`
+  - 実測:
+    - process: `m20_primary_config=1`, `legacy_m5_primary_config=0`
+    - judge: `verdict=INVALID_TRIAL`, `window_days=0.0006450487731481481`, `closed_positions=0`
+    - audit: `status=INSUFFICIENT_DATA`, `runtime_snapshot_count=6`, `runtime_metrics_source=journal`
+  - 判定:
+    - `M5 -> M20` の primary 切替は完了。
+    - 現時点は開始直後で観測不足のため、3日 gate（observability/readiness）まで継続観測とする。
+- **V50.8-P5.65 案A research-only正本化（M45/H2/H5/H3, 2026-02-28 UTC）**:
+  - 正本パラメータ:
+    - `CANONICAL_PLAN = A`
+    - `ENTRY_ORDER = M45 -> H2 -> H5 -> H3`
+    - `LIVE_ACCEPT_TF = [M1,M5,M15,M20,M30,H1,H4]`
+    - `RESEARCH_ACCEPT_TF = [M45,H2,H3,H5]`
+    - `PER_STRATEGY_JUDGE_MODE = rolling_45d (M45/H2), rolling_60d (H3/H5)`
+    - `PORTFOLIO_KPI_MODE = monthly_only (月利3%/5%)`
+    - `RISK_INTERFACE = portfolio同時保有上限2`
+  - 研究運用契約:
+    - `M45/H2/H3/H5` は optimize/readiness + judge/audit の research 経路で比較し、live 実行経路へは投入しない。
+    - `tools/xau_autobot.py` は live mode で `M45/H2/H3/H5` を fail-closed 拒否し、誤投入を防止する。
+  - PROMOTION_GATE（option2 着手条件）:
+    - `M45/H2` が rolling window で `PF>=1.20` かつ `net>0` かつ `DD<=7%` を満たし、
+      `closed>=8 (M45)` / `closed>=6 (H2)` を達成した場合のみ live拡張検討へ進む。
+  - INTERFACES 更新あり（`xau_autobot.py` mode/timeframe 契約、`trial_judge` rolling mode、`operational_audit` profile 契約）。
+- **V50.8-P5.66 research観測欠損是正（2026-02-28 UTC）**:
+  - 目的:
+    - research batch で `audit=INSUFFICIENT_DATA` が頻発する原因（`gap_reject_rate` 欠損）を解消し、Plan A の rolling 判定を再現性ある形で監査可能にする。
+  - 契約:
+    - research 実行は runtime journal 出力を既定 ON とし、最低限 `signal_eval_count/gap_reject_count/spread_reject_count/session_reject_count/maxpos_reject_count` を記録する。
+    - `gap_reject_rate` は `gap_reject_count / signal_eval_count` を正本分母として扱う（旧 schema は `gate_check_count` 互換を維持）。
+    - 非標準TF（特に `M45/H5`）の再集約は `RESAMPLE_ANCHOR=UTC_00:00`, `RESAMPLE_OFFSET_MINUTES=0` を正本契約として固定する。
+  - 期待効果:
+    - 研究結果の `gap_reject_rate` がN/A化せず、同一configの環境差（バー境界差）による再現不能リスクを抑制する。
+  - INTERFACES 更新あり（`xau_autobot_data.py` resample anchor 契約、`xau_autobot_readiness.py` runtime journal 契約、`trial_v2_eval` effective 判定出力）。
+- **V50.8-P5.67 M45/H2 収益実用バッチ契約（2026-02-28 UTC）**:
+  - 目的:
+    - 「観測できる研究」から「稼ぐ検証」へ移行し、`M45 v1/v1.1` と `H2 v1/v2` の実用性を `180d` で比較する。
+  - 契約:
+    - 比較対象4本を同一データ条件（`ticker=GC=F`, `period=180d`, `assumed_cost_side=0.0002`）で同時実行する。
+    - 判定窓は `rolling_45d` を 5窓（スライド）で評価し、各窓 `PF/closed/maxDD/net` を記録、採用判定は `min PF` を主指標にする。
+    - `H2 v2` の reversion 絞り込みは research-only 契約として `reversion_max_atr_ratio_to_median` と `reversion_max_ema_gap_over_atr` を追加し、hybrid の reversion 発火を条件付き許可にする。
+  - INTERFACES 更新あり（`xau_autobot_readiness.py` research-only hybrid reversion guard 契約）。
+- **V50.8-P5.68 M45/H2 比較バッチ実施（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_readiness.py` に research-only hybrid reversion guard 実装（`reversion_max_atr_ratio_to_median`, `reversion_max_ema_gap_over_atr`）。
+    - 新規 config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m45_trendcore_v1_1.json`
+      - `tools/configs/xau_autobot.trial_v2_20260228_h2_hybrid_v2.json`
+  - 回帰:
+    - `pytest`（xau_autobot 系主要8ファイル）で `139 passed`。
+  - 比較実行:
+    - `180d` 比較結果: `data/reports/xau_autobot_research_summary_20260228_profit_batch_180d_m45h2_compare_v2.json`
+    - `60d` 比較結果: `data/reports/xau_autobot_research_summary_20260228_profit_batch_60d_m45h2_compare_v2.json`
+    - `60d trailing` 比較結果: `data/reports/xau_autobot_research_summary_20260228_profit_batch_60d_m45h2_compare_trailing_v2.json`
+  - 実測:
+    - `180d` は provider 制約で `M45(15m)` が実データ `bars=77, coverage_days=2.594` に縮退し、`m45_pair` は `no_active_windows`（比較不能）。
+    - `180d` の `H2` は成立し、`min_pf_active` 基準で `h2_v2` が `h2_v1` を上回る（`h2_v2=1.9994`、`h2_v1=0.0`）。
+    - `60d trailing` では `m45_v1_1` が `m45_v1` を上回る（`min_pf_active=3.4798`、`active_window_count=5`）一方、`gap_reject_rate=0.8165` で目標 `<=0.70` は未達、`min_closed_active=3` で件数目標も未達。
+    - `60d trailing` の `H2` は `h2_v2` が `h2_v1` を上回る（`min_pf_active=1.4975` vs `0.9230`、`gap_reject_rate=0.6242` vs `0.7974`）が、`min_closed_active=4` で件数目標（`>=10`）は未達。
+  - 判定:
+    - `M45/H2` の「180d rolling 4-5窓同時比較」は、現データ供給（Yahoo intraday）では `M45` が成立しないため、データソース拡張（MT5/export等）なしでは完遂不可。
+- **V50.8-P5.69 MT5 M15 long-source再評価契約（2026-02-28 UTC）**:
+  - 目的:
+    - `M45` の `180d rolling_45d` を成立させるため、research データソースを Yahoo から MT5/export 由来の `M15` 長期ソースへ切替える。
+  - 契約:
+    - `xau_autobot_data.py` は research 用に `data_source=mt5_csv` を受理し、`period` 末尾窓を切り出して評価に使用する。
+    - 入力CSVは `timestamp,open,high,low,close`（追加列は無視）を受理し、非標準TFは既存契約 `RESAMPLE_ANCHOR=UTC_00:00` / `RESAMPLE_OFFSET_MINUTES=0` で再集約する。
+    - `optimize/readiness` は `--data-source mt5_csv --source-csv <path>` を受理し、`source-csv` 未指定時は fail-closed とする。
+  - 実行ターゲット:
+    - `M45 v1/v1.1/v1.2` と `H2 v2` を同一データ（XAUUSD, M15, 240d/365d）で rolling 評価し、`min PF(active)` と全窓条件で採用判定する。
+  - INTERFACES 更新あり（`xau_autobot_data.py`, `xau_autobot_optimize.py`, `xau_autobot_readiness.py` の data-source 契約）。
+- **V50.8-P5.70 MT5 M15 long-source実施（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_data.py` に research専用 `data_source=mt5_csv` を追加。
+      - `source_csv_path` から `timestamp,open,high,low,close` を読込（追加列は無視）。
+      - `period` 末尾窓で切り出し後、既存 `UTC_00:00` アンカー契約で `M45/H2/H3/H5` 再集約を継続。
+    - `tools/xau_autobot_optimize.py` / `tools/xau_autobot_readiness.py` に
+      `--data-source {auto,yahoo,mt5_csv}` / `--source-csv` を追加（`mt5_csv` で未指定時 fail-closed）。
+    - 比較用 config を追加:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m45_trendcore_v1_2.json`
+  - データ取得:
+    - Windows MT5 から `XAUUSD M15` を `365d` export し、
+      `data/historical/XAUUSD_M15_mt5_365d.csv`（`rows=23519`）を生成。
+    - 範囲: `2025-02-28T07:15:00Z` ～ `2026-02-27T23:45:00Z`。
+  - 回帰:
+    - `pytest`（xau_autobot系主要8ファイル）で `144 passed`。
+  - 比較実行:
+    - `data/reports/xau_autobot_research_summary_20260228_profit_batch_mt5_m15_365d_m45h2_compare_v3.json`
+    - `data/reports/xau_autobot_research_summary_20260228_profit_batch_mt5_m15_365d_m45h2_compare_v3.tsv`
+  - 実測（rolling 45d, trailing 5窓）:
+    - `m45_group` 勝者: `m45_v1_1`（`min_pf_active=1.1185`, `active_windows=5`）。
+    - `h2_group` 勝者: `h2_v1`（`min_pf_active=1.1559`, `active_windows=5`）。
+      - `h2_v2` は全体PF/損益は改善（`overall_pf=1.2259`, `net=+4593`）だが、
+        1窓で `pf=0` が発生し `min_pf_active` 基準では敗北。
+  - 判定:
+    - MT5 long-source への切替で `M45 180d/365d` 比較不能問題（Yahoo 15m制約）は解消。
+    - live 経路契約（research-only TF 拒否）は変更なし。
+- **V50.8-P5.71 cost-sweep判定（M45 v1.1 / H2 v1, 2026-02-28 UTC）**:
+  - 目的:
+    - 採用候補を `M45 v1.1 + H2 v1` に固定し、`assumed_cost_side=0.0002/0.0003/0.0004` で rolling 耐性を確認する。
+  - 実施:
+    - 全窓（1日スライド）評価:
+      - `data/reports/xau_autobot_research_summary_20260228_costsweep_mt5_m15_365d_m45v11_h2v1.json`
+      - `data/reports/xau_autobot_research_summary_20260228_costsweep_mt5_m15_365d_m45v11_h2v1.tsv`
+    - trailing 5窓（45d window / 30d step）評価:
+      - `data/reports/xau_autobot_research_summary_20260228_costsweep_mt5_m15_365d_m45v11_h2v1_trailing5.json`
+      - `data/reports/xau_autobot_research_summary_20260228_costsweep_mt5_m15_365d_m45v11_h2v1_trailing5.tsv`
+    - 判定条件:
+      - 各45d窓で `closed>=6` / `PF>=1.10` / `maxDD<=7%`（`closed<6` は inactive ではなく FAIL）。
+  - 実測（要点）:
+    - 全窓（1日スライド, 320窓）:
+      - `M45 v1.1`: `fail_closed_count=78`, `fail_pf_count=153..184`（cost増で悪化）, `fail_dd_count=0`
+      - `H2 v1`: `fail_closed_count=68`, `fail_pf_count=173..210`（cost増で悪化）, `fail_dd_count=0`
+    - trailing 5窓:
+      - `M45 v1.1`: `fail_closed_count=2`（`worst_closed=2`）, `0.0003` 以上で `fail_pf_count=1`
+      - `H2 v1`: `fail_closed_count=2`（`worst_closed=4`）, `0.0003` 以上で `fail_pf_count=1`
+  - 判定:
+    - `closed>=6` を全窓必須にすると、現状 `M45 v1.1/H2 v1` はいずれも FAIL（主因は low-frequency による窓内件数不足）。
+    - DD は両戦略とも閾値内で安定しており、ボトルネックは `closed` と `PF` の窓耐性。
+- **V50.8-P5.72 E0/E1 実行評価（M15 executor + M45 filter, 2026-02-28 UTC）**:
+  - 目的:
+    - `M45/H2` 単体運用ではなく、`M15` を執行エンジン、`M45 v1.1` を bias フィルタとして使う構成（E1）が実運用判定を満たすかを確認する。
+  - 実装:
+    - 追加 config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m15_executor_v1.json`
+    - 比較:
+      - `E0`: `M15 executor v1`（フィルタなし）
+      - `E1`: `M15 executor v1 + M45 v1.1 bias filter`（`LONG/SHORT` 同方向のみ許可、`NEUTRAL` は no-trade）
+  - 判定条件:
+    - `rolling_30d`（1日スライド, 全窓）
+    - 各窓 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+    - cost sweep: `assumed_cost_side=0.0002/0.0003/0.0004`
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_m15_e0e1_m45filter_costsweep_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_m15_e0e1_m45filter_costsweep_rolling30d.tsv`
+  - 実測（335窓）:
+    - `E0`:
+      - `cost=0.0002`: `pass_window_count=0`, `fail_pf_count=335`, `fail_dd_count=96`
+      - `cost=0.0003`: `pass_window_count=0`, `fail_pf_count=335`, `fail_dd_count=242`
+      - `cost=0.0004`: `pass_window_count=0`, `fail_pf_count=335`, `fail_dd_count=309`
+    - `E1`:
+      - `cost=0.0002`: `pass_window_count=9`, `fail_closed_count=16`, `fail_pf_count=319`, `fail_dd_count=0`
+      - `cost=0.0003`: `pass_window_count=4`, `fail_closed_count=16`, `fail_pf_count=324`, `fail_dd_count=0`
+      - `cost=0.0004`: `pass_window_count=2`, `fail_closed_count=16`, `fail_pf_count=330`, `fail_dd_count=0`
+  - 判定:
+    - `E1` は `E0` 比で DD を大幅に抑制したが、PFと窓内件数フロアを全窓で満たせず、現設定では `NO_GO`。
+    - `E0` は回転は十分だが PF/DD が崩壊しており、現設定のまま live 接続不可。
+- **V50.8-P5.73 Regime-Switch Executor 実装契約（2026-02-28 UTC）**:
+  - 背景:
+    - `E0(M15)` は相場状態選別が弱く、`E1(+M45 filter)` は DD 改善はあるが期待値不足。
+  - 契約:
+    - `M45 v1.1` を単純フィルタではなく「モード切替司令塔」として扱う。
+    - 執行は `M5`（live受理TF）で、`TREND/REVERSION` を別モードとして分離する。
+    - 切替は hysteresis:
+      - `regime_strength >= 2.35 -> TREND`
+      - `regime_strength <= 2.05 -> REVERSION`
+      - それ以外は前モード維持。
+    - `TREND` は `M45 bias` 同方向のみ許可。
+    - `REVERSION` は trend bias 強制なし（mode gate でトレンド相場の逆張りを回避）。
+  - 評価契約:
+    - `rolling_30d`, `step=1d`, 主戦場 `cost_side=0.0003`（必要に応じ `0.0002/0.0004` 併走）。
+    - 各窓 `closed>=12`, `PF>=1.10`, `maxDD<=7%` を pass 条件とする。
+  - INTERFACES 更新あり（`xau_autobot_regime_switch_eval.py` と regime-switch config 契約）。
+- **V50.8-P5.74 M20 executor + M45 soft gate 比較契約（2026-02-28 UTC）**:
+  - 背景:
+    - `M5 regime-switch` は DD 改善を示したが、`pass_window_count` と `worst_pf` が悪化し、月利向けの期待値を維持できない。
+  - 契約:
+    - 評価対象を `M20` へ戻し、2本比較で固定する。
+      - `E3`: `M20 executor` 単体（trend, reversion OFF）
+      - `E4`: `M20 executor + M45 bias gate`（逆方向のみ禁止）
+    - gate は hard-lock ではなく soft gate を正本にする。
+      - `bias=LONG -> short 禁止`
+      - `bias=SHORT -> long 禁止`
+      - `bias=NEUTRAL -> 制限なし`
+    - 評価は `rolling_30d`, `step=1d`, 主戦場 `cost_side=0.0003` を維持。
+    - pass 条件は従来どおり各窓 `closed>=12`, `PF>=1.10`, `maxDD<=7%`。
+  - 観測契約（追加）:
+    - evaluator 出力に `mode_time_share`, `trade_count_by_mode`, `pf_by_mode`, `reject_reason_breakdown` を含める。
+  - INTERFACES 更新あり（`xau_autobot_m20_bias_gate_eval.py` と M20 config 契約）。
+- **V50.8-P5.75 E3/E4 実装・評価（M20 baseline vs M45 soft gate, 2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` を追加し、`E3/E4` 比較を `rolling_30d` で評価可能にした。
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1.json`（E3）
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate.json`（E4, `block_opposite`）
+    - 追加テスト:
+      - `tools/tests/test_xau_autobot_m20_bias_gate_eval.py`
+  - 実行条件:
+    - `source=data/historical/XAUUSD_M1_mt5_365d.csv`
+    - `period=365d`
+    - `window=30d`, `step=1d`
+    - `cost_side=0.0003`
+    - pass条件 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_e3e4_m20_m45softgate_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e3e4_m20_m45softgate_cost0003_rolling30d.tsv`
+  - 実測:
+    - `E3_m20_executor`: `pass_window_count=57/335`, `fail_pf=254`, `fail_closed=28`, `worst_pf=0.1983`, `worst_closed=6`, `worst_max_dd=0.0598`
+    - `E4_m20_m45_soft_gate`: `pass_window_count=67/335`, `fail_pf=242`, `fail_closed=41`, `worst_pf=0.0998`, `worst_closed=5`, `worst_max_dd=0.0558`
+  - 解釈:
+    - soft gate は `pass_window_count` と `fail_pf` を改善し、DDも微改善。
+    - 一方で `closed` 低下と `worst_pf` 劣化が残るため、現時点では両者とも採用条件未達。
+- **V50.8-P5.76 E5（confidence gate + bias flip cooldown）実装・評価（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` を拡張し、以下を追加。
+      - `m45_gate_min_strength_to_block_opposite`（強トレンド時のみ gate 適用）
+      - `m45_neutral_max_strength`（NEUTRAL 判定）
+      - `cooldown_m20_bars_after_bias_flip`（bias flip 後のエントリー停止）
+      - `neutral_min_ema_gap_over_atr`, `neutral_pullback_atr`（NEUTRAL時のみ保守化）
+      - 追加診断: `gate_active_time_share`, `cooldown_block_count`
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e5.json`
+    - 追加テスト:
+      - `tools/tests/test_xau_autobot_m20_bias_gate_eval.py` に E5挙動（gate inactive bypass / bias flip cooldown / neutral mode）を追加。
+  - 実行条件:
+    - 比較: `E4` vs `E5`
+    - `source=data/historical/XAUUSD_M1_mt5_365d.csv`
+    - `period=365d`, `rolling_30d`, `step=1d`, `cost_side=0.0003`
+    - pass条件 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_e4e5_m20_m45confgate_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e5_m20_m45confgate_cost0003_rolling30d.tsv`
+  - 実測:
+    - `E4_m20_m45_soft_gate`: `pass_window_count=67/335`, `worst_pf=0.0998`, `gate_active_time_share=1.0`, `cooldown_block_count=0`
+    - `E5_m20_m45_conf_gate`: `pass_window_count=65/335`, `worst_pf=0.1080`, `gate_active_time_share=0.6258`, `cooldown_block_count=25`
+  - 解釈:
+    - E5 は `worst_pf` を小幅改善したが、`pass_window_count` が E4 を下回り、`worst_max_dd` も悪化。
+    - 停止条件（`pass_window_count < E4`）に該当し、E5は現時点 `NO_GO`。
+- **V50.8-P5.77 E6（SL後 loss cooldown）実装・評価（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` を拡張し、`after_loss_cooldown_m20_bars` を追加。
+      - canonical: `SL` クローズ時のみ cooldown 発火（`TP`/反転クローズでは非発火）。
+      - cooldown 中は新規エントリーを全面停止（long/short）。
+    - 追加診断:
+      - `loss_cooldown_trigger_count`
+      - `loss_cooldown_block_count`
+      - `loss_cooldown_block_bars_total`
+      - `loss_cooldown_block_time_share`
+      - `loss_streak_p95`
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e6.json`
+    - 追加テスト:
+      - `tools/tests/test_xau_autobot_m20_bias_gate_eval.py` に loss cooldown 判定/連敗統計テストを追加。
+  - 実行条件:
+    - 比較: `E4` vs `E6`
+    - `source=data/historical/XAUUSD_M1_mt5_365d.csv`
+    - `period=365d`, `rolling_30d`, `step=1d`, `cost_side=0.0003`
+    - pass条件 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_e4e6_m20_m45_losscooldown_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e6_m20_m45_losscooldown_cost0003_rolling30d.tsv`
+  - 実測:
+    - `E4_m20_m45_soft_gate`: `pass_window_count=67/335`, `worst_pf=0.0998`, `worst_closed=5`, `loss_cooldown_block_time_share=0.0`
+    - `E6_m20_m45_loss_cooldown`: `pass_window_count=64/335`, `worst_pf=0.1463`, `worst_closed=5`, `loss_cooldown_trigger_count=102`, `loss_cooldown_block_count=140`, `loss_cooldown_block_time_share=0.0297`, `loss_streak_p95=6.0`
+  - 解釈:
+    - E6 は `worst_pf` を改善し DD も微改善したが、`pass_window_count` が E4 を下回った。
+    - 停止条件（`pass_window_count < 67/335`）に該当し、E6は現時点 `NO_GO`。
+- **V50.8-P5.78 E7（executor期待値構造の最小変更）実装契約（2026-02-28 UTC）**:
+  - 背景:
+    - E4/E5/E6 の結果から、gate/cooldown はテール改善に有効だが `pass_window_count` を押し上げる主因になっていない。
+  - 契約:
+    - `E4` の gate（`block_opposite`）は固定し、executor 側パラメータのみ変更して比較する。
+    - 比較セット:
+      - `E7-1`: `sl/tp` のみ変更（`1.7/2.6 -> 1.6/2.9`）
+      - `E7-2`: `ema_gap/pullback` のみ変更（`0.12 -> 0.15`, `0.25 -> 0.23`）
+      - `E7-3`: E7-1 + E7-2 の合成
+    - 評価順:
+      - まず `E7-1`、次に `E7-3`（必要に応じて `E7-2` を追加検証）
+  - 評価条件:
+    - `rolling_30d`, `step=1d`, `cost_side=0.0003`
+    - pass条件 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+  - 採用基準:
+    - `pass_window_count >= 75/335`
+    - `worst_closed >= 8`
+    - `worst_pf >= 0.12`
+  - 停止条件:
+    - `pass_window_count < 67/335`（E4未満）
+    - または `worst_closed` が継続的に悪化（`<=7` 頻発）
+- **V50.8-P5.79 E7-1/E7-3 実行評価（2026-02-28 UTC）**:
+  - 実装:
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_1.json`
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_2.json`
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e7_3.json`
+    - `E7-1` と `E7-3` を `E4` 基準で順次比較（`E7-2` は未実行）。
+  - 実行条件:
+    - `source=data/historical/XAUUSD_M1_mt5_365d.csv`
+    - `period=365d`, `rolling_30d`, `step=1d`, `cost_side=0.0003`
+    - pass条件 `closed>=12`, `PF>=1.10`, `maxDD<=7%`
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1_m20_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1_m20_cost0003_rolling30d.tsv`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_3_m20_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_3_m20_cost0003_rolling30d.tsv`
+  - 実測（E4 reference）:
+    - `E4_m20_m45_soft_gate`: `pass_window_count=67/335`, `worst_pf=0.0998`, `worst_closed=5`
+    - `E7_1_m20_r_improve`: `pass_window_count=92/335`, `worst_pf=0.0000`, `worst_closed=4`
+    - `E7_3_m20_r_filter_combo`: `pass_window_count=78/335`, `worst_pf=0.0000`, `worst_closed=4`
+  - 判定:
+    - `pass_window_count` は E7-1/E7-3 ともに E4超え。
+    - ただし採用基準（`worst_pf>=0.12` かつ `worst_closed>=8`）を両者とも満たせず、`worst_pf=0` が致命的。
+    - 現時点では E7採用不可。次分岐（E8: M20 trend/reversion 二系統）へ進む条件を満たす。
+- **V50.8-P5.80 active PF 指標契約（2026-02-28 UTC）**:
+  - 背景:
+    - `pass_window_count` が改善しても `worst_pf=0` が発生し、薄い窓（`closed<closed_floor`）由来ノイズで評価が破壊されるケースを確認。
+  - 契約:
+    - `pf_active` は `closed>=closed_floor` の窓でのみ定義する。
+    - 運用判定向け summary は `worst_pf` に加えて以下を必須化する。
+      - `active_window_count`
+      - `worst_pf_active`
+      - `p05_pf_active`
+      - `p05_closed`
+    - `worst_pf_active/p05_pf_active` は active窓のみから算出し、`closed` 不足窓の統計ノイズを分離する。
+  - 適用範囲:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` の比較レポート出力（JSON/TSV）。
+- **V50.8-P5.81 active PF 指標適用 + E4/E7-1 再評価（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` に active PF 集計を追加。
+      - `pf_active = (closed>=closed_floor) の窓のみ定義`
+      - `active_window_count`
+      - `worst_pf_active`
+      - `p05_pf_active`
+      - `p05_closed`
+    - `tools/tests/test_xau_autobot_m20_bias_gate_eval.py` に `pf_active/percentile` のテストを追加。
+  - 成果物:
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1_m20_cost0003_rolling30d_activepf.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1_m20_cost0003_rolling30d_activepf.tsv`
+  - 実測:
+    - `E4_m20_m45_soft_gate`: `pass_window_count=67/335`, `active_window_count=294`, `worst_pf_active=0.0998`, `p05_pf_active=0.2235`, `p05_closed=8`
+    - `E7_1_m20_r_improve`: `pass_window_count=92/335`, `active_window_count=289`, `worst_pf_active=0.0000`, `p05_pf_active=0.2675`, `p05_closed=8`
+  - 解釈:
+    - `p05_pf_active` では E7-1 が E4 を上回る一方、`worst_pf_active=0` は残存。
+    - E8比較は `worst_pf_active/p05_pf_active/p05_closed` を同一指標として継続する。
+- **V50.8-P5.82 E8（二状態 M20 executor）実装契約（2026-02-28 UTC）**:
+  - 背景:
+    - `worst_pf_active=0` が active窓でも残存し、E7単体の executor 調整ではテールが消えない。
+  - 契約:
+    - E8 は `M20` 執行を `TREND/NON_TREND` の2状態へ分離し、`M45` を司令塔に使う。
+    - 状態遷移（hysteresis）:
+      - `state=NON_TREND` かつ `m45_regime_strength >= 2.35` で `TREND`
+      - `state=TREND` かつ `m45_regime_strength <= 2.25` で `NON_TREND`
+      - それ以外は状態維持
+    - gate 適用:
+      - `TREND` 状態のみ `block_opposite`（M45逆方向禁止）
+      - `NON_TREND` 状態は gate 無効（両方向許可）
+    - E8-T（TREND executor）:
+      - `sl/tp=1.6/2.9`, `atr_ratio=0.85-1.55`, `ema_gap=0.12-1.80`, `pullback_atr=0.25`, `strategy_mode=trend`
+    - E8-R（NON_TREND executor）:
+      - `atr_ratio=0.80-1.30`, `ema_gap=0.08-0.90`, `pullback_atr=0.30`, `strategy_mode=reversion`, `reversion_atr=0.18`, `reversion_sl/tp=0.9/1.35`
+  - 評価契約:
+    - 既存と同じ `rolling30d/step=1d/cost=0.0003`、`closed>=12 & PF>=1.10 & DD<=7%`。
+    - 比較軸は `pass_window_count` に加え、`worst_pf_active/p05_pf_active/p05_closed` を正本指標として固定。
+    - `worst_pf_active` を出した窓の内訳（`closed_by_state/pf_by_state/bias_gate_reject_count_trend`）を追跡可能にする。
+- **V50.8-P5.83 E8実装 + E4/E7-1/E8 比較実行（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py`
+      - `--switch-config` / `--switch-id` / `--switch-label` を追加。
+      - E8二状態シミュレーションを追加（`next_two_state_mode`, `select_gate_policy_for_state`）。
+      - `worst_active_window_breakdown`（`closed_by_state/pf_by_state/bias_gate_reject_count_trend`）を summary へ追加。
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_regime_switch_e8.json`
+    - テスト:
+      - `tools/tests/test_xau_autobot_m20_bias_gate_eval.py` に E8状態遷移テストを追加。
+  - 回帰:
+    - `PYTHONPATH=. ./.venv/bin/pytest -q tools/tests/test_xau_autobot.py tools/tests/test_xau_autobot_data.py tools/tests/test_xau_autobot_optimize.py tools/tests/test_xau_autobot_readiness.py tools/tests/test_xau_autobot_trial_judge.py tools/tests/test_xau_autobot_trial_v2_eval.py tools/tests/test_xau_autobot_operational_audit.py tools/tests/test_xau_autobot_m20_bias_gate_eval.py tools/tests/test_xau_autobot_regime_switch_eval.py`
+    - 結果: `143 passed`
+  - 比較実行:
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1e8_m20_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e4e7_1e8_m20_cost0003_rolling30d.tsv`
+  - 実測（cost=0.0003）:
+    - `E4`: `pass_window_count=67/335`, `worst_pf_active=0.0998`, `p05_pf_active=0.2235`, `p05_closed=8`
+    - `E7-1`: `pass_window_count=92/335`, `worst_pf_active=0.0000`, `p05_pf_active=0.2675`, `p05_closed=8`
+    - `E8`: `pass_window_count=25/335`, `worst_pf_active=0.2125`, `p05_pf_active=0.3226`, `p05_closed=9`
+  - 判定:
+    - E8 は `worst_pf_active` と `p05_*` は改善したが、`pass_window_count` が大きく低下。
+    - 現行条件（全窓 `closed>=12 & PF>=1.10 & DD<=7%`）では E8は採用不可。
+- **V50.8-P5.84 E9-1（E7-1固定 + 状態依存gate）契約（2026-02-28 UTC）**:
+  - 背景:
+    - E7-1 は `pass_window_count` を確保できる一方、`worst_pf_active=0` のテールが残る。
+    - E8 はテール改善と引き換えに `pass_window_count` が大幅低下した。
+  - 契約:
+    - executorは E7-1（`M20`, `SL/TP=1.6/2.9`）で固定し、`TREND/NON_TREND` で executor を切替えない。
+    - gate 適用のみ状態依存にする。
+      - `TREND` 状態: `block_opposite`
+      - `NON_TREND` 状態: `none`
+    - 状態遷移は E8 と同じ hysteresis を使用。
+      - `switch_trend_on=2.35`, `switch_trend_off=2.25`, `switch_initial_state=non_trend`
+  - 採用判定（E7-1比較）:
+    - `pass_window_count >= 92/335` を維持
+    - `worst_pf_active > 0`
+    - `p05_pf_active >= 0.2675`
+- **V50.8-P5.85 E9-1 実行評価（2026-02-28 UTC）**:
+  - 実装:
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_regime_switch_e9_1.json`
+    - E9-1 は evaluator 既存の two-state gate 実装を再利用し、`trend_mode/non_trend_mode` を E7-1同一executorに固定（executor切替なし）。
+  - 比較実行:
+    - `data/reports/xau_autobot_research_summary_20260228_e7_1e9_1_m20_cost0003_rolling30d.json`
+    - `data/reports/xau_autobot_research_summary_20260228_e7_1e9_1_m20_cost0003_rolling30d.tsv`
+  - 実測（cost=0.0003）:
+    - `E7-1`: `pass_window_count=92/335`, `worst_pf_active=0.0000`, `p05_pf_active=0.2675`, `p05_closed=8`
+    - `E9-1`: `pass_window_count=92/335`, `worst_pf_active=0.0000`, `p05_pf_active=0.2675`, `p05_closed=8`
+  - 補足:
+    - E9-1 の `state_time_share` は `trend=0.6347/non_trend=0.3653`、`gate_active_time_share=0.0667` を確認。
+    - ただし window summary は E7-1 と同値で、採用基準の `worst_pf_active>0` を満たせない。
+  - 判定:
+    - E9-1 は「passを維持」は達成したが、PF=0 active窓は解消できず採用不可。
 - **IHトラック停止（2026-02-26, user option=1）**:
   - `IH monthly` 系（`ih_opt_*`）の新規 run 起票と追加ゲートを停止。
   - 既存 `P6/P6.3` は postmortem として保持し、改善投資は `XAU単独トラック` に集中する。
@@ -915,6 +1570,15 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-28**: V50.8-P5.65（案A research-only正本化）を反映。`CANONICAL_PLAN=A`、`ENTRY_ORDER=M45->H2->H5->H3`、`LIVE_ACCEPT_TF=[M1,M5,M15,M20,M30,H1,H4]`、`RESEARCH_ACCEPT_TF=[M45,H2,H3,H5]` を正本化。`tools/xau_autobot_trial_judge.py` に `rolling_45d/rolling_60d` decision_mode を追加し、`tools/xau_autobot_trial_v2_eval.sh` は config `timeframe` から judge default（`M45/H2->rolling_45d`, `H3/H5->rolling_60d`, それ以外 `monthly_only`）を自動選択する契約へ更新。`tools/xau_autobot_operational_audit.py` は `--profile {default,m45,h2,h3,h5}` と profile別 window/閾値を実装。`tools/xau_autobot.py` へ `--mode {live,research}` と live/research timeframe ガードを追加し、live で研究専用TFを fail-closed 拒否。research candidate config として `tools/configs/xau_autobot.trial_v2_20260228_{m45_trendcore,h2_hybrid,h5_anchor,h3_burst}_v1.json` を追加。回帰は `pytest tools/tests/test_xau_autobot_trial_judge.py tools/tests/test_xau_autobot_operational_audit.py tools/tests/test_xau_autobot_trial_v2_eval.py tools/tests/test_xau_autobot.py` で `91 passed` を確認。
+- **2026-02-28**: V50.8-P5.64（M20 primary cutover実施）を反映。`r2v_m5` primary loop を停止し、`trial_v2_20260228_v50_8_14d_r2v_m20_e1` を `xau_autobot_trial_v2_current_run.json` / `..._r1.json` の正本へ切替。初期成果物 `xau_autobot_live_report_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` / `xau_autobot_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` / `xau_autobot_operational_audit_20260228_r2v_m20_e1_refresh1_now0355.json` を生成し、`v50_8_trial_judge_...` へ mirror。cutover集約 `v50_8_run_refresh_20260228_0358_r2v_m20_cutover.json` で `m20_primary_config=1` / `legacy_m5_primary_config=0` を確認。開始直後のため判定は `INVALID_TRIAL` / `INSUFFICIENT_DATA`。
+- **2026-02-28**: V50.8-P5.62（M20 live実行対応 + E1中庸config）を反映。`tools/xau_autobot.py` の `_tf_to_mt5` を `M20` 対応へ拡張し、`TIMEFRAME_*` 欠損時も `ValueError` fail-closed を維持。TDDとして `tools/tests/test_xau_autobot.py::TestXauAutoBotTimeframeMapping` を追加し、`pytest -k "tf_to_mt5 or TimeframeMapping"`（`3 passed`）と `pytest tools/tests/test_xau_autobot.py`（`57 passed`）を確認。`tools/configs/xau_autobot.trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` を追加し、readiness は `eval45d/eval60d` ともに `NO_GO`（`PF=0.868/0.773`, `return=-3.47%/-7.11%`）を記録。あわせて `INTERFACES.md` の `xau_autobot.py` timeframe受理契約と `xau_autobot_optimize.py` interval/timeframe 正規化一覧を更新。
+- **2026-02-27**: V50.8-P5.59（trial_eval live loop guard 接続）を反映。`tools/xau_autobot_trial_v2_eval.sh` に live report 前の `xau_autobot_live_loop_guard.py` 呼び出しを追加し、`XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED`（既定1）/`..._INCLUDE_R3`/`..._DRY_RUN`/`..._FAIL_ON_ERROR`/`..._REPORT_PATH` を導入。guard失敗は既定 fail-open（WARNのみ）で、`..._FAIL_ON_ERROR=1` のみ fail-closed。TDDは `tools/tests/test_xau_autobot_trial_v2_eval.py` に3件追加（default起動・include_r3・disabled）し、`-k live_loop_guard` で RED（`2 failed, 1 passed`）→ 実装後 GREEN（`3 passed`）を確認。回帰 `pytest tools/tests/test_xau_autobot_trial_v2_eval.py`（`11 passed`）と `unittest tools.tests.test_xau_autobot_live_loop_guard tools.tests.test_xau_autobot_trial_watchdog`（`10 tests OK`）を確認。INTERFACES 変更なし。
+- **2026-02-27**: V50.8-P5.58（変則時間足探索実施）を反映。`tools/xau_autobot_data.py` に `m20/m45/h2/h3` alias+resample を追加し、`tools/xau_autobot_optimize.py` の interval/timeframe 対応を `M20/M45/H2/H3` へ拡張。回帰 `./.venv/bin/python -m unittest tools.tests.test_xau_autobot_data tools.tests.test_xau_autobot_optimize` で `19 tests OK`。探索成果物 `xau_autobot_optimize_20260227_tfscan2_{m20,m45,h2,h3}_60d.jsonl`・`xau_autobot_readiness_20260227_tfscan2_*`・`xau_autobot_alpha_scan_20260227_tfscan2_midtf.json` を生成し、`trades_min>=20` の信頼条件では `m20` が第一候補。INTERFACES 変更なし。
+- **2026-02-27**: V50.8-P5.56（探索枠再開実施）を反映。`xau_autobot_trial_v2_current_run_r3.json` を `trial_v2_20260227_alpha3_r3b` へ更新し、`alpha3_r3b` の live/judge/audit を再生成（`xau_autobot_live_report_trial_v2_20260227_alpha3_r3b.json`, `xau_autobot_trial_judge_trial_v2_20260227_alpha3_r3b.json`, `xau_autobot_operational_audit_20260227_alpha3_r3b_refresh10*.json`）。実測は `closed=0`, `PF=0.0`, `verdict=INVALID_TRIAL`。監査は `refresh10` で `runtime_metrics_source=live_report.runtime_metrics`（`journal_snapshot_count_zero` fallback）、`--now-utc 2026-02-27T16:06:00+00:00` では `runtime_metrics_source=journal`（`snapshot_count=8`）を確認。集約 `v50_8_run_refresh_20260227_2306_r2v_alpha3r3b.json` を追加。INTERFACES 変更なし。
+- **2026-02-27**: V50.8-P5.53（live loop self-heal guard）を実装。`tools/xau_autobot_live_loop_guard.py` と `tools/tests/test_xau_autobot_live_loop_guard.py` を追加し、`configごとに1本` の収束ロジック（missing再起動 / duplicate停止）を正本化。回帰は `./.venv/bin/python -m unittest tools.tests.test_xau_autobot_live_loop_guard tools.tests.test_xau_autobot_trial_watchdog`（`8 tests OK`）。実行確認は `python3 tools/xau_autobot_live_loop_guard.py --dry-run` と `python3 tools/xau_autobot_live_loop_guard.py` でともに `status=HEALTHY`（`r2v_h1` 1本、`actions={terminated_duplicates:[], restarted:[]}`）。成果物 `data/reports/xau_autobot_live_loop_guard_latest.json` を更新。INTERFACES 変更なし。
+- **2026-02-27**: V50.8-P5.52（live単独運用への縮退）を反映。`r3u_h1/alpha3_r3a` の live loop と Windows `python --loop --live` を停止し、`r2v_h1` 単独稼働へ収束（実測 `powershell=1`, `python=1`）。`xau_autobot_trial_v2_current_run.json` / `..._r1.json` / `..._r2.json` を `trial_v2_20260227_v50_8_30d_r2v_h1` に統一。`r2v_h1` 再評価は `trial_valid=true, verdict=NO_GO, window_days=0.5691551791550926, closed=23, PF=1.0182054616384915, net=+126`、監査は `status=WARN`（`gap_reject_rate=0.010626992561105207`, `tp_sl_ratio=0.7692307692307693`, `expectancy=5.478260869565247`）。成果物 `v50_8_run_refresh_20260227_2246_single_r2v.json` / `v50_8_monitor_only_status_20260227.json` / `v50_8_monthly_nowcast_20260227.json` / `v50_8_monthly_decision_20260225.json` を更新。月次 nowcast は `11.127643049148878%` だが Go/No-Go は `failed_window_days + failed_profit_factor` で `NO_GO` 継続。INTERFACES 変更なし。
+- **2026-02-27**: V50.8-P5.51（monitor-only再同期 #19）を反映。3run（`r3u_h1/r2v_h1/alpha3_r3a`）を再評価し、監査 `refresh9` を再生成（`xau_autobot_operational_audit_20260227_{r3u_h1,r2v_h1,alpha3_r3a}_refresh9.json`）。集約 `v50_8_run_refresh_20260227_2241.json` を更新し、最新は `r3u_h1={trial_valid:true, verdict:NO_GO, window_days:0.5797619560300926, closed:3, PF:0.6481, net:-860, audit:FAIL}`、`r2v_h1={trial_valid:true, verdict:NO_GO, window_days:0.5659113637847222, closed:23, PF:1.0182, net:+126, audit:WARN}`、`alpha3_r3a={trial_valid:false, verdict:INVALID_TRIAL, window_days:0.07554202921296296, audit:FAIL, runtime_metrics_source:live_report.runtime_metrics}`。月次判定は `NO_GO` 維持（`failed_window_days/failed_closed_positions/failed_profit_factor/failed_win_rate/failed_net_profit/actual_monthly_below_target`）。INTERFACES 変更なし。
 - **2026-02-27**: V50.8-P5.50（monitor-only再同期 #17）を反映。3run（`r3u_h1/r2v_h1/alpha3_r3a`）を再評価し、監査 `refresh8` と集約を再同期（`xau_autobot_operational_audit_20260227_{r3u_h1,r2v_h1,alpha3_r3a}_refresh8.json`, `v50_8_run_refresh_20260227_2221.json`）。最新は `r3u_h1={trial_valid:true, verdict:NO_GO, window_days:0.5662239402777778, closed:3, PF:0.6481, net:-860, audit:FAIL}`、`r2v_h1={trial_valid:true, verdict:NO_GO, window_days:0.5523237585069444, closed:23, PF:1.0182, net:+126, audit:WARN}`、`alpha3_r3a={trial_valid:false, verdict:INVALID_TRIAL, window_days:0.06190907834490741, audit:FAIL, runtime_metrics_source:live_report.runtime_metrics}`。月次判定は `NO_GO` 維持（`failed_window_days/failed_closed_positions/failed_profit_factor/failed_win_rate/failed_net_profit/actual_monthly_below_target`）。INTERFACES 変更なし。
 - **2026-02-27**: V50.8-P5.49（monitor-only再同期 #16）を反映。3run（`r3u_h1/r2v_h1/alpha3_r3a`）を再評価し、`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226.json`・`v50_8_dual_run_status_20260227.json`・`v50_8_parallel3_status_20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_run_refresh_20260227_2215.json` を再同期。最新は `r3u_h1={trial_valid:true, verdict:NO_GO, window_days:0.562277269525463, closed:3, PF:0.6481, net:-860}`、`r2v_h1={trial_valid:true, verdict:NO_GO, window_days:0.548376937337963, closed:23, PF:1.0182, net:+126}`、`alpha3_r3a={trial_valid:false, verdict:INVALID_TRIAL, window_days:0.05796034162037037}`。月次判定は `NO_GO` 維持、`reason_codes` は `failed_window_days/failed_closed_positions/failed_profit_factor/failed_win_rate/failed_net_profit/actual_monthly_below_target` へ更新。INTERFACES 変更なし。
 - **2026-02-27**: V50.8-P5.48（monitor-only再同期 #13）を反映。実稼働3run（`r3u_h1/r2v_h1/alpha3_r3a`）を再評価し、`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226.json`・`v50_8_dual_run_status_20260227.json`・`v50_8_parallel3_status_20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_run_refresh_20260227_1207_live_running.json` を再同期。あわせて `xau_autobot_trial_v2_current_run_r3.json` を `trial_v2_20260227_alpha3_r3a` へ統一し、`alpha3_r2` を履歴runへ移行。最新は `r3u_h1={trial_valid:true, verdict:NO_GO, window_days:0.5149198039120371, closed:2, PF:1.3322, net:+395}`、`r2v_h1={trial_valid:true, verdict:NO_GO, window_days:0.5010194001273148, closed:22, PF:1.1172, net:+739}`、`alpha3_r3a={trial_valid:false, verdict:INVALID_TRIAL, window_days:0.010602790092592592, invalid_reasons={after_magic_filter,after_comment_prefix_filter}}`。月次判定は `NO_GO` 維持（`failed_window_days/failed_closed_positions/actual_monthly_below_target`）。INTERFACES 変更なし。

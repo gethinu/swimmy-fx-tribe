@@ -11,11 +11,48 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
-GAP_REJECT_RATE_MIN = 0.15
-GAP_REJECT_RATE_MAX = 0.45
-TP_SL_RATIO_MIN = 0.70
-CLOSED_PER_DAY_MIN = 0.70
-EXPECTANCY_MIN = 0.0
+AUDIT_PROFILES: Dict[str, Dict[str, float]] = {
+    "default": {
+        "window_days": 3.0,
+        "gap_reject_rate_min": 0.15,
+        "gap_reject_rate_max": 0.45,
+        "tp_sl_ratio_min": 0.70,
+        "closed_per_day_min": 0.70,
+        "expectancy_min_exclusive": 0.0,
+    },
+    "m45": {
+        "window_days": 7.0,
+        "gap_reject_rate_min": 0.10,
+        "gap_reject_rate_max": 0.55,
+        "tp_sl_ratio_min": 1.00,
+        "closed_per_day_min": 0.20,
+        "expectancy_min_exclusive": 0.0,
+    },
+    "h2": {
+        "window_days": 7.0,
+        "gap_reject_rate_min": 0.10,
+        "gap_reject_rate_max": 0.60,
+        "tp_sl_ratio_min": 0.85,
+        "closed_per_day_min": 0.15,
+        "expectancy_min_exclusive": 0.0,
+    },
+    "h3": {
+        "window_days": 14.0,
+        "gap_reject_rate_min": 0.05,
+        "gap_reject_rate_max": 0.70,
+        "tp_sl_ratio_min": 1.20,
+        "closed_per_day_min": 0.07,
+        "expectancy_min_exclusive": 0.0,
+    },
+    "h5": {
+        "window_days": 14.0,
+        "gap_reject_rate_min": 0.05,
+        "gap_reject_rate_max": 0.70,
+        "tp_sl_ratio_min": 1.00,
+        "closed_per_day_min": 0.05,
+        "expectancy_min_exclusive": 0.0,
+    },
+}
 
 
 def _as_float(value: object, default: Optional[float] = None) -> Optional[float]:
@@ -34,6 +71,18 @@ def _as_int(value: object, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _normalize_profile(profile: str) -> str:
+    key = str(profile or "default").strip().lower()
+    if key not in AUDIT_PROFILES:
+        raise ValueError(f"unsupported audit profile: {profile}")
+    return key
+
+
+def _resolve_profile(profile: str) -> Dict[str, float]:
+    key = _normalize_profile(profile)
+    return dict(AUDIT_PROFILES[key])
 
 
 def _parse_utc(value: object) -> Optional[datetime]:
@@ -100,16 +149,25 @@ def _iter_jsonl_objects(path: Path) -> Iterable[Tuple[Dict[str, Any], datetime]]
 def _extract_runtime_snapshot(payload: Dict[str, Any]) -> Optional[Dict[str, int]]:
     metrics = payload.get("runtime_metrics")
     src = metrics if isinstance(metrics, dict) else payload
-    gate_checks = _as_int(src.get("gate_check_count"), default=-1)
-    gap_rejects = _as_int(src.get("gate_reject_gap_count"), default=-1)
-    if gate_checks < 0 or gap_rejects < 0:
+    signal_eval_count = _as_int(src.get("signal_eval_count"), default=-1)
+    gap_reject_count = _as_int(src.get("gap_reject_count"), default=-1)
+    if signal_eval_count < 0:
+        signal_eval_count = _as_int(src.get("gate_check_count"), default=-1)
+    if gap_reject_count < 0:
+        gap_reject_count = _as_int(src.get("gate_reject_gap_count"), default=-1)
+    if signal_eval_count < 0 or gap_reject_count < 0:
         return None
     signal_counts = src.get("signal_counts", {})
     if not isinstance(signal_counts, dict):
         signal_counts = {}
     return {
-        "gate_check_count": gate_checks,
-        "gate_reject_gap_count": gap_rejects,
+        "signal_eval_count": signal_eval_count,
+        "gap_reject_count": gap_reject_count,
+        "spread_reject_count": max(0, _as_int(src.get("spread_reject_count"), 0)),
+        "session_reject_count": max(0, _as_int(src.get("session_reject_count"), 0)),
+        "maxpos_reject_count": max(0, _as_int(src.get("maxpos_reject_count"), 0)),
+        "gate_check_count": signal_eval_count,
+        "gate_reject_gap_count": gap_reject_count,
         "buy": _as_int(signal_counts.get("BUY"), 0),
         "sell": _as_int(signal_counts.get("SELL"), 0),
         "hold": _as_int(signal_counts.get("HOLD"), 0),
@@ -129,34 +187,48 @@ def _summarize_runtime_snapshots(
     source: str = "",
 ) -> Dict[str, Any]:
     snapshots.sort(key=lambda item: item[0])
-    gate_checks = 0
-    gap_rejects = 0
+    signal_eval_count = 0
+    gap_reject_count = 0
+    spread_reject_count = 0
+    session_reject_count = 0
+    maxpos_reject_count = 0
     signal_counts = {"BUY": 0, "SELL": 0, "HOLD": 0}
     if len(snapshots) == 1:
         only = snapshots[0][1]
-        gate_checks = int(max(0, only["gate_check_count"]))
-        gap_rejects = int(max(0, only["gate_reject_gap_count"]))
+        signal_eval_count = int(max(0, only["signal_eval_count"]))
+        gap_reject_count = int(max(0, only["gap_reject_count"]))
+        spread_reject_count = int(max(0, only["spread_reject_count"]))
+        session_reject_count = int(max(0, only["session_reject_count"]))
+        maxpos_reject_count = int(max(0, only["maxpos_reject_count"]))
         signal_counts["BUY"] = int(max(0, only["buy"]))
         signal_counts["SELL"] = int(max(0, only["sell"]))
         signal_counts["HOLD"] = int(max(0, only["hold"]))
     elif len(snapshots) >= 2:
         prev = snapshots[0][1]
         for _ts, cur in snapshots[1:]:
-            gate_checks += _delta_with_reset(cur["gate_check_count"], prev["gate_check_count"])
-            gap_rejects += _delta_with_reset(cur["gate_reject_gap_count"], prev["gate_reject_gap_count"])
+            signal_eval_count += _delta_with_reset(cur["signal_eval_count"], prev["signal_eval_count"])
+            gap_reject_count += _delta_with_reset(cur["gap_reject_count"], prev["gap_reject_count"])
+            spread_reject_count += _delta_with_reset(cur["spread_reject_count"], prev["spread_reject_count"])
+            session_reject_count += _delta_with_reset(cur["session_reject_count"], prev["session_reject_count"])
+            maxpos_reject_count += _delta_with_reset(cur["maxpos_reject_count"], prev["maxpos_reject_count"])
             signal_counts["BUY"] += _delta_with_reset(cur["buy"], prev["buy"])
             signal_counts["SELL"] += _delta_with_reset(cur["sell"], prev["sell"])
             signal_counts["HOLD"] += _delta_with_reset(cur["hold"], prev["hold"])
             prev = cur
 
     gap_reject_rate: Optional[float] = None
-    if gate_checks > 0:
-        gap_reject_rate = float(gap_rejects) / float(gate_checks)
+    if signal_eval_count > 0:
+        gap_reject_rate = float(gap_reject_count) / float(signal_eval_count)
 
     out = {
         "snapshot_count": len(snapshots),
-        "gate_check_count": gate_checks,
-        "gate_reject_gap_count": gap_rejects,
+        "signal_eval_count": signal_eval_count,
+        "gap_reject_count": gap_reject_count,
+        "spread_reject_count": spread_reject_count,
+        "session_reject_count": session_reject_count,
+        "maxpos_reject_count": maxpos_reject_count,
+        "gate_check_count": signal_eval_count,
+        "gate_reject_gap_count": gap_reject_count,
         "gap_reject_rate": gap_reject_rate,
         "signal_counts": signal_counts,
         "source_file_count": int(source_file_count),
@@ -346,7 +418,20 @@ def load_live_metrics(
     }
 
 
-def evaluate_audit_status(*, runtime_metrics: Dict[str, Any], live_metrics: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_audit_status(
+    *,
+    runtime_metrics: Dict[str, Any],
+    live_metrics: Dict[str, Any],
+    profile: str = "default",
+) -> Dict[str, Any]:
+    profile_name = _normalize_profile(profile)
+    profile_cfg = _resolve_profile(profile_name)
+    gap_reject_rate_min = float(profile_cfg["gap_reject_rate_min"])
+    gap_reject_rate_max = float(profile_cfg["gap_reject_rate_max"])
+    tp_sl_ratio_min = float(profile_cfg["tp_sl_ratio_min"])
+    closed_per_day_min = float(profile_cfg["closed_per_day_min"])
+    expectancy_min_exclusive = float(profile_cfg["expectancy_min_exclusive"])
+
     gap_reject_rate = _as_float(runtime_metrics.get("gap_reject_rate"), None)
     tp_sl_ratio = _as_float(live_metrics.get("tp_sl_ratio"), None)
     closed_per_day = _as_float(live_metrics.get("closed_per_day"), None)
@@ -355,24 +440,24 @@ def evaluate_audit_status(*, runtime_metrics: Dict[str, Any], live_metrics: Dict
     checks = {
         "gap_reject_rate": {
             "value": gap_reject_rate,
-            "min": GAP_REJECT_RATE_MIN,
-            "max": GAP_REJECT_RATE_MAX,
-            "ok": (gap_reject_rate is not None and GAP_REJECT_RATE_MIN <= gap_reject_rate <= GAP_REJECT_RATE_MAX),
+            "min": gap_reject_rate_min,
+            "max": gap_reject_rate_max,
+            "ok": (gap_reject_rate is not None and gap_reject_rate_min <= gap_reject_rate <= gap_reject_rate_max),
         },
         "tp_sl_ratio": {
             "value": tp_sl_ratio,
-            "min": TP_SL_RATIO_MIN,
-            "ok": (tp_sl_ratio is not None and tp_sl_ratio >= TP_SL_RATIO_MIN),
+            "min": tp_sl_ratio_min,
+            "ok": (tp_sl_ratio is not None and tp_sl_ratio >= tp_sl_ratio_min),
         },
         "closed_per_day": {
             "value": closed_per_day,
-            "min": CLOSED_PER_DAY_MIN,
-            "ok": (closed_per_day is not None and closed_per_day >= CLOSED_PER_DAY_MIN),
+            "min": closed_per_day_min,
+            "ok": (closed_per_day is not None and closed_per_day >= closed_per_day_min),
         },
         "expectancy": {
             "value": expectancy,
-            "min_exclusive": EXPECTANCY_MIN,
-            "ok": (expectancy is not None and expectancy > EXPECTANCY_MIN),
+            "min_exclusive": expectancy_min_exclusive,
+            "ok": (expectancy is not None and expectancy > expectancy_min_exclusive),
         },
     }
 
@@ -411,6 +496,7 @@ def evaluate_audit_status(*, runtime_metrics: Dict[str, Any], live_metrics: Dict
         status = "FAIL" if recommendations or sum(1 for item in checks.values() if not bool(item.get("ok", False))) >= 2 else "WARN"
 
     return {
+        "profile": profile_name,
         "status": status,
         "checks": checks,
         "recommendations": recommendations,
@@ -429,7 +515,8 @@ def _split_glob_args(values: List[str]) -> List[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Operational audit for XAU autobot")
-    parser.add_argument("--days", type=float, default=3.0)
+    parser.add_argument("--profile", default="default", choices=sorted(AUDIT_PROFILES.keys()))
+    parser.add_argument("--days", type=float, default=None)
     parser.add_argument(
         "--runtime-log-glob",
         action="append",
@@ -447,8 +534,13 @@ def main() -> None:
     parser.add_argument("--write-report", default="data/reports/xau_autobot_operational_audit.json")
     args = parser.parse_args()
 
+    profile_name = _normalize_profile(str(args.profile))
+    profile_cfg = _resolve_profile(profile_name)
     now_utc = _parse_utc(args.now_utc) or datetime.now(timezone.utc)
-    days = float(args.days) if float(args.days) > 0 else 3.0
+    if args.days is None:
+        days = float(profile_cfg["window_days"])
+    else:
+        days = float(args.days) if float(args.days) > 0 else float(profile_cfg["window_days"])
     start_utc = now_utc - timedelta(days=days)
 
     runtime_globs = _split_glob_args(args.runtime_log_glob) or [
@@ -474,10 +566,15 @@ def main() -> None:
         end_utc=now_utc,
         run_id_filter=str(args.run_id_filter),
     )
-    verdict = evaluate_audit_status(runtime_metrics=runtime_metrics, live_metrics=live_metrics)
+    verdict = evaluate_audit_status(
+        runtime_metrics=runtime_metrics,
+        live_metrics=live_metrics,
+        profile=profile_name,
+    )
 
     output = {
         "generated_at": now_utc.isoformat(),
+        "audit_profile": profile_name,
         "window": {
             "start_utc": start_utc.isoformat(),
             "end_utc": now_utc.isoformat(),

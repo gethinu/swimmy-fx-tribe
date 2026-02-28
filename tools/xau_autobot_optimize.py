@@ -33,19 +33,56 @@ def interval_to_timeframe(interval: str) -> str:
     normalized = str(interval or "").strip().lower()
     mapping = {
         "1m": "M1",
+        "m1": "M1",
         "5m": "M5",
+        "m5": "M5",
+        "20m": "M20",
+        "m20": "M20",
+        "45m": "M45",
+        "m45": "M45",
         "15m": "M15",
+        "m15": "M15",
         "30m": "M30",
+        "m30": "M30",
         "60m": "H1",
+        "m60": "H1",
         "1h": "H1",
+        "h1": "H1",
+        "120m": "H2",
+        "m120": "H2",
+        "2h": "H2",
+        "h2": "H2",
+        "180m": "H3",
+        "m180": "H3",
+        "3h": "H3",
+        "h3": "H3",
         "240m": "H4",
+        "m240": "H4",
         "4h": "H4",
+        "h4": "H4",
+        "300m": "H5",
+        "m300": "H5",
+        "5h": "H5",
+        "h5": "H5",
+        "3600m": "H60",
+        "m3600": "H60",
+        "60h": "H60",
+        "h60": "H60",
+        "1d": "D1",
+        "d1": "D1",
+        "1wk": "W1",
+        "1w": "W1",
+        "w1": "W1",
+        "1mo": "MN",
+        "mn": "MN",
+        "mn1": "MN",
+        "month": "MN",
     }
     timeframe = mapping.get(normalized, "")
     if timeframe == "":
         raise ValueError(
             f"unsupported interval for MT5 timeframe mapping: {interval} "
-            "(supported: 1m,5m,15m,30m,60m,1h,240m,4h)"
+            "(supported: 1m,5m,m20,m45,15m,30m,60m/h1,h2,h3,240m/h4,h5,d1,w1,month)"
         )
     return timeframe
 
@@ -144,7 +181,7 @@ def candidate_to_config(candidate: Candidate, *, magic: int, comment: str, timef
     unpacked = _unpack_candidate(candidate)
     normalized_comment = validate_trade_comment(comment)
     normalized_timeframe = str(timeframe or "").strip().upper()
-    if normalized_timeframe not in {"M1", "M5", "M15", "M30", "H1", "H4"}:
+    if normalized_timeframe not in {"M1", "M5", "M15", "M20", "M30", "M45", "H1", "H2", "H3", "H4", "H5", "H60", "D1", "W1", "MN"}:
         raise ValueError(f"unsupported timeframe: {timeframe}")
     return {
         "symbol": "XAUUSD",
@@ -248,8 +285,22 @@ def _parse_split_ratios(value: str) -> List[float]:
     return ratios
 
 
-def _load_ohlc(ticker: str, period: str, interval: str) -> Tuple[List, List[float], List[float], List[float], List[float]]:
-    return load_ohlc(ticker=ticker, period=period, interval=interval)
+def _load_ohlc(
+    ticker: str,
+    period: str,
+    interval: str,
+    *,
+    data_source: str = "auto",
+    source_csv: str = "",
+) -> Tuple[List, List[float], List[float], List[float], List[float]]:
+    source = str(source_csv or "").strip()
+    return load_ohlc(
+        ticker=ticker,
+        period=period,
+        interval=interval,
+        data_source=data_source,
+        source_csv_path=source or None,
+    )
 
 
 def _ema_series(values: Sequence[float], period: int) -> List[float]:
@@ -484,6 +535,8 @@ def main() -> None:
     parser.add_argument("--ticker", default="GC=F")
     parser.add_argument("--period", default="60d")
     parser.add_argument("--interval", default="5m")
+    parser.add_argument("--data-source", default="auto", choices=["auto", "yahoo", "mt5_csv"])
+    parser.add_argument("--source-csv", default="", help="CSV path for --data-source mt5_csv")
     parser.add_argument("--cost-per-side", type=float, default=0.0002)
     parser.add_argument("--split-ratios", default="0.5,0.6,0.7")
     parser.add_argument("--min-oos-trades", type=int, default=45)
@@ -502,6 +555,8 @@ def main() -> None:
     parser.add_argument("--magic", type=int, default=560070)
     parser.add_argument("--comment", default="xau_autobot_tuned_auto")
     args = parser.parse_args()
+    if args.data_source == "mt5_csv" and str(args.source_csv).strip() == "":
+        parser.error("--source-csv is required when --data-source=mt5_csv")
 
     split_ratios = _parse_split_ratios(args.split_ratios)
     validated_comment = validate_trade_comment(args.comment)
@@ -528,7 +583,13 @@ def main() -> None:
         reversion_atrs,
         reversion_sl_tp_pairs,
     )
-    times, opens, highs, lows, closes = _load_ohlc(args.ticker, args.period, args.interval)
+    times, opens, highs, lows, closes = _load_ohlc(
+        args.ticker,
+        args.period,
+        args.interval,
+        data_source=args.data_source,
+        source_csv=args.source_csv,
+    )
     atr_values = _atr_series(highs, lows, closes, 14)
     atr_pct_values = [(atr_values[i] / closes[i]) if closes[i] > 0.0 else 0.0 for i in range(len(closes))]
 

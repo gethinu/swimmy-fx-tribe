@@ -455,8 +455,18 @@ def _parse_utc_optional(value: Any) -> Optional[datetime]:
 def _normalize_runtime_metrics(metrics: Any, *, payload: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     if not isinstance(metrics, dict):
         return None
+    signal_eval_count = _to_int(metrics.get("signal_eval_count"), default=-1)
+    gap_reject_count = _to_int(metrics.get("gap_reject_count"), default=-1)
     gate_check_count = _to_int(metrics.get("gate_check_count"), default=-1)
     gate_reject_gap_count = _to_int(metrics.get("gate_reject_gap_count"), default=-1)
+    if signal_eval_count < 0:
+        signal_eval_count = gate_check_count
+    if gap_reject_count < 0:
+        gap_reject_count = gate_reject_gap_count
+    if gate_check_count < 0:
+        gate_check_count = signal_eval_count
+    if gate_reject_gap_count < 0:
+        gate_reject_gap_count = gap_reject_count
     if gate_check_count < 0 or gate_reject_gap_count < 0:
         return None
     signal_counts_raw = metrics.get("signal_counts", {})
@@ -476,6 +486,11 @@ def _normalize_runtime_metrics(metrics: Any, *, payload: Optional[Dict[str, Any]
     magic = _to_int(metrics.get("magic"), default=_to_int(payload_obj.get("magic"), default=-1))
     schema_version = _to_int(metrics.get("schema_version"), default=1)
     return {
+        "signal_eval_count": int(signal_eval_count),
+        "gap_reject_count": int(gap_reject_count),
+        "spread_reject_count": int(_to_int(metrics.get("spread_reject_count"), 0)),
+        "session_reject_count": int(_to_int(metrics.get("session_reject_count"), 0)),
+        "maxpos_reject_count": int(_to_int(metrics.get("maxpos_reject_count"), 0)),
         "gate_check_count": int(gate_check_count),
         "gate_reject_gap_count": int(gate_reject_gap_count),
         "gap_reject_rate": float(gap_reject_rate),
