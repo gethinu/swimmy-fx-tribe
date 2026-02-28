@@ -742,6 +742,53 @@
           - `r2v_h1 live`: `open_positions=1`, `open_floating_profit=229.0`
         - 含意:
           - run一致クローズ約定は未発生のため、KPI（月利）判定は `NO_GO` 継続。
+      - 追補（2026-02-28 22:36 JST, option2 monitor-only refresh #12）:
+        - 変化:
+          - `current_run` が `trial_v2_20260228_v50_8_14d_r2v_m20_e1` へ更新。
+          - `current_run_r2` が `trial_v2_20260227_h4_stable_tfscan` へ更新。
+          - 両runとも `decision_mode=monthly_only`・`min_days=30` 契約で judge 出力されることを確認。
+        - 実行（監視専任）:
+          - `r2v_m20_e1`（primary）/`h4_stable_tfscan`（secondary）を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。
+          - 集約更新:
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_dual_run_status_20260226.json`
+            - `data/reports/v50_8_dual_run_status_20260227.json`
+            - `data/reports/v50_8_monthly_decision_20260225.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_monitor_only_status_20260227.json`
+        - 現況:
+          - `r2v_m20_e1`: `verdict=INVALID_TRIAL`, `window_days=0.40305931166666664`, `closed_positions=0`, `watchdog.window_hours=9.673423479999999`
+          - `h4_stable_tfscan`: `verdict=INVALID_TRIAL`, `window_days=0.4430405016319444`, `closed_positions=0`, `watchdog.window_hours=10.632972039166667`
+          - 両runとも `open_positions=0`。
+        - 含意:
+          - run一致クローズ約定は未発生のため、KPI（月利）判定は `NO_GO` 継続。
+      - 追補（2026-02-28 22:48 JST, option2 monitor-only refresh #13）:
+        - 実行（監視専任）:
+          - `primary/r2/r3`（`r2v_m20_e1` / `h4_stable_tfscan` / `m20_e10_c2`）を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。
+          - 監査更新:
+            - `data/reports/xau_autobot_operational_audit_20260228_r2v_m20_e1_refresh2_now1347.json`
+            - `data/reports/xau_autobot_operational_audit_20260228_h4_stable_tfscan_refresh2_now1347.json`
+            - `data/reports/xau_autobot_operational_audit_20260228_m20_e10_c2_refresh2_now1347.json`
+          - 集約更新:
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+            - `data/reports/v50_8_dual_run_status_20260226.json`
+            - `data/reports/v50_8_dual_run_status_20260227.json`
+            - `data/reports/v50_8_monthly_decision_20260225.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_monitor_only_status_20260227.json`
+            - `data/reports/v50_8_run_refresh_20260228_2247_r2v_m20_h4stable_e10c2.json`
+        - 現況:
+          - `r2v_m20_e1`: `verdict=INVALID_TRIAL`, `window_days=0.41120753370370366`, `closed_positions=0`, `watchdog.window_hours=9.868980808888889`
+          - `h4_stable_tfscan`: `verdict=INVALID_TRIAL`, `window_days=0.45118969225694444`, `closed_positions=0`, `watchdog.window_hours=10.828552614166666`
+          - `m20_e10_c2`: `verdict=INVALID_TRIAL`, `window_days=0.004476428518518518`, `closed_positions=0`
+          - 3runとも監査は `INSUFFICIENT_DATA`（`runtime_metrics_source=journal`）。
+        - 含意:
+          - run一致クローズ約定は未発生のため、KPI（月利）判定は `NO_GO` 継続。
       - 追補（2026-02-27 09:39 JST, parallel mode実行 / 3並走）:
         - ユーザー指示:
           - `並行で`（primary + secondary 2本）を採用。
@@ -2600,6 +2647,128 @@
   - 判定:
     - cutover自体は完了。
     - 3日 gate までは観測不足フェーズとして継続監視（性能判定は保留）。
+
+- [x] **P10-43 E10 sweep実施 + r3探索ローテーション方針（2026-02-28 UTC）**
+  - 目的:
+    - `E7-1` のテール欠陥（`worst_pf_active=0`）を維持したまま `pass_window_count` を落とさない改善候補を見つける。
+  - 実施:
+    - `E7-1` 派生7候補を `rolling_30d(step=1d, cost=0.0003)` で sweep。
+    - 非重複評価（`rolling_30d(step=30d)`）と cost感度（`0.0002/0.0003/0.0004`）を追加実行。
+    - 生成:
+      - `data/reports/xau_autobot_research_summary_20260228_e10_sweep_m20_cost0003_rolling30d.json`
+      - `data/reports/xau_autobot_research_summary_20260228_e10_sweep_step30_cost0003.json`
+      - `data/reports/xau_autobot_research_summary_20260228_e10_c2_costsweep_step30.json`
+  - 実測（上位候補）:
+    - `E10_c2(after_loss_cooldown_m20_bars=2)`:
+      - `pass_window_count=105/335`（`E7-1` 比 `+13`）
+      - `worst_pf_active=0.1367`（`E7-1` の `0.0` を解消）
+      - `p05_pf_active=0.2996`
+    - 非重複30d（月次換算）:
+      - `avg_monthly_pct=-0.8367`, `median=-1.2967`, `min=-4.5747`
+    - cost感度:
+      - `0.0002 -> -0.4681%`, `0.0003 -> -0.8367%`, `0.0004 -> -1.2039%`
+  - 判定:
+    - `E10_c2` はテール改善を確認したが、月次期待値は依然マイナス。
+    - primary 切替は見送り、`r3` 探索枠で forward 観測する方針を採用。
+  - INTERFACES 変更なし。
+
+- [x] **P10-44 r3探索を E10_c2 へ切替（2026-02-28 UTC）**
+  - 実施:
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - 主要差分: `after_loss_cooldown_m20_bars=2`, `magic=560486`, `comment=x3u_260228_m20e10c2`
+    - run meta 更新:
+      - `data/reports/xau_autobot_trial_v2_current_run_r3.json`
+      - `run_id=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`
+    - `./.venv/bin/python tools/xau_autobot_live_loop_guard.py --include-r3` 実行で不足loopを再起動し、
+      `primary/r2/r3=1/1/1` へ収束。
+    - 評価実行:
+      - `bash tools/xau_autobot_trial_v2_eval.sh`（run_id/configを `E10_c2` 指定）
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2 --days 3`
+  - 生成:
+    - `data/reports/xau_autobot_live_report_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/xau_autobot_operational_audit_20260228_m20_e10_c2_refresh1_now1343.json`
+    - `data/reports/v50_8_run_refresh_20260228_1342_r3_e10_c2.json`
+  - 実測:
+    - guard: `status=HEALTHY`（`primary/r2/r3` がすべて1本）
+    - judge（r3）: `INVALID_TRIAL`, `window_days=0.0010`, `closed_positions=0`, `monthly_return_pct=0.0`
+    - audit（r3）: `INSUFFICIENT_DATA`, `snapshot_count=12`, `runtime_metrics_source=journal`
+  - 判定:
+    - r3ローテーションは完了。
+    - 開始直後のため、現時点で成績判定は不可（観測継続）。
+
+- [x] **P10-45 option2 monitor-only refresh #13（2026-02-28 UTC）**
+  - 実施:
+    - `primary/r2/r3`（`trial_v2_20260228_v50_8_14d_r2v_m20_e1` / `trial_v2_20260227_h4_stable_tfscan` / `trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`）を再評価。
+    - 実行:
+      - `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`（run meta別に3回）
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter <run_id> --days 3 --write-report ...`（3run）
+    - 集約更新:
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - `data/reports/v50_8_dual_run_status_20260226.json`
+      - `data/reports/v50_8_dual_run_status_20260227.json`
+      - `data/reports/v50_8_monitor_only_status_20260227.json`
+      - `data/reports/v50_8_monthly_decision_20260225.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_run_refresh_20260228_2247_r2v_m20_h4stable_e10c2.json`
+  - 実測:
+    - `r2v_m20_e1`: `verdict=INVALID_TRIAL`, `window_days=0.41120753370370366`, `closed_positions=0`, `watchdog.window_hours=9.868980808888889`
+    - `h4_stable_tfscan`: `verdict=INVALID_TRIAL`, `window_days=0.45118969225694444`, `closed_positions=0`, `watchdog.window_hours=10.828552614166666`
+    - `m20_e10_c2`: `verdict=INVALID_TRIAL`, `window_days=0.004476428518518518`, `closed_positions=0`, `watchdog.window_hours=0.10743428444444444`
+    - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
+  - 判定:
+    - 月利KPIの運用判定は `decision=NO_GO` 継続。
+    - INTERFACES 変更なし。
+
+- [x] **P10-46 E10 live接続実装（M20 + derived M45 soft gate + TREND override, 2026-02-28 UTC）**
+  - 目的:
+    - 研究勝者 `E10` を live経路へ接続し、探索フェーズから段階昇格（shadow/micro-live）へ移行可能な実装状態を作る。
+  - 先行ドキュメント更新（実装前）:
+    - `docs/llm/INTERFACES.md`
+      - `tools/xau_autobot.py` に live契約キーを追加:
+        - `m45_bias_gate_policy`, `m45_neutral_policy`
+        - `trend_override_*`
+        - `m45_commander_*`
+      - `M45 commander` は `M15 -> factor=3` の derived再集約、`UTC_00:00 + offset=0` 固定を正本化。
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json` を live canonical candidate として明記。
+    - `docs/llm/STATE.md`
+      - `V50.8-P5.92`（E10 live接続正本化）
+      - `V50.8-P5.93`（live経路実装）
+  - 実装:
+    - `tools/xau_autobot.py`
+      - `BotConfig` に `m45 gate/override/commander` 設定を追加。
+      - `m45_commander_config_path` から M45 profile（EMA/ATR/threshold）を hydrate。
+      - live実行中に `M15` データを再集約して derived `M45` commander を生成。
+      - `block_opposite/hard_lock` gate を liveシグナルへ適用。
+      - `TREND` 状態のみ `min_ema_gap_over_atr` / `pullback_atr` を上書き（two-state hysteresis）。
+      - commander不成立時は fail-closed:
+        - `action=BLOCKED`, `reason=m45_commander_unavailable`
+    - fail-closed契約:
+      - gate/override 有効時は `timeframe=M20` 必須。
+      - `m45_commander_source_timeframe=M15` 必須。
+      - `m45_commander_resample_anchor=UTC_00:00` かつ `m45_commander_resample_offset_minutes=0` 必須。
+    - config更新:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json`
+      - 追加: `m45_commander_config_path` と resample固定キー。
+  - テスト（TDD）:
+    - `tools/tests/test_xau_autobot.py`
+      - 非M20で gate 有効時の fail-closed
+      - M45 gate による逆方向シグナル拒否
+      - TREND override の live反映
+      - commander profile hydrate
+    - 実行結果:
+      - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot.py` -> `63 passed`
+      - `./.venv/bin/python -m pytest -q tools/tests/test_xau_autobot_m20_bias_gate_eval.py` -> `20 passed`
+      - `./.venv/bin/python -m py_compile tools/xau_autobot.py tools/tests/test_xau_autobot.py` -> OK
+  - 次フェーズ（運用）:
+    - `14日 shadow`: `closed>=6`, `PF>=1.05`, `DD<=4%`
+    - `30日 micro-live`: `closed>=12`, `PF>=1.10`, `net>0`, `non-overlap 30d zero_win_active_window_count<=1`
+    - 月利3%判定は上記達成後に実施。
 
 ## 11. M5除外 Timeframe拡張（M15/H1）
 

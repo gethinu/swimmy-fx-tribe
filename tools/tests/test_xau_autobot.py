@@ -37,6 +37,7 @@ from tools.xau_autobot import (
     wait_reason_key,
     volatility_filter_pass,
     update_runtime_metrics,
+    hydrate_m45_commander_from_profile,
     _tf_to_mt5,
 )
 
@@ -371,6 +372,15 @@ class TestXauAutoBotConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             BotConfig.from_dict({"strategy_mode": "unsupported"})
 
+    def test_config_rejects_m45_gate_on_non_m20_timeframe(self):
+        with self.assertRaises(ValueError):
+            BotConfig.from_dict(
+                {
+                    "timeframe": "M15",
+                    "m45_bias_gate_policy": "block_opposite",
+                }
+            )
+
     def test_validate_trade_comment_accepts_31_chars(self):
         comment = "x" * 31
         self.assertEqual(validate_trade_comment(comment), comment)
@@ -532,6 +542,40 @@ class TestXauAutoBotConfig(unittest.TestCase):
             self.assertEqual(len(lines), 2)
             self.assertEqual(json.loads(lines[0])["action"], "HOLD")
             self.assertEqual(json.loads(lines[1])["action"], "ORDER")
+
+    def test_hydrate_m45_commander_from_profile_loads_profile_values(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            config_path = root / "e10.json"
+            profile_path = root / "m45.json"
+            config_path.write_text("{}", encoding="utf-8")
+            profile_path.write_text(
+                json.dumps(
+                    {
+                        "timeframe": "M45",
+                        "bars": 500,
+                        "fast_ema": 11,
+                        "slow_ema": 33,
+                        "atr_period": 8,
+                        "regime_trend_threshold": 2.8,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = BotConfig.from_dict(
+                {
+                    "timeframe": "M20",
+                    "m45_bias_gate_policy": "block_opposite",
+                    "m45_commander_config_path": "m45.json",
+                    "m45_commander_source_bars": 600,
+                }
+            )
+            hydrated = hydrate_m45_commander_from_profile(cfg, config_path=str(config_path))
+            self.assertEqual(hydrated.m45_commander_fast_ema, 11)
+            self.assertEqual(hydrated.m45_commander_slow_ema, 33)
+            self.assertEqual(hydrated.m45_commander_atr_period, 8)
+            self.assertAlmostEqual(hydrated.m45_commander_regime_trend_threshold, 2.8, places=6)
+            self.assertEqual(hydrated.m45_commander_source_bars, 1500)
 
     def test_resolve_config_path_prefers_explicit(self):
         with tempfile.TemporaryDirectory() as td:
@@ -712,6 +756,7 @@ class _FakeGateway:
         close_results,
         open_positions_after_close,
         fetch_error=None,
+        rates_by_tf=None,
     ):
         self._rates = rates
         self._open_positions = open_positions
@@ -719,12 +764,22 @@ class _FakeGateway:
         self._close_results = close_results
         self._open_positions_after_close = open_positions_after_close
         self._fetch_error = fetch_error
+        self._rates_by_tf = {str(k).upper(): v for k, v in (rates_by_tf or {}).items()}
         self.orders = []
         self.close_calls = 0
 
     def fetch_rates(self):
         if self._fetch_error is not None:
             raise self._fetch_error
+        return self._rates
+
+    def fetch_rates_for_timeframe(self, timeframe, bars):
+        _ = bars
+        if self._fetch_error is not None:
+            raise self._fetch_error
+        tf_key = str(timeframe).upper()
+        if tf_key in self._rates_by_tf:
+            return self._rates_by_tf[tf_key]
         return self._rates
 
     def get_tick_context(self):
@@ -773,6 +828,13 @@ class TestXauAutoBotLiveBehavior(unittest.TestCase):
             "low": [9.8, 8.8, 7.8, 6.8, 5.8],
             "close": [10.0, 9.0, 8.0, 7.0, 6.0],
         }
+
+    def _m15_commander_rates_uptrend(self):
+        times = [1700000000 + i * 900 for i in range(18)]
+        close = [100.0 + i * 0.4 for i in range(18)]
+        high = [c + 0.2 for c in close]
+        low = [c - 0.2 for c in close]
+        return {"time": times, "high": high, "low": low, "close": close}
 
     def test_evaluate_once_closes_opposite_position_before_new_entry(self):
         config = self._base_config()
@@ -857,6 +919,101 @@ class TestXauAutoBotLiveBehavior(unittest.TestCase):
         self.assertEqual(payload["reason"], "ema_gap_out_of_range")
         self.assertTrue(payload["gap_gate_checked"])
         self.assertAlmostEqual(payload["ema_gap_over_atr"], 0.78125, places=5)
+        self.assertEqual(len(gateway.orders), 0)
+
+    def test_evaluate_once_blocks_signal_when_m45_gate_rejects_opposite_direction(self):
+        config = BotConfig.from_dict(
+            {
+                "symbol": "XAUUSD",
+                "timeframe": "M20",
+                "fast_ema": 1,
+                "slow_ema": 3,
+                "atr_period": 2,
+                "pullback_atr": 0.0,
+                "session_start_hour_utc": 0,
+                "session_end_hour_utc": 23,
+                "min_atr_ratio_to_median": 0.0,
+                "max_atr_ratio_to_median": 999.0,
+                "min_ema_gap_over_atr": 0.0,
+                "max_ema_gap_over_atr": 999.0,
+                "m45_bias_gate_policy": "block_opposite",
+                "m45_neutral_policy": "allow_all",
+                "m45_commander_source_timeframe": "M15",
+                "m45_commander_resample_factor": 3,
+                "m45_commander_fast_ema": 1,
+                "m45_commander_slow_ema": 3,
+                "m45_commander_atr_period": 2,
+                "m45_commander_regime_trend_threshold": 0.5,
+            }
+        )
+        gateway = _FakeGateway(
+            rates=self._rates(),
+            open_positions=0,
+            has_opposite=False,
+            close_results=[],
+            open_positions_after_close=0,
+            rates_by_tf={"M15": self._m15_commander_rates_uptrend()},
+        )
+
+        payload, _ = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "HOLD")
+        self.assertEqual(payload["reason"], "m45_bias_gate_blocked")
+        self.assertEqual(payload.get("m45_bias"), "LONG")
+        self.assertEqual(payload.get("m45_gate_policy"), "block_opposite")
+        self.assertEqual(len(gateway.orders), 0)
+
+    def test_evaluate_once_applies_trend_override_in_trend_state(self):
+        rates = {
+            "time": [1700000000, 1700001200, 1700002400, 1700003600, 1700004800],
+            "high": [10.15, 10.15, 10.15, 10.15, 10.2],
+            "low": [9.85, 9.85, 9.85, 9.85, 9.9],
+            "close": [10.0, 10.0, 10.0, 10.0, 10.1],
+        }
+        config = BotConfig.from_dict(
+            {
+                "symbol": "XAUUSD",
+                "timeframe": "M20",
+                "fast_ema": 1,
+                "slow_ema": 3,
+                "atr_period": 2,
+                "pullback_atr": 0.25,
+                "session_start_hour_utc": 0,
+                "session_end_hour_utc": 23,
+                "min_atr_ratio_to_median": 0.0,
+                "max_atr_ratio_to_median": 999.0,
+                "min_ema_gap_over_atr": 0.12,
+                "max_ema_gap_over_atr": 1.8,
+                "m45_bias_gate_policy": "none",
+                "trend_override_enabled": True,
+                "trend_override_on": 0.5,
+                "trend_override_off": 0.4,
+                "trend_override_initial_state": "non_trend",
+                "trend_override_min_ema_gap_over_atr": 0.18,
+                "trend_override_pullback_atr": 0.23,
+                "m45_commander_source_timeframe": "M15",
+                "m45_commander_resample_factor": 3,
+                "m45_commander_fast_ema": 1,
+                "m45_commander_slow_ema": 3,
+                "m45_commander_atr_period": 2,
+                "m45_commander_regime_trend_threshold": 0.5,
+            }
+        )
+        gateway = _FakeGateway(
+            rates=rates,
+            open_positions=0,
+            has_opposite=False,
+            close_results=[],
+            open_positions_after_close=0,
+            rates_by_tf={"M15": self._m15_commander_rates_uptrend()},
+        )
+
+        payload, _ = evaluate_once(config, gateway, last_bar_time=None)
+
+        self.assertEqual(payload["action"], "HOLD")
+        self.assertEqual(payload["reason"], "ema_gap_out_of_range")
+        self.assertAlmostEqual(payload.get("min_ema_gap_over_atr", 0.0), 0.18, places=6)
+        self.assertEqual(payload.get("trend_override_state"), "trend")
         self.assertEqual(len(gateway.orders), 0)
 
 

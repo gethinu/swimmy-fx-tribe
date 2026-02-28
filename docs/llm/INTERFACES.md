@@ -905,6 +905,17 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
 - **設定キー**:
   - `min_ema_gap_over_atr`（既定: `0.9`）
   - `max_ema_gap_over_atr`（既定: `2.5`）
+  - `m45_bias_gate_policy`（optional: `none|block_opposite|hard_lock`、既定 `none`）
+  - `m45_neutral_policy`（optional: `allow_all|block_all`、既定 `allow_all`）
+  - `trend_override_enabled`（optional: bool、既定 `false`）
+  - `trend_override_on` / `trend_override_off` / `trend_override_initial_state`（optional、既定 `2.35/2.25/non_trend`）
+  - `trend_override_min_ema_gap_over_atr`（optional）
+  - `trend_override_pullback_atr`（optional）
+  - `m45_commander_config_path`（optional、`M45` commander profile JSON）
+  - `m45_commander_source_timeframe`（optional、既定 `M15`）
+  - `m45_commander_resample_factor`（optional、既定 `3`）
+  - `m45_commander_resample_anchor`（optional、既定 `UTC_00:00`）
+  - `m45_commander_resample_offset_minutes`（optional、既定 `0`）
 - **実行モード契約**:
   - CLI `--mode` は `live|research` を受理し、既定は `live`。
   - `live` は MT5 実行経路（発注可）として扱い、研究専用TFは fail-closed で拒否する。
@@ -915,6 +926,18 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - 実行時は `MetaTrader5.TIMEFRAME_*` へ直接マップし、runtime の MT5 パッケージが当該定数を持たない場合も `ValueError("unsupported timeframe for live mode: ...")` で fail-closed する。
 - **判定契約**:
   - `ema_gap_over_atr = abs(ema_fast - ema_slow) / atr` を算出し、`atr<=0` または `ema_gap_over_atr` が上記レンジ外なら `HOLD` を返す（新規発注しない）。
+  - `m45_bias_gate_policy != none` または `trend_override_enabled=true` のときは、`M45 commander` を必須化する（fail-closed）。
+  - `M45 commander` は `M15`（既定）を `factor=3` で再集約した **derived M45** を正本とする。
+  - `derived M45` のバー境界は `UTC_00:00` / `offset=0` 固定（`m45_commander_resample_anchor != UTC_00:00` または `offset != 0` は fail-closed）。
+  - `M45 commander` が有効なとき:
+    - `m45_bias_gate_policy=block_opposite`: M45 と逆方向シグナルのみ拒否
+    - `m45_bias_gate_policy=hard_lock`: M45 同方向以外を拒否
+    - `m45_neutral_policy=block_all`: `bias=NEUTRAL` で全方向拒否
+  - `trend_override_enabled=true` のとき:
+    - `M45 regime_strength` に two-state hysteresis（`TREND/NON_TREND`）を適用する。
+    - `TREND` 状態のみ `min_ema_gap_over_atr` / `pullback_atr` を `trend_override_*` で上書きする。
+    - `NON_TREND` はベース executor 値を使用する。
+  - `M45 commander` を使う構成は `timeframe=M20` のみ許可する（それ以外は fail-closed）。
 - **実行payload（追加）**:
   - `timestamp_utc`（ISO8601, UTC）
   - `runtime_metrics.signal_eval_count`（シグナル評価の累積回数）
@@ -1070,6 +1093,14 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
     - `NEUTRAL` 時のみ `min_ema_gap_over_atr` の下限を上書き。
   - `neutral_pullback_atr`（optional）:
     - `NEUTRAL` 時のみ `pullback_atr` を上書き。
+  - `trend_override_enabled`（optional, bool）:
+    - `true` のとき、M45二状態（`TREND/NON_TREND`）で **TREND時のみ** executor 入力閾値を上書きする。
+  - `trend_override_on` / `trend_override_off` / `trend_override_initial_state`（optional）:
+    - TREND判定の hysteresis（既定: `2.35/2.25/non_trend`）。
+  - `trend_override_min_ema_gap_over_atr`（optional）:
+    - TREND状態のときだけ `min_ema_gap_over_atr` を上書きする。
+  - `trend_override_pullback_atr`（optional）:
+    - TREND状態のときだけ `pullback_atr` を上書きする。
 - **診断出力契約（追加）**:
   - `mode_time_share`（`trend/reversion/neutral`）
   - `gate_active_time_share`
@@ -1115,12 +1146,12 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
   - 既定では `m45_bias_gate_policy=none`, `m45_neutral_policy=allow_all`
 
 ### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate.json`
-- **schema（research evaluator 専用）**:
+- **schema（research/live 共通）**:
   - `timeframe=M20` の executor key を `trial_v2_20260228_m20_executor_v1.json` と共有。
   - 追加 gate key:
     - `m45_bias_gate_policy=block_opposite`
     - `m45_neutral_policy=allow_all`
-  - 本configは評価比較用であり、live へ直接投入する場合は gate key を `tools/xau_autobot.py` 実行契約へ昇格するまでは無視される。
+  - live 実行では `m45_commander_config_path`（または同等の commander パラメータ）を指定し、derived M45 判定を有効化する。
 
 ### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e5.json`
 - **schema（research evaluator 専用, E5）**:
@@ -1190,6 +1221,21 @@ Discord 通知のみ Notifier（ZMQ 5562）を共有する。
     - `NON_TREND` 状態: `none`
   - 比較対象:
     - `E7-1`（常時 `block_opposite`） vs `E9-1`（状態依存 gate）
+
+### `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json`
+- **schema（research/live canonical candidate, E10）**:
+  - ベースは `E7-1 + E4 gate`（`m45_bias_gate_policy=block_opposite`）を維持する。
+  - TREND側のみ最小差分:
+    - `trend_override_enabled=true`
+    - `trend_override_on=2.35`
+    - `trend_override_off=2.25`
+    - `trend_override_initial_state=non_trend`
+    - `trend_override_min_ema_gap_over_atr=0.18`
+    - `trend_override_pullback_atr=0.23`
+  - live投入時の commander 契約:
+    - `m45_commander_config_path` で `M45` profile（例: `trial_v2_20260228_m45_trendcore_v1_1.json`）を指定する。
+    - `m45_commander_source_timeframe=M15`, `m45_commander_resample_factor=3`, `m45_commander_resample_anchor=UTC_00:00`, `m45_commander_resample_offset_minutes=0`
+  - NON_TREND はベース値（`min_ema_gap_over_atr=0.12`, `pullback_atr=0.25`）を維持する。
 
 ### `tools/xau_autobot_trial_judge.py`
 - **閾値引数の既定**:

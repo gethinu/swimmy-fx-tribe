@@ -12,7 +12,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
     import MetaTrader5 as mt5  # type: ignore
@@ -44,6 +44,9 @@ DEFAULT_RUNTIME_JOURNAL_PATH = "data/reports/xau_autobot_runtime_journal_latest.
 DEFAULT_TRIAL_RUN_META_PATH = "data/reports/xau_autobot_trial_v2_current_run.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_METRICS_SCHEMA_VERSION = 1
+M45_BIAS_GATE_POLICIES = {"none", "block_opposite", "hard_lock"}
+M45_NEUTRAL_POLICIES = {"allow_all", "block_all"}
+DEFAULT_RESAMPLE_ANCHOR = "UTC_00:00"
 
 
 def validate_trade_comment(comment: str, *, max_len: int = MT5_COMMENT_MAX_LEN) -> str:
@@ -60,6 +63,29 @@ def validate_strategy_mode(mode: str) -> str:
     if text not in STRATEGY_MODES:
         raise ValueError(f"unsupported strategy_mode: {mode}")
     return text
+
+
+def validate_m45_bias_gate_policy(policy: str) -> str:
+    text = str(policy or "none").strip().lower()
+    if text not in M45_BIAS_GATE_POLICIES:
+        raise ValueError(f"unsupported m45_bias_gate_policy: {policy}")
+    return text
+
+
+def validate_m45_neutral_policy(policy: str) -> str:
+    text = str(policy or "allow_all").strip().lower()
+    if text not in M45_NEUTRAL_POLICIES:
+        raise ValueError(f"unsupported m45_neutral_policy: {policy}")
+    return text
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text == "":
+        return None
+    return float(text)
 
 
 def _normalize_timeframe_label(timeframe: str) -> str:
@@ -841,6 +867,234 @@ def decide_signal_with_mode(
     }
 
 
+def next_two_state_mode(
+    *,
+    prev_state: Optional[str],
+    regime_strength: float,
+    trend_on: float,
+    trend_off: float,
+) -> str:
+    state = str(prev_state or "").strip().lower()
+    if state not in {"trend", "non_trend"}:
+        state = "non_trend"
+    if state == "non_trend" and float(regime_strength) >= float(trend_on):
+        return "trend"
+    if state == "trend" and float(regime_strength) <= float(trend_off):
+        return "non_trend"
+    return state
+
+
+def _signal_to_int(signal: str) -> int:
+    text = str(signal or "").strip().upper()
+    if text == "BUY":
+        return 1
+    if text == "SELL":
+        return -1
+    return 0
+
+
+def _int_to_signal(signal: int) -> str:
+    if int(signal) > 0:
+        return "BUY"
+    if int(signal) < 0:
+        return "SELL"
+    return "HOLD"
+
+
+def _format_bias_label(bias: int) -> str:
+    if int(bias) > 0:
+        return "LONG"
+    if int(bias) < 0:
+        return "SHORT"
+    return "NEUTRAL"
+
+
+def apply_m45_bias_gate_signal(
+    *,
+    signal: str,
+    bias: int,
+    gate_policy: str,
+    neutral_policy: str,
+    gate_active: bool = True,
+) -> Tuple[str, bool]:
+    signal_int = _signal_to_int(signal)
+    if signal_int == 0:
+        return "HOLD", False
+    if not bool(gate_active):
+        return _int_to_signal(signal_int), False
+
+    policy = validate_m45_bias_gate_policy(gate_policy)
+    neutral = validate_m45_neutral_policy(neutral_policy)
+    if policy == "none":
+        return _int_to_signal(signal_int), False
+
+    if int(bias) == 0:
+        if neutral == "block_all":
+            return "HOLD", True
+        return _int_to_signal(signal_int), False
+
+    if policy == "block_opposite":
+        if int(signal_int) == -int(bias):
+            return "HOLD", True
+        return _int_to_signal(signal_int), False
+
+    # hard_lock
+    if int(signal_int) != int(bias):
+        return "HOLD", True
+    return _int_to_signal(signal_int), False
+
+
+def _timestamp_to_utc(value: object) -> datetime:
+    if isinstance(value, datetime):
+        out = value
+    elif isinstance(value, (int, float)):
+        out = datetime.fromtimestamp(float(value), tz=timezone.utc)
+    else:
+        raise ValueError(f"unsupported timestamp type: {type(value)!r}")
+    if out.tzinfo is None:
+        return out.replace(tzinfo=timezone.utc)
+    return out.astimezone(timezone.utc)
+
+
+def _resample_ohlc_fixed(
+    *,
+    times: Sequence[int],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    factor: int,
+    base_interval_minutes: int,
+    anchor: str,
+    offset_minutes: int,
+) -> Dict[str, List[float]]:
+    if factor <= 1:
+        return {
+            "time": [int(t) for t in times],
+            "high": [float(v) for v in highs],
+            "low": [float(v) for v in lows],
+            "close": [float(v) for v in closes],
+        }
+    if base_interval_minutes <= 0:
+        raise ValueError(f"base_interval_minutes must be > 0: {base_interval_minutes}")
+    if str(anchor or "").strip().upper() != DEFAULT_RESAMPLE_ANCHOR:
+        raise ValueError(f"unsupported resample anchor: {anchor}")
+    if int(offset_minutes) != 0:
+        raise ValueError(f"unsupported resample offset minutes for live contract: {offset_minutes}")
+
+    size = min(len(times), len(highs), len(lows), len(closes))
+    if size < factor:
+        raise RuntimeError(f"not enough bars to resample: size={size} factor={factor}")
+    bucket_seconds = int(base_interval_minutes * factor * 60)
+    out_time: List[int] = []
+    out_high: List[float] = []
+    out_low: List[float] = []
+    out_close: List[float] = []
+    current_bucket: Optional[int] = None
+    bucket_indices: List[int] = []
+
+    def _flush(indices: List[int]) -> None:
+        if len(indices) < factor:
+            return
+        lo = int(indices[0])
+        hi = int(indices[-1])
+        out_time.append(int(times[hi]))
+        out_high.append(float(max(highs[idx] for idx in indices)))
+        out_low.append(float(min(lows[idx] for idx in indices)))
+        out_close.append(float(closes[hi]))
+
+    for idx in range(size):
+        ts_utc = _timestamp_to_utc(times[idx])
+        day_anchor = ts_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        elapsed = int((ts_utc - day_anchor).total_seconds())
+        bucket = int((day_anchor + timedelta(seconds=(elapsed // bucket_seconds) * bucket_seconds)).timestamp())
+        if current_bucket is None:
+            current_bucket = bucket
+        if bucket != current_bucket:
+            _flush(bucket_indices)
+            bucket_indices = []
+            current_bucket = bucket
+        bucket_indices.append(idx)
+    _flush(bucket_indices)
+    if not out_time:
+        raise RuntimeError(f"not enough aligned bars to resample: size={size} factor={factor}")
+    return {"time": out_time, "high": out_high, "low": out_low, "close": out_close}
+
+
+def _requires_m45_commander(config: "BotConfig") -> bool:
+    return bool(config.m45_bias_gate_policy != "none" or config.trend_override_enabled)
+
+
+def _derive_m45_commander_snapshot(config: "BotConfig", gateway: "Mt5Gateway") -> M45CommanderSnapshot:
+    source = gateway.fetch_rates_for_timeframe(config.m45_commander_source_timeframe, config.m45_commander_source_bars)
+    derived = _resample_ohlc_fixed(
+        times=source["time"],
+        highs=source["high"],
+        lows=source["low"],
+        closes=source["close"],
+        factor=config.m45_commander_resample_factor,
+        base_interval_minutes=15,
+        anchor=config.m45_commander_resample_anchor,
+        offset_minutes=config.m45_commander_resample_offset_minutes,
+    )
+    closes = [float(v) for v in derived["close"]]
+    highs = [float(v) for v in derived["high"]]
+    lows = [float(v) for v in derived["low"]]
+    min_required = max(config.m45_commander_slow_ema, config.m45_commander_atr_period) + 2
+    if len(closes) < min_required:
+        raise RuntimeError(
+            "not enough derived M45 bars for commander: "
+            f"size={len(closes)} required={min_required}"
+        )
+    ema_fast = ema_last(closes, config.m45_commander_fast_ema)
+    ema_slow = ema_last(closes, config.m45_commander_slow_ema)
+    atr_values = atr_series(highs, lows, closes, config.m45_commander_atr_period)
+    atr_value = atr_values[-1] if atr_values else 0.0
+    if atr_value <= 0.0:
+        regime_strength = 0.0
+    else:
+        regime_strength = abs(ema_fast - ema_slow) / atr_value
+    bias = 0
+    if regime_strength >= float(config.m45_commander_regime_trend_threshold):
+        if ema_fast > ema_slow:
+            bias = 1
+        elif ema_fast < ema_slow:
+            bias = -1
+    return M45CommanderSnapshot(
+        bar_time=int(derived["time"][-1]),
+        regime_strength=float(regime_strength),
+        bias=int(bias),
+    )
+
+
+def _resolve_live_trend_override(
+    *,
+    config: "BotConfig",
+    state: LiveEvalState,
+    regime_strength: float,
+) -> Tuple[str, float, float]:
+    if not bool(config.trend_override_enabled):
+        return "disabled", float(config.min_ema_gap_over_atr), float(config.pullback_atr)
+    seed_state = state.trend_override_state
+    if seed_state is None:
+        seed_state = str(config.trend_override_initial_state).strip().lower() or "non_trend"
+    next_state = next_two_state_mode(
+        prev_state=seed_state,
+        regime_strength=float(regime_strength),
+        trend_on=float(config.trend_override_on),
+        trend_off=float(config.trend_override_off),
+    )
+    state.trend_override_state = next_state
+
+    min_gap = float(config.min_ema_gap_over_atr)
+    pullback = float(config.pullback_atr)
+    if next_state == "trend":
+        if config.trend_override_min_ema_gap_over_atr is not None:
+            min_gap = float(config.trend_override_min_ema_gap_over_atr)
+        if config.trend_override_pullback_atr is not None:
+            pullback = float(config.trend_override_pullback_atr)
+    return next_state, min_gap, pullback
+
+
 def build_sl_tp(
     *,
     side: str,
@@ -918,6 +1172,25 @@ class BotConfig:
     max_atr_ratio_to_median: float = 999.0
     min_ema_gap_over_atr: float = 0.9
     max_ema_gap_over_atr: float = 2.5
+    m45_bias_gate_policy: str = "none"
+    m45_neutral_policy: str = "allow_all"
+    trend_override_enabled: bool = False
+    trend_override_on: float = 2.35
+    trend_override_off: float = 2.25
+    trend_override_initial_state: str = "non_trend"
+    trend_override_min_ema_gap_over_atr: Optional[float] = None
+    trend_override_pullback_atr: Optional[float] = None
+    m45_commander_config_path: str = ""
+    m45_commander_source_timeframe: str = "M15"
+    m45_commander_resample_factor: int = 3
+    m45_commander_source_bars: int = 900
+    m45_commander_fast_ema: int = 24
+    m45_commander_slow_ema: int = 200
+    m45_commander_atr_period: int = 14
+    m45_commander_regime_trend_threshold: float = 2.4
+    m45_commander_resample_anchor: str = DEFAULT_RESAMPLE_ANCHOR
+    m45_commander_resample_offset_minutes: int = 0
+    m45_gate_min_strength_to_block_opposite: Optional[float] = None
     deviation: int = 30
     magic: int = 560061
     comment: str = "xau_autobot_v1"
@@ -930,6 +1203,8 @@ class BotConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "BotConfig":
         comment = validate_trade_comment(str(data.get("comment", "xau_autobot_v1")))
         strategy_mode = validate_strategy_mode(str(data.get("strategy_mode", "trend")))
+        m45_bias_gate_policy = validate_m45_bias_gate_policy(str(data.get("m45_bias_gate_policy", "none")))
+        m45_neutral_policy = validate_m45_neutral_policy(str(data.get("m45_neutral_policy", "allow_all")))
         min_ema_gap_over_atr = float(data.get("min_ema_gap_over_atr", 0.9))
         max_ema_gap_over_atr = float(data.get("max_ema_gap_over_atr", 2.5))
         if max_ema_gap_over_atr < min_ema_gap_over_atr:
@@ -937,9 +1212,58 @@ class BotConfig:
                 f"max_ema_gap_over_atr must be >= min_ema_gap_over_atr: "
                 f"{max_ema_gap_over_atr} < {min_ema_gap_over_atr}"
             )
+        timeframe = _normalize_timeframe_label(str(data.get("timeframe", "M5")))
+        trend_override_enabled = bool(data.get("trend_override_enabled", False))
+        trend_override_on = float(data.get("trend_override_on", 2.35))
+        trend_override_off = float(data.get("trend_override_off", 2.25))
+        if trend_override_on < trend_override_off:
+            raise ValueError(
+                "trend_override_on must be >= trend_override_off: "
+                f"{trend_override_on} < {trend_override_off}"
+            )
+        trend_override_initial_state = str(data.get("trend_override_initial_state", "non_trend")).strip().lower()
+        if trend_override_initial_state == "":
+            trend_override_initial_state = "non_trend"
+        if trend_override_initial_state not in {"trend", "non_trend"}:
+            raise ValueError(f"unsupported trend_override_initial_state: {trend_override_initial_state}")
+        m45_commander_source_timeframe = _normalize_timeframe_label(
+            str(data.get("m45_commander_source_timeframe", "M15"))
+        )
+        if m45_commander_source_timeframe != "M15":
+            raise ValueError(
+                "m45_commander_source_timeframe must be M15 for live derived-M45 contract: "
+                f"{m45_commander_source_timeframe}"
+            )
+        m45_commander_resample_factor = int(data.get("m45_commander_resample_factor", 3))
+        if m45_commander_resample_factor <= 1:
+            raise ValueError(f"m45_commander_resample_factor must be > 1: {m45_commander_resample_factor}")
+        m45_commander_resample_anchor = str(
+            data.get("m45_commander_resample_anchor", DEFAULT_RESAMPLE_ANCHOR)
+        ).strip().upper()
+        if m45_commander_resample_anchor != DEFAULT_RESAMPLE_ANCHOR:
+            raise ValueError(f"unsupported m45_commander_resample_anchor: {m45_commander_resample_anchor}")
+        m45_commander_resample_offset_minutes = int(data.get("m45_commander_resample_offset_minutes", 0))
+        if m45_commander_resample_offset_minutes != 0:
+            raise ValueError(
+                "m45_commander_resample_offset_minutes must be 0 for live contract: "
+                f"{m45_commander_resample_offset_minutes}"
+            )
+        m45_commander_source_bars = int(data.get("m45_commander_source_bars", 900))
+        if m45_commander_source_bars <= 0:
+            raise ValueError(f"m45_commander_source_bars must be > 0: {m45_commander_source_bars}")
+
+        m45_gate_min_strength_to_block_opposite = _optional_float(
+            data.get("m45_gate_min_strength_to_block_opposite")
+        )
+
+        m45_commander_required = (m45_bias_gate_policy != "none") or trend_override_enabled
+        if m45_commander_required and timeframe != "M20":
+            raise ValueError(
+                "m45 commander gate/override is only supported for timeframe=M20 in live contract"
+            )
         return cls(
             symbol=str(data.get("symbol", "XAUUSD")),
-            timeframe=_normalize_timeframe_label(str(data.get("timeframe", "M5"))),
+            timeframe=timeframe,
             bars=int(data.get("bars", 300)),
             fast_ema=int(data.get("fast_ema", 20)),
             slow_ema=int(data.get("slow_ema", 80)),
@@ -963,6 +1287,27 @@ class BotConfig:
             max_atr_ratio_to_median=float(data.get("max_atr_ratio_to_median", 999.0)),
             min_ema_gap_over_atr=min_ema_gap_over_atr,
             max_ema_gap_over_atr=max_ema_gap_over_atr,
+            m45_bias_gate_policy=m45_bias_gate_policy,
+            m45_neutral_policy=m45_neutral_policy,
+            trend_override_enabled=trend_override_enabled,
+            trend_override_on=trend_override_on,
+            trend_override_off=trend_override_off,
+            trend_override_initial_state=trend_override_initial_state,
+            trend_override_min_ema_gap_over_atr=_optional_float(
+                data.get("trend_override_min_ema_gap_over_atr")
+            ),
+            trend_override_pullback_atr=_optional_float(data.get("trend_override_pullback_atr")),
+            m45_commander_config_path=str(data.get("m45_commander_config_path", "")).strip(),
+            m45_commander_source_timeframe=m45_commander_source_timeframe,
+            m45_commander_resample_factor=m45_commander_resample_factor,
+            m45_commander_source_bars=m45_commander_source_bars,
+            m45_commander_fast_ema=int(data.get("m45_commander_fast_ema", 24)),
+            m45_commander_slow_ema=int(data.get("m45_commander_slow_ema", 200)),
+            m45_commander_atr_period=int(data.get("m45_commander_atr_period", 14)),
+            m45_commander_regime_trend_threshold=float(data.get("m45_commander_regime_trend_threshold", 2.4)),
+            m45_commander_resample_anchor=m45_commander_resample_anchor,
+            m45_commander_resample_offset_minutes=m45_commander_resample_offset_minutes,
+            m45_gate_min_strength_to_block_opposite=m45_gate_min_strength_to_block_opposite,
             deviation=int(data.get("deviation", 30)),
             magic=int(data.get("magic", 560061)),
             comment=comment,
@@ -971,6 +1316,57 @@ class BotConfig:
             poll_seconds=int(data.get("poll_seconds", 15)),
             max_cycles=int(data.get("max_cycles", 0)),
         )
+
+
+def _resolve_profile_path(*, profile_path: str, config_path: str) -> Path:
+    candidate = Path(profile_path).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    if config_path:
+        config_dir = Path(config_path).expanduser().resolve().parent
+        maybe = config_dir / candidate
+        if maybe.exists():
+            return maybe
+    return (REPO_ROOT / candidate).resolve()
+
+
+def hydrate_m45_commander_from_profile(config: BotConfig, *, config_path: str) -> BotConfig:
+    profile = str(config.m45_commander_config_path or "").strip()
+    if profile == "":
+        return config
+    path = _resolve_profile_path(profile_path=profile, config_path=config_path)
+    if not path.exists():
+        raise ValueError(f"m45_commander_config_path not found: {path}")
+    payload = _load_json_object(path)
+    if not payload:
+        raise ValueError(f"m45_commander_config_path is empty or invalid: {path}")
+    timeframe = _normalize_timeframe_label(str(payload.get("timeframe", "M45")))
+    if timeframe != "M45":
+        raise ValueError(f"m45 commander profile must use timeframe=M45: {timeframe}")
+    config.m45_commander_fast_ema = int(payload.get("fast_ema", config.m45_commander_fast_ema))
+    config.m45_commander_slow_ema = int(payload.get("slow_ema", config.m45_commander_slow_ema))
+    config.m45_commander_atr_period = int(payload.get("atr_period", config.m45_commander_atr_period))
+    config.m45_commander_regime_trend_threshold = float(
+        payload.get("regime_trend_threshold", config.m45_commander_regime_trend_threshold)
+    )
+    profile_bars = int(payload.get("bars", 0))
+    if profile_bars > 0:
+        derived_source_bars = profile_bars * int(config.m45_commander_resample_factor)
+        if derived_source_bars > config.m45_commander_source_bars:
+            config.m45_commander_source_bars = derived_source_bars
+    return config
+
+
+@dataclass
+class LiveEvalState:
+    trend_override_state: Optional[str] = None
+
+
+@dataclass
+class M45CommanderSnapshot:
+    bar_time: int
+    regime_strength: float
+    bias: int
 
 
 class Mt5Gateway:
@@ -992,17 +1388,28 @@ class Mt5Gateway:
         if mt5 is not None:
             mt5.shutdown()
 
-    def fetch_rates(self) -> Dict[str, List[float]]:
+    def fetch_rates_for_timeframe(self, timeframe: str, bars: int) -> Dict[str, List[float]]:
         assert mt5 is not None
-        tf = _tf_to_mt5(self.config.timeframe)
-        rates = mt5.copy_rates_from_pos(self.config.symbol, tf, 0, self.config.bars)
-        if rates is None or len(rates) < max(self.config.slow_ema, self.config.atr_period) + 2:
+        tf = _tf_to_mt5(timeframe)
+        rates = mt5.copy_rates_from_pos(self.config.symbol, tf, 0, bars)
+        if rates is None:
             raise RuntimeError("not enough bars from MT5")
         return {
             "time": [int(r["time"]) for r in rates],
             "high": [float(r["high"]) for r in rates],
             "low": [float(r["low"]) for r in rates],
             "close": [float(r["close"]) for r in rates],
+        }
+
+    def fetch_rates(self) -> Dict[str, List[float]]:
+        rates = self.fetch_rates_for_timeframe(self.config.timeframe, self.config.bars)
+        if len(rates["close"]) < max(self.config.slow_ema, self.config.atr_period) + 2:
+            raise RuntimeError("not enough bars from MT5")
+        return {
+            "time": list(rates["time"]),
+            "high": list(rates["high"]),
+            "low": list(rates["low"]),
+            "close": list(rates["close"]),
         }
 
     def get_tick_context(self) -> Tuple[float, float, float]:
@@ -1301,7 +1708,13 @@ class Mt5Gateway:
         return self._order_send_with_filling_fallback(request)
 
 
-def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optional[int]) -> Tuple[Dict[str, Any], int]:
+def evaluate_once(
+    config: BotConfig,
+    gateway: Mt5Gateway,
+    last_bar_time: Optional[int],
+    *,
+    eval_state: Optional[LiveEvalState] = None,
+) -> Tuple[Dict[str, Any], int]:
     try:
         rates = gateway.fetch_rates()
     except RuntimeError as exc:
@@ -1340,6 +1753,44 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "gap_gate_checked": False,
         }, bar_time
 
+    local_state = eval_state if eval_state is not None else LiveEvalState()
+    commander_payload: Dict[str, Any] = {}
+    commander_snapshot: Optional[M45CommanderSnapshot] = None
+    effective_min_ema_gap_over_atr = float(config.min_ema_gap_over_atr)
+    effective_pullback_atr = float(config.pullback_atr)
+    trend_override_state = "disabled"
+    if _requires_m45_commander(config):
+        try:
+            commander_snapshot = _derive_m45_commander_snapshot(config, gateway)
+        except (RuntimeError, ValueError) as exc:
+            return {
+                "action": "BLOCKED",
+                "reason": "m45_commander_unavailable",
+                "symbol": config.symbol,
+                "error": str(exc),
+                "m45_gate_policy": config.m45_bias_gate_policy,
+                "trend_override_enabled": bool(config.trend_override_enabled),
+                "gap_gate_checked": False,
+            }, bar_time
+        trend_override_state, effective_min_ema_gap_over_atr, effective_pullback_atr = _resolve_live_trend_override(
+            config=config,
+            state=local_state,
+            regime_strength=commander_snapshot.regime_strength,
+        )
+        commander_payload = {
+            "m45_regime_strength": float(commander_snapshot.regime_strength),
+            "m45_bias": _format_bias_label(commander_snapshot.bias),
+            "m45_bar_time": int(commander_snapshot.bar_time),
+            "m45_gate_policy": str(config.m45_bias_gate_policy),
+            "m45_neutral_policy": str(config.m45_neutral_policy),
+            "m45_gate_min_strength_to_block_opposite": config.m45_gate_min_strength_to_block_opposite,
+            "m45_commander_source_timeframe": config.m45_commander_source_timeframe,
+            "m45_commander_resample_factor": int(config.m45_commander_resample_factor),
+            "m45_commander_resample_anchor": config.m45_commander_resample_anchor,
+            "m45_commander_resample_offset_minutes": int(config.m45_commander_resample_offset_minutes),
+            "trend_override_state": trend_override_state,
+        }
+
     ema_fast = ema_last(closes, config.fast_ema)
     ema_slow = ema_last(closes, config.slow_ema)
     atr_values = atr_series(highs, lows, closes, config.atr_period)
@@ -1371,11 +1822,13 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "ema_slow": ema_slow,
             "atr": atr_value,
             "ema_gap_over_atr": ema_gap_over_atr,
-            "min_ema_gap_over_atr": config.min_ema_gap_over_atr,
+            "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
             "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+            "pullback_atr": effective_pullback_atr,
             "gap_gate_checked": True,
+            **commander_payload,
         }, bar_time
-    if not (config.min_ema_gap_over_atr <= ema_gap_over_atr <= config.max_ema_gap_over_atr):
+    if not (effective_min_ema_gap_over_atr <= ema_gap_over_atr <= config.max_ema_gap_over_atr):
         return {
             "action": "HOLD",
             "reason": "ema_gap_out_of_range",
@@ -1384,9 +1837,11 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "ema_slow": ema_slow,
             "atr": atr_value,
             "ema_gap_over_atr": ema_gap_over_atr,
-            "min_ema_gap_over_atr": config.min_ema_gap_over_atr,
+            "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
             "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+            "pullback_atr": effective_pullback_atr,
             "gap_gate_checked": True,
+            **commander_payload,
         }, bar_time
     signal_ctx = decide_signal_with_mode(
         strategy_mode=config.strategy_mode,
@@ -1394,13 +1849,43 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
         ema_fast=ema_fast,
         ema_slow=ema_slow,
         atr_value=atr_value,
-        pullback_atr=config.pullback_atr,
+        pullback_atr=effective_pullback_atr,
         reversion_atr=config.reversion_atr,
         trend_threshold=config.regime_trend_threshold,
     )
     signal = str(signal_ctx.get("signal", "HOLD"))
     signal_source = str(signal_ctx.get("source", "trend"))
     regime = str(signal_ctx.get("regime", "trend"))
+    gate_active = False
+    gate_rejected = False
+    if commander_snapshot is not None:
+        gate_active = config.m45_bias_gate_policy != "none"
+        if gate_active and config.m45_gate_min_strength_to_block_opposite is not None:
+            gate_active = commander_snapshot.regime_strength >= float(config.m45_gate_min_strength_to_block_opposite)
+        signal, gate_rejected = apply_m45_bias_gate_signal(
+            signal=signal,
+            bias=commander_snapshot.bias,
+            gate_policy=config.m45_bias_gate_policy,
+            neutral_policy=config.m45_neutral_policy,
+            gate_active=gate_active,
+        )
+        commander_payload["m45_gate_active"] = bool(gate_active)
+        commander_payload["m45_gate_rejected"] = bool(gate_rejected)
+        if gate_rejected:
+            return {
+                "action": "HOLD",
+                "reason": "m45_bias_gate_blocked",
+                "symbol": config.symbol,
+                "regime": regime,
+                "signal_source": signal_source,
+                "ema_gap_over_atr": ema_gap_over_atr,
+                "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+                "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+                "pullback_atr": effective_pullback_atr,
+                "gap_gate_checked": True,
+                **commander_payload,
+            }, bar_time
+
     ask, bid, point = gateway.get_tick_context()
     spread_points = (ask - bid) / point
     open_positions = gateway.open_positions()
@@ -1415,9 +1900,13 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "strategy_mode": config.strategy_mode,
             "regime": regime,
             "signal_source": signal_source,
+            "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+            "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
+            "pullback_atr": effective_pullback_atr,
             "spread_points": spread_points,
             "open_positions": open_positions,
             "gap_gate_checked": True,
+            **commander_payload,
         }, bar_time
 
     if gateway.has_opposite_position(signal):
@@ -1432,9 +1921,12 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
                 "regime": regime,
                 "signal_source": signal_source,
                 "ema_gap_over_atr": ema_gap_over_atr,
+                "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+                "pullback_atr": effective_pullback_atr,
                 "open_positions": remaining_positions,
                 "close_results": close_results,
                 "gap_gate_checked": True,
+                **commander_payload,
             }, bar_time
         return {
             "action": "CLOSE",
@@ -1443,10 +1935,13 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "regime": regime,
             "signal_source": signal_source,
             "ema_gap_over_atr": ema_gap_over_atr,
+            "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+            "pullback_atr": effective_pullback_atr,
             "spread_points": spread_points,
             "close_results": close_results,
             "open_positions": remaining_positions,
             "gap_gate_checked": True,
+            **commander_payload,
         }, bar_time
 
     if not can_open_trade(
@@ -1469,11 +1964,14 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
             "regime": regime,
             "signal_source": signal_source,
             "ema_gap_over_atr": ema_gap_over_atr,
+            "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+            "pullback_atr": effective_pullback_atr,
             "spread_points": spread_points,
             "max_spread_points": config.max_spread_points,
             "open_positions": open_positions,
             "max_positions": config.max_positions,
             "gap_gate_checked": True,
+            **commander_payload,
         }, bar_time
 
     entry_price = ask if signal == "BUY" else bid
@@ -1494,13 +1992,17 @@ def evaluate_once(config: BotConfig, gateway: Mt5Gateway, last_bar_time: Optiona
         "regime": regime,
         "signal_source": signal_source,
         "ema_gap_over_atr": ema_gap_over_atr,
+        "min_ema_gap_over_atr": effective_min_ema_gap_over_atr,
+        "max_ema_gap_over_atr": config.max_ema_gap_over_atr,
         "strategy_mode": config.strategy_mode,
+        "pullback_atr": effective_pullback_atr,
         "entry_price": entry_price,
         "sl": sl,
         "tp": tp,
         "spread_points": spread_points,
         "order_result": order_result,
         "gap_gate_checked": True,
+        **commander_payload,
     }, bar_time
 
 
@@ -1543,6 +2045,7 @@ def run(config: BotConfig, *, config_path: str = "") -> None:
     trial_run_id = runtime_trial_run_id_from_env(config_path=config_path)
     comment_prefix = str(config.comment[:16])
     gateway = Mt5Gateway(config)
+    eval_state = LiveEvalState(trend_override_state=config.trend_override_initial_state)
     gateway.connect()
     try:
         last_bar_time: Optional[int] = None
@@ -1587,7 +2090,12 @@ def run(config: BotConfig, *, config_path: str = "") -> None:
                 time.sleep(max(1, config.poll_seconds))
                 continue
 
-            payload, last_bar_time = evaluate_once(config, gateway, last_bar_time)
+            payload, last_bar_time = evaluate_once(
+                config,
+                gateway,
+                last_bar_time,
+                eval_state=eval_state,
+            )
             update_runtime_metrics(runtime_metrics, payload)
             snapshot_time_utc = datetime.fromtimestamp(last_bar_time, tz=timezone.utc).isoformat()
             payload["timestamp_utc"] = snapshot_time_utc
@@ -1632,6 +2140,7 @@ def main() -> None:
     config_path = resolve_config_path(args.config)
     raw = _load_config(config_path)
     config = BotConfig.from_dict(raw)
+    config = hydrate_m45_commander_from_profile(config, config_path=config_path)
 
     if args.live and str(args.mode) == "research":
         raise ValueError("unsupported combination: --live with --mode research")

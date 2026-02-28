@@ -808,6 +808,129 @@
     - ただし window summary は E7-1 と同値で、採用基準の `worst_pf_active>0` を満たせない。
   - 判定:
     - E9-1 は「passを維持」は達成したが、PF=0 active窓は解消できず採用不可。
+- **V50.8-P5.86 E10（E7-1派生 sweep）探索契約 + r3切替方針（2026-02-28 UTC）**:
+  - 背景:
+    - E7-1 は `pass_window_count` は維持できるが、`worst_pf_active=0` が残存。
+    - E9-1 でも同テールは解消できず、executor最小変更のみでは下振れ遮断が不足。
+  - 実施（研究評価）:
+    - `E7-1` を基準に `cooldown/gate/SLTP/pullback` の小規模 sweep（7候補）を実施。
+    - 成果物:
+      - `data/reports/xau_autobot_research_summary_20260228_e10_sweep_m20_cost0003_rolling30d.json`
+      - `data/reports/xau_autobot_research_summary_20260228_e10_sweep_step30_cost0003.json`
+      - `data/reports/xau_autobot_research_summary_20260228_e10_c2_costsweep_step30.json`
+  - 実測（E10候補）:
+    - `E10_c2`（`after_loss_cooldown_m20_bars=2`）が sweep 最上位。
+      - rolling30d（step=1d）:
+        - `pass_window_count=105/335`（E7-1比 `+13`）
+        - `worst_pf_active=0.1367`（E7-1の `0.0` を解消）
+        - `p05_pf_active=0.2996`
+      - 非重複30d（step=30d, cost=0.0003）:
+        - `avg_monthly_pct=-0.8367`, `median_monthly_pct=-1.2967`, `min_monthly_pct=-4.5747`
+      - cost感度（step=30d）:
+        - `cost=0.0002 -> avg_monthly_pct=-0.4681`
+        - `cost=0.0003 -> avg_monthly_pct=-0.8367`
+        - `cost=0.0004 -> avg_monthly_pct=-1.2039`
+  - 契約:
+    - `E10_c2` は「テール改善を確認した探索候補」として採用する。
+    - ただし `avg_monthly_pct<0` のため **primary 切替は行わず**、`r3` 探索枠で forward 観測する。
+    - `primary=r2v_m20_e1` は維持し、`r3` のみ `E10_c2` へローテーションする。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.87 r3探索を E10_c2 へ実切替（2026-02-28 UTC）**:
+  - 実施:
+    - 探索configを追加:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - 主要差分: `after_loss_cooldown_m20_bars=2`, `magic=560486`, `comment=x3u_260228_m20e10c2`
+    - `current_run_r3` を更新:
+      - `data/reports/xau_autobot_trial_v2_current_run_r3.json`
+      - `run_id=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`
+    - `xau_autobot_live_loop_guard.py --include-r3` で不足loopを自動再起動し、`primary/r2/r3=1/1/1` に収束。
+  - 生成成果物:
+    - `data/reports/xau_autobot_live_report_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+    - `data/reports/xau_autobot_operational_audit_20260228_m20_e10_c2_refresh1_now1343.json`
+    - `data/reports/v50_8_run_refresh_20260228_1342_r3_e10_c2.json`
+  - 実測（切替直後）:
+    - guard: `status=HEALTHY`（expected `primary/r2/r3` 全て `count=1`）
+    - judge（r3）: `verdict=INVALID_TRIAL`, `window_days=0.0010`, `closed_positions=0`, `monthly_return_pct=0.0`
+    - audit（r3）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`, `snapshot_count=12`
+  - 判定:
+    - ローテーションは完了。
+    - 3日 gate までは観測不足フェーズとして `r3=E10_c2` の forward を継続する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8-P5.90 E10最終2サイクル契約（2026-02-28 UTC）**:
+  - 方針:
+    - `M20 + M45` 枝は **最大2サイクルで終了**する。
+    - 追加の gate 派生（E11+）は行わず、TREND側 executor 条件の最小変更のみ試す。
+  - サイクル1（E10, 必須）:
+    - ベースは `E7-1 + E4 gate`（`block_opposite`）を維持。
+    - TREND状態だけ以下を上書き:
+      - `min_ema_gap_over_atr: 0.12 -> 0.18`
+      - `pullback_atr: 0.25 -> 0.23`
+  - サイクル2（条件付き）:
+    - サイクル1が閾値を満たす場合のみ `non-overlap 30d`（`step=30d`）で再確認する。
+  - 最終停止条件（同時達成必須）:
+    - `pass_window_count >= 90/335`
+    - `p05_pf_active >= 0.27`
+    - `non-overlap 30d` で `zero_win_active_window_count <= 1`
+  - 未達時:
+    - `M20 + M45` 現枝は打ち切り、別仮説（時間帯制御/イベント回避/別執行ロジック）へ移行する。
+- **V50.8-P5.91 E10 2サイクル実行結果（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot_m20_bias_gate_eval.py` に TREND時のみ executor 入力を上書きする `trend_override_*` 契約を追加。
+    - 追加config:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json`
+  - 回帰:
+    - `pytest -q tools/tests/test_xau_autobot_m20_bias_gate_eval.py` -> `20 passed`
+  - サイクル1（rolling30d, step=1d, cost=0.0003）:
+    - `data/reports/xau_autobot_research_summary_20260228_e7_1e10_m20_cost0003_rolling30d.json`
+    - `E10`: `pass_window_count=92/335`, `p05_pf_active=0.341955`, `worst_pf_active=0.0`
+    - 閾値判定:
+      - `pass_window_count >= 90/335` -> PASS
+      - `p05_pf_active >= 0.27` -> PASS
+  - サイクル2（non-overlap 30d, step=30d, cost=0.0003）:
+    - `data/reports/xau_autobot_research_summary_20260228_e7_1e10_m20_cost0003_step30_nonoverlap.json`
+    - `zero_win_active_window_count=1`（active窓 `closed>=12` かつ `pf==0` の窓数）
+    - 閾値判定:
+      - `zero_win_active_window_count <= 1` -> PASS
+  - 総合:
+    - ユーザー指定3条件を満たしたため、`E10` の2サイクル検証を完了。
+    - 契約どおり本枝はここで終了し、`E11+ gate派生` は実施しない。
+- **V50.8-P5.92 E10 live接続正本化（2026-02-28 UTC）**:
+  - 研究枝の最終成果物を `E10` に固定する。
+    - canonical candidate:
+      - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json`
+    - 根拠:
+      - `pass_window_count=92/335`
+      - `p05_pf_active=0.341955`
+      - `non-overlap 30d zero_win_active_window_count=1/10`
+  - live昇格契約:
+    - `LIVE_ACCEPT_TF` は維持（`[M1,M5,M15,M20,M30,H1,H4]`）。
+    - live実装は `M20 executor` に対して **derived M45 soft gate + TREND override** を適用する。
+    - `M45` 判定は `M15` 由来の再集約を正本とし、`RESAMPLE_ANCHOR=UTC_00:00`, `RESAMPLE_OFFSET_MINUTES=0` を固定する。
+  - live段階評価（探索ではなく昇格判定）:
+    - 14日 shadow:
+      - `closed>=6`, `PF>=1.05`, `DD<=4%`
+    - 30日 micro-live:
+      - `closed>=12`, `PF>=1.10`, `net>0`
+      - `non-overlap 30d zero_win_active_window_count<=1`
+    - 月利3%判定は上記を満たした後に実施する。
+- **V50.8-P5.93 E10 live経路実装（2026-02-28 UTC）**:
+  - 実装:
+    - `tools/xau_autobot.py` に `derived M45 commander` を実装し、`M15 -> (factor=3) -> M45` の再集約を live実行中に適用。
+    - `m45_bias_gate_policy` / `m45_neutral_policy` を live評価に接続し、`block_opposite/hard_lock` を実シグナルへ反映。
+    - `trend_override_*` を live評価に接続し、`TREND` 状態のみ `min_ema_gap_over_atr` と `pullback_atr` を上書き。
+    - `m45_commander_config_path` を追加し、`M45` profile JSON から commander EMA/ATR/threshold を hydrate する。
+  - fail-closed 契約:
+    - gate/override 有効時は `timeframe=M20` 必須。
+    - `m45_commander_source_timeframe=M15` 必須。
+    - `m45_commander_resample_anchor=UTC_00:00` かつ `m45_commander_resample_offset_minutes=0` 必須。
+    - commander データ不足/設定不備時は `action=BLOCKED`, `reason=m45_commander_unavailable` を返して新規発注を停止。
+  - 反映config:
+    - `tools/configs/xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json` に `m45_commander_config_path` と resample契約キーを追加。
+  - 回帰:
+    - `pytest -q tools/tests/test_xau_autobot.py` -> `62 passed`
+    - `python -m py_compile tools/xau_autobot.py tools/tests/test_xau_autobot.py` -> OK
 - **IHトラック停止（2026-02-26, user option=1）**:
   - `IH monthly` 系（`ih_opt_*`）の新規 run 起票と追加ゲートを停止。
   - 既存 `P6/P6.3` は postmortem として保持し、改善投資は `XAU単独トラック` に集中する。
@@ -1231,6 +1354,48 @@
         - `v50_8_monitor_only_status_20260227.json`
       - 判定:
         - 本線 `r3u_h1` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
+    - `V50.8-P5.86` 追補（2026-02-28, option2 monitor-only refresh #12）:
+      - run切替（外部更新）:
+        - `primary=trial_v2_20260228_v50_8_14d_r2v_m20_e1`
+        - `secondary=trial_v2_20260227_h4_stable_tfscan`
+        - 両runとも `decision_mode=monthly_only` / `min_days=30` 契約で評価される。
+      - 監視評価（起動停止なし）:
+        - `r2v_m20_e1`: `verdict=INVALID_TRIAL`, `window_days=0.40305931166666664`, `closed_positions=0`, `watchdog.window_hours=9.673423479999999`
+        - `h4_stable_tfscan`: `verdict=INVALID_TRIAL`, `window_days=0.4430405016319444`, `closed_positions=0`, `watchdog.window_hours=10.632972039166667`
+      - 集約更新:
+        - `v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+        - `v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_dual_run_status_20260227.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+        - `v50_8_monitor_only_status_20260227.json`
+      - 判定:
+        - 本線 `r2v_m20_e1` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
+    - `V50.8-P5.88` 追補（2026-02-28, option2 monitor-only refresh #13）:
+      - 監視評価（起動停止なし）:
+        - `r2v_m20_e1`: `verdict=INVALID_TRIAL`, `window_days=0.41120753370370366`, `closed_positions=0`, `watchdog.window_hours=9.868980808888889`
+        - `h4_stable_tfscan`: `verdict=INVALID_TRIAL`, `window_days=0.45118969225694444`, `closed_positions=0`, `watchdog.window_hours=10.828552614166666`
+        - `m20_e10_c2`: `verdict=INVALID_TRIAL`, `window_days=0.004476428518518518`, `closed_positions=0`, `watchdog.window_hours=0.10743428444444444`
+      - 監査更新:
+        - `xau_autobot_operational_audit_20260228_r2v_m20_e1_refresh2_now1347.json`
+        - `xau_autobot_operational_audit_20260228_h4_stable_tfscan_refresh2_now1347.json`
+        - `xau_autobot_operational_audit_20260228_m20_e10_c2_refresh2_now1347.json`
+        - 3runとも `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
+      - 集約更新:
+        - `v50_8_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json`
+        - `v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+        - `v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_dual_run_status_20260227.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+        - `v50_8_monitor_only_status_20260227.json`
+        - `v50_8_run_refresh_20260228_2247_r2v_m20_h4stable_e10c2.json`
+      - 判定:
+        - 本線 `r2v_m20_e1` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
     - `V50.8-P5.15` 追補（2026-02-27, option1適用 / r3u正本同期）:
       - ユーザー選択 `1` に従い、`r3u` を正本 run として運用継続。
       - 実行:
@@ -1570,6 +1735,8 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-02-28**: V50.8-P5.88（option2 monitor-only refresh #13）を反映。`primary=trial_v2_20260228_v50_8_14d_r2v_m20_e1` / `secondary=trial_v2_20260227_h4_stable_tfscan` / `explore=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260228_{r2v_m20_e1,h4_stable_tfscan,m20_e10_c2}_refresh2_now1347.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260228_2247_r2v_m20_h4stable_e10c2.json` を再同期。最新は `r2v_m20_e1={window_days:0.41120753370370366, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.45118969225694444, verdict:INVALID_TRIAL, closed:0}`、`m20_e10_c2={window_days:0.004476428518518518, verdict:INVALID_TRIAL, closed:0}`。判定は `decision=NO_GO` 継続。
+- **2026-02-28**: V50.8-P5.86（option2 monitor-only refresh #12）を反映。外部更新に追従して `primary=trial_v2_20260228_v50_8_14d_r2v_m20_e1` / `secondary=trial_v2_20260227_h4_stable_tfscan` へ切替え、`XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json` を同期更新。最新は `r2v_m20_e1={window_days:0.40305931166666664, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.4430405016319444, verdict:INVALID_TRIAL, closed:0}`、判定は `decision=NO_GO` 継続（`decision_mode=monthly_only`, `min_days=30`）。
 - **2026-02-28**: V50.8-P5.65（案A research-only正本化）を反映。`CANONICAL_PLAN=A`、`ENTRY_ORDER=M45->H2->H5->H3`、`LIVE_ACCEPT_TF=[M1,M5,M15,M20,M30,H1,H4]`、`RESEARCH_ACCEPT_TF=[M45,H2,H3,H5]` を正本化。`tools/xau_autobot_trial_judge.py` に `rolling_45d/rolling_60d` decision_mode を追加し、`tools/xau_autobot_trial_v2_eval.sh` は config `timeframe` から judge default（`M45/H2->rolling_45d`, `H3/H5->rolling_60d`, それ以外 `monthly_only`）を自動選択する契約へ更新。`tools/xau_autobot_operational_audit.py` は `--profile {default,m45,h2,h3,h5}` と profile別 window/閾値を実装。`tools/xau_autobot.py` へ `--mode {live,research}` と live/research timeframe ガードを追加し、live で研究専用TFを fail-closed 拒否。research candidate config として `tools/configs/xau_autobot.trial_v2_20260228_{m45_trendcore,h2_hybrid,h5_anchor,h3_burst}_v1.json` を追加。回帰は `pytest tools/tests/test_xau_autobot_trial_judge.py tools/tests/test_xau_autobot_operational_audit.py tools/tests/test_xau_autobot_trial_v2_eval.py tools/tests/test_xau_autobot.py` で `91 passed` を確認。
 - **2026-02-28**: V50.8-P5.64（M20 primary cutover実施）を反映。`r2v_m5` primary loop を停止し、`trial_v2_20260228_v50_8_14d_r2v_m20_e1` を `xau_autobot_trial_v2_current_run.json` / `..._r1.json` の正本へ切替。初期成果物 `xau_autobot_live_report_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` / `xau_autobot_trial_judge_trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` / `xau_autobot_operational_audit_20260228_r2v_m20_e1_refresh1_now0355.json` を生成し、`v50_8_trial_judge_...` へ mirror。cutover集約 `v50_8_run_refresh_20260228_0358_r2v_m20_cutover.json` で `m20_primary_config=1` / `legacy_m5_primary_config=0` を確認。開始直後のため判定は `INVALID_TRIAL` / `INSUFFICIENT_DATA`。
 - **2026-02-28**: V50.8-P5.62（M20 live実行対応 + E1中庸config）を反映。`tools/xau_autobot.py` の `_tf_to_mt5` を `M20` 対応へ拡張し、`TIMEFRAME_*` 欠損時も `ValueError` fail-closed を維持。TDDとして `tools/tests/test_xau_autobot.py::TestXauAutoBotTimeframeMapping` を追加し、`pytest -k "tf_to_mt5 or TimeframeMapping"`（`3 passed`）と `pytest tools/tests/test_xau_autobot.py`（`57 passed`）を確認。`tools/configs/xau_autobot.trial_v2_20260228_v50_8_14d_r2v_m20_e1.json` を追加し、readiness は `eval45d/eval60d` ともに `NO_GO`（`PF=0.868/0.773`, `return=-3.47%/-7.11%`）を記録。あわせて `INTERFACES.md` の `xau_autobot.py` timeframe受理契約と `xau_autobot_optimize.py` interval/timeframe 正規化一覧を更新。
