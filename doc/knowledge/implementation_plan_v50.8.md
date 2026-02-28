@@ -817,6 +817,31 @@
           - 3runとも監査は `INSUFFICIENT_DATA`（`runtime_metrics_source=journal`）。
         - 含意:
           - primary切替直後かつ run一致クローズ約定なしのため、KPI（月利）判定は `NO_GO` 継続。
+      - 追補（2026-03-01 00:31 JST, option2 monitor-only refresh #15）:
+        - 実行（監視専任）:
+          - `primary/r2/r3`（`e10_shadow14d` / `h4_stable_tfscan` / `e10_c2`）を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。
+          - 監査更新:
+            - `data/reports/xau_autobot_operational_audit_20260228_m20_e10_shadow14d_refresh2_now1529.json`
+            - `data/reports/xau_autobot_operational_audit_20260228_h4_stable_tfscan_refresh5_now1529.json`
+            - `data/reports/xau_autobot_operational_audit_20260228_m20_e10_c2_refresh5_now1529.json`
+          - 集約更新:
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+            - `data/reports/v50_8_dual_run_status_20260226.json`
+            - `data/reports/v50_8_dual_run_status_20260227.json`
+            - `data/reports/v50_8_monitor_only_status_20260227.json`
+            - `data/reports/v50_8_monthly_decision_20260225.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_run_refresh_20260301_0031_e10shadow_h4stable_e10c2.json`
+        - 現況:
+          - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=0.008339181527777777`, `closed_positions=0`, `watchdog.window_hours=0.20014035666666666`
+          - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=0.5223451689814815`, `closed_positions=0`, `watchdog.window_hours=12.536284055555557`
+          - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=0.07563205831018519`, `closed_positions=0`, `watchdog.window_hours=1.8151693994444444`
+          - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
+        - 含意:
+          - 3runとも run一致クローズ約定は未発生のため、KPI（月利）判定は `NO_GO` 継続。
       - 追補（2026-02-27 09:39 JST, parallel mode実行 / 3並走）:
         - ユーザー指示:
           - `並行で`（primary + secondary 2本）を採用。
@@ -2774,6 +2799,32 @@
     - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=0.0009189423495370371`, `closed_positions=0`, `watchdog.window_hours=0.02205461638888889`
     - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=0.5149248658333333`, `closed_positions=0`, `watchdog.window_hours=12.35819678`
     - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=0.06821157918981481`, `closed_positions=0`, `watchdog.window_hours=1.6370779005555556`
+    - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
+  - 判定:
+    - 月利KPIの運用判定は `decision=NO_GO` 継続。
+    - INTERFACES 変更なし。
+
+- [x] **P10-48 option2 monitor-only refresh #15（2026-02-28 UTC / 2026-03-01 JST）**
+  - 実施:
+    - `primary/r2/r3`（`trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `trial_v2_20260227_h4_stable_tfscan` / `trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`）を再評価。
+    - 実行:
+      - `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`（run meta別に3回）
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter <run_id> --days 3 --write-report ...`（3run）
+    - 集約更新:
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - `data/reports/v50_8_dual_run_status_20260226.json`
+      - `data/reports/v50_8_dual_run_status_20260227.json`
+      - `data/reports/v50_8_monitor_only_status_20260227.json`
+      - `data/reports/v50_8_monthly_decision_20260225.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_run_refresh_20260301_0031_e10shadow_h4stable_e10c2.json`
+  - 実測:
+    - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=0.008339181527777777`, `closed_positions=0`, `watchdog.window_hours=0.20014035666666666`
+    - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=0.5223451689814815`, `closed_positions=0`, `watchdog.window_hours=12.536284055555557`
+    - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=0.07563205831018519`, `closed_positions=0`, `watchdog.window_hours=1.8151693994444444`
     - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
   - 判定:
     - 月利KPIの運用判定は `decision=NO_GO` 継続。

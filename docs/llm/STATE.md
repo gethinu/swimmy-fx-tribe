@@ -1423,6 +1423,29 @@
         - `v50_8_run_refresh_20260301_0019_e10shadow_h4stable_e10c2.json`
       - 判定:
         - 本線 `e10_shadow14d` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
+    - `V50.8-P5.94` 追補（2026-03-01, option2 monitor-only refresh #15）:
+      - 監視評価（起動停止なし）:
+        - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=0.008339181527777777`, `closed_positions=0`, `watchdog.window_hours=0.20014035666666666`
+        - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=0.5223451689814815`, `closed_positions=0`, `watchdog.window_hours=12.536284055555557`
+        - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=0.07563205831018519`, `closed_positions=0`, `watchdog.window_hours=1.8151693994444444`
+      - 監査更新:
+        - `xau_autobot_operational_audit_20260228_m20_e10_shadow14d_refresh2_now1529.json`
+        - `xau_autobot_operational_audit_20260228_h4_stable_tfscan_refresh5_now1529.json`
+        - `xau_autobot_operational_audit_20260228_m20_e10_c2_refresh5_now1529.json`
+        - 3runとも `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`
+      - 集約更新:
+        - `v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+        - `v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+        - `v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_dual_run_status_20260227.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+        - `v50_8_monitor_only_status_20260227.json`
+        - `v50_8_run_refresh_20260301_0031_e10shadow_h4stable_e10c2.json`
+      - 判定:
+        - 本線 `e10_shadow14d` の `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続。
     - `V50.8-P5.15` 追補（2026-02-27, option1適用 / r3u正本同期）:
       - ユーザー選択 `1` に従い、`r3u` を正本 run として運用継続。
       - 実行:
@@ -1762,6 +1785,7 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-03-01**: V50.8-P5.94（option2 monitor-only refresh #15）を反映。`primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `secondary=trial_v2_20260227_h4_stable_tfscan` / `explore=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260228_{m20_e10_shadow14d,h4_stable_tfscan,m20_e10_c2}_refresh{2,5,5}_now1529.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260301_0031_e10shadow_h4stable_e10c2.json` を再同期。最新は `e10_shadow14d={window_days:0.008339181527777777, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.5223451689814815, verdict:INVALID_TRIAL, closed:0}`、`e10_c2={window_days:0.07563205831018519, verdict:INVALID_TRIAL, closed:0}`。判定は `decision=NO_GO` 継続。
 - **2026-03-01**: V50.8-P5.89（option2 monitor-only refresh #14）を反映。`primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d`（切替時刻: `2026-02-28T15:17:29.639880+00:00`）/ `secondary=trial_v2_20260227_h4_stable_tfscan` / `explore=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260228_{m20_e10_shadow14d,h4_stable_tfscan,m20_e10_c2}_refresh*_now1518.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260301_0019_e10shadow_h4stable_e10c2.json` を再同期。最新は `e10_shadow14d={window_days:0.0009189423495370371, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.5149248658333333, verdict:INVALID_TRIAL, closed:0}`、`e10_c2={window_days:0.06821157918981481, verdict:INVALID_TRIAL, closed:0}`。判定は `decision=NO_GO` 継続。
 - **2026-02-28**: V50.8-P5.88（option2 monitor-only refresh #13）を反映。`primary=trial_v2_20260228_v50_8_14d_r2v_m20_e1` / `secondary=trial_v2_20260227_h4_stable_tfscan` / `explore=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260228_{r2v_m20_e1,h4_stable_tfscan,m20_e10_c2}_refresh2_now1347.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260228_2247_r2v_m20_h4stable_e10c2.json` を再同期。最新は `r2v_m20_e1={window_days:0.41120753370370366, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.45118969225694444, verdict:INVALID_TRIAL, closed:0}`、`m20_e10_c2={window_days:0.004476428518518518, verdict:INVALID_TRIAL, closed:0}`。判定は `decision=NO_GO` 継続。
 - **2026-02-28**: V50.8-P5.86（option2 monitor-only refresh #12）を反映。外部更新に追従して `primary=trial_v2_20260228_v50_8_14d_r2v_m20_e1` / `secondary=trial_v2_20260227_h4_stable_tfscan` へ切替え、`XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_v50_8_14d_r2v_m20_e1.json`・`v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`・`v50_8_monitor_only_status_20260227.json` を同期更新。最新は `r2v_m20_e1={window_days:0.40305931166666664, verdict:INVALID_TRIAL, closed:0}`、`h4_stable_tfscan={window_days:0.4430405016319444, verdict:INVALID_TRIAL, closed:0}`、判定は `decision=NO_GO` 継続（`decision_mode=monthly_only`, `min_days=30`）。
