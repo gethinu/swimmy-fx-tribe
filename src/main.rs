@@ -417,6 +417,9 @@ fn cpcv_payload_from_aggregate(
     request_id: Option<String>,
     agg: &cpcv::CpcvAggregateResult,
 ) -> CpcvResultPayload {
+    const CPCV_STAGE2_PASS_RATE_MIN: f64 = 0.70;
+    const CPCV_STAGE2_MEDIAN_MAXDD_MAX: f64 = 0.12;
+
     let path_count = agg.path_count;
     let passed_count = agg.passed_count;
     let failed_count = path_count.saturating_sub(passed_count);
@@ -425,7 +428,8 @@ fn cpcv_payload_from_aggregate(
     } else {
         0.0
     };
-    let is_passed = agg.median_sharpe >= 0.5 && pass_rate >= 0.5;
+    let is_passed = pass_rate >= CPCV_STAGE2_PASS_RATE_MIN
+        && agg.median_maxdd < CPCV_STAGE2_MEDIAN_MAXDD_MAX;
 
     CpcvResultPayload {
         strategy_name: strategy_name.to_string(),
@@ -2247,10 +2251,10 @@ mod tests {
             median_sharpe: 0.75,
             median_pf: 1.3,
             median_wr: 55.0,
-            median_maxdd: 0.12,
+            median_maxdd: 0.10,
             std_sharpe: 0.2,
             path_count: 10,
-            passed_count: 6,
+            passed_count: 7,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", None, &agg);
@@ -2260,11 +2264,47 @@ mod tests {
         assert!((payload.median_wr - agg.median_wr).abs() < 1e-9);
         assert!((payload.median_maxdd - agg.median_maxdd).abs() < 1e-9);
         assert_eq!(payload.path_count, 10);
-        assert_eq!(payload.passed_count, 6);
-        assert_eq!(payload.failed_count, 4);
-        assert!((payload.pass_rate - 0.6).abs() < 1e-9);
+        assert_eq!(payload.passed_count, 7);
+        assert_eq!(payload.failed_count, 3);
+        assert!((payload.pass_rate - 0.7).abs() < 1e-9);
         assert!(payload.is_passed);
         assert!(payload.error.is_none());
+    }
+
+    #[test]
+    fn test_cpcv_payload_below_stage2_gate_is_not_passed() {
+        let agg = cpcv::CpcvAggregateResult {
+            median_sharpe: 0.90,
+            median_pf: 1.6,
+            median_wr: 0.55,
+            median_maxdd: 0.10,
+            std_sharpe: 0.2,
+            path_count: 10,
+            passed_count: 6,
+        };
+
+        let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-PASS", None, &agg);
+
+        assert!((payload.pass_rate - 0.6).abs() < 1e-9);
+        assert!(!payload.is_passed);
+    }
+
+    #[test]
+    fn test_cpcv_payload_stage2_rejects_maxdd_boundary() {
+        let agg = cpcv::CpcvAggregateResult {
+            median_sharpe: 0.90,
+            median_pf: 1.6,
+            median_wr: 0.55,
+            median_maxdd: 0.12,
+            std_sharpe: 0.2,
+            path_count: 10,
+            passed_count: 9,
+        };
+
+        let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-MAXDD", None, &agg);
+
+        assert!((payload.pass_rate - 0.9).abs() < 1e-9);
+        assert!(!payload.is_passed);
     }
 
     #[test]
