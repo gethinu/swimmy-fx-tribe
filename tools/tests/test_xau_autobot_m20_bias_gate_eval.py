@@ -6,14 +6,17 @@ from tools.xau_autobot_m20_bias_gate_eval import (
     gate_active_with_flip_relax,
     is_flip_relax_active,
     is_flip_relax_opposite_entry,
+    is_loss_relax_active,
     loss_streak_p95_from_returns,
     next_two_state_mode,
     percentile_nearest_rank,
     pf_active_from_window,
+    resolve_trend_override_params,
     select_gate_policy_for_state,
     should_start_bias_flip_cooldown,
     should_start_loss_cooldown,
     update_flip_relax_until,
+    update_loss_relax_until,
 )
 
 
@@ -167,6 +170,42 @@ class TestXauAutoBotM20BiasGateEval(unittest.TestCase):
         self.assertFalse(is_flip_relax_opposite_entry(signal=1, bias=1, in_flip_relax=True))
         self.assertFalse(is_flip_relax_opposite_entry(signal=-1, bias=1, in_flip_relax=False))
 
+    def test_update_loss_relax_until(self):
+        self.assertEqual(
+            update_loss_relax_until(
+                exit_reason="tp",
+                trade_return=-0.01,
+                current_index=10,
+                loss_relax_m20_bars=6,
+                relax_until_index=-1,
+            ),
+            (-1, False),
+        )
+        self.assertEqual(
+            update_loss_relax_until(
+                exit_reason="sl",
+                trade_return=-0.01,
+                current_index=10,
+                loss_relax_m20_bars=6,
+                relax_until_index=-1,
+            ),
+            (16, True),
+        )
+        self.assertEqual(
+            update_loss_relax_until(
+                exit_reason="sl",
+                trade_return=-0.01,
+                current_index=10,
+                loss_relax_m20_bars=6,
+                relax_until_index=18,
+            ),
+            (18, True),
+        )
+
+    def test_is_loss_relax_active(self):
+        self.assertTrue(is_loss_relax_active(current_index=11, relax_until_index=16))
+        self.assertFalse(is_loss_relax_active(current_index=16, relax_until_index=16))
+
     def test_should_start_loss_cooldown(self):
         self.assertTrue(should_start_loss_cooldown(exit_reason="sl", trade_return=-0.01))
         self.assertFalse(should_start_loss_cooldown(exit_reason="tp", trade_return=-0.01))
@@ -207,6 +246,39 @@ class TestXauAutoBotM20BiasGateEval(unittest.TestCase):
     def test_select_gate_policy_for_state(self):
         self.assertEqual(select_gate_policy_for_state("trend"), "block_opposite")
         self.assertEqual(select_gate_policy_for_state("non_trend"), "none")
+
+    def test_resolve_trend_override_params(self):
+        state, min_gap, pullback = resolve_trend_override_params(
+            enabled=True,
+            prev_state="non_trend",
+            initial_state="non_trend",
+            regime_strength=2.4,
+            trend_on=2.35,
+            trend_off=2.25,
+            base_min_ema_gap_over_atr=0.12,
+            base_pullback_atr=0.25,
+            override_min_ema_gap_over_atr=0.18,
+            override_pullback_atr=0.23,
+        )
+        self.assertEqual(state, "trend")
+        self.assertEqual(min_gap, 0.18)
+        self.assertEqual(pullback, 0.23)
+
+        state2, min_gap2, pullback2 = resolve_trend_override_params(
+            enabled=True,
+            prev_state="trend",
+            initial_state="non_trend",
+            regime_strength=2.2,
+            trend_on=2.35,
+            trend_off=2.25,
+            base_min_ema_gap_over_atr=0.12,
+            base_pullback_atr=0.25,
+            override_min_ema_gap_over_atr=0.18,
+            override_pullback_atr=0.23,
+        )
+        self.assertEqual(state2, "non_trend")
+        self.assertEqual(min_gap2, 0.12)
+        self.assertEqual(pullback2, 0.25)
 
 
 if __name__ == "__main__":

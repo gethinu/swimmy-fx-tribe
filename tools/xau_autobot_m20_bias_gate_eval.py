@@ -172,6 +172,42 @@ def select_gate_policy_for_state(state: str) -> str:
     return "block_opposite" if str(state).strip().lower() == "trend" else "none"
 
 
+def resolve_trend_override_params(
+    *,
+    enabled: bool,
+    prev_state: Optional[str],
+    initial_state: str,
+    regime_strength: float,
+    trend_on: float,
+    trend_off: float,
+    base_min_ema_gap_over_atr: float,
+    base_pullback_atr: float,
+    override_min_ema_gap_over_atr: Optional[float],
+    override_pullback_atr: Optional[float],
+) -> Tuple[str, float, float]:
+    if not bool(enabled):
+        return "disabled", float(base_min_ema_gap_over_atr), float(base_pullback_atr)
+
+    seed_state = prev_state
+    if seed_state is None:
+        seed_state = str(initial_state or "").strip().lower() or "non_trend"
+    state = next_two_state_mode(
+        prev_state=seed_state,
+        regime_strength=float(regime_strength),
+        trend_on=float(trend_on),
+        trend_off=float(trend_off),
+    )
+
+    min_ema_gap = float(base_min_ema_gap_over_atr)
+    pullback = float(base_pullback_atr)
+    if state == "trend":
+        if override_min_ema_gap_over_atr is not None:
+            min_ema_gap = float(override_min_ema_gap_over_atr)
+        if override_pullback_atr is not None:
+            pullback = float(override_pullback_atr)
+    return state, min_ema_gap, pullback
+
+
 def apply_m45_bias_gate(
     *,
     signal: int,
@@ -250,6 +286,26 @@ def is_flip_relax_opposite_entry(*, signal: int, bias: int, in_flip_relax: bool)
 def should_start_loss_cooldown(*, exit_reason: str, trade_return: float) -> bool:
     # E6 canonical: trigger only on SL-hit losses.
     return str(exit_reason or "").strip().lower() == "sl" and float(trade_return) < 0.0
+
+
+def update_loss_relax_until(
+    *,
+    exit_reason: str,
+    trade_return: float,
+    current_index: int,
+    loss_relax_m20_bars: int,
+    relax_until_index: int,
+) -> Tuple[int, bool]:
+    bars = max(0, int(loss_relax_m20_bars))
+    if bars <= 0:
+        return int(relax_until_index), False
+    if should_start_loss_cooldown(exit_reason=exit_reason, trade_return=trade_return):
+        return max(int(relax_until_index), int(current_index + bars)), True
+    return int(relax_until_index), False
+
+
+def is_loss_relax_active(*, current_index: int, relax_until_index: int) -> bool:
+    return int(current_index) < int(relax_until_index)
 
 
 def loss_streak_p95_from_returns(returns: Sequence[float]) -> float:
@@ -368,6 +424,11 @@ class SwitchSimulationDiagnostics:
     flip_relax_trade_count: int
     flip_relax_trade_returns: List[float]
     flip_relax_opposite_trade_count: int
+    loss_relax_trigger_count: int
+    loss_relax_bar_count: int
+    loss_relax_trade_count: int
+    loss_relax_trade_returns: List[float]
+    loss_relax_opposite_trade_count: int
 
 
 def _build_executor_context(*, cfg: Dict[str, object], source_csv: str, period: str) -> ExecutorContext:
@@ -488,6 +549,13 @@ def _simulate_executor(
     loss_cooldown_block_count = 0
     loss_cooldown_block_bars_total = 0
     prev_bias: Optional[int] = None
+    trend_override_enabled = bool(cfg.get("trend_override_enabled", False))
+    trend_override_state: Optional[str] = None
+    trend_override_on = float(cfg.get("trend_override_on", 2.35))
+    trend_override_off = float(cfg.get("trend_override_off", 2.25))
+    trend_override_initial_state = str(cfg.get("trend_override_initial_state", "non_trend")).strip().lower() or "non_trend"
+    trend_override_min_ema_gap = _optional_float(cfg.get("trend_override_min_ema_gap_over_atr"))
+    trend_override_pullback = _optional_float(cfg.get("trend_override_pullback_atr"))
 
     for i in range(start, end):
         has_state, strength, bias = _resolve_m45_state_at(ts=context.times[i], m45_ctx=m45_ctx)
@@ -506,6 +574,21 @@ def _simulate_executor(
         evaluated_bar_count += 1
         if i < loss_cooldown_until_index:
             loss_cooldown_block_bars_total += 1
+
+        base_min_ema_gap = float(cfg.get("min_ema_gap_over_atr", 0.0))
+        base_pullback_atr = float(cfg["pullback_atr"])
+        trend_override_state, min_ema_gap, pullback_atr = resolve_trend_override_params(
+            enabled=trend_override_enabled,
+            prev_state=trend_override_state,
+            initial_state=trend_override_initial_state,
+            regime_strength=float(strength),
+            trend_on=trend_override_on,
+            trend_off=trend_override_off,
+            base_min_ema_gap_over_atr=base_min_ema_gap,
+            base_pullback_atr=base_pullback_atr,
+            override_min_ema_gap_over_atr=trend_override_min_ema_gap,
+            override_pullback_atr=trend_override_pullback,
+        )
 
         gate_active = False
         if str(gate_policy or "none").strip().lower() != "none":
@@ -577,7 +660,6 @@ def _simulate_executor(
         if atr_value <= 0.0:
             reject_counts["ema_gap"] += 1
             continue
-        min_ema_gap = float(cfg.get("min_ema_gap_over_atr", 0.0))
         if mode == "neutral" and neutral_min_ema_gap_over_atr is not None:
             min_ema_gap = max(min_ema_gap, float(neutral_min_ema_gap_over_atr))
         ema_gap = abs(float(context.ema_fast[i]) - float(context.ema_slow[i])) / atr_value
@@ -585,7 +667,6 @@ def _simulate_executor(
             reject_counts["ema_gap"] += 1
             continue
 
-        pullback_atr = float(cfg["pullback_atr"])
         if mode == "neutral" and neutral_pullback_atr is not None:
             pullback_atr = float(neutral_pullback_atr)
         signal_ctx = decide_signal_with_mode(
@@ -678,6 +759,7 @@ def _simulate_two_state_switch(
     switch_trend_off: float,
     switch_initial_state: str,
     flip_relax_m20_bars: int,
+    loss_relax_m20_bars: int,
     start_idx: int,
     end_idx: int,
 ) -> Tuple[List[float], SwitchSimulationDiagnostics]:
@@ -700,6 +782,7 @@ def _simulate_two_state_switch(
     tp = 0.0
     position_state = "non_trend"
     position_entered_in_flip_relax = False
+    position_entered_in_loss_relax = False
     gross_returns: List[float] = []
 
     state_counts = {"trend": 0, "non_trend": 0}
@@ -715,11 +798,17 @@ def _simulate_two_state_switch(
     evaluated_bar_count = 0
     bias_gate_reject_count_trend = 0
     flip_relax_until_index = -1
+    loss_relax_until_index = -1
     prev_bias: Optional[int] = None
     flip_relax_bar_count = 0
     flip_relax_trade_count = 0
     flip_relax_trade_returns: List[float] = []
     flip_relax_opposite_trade_count = 0
+    loss_relax_trigger_count = 0
+    loss_relax_bar_count = 0
+    loss_relax_trade_count = 0
+    loss_relax_trade_returns: List[float] = []
+    loss_relax_opposite_trade_count = 0
 
     for i in range(start, end):
         has_state, strength, bias = _resolve_m45_state_at(ts=trend_context.times[i], m45_ctx=m45_ctx)
@@ -734,6 +823,9 @@ def _simulate_two_state_switch(
         flip_relax_active = is_flip_relax_active(current_index=i, relax_until_index=flip_relax_until_index)
         if flip_relax_active:
             flip_relax_bar_count += 1
+        loss_relax_active = is_loss_relax_active(current_index=i, relax_until_index=loss_relax_until_index)
+        if loss_relax_active:
+            loss_relax_bar_count += 1
         state = next_two_state_mode(
             prev_state=state,
             regime_strength=strength,
@@ -757,9 +849,23 @@ def _simulate_two_state_switch(
                 if position_entered_in_flip_relax:
                     flip_relax_trade_count += 1
                     flip_relax_trade_returns.append(float(trade_return))
+                if position_entered_in_loss_relax:
+                    loss_relax_trade_count += 1
+                    loss_relax_trade_returns.append(float(trade_return))
+                exit_reason = "sl" if sl_hit else "tp"
+                loss_relax_until_index, loss_relax_triggered = update_loss_relax_until(
+                    exit_reason=exit_reason,
+                    trade_return=trade_return,
+                    current_index=i,
+                    loss_relax_m20_bars=loss_relax_m20_bars,
+                    relax_until_index=loss_relax_until_index,
+                )
+                if loss_relax_triggered:
+                    loss_relax_trigger_count += 1
                 position = 0
                 position_state = "non_trend"
                 position_entered_in_flip_relax = False
+                position_entered_in_loss_relax = False
                 continue
         elif position == -1:
             sl_hit = active_context.highs[i] >= sl
@@ -772,9 +878,23 @@ def _simulate_two_state_switch(
                 if position_entered_in_flip_relax:
                     flip_relax_trade_count += 1
                     flip_relax_trade_returns.append(float(trade_return))
+                if position_entered_in_loss_relax:
+                    loss_relax_trade_count += 1
+                    loss_relax_trade_returns.append(float(trade_return))
+                exit_reason = "sl" if sl_hit else "tp"
+                loss_relax_until_index, loss_relax_triggered = update_loss_relax_until(
+                    exit_reason=exit_reason,
+                    trade_return=trade_return,
+                    current_index=i,
+                    loss_relax_m20_bars=loss_relax_m20_bars,
+                    relax_until_index=loss_relax_until_index,
+                )
+                if loss_relax_triggered:
+                    loss_relax_trigger_count += 1
                 position = 0
                 position_state = "non_trend"
                 position_entered_in_flip_relax = False
+                position_entered_in_loss_relax = False
                 continue
 
         if not _is_session_allowed(
@@ -823,7 +943,7 @@ def _simulate_two_state_switch(
         gate_active = gate_active_with_flip_relax(
             has_state=has_state,
             gate_policy=gate_policy,
-            flip_relax_active=flip_relax_active,
+            flip_relax_active=(flip_relax_active or loss_relax_active),
         )
         if gate_active:
             gate_active_bar_count += 1
@@ -855,8 +975,11 @@ def _simulate_two_state_switch(
             position = signal
             position_state = state
             position_entered_in_flip_relax = bool(flip_relax_active)
+            position_entered_in_loss_relax = bool(loss_relax_active)
             if is_flip_relax_opposite_entry(signal=signal, bias=bias, in_flip_relax=position_entered_in_flip_relax):
                 flip_relax_opposite_trade_count += 1
+            if is_flip_relax_opposite_entry(signal=signal, bias=bias, in_flip_relax=position_entered_in_loss_relax):
+                loss_relax_opposite_trade_count += 1
             continue
 
         if position != 0 and signal != 0 and ((position == 1 and signal == -1) or (position == -1 and signal == 1)):
@@ -867,9 +990,13 @@ def _simulate_two_state_switch(
             if position_entered_in_flip_relax:
                 flip_relax_trade_count += 1
                 flip_relax_trade_returns.append(float(trade_return))
+            if position_entered_in_loss_relax:
+                loss_relax_trade_count += 1
+                loss_relax_trade_returns.append(float(trade_return))
             position = 0
             position_state = "non_trend"
             position_entered_in_flip_relax = False
+            position_entered_in_loss_relax = False
 
     if position != 0:
         exit_px = float(trend_context.closes[min(end_idx - 1, len(trend_context.closes) - 1)])
@@ -879,6 +1006,9 @@ def _simulate_two_state_switch(
         if position_entered_in_flip_relax:
             flip_relax_trade_count += 1
             flip_relax_trade_returns.append(float(trade_return))
+        if position_entered_in_loss_relax:
+            loss_relax_trade_count += 1
+            loss_relax_trade_returns.append(float(trade_return))
 
     diagnostics = SwitchSimulationDiagnostics(
         state_counts=state_counts,
@@ -893,6 +1023,11 @@ def _simulate_two_state_switch(
         flip_relax_trade_count=flip_relax_trade_count,
         flip_relax_trade_returns=list(flip_relax_trade_returns),
         flip_relax_opposite_trade_count=flip_relax_opposite_trade_count,
+        loss_relax_trigger_count=loss_relax_trigger_count,
+        loss_relax_bar_count=loss_relax_bar_count,
+        loss_relax_trade_count=loss_relax_trade_count,
+        loss_relax_trade_returns=list(loss_relax_trade_returns),
+        loss_relax_opposite_trade_count=loss_relax_opposite_trade_count,
     )
     return gross_returns, diagnostics
 
@@ -984,6 +1119,11 @@ def _switch_diagnostics_payload(diag: SwitchSimulationDiagnostics, *, cost_side:
         if diag.flip_relax_trade_returns
         else 0.0
     )
+    loss_relax_pf = (
+        float(_metrics(diag.loss_relax_trade_returns, float(cost_side)).get("pf", 0.0))
+        if diag.loss_relax_trade_returns
+        else 0.0
+    )
     return {
         "state_time_share": state_time_share,
         "gate_active_time_share": (
@@ -1004,6 +1144,15 @@ def _switch_diagnostics_payload(diag: SwitchSimulationDiagnostics, *, cost_side:
         "flip_relax_trade_count": int(diag.flip_relax_trade_count),
         "flip_relax_pf": float(flip_relax_pf),
         "flip_relax_opposite_trade_count": int(diag.flip_relax_opposite_trade_count),
+        "loss_relax_trigger_count": int(diag.loss_relax_trigger_count),
+        "loss_relax_time_share": (
+            float(diag.loss_relax_bar_count) / float(diag.evaluated_bar_count)
+            if int(diag.evaluated_bar_count) > 0
+            else 0.0
+        ),
+        "loss_relax_trade_count": int(diag.loss_relax_trade_count),
+        "loss_relax_pf": float(loss_relax_pf),
+        "loss_relax_opposite_trade_count": int(diag.loss_relax_opposite_trade_count),
         "loss_streak_p95": loss_streak_p95_from_returns(after_cost_returns),
     }
 
@@ -1049,6 +1198,7 @@ def main() -> None:
     switch_trend_off = 2.25
     switch_initial_state = "non_trend"
     switch_flip_relax_m20_bars = 0
+    switch_loss_relax_m20_bars = 0
     if switch_cfg is not None:
         switch_trend_cfg = switch_cfg["trend_mode"]
         switch_non_trend_cfg = switch_cfg["non_trend_mode"]
@@ -1058,6 +1208,7 @@ def main() -> None:
         switch_trend_off = float(switch_cfg.get("switch_trend_off", 2.25))
         switch_initial_state = str(switch_cfg.get("switch_initial_state", "non_trend")).strip().lower()
         switch_flip_relax_m20_bars = int(switch_cfg.get("flip_relax_m20_bars", 0))
+        switch_loss_relax_m20_bars = int(switch_cfg.get("loss_relax_m20_bars", 0))
         if switch_initial_state not in {"trend", "non_trend"}:
             switch_initial_state = "non_trend"
 
@@ -1113,6 +1264,7 @@ def main() -> None:
                 "switch_trend_off": float(switch_trend_off),
                 "switch_initial_state": str(switch_initial_state),
                 "flip_relax_m20_bars": int(switch_flip_relax_m20_bars),
+                "loss_relax_m20_bars": int(switch_loss_relax_m20_bars),
             }
         )
 
@@ -1135,6 +1287,7 @@ def main() -> None:
                 neutral_pullback_atr = exp["neutral_pullback_atr"]
                 after_loss_cooldown_m20_bars = int(exp["after_loss_cooldown_m20_bars"])
                 flip_relax_m20_bars = 0
+                loss_relax_m20_bars = 0
                 full_gross, full_diag = _simulate_executor(
                     context=exp_ctx,
                     m45_ctx=m45_ctx,
@@ -1171,6 +1324,7 @@ def main() -> None:
                 neutral_pullback_atr = None
                 after_loss_cooldown_m20_bars = 0
                 flip_relax_m20_bars = int(exp.get("flip_relax_m20_bars", 0))
+                loss_relax_m20_bars = int(exp.get("loss_relax_m20_bars", 0))
                 full_gross, full_switch_diag = _simulate_two_state_switch(
                     trend_context=trend_ctx_obj,
                     non_trend_context=non_trend_ctx_obj,
@@ -1179,6 +1333,7 @@ def main() -> None:
                     switch_trend_off=float(exp["switch_trend_off"]),
                     switch_initial_state=str(exp["switch_initial_state"]),
                     flip_relax_m20_bars=flip_relax_m20_bars,
+                    loss_relax_m20_bars=loss_relax_m20_bars,
                     start_idx=0,
                     end_idx=len(trend_ctx_obj.times),
                 )
@@ -1188,9 +1343,12 @@ def main() -> None:
             fail_closed = 0
             fail_pf = 0
             fail_dd = 0
-            active_relax_returns: List[float] = []
-            active_relax_trade_count = 0
-            active_relax_opposite_trade_count = 0
+            active_flip_relax_returns: List[float] = []
+            active_flip_relax_trade_count = 0
+            active_flip_relax_opposite_trade_count = 0
+            active_loss_relax_returns: List[float] = []
+            active_loss_relax_trade_count = 0
+            active_loss_relax_opposite_trade_count = 0
 
             for wi, start_ts, end_ts, start_idx, end_idx in windows:
                 window_switch_diag: Optional[SwitchSimulationDiagnostics] = None
@@ -1228,6 +1386,7 @@ def main() -> None:
                         switch_trend_off=float(exp["switch_trend_off"]),
                         switch_initial_state=str(exp["switch_initial_state"]),
                         flip_relax_m20_bars=flip_relax_m20_bars,
+                        loss_relax_m20_bars=loss_relax_m20_bars,
                         start_idx=start_idx,
                         end_idx=end_idx,
                     )
@@ -1255,9 +1414,12 @@ def main() -> None:
                     closed_floor=float(args.closed_floor),
                 )
                 if exp_kind == "switch" and window_switch_diag is not None and pf_active is not None:
-                    active_relax_returns.extend(window_switch_diag.flip_relax_trade_returns)
-                    active_relax_trade_count += int(window_switch_diag.flip_relax_trade_count)
-                    active_relax_opposite_trade_count += int(window_switch_diag.flip_relax_opposite_trade_count)
+                    active_flip_relax_returns.extend(window_switch_diag.flip_relax_trade_returns)
+                    active_flip_relax_trade_count += int(window_switch_diag.flip_relax_trade_count)
+                    active_flip_relax_opposite_trade_count += int(window_switch_diag.flip_relax_opposite_trade_count)
+                    active_loss_relax_returns.extend(window_switch_diag.loss_relax_trade_returns)
+                    active_loss_relax_trade_count += int(window_switch_diag.loss_relax_trade_count)
+                    active_loss_relax_opposite_trade_count += int(window_switch_diag.loss_relax_opposite_trade_count)
                 reasons = window_pass_reasons(
                     closed=closed,
                     pf=pf,
@@ -1295,8 +1457,10 @@ def main() -> None:
             active_pfs = [float(w["pf_active"]) for w in window_rows if w["pf_active"] is not None]
             closed_values = [float(w["closed"]) for w in window_rows]
             flip_relax_pf_active: Optional[float] = None
+            loss_relax_pf_active: Optional[float] = None
             if exp_kind == "switch":
-                flip_relax_pf_active = float(_metrics(active_relax_returns, float(cost_side)).get("pf", 0.0))
+                flip_relax_pf_active = float(_metrics(active_flip_relax_returns, float(cost_side)).get("pf", 0.0))
+                loss_relax_pf_active = float(_metrics(active_loss_relax_returns, float(cost_side)).get("pf", 0.0))
             worst_active_window_breakdown: Optional[Dict[str, object]] = None
             if exp_kind == "switch" and active_pfs:
                 active_rows = [w for w in window_rows if w["pf_active"] is not None]
@@ -1322,9 +1486,14 @@ def main() -> None:
                 "worst_pf_active": min(active_pfs) if active_pfs else None,
                 "p05_pf_active": percentile_nearest_rank(active_pfs, 0.05) if active_pfs else None,
                 "flip_relax_pf_active": flip_relax_pf_active,
-                "flip_relax_trade_count_active": int(active_relax_trade_count) if exp_kind == "switch" else 0,
+                "flip_relax_trade_count_active": int(active_flip_relax_trade_count) if exp_kind == "switch" else 0,
                 "flip_relax_opposite_trade_count_active": (
-                    int(active_relax_opposite_trade_count) if exp_kind == "switch" else 0
+                    int(active_flip_relax_opposite_trade_count) if exp_kind == "switch" else 0
+                ),
+                "loss_relax_pf_active": loss_relax_pf_active,
+                "loss_relax_trade_count_active": int(active_loss_relax_trade_count) if exp_kind == "switch" else 0,
+                "loss_relax_opposite_trade_count_active": (
+                    int(active_loss_relax_opposite_trade_count) if exp_kind == "switch" else 0
                 ),
                 "p05_closed": percentile_nearest_rank(closed_values, 0.05) if closed_values else 0.0,
                 "worst_closed": min((float(w["closed"]) for w in window_rows), default=0.0),
@@ -1348,6 +1517,7 @@ def main() -> None:
                     "neutral_pullback_atr": neutral_pullback_atr,
                     "after_loss_cooldown_m20_bars": after_loss_cooldown_m20_bars,
                     "flip_relax_m20_bars": int(flip_relax_m20_bars) if exp_kind == "switch" else 0,
+                    "loss_relax_m20_bars": int(loss_relax_m20_bars) if exp_kind == "switch" else 0,
                     "summary": summary,
                     "diagnostics": diagnostic_payload,
                     "windows": window_rows,
@@ -1381,6 +1551,7 @@ def main() -> None:
             "switch_trend_on": float(switch_trend_on) if switch_cfg is not None else None,
             "switch_trend_off": float(switch_trend_off) if switch_cfg is not None else None,
             "switch_flip_relax_m20_bars": int(switch_flip_relax_m20_bars) if switch_cfg is not None else None,
+            "switch_loss_relax_m20_bars": int(switch_loss_relax_m20_bars) if switch_cfg is not None else None,
         },
         "rows": rows,
     }
@@ -1422,6 +1593,11 @@ def main() -> None:
                     "flip_relax_trade_count",
                     "flip_relax_pf_active",
                     "flip_relax_opposite_trade_count",
+                    "loss_relax_trigger_count",
+                    "loss_relax_time_share",
+                    "loss_relax_trade_count",
+                    "loss_relax_pf_active",
+                    "loss_relax_opposite_trade_count",
                     "state_time_share_trend",
                     "state_time_share_non_trend",
                     "bias_gate_reject_count_trend",
@@ -1473,6 +1649,15 @@ def main() -> None:
                             else f"{float(summary.get('flip_relax_pf_active', 0.0)):.6f}"
                         ),
                         str(int(diagnostics.get("flip_relax_opposite_trade_count", 0))),
+                        str(int(diagnostics.get("loss_relax_trigger_count", 0))),
+                        f"{float(diagnostics.get('loss_relax_time_share', 0.0)):.6f}",
+                        str(int(diagnostics.get("loss_relax_trade_count", 0))),
+                        (
+                            "NA"
+                            if summary.get("loss_relax_pf_active") is None
+                            else f"{float(summary.get('loss_relax_pf_active', 0.0)):.6f}"
+                        ),
+                        str(int(diagnostics.get("loss_relax_opposite_trade_count", 0))),
                         f"{float(state_time_share.get('trend', 0.0)):.6f}",
                         f"{float(state_time_share.get('non_trend', 0.0)):.6f}",
                         str(int(diagnostics.get("bias_gate_reject_count_trend", 0))),
