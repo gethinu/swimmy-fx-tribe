@@ -2881,6 +2881,36 @@
     - 月利KPIの運用判定は `decision=NO_GO` 継続。
     - INTERFACES 変更なし。
 
+- [x] **P10-50 option2 monitor-only refresh #17（2026-02-28 UTC / 2026-03-01 JST）**
+  - 実施:
+    - `primary/r2/r3`（`trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `trial_v2_20260227_h4_stable_tfscan` / `trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`）を再評価。
+    - 実行:
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run_r2.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run_r3.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d --days 3 --write-report data/reports/xau_autobot_operational_audit_20260228_m20_e10_shadow14d_refresh4_now1708.json`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260227_h4_stable_tfscan --days 3 --write-report data/reports/xau_autobot_operational_audit_20260228_h4_stable_tfscan_refresh7_now1708.json`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2 --days 3 --write-report data/reports/xau_autobot_operational_audit_20260228_m20_e10_c2_refresh7_now1708.json`
+    - 集約更新:
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - `data/reports/v50_8_dual_run_status_20260226.json`
+      - `data/reports/v50_8_dual_run_status_20260227.json`
+      - `data/reports/v50_8_monitor_only_status_20260227.json`
+      - `data/reports/v50_8_monthly_decision_20260225.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_run_refresh_20260301_0210_e10shadow_h4stable_e10c2.json`
+  - 実測:
+    - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=0.07660939278935186`, `closed_positions=0`, `watchdog.window_hours=1.8386254269444444`
+    - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=0.5908392790162037`, `closed_positions=0`, `watchdog.window_hours=14.180142696388888`
+    - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=0.14412638615740742`, `closed_positions=0`, `watchdog.window_hours=3.459033267777778`
+    - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`（`snapshot_count=645/4471/1611`）
+  - 判定:
+    - 月利KPIの運用判定は `decision=NO_GO` 継続。
+    - INTERFACES 変更なし。
+
 - [x] **P10-46 E10 live接続実装（M20 + derived M45 soft gate + TREND override, 2026-02-28 UTC）**
   - 目的:
     - 研究勝者 `E10` を live経路へ接続し、探索フェーズから段階昇格（shadow/micro-live）へ移行可能な実装状態を作る。
