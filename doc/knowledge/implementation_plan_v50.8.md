@@ -893,6 +893,32 @@
         - 含意:
           - 月利KPI判定は `NO_GO` 継続。
           - `secondary/explore` は watchdog zero-trade 24h 条件で `NO_GO_ROTATE_REQUIRED`（rotation未実施）。
+      - 追補（2026-03-02 09:14 JST, option2 monitor-only refresh #20）:
+        - 実行（監視専任）:
+          - `primary/r2/r3`（`e10_shadow14d` / `h4_stable_tfscan` / `e10_c2`）を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。
+          - 監査更新:
+            - `data/reports/xau_autobot_operational_audit_20260302_m20_e10_shadow14d_refresh6_now0013.json`
+            - `data/reports/xau_autobot_operational_audit_20260302_h4_stable_tfscan_refresh9_now0013.json`
+            - `data/reports/xau_autobot_operational_audit_20260302_m20_e10_c2_refresh9_now0013.json`
+          - 集約更新:
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+            - `data/reports/v50_8_dual_run_status_20260226.json`
+            - `data/reports/v50_8_dual_run_status_20260227.json`
+            - `data/reports/v50_8_monitor_only_status_20260227.json`
+            - `data/reports/v50_8_monthly_decision_20260225.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+            - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+            - `data/reports/v50_8_run_refresh_20260302_0914_e10shadow_h4stable_e10c2.json`
+        - 現況:
+          - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=1.37264636625`, `closed_positions=0`, `watchdog.window_hours=32.94351279`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+          - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=1.8857027374074076`, `closed_positions=0`, `watchdog.window_hours=45.25686569777778`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+          - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=1.4390243451388889`, `closed_positions=0`, `watchdog.window_hours=34.53658428333333`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+          - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`（`snapshot_count=11804/15599/12724`）
+        - 含意:
+          - 月利KPI判定は `NO_GO` 継続。
+          - `primary/secondary/explore` 全て watchdog zero-trade 24h 条件で `NO_GO_ROTATE_REQUIRED`（rotation未実施）。
       - 追補（2026-02-27 09:39 JST, parallel mode実行 / 3並走）:
         - ユーザー指示:
           - `並行で`（primary + secondary 2本）を採用。
@@ -2997,6 +3023,38 @@
   - 判定:
     - 月利KPIの運用判定は `decision=NO_GO` 継続。
     - `secondary/explore` は watchdog zero-trade 24h 条件で `NO_GO_ROTATE_REQUIRED`（rotation未実施）。
+    - INTERFACES 変更なし。
+
+- [x] **P10-53 option2 monitor-only refresh #20（2026-03-02 UTC / 2026-03-02 JST）**
+  - 実施:
+    - `primary/r2/r3`（`trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `trial_v2_20260227_h4_stable_tfscan` / `trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2`）を再評価。
+    - 実行:
+      - `python3 tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run`
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run_r2.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `XAU_AUTOBOT_TRIAL_RUN_META_PATH=data/reports/xau_autobot_trial_v2_current_run_r3.json XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1 XAU_AUTOBOT_TRIAL_LIVE_LOOP_GUARD_ENABLED=0 bash tools/xau_autobot_trial_v2_eval.sh`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d --days 3 --write-report data/reports/xau_autobot_operational_audit_20260302_m20_e10_shadow14d_refresh6_now0013.json`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260227_h4_stable_tfscan --days 3 --write-report data/reports/xau_autobot_operational_audit_20260302_h4_stable_tfscan_refresh9_now0013.json`
+      - `./.venv/bin/python tools/xau_autobot_operational_audit.py --run-id-filter trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2 --days 3 --write-report data/reports/xau_autobot_operational_audit_20260302_m20_e10_c2_refresh9_now0013.json`
+    - 集約更新:
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_c2.json`
+      - `data/reports/v50_8_dual_run_status_20260226.json`
+      - `data/reports/v50_8_dual_run_status_20260227.json`
+      - `data/reports/v50_8_monitor_only_status_20260227.json`
+      - `data/reports/v50_8_monthly_decision_20260225.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+      - `data/reports/v50_8_gap_analysis_20260226_runtime_20260227_h4_stable_tfscan.json`
+      - `data/reports/v50_8_run_refresh_20260302_0914_e10shadow_h4stable_e10c2.json`
+  - 実測:
+    - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=1.37264636625`, `closed_positions=0`, `watchdog.window_hours=32.94351279`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+    - `h4_stable_tfscan`（secondary）: `verdict=INVALID_TRIAL`, `window_days=1.8857027374074076`, `closed_positions=0`, `watchdog.window_hours=45.25686569777778`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+    - `e10_c2`（explore）: `verdict=INVALID_TRIAL`, `window_days=1.4390243451388889`, `closed_positions=0`, `watchdog.window_hours=34.53658428333333`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+    - 監査（3run）: `status=INSUFFICIENT_DATA`, `runtime_metrics_source=journal`（`snapshot_count=11804/15599/12724`）
+  - 判定:
+    - 月利KPIの運用判定は `decision=NO_GO` 継続。
+    - `primary/secondary/explore` 全て watchdog zero-trade 24h 条件で `NO_GO_ROTATE_REQUIRED`（rotation未実施）。
     - INTERFACES 変更なし。
 
 - [x] **P10-46 E10 live接続実装（M20 + derived M45 soft gate + TREND override, 2026-02-28 UTC）**
