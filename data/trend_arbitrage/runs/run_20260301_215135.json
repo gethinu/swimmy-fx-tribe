@@ -1,0 +1,102 @@
+{
+  "ran_at": "2026-03-01T21:51:35+00:00",
+  "trends_count": 10,
+  "candidate_count": 12,
+  "eligible_count": 0,
+  "selected_count": 0,
+  "top_candidates": [
+    {
+      "id": "trend-77f5c58130a90619",
+      "query": "天気",
+      "demand_score": 0.883505,
+      "gap_score": 0.2,
+      "intent_score": 0.22,
+      "opportunity_score": 0.511577,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-86d50992380cf0c6",
+      "query": "天気 比較",
+      "demand_score": 0.777485,
+      "gap_score": 0.14,
+      "intent_score": 0.47,
+      "opportunity_score": 0.492868,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-64fd1442fee3b8b6",
+      "query": "天気 おすすめ",
+      "demand_score": 0.777485,
+      "gap_score": 0.1,
+      "intent_score": 0.47,
+      "opportunity_score": 0.478868,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-de6c0e34291b5d4c",
+      "query": "アフィリエイト 収益化",
+      "demand_score": 0.62,
+      "gap_score": 0.15,
+      "intent_score": 0.72,
+      "opportunity_score": 0.4755,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-989c75ac315a6a60",
+      "query": "価格比較 ツール",
+      "demand_score": 0.62,
+      "gap_score": 0.14,
+      "intent_score": 0.72,
+      "opportunity_score": 0.472,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-98cd87679aa04c4c",
+      "query": "天気 千葉",
+      "demand_score": 0.812825,
+      "gap_score": 0.14,
+      "intent_score": 0.22,
+      "opportunity_score": 0.458771,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-97d2e2825721026f",
+      "query": "天気予報",
+      "demand_score": 0.812825,
+      "gap_score": 0.1,
+      "intent_score": 0.22,
+      "opportunity_score": 0.444771,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-69a995f0e9f1dcd4",
+      "query": "AI ツール 比較",
+      "demand_score": 0.62,
+      "gap_score": 0.18,
+      "intent_score": 0.47,
+      "opportunity_score": 0.436,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-2ac43b01050b7cfd",
+      "query": "副業 AI",
+      "demand_score": 0.62,
+      "gap_score": 0.155,
+      "intent_score": 0.47,
+      "opportunity_score": 0.42725,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-d52aebb6d037337a",
+      "query": "天気予報 千葉",
+      "demand_score": 0.812825,
+      "gap_score": 0.04,
+      "intent_score": 0.22,
+      "opportunity_score": 0.423771,
+      "serp_count": 10
+    }
+  ],
+  "eligible": [],
+  "selected": [],
+  "publish_results": []
+}

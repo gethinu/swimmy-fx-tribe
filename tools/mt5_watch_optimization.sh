@@ -68,15 +68,33 @@ if [[ ! -d "$TESTER_LOG_DIR" ]]; then
 fi
 
 get_metatester_count() {
-  powershell.exe -NoProfile -Command \
-    "(Get-Process metatester64 -ErrorAction SilentlyContinue | Measure-Object).Count" \
-    | tr -d '\r\n '
+  local out
+  out="$(
+    powershell.exe -NoProfile -Command \
+      "(Get-Process metatester64 -ErrorAction SilentlyContinue | Measure-Object).Count" \
+      2>/dev/null || true
+  )"
+  out="$(echo "$out" | tr -d '\r\n ')"
+  if [[ -z "$out" ]]; then
+    echo "0"
+  else
+    echo "$out"
+  fi
 }
 
 get_metatester_cpu_sum() {
-  powershell.exe -NoProfile -Command \
-    "(Get-Process metatester64 -ErrorAction SilentlyContinue | Measure-Object -Property CPU -Sum).Sum" \
-    | tr -d '\r\n '
+  local out
+  out="$(
+    powershell.exe -NoProfile -Command \
+      "(Get-Process metatester64 -ErrorAction SilentlyContinue | Measure-Object -Property CPU -Sum).Sum" \
+      2>/dev/null || true
+  )"
+  out="$(echo "$out" | tr -d '\r\n ')"
+  if [[ -z "$out" ]]; then
+    echo "0"
+  else
+    echo "$out"
+  fi
 }
 
 latest_tester_log() {
@@ -208,4 +226,3 @@ while true; do
   fi
   sleep "$INTERVAL_SEC"
 done
-

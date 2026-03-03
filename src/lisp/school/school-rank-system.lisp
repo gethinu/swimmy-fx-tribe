@@ -336,22 +336,42 @@ Low trade counts are softly shrunk instead of hard-blocked."
   "Get criteria plist for a given rank."
   (cdr (assoc rank *rank-criteria*)))
 
-(defun strategy-trade-evidence-count (strategy)
-  "Best-effort trade evidence count for staged S-rank gates.
-Combines backtest evidence with shadow-paper trade evidence."
+(defun %safe-count-trade-logs-for-evidence (canonical-name local-count modes telemetry-event)
+  "Best-effort trade_logs count for CANONICAL-NAME filtered by MODES."
+  (if (and canonical-name (stringp canonical-name) (fboundp 'count-trade-logs-for-strategy))
+      (handler-case
+          (or (count-trade-logs-for-strategy canonical-name :modes modes) 0)
+        (error (e)
+          (when (fboundp 'swimmy.core::emit-telemetry-event)
+            (swimmy.core::emit-telemetry-event
+             telemetry-event
+             :service "school"
+             :severity :warn
+             :data (list :strategy canonical-name
+                         :local-count local-count
+                         :modes modes
+                         :error (format nil "~a" e))))
+          0))
+      0))
+
+(defun strategy-trade-evidence-breakdown (strategy)
+  "Return trade evidence breakdown plist for rank decisions.
+Rank floor evidence excludes SHADOW and is computed as:
+  backtest_trade_evidence + paper_forward_trade_evidence + live_trade_evidence."
   (let* ((history-count (length (remove-if-not #'numberp (or (strategy-pnl-history strategy) '()))))
          (trade-count (or (strategy-trades strategy) 0))
          (local-count (max history-count trade-count))
-         ;; Query persisted backtest evidence only when local evidence is still sparse.
+         ;; Query persisted evidence only when local evidence is still sparse.
          (query-threshold (max *a-rank-min-trade-evidence* *s-rank-min-trade-evidence*))
          (name (strategy-name strategy))
          (canonical-name (if (and name (stringp name) (fboundp '%canonicalize-backtest-strategy-name))
                              (%canonicalize-backtest-strategy-name name)
                              name))
+         (query-db-p (and canonical-name
+                          (stringp canonical-name)
+                          (< local-count query-threshold)))
          (backtest-count
-           (if (and canonical-name
-                    (stringp canonical-name)
-                    (< local-count query-threshold))
+           (if query-db-p
                (cond
                  ((hash-table-p *trade-evidence-count-cache*)
                   (or (gethash canonical-name *trade-evidence-count-cache* 0) 0))
@@ -370,26 +390,49 @@ Combines backtest evidence with shadow-paper trade evidence."
                       0)))
                  (t 0))
                0))
-         (shadow-count
-           (if (and canonical-name
-                    (stringp canonical-name)
-                    (< local-count query-threshold)
-                    (fboundp 'count-trade-logs-for-strategy))
-               (handler-case
-                   (or (count-trade-logs-for-strategy canonical-name :modes '(:shadow)) 0)
-                 (error (e)
-                   (when (fboundp 'swimmy.core::emit-telemetry-event)
-                     (swimmy.core::emit-telemetry-event
-                      "rank.trade_evidence_shadow_error"
-                      :service "school"
-                      :severity :warn
-                      :data (list :strategy canonical-name
-                                  :local-count local-count
-                                  :error (format nil "~a" e))))
-                   0))
+         ;; backtest evidence keeps existing local fallback behavior for compatibility.
+         (backtest-evidence (max local-count backtest-count))
+         (paper-forward-evidence
+           (if query-db-p
+               (%safe-count-trade-logs-for-evidence canonical-name
+                                                    local-count
+                                                    '(:paper)
+                                                    "rank.trade_evidence_paper_error")
                0))
-         (base-count (max local-count backtest-count)))
-    (+ base-count shadow-count)))
+         (shadow-evidence
+           (if query-db-p
+               (%safe-count-trade-logs-for-evidence canonical-name
+                                                    local-count
+                                                    '(:shadow)
+                                                    "rank.trade_evidence_shadow_error")
+               0))
+         (live-evidence
+           (if query-db-p
+               (%safe-count-trade-logs-for-evidence canonical-name
+                                                    local-count
+                                                    '(:live)
+                                                    "rank.trade_evidence_live_error")
+               0))
+         (rank-evidence (+ backtest-evidence paper-forward-evidence live-evidence))
+         (total-evidence (+ rank-evidence shadow-evidence)))
+    (list :backtest-trade-evidence backtest-evidence
+          :paper-forward-trade-evidence paper-forward-evidence
+          :shadow-trade-evidence shadow-evidence
+          :live-trade-evidence live-evidence
+          :rank-trade-evidence rank-evidence
+          :total-trade-evidence total-evidence
+          ;; underscore aliases for reports/telemetry consumers.
+          :backtest_trade_evidence backtest-evidence
+          :paper_forward_trade_evidence paper-forward-evidence
+          :shadow_trade_evidence shadow-evidence
+          :live_trade_evidence live-evidence
+          :rank_trade_evidence rank-evidence
+          :total_trade_evidence total-evidence)))
+
+(defun strategy-trade-evidence-count (strategy)
+  "Return rank-floor trade evidence count used by A/S rank gates.
+SHADOW evidence is intentionally excluded from direct floor satisfaction."
+  (or (getf (strategy-trade-evidence-breakdown strategy) :rank-trade-evidence) 0))
 
 (defun armada-core-profile-applies-p (rank)
   "Return T when Armada Core profile gate applies to RANK."
@@ -476,9 +519,10 @@ Keys:
 
 (defun effective-s-rank-criteria (strategy)
   "Return effective S-rank criteria considering staged PF/WR thresholds.
-   Values: criteria-plist, trade-evidence-count, matched-stage-spec-or-nil."
+   Values: criteria-plist, rank-trade-evidence-count, matched-stage-spec-or-nil, evidence-breakdown."
   (let* ((criteria (copy-list (get-rank-criteria :S)))
-         (trade-evidence (strategy-trade-evidence-count strategy))
+         (breakdown (strategy-trade-evidence-breakdown strategy))
+         (trade-evidence (or (getf breakdown :rank-trade-evidence) 0))
          (stage-spec (and *s-rank-staged-pf-wr-enabled*
                           (find-if (lambda (spec)
                                      (>= trade-evidence (getf spec :min-trades 0)))
@@ -486,7 +530,7 @@ Keys:
     (when stage-spec
       (setf (getf criteria :pf-min) (getf stage-spec :pf-min (getf criteria :pf-min 1.70))
             (getf criteria :wr-min) (getf stage-spec :wr-min (getf criteria :wr-min 0.50))))
-    (values criteria trade-evidence stage-spec)))
+    (values criteria trade-evidence stage-spec breakdown)))
 
 (defun check-rank-criteria (strategy target-rank &key (include-oos t) (include-cpcv t))
   "Check if strategy meets all criteria for target-rank.
@@ -558,7 +602,7 @@ Keys:
 
 (defun s-rank-block-diagnostics (strategy &key (include-common-stage2 t))
   "Collect S-gate diagnostics for blocked promotions."
-  (multiple-value-bind (criteria trade-evidence stage-spec)
+  (multiple-value-bind (criteria trade-evidence stage-spec trade-evidence-breakdown)
       (effective-s-rank-criteria strategy)
     (let* ((sharpe (or (strategy-sharpe strategy) 0.0))
            (pf (or (strategy-profit-factor strategy) 0.0))
@@ -583,6 +627,7 @@ Keys:
             (setf common-stage2-message message))))
       (list :failed-gates (nreverse failed)
             :trade-evidence trade-evidence
+            :trade-evidence-breakdown trade-evidence-breakdown
             :min-trade-evidence min-trade-evidence
             :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
             :sharpe sharpe
@@ -753,13 +798,18 @@ Keys:
         (let* ((diag (s-rank-block-diagnostics strategy :include-common-stage2 t))
                (failed-gates (getf diag :failed-gates))
                (common-msg (getf diag :common-stage2-message))
-               (summary (%format-s-rank-failed-gates failed-gates)))
-          (format t "[RANK] 🚫 Blocked S promotion for ~a (~a) [pf>=~,2f wr>=~,1f%% n=~d]~@[: ~a~].~%"
+               (summary (%format-s-rank-failed-gates failed-gates))
+               (breakdown (or (getf diag :trade-evidence-breakdown) '())))
+          (format t "[RANK] 🚫 Blocked S promotion for ~a (~a) [pf>=~,2f wr>=~,1f%% n=~d | bt=~d pfwd=~d sh=~d lv=~d]~@[: ~a~].~%"
                   (strategy-name strategy)
                   summary
                   (or (getf diag :pf-min) 0.0)
                   (* 100 (or (getf diag :wr-min) 0.0))
                   (or (getf diag :trade-evidence) 0)
+                  (or (getf breakdown :backtest-trade-evidence) 0)
+                  (or (getf breakdown :paper-forward-trade-evidence) 0)
+                  (or (getf breakdown :shadow-trade-evidence) 0)
+                  (or (getf breakdown :live-trade-evidence) 0)
                   common-msg)
           (when (fboundp 'swimmy.core::emit-telemetry-event)
             (swimmy.core::emit-telemetry-event "rank.promotion.blocked"
@@ -773,6 +823,15 @@ Keys:
                           :block (or (first failed-gates) :unknown)
                           :failed-gates failed-gates
                           :trade-evidence (getf diag :trade-evidence)
+                          :trade-evidence-breakdown breakdown
+                          :backtest-trade-evidence (getf breakdown :backtest-trade-evidence)
+                          :paper-forward-trade-evidence (getf breakdown :paper-forward-trade-evidence)
+                          :shadow-trade-evidence (getf breakdown :shadow-trade-evidence)
+                          :live-trade-evidence (getf breakdown :live-trade-evidence)
+                          :backtest_trade_evidence (getf breakdown :backtest_trade_evidence)
+                          :paper_forward_trade_evidence (getf breakdown :paper_forward_trade_evidence)
+                          :shadow_trade_evidence (getf breakdown :shadow_trade_evidence)
+                          :live_trade_evidence (getf breakdown :live_trade_evidence)
                           :s-stage-min-trades (getf diag :stage-min-trades)
                           :pf-min (getf diag :pf-min)
                           :wr-min (getf diag :wr-min)

@@ -347,10 +347,20 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       forward_trades INTEGER,
       forward_sharpe REAL,
       forward_pf REAL,
+      probe_count INTEGER NOT NULL DEFAULT 0,
+      probe_last_seen INTEGER,
       decision TEXT,
       reason TEXT,
       updated_at INTEGER NOT NULL
     )")
+  (handler-case
+      (execute-non-query
+       "ALTER TABLE deployment_gate_status ADD COLUMN probe_count INTEGER NOT NULL DEFAULT 0")
+    (error () nil))
+  (handler-case
+      (execute-non-query
+       "ALTER TABLE deployment_gate_status ADD COLUMN probe_last_seen INTEGER")
+    (error () nil))
 
   ;; Indices for fast draft/selection
   (execute-non-query
@@ -611,6 +621,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
              (let ((token (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
                                                       (format nil "~a" (or mode :live))))))
                (cond
+                 ((or (string= token "PAPER") (string= token ":PAPER")) "PAPER")
                  ((or (string= token "SHADOW") (string= token ":SHADOW")) "SHADOW")
                  (t "LIVE")))))
   (execute-non-query
@@ -658,10 +669,11 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
    strategy-name limit))
 
 (defun %normalize-execution-mode-token (mode)
-  "Normalize MODE token into SQL mode string (LIVE/SHADOW)."
+  "Normalize MODE token into SQL mode string (LIVE/SHADOW/PAPER)."
   (let ((token (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
                                            (format nil "~a" (or mode :live))))))
     (cond
+      ((or (string= token "PAPER") (string= token ":PAPER")) "PAPER")
       ((or (string= token "SHADOW") (string= token ":SHADOW")) "SHADOW")
       (t "LIVE"))))
 
@@ -1180,6 +1192,7 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
                        "SELECT strategy_name, research_passed, oos_passed,
                                oos_window_days, forward_start, forward_days,
                                forward_trades, forward_sharpe, forward_pf,
+                               probe_count, probe_last_seen,
                                decision, reason, updated_at
                           FROM deployment_gate_status
                          WHERE strategy_name = ?"
@@ -1188,6 +1201,7 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
         (destructuring-bind (name research-passed oos-passed
                              oos-window-days forward-start forward-days
                              forward-trades forward-sharpe forward-pf
+                             probe-count probe-last-seen
                              decision reason updated-at)
             row
           (list :strategy-name name
@@ -1196,11 +1210,20 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
                 :oos-window-days oos-window-days
                 :forward-start forward-start
                 :forward-days forward-days
+                :forward_days forward-days
                 :forward-trades forward-trades
+                :forward_trades forward-trades
                 :forward-sharpe forward-sharpe
+                :forward_sharpe forward-sharpe
                 :forward-pf forward-pf
+                :forward_pf forward-pf
+                :probe-count probe-count
+                :probe_count probe-count
+                :probe-last-seen probe-last-seen
+                :probe_last_seen probe-last-seen
                 :decision decision
                 :reason reason
+                :fail_reason reason
                 :updated-at updated-at))))))
 
 (defun upsert-deployment-gate-status (strategy-name
@@ -1213,6 +1236,8 @@ Prune per-strategy history by MAX-SAMPLES and optional MAX-AGE-SECONDS."
                                         (forward-trades *deployment-gate-unset*)
                                         (forward-sharpe *deployment-gate-unset*)
                                         (forward-pf *deployment-gate-unset*)
+                                        (probe-count *deployment-gate-unset*)
+                                        (probe-last-seen *deployment-gate-unset*)
                                         (decision *deployment-gate-unset*)
                                         (reason *deployment-gate-unset*)
                                         updated-at)
@@ -1244,20 +1269,34 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
            (resolved-forward-pf (if (eq forward-pf *deployment-gate-unset*)
                                     (getf current :forward-pf nil)
                                     forward-pf))
+           (resolved-probe-count (if (eq probe-count *deployment-gate-unset*)
+                                     (or (getf current :probe-count 0)
+                                         (getf current :probe_count 0)
+                                         0)
+                                     probe-count))
+           (resolved-probe-last-seen (if (eq probe-last-seen *deployment-gate-unset*)
+                                         (or (getf current :probe-last-seen nil)
+                                             (getf current :probe_last_seen nil))
+                                         probe-last-seen))
            (resolved-decision (if (eq decision *deployment-gate-unset*)
                                   (getf current :decision nil)
                                   decision))
            (resolved-reason (if (eq reason *deployment-gate-unset*)
                                 (getf current :reason nil)
                                 reason))
+           (normalized-probe-count (if (and (numberp resolved-probe-count)
+                                            (>= resolved-probe-count 0))
+                                       (round resolved-probe-count)
+                                       0))
            (resolved-updated-at (if (numberp updated-at) updated-at (get-universal-time))))
       (execute-non-query
        "INSERT OR REPLACE INTO deployment_gate_status (
           strategy_name, research_passed, oos_passed,
           oos_window_days, forward_start, forward_days,
           forward_trades, forward_sharpe, forward_pf,
+          probe_count, probe_last_seen,
           decision, reason, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
        strategy-name
        (%truthy->int resolved-research)
        (%truthy->int resolved-oos)
@@ -1267,6 +1306,8 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
        resolved-forward-trades
        resolved-forward-sharpe
        resolved-forward-pf
+       normalized-probe-count
+       resolved-probe-last-seen
        resolved-decision
        resolved-reason
        resolved-updated-at)
@@ -1286,12 +1327,22 @@ Omitted keys preserve existing values; NIL is treated as an explicit value."
          (blocked (or (execute-single
                        "SELECT count(*) FROM deployment_gate_status WHERE decision = 'BLOCKED_OOS'")
                       0))
-         (total (or (execute-single "SELECT count(*) FROM deployment_gate_status") 0)))
+         (total (or (execute-single "SELECT count(*) FROM deployment_gate_status") 0))
+         (probe-count-total (or (execute-single
+                                 "SELECT COALESCE(SUM(COALESCE(probe_count, 0)), 0)
+                                    FROM deployment_gate_status")
+                                0))
+         (probe-last-seen (execute-single
+                           "SELECT MAX(probe_last_seen) FROM deployment_gate_status")))
     (list :total total
           :live-ready ready
           :forward-running running
           :forward-fail failed
-          :blocked-oos blocked)))
+          :blocked-oos blocked
+          :probe-count-total probe-count-total
+          :probe_count_total probe-count-total
+          :probe-last-seen probe-last-seen
+          :probe_last_seen probe-last-seen)))
 
 (defparameter *last-db-sync-time* 0)
 (defparameter *db-sync-interval* 60

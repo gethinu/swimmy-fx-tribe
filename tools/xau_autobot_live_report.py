@@ -588,23 +588,36 @@ def resolve_runtime_journal_path(cli_value: str) -> Path:
     return path
 
 
-def _fetch_mt5_deals(*, start_utc: datetime, end_utc: datetime) -> List[Any]:
+def _is_mt5_ipc_timeout_error(err: Any) -> bool:
+    if isinstance(err, (tuple, list)) and err:
+        code = _to_int(err[0], default=0)
+        if code == -10005:
+            return True
+        if len(err) > 1 and "ipc timeout" in str(err[1]).lower():
+            return True
+    return "ipc timeout" in str(err).lower()
+
+
+def _initialize_mt5_with_retry(*, max_init_attempts: int = 5, sleep_seconds: float = 1.0) -> None:
     if mt5 is None:
         raise RuntimeError("MetaTrader5 Python package is missing. Install with `pip install MetaTrader5`.")
-    max_init_attempts = 3
-    initialized = False
-    for attempt in range(max_init_attempts):
+    env_attempts = os.getenv("XAU_AUTOBOT_MT5_INIT_MAX_ATTEMPTS", "").strip()
+    env_sleep = os.getenv("XAU_AUTOBOT_MT5_INIT_RETRY_SLEEP", "").strip()
+    attempts = max(1, int(env_attempts or max_init_attempts))
+    retry_sleep_seconds = max(0.0, float(env_sleep or sleep_seconds))
+    for attempt in range(attempts):
         if mt5.initialize():
-            initialized = True
-            break
+            return
         err = mt5.last_error()
-        err_code = _to_int(err[0], default=0) if isinstance(err, (tuple, list)) and err else 0
-        if err_code == -10005 and attempt + 1 < max_init_attempts:
-            time.sleep(1.0)
+        if _is_mt5_ipc_timeout_error(err) and attempt + 1 < attempts:
+            time.sleep(retry_sleep_seconds)
             continue
         raise RuntimeError(f"mt5.initialize() failed: {err}")
-    if not initialized:
-        raise RuntimeError(f"mt5.initialize() failed: {mt5.last_error()}")
+    raise RuntimeError(f"mt5.initialize() failed: {mt5.last_error()}")
+
+
+def _fetch_mt5_deals(*, start_utc: datetime, end_utc: datetime) -> List[Any]:
+    _initialize_mt5_with_retry()
     try:
         deals = mt5.history_deals_get(start_utc, end_utc)
         if deals is None:
@@ -617,8 +630,7 @@ def _fetch_mt5_deals(*, start_utc: datetime, end_utc: datetime) -> List[Any]:
 def _fetch_open_positions_snapshot(*, symbol: str, magic: int, comment_prefix: str) -> Dict[str, float]:
     if mt5 is None:
         return {"open_positions": 0.0, "open_volume": 0.0, "open_floating_profit": 0.0}
-    if not mt5.initialize():
-        raise RuntimeError(f"mt5.initialize() failed: {mt5.last_error()}")
+    _initialize_mt5_with_retry()
     try:
         symbol_filter = (symbol or "").strip()
         if symbol_filter and symbol_filter != "*":

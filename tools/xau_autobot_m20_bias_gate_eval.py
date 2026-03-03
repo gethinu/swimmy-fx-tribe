@@ -279,6 +279,53 @@ def gate_active_with_flip_relax(*, has_state: bool, gate_policy: str, flip_relax
     return bool(gate_active and not bool(flip_relax_active))
 
 
+def normalize_loss_relax_mode(value: Optional[str]) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"", "gate_off"}:
+        return "gate_off"
+    if mode in {"reverse_only", "opposite_only"}:
+        return "reverse_only"
+    if mode in {"off", "none", "disabled"}:
+        return "off"
+    raise ValueError(f"unsupported loss_relax_mode: {value}")
+
+
+def gate_active_with_relax(
+    *,
+    has_state: bool,
+    gate_policy: str,
+    flip_relax_active: bool,
+    loss_relax_active: bool,
+    loss_relax_mode: str,
+) -> bool:
+    gate_active = bool(has_state and str(gate_policy or "none").strip().lower() != "none")
+    if bool(flip_relax_active):
+        return False
+    mode = normalize_loss_relax_mode(loss_relax_mode)
+    if bool(loss_relax_active) and mode in {"gate_off", "reverse_only"}:
+        return False
+    return bool(gate_active)
+
+
+def apply_loss_relax_signal_policy(
+    *,
+    signal: int,
+    bias: int,
+    loss_relax_active: bool,
+    loss_relax_mode: str,
+) -> Tuple[int, bool]:
+    if not bool(loss_relax_active):
+        return int(signal), False
+    mode = normalize_loss_relax_mode(loss_relax_mode)
+    if mode != "reverse_only":
+        return int(signal), False
+    if int(signal) == 0 or int(bias) == 0:
+        return int(signal), False
+    if int(signal) == -int(bias):
+        return int(signal), False
+    return 0, True
+
+
 def is_flip_relax_opposite_entry(*, signal: int, bias: int, in_flip_relax: bool) -> bool:
     return bool(bool(in_flip_relax) and int(signal) != 0 and int(bias) != 0 and int(signal) == -int(bias))
 
@@ -760,6 +807,7 @@ def _simulate_two_state_switch(
     switch_initial_state: str,
     flip_relax_m20_bars: int,
     loss_relax_m20_bars: int,
+    loss_relax_mode: str,
     start_idx: int,
     end_idx: int,
 ) -> Tuple[List[float], SwitchSimulationDiagnostics]:
@@ -791,6 +839,7 @@ def _simulate_two_state_switch(
         "atr_ratio": 0,
         "ema_gap": 0,
         "bias_gate": 0,
+        "loss_relax_direction": 0,
     }
     signal_eval_count = 0
     trade_returns_by_state: Dict[str, List[float]] = {"trend": [], "non_trend": []}
@@ -799,6 +848,7 @@ def _simulate_two_state_switch(
     bias_gate_reject_count_trend = 0
     flip_relax_until_index = -1
     loss_relax_until_index = -1
+    resolved_loss_relax_mode = normalize_loss_relax_mode(loss_relax_mode)
     prev_bias: Optional[int] = None
     flip_relax_bar_count = 0
     flip_relax_trade_count = 0
@@ -940,10 +990,12 @@ def _simulate_two_state_switch(
         source = str(signal_ctx.get("source", "trend"))
 
         gate_policy = select_gate_policy_for_state(state)
-        gate_active = gate_active_with_flip_relax(
+        gate_active = gate_active_with_relax(
             has_state=has_state,
             gate_policy=gate_policy,
-            flip_relax_active=(flip_relax_active or loss_relax_active),
+            flip_relax_active=flip_relax_active,
+            loss_relax_active=loss_relax_active,
+            loss_relax_mode=resolved_loss_relax_mode,
         )
         if gate_active:
             gate_active_bar_count += 1
@@ -959,6 +1011,14 @@ def _simulate_two_state_switch(
             if state == "trend":
                 bias_gate_reject_count_trend += 1
         signal = gated_signal
+        signal, loss_relax_rejected = apply_loss_relax_signal_policy(
+            signal=signal,
+            bias=bias,
+            loss_relax_active=loss_relax_active,
+            loss_relax_mode=resolved_loss_relax_mode,
+        )
+        if loss_relax_rejected:
+            reject_counts["loss_relax_direction"] += 1
 
         if position == 0 and signal != 0:
             entry = float(active_context.opens[i + 1])
@@ -1199,6 +1259,7 @@ def main() -> None:
     switch_initial_state = "non_trend"
     switch_flip_relax_m20_bars = 0
     switch_loss_relax_m20_bars = 0
+    switch_loss_relax_mode = "gate_off"
     if switch_cfg is not None:
         switch_trend_cfg = switch_cfg["trend_mode"]
         switch_non_trend_cfg = switch_cfg["non_trend_mode"]
@@ -1209,6 +1270,7 @@ def main() -> None:
         switch_initial_state = str(switch_cfg.get("switch_initial_state", "non_trend")).strip().lower()
         switch_flip_relax_m20_bars = int(switch_cfg.get("flip_relax_m20_bars", 0))
         switch_loss_relax_m20_bars = int(switch_cfg.get("loss_relax_m20_bars", 0))
+        switch_loss_relax_mode = str(switch_cfg.get("loss_relax_mode", "gate_off"))
         if switch_initial_state not in {"trend", "non_trend"}:
             switch_initial_state = "non_trend"
 
@@ -1265,6 +1327,7 @@ def main() -> None:
                 "switch_initial_state": str(switch_initial_state),
                 "flip_relax_m20_bars": int(switch_flip_relax_m20_bars),
                 "loss_relax_m20_bars": int(switch_loss_relax_m20_bars),
+                "loss_relax_mode": str(switch_loss_relax_mode),
             }
         )
 
@@ -1288,6 +1351,7 @@ def main() -> None:
                 after_loss_cooldown_m20_bars = int(exp["after_loss_cooldown_m20_bars"])
                 flip_relax_m20_bars = 0
                 loss_relax_m20_bars = 0
+                loss_relax_mode = "off"
                 full_gross, full_diag = _simulate_executor(
                     context=exp_ctx,
                     m45_ctx=m45_ctx,
@@ -1325,6 +1389,7 @@ def main() -> None:
                 after_loss_cooldown_m20_bars = 0
                 flip_relax_m20_bars = int(exp.get("flip_relax_m20_bars", 0))
                 loss_relax_m20_bars = int(exp.get("loss_relax_m20_bars", 0))
+                loss_relax_mode = str(exp.get("loss_relax_mode", "gate_off"))
                 full_gross, full_switch_diag = _simulate_two_state_switch(
                     trend_context=trend_ctx_obj,
                     non_trend_context=non_trend_ctx_obj,
@@ -1334,6 +1399,7 @@ def main() -> None:
                     switch_initial_state=str(exp["switch_initial_state"]),
                     flip_relax_m20_bars=flip_relax_m20_bars,
                     loss_relax_m20_bars=loss_relax_m20_bars,
+                    loss_relax_mode=loss_relax_mode,
                     start_idx=0,
                     end_idx=len(trend_ctx_obj.times),
                 )
@@ -1387,6 +1453,7 @@ def main() -> None:
                         switch_initial_state=str(exp["switch_initial_state"]),
                         flip_relax_m20_bars=flip_relax_m20_bars,
                         loss_relax_m20_bars=loss_relax_m20_bars,
+                        loss_relax_mode=loss_relax_mode,
                         start_idx=start_idx,
                         end_idx=end_idx,
                     )
@@ -1518,6 +1585,7 @@ def main() -> None:
                     "after_loss_cooldown_m20_bars": after_loss_cooldown_m20_bars,
                     "flip_relax_m20_bars": int(flip_relax_m20_bars) if exp_kind == "switch" else 0,
                     "loss_relax_m20_bars": int(loss_relax_m20_bars) if exp_kind == "switch" else 0,
+                    "loss_relax_mode": str(loss_relax_mode) if exp_kind == "switch" else "off",
                     "summary": summary,
                     "diagnostics": diagnostic_payload,
                     "windows": window_rows,
@@ -1552,6 +1620,7 @@ def main() -> None:
             "switch_trend_off": float(switch_trend_off) if switch_cfg is not None else None,
             "switch_flip_relax_m20_bars": int(switch_flip_relax_m20_bars) if switch_cfg is not None else None,
             "switch_loss_relax_m20_bars": int(switch_loss_relax_m20_bars) if switch_cfg is not None else None,
+            "switch_loss_relax_mode": str(switch_loss_relax_mode) if switch_cfg is not None else None,
         },
         "rows": rows,
     }

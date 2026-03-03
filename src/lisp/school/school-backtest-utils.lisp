@@ -113,7 +113,7 @@ Prioritize :pending when both pending/rate limits are hit."
                        (/ 1.0d0 rate)
                        0.0d0))
          (elapsed (- now swimmy.globals::*backtest-last-send-ts*))
-         (pending-hit (>= pending max-pending))
+         (pending-hit (> pending max-pending))
          (rate-hit (and (> interval 0.0d0) (< elapsed interval)))
          (reason (cond
                    (pending-hit :pending)
@@ -165,7 +165,7 @@ Prioritize :pending when both pending/rate limits are hit."
   (when (and (boundp 'swimmy.globals:*backtest-requester*)
              swimmy.globals:*backtest-requester*)
     (loop while *backtest-send-queue*
-          do (when (>= (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
+          do (when (> (backtest-pending-count) swimmy.globals::*backtest-max-pending*)
                (return))
              (let ((msg (pop *backtest-send-queue*)))
                (when (> *backtest-send-queue-count* 0)

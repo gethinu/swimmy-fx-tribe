@@ -39,7 +39,7 @@
 (defparameter *forward-min-days* 30
   "Minimum forward paper period (days) for deployment gate.")
 
-(defparameter *forward-min-trades* 20
+(defparameter *forward-min-trades* 300
   "Minimum forward trades required for deployment gate.")
 
 (defparameter *forward-min-sharpe* 0.70
@@ -578,24 +578,55 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
       ((> gross-profit 0.0) 99.0)
       (t 0.0))))
 
-(defun %fetch-forward-pnls (strategy-name forward-start)
-  "Fetch forward pnl list (paper-first + live-compatible) for STRATEGY-NAME since FORWARD-START."
+(defun %forward-periodic-probe-pair-id-p (pair-id)
+  "Return T when PAIR-ID identifies periodic no-signal probe telemetry."
+  (let* ((raw (and pair-id (format nil "~a" pair-id)))
+         (token (and raw (string-trim '(#\Space #\Tab #\Newline #\Return) raw)))
+         (prefix "NO-SIGNAL-PROBE-"))
+    (and token
+         (>= (length token) (length prefix))
+         (string-equal prefix token :end2 (length prefix)))))
+
+(defun %fetch-forward-evidence-and-probe-telemetry (strategy-name forward-start)
+  "Return values (PNLS PROBE-COUNT PROBE-LAST-SEEN) since FORWARD-START.
+Forward evidence excludes periodic no-signal probes identified by pair_id prefix."
   (if (or (null strategy-name)
           (not (stringp strategy-name))
           (not (numberp forward-start))
           (<= forward-start 0))
-      '()
-      (let* ((rows (execute-to-list
-                    "SELECT pnl
-                       FROM trade_logs
-                      WHERE strategy_name = ?
-                        AND timestamp >= ?
-                        AND UPPER(COALESCE(execution_mode, 'LIVE')) IN ('SHADOW','PAPER','LIVE')
-                      ORDER BY timestamp"
-                    strategy-name
-                    forward-start))
-             (pnls (mapcar #'first rows)))
-        (remove-if-not #'numberp pnls))))
+      (values '() 0 nil)
+      (let ((rows (execute-to-list
+                   "SELECT pnl, pair_id, timestamp
+                      FROM trade_logs
+                     WHERE strategy_name = ?
+                       AND timestamp >= ?
+                       AND UPPER(COALESCE(execution_mode, 'LIVE')) IN ('SHADOW','PAPER','LIVE')
+                     ORDER BY timestamp"
+                   strategy-name
+                   forward-start))
+            (pnls '())
+            (probe-count 0)
+            (probe-last-seen nil))
+        (dolist (row rows)
+          (destructuring-bind (pnl pair-id timestamp) row
+            (if (%forward-periodic-probe-pair-id-p pair-id)
+                (progn
+                  (incf probe-count)
+                  (when (numberp timestamp)
+                    (setf probe-last-seen (if (numberp probe-last-seen)
+                                              (max probe-last-seen timestamp)
+                                              timestamp))))
+                (when (numberp pnl)
+                  (push pnl pnls)))))
+        (values (nreverse pnls) probe-count probe-last-seen))))
+
+(defun %fetch-forward-pnls (strategy-name forward-start)
+  "Fetch forward evidence pnls for STRATEGY-NAME since FORWARD-START.
+Periodic no-signal probes are excluded from this list."
+  (multiple-value-bind (pnls _probe-count _probe-last-seen)
+      (%fetch-forward-evidence-and-probe-telemetry strategy-name forward-start)
+    (declare (ignore _probe-count _probe-last-seen))
+    pnls))
 
 (defun refresh-deployment-gate-status-for-strategy (strategy-name &key (now (get-universal-time)))
   "Refresh deployment gate status row for STRATEGY-NAME from DB metrics/trades."
@@ -636,58 +667,61 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
                      (if (and (numberp d) (> d 0))
                          (round d)
                          (max 1 (round *forward-min-days*)))))
-                 (pnls (%fetch-forward-pnls name forward-start))
-                 (forward-trades (length pnls))
-                 (forward-sharpe (%forward-pnl-sharpe pnls))
-                 (forward-pf (%forward-pnl-pf pnls))
                  (elapsed-days
                    (if (and (numberp forward-start) (> forward-start 0))
                        (/ (max 0 (- now forward-start)) 86400.0)
                        0.0)))
-            (multiple-value-bind (decision reason)
-                (cond
-                  ((not oos-passed)
-                   (values "BLOCKED_OOS"
-                           (format nil "oos_sharpe<~,2f" *oos-min-sharpe*)))
-                  ((< elapsed-days forward-days)
-                   (values "FORWARD_RUNNING"
-                           (format nil "elapsed=~d/~d days"
-                                   (floor elapsed-days)
-                                   forward-days)))
-                  ((< forward-trades *forward-min-trades*)
-                   (values "FORWARD_FAIL"
-                           (format nil "insufficient trades (~d < ~d)"
-                                   forward-trades
-                                   *forward-min-trades*)))
-                  ((or (null forward-sharpe) (< forward-sharpe *forward-min-sharpe*))
-                   (values "FORWARD_FAIL"
-                           (format nil "forward sharpe < ~,2f (actual ~a)"
-                                   *forward-min-sharpe*
-                                   (if (numberp forward-sharpe)
-                                       (format nil "~,2f" forward-sharpe)
-                                       "N/A"))))
-                  ((or (null forward-pf) (< forward-pf *forward-min-pf*))
-                   (values "FORWARD_FAIL"
-                           (format nil "forward pf < ~,2f (actual ~a)"
-                                   *forward-min-pf*
-                                   (if (numberp forward-pf)
-                                       (format nil "~,2f" forward-pf)
-                                       "N/A"))))
-                  (t
-                   (values "LIVE_READY" "forward gate passed")))
-              (upsert-deployment-gate-status
-               name
-               :research-passed research-passed
-               :oos-passed oos-passed
-               :oos-window-days *oos-fixed-window-days*
-               :forward-start forward-start
-               :forward-days forward-days
-               :forward-trades forward-trades
-               :forward-sharpe forward-sharpe
-               :forward-pf forward-pf
-               :decision decision
-               :reason reason
-               :updated-at now))))))))
+            (multiple-value-bind (pnls probe-count probe-last-seen)
+                (%fetch-forward-evidence-and-probe-telemetry name forward-start)
+              (let* ((forward-trades (length pnls))
+                     (forward-sharpe (%forward-pnl-sharpe pnls))
+                     (forward-pf (%forward-pnl-pf pnls)))
+                (multiple-value-bind (decision reason)
+                    (cond
+                      ((not oos-passed)
+                       (values "BLOCKED_OOS"
+                               (format nil "oos_sharpe<~,2f" *oos-min-sharpe*)))
+                      ((< elapsed-days forward-days)
+                       (values "FORWARD_RUNNING"
+                               (format nil "elapsed=~d/~d days"
+                                       (floor elapsed-days)
+                                       forward-days)))
+                      ((< forward-trades *forward-min-trades*)
+                       (values "FORWARD_FAIL"
+                               (format nil "insufficient trades (~d < ~d)"
+                                       forward-trades
+                                       *forward-min-trades*)))
+                      ((or (null forward-sharpe) (< forward-sharpe *forward-min-sharpe*))
+                       (values "FORWARD_FAIL"
+                               (format nil "forward sharpe < ~,2f (actual ~a)"
+                                       *forward-min-sharpe*
+                                       (if (numberp forward-sharpe)
+                                           (format nil "~,2f" forward-sharpe)
+                                           "N/A"))))
+                      ((or (null forward-pf) (< forward-pf *forward-min-pf*))
+                       (values "FORWARD_FAIL"
+                               (format nil "forward pf < ~,2f (actual ~a)"
+                                       *forward-min-pf*
+                                       (if (numberp forward-pf)
+                                           (format nil "~,2f" forward-pf)
+                                           "N/A"))))
+                      (t
+                       (values "LIVE_READY" "forward gate passed")))
+                  (upsert-deployment-gate-status
+                   name
+                   :research-passed research-passed
+                   :oos-passed oos-passed
+                   :oos-window-days *oos-fixed-window-days*
+                   :forward-start forward-start
+                   :forward-days forward-days
+                   :forward-trades forward-trades
+                   :forward-sharpe forward-sharpe
+                   :forward-pf forward-pf
+                   :probe-count probe-count
+                   :probe-last-seen probe-last-seen
+                   :decision decision
+                   :reason reason
+                   :updated-at now))))))))))
 
 (defun refresh-deployment-gate-statuses (&key (now (get-universal-time)))
   "Refresh deployment gate rows for active strategies that reached OOS stage."
@@ -711,10 +745,21 @@ Keys: :queued :sent :received :send_failed :result_failed :result_runtime_failed
          (running (getf summary :forward-running 0))
          (fail (getf summary :forward-fail 0))
          (blocked (getf summary :blocked-oos 0))
-         (total (getf summary :total 0)))
-    (format nil "Forward Go/No-Go: LIVE_READY=~d RUNNING=~d FAIL=~d BLOCKED_OOS=~d total=~d | min_days=~d min_trades=~d min_sharpe=~,2f min_pf=~,2f"
+         (total (getf summary :total 0))
+         (probe-count-total (or (getf summary :probe-count-total)
+                                (getf summary :probe_count_total)
+                                0))
+         (probe-last-seen (or (getf summary :probe-last-seen)
+                              (getf summary :probe_last_seen)))
+         (probe-last-seen-text (if (and (numberp probe-last-seen) (> probe-last-seen 0))
+                                   (if (fboundp 'format-timestamp)
+                                       (format-timestamp probe-last-seen)
+                                       (format nil "~a" probe-last-seen))
+                                   "N/A")))
+    (format nil "Forward Go/No-Go: LIVE_READY=~d RUNNING=~d FAIL=~d BLOCKED_OOS=~d total=~d | forward evidence: min_days=~d min_trades=~d min_sharpe=~,2f min_pf=~,2f | probe telemetry: probe_count=~d probe_last_seen=~a"
             ready running fail blocked total
-            *forward-min-days* *forward-min-trades* *forward-min-sharpe* *forward-min-pf*)))
+            *forward-min-days* *forward-min-trades* *forward-min-sharpe* *forward-min-pf*
+            probe-count-total probe-last-seen-text)))
 
 (defun write-forward-status-file (&key (reason "event"))
   "Persist forward/deployment status summary to file."

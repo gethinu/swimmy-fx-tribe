@@ -15,6 +15,7 @@ This directory contains operator-facing scripts for backtest, reporting, and mai
 | `cpcv_smoke.py` | Send one-off CPCV smoke messages (`runtime` / `criteria`). |
 | `order_open_smoke.py` | Send ORDER_OPEN sink-guard smoke cases (`INVALID_INSTRUMENT`, `MISSING_INSTRUMENT`, `INVALID_COMMENT_FORMAT`). |
 | `forward_probe_watch.py` | Monitor `deployment_gate_status.forward_trades` growth and alert when hourly delta is zero. |
+| `armada_mt5_bridge.py` | Convert `armada_player_replica` report candidates into MT5 `xau_autobot` trial configs and run-plan JSON. |
 
 ## CPCV smoke checks
 
@@ -92,6 +93,22 @@ Systemd hourly timer:
 ```bash
 sudo bash tools/install_forward_probe_watch_service.sh
 ```
+
+## Armada -> MT5 bridge
+
+Convert top Armada replica candidates into MT5-executable `xau_autobot` trial configs.
+Current bridge targets `ema` indicator candidates and MT5-supported timeframes (`M1/M5/M15/M20/M30/H1/H4`).
+
+```bash
+.venv/bin/python3 tools/ops/armada_mt5_bridge.py \
+  --replica-report data/reports/armada_player_replica_20260223_b1r_fix3_taiki_kojirin_seed131_c120_mix_nohold_top3.json \
+  --run-tag 20260303 \
+  --top-per-player 1 \
+  --allowed-indicators ema \
+  --output data/reports/armada_mt5_bridge_plan_20260303.json
+```
+
+The output plan contains per-run `start_command` / `eval_command`, generated config paths, magics, and skip reasons.
 
 ## Finalize report (safe default)
 

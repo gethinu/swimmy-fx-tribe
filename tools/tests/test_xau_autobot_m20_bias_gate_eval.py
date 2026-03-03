@@ -1,9 +1,11 @@
 import unittest
 
 from tools.xau_autobot_m20_bias_gate_eval import (
+    apply_loss_relax_signal_policy,
     apply_m45_bias_gate,
     classify_commander_mode,
     gate_active_with_flip_relax,
+    gate_active_with_relax,
     is_flip_relax_active,
     is_flip_relax_opposite_entry,
     is_loss_relax_active,
@@ -15,6 +17,7 @@ from tools.xau_autobot_m20_bias_gate_eval import (
     select_gate_policy_for_state,
     should_start_bias_flip_cooldown,
     should_start_loss_cooldown,
+    normalize_loss_relax_mode,
     update_flip_relax_until,
     update_loss_relax_until,
 )
@@ -163,6 +166,80 @@ class TestXauAutoBotM20BiasGateEval(unittest.TestCase):
                 gate_policy="block_opposite",
                 flip_relax_active=False,
             )
+        )
+
+    def test_normalize_loss_relax_mode(self):
+        self.assertEqual(normalize_loss_relax_mode(""), "gate_off")
+        self.assertEqual(normalize_loss_relax_mode("gate_off"), "gate_off")
+        self.assertEqual(normalize_loss_relax_mode("reverse_only"), "reverse_only")
+        self.assertEqual(normalize_loss_relax_mode("opposite_only"), "reverse_only")
+        self.assertEqual(normalize_loss_relax_mode("off"), "off")
+        with self.assertRaises(ValueError):
+            normalize_loss_relax_mode("bad_mode")
+
+    def test_gate_active_with_relax(self):
+        self.assertTrue(
+            gate_active_with_relax(
+                has_state=True,
+                gate_policy="block_opposite",
+                flip_relax_active=False,
+                loss_relax_active=False,
+                loss_relax_mode="gate_off",
+            )
+        )
+        self.assertFalse(
+            gate_active_with_relax(
+                has_state=True,
+                gate_policy="block_opposite",
+                flip_relax_active=True,
+                loss_relax_active=False,
+                loss_relax_mode="gate_off",
+            )
+        )
+        self.assertFalse(
+            gate_active_with_relax(
+                has_state=True,
+                gate_policy="block_opposite",
+                flip_relax_active=False,
+                loss_relax_active=True,
+                loss_relax_mode="gate_off",
+            )
+        )
+        self.assertFalse(
+            gate_active_with_relax(
+                has_state=True,
+                gate_policy="block_opposite",
+                flip_relax_active=False,
+                loss_relax_active=True,
+                loss_relax_mode="reverse_only",
+            )
+        )
+        self.assertTrue(
+            gate_active_with_relax(
+                has_state=True,
+                gate_policy="block_opposite",
+                flip_relax_active=False,
+                loss_relax_active=True,
+                loss_relax_mode="off",
+            )
+        )
+
+    def test_apply_loss_relax_signal_policy(self):
+        self.assertEqual(
+            apply_loss_relax_signal_policy(signal=1, bias=1, loss_relax_active=True, loss_relax_mode="reverse_only"),
+            (0, True),
+        )
+        self.assertEqual(
+            apply_loss_relax_signal_policy(signal=-1, bias=1, loss_relax_active=True, loss_relax_mode="reverse_only"),
+            (-1, False),
+        )
+        self.assertEqual(
+            apply_loss_relax_signal_policy(signal=1, bias=1, loss_relax_active=True, loss_relax_mode="gate_off"),
+            (1, False),
+        )
+        self.assertEqual(
+            apply_loss_relax_signal_policy(signal=1, bias=1, loss_relax_active=False, loss_relax_mode="reverse_only"),
+            (1, False),
         )
 
     def test_is_flip_relax_opposite_entry(self):

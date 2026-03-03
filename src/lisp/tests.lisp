@@ -601,6 +601,54 @@
       (setf swimmy.globals:*backtest-requester* orig-req)
       (setf (symbol-function 'pzmq:send) orig-send))))
 
+(deftest test-backtest-queue-flushes-at-pending-cap-boundary
+  "flush-backtest-queue should still send when pending equals max-pending."
+  (let* ((orig-req (and (boundp 'swimmy.globals:*backtest-requester*)
+                        swimmy.globals:*backtest-requester*))
+         (orig-send (symbol-function 'pzmq:send))
+         (orig-max (and (boundp 'swimmy.globals::*backtest-max-pending*)
+                        swimmy.globals::*backtest-max-pending*))
+         (orig-submit (and (boundp 'swimmy.globals::*backtest-submit-count*)
+                           swimmy.globals::*backtest-submit-count*))
+         (orig-recv (when (boundp 'swimmy.main::*backtest-recv-count*)
+                      swimmy.main::*backtest-recv-count*))
+         (orig-queue swimmy.school::*backtest-send-queue*)
+         (orig-count (and (boundp 'swimmy.school::*backtest-send-queue-count*)
+                          swimmy.school::*backtest-send-queue-count*))
+         (orig-tail (and (boundp 'swimmy.school::*backtest-send-queue-tail*)
+                         swimmy.school::*backtest-send-queue-tail*))
+         (sent nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*backtest-send-queue* (list "m1" "m2"))
+          (setf swimmy.school::*backtest-send-queue-count* 0)
+          (setf swimmy.school::*backtest-send-queue-tail* nil)
+          (setf swimmy.globals:*backtest-requester* :dummy)
+          (setf swimmy.globals::*backtest-max-pending* 2)
+          (setf swimmy.globals::*backtest-submit-count* 2)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (setf (symbol-function 'pzmq:send)
+                (lambda (_sock msg) (push msg sent)))
+          (swimmy.school::flush-backtest-queue)
+          (assert-equal '("m1") (nreverse sent)
+                        "pending==max should still flush one message")
+          (assert-equal '("m2") swimmy.school::*backtest-send-queue*
+                        "second message should remain queued after crossing max"))
+      (setf swimmy.globals:*backtest-requester* orig-req)
+      (setf (symbol-function 'pzmq:send) orig-send)
+      (when (boundp 'swimmy.globals::*backtest-max-pending*)
+        (setf swimmy.globals::*backtest-max-pending* orig-max))
+      (when (boundp 'swimmy.globals::*backtest-submit-count*)
+        (setf swimmy.globals::*backtest-submit-count* orig-submit))
+      (when (boundp 'swimmy.main::*backtest-recv-count*)
+        (setf swimmy.main::*backtest-recv-count* orig-recv))
+      (setf swimmy.school::*backtest-send-queue* orig-queue)
+      (when (boundp 'swimmy.school::*backtest-send-queue-count*)
+        (setf swimmy.school::*backtest-send-queue-count* orig-count))
+      (when (boundp 'swimmy.school::*backtest-send-queue-tail*)
+        (setf swimmy.school::*backtest-send-queue-tail* orig-tail)))))
+
 (deftest test-init-backtest-zmq-fails-when-requester-missing
   "init-backtest-zmq should fail fast when enabled but requester is missing"
   (let* ((orig-enabled swimmy.core:*backtest-service-enabled*)
@@ -4488,6 +4536,155 @@
       (setf (symbol-function 'swimmy.school::record-category-trade-time) orig-record-time)
       (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strat))))
 
+(deftest test-runtime-selection-prefers-gate-live-ready-over-raw-sharpe
+  "Runtime selection should avoid raw-Sharpe winner when deployment gate is not LIVE_READY."
+  (let ((orig-cache (symbol-function 'swimmy.school::get-cached-backtest))
+        (orig-fetch-gate (symbol-function 'swimmy.school::fetch-deployment-gate-status))
+        (orig-live-edge (symbol-function 'swimmy.school::%live-edge-guard-pass-p)))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::get-cached-backtest)
+                (lambda (name)
+                  (cond
+                    ((string= name "UT-HIGH-SHARPE-BLOCKED")
+                     (list :sharpe 2.2 :profit-factor 1.10 :win-rate 0.38 :max-dd 0.20 :trades 30))
+                    ((string= name "UT-MID-SHARPE-LIVE")
+                     (list :sharpe 1.1 :profit-factor 1.45 :win-rate 0.52 :max-dd 0.10 :trades 260))
+                    (t nil))))
+          (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status)
+                (lambda (name)
+                  (cond
+                    ((string= name "UT-HIGH-SHARPE-BLOCKED")
+                     (list :decision "FORWARD_RUNNING" :reason "still collecting evidence"))
+                    ((string= name "UT-MID-SHARPE-LIVE")
+                     (list :decision "LIVE_READY" :reason "go"))
+                    (t nil))))
+          (setf (symbol-function 'swimmy.school::%live-edge-guard-pass-p)
+                (lambda (_name)
+                  (declare (ignore _name))
+                  (values t :ok
+                          (list :trades 40 :profit-factor 1.2 :win-rate 0.5 :net-pnl 100.0 :latest-loss-streak 1))))
+          (multiple-value-bind (selected ranked)
+              (swimmy.school::select-runtime-signal-candidate
+               "USDJPY"
+               (list (list :strategy-name "UT-HIGH-SHARPE-BLOCKED" :category :trend :direction :buy :timeframe 60)
+                     (list :strategy-name "UT-MID-SHARPE-LIVE" :category :trend :direction :buy :timeframe 60)))
+            (let ((blocked (find "UT-HIGH-SHARPE-BLOCKED" ranked
+                                 :key (lambda (c) (getf c :strategy-name))
+                                 :test #'string=)))
+              (assert-not-nil selected "Expected an eligible winner")
+              (assert-equal "UT-MID-SHARPE-LIVE"
+                            (getf selected :strategy-name)
+                            "Expected LIVE_READY strategy to win over blocked high-Sharpe candidate")
+              (assert-not-nil blocked "Expected blocked candidate in ranked list")
+              (assert-false (getf blocked :eligible-p)
+                            "Deployment-gate blocked candidate must be ineligible")
+              (assert-true (search "DEPLOYMENT_GATE"
+                                   (format nil "~{~a~^|~}" (getf blocked :reasons)))
+                           "Expected rejection reason to include deployment gate"))))
+      (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache)
+      (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch-gate)
+      (setf (symbol-function 'swimmy.school::%live-edge-guard-pass-p) orig-live-edge))))
+
+(deftest test-runtime-selection-applies-diversification-penalty
+  "Runtime selection should penalize concentrated category exposure even with higher raw Sharpe."
+  (let ((orig-cache (symbol-function 'swimmy.school::get-cached-backtest))
+        (orig-fetch-gate (symbol-function 'swimmy.school::fetch-deployment-gate-status))
+        (orig-live-edge (symbol-function 'swimmy.school::%live-edge-guard-pass-p))
+        (orig-slots swimmy.globals::*slot-allocation*))
+    (unwind-protect
+        (progn
+          (setf swimmy.globals::*slot-allocation* (make-hash-table :test 'equal))
+          ;; Existing open slot already occupies :trend on USDJPY.
+          (setf (gethash "trend-0" swimmy.globals::*slot-allocation*)
+                (list :symbol "USDJPY" :category :trend :direction :long :strategy "UT-OPEN-TREND"))
+
+          (setf (symbol-function 'swimmy.school::get-cached-backtest)
+                (lambda (name)
+                  (cond
+                    ((string= name "UT-TREND-HIGH")
+                     (list :sharpe 1.65 :profit-factor 1.35 :win-rate 0.50 :max-dd 0.11 :trades 220))
+                    ((string= name "UT-REVERSION-MID")
+                     (list :sharpe 1.55 :profit-factor 1.36 :win-rate 0.50 :max-dd 0.11 :trades 220))
+                    (t nil))))
+          (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status)
+                (lambda (_name)
+                  (list :decision "LIVE_READY" :reason "go")))
+          (setf (symbol-function 'swimmy.school::%live-edge-guard-pass-p)
+                (lambda (_name)
+                  (declare (ignore _name))
+                  (values t :ok
+                          (list :trades 40 :profit-factor 1.2 :win-rate 0.5 :net-pnl 100.0 :latest-loss-streak 1))))
+
+          (multiple-value-bind (selected ranked)
+              (swimmy.school::select-runtime-signal-candidate
+               "USDJPY"
+               (list (list :strategy-name "UT-TREND-HIGH" :category :trend :direction :buy :timeframe 60)
+                     (list :strategy-name "UT-REVERSION-MID" :category :reversion :direction :buy :timeframe 60)))
+            (let ((trend (find "UT-TREND-HIGH" ranked
+                               :key (lambda (c) (getf c :strategy-name))
+                               :test #'string=))
+                  (reversion (find "UT-REVERSION-MID" ranked
+                                   :key (lambda (c) (getf c :strategy-name))
+                                   :test #'string=)))
+              (assert-not-nil selected "Expected winner after diversification scoring")
+              (assert-equal "UT-REVERSION-MID"
+                            (getf selected :strategy-name)
+                            "Expected less-concentrated category candidate to win")
+              (assert-true (> (getf trend :diversification-penalty)
+                              (getf reversion :diversification-penalty))
+                           "Expected higher diversification penalty on concentrated category"))))
+      (setf swimmy.globals::*slot-allocation* orig-slots)
+      (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache)
+      (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch-gate)
+      (setf (symbol-function 'swimmy.school::%live-edge-guard-pass-p) orig-live-edge))))
+
+(deftest test-runtime-selection-telemetry-emits-selected-and-rejected-reasons
+  "Runtime selection telemetry should emit status and reason for selected/rejected candidates."
+  (let ((orig-telemetry (symbol-function 'swimmy.core::emit-telemetry-event))
+        (events nil))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key service severity correlation-id data)
+                  (declare (ignore service severity correlation-id))
+                  (push (list event-type data) events)
+                  t))
+          (swimmy.school::emit-runtime-selection-telemetry
+           "USDJPY"
+           (list (list :strategy-name "UT-SELECTED"
+                       :category :trend
+                       :direction :buy
+                       :timeframe 60
+                       :raw-sharpe 1.2
+                       :selection-score 0.88
+                       :eligible-p t
+                       :reasons '("EVIDENCE_STRONG"))
+                 (list :strategy-name "UT-REJECTED"
+                       :category :trend
+                       :direction :buy
+                       :timeframe 60
+                       :raw-sharpe 1.8
+                       :selection-score 0.52
+                       :eligible-p nil
+                       :reasons '("DEPLOYMENT_GATE_BLOCKED")))
+           "UT-SELECTED")
+          (let ((selected-ev (find "UT-SELECTED" events
+                                   :key (lambda (ev) (format nil "~a" (second ev)))
+                                   :test #'search))
+                (rejected-ev (find "UT-REJECTED" events
+                                   :key (lambda (ev) (format nil "~a" (second ev)))
+                                   :test #'search)))
+            (assert-not-nil selected-ev "Expected selected telemetry event")
+            (assert-not-nil rejected-ev "Expected rejected telemetry event")
+            (assert-true (search "selected" (string-downcase (format nil "~a" (second selected-ev))))
+                         "Expected selected telemetry status")
+            (assert-true (search "rejected" (string-downcase (format nil "~a" (second rejected-ev))))
+                         "Expected rejected telemetry status")
+            (assert-true (search "DEPLOYMENT_GATE_BLOCKED" (format nil "~a" (second rejected-ev)))
+                         "Expected rejected reason in telemetry"))))
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-telemetry)))
+
 (deftest test-process-category-trades-runs-a-rank-shadow-when-s-gate-blocked
   "When live entry path is skipped, A-rank signals should still run in shadow and persist shadow outcomes."
   (let ((orig-candle-histories swimmy.globals:*candle-histories*)
@@ -4771,10 +4968,300 @@
         (setf swimmy.school::*a-rank-shadow-trading-enabled* orig-enabled))
       (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch))))
 
-(deftest test-forward-min-trades-default-is-20
-  "Forward deployment gate should require 20 forward trades by default."
-  (assert-equal 20 swimmy.school::*forward-min-trades*
-                "Expected *forward-min-trades* default to be 20 for practical forward ramp-up"))
+(deftest test-forward-min-trades-default-is-300
+  "Forward deployment gate should require 300 forward trades by default."
+  (assert-equal 300 swimmy.school::*forward-min-trades*
+                "Expected *forward-min-trades* default to be 300 per deployment gate spec"))
+
+(deftest test-refresh-deployment-gate-forward-trades-boundary
+  "Deployment gate should fail at 299 and become LIVE_READY candidate at 300 forward trades."
+  (let ((orig-execute-to-list (symbol-function 'swimmy.school::execute-to-list))
+        (orig-fetch-gate (symbol-function 'swimmy.school::fetch-deployment-gate-status))
+        (orig-fetch-forward (symbol-function 'swimmy.school::%fetch-forward-evidence-and-probe-telemetry))
+        (orig-forward-sharpe (symbol-function 'swimmy.school::%forward-pnl-sharpe))
+        (orig-forward-pf (symbol-function 'swimmy.school::%forward-pnl-pf))
+        (orig-upsert-gate (symbol-function 'swimmy.school::upsert-deployment-gate-status))
+        (trade-count 0)
+        (captured nil)
+        (forward-start 1700000000)
+        (now (+ 1700000000 (* 31 86400))))
+    (unwind-protect
+        (progn
+          (setf (symbol-function 'swimmy.school::execute-to-list)
+                (lambda (sql &rest params)
+                  (declare (ignore params))
+                  (if (and (stringp sql)
+                           (search "FROM strategies" sql))
+                      (list (list "UT-FWD-BOUNDARY" 0.55 1.35 0.45 120 0.12 0.50))
+                      nil)))
+          (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status)
+                (lambda (_strategy-name)
+                  (declare (ignore _strategy-name))
+	                  (list :forward-start forward-start
+	                        :forward-days 30)))
+	          (setf (symbol-function 'swimmy.school::%fetch-forward-evidence-and-probe-telemetry)
+	                (lambda (_strategy-name _forward-start)
+	                  (declare (ignore _strategy-name _forward-start))
+	                  (values (loop repeat trade-count collect 1.0) 0 nil)))
+          (setf (symbol-function 'swimmy.school::%forward-pnl-sharpe)
+                (lambda (_pnls)
+                  (declare (ignore _pnls))
+                  0.91))
+          (setf (symbol-function 'swimmy.school::%forward-pnl-pf)
+                (lambda (_pnls)
+                  (declare (ignore _pnls))
+                  1.72))
+          (setf (symbol-function 'swimmy.school::upsert-deployment-gate-status)
+                (lambda (_strategy-name
+                         &key
+                           research-passed
+                           oos-passed
+                           oos-window-days
+                           forward-start
+                           forward-days
+                           forward-trades
+                           forward-sharpe
+                           forward-pf
+                           decision
+                           reason
+                           updated-at
+                         &allow-other-keys)
+                  (declare (ignore _strategy-name
+                                   research-passed
+                                   oos-passed
+                                   oos-window-days
+                                   forward-start
+                                   updated-at))
+                  (setf captured (list :forward_days forward-days
+                                       :forward_trades forward-trades
+                                       :forward_sharpe forward-sharpe
+                                       :forward_pf forward-pf
+                                       :fail_reason reason
+                                       :decision decision
+                                       :reason reason))
+                  captured))
+          (flet ((run-case (n)
+                   (setf trade-count n)
+                   (setf captured nil)
+                   (swimmy.school::refresh-deployment-gate-status-for-strategy
+                    "UT-FWD-BOUNDARY"
+                    :now now)
+                   captured))
+            (let ((fail-case (run-case 299))
+                  (pass-case (run-case 300)))
+              (assert-equal "FORWARD_FAIL" (getf fail-case :decision)
+                            "299 forward trades should fail deployment gate")
+              (assert-equal 30 (getf fail-case :forward_days)
+                            "forward_days should remain in gate result")
+              (assert-equal 299 (getf fail-case :forward_trades)
+                            "forward_trades should remain in gate result")
+              (assert-true (numberp (getf fail-case :forward_sharpe))
+                           "forward_sharpe should remain in gate result")
+              (assert-true (numberp (getf fail-case :forward_pf))
+                           "forward_pf should remain in gate result")
+              (assert-true (search "299 < 300" (or (getf fail-case :fail_reason) ""))
+                           "fail_reason should include 299/300 trade threshold breach")
+
+              (assert-equal "LIVE_READY" (getf pass-case :decision)
+                            "300 forward trades should satisfy trade-count gate and be LIVE_READY candidate")
+              (assert-equal 300 (getf pass-case :forward_trades)
+                            "forward_trades should remain in gate result for pass candidate")
+              (assert-true (search "forward gate passed" (or (getf pass-case :fail_reason) ""))
+                           "fail_reason key should remain populated for pass candidate diagnostics"))))
+	      (setf (symbol-function 'swimmy.school::execute-to-list) orig-execute-to-list)
+	      (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch-gate)
+	      (setf (symbol-function 'swimmy.school::%fetch-forward-evidence-and-probe-telemetry) orig-fetch-forward)
+	      (setf (symbol-function 'swimmy.school::%forward-pnl-sharpe) orig-forward-sharpe)
+	      (setf (symbol-function 'swimmy.school::%forward-pnl-pf) orig-forward-pf)
+	      (setf (symbol-function 'swimmy.school::upsert-deployment-gate-status) orig-upsert-gate))))
+
+(deftest test-fetch-deployment-gate-status-includes-fail-reason-alias
+  "Deployment gate result should expose forward metrics and fail_reason alias."
+  (let* ((tmp-db (format nil "/tmp/swimmy-deployment-gate-status-alias-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*))
+    (unwind-protect
+        (let ((swimmy.core::*db-path-default* tmp-db)
+              (swimmy.core::*sqlite-conn* nil)
+              (swimmy.school::*disable-auto-migration* t))
+          (swimmy.core:close-db-connection)
+          (swimmy.school::init-db)
+          (swimmy.school::upsert-deployment-gate-status
+           "UT-FWD-ALIAS"
+           :research-passed t
+           :oos-passed t
+           :oos-window-days 180
+           :forward-start 1700000000
+           :forward-days 30
+           :forward-trades 299
+           :forward-sharpe 0.88
+           :forward-pf 1.66
+           :decision "FORWARD_FAIL"
+           :reason "insufficient trades (299 < 300)"
+           :updated-at 1700003600)
+          (let ((row (swimmy.school::fetch-deployment-gate-status "UT-FWD-ALIAS")))
+            (assert-not-nil row "Expected deployment gate row to be fetchable")
+            (assert-equal 30 (getf row :forward-days)
+                          "forward-days should remain in deployment gate result")
+            (assert-equal 299 (getf row :forward-trades)
+                          "forward-trades should remain in deployment gate result")
+            (assert-true (numberp (getf row :forward-sharpe))
+                         "forward-sharpe should remain in deployment gate result")
+            (assert-true (numberp (getf row :forward-pf))
+                         "forward-pf should remain in deployment gate result")
+            (assert-equal (getf row :reason) (getf row :fail_reason)
+                          "fail_reason should alias persisted reason in deployment gate result")
+            (assert-true (search "299 < 300" (or (getf row :fail_reason) ""))
+                         "fail_reason should preserve detailed threshold context")))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db)
+        (delete-file tmp-db)))))
+
+(deftest test-refresh-deployment-gate-forward-metrics-ignore-periodic-probes
+  "Adding periodic probe rows should not change forward evidence metrics."
+  (let* ((tmp-db (format nil "/tmp/swimmy-forward-probe-ignore-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (now (get-universal-time))
+         (forward-start (- now (* 35 86400)))
+         (strategy-name "UT-FWD-PROBE-IGNORE"))
+    (unwind-protect
+        (let ((swimmy.core::*db-path-default* tmp-db)
+              (swimmy.core::*sqlite-conn* nil)
+              (swimmy.school::*disable-auto-migration* t)
+              (swimmy.school::*forward-min-trades* 3)
+              (swimmy.school::*forward-min-sharpe* -10.0)
+              (swimmy.school::*forward-min-pf* 0.0))
+          (swimmy.core:close-db-connection)
+          (swimmy.school::init-db)
+          (swimmy.school::execute-non-query
+           "INSERT OR REPLACE INTO strategies
+            (name, sharpe, profit_factor, win_rate, trades, max_dd, oos_sharpe, rank, symbol, timeframe, direction, generation, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+           strategy-name 0.95 1.80 0.55 220 0.08 0.60 ":A" "USDJPY" 15 "BUY" 1 now)
+          (swimmy.school::upsert-deployment-gate-status
+           strategy-name
+           :research-passed t
+           :oos-passed t
+           :oos-window-days 180
+           :forward-start forward-start
+           :forward-days 30
+           :decision "FORWARD_RUNNING"
+           :reason "seed"
+           :updated-at now)
+          (labels ((ins (offset pnl mode pair-id)
+                     (swimmy.school::execute-non-query
+                      "INSERT INTO trade_logs
+                       (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                      (+ now offset)
+                      strategy-name
+                      "USDJPY"
+                      "BUY"
+                      "trend"
+                      "trend"
+                      pnl
+                      10
+                      pair-id
+                      mode)))
+            (ins 10 1.20 "SHADOW" "PAIR-A")
+            (ins 20 -0.60 "PAPER" "PAIR-B")
+            (ins 30 1.00 "LIVE" "PAIR-C"))
+          (swimmy.school::refresh-deployment-gate-status-for-strategy strategy-name :now now)
+          (let ((baseline (swimmy.school::fetch-deployment-gate-status strategy-name)))
+            (swimmy.school::execute-non-query
+             "INSERT INTO trade_logs
+              (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             (+ now 40) strategy-name "USDJPY" "BUY" "trend" "trend" 0.0 0 "NO-SIGNAL-PROBE-1" "SHADOW")
+            (swimmy.school::execute-non-query
+             "INSERT INTO trade_logs
+              (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             (+ now 50) strategy-name "USDJPY" "BUY" "trend" "trend" 0.0 0 "NO-SIGNAL-PROBE-2" "SHADOW")
+            (swimmy.school::refresh-deployment-gate-status-for-strategy strategy-name :now now)
+            (let ((after-probe (swimmy.school::fetch-deployment-gate-status strategy-name)))
+              (assert-equal (getf baseline :forward-trades) (getf after-probe :forward-trades)
+                            "Periodic probes should not change forward_trades")
+              (assert-true (< (abs (- (or (getf baseline :forward-sharpe) 0.0)
+                                       (or (getf after-probe :forward-sharpe) 0.0)))
+                              1e-9)
+                           "Periodic probes should not change forward_sharpe")
+              (assert-true (< (abs (- (or (getf baseline :forward-pf) 0.0)
+                                       (or (getf after-probe :forward-pf) 0.0)))
+                              1e-9)
+                           "Periodic probes should not change forward_pf")
+              (assert-equal 2 (getf after-probe :probe_count)
+                            "probe_count should track periodic probes separately")
+              (assert-equal (+ now 50) (getf after-probe :probe_last_seen)
+                            "probe_last_seen should store latest periodic probe timestamp"))))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db)
+        (delete-file tmp-db)))))
+
+(deftest test-refresh-deployment-gate-probe-only-strategy-not-live-ready
+  "Probe-only forward activity should remain FORWARD_FAIL even under permissive metric thresholds."
+  (let* ((tmp-db (format nil "/tmp/swimmy-forward-probe-only-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (now (get-universal-time))
+         (forward-start (- now (* 40 86400)))
+         (strategy-name "UT-FWD-PROBE-ONLY"))
+    (unwind-protect
+        (let ((swimmy.core::*db-path-default* tmp-db)
+              (swimmy.core::*sqlite-conn* nil)
+              (swimmy.school::*disable-auto-migration* t)
+              (swimmy.school::*forward-min-trades* 1)
+              (swimmy.school::*forward-min-sharpe* 0.0)
+              (swimmy.school::*forward-min-pf* 0.0))
+          (swimmy.core:close-db-connection)
+          (swimmy.school::init-db)
+          (swimmy.school::execute-non-query
+           "INSERT OR REPLACE INTO strategies
+            (name, sharpe, profit_factor, win_rate, trades, max_dd, oos_sharpe, rank, symbol, timeframe, direction, generation, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+           strategy-name 0.95 1.80 0.55 220 0.08 0.60 ":A" "USDJPY" 15 "BUY" 1 now)
+          (swimmy.school::upsert-deployment-gate-status
+           strategy-name
+           :research-passed t
+           :oos-passed t
+           :oos-window-days 180
+           :forward-start forward-start
+           :forward-days 30
+           :decision "FORWARD_RUNNING"
+           :reason "seed"
+           :updated-at now)
+          (dotimes (i 5)
+            (swimmy.school::execute-non-query
+             "INSERT INTO trade_logs
+              (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             (+ now i)
+             strategy-name
+             "USDJPY"
+             "BUY"
+             "trend"
+             "trend"
+             0.0
+             0
+             (format nil "NO-SIGNAL-PROBE-~d" i)
+             "SHADOW"))
+          (swimmy.school::refresh-deployment-gate-status-for-strategy strategy-name :now now)
+          (let ((row (swimmy.school::fetch-deployment-gate-status strategy-name)))
+            (assert-not-nil row "Expected probe-only deployment gate row")
+            (assert-equal "FORWARD_FAIL" (getf row :decision)
+                          "Probe-only strategy must not become LIVE_READY")
+            (assert-equal 0 (or (getf row :forward-trades) 0)
+                          "Probe-only strategy should have zero forward evidence trades")
+            (assert-true (search "insufficient trades" (or (getf row :reason) ""))
+                         "Probe-only strategy should fail on insufficient forward evidence")
+            (assert-equal 5 (getf row :probe_count)
+                          "probe_count should include all periodic probes")
+            (assert-equal (+ now 4) (getf row :probe_last_seen)
+                          "probe_last_seen should record latest probe event")))
+      (setf swimmy.core::*db-path-default* orig-db)
+      (swimmy.core:close-db-connection)
+      (when (probe-file tmp-db)
+        (delete-file tmp-db)))))
 
 (deftest test-process-category-trades-records-forward-running-no-signal-probe
   "When no strategy signals fire, FORWARD_RUNNING strategy should emit throttled SHADOW probe evidence."
@@ -6957,13 +7444,20 @@
           ;; pending throttle should take priority over rate throttle
           (setf swimmy.globals::*backtest-rate-limit-per-sec* 10)
           (setf swimmy.globals::*backtest-max-pending* 5)
-          (setf swimmy.globals::*backtest-submit-count* 5)
+          (setf swimmy.globals::*backtest-submit-count* 6)
           (setf swimmy.globals::*backtest-last-send-ts* 100.0d0)
           (when (boundp 'swimmy.main::*backtest-recv-count*)
             (setf swimmy.main::*backtest-recv-count* 0))
           (let ((diag (swimmy.school::backtest-throttle-diagnostics 100.01d0)))
             (assert-equal :pending (getf diag :reason)
                           "pending cap should be reported first"))
+          ;; pending==cap should not trigger pending throttle
+          (setf swimmy.globals::*backtest-submit-count* 5)
+          (when (boundp 'swimmy.main::*backtest-recv-count*)
+            (setf swimmy.main::*backtest-recv-count* 0))
+          (let ((diag (swimmy.school::backtest-throttle-diagnostics 100.01d0)))
+            (assert-equal :rate (getf diag :reason)
+                          "pending==cap should defer to rate throttle"))
           ;; rate throttle when pending is below cap
           (setf swimmy.globals::*backtest-submit-count* 1)
           (when (boundp 'swimmy.main::*backtest-recv-count*)
@@ -11379,6 +11873,84 @@
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
       (setf (symbol-function 'swimmy.school::demote-rank) orig-demote))))
 
+(deftest test-enforce-rank-trade-evidence-floors-shadow-only-stays-stable
+  "Trade-evidence floor sweep should not crash when only legacy SHADOW rows exist."
+  (let* ((tmp-db (format nil "/tmp/swimmy-rank-floor-shadow-only-~a.db" (get-universal-time)))
+         (orig-db swimmy.core::*db-path-default*)
+         (orig-conn swimmy.core::*sqlite-conn*)
+         (orig-disable swimmy.school::*disable-auto-migration*)
+         (orig-get-by-rank (symbol-function 'swimmy.school::get-strategies-by-rank))
+         (orig-demote (symbol-function 'swimmy.school::demote-rank))
+         (s-min (or (ignore-errors (swimmy.school::min-trade-evidence-for-rank :S)) 100))
+         (a-min (or (ignore-errors (swimmy.school::min-trade-evidence-for-rank :A)) 50))
+         (s (swimmy.school:make-strategy :name "UT-S-SHADOW-ONLY" :rank :S :trades 0))
+         (a (swimmy.school:make-strategy :name "UT-A-SHADOW-ONLY" :rank :A :trades 0))
+         (demotions '()))
+    (unwind-protect
+        (progn
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*disable-auto-migration* t)
+          (swimmy.school::init-db)
+          (dotimes (i (+ s-min 20))
+            (swimmy.school::execute-non-query
+             "INSERT INTO trade_logs
+              (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, execution_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             (+ 1000 i)
+             "UT-S-SHADOW-ONLY"
+             "USDJPY"
+             "BUY"
+             "trend"
+             "trend"
+             0.0
+             1
+             "SHADOW"))
+          (dotimes (i (+ a-min 10))
+            (swimmy.school::execute-non-query
+             "INSERT INTO trade_logs
+              (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, execution_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             (+ 2000 i)
+             "UT-A-SHADOW-ONLY"
+             "USDJPY"
+             "BUY"
+             "trend"
+             "trend"
+             0.0
+             1
+             "SHADOW"))
+          (setf (symbol-function 'swimmy.school::get-strategies-by-rank)
+                (lambda (rank &optional timeframe direction symbol)
+                  (declare (ignore timeframe direction symbol))
+                  (case rank
+                    (:S (list s))
+                    (:A (list a))
+                    (otherwise nil))))
+          (setf (symbol-function 'swimmy.school::demote-rank)
+                (lambda (strategy target reason)
+                  (declare (ignore reason))
+                  (push (list (swimmy.school:strategy-name strategy) target) demotions)
+                  (setf (swimmy.school:strategy-rank strategy) target)
+                  target))
+          (let ((summary (swimmy.school::enforce-rank-trade-evidence-floors)))
+            (assert-equal 1 (getf summary :s-demoted)
+                          "S strategy should be demoted when only SHADOW evidence exists")
+            (assert-equal 1 (getf summary :a-demoted)
+                          "A strategy should be demoted when only SHADOW evidence exists")
+            (assert-equal :B (swimmy.school:strategy-rank s))
+            (assert-equal :B (swimmy.school:strategy-rank a))
+            (assert-equal 2 (length demotions)
+                          "Expected both strategies to be demoted without runtime crash")))
+      (setf swimmy.core::*db-path-default* orig-db
+            swimmy.core::*sqlite-conn* orig-conn
+            swimmy.school::*disable-auto-migration* orig-disable)
+      (setf (symbol-function 'swimmy.school::get-strategies-by-rank) orig-get-by-rank)
+      (setf (symbol-function 'swimmy.school::demote-rank) orig-demote)
+      (ignore-errors (swimmy.school::close-db-connection))
+      (when (probe-file tmp-db)
+        (ignore-errors (delete-file tmp-db))))))
+
 (deftest test-enforce-s-rank-criteria-conformance-demotes-noncompliant-s
   "S conformance sweep should demote S strategies that no longer meet S criteria."
   (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
@@ -11686,8 +12258,8 @@
     (assert-false (swimmy.school::check-rank-criteria strat :S)
                   "S criteria should fail when trade evidence is below floor")))
 
-(deftest test-strategy-trade-evidence-count-includes-shadow-trade-logs
-  "strategy-trade-evidence-count should include shadow trade_logs in addition to backtest evidence."
+(deftest test-strategy-trade-evidence-breakdown-separates-shadow-from-rank-evidence
+  "Rank evidence should separate SHADOW from floor-eligible evidence with explicit breakdown."
   (let* ((tmp-db (format nil "/tmp/swimmy-shadow-evidence-~a.db" (get-universal-time)))
          (name "UT-SHADOW-EVIDENCE"))
     (let ((swimmy.core::*db-path-default* tmp-db)
@@ -11709,15 +12281,79 @@
                                       :pnl (if (evenp i) 0.2 -0.1)
                                       :hold-time 60)
                                 mode-args)))))
+            (dotimes (i 7)
+              (swimmy.school::execute-non-query
+               "INSERT INTO trade_logs
+                (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+               (+ 300 i) name "USDJPY" "BUY" "trend" "trend" 0.2 60 (format nil "PAPER-~d" i) "PAPER"))
+            (dotimes (i 4)
+              (swimmy.school::execute-non-query
+               "INSERT INTO trade_logs
+                (timestamp, strategy_name, symbol, direction, category, regime, pnl, hold_time, pair_id, execution_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+               (+ 400 i) name "USDJPY" "BUY" "trend" "trend" 0.1 60 (format nil "LIVE-~d" i) "LIVE"))
             (dotimes (i 5)
               (swimmy.school::execute-non-query
                "INSERT INTO backtest_trade_logs (request_id, strategy_name, timestamp, pnl, oos_kind)
                 VALUES (?, ?, ?, ?, ?)"
                "UT-REQ" name (+ 200 i) 0.1 "CPCV"))
             (let* ((strat (swimmy.school:make-strategy :name name :symbol "USDJPY" :trades 0))
-                   (evidence (swimmy.school::strategy-trade-evidence-count strat)))
-              (assert-equal 17 evidence
-                            "Expected evidence count to include 12 shadow + 5 backtest trades")))
+                   (breakdown (swimmy.school::strategy-trade-evidence-breakdown strat))
+                   (rank-evidence (swimmy.school::strategy-trade-evidence-count strat)))
+              (assert-equal 5 (getf breakdown :backtest-trade-evidence))
+              (assert-equal 7 (getf breakdown :paper-forward-trade-evidence))
+              (assert-equal 12 (getf breakdown :shadow-trade-evidence))
+              (assert-equal 4 (getf breakdown :live-trade-evidence))
+              (assert-equal 16 (getf breakdown :rank-trade-evidence)
+                            "Rank evidence must exclude SHADOW rows from floor count")
+              (assert-equal 28 (getf breakdown :total-trade-evidence))
+              (assert-equal 16 rank-evidence
+                            "strategy-trade-evidence-count should match rank_trade_evidence")
+              (assert-equal 5 (getf breakdown :backtest_trade_evidence))
+              (assert-equal 7 (getf breakdown :paper_forward_trade_evidence))
+              (assert-equal 12 (getf breakdown :shadow_trade_evidence))
+              (assert-equal 4 (getf breakdown :live_trade_evidence))))
+        (ignore-errors (swimmy.school::close-db-connection))
+        (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-check-rank-criteria-a-shadow-only-evidence-does-not-satisfy-floor
+  "SHADOW-only rows must not satisfy A rank trade-evidence floor."
+  (let* ((tmp-db (format nil "/tmp/swimmy-shadow-floor-~a.db" (get-universal-time)))
+         (name "UT-A-SHADOW-ONLY")
+         (a-min (or (ignore-errors (swimmy.school::min-trade-evidence-for-rank :A)) 50)))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (swimmy.school::*disable-auto-migration* t))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (dotimes (i (+ a-min 10))
+              (swimmy.school::record-trade-to-db
+               (swimmy.school::make-trade-record
+                :timestamp (+ 500 i)
+                :strategy-name name
+                :symbol "USDJPY"
+                :direction :buy
+                :category :trend
+                :regime :trend
+                :execution-mode :shadow
+                :pnl 0.0
+                :hold-time 30)))
+            (let* ((strat (swimmy.school:make-strategy :name name
+                                                       :rank :B
+                                                       :sharpe 1.10
+                                                       :profit-factor 1.50
+                                                       :win-rate 0.60
+                                                       :max-dd 0.08
+                                                       :trades 0
+                                                       :oos-sharpe 0.60))
+                   (breakdown (swimmy.school::strategy-trade-evidence-breakdown strat)))
+              (assert-false (swimmy.school::check-rank-criteria strat :A)
+                            "SHADOW-only evidence must not satisfy A floor")
+              (assert-equal (+ a-min 10) (getf breakdown :shadow-trade-evidence))
+              (assert-equal 0 (getf breakdown :rank-trade-evidence)
+                            "Floor evidence should remain zero without backtest/paper/live")))
         (ignore-errors (swimmy.school::close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 
@@ -13415,7 +14051,19 @@
             (assert-true (member :cpcv-maxdd failed) "CPCV maxdd failure should be reported")
             (assert-true (member :common-stage2 failed) "Common stage2 failure should be reported")
             (assert-true (search "common stage2 failed: mock" (or (getf data :common-stage2-message) ""))
-                         "Common stage2 reason should be included")))
+                         "Common stage2 reason should be included")
+            (let ((breakdown (getf data :trade-evidence-breakdown)))
+              (assert-not-nil breakdown "Expected trade evidence breakdown in telemetry")
+              (assert-true (numberp (getf breakdown :backtest-trade-evidence))
+                           "Expected backtest evidence count in telemetry breakdown")
+              (assert-true (numberp (getf breakdown :paper-forward-trade-evidence))
+                           "Expected paper evidence count in telemetry breakdown")
+              (assert-true (numberp (getf breakdown :shadow-trade-evidence))
+                           "Expected shadow evidence count in telemetry breakdown")
+              (assert-true (numberp (getf breakdown :live-trade-evidence))
+                           "Expected live evidence count in telemetry breakdown")
+              (assert-equal (getf data :trade-evidence) (getf breakdown :rank-trade-evidence)
+                            "Telemetry trade-evidence should match rank breakdown evidence"))))
       (setf (symbol-function 'swimmy.school:upsert-strategy) orig-upsert)
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (when orig-common
@@ -15014,6 +15662,7 @@
                   test-backtest-result-phase1-excluded-from-rr-buffer
                   test-backtest-queue-enqueues-when-requester-missing
                   test-backtest-queue-flushes-after-requester
+                  test-backtest-queue-flushes-at-pending-cap-boundary
                   test-init-backtest-zmq-fails-when-requester-missing
                   test-backtest-result-preserves-request-id
                   test-backtest-result-persists-trade-list
@@ -15201,6 +15850,7 @@
 		                  test-a-rank-evaluation-uses-composite-score
 	                  test-evaluate-a-rank-demotes-on-min-trade-evidence
 		                  test-enforce-rank-trade-evidence-floors-demotes-existing-as
+		                  test-enforce-rank-trade-evidence-floors-shadow-only-stays-stable
 		                  test-enforce-s-rank-criteria-conformance-demotes-noncompliant-s
 		                  test-enforce-a-b-rank-criteria-conformance-corrects-noncompliant-ranks
 		                  test-run-rank-evaluation-invokes-a-b-rank-conformance
@@ -15208,8 +15858,9 @@
 		                  test-check-rank-criteria-s-allows-staged-pf-wr-for-high-trade-evidence
 		                  test-check-rank-criteria-s-keeps-strict-pf-wr-for-low-trade-evidence
 		                  test-check-rank-criteria-a-requires-min-trade-evidence
+		                  test-check-rank-criteria-a-shadow-only-evidence-does-not-satisfy-floor
 		                  test-check-rank-criteria-s-requires-min-trade-evidence
-		                  test-strategy-trade-evidence-count-includes-shadow-trade-logs
+		                  test-strategy-trade-evidence-breakdown-separates-shadow-from-rank-evidence
 		                  test-armada-core-profile-gate-requires-pf-dd-trades
 		                  test-armada-core-profile-gate-requires-hold-time-band
 	                  test-enable-armada-core-canary-mode-limits-gate-to-a-rank
@@ -15383,12 +16034,19 @@
 		                  test-process-category-trades-skips-low-confidence-signal
 			                  test-process-category-trades-applies-confidence-lot-multiplier
 			                  test-process-category-trades-forwards-top-strategy-context
+			                  test-runtime-selection-prefers-gate-live-ready-over-raw-sharpe
+			                  test-runtime-selection-applies-diversification-penalty
+			                  test-runtime-selection-telemetry-emits-selected-and-rejected-reasons
 			                  test-process-category-trades-runs-a-rank-shadow-when-s-gate-blocked
 			                  test-open-a-rank-shadow-trades-allows-forward-running-b-rank
-			                  test-forward-min-trades-default-is-20
-				                  test-process-category-trades-records-forward-running-no-signal-probe
-				                  test-process-category-trades-records-forward-running-probe-even-with-signals
-				                  test-record-forward-running-periodic-shadow-probes-ignores-active-rank-filter
+				                  test-forward-min-trades-default-is-300
+				                  test-refresh-deployment-gate-forward-trades-boundary
+				                  test-fetch-deployment-gate-status-includes-fail-reason-alias
+				                  test-refresh-deployment-gate-forward-metrics-ignore-periodic-probes
+				                  test-refresh-deployment-gate-probe-only-strategy-not-live-ready
+					                  test-process-category-trades-records-forward-running-no-signal-probe
+					                  test-process-category-trades-records-forward-running-probe-even-with-signals
+					                  test-record-forward-running-periodic-shadow-probes-ignores-active-rank-filter
 				                  test-record-forward-running-periodic-shadow-probes-includes-db-only-forward-running
 				                  test-execute-category-trade-fails-closed-on-missing-timeframe
 		                  test-execute-category-trade-fails-closed-on-unresolved-strategy-name

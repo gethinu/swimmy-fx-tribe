@@ -5,6 +5,10 @@
 - **V50.8 KPI再設定（2026-02-26）**:
   - 収益KPIを `月利10%` から **主KPI: 月利3% / ストレッチ: 月利5%** へ再設定。
   - `monthly10` 表記の成果物は履歴として保持し、運用判定は `3%/5%` 基準を正本とする。
+- **V50.8 runtime selection evidence-aware化（2026-03-03）**:
+  - `process-category-trades` の同時signal選定を `raw cached Sharpe` 単独の GLOBAL BEST から evidence-aware scoring へ更新。
+  - `deployment gate` / `live-edge` / `evidence-adjusted quality` / `recent stability` / `diversification penalty` を同時評価し、order flow は単一 winner のまま維持。
+  - telemetry に `selected/rejected` 理由を追加し、選定経路の監査性を強化。
 - **V50.8 EURUSD専用MT5最適化 実行結果（2026-03-03 JST）**:
   - 専用run `ih_opt_eurusd_monthly3_20260301_012747` を `Symbol=EURUSD` + `ExpertParameters=InstitutionalHunterEA_OptimizeMonthly3_EURUSD.set` で実行し、最適化完了を確認。
   - 成果物を回収:
@@ -45,6 +49,44 @@
   - 新規 trial config:
     - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_m15.json`
     - `tools/configs/xau_autobot.trial_v2_20260226_v50_8_30d_h1.json`
+- **V50.8 M15/H1 trial judge 初回同期（2026-03-03）**:
+  - `trial_v2_20260303_v50_8_30d_m15` / `trial_v2_20260303_v50_8_30d_h1` を `xau_autobot_trial_v2_eval.sh` で評価。
+  - 両runとも `verdict=INVALID_TRIAL`（`decision_mode=monthly_only`, `window_days=30.0`）。
+  - root cause は `after_magic_filter=0` かつ `after_comment_prefix_filter=0`（run一致約定なし）。
+  - 含意: `M15/H1` は config/判定連携は正常で、次アクションは secondary loop の実運用差し替え。
+- **V50.8 secondary M15差し替え（2026-03-03）**:
+  - `current_run_r2` を `trial_v2_20260303_v50_8_30d_m15_live`（`magic=560186`）へ更新し、`M15` live loop を起動。
+  - ただし eval 実行中の live-loop guard self-heal により `r2v_m5` が再起動し、loop 構成は `m20 + m15 + r2v_m5` の3本へ再変動。
+  - `current_run.json` は外部更新で `trial_v2_20260303_primary_r2v_m5_48h` にドリフトしたため、primary 正本の再固定が必要。
+- **V50.8 非M5 3run再固定（2026-03-03）**:
+  - `current_run*.json` を `primary=H1 / secondary=M15 / explore=M20` へ再固定。
+    - `primary=trial_v2_20260303_v50_8_30d_h1_live`
+    - `secondary=trial_v2_20260303_v50_8_30d_m15_live`
+    - `explore=trial_v2_20260303_r3_m20_e10_live`
+  - `xau_autobot_live_loop_guard.py --include-r3 --dry-run` で `status=HEALTHY` を確認（expected `h1/m15/m20` は各1本）。
+  - ただし `xau_autobot.armada_mt5_20260303p1_pandajiro_01.json` は `unmanaged_keys` として別系統で並行稼働（分離運用）。
+  - 3run再評価（eval guard無効）では全run `verdict=INVALID_TRIAL`、`watchdog.decision=CONTINUE`、運用監査は `INSUFFICIENT_DATA`。
+  - 主要成果物:
+    - `data/reports/v50_8_run_refresh_20260303_0108_nom5_h1_m15_m20.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260303_v50_8_30d_h1_live.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260303_v50_8_30d_m15_live.json`
+    - `data/reports/xau_autobot_trial_judge_trial_v2_20260303_r3_m20_e10_live.json`
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **V50.8 Armada実運用同期 + refresh #2（2026-03-03）**:
+  - `P10-2` の実運用投入を継続し、Armada run を明示評価:
+    - `run_id=trial_v2_armada_20260303p1_pandajiro_1`
+    - `config=tools/configs/xau_autobot.armada_mt5_20260303p1_pandajiro_01.json`
+    - `run_meta=data/reports/xau_autobot_trial_v2_current_run_armada.json`
+  - 同期実行:
+    - `xau_autobot_trial_v2_eval.sh`（`WATCHDOG=1`, `LIVE_LOOP_GUARD=0`）で judge 更新。
+    - `xau_autobot_operational_audit.py --run-id-filter trial_v2_armada_20260303p1_pandajiro_1 --days 3` で監査更新。
+  - 最新実測:
+    - Armada: `verdict=INVALID_TRIAL`, `closed_positions=0`, `monthly_return_pct=0.0`, `audit_status=INSUFFICIENT_DATA`
+    - 非M5 3run（`H1/M15/M20`）も再評価し、全run `monthly_return_pct=0.0` / `closed_positions=0`
+  - 成果物:
+    - `data/reports/v50_8_run_refresh_20260303_0109_h1m15m20_armada.json`
+    - `data/reports/xau_autobot_operational_audit_20260303_{h1_live,m15_live,r3_m20_e10_live,armada_pandajiro}_refresh2_now0109.json`
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **V50.8 月次判定schema正規化（2026-02-26）**:
   - `v50_8_monthly_decision_*.json` の正本判定キーを **主KPI 3% / ストレッチ 5%** に統一する。
   - `monthly_10pct_reached` は履歴互換キーとして保持し、運用判定には使わない。
@@ -964,6 +1006,13 @@
     - Lisp 側の `:criteria-fail/:passed` 分類と再投入クールダウンはこの意味に依存する。
   - 目的: `pass_rate 0.50-0.69` の結果を誤って `:passed` 固定化しない。
   - interface semantics 変更あり（`INTERFACES.md` 更新要）。
+- **Backtest pending 上限境界契約（2026-03-03）**:
+  - root cause: dispatch throttle が `pending >= MAX_PENDING` で発火し、`pending == MAX_PENDING` ちょうどで送信が完全停止する境界張り付き（`Queued throttled request` 連発）を確認。
+  - 契約:
+    - pending throttle は **`pending > MAX_PENDING`** の超過時のみ発火する。
+    - `pending == MAX_PENDING` は許容し、flush/send 経路を止めない。
+  - 目的: cap境界での恒久的な送信停滞を防ぎ、結果受信に合わせた自然減圧を維持する。
+  - interface 変更なし（`INTERFACES.md` 更新不要）。
 - **V50.7 B1R探索スナップショット（2026-02-24）**:
   - `A9`（taiki seed47直撃）は `fix6d` で `top3_oos_ok=1` を確認し、完了条件を達成。
   - `A11`（taiki seed23追補, fix6e）は `top3_oos_ok=1`（`vwapvr@720` が `oos_ok=true`）を確認し、seed23回復を実測。
@@ -1678,6 +1727,31 @@
       - 判定:
         - `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続（primary判定軸）。
         - `secondary` は run一致実績が出て `NO_GO`（`INVALID_TRIAL` 脱出）。
+    - `V50.8-P5.104` 追補（2026-03-03, option2 monitor-only refresh #24）:
+      - 監視評価（起動停止なし）:
+        - `tools/xau_autobot_live_loop_guard.py --include-r3` は `status=HEALTHY`（managed trial 3本稼働）。
+        - unmanaged loop として `xau_autobot.tuned_auto_active.json` は残存（停止は未実施）。
+        - `e10_shadow14d`（primary）: `verdict=INVALID_TRIAL`, `window_days=2.3984190306944444`, `closed_positions=0`, `watchdog.window_hours=57.56205673666667`, `watchdog.decision=NO_GO_ROTATE_REQUIRED`
+        - `r2_rotate_r2v_m5_001402`（secondary）: `verdict=NO_GO`, `window_days=1.0259386345949073`, `closed_positions=21`, `watchdog.window_hours=24.62252723027778`, `watchdog.decision=CONTINUE`
+        - `r3_rotate_alpha4r2_001402`（explore）: `verdict=NO_GO`, `window_days=1.0261112166782407`, `closed_positions=8`, `watchdog.window_hours=24.626669200277778`, `watchdog.decision=CONTINUE`
+      - 監査更新:
+        - `xau_autobot_operational_audit_20260303_m20_e10_shadow14d_refresh9_now0052.json`（`status=FAIL`, `gap_reject_rate=1.0`）
+        - `xau_autobot_operational_audit_20260303_r2v_m5_refresh7_now0052.json`（`status=WARN`, `gap_reject_rate=0.7003891050583657`, `tp_sl_ratio=1.1`, `expectancy=61.190476190476375`）
+        - `xau_autobot_operational_audit_20260303_alpha4_r2_liveprobe_refresh4_now0052.json`（`status=FAIL`, `gap_reject_rate=0.7159533073929961`, `tp_sl_ratio=0.3333333333333333`, `expectancy=-1136.5`）
+      - 集約更新:
+        - `v50_8_trial_judge_trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+        - `v50_8_trial_judge_trial_v2_20260302_r2_rotate_r2v_m5_001402.json`
+        - `v50_8_trial_judge_trial_v2_20260302_r3_rotate_alpha4r2_001402.json`
+        - `v50_8_dual_run_status_20260226.json`
+        - `v50_8_dual_run_status_20260227.json`
+        - `v50_8_monthly_decision_20260225.json`
+        - `v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`
+        - `v50_8_gap_analysis_20260226_runtime_trial_v2_20260302_r2_rotate_r2v_m5_001402.json`
+        - `v50_8_monitor_only_status_20260227.json`
+        - `v50_8_run_refresh_20260303_0052_e10shadow_r2vm5_a4r2.json`
+      - 判定:
+        - `v50_8_monthly_decision_20260225.json` は `decision=NO_GO` 継続（primary判定軸）。
+        - `secondary/explore` は `NO_GO`（`INVALID_TRIAL` ではない）を維持。
     - `V50.8-P5.15` 追補（2026-02-27, option1適用 / r3u正本同期）:
       - ユーザー選択 `1` に従い、`r3u` を正本 run として運用継続。
       - 実行:
@@ -2017,6 +2091,11 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-03-03**: V50.8-P5.108（option2 monitor-only refresh #27 / run drift sync + armada observe）を反映。外部更新で `current_run=trial_v2_20260303_v50_8_30d_h1_live`、`current_run_r2=trial_v2_20260303_v50_8_30d_m15_live`、`current_run_r3=trial_v2_20260303_r3_m20_e10_live` へドリフトしたため、3run を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260303_{h1_live,m15_live,r3_m20_e10_live}_refresh{2,2,1}_now1009.json` を生成。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=HEALTHY`（expected 3run 各1本）だが `unmanaged=xau_autobot.armada_mt5_20260303p1_pandajiro_01.json` を検出したため、`trial_v2_armada_20260303p1_pandajiro_1` も judge/audit 観測に接続し `xau_autobot_operational_audit_20260303_armada_pandajiro_refresh1_now1009.json` を追加。`v50_8_trial_judge_*`（h1/m15/r3_m20_e10/armada）・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260303_runtime_trial_v2_20260303_{v50_8_30d_h1_live,v50_8_30d_m15_live,r3_m20_e10_live}.json`・`v50_8_run_refresh_20260303_1010_h1live_m15live_m20e10_armada.json` を再同期。最新は managed 3run と armada の全てで `verdict=INVALID_TRIAL` / `closed_positions=0`、watchdog は managed 3run が `CONTINUE`、監査は全run `INSUFFICIENT_DATA`、月次判定は `decision=NO_GO` 継続。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-03**: V50.8-P5.107（option2 monitor-only refresh #26 / post-rotation sync）を反映。run meta の外部切替に追従し、`primary=trial_v2_20260303_primary_r2v_m5_48h` / `secondary=trial_v2_20260303_v50_8_30d_m15_live` / `explore=trial_v2_20260303_r3_entry48h_m5` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`xau_autobot_operational_audit_20260303_{primary_r2v_m5_48h,m15_live,r3_entry48h_m5}_refresh1_now0057.json` を生成し、`v50_8_trial_judge_*`（新3run）・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260303_runtime_trial_v2_20260303_{primary_r2v_m5_48h,v50_8_30d_m15_live}.json`・`v50_8_run_refresh_20260303_0958_r2v48h_m15live_r3entry48h.json` を再同期。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=HEALTHY`（expected 3run稼働）だが `unmanaged=xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json` を検出。最新は3runとも `verdict=INVALID_TRIAL`（`window_days≈0.00084/0.00093/0.00103`, `closed_positions=0`）、watchdogは全run `CONTINUE`、監査は `INSUFFICIENT_DATA/INSUFFICIENT_DATA/FAIL`、月次判定は `decision=NO_GO` 継続。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-03**: V50.8-P5.105（48h約定優先ピボット）を反映。`e10_shadow14d` の `closed_positions=0` 継続を受け、48時間は「約定母集団確保」を最優先にする契約へ更新。`primary` は約定実績のある `trial_v2_20260303_primary_r2v_m5_48h`、`secondary` は `trial_v2_20260303_v50_8_30d_m15_live`、`explore` は `trial_v2_20260303_r3_entry48h_m5` を正本runとする。48h判定は `closed_positions>=20 && profit_factor>=1.00 && net_profit>0` を採用し、未達runは fail-closed で次候補へ切替える。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-03**: V50.8-P5.106（48hピボット実行）を反映。`tools/configs/xau_autobot.trial_v2_20260303_r3_entry48h_m5.json` を追加し、run meta を `primary=trial_v2_20260303_primary_r2v_m5_48h` / `secondary=trial_v2_20260303_v50_8_30d_m15_live` / `explore=trial_v2_20260303_r3_entry48h_m5` へ更新。`tools/xau_autobot_live_loop_guard.py --include-r3` で `status=HEALTHY`（3run 各1本）へ収束。評価成果物 `xau_autobot_trial_judge_trial_v2_{20260303_primary_r2v_m5_48h,20260303_v50_8_30d_m15_live,20260303_r3_entry48h_m5}.json`、監査 `xau_autobot_operational_audit_20260303_{primary_r2v_m5_48h,m15_live,r3_entry48h_m5}_refresh{2,1,2}_now0102.json`、集約 `v50_8_run_refresh_20260303_0102_pivot48h.json` を生成。現時点は切替直後のため 3run とも `verdict=INVALID_TRIAL` / `closed_positions=0`、判定は `decision=NO_GO` 継続。
+- **2026-03-03**: V50.8-P5.104（option2 monitor-only refresh #24）を反映。`tools/xau_autobot_live_loop_guard.py --include-r3` で managed trial 3本の `status=HEALTHY` を確認し、`primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `secondary=trial_v2_20260302_r2_rotate_r2v_m5_001402` / `explore=trial_v2_20260302_r3_rotate_alpha4r2_001402` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`xau_autobot_operational_audit_20260303_{m20_e10_shadow14d,r2v_m5,alpha4_r2_liveprobe}_refresh{9,7,4}_now0052.json` を生成し、`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260226_runtime_trial_v2_20260302_r2_rotate_r2v_m5_001402.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260303_0052_e10shadow_r2vm5_a4r2.json` を再同期。最新は `e10_shadow14d={window_days:2.3984190306944444, verdict:INVALID_TRIAL, closed:0, watchdog:NO_GO_ROTATE_REQUIRED, audit:FAIL}`、`r2_rotate_r2v_m5_001402={window_days:1.0259386345949073, verdict:NO_GO, closed:21, watchdog:CONTINUE, audit:WARN}`、`r3_rotate_alpha4r2_001402={window_days:1.0261112166782407, verdict:NO_GO, closed:8, watchdog:CONTINUE, audit:FAIL}`。判定は `decision=NO_GO` 継続。
 - **2026-03-03**: V50.8-P5.103（option2 monitor-only refresh #23）を反映。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` で `status=HEALTHY`（trial 3本稼働、`unmanaged=tuned_auto_active` 残存）を確認したうえで、`primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `secondary=trial_v2_20260302_r2_rotate_r2v_m5_001402` / `explore=trial_v2_20260302_r3_rotate_alpha4r2_001402` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`xau_autobot_operational_audit_20260303_{m20_e10_shadow14d,r2_rotate_r2v_m5,r3_rotate_alpha4r2}_refresh{8,2,2}_now0050.json` を生成し、`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260302_runtime_20260302_r2_rotate_r2v_m5_001402.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260303_0950_e10shadow_r2rotate_r3rotate.json` を再同期。最新は `e10_shadow14d={window_days:2.396967727650463, verdict:INVALID_TRIAL, closed:0, watchdog:NO_GO_ROTATE_REQUIRED, audit:FAIL}`、`r2_rotate_r2v_m5_001402={window_days:1.02441466875, verdict:NO_GO, closed:21, watchdog:CONTINUE, audit:WARN}`、`r3_rotate_alpha4r2_001402={window_days:1.024464914386574, verdict:NO_GO, closed:8, watchdog:CONTINUE, audit:FAIL}`。判定は `decision=NO_GO` 継続。
 - **2026-03-02**: V50.8-P5.102（option2 monitor-only refresh #22 / live-loop recovery）を反映。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` で `status=DEGRADED`（trial 3本 missing、`xau_autobot.tuned_auto_active.json` 稼働）を確認後、`tools/xau_autobot_live_loop_guard.py --include-r3` で trial 3本を復旧（`status=HEALTHY`）。続けて `primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `secondary=trial_v2_20260302_r2_rotate_r2v_m5_001402` / `explore=trial_v2_20260302_r3_rotate_alpha4r2_001402` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260302_{m20_e10_shadow14d,r2_rotate_r2v_m5,r3_rotate_alpha4r2}_refresh{7,1,1}_now1354.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260302_runtime_20260302_r2_rotate_r2v_m5_001402.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260302_2255_e10shadow_r2rotate_r3rotate.json` を再同期。最新は `e10_shadow14d={window_days:1.942282118263889, verdict:INVALID_TRIAL, closed:0, watchdog:NO_GO_ROTATE_REQUIRED}`、`r2_rotate_r2v_m5_001402={window_days:0.5697219975925926, verdict:INVALID_TRIAL, closed:0, watchdog:CONTINUE, audit:FAIL(gap_reject_rate=1.0)}`、`r3_rotate_alpha4r2_001402={window_days:0.5697665037037037, verdict:INVALID_TRIAL, closed:0, watchdog:CONTINUE, audit:FAIL(gap_reject_rate=1.0)}`。判定は `decision=NO_GO` 継続。
 - **2026-03-02**: V50.8-P5.101（option2 monitor-only refresh #21）を反映。`primary=trial_v2_20260228_m20_executor_v1_m45_softgate_e10_shadow14d` / `secondary=trial_v2_20260302_r2_rotate_r2v_m5_001402` / `explore=trial_v2_20260302_r3_rotate_alpha4r2_001402` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260302_{m20_e10_shadow14d,r2v_m5,alpha4_r2_liveprobe}_refresh{8,6,3}_now1125.json` を生成。`v50_8_trial_judge_*`・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260226_runtime_20260228_m20_executor_v1_m45_softgate_e10_shadow14d.json`・`v50_8_gap_analysis_20260226_runtime_trial_v2_20260302_r2_rotate_r2v_m5_001402.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_run_refresh_20260302_1126_e10shadow_r2vm5_a4r2.json` を再同期。最新は `e10_shadow14d={window_days:1.838348448125, verdict:INVALID_TRIAL, closed:0, watchdog:NO_GO_ROTATE_REQUIRED}`、`r2_rotate_r2v_m5={window_days:0.4657425363425926, verdict:INVALID_TRIAL, closed:0, watchdog:CONTINUE, audit:FAIL}`、`r3_rotate_alpha4r2={window_days:0.46574241240740744, verdict:INVALID_TRIAL, closed:0, watchdog:CONTINUE, audit:FAIL}`。判定は `decision=NO_GO` 継続。

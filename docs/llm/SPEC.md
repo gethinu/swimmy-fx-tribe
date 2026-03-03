@@ -41,6 +41,10 @@ V50.6 (Structured Telemetry) に到達し、SQL永続化、サービス分離、
   - `forward_*` 指標は paper-forward を正本とし、`trade_logs.execution_mode` の `SHADOW/PAPER`（必要に応じて `LIVE` 互換データも含む）から算出する。
   - `LIVE_READY` 戦略でも、**直近LIVE実績ガード**（既定: 最新40件・判定最小20件）で `PF>=1.05` / `WR>=35%` / `net_pnl>=0` / `latest_loss_streak<=3` を満たさない場合は、実行経路で fail-closed により発注を中止する。
   - これにより `S-Rank` は「研究上の上位評価」であり、単独では `live-ready` を意味しない。
+  - **Runtime Selection Policy（同時signal時）**:
+    - 実行経路は単一 winner を維持し、`raw Sharpe` 単独ではなく evidence-aware score で候補を順位付けする。
+    - score は `evidence-adjusted quality` + `recent stability` + `rank` を加点し、`deployment gate not LIVE_READY` / `live-edge fail` / `diversification(correlation・集中)` を減点して算出する。
+    - 候補の `selected/rejected` 理由は telemetry (`execution.runtime_selection_candidate` / `execution.runtime_selection_summary`) に記録し、監査可能性を優先する。
 
 ## 4.5. Pattern Similarity Gate (Regime/Gate)
 - **目的**: 類似チャートパターンの集合意識をレジーム/ゲートとして利用（既存戦略の前段フィルタ）。

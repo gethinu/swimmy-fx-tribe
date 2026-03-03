@@ -23,7 +23,7 @@
   "min_atr_ratio_to_median": 0.0,
   "max_atr_ratio_to_median": 999.0,
   "min_ema_gap_over_atr": 0.05,
-  "max_ema_gap_over_atr": 3.0,
+  "max_ema_gap_over_atr": 8.0,
   "deviation": 30,
   "magic": 560093,
   "comment": "x3u_260227_r2v",

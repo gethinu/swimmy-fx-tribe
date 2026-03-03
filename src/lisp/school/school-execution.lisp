@@ -46,6 +46,20 @@
   "Minimum interval between repeated live-edge block alerts for same strategy/reason.")
 (defparameter *live-edge-guard-last-alert-at* (make-hash-table :test 'equal)
   "Per strategy/reason timestamp for live-edge block alert deduplication.")
+(defparameter *runtime-selection-stability-weight* 0.30
+  "Weight applied to recent stability score in runtime candidate scoring.")
+(defparameter *runtime-selection-rank-weight* 0.08
+  "Weight applied to rank score in runtime candidate scoring.")
+(defparameter *runtime-selection-diversification-penalty-weight* 0.40
+  "Weight applied to diversification/correlation penalty in runtime candidate scoring.")
+(defparameter *runtime-selection-gate-penalty* 0.60
+  "Penalty applied when deployment gate is not LIVE_READY.")
+(defparameter *runtime-selection-live-edge-penalty* 0.45
+  "Penalty applied when live-edge guard is currently failing.")
+(defparameter *runtime-selection-high-diversification-threshold* 0.45
+  "Penalty threshold where diversification pressure is considered high.")
+(defparameter *runtime-selection-max-diversification-penalty* 1.20
+  "Maximum diversification penalty cap in runtime scoring.")
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -752,6 +766,368 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
     ((not (verify-parallel-scenarios symbol direction category)) nil)
     (t t)))
 
+(defun %runtime-selection-coerce-float (value &optional (default 0.0))
+  "Best-effort float conversion used in runtime candidate scoring."
+  (cond
+    ((numberp value) (float value 1.0))
+    ((stringp value)
+     (handler-case
+         (let ((*read-eval* nil))
+           (multiple-value-bind (obj _pos) (read-from-string value nil nil)
+             (declare (ignore _pos))
+             (if (numberp obj) (float obj 1.0) (float default 1.0))))
+       (error () (float default 1.0))))
+    (t (float default 1.0))))
+
+(defun %runtime-selection-clamp (value lo hi)
+  "Clamp VALUE into [LO,HI]."
+  (min hi (max lo value)))
+
+(defun %runtime-selection-normalize-rank (rank)
+  "Normalize RANK into keyword token for runtime scoring."
+  (cond
+    ((keywordp rank) rank)
+    ((symbolp rank) (intern (string-upcase (symbol-name rank)) :keyword))
+    ((stringp rank)
+     (let* ((up (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return) rank)))
+            (plain (if (and (> (length up) 0) (char= (char up 0) #\:))
+                       (subseq up 1)
+                       up)))
+       (if (> (length plain) 0)
+           (intern plain :keyword)
+           nil)))
+    (t nil)))
+
+(defun %runtime-selection-rank-score (rank)
+  "Return rank contribution score in [0,1]."
+  (case (%runtime-selection-normalize-rank rank)
+    (:legend 1.00)
+    (:s 0.90)
+    (:a 0.75)
+    (:b 0.60)
+    (:warrior 0.55)
+    (:veteran 0.65)
+    (:incubator 0.45)
+    (otherwise 0.50)))
+
+(defun %runtime-selection-timeframe-label (timeframe)
+  "Normalize runtime timeframe value into printable label."
+  (cond
+    ((null timeframe) "N/A")
+    ((stringp timeframe) timeframe)
+    ((numberp timeframe)
+     (let ((minutes (round timeframe)))
+       (if (and (fboundp 'get-tf-string) (> minutes 0))
+           (or (ignore-errors (get-tf-string minutes))
+               (format nil "~a" minutes))
+           (format nil "~a" minutes))))
+    ((symbolp timeframe) (symbol-name timeframe))
+    (t (format nil "~a" timeframe))))
+
+(defun %runtime-selection-normalize-direction (value)
+  "Normalize direction token into :BUY/:SELL, or NIL."
+  (let ((token (%normalize-strategy-token value)))
+    (cond
+      ((member token '("BUY" "LONG" ":BUY" ":LONG") :test #'string=) :buy)
+      ((member token '("SELL" "SHORT" ":SELL" ":SHORT") :test #'string=) :sell)
+      (t nil))))
+
+(defun %runtime-selection-evidence-score (raw-sharpe trades profit-factor win-rate max-dd)
+  "Compute evidence-aware quality score from cached metrics."
+  (let* ((sharpe (%runtime-selection-coerce-float raw-sharpe 0.0))
+         (trades-n (max 0 (round (%runtime-selection-coerce-float trades 0.0))))
+         (pf (%runtime-selection-coerce-float profit-factor 0.0))
+         (wr (%runtime-selection-coerce-float win-rate 0.0))
+         (dd (%runtime-selection-coerce-float max-dd 1.0))
+         (metrics (list :sharpe sharpe
+                        :trades trades-n
+                        :profit-factor pf
+                        :win-rate wr
+                        :max-dd dd)))
+    (cond
+      ((fboundp 'score-from-metrics)
+       (%runtime-selection-coerce-float (ignore-errors (score-from-metrics metrics)) sharpe))
+      ((fboundp 'evidence-adjusted-sharpe)
+       (%runtime-selection-coerce-float (ignore-errors (evidence-adjusted-sharpe sharpe trades-n)) sharpe))
+      (t sharpe))))
+
+(defun %runtime-selection-stability-score (metrics)
+  "Compute recent stability score from live-edge metrics."
+  (if (not (listp metrics))
+      0.50
+      (let* ((trades (max 0.0 (%runtime-selection-coerce-float (getf metrics :trades) 0.0)))
+             (pf (%runtime-selection-coerce-float (getf metrics :profit-factor) 0.0))
+             (wr (%runtime-selection-coerce-float (getf metrics :win-rate) 0.0))
+             (net (%runtime-selection-coerce-float (getf metrics :net-pnl) 0.0))
+             (loss-streak (max 0.0 (%runtime-selection-coerce-float (getf metrics :latest-loss-streak) 0.0)))
+             (pf-score (%runtime-selection-clamp (/ (- pf 1.0) 1.0) 0.0 1.0))
+             (wr-floor (%runtime-selection-coerce-float *live-edge-guard-wr-min* 0.35))
+             (wr-score (%runtime-selection-clamp (/ (- wr wr-floor)
+                                                    (max 0.05 (- 0.70 wr-floor)))
+                                                 0.0 1.0))
+             (net-score (cond
+                          ((> net 0.0) 1.0)
+                          ((= net 0.0) 0.5)
+                          (t 0.0)))
+             (streak-limit (max 1.0 (+ 1.0 (float *live-edge-guard-max-latest-loss-streak* 1.0))))
+             (streak-score (%runtime-selection-clamp (- 1.0 (/ loss-streak streak-limit)) 0.0 1.0))
+             (min-trades (max 1.0 (%runtime-selection-coerce-float *live-edge-guard-min-trades* 20.0)))
+             (evidence-factor (%runtime-selection-clamp (/ trades min-trades) 0.0 1.0))
+             (base (+ (* 0.35 pf-score)
+                      (* 0.30 wr-score)
+                      (* 0.20 streak-score)
+                      (* 0.15 net-score))))
+        (* base (+ 0.35 (* 0.65 evidence-factor))))))
+
+(defun %runtime-selection-diversification-penalty (symbol category timeframe direction)
+  "Compute diversification/correlation penalty from currently open slots."
+  (let* ((norm-symbol (string-upcase (or symbol "")))
+         (norm-dir (%runtime-selection-normalize-direction direction))
+         (tf-min (resolve-execution-timeframe-minutes timeframe))
+         (penalty 0.0))
+    (when (hash-table-p *slot-allocation*)
+      (maphash
+       (lambda (_key slot)
+         (declare (ignore _key))
+         (when (listp slot)
+           (let* ((slot-symbol (string-upcase (or (getf slot :symbol) "")))
+                  (same-symbol (and (> (length norm-symbol) 0)
+                                    (> (length slot-symbol) 0)
+                                    (string= norm-symbol slot-symbol)))
+                  (slot-category (getf slot :category))
+                  (slot-direction (%runtime-selection-normalize-direction (getf slot :direction)))
+                  (slot-strategy-name (getf slot :strategy))
+                  (slot-strategy (and (stringp slot-strategy-name)
+                                      (resolve-strategy-by-name slot-strategy-name)))
+                  (slot-tf-min (resolve-execution-timeframe-minutes
+                                (and slot-strategy (strategy-timeframe slot-strategy)))))
+             (when same-symbol
+               (incf penalty 0.15)
+               (when (and category (eq slot-category category))
+                 (incf penalty 0.25))
+               (when (and norm-dir slot-direction (eq norm-dir slot-direction))
+                 (incf penalty 0.05))
+               (when (and tf-min slot-tf-min (= tf-min slot-tf-min))
+                 (incf penalty 0.10)))
+             (unless same-symbol
+               (let ((corr (if (and (fboundp 'get-dynamic-correlation)
+                                    (stringp symbol)
+                                    (> (length symbol) 0)
+                                    (> (length slot-symbol) 0))
+                               (%runtime-selection-coerce-float
+                                (abs (or (ignore-errors (get-dynamic-correlation symbol slot-symbol))
+                                         0.0))
+                                0.0)
+                               0.0)))
+                 (incf penalty (* 0.20 corr)))))))
+       *slot-allocation*))
+    (%runtime-selection-clamp penalty 0.0 *runtime-selection-max-diversification-penalty*)))
+
+(defun %runtime-selection-reasons-text (reasons)
+  "Encode REASONS list into a deterministic telemetry string."
+  (if (and (listp reasons) reasons)
+      (format nil "~{~a~^|~}" reasons)
+      "none"))
+
+(defun build-runtime-signal-candidate (symbol signal)
+  "Build runtime selection candidate with evidence-aware score and reason map."
+  (let* ((strategy-name (getf signal :strategy-name))
+         (strategy (and (stringp strategy-name)
+                        (resolve-strategy-by-name strategy-name)))
+         (category (or (getf signal :category)
+                       (and strategy (strategy-regime-class strategy))
+                       :trend))
+         (direction (or (getf signal :direction) :buy))
+         (timeframe (or (getf signal :timeframe)
+                        (and strategy (strategy-timeframe strategy))))
+         (timeframe-label (%runtime-selection-timeframe-label timeframe))
+         (cache (and (stringp strategy-name)
+                     (get-cached-backtest strategy-name)))
+         (raw-sharpe (%runtime-selection-coerce-float (and (listp cache) (getf cache :sharpe)) 0.0))
+         (trades (max 0 (round (%runtime-selection-coerce-float (and (listp cache) (getf cache :trades)) 0.0))))
+         (profit-factor (%runtime-selection-coerce-float (and (listp cache) (getf cache :profit-factor)) 0.0))
+         (win-rate (%runtime-selection-coerce-float (and (listp cache) (getf cache :win-rate)) 0.0))
+         (max-dd (%runtime-selection-coerce-float (and (listp cache) (getf cache :max-dd)) 1.0))
+         (strategy-rank-token (%runtime-selection-normalize-rank
+                               (or (and strategy (strategy-rank strategy))
+                                   (let ((rank-data (and (stringp strategy-name)
+                                                         (ignore-errors (get-strategy-rank strategy-name)))))
+                                     (and rank-data (strategy-rank-rank rank-data)))
+                                   :incubator)))
+         (gate-status (and (stringp strategy-name)
+                           (ignore-errors (fetch-deployment-gate-status strategy-name))))
+         (gate-ready-p (%deployment-gate-live-ready-p gate-status))
+         (gate-decision (or (%normalize-strategy-token (and (listp gate-status)
+                                                            (getf gate-status :decision nil)))
+                            "UNSET"))
+         (gate-reason (let ((raw (and (listp gate-status) (getf gate-status :reason nil))))
+                        (if (and raw (> (length (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                              (format nil "~a" raw)))
+                                        0))
+                            (format nil "~a" raw)
+                            "deployment gate row missing")))
+         (live-edge-pass-p t)
+         (live-edge-fail-reason :ok)
+         (live-edge-metrics nil)
+         (evidence-score (%runtime-selection-evidence-score raw-sharpe trades profit-factor win-rate max-dd))
+         (rank-score (%runtime-selection-rank-score strategy-rank-token))
+         (diversification-penalty (%runtime-selection-diversification-penalty
+                                   symbol category timeframe direction))
+         (reasons '()))
+    (when (and (stringp strategy-name) (> (length strategy-name) 0))
+      (multiple-value-bind (pass-p fail-reason metrics)
+          (%live-edge-guard-pass-p strategy-name)
+        (setf live-edge-pass-p pass-p
+              live-edge-fail-reason fail-reason
+              live-edge-metrics metrics)))
+    (let* ((stability-score (%runtime-selection-stability-score live-edge-metrics))
+           (selection-score (- (+ evidence-score
+                                  (* *runtime-selection-stability-weight* stability-score)
+                                  (* *runtime-selection-rank-weight* rank-score))
+                               (* *runtime-selection-diversification-penalty-weight*
+                                  diversification-penalty)
+                               (if gate-ready-p 0.0 *runtime-selection-gate-penalty*)
+                               (if live-edge-pass-p 0.0 *runtime-selection-live-edge-penalty*)))
+           (eligible-p (and gate-ready-p live-edge-pass-p)))
+      (if gate-ready-p
+          (push "DEPLOYMENT_GATE_LIVE_READY" reasons)
+          (push (format nil "DEPLOYMENT_GATE_BLOCKED(~a)" gate-decision) reasons))
+      (if live-edge-pass-p
+          (push "LIVE_EDGE_PASS" reasons)
+          (push (format nil "LIVE_EDGE_BLOCKED(~a)"
+                        (%live-edge-fail-reason-label live-edge-fail-reason))
+                reasons))
+      (when (>= diversification-penalty *runtime-selection-high-diversification-threshold*)
+        (push "DIVERSIFICATION_PENALTY_HIGH" reasons))
+      (push (format nil "EVIDENCE=~,3f" evidence-score) reasons)
+      (push (format nil "STABILITY=~,3f" stability-score) reasons)
+      (list :signal signal
+            :strategy-name strategy-name
+            :category category
+            :direction direction
+            :timeframe timeframe
+            :timeframe-label timeframe-label
+            :rank strategy-rank-token
+            :raw-sharpe raw-sharpe
+            :trades trades
+            :evidence-score evidence-score
+            :stability-score stability-score
+            :rank-score rank-score
+            :diversification-penalty diversification-penalty
+            :selection-score selection-score
+            :gate-status gate-status
+            :gate-ready-p gate-ready-p
+            :gate-decision gate-decision
+            :gate-reason gate-reason
+            :live-edge-pass-p live-edge-pass-p
+            :live-edge-fail-reason live-edge-fail-reason
+            :live-edge-metrics live-edge-metrics
+            :eligible-p eligible-p
+            :reasons (nreverse reasons)))))
+
+(defun %runtime-selection-candidate-better-p (a b)
+  "Sort predicate for runtime candidates (higher score first)."
+  (let ((score-a (%runtime-selection-coerce-float (getf a :selection-score) 0.0))
+        (score-b (%runtime-selection-coerce-float (getf b :selection-score) 0.0)))
+    (cond
+      ((> score-a score-b) t)
+      ((< score-a score-b) nil)
+      (t
+       (let ((evidence-a (%runtime-selection-coerce-float (getf a :evidence-score) 0.0))
+             (evidence-b (%runtime-selection-coerce-float (getf b :evidence-score) 0.0)))
+         (cond
+           ((> evidence-a evidence-b) t)
+           ((< evidence-a evidence-b) nil)
+           (t
+            (> (%runtime-selection-coerce-float (getf a :raw-sharpe) 0.0)
+               (%runtime-selection-coerce-float (getf b :raw-sharpe) 0.0)))))))))
+
+(defun rank-runtime-signal-candidates (symbol strat-signals)
+  "Return STRAT-SIGNALS sorted by evidence-aware runtime score."
+  (sort (mapcar (lambda (sig)
+                  (build-runtime-signal-candidate symbol sig))
+                (copy-list strat-signals))
+        #'%runtime-selection-candidate-better-p))
+
+(defun select-runtime-signal-candidate (symbol strat-signals)
+  "Select runtime winner using evidence-aware scoring.
+Returns (values selected-candidate ranked-candidates)."
+  (let* ((ranked (if (and (listp strat-signals) strat-signals)
+                     (rank-runtime-signal-candidates symbol strat-signals)
+                     '()))
+         (eligible (find-if (lambda (candidate) (getf candidate :eligible-p))
+                            ranked))
+         (selected (or eligible (first ranked))))
+    (when selected
+      (if (getf selected :eligible-p)
+          (pushnew "SELECTED_HIGHEST_EVIDENCE_AWARE_SCORE"
+                   (getf selected :reasons)
+                   :test #'string=)
+          (progn
+            ;; Keep runtime flow alive for backward compatibility when no eligible candidate exists.
+            (setf (getf selected :fallback-selected-p) t)
+            (pushnew "FALLBACK_SELECTED_NO_ELIGIBLE_CANDIDATE"
+                     (getf selected :reasons)
+                     :test #'string=))))
+    (values selected ranked)))
+
+(defun emit-runtime-selection-telemetry (symbol ranked-candidates selected-strategy-name)
+  "Emit runtime selection telemetry with selected/rejected reasons."
+  (when (and (fboundp 'swimmy.core::emit-telemetry-event)
+             (listp ranked-candidates))
+    (let ((candidate-count (length ranked-candidates)))
+      (dolist (candidate ranked-candidates)
+        (let* ((strategy-name (or (getf candidate :strategy-name) "unknown"))
+               (selected-p (and selected-strategy-name
+                                (stringp selected-strategy-name)
+                                (stringp strategy-name)
+                                (string= selected-strategy-name strategy-name)))
+               (status (if selected-p "selected" "rejected"))
+               (reasons-text (%runtime-selection-reasons-text (getf candidate :reasons)))
+               (reason (cond
+                         (selected-p
+                          (if (getf candidate :fallback-selected-p)
+                              "selected:fallback-no-eligible-candidate"
+                              "selected:highest-evidence-aware-score"))
+                         ((not (getf candidate :eligible-p))
+                          (format nil "rejected:ineligible|~a" reasons-text))
+                         (t
+                          (format nil "rejected:lower-score-than-selected(~a)"
+                                  (or selected-strategy-name "none"))))))
+          (swimmy.core::emit-telemetry-event "execution.runtime_selection_candidate"
+            :service "school"
+            :severity "info"
+            :data (jsown:new-js
+                    ("symbol" symbol)
+                    ("strategy" strategy-name)
+                    ("status" status)
+                    ("reason" reason)
+                    ("reasons" reasons-text)
+                    ("candidate_count" candidate-count)
+                    ("category" (format nil "~a" (or (getf candidate :category) :unknown)))
+                    ("timeframe" (or (getf candidate :timeframe-label) "N/A"))
+                    ("direction" (format nil "~a" (or (getf candidate :direction) :unknown)))
+                    ("rank" (format nil "~a" (or (getf candidate :rank) :unknown)))
+                    ("raw_sharpe" (%runtime-selection-coerce-float (getf candidate :raw-sharpe) 0.0))
+                    ("selection_score" (%runtime-selection-coerce-float (getf candidate :selection-score) 0.0))
+                    ("evidence_score" (%runtime-selection-coerce-float (getf candidate :evidence-score) 0.0))
+                    ("stability_score" (%runtime-selection-coerce-float (getf candidate :stability-score) 0.0))
+                    ("rank_score" (%runtime-selection-coerce-float (getf candidate :rank-score) 0.0))
+                    ("diversification_penalty"
+                     (%runtime-selection-coerce-float (getf candidate :diversification-penalty) 0.0))
+                    ("deployment_ready" (if (getf candidate :gate-ready-p) t nil))
+                    ("deployment_decision" (or (getf candidate :gate-decision) "UNSET"))
+                    ("deployment_reason" (or (getf candidate :gate-reason) ""))
+                    ("live_edge_pass" (if (getf candidate :live-edge-pass-p) t nil))
+                    ("live_edge_reason" (format nil "~a" (or (getf candidate :live-edge-fail-reason) :ok)))))))
+      (swimmy.core::emit-telemetry-event "execution.runtime_selection_summary"
+        :service "school"
+        :severity "info"
+        :data (jsown:new-js
+                ("symbol" symbol)
+                ("candidate_count" candidate-count)
+                ("selected_strategy" (or selected-strategy-name "none")))))))
+
 (defun %normalize-shadow-direction (value)
   "Normalize direction token into :BUY/:SELL, or NIL."
   (let ((token (%normalize-strategy-token value)))
@@ -967,7 +1343,7 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
 
 (defun record-forward-running-periodic-shadow-probes (symbol bid ask)
   "Emit neutral SHADOW probe outcomes for FORWARD_RUNNING strategies.
-This keeps deployment-gate forward evidence moving even when live execution is blocked."
+This keeps FORWARD_RUNNING liveness telemetry active even when live execution is blocked."
   (let ((recorded 0))
     (when (and *forward-no-signal-shadow-enabled*
                (stringp symbol)
@@ -1286,50 +1662,52 @@ This keeps deployment-gate forward evidence moving even when live execution is b
                       (format t "[L] 📊 ~d strategies triggered signals~%" (length strat-signals))
                       ;; A-rank shadow operation: keep collecting paper outcomes.
                       (open-a-rank-shadow-trades symbol bid ask strat-signals)
-                      ;; V44.7: Find GLOBAL best across ALL categories (Expert Panel)
-                      ;; V44.9: Shuffle first to randomize ties (Expert Panel Action 1)
-                      (let* ((all-sorted
-                              (sort (copy-list strat-signals)
-                                    (lambda (a b)
-                                      (let* ((name-a (getf a :strategy-name))
-                                             (name-b (getf b :strategy-name))
-                                             (cache-a (get-cached-backtest name-a))
-                                             (cache-b (get-cached-backtest name-b))
-                                             (sharpe-a (if cache-a (or (getf cache-a :sharpe) 0) 0))
-                                             (sharpe-b (if cache-b (or (getf cache-b :sharpe) 0) 0)))
-                                        (> sharpe-a sharpe-b)))))
-                             (top-sig (first all-sorted))
-                             (top-name (when top-sig (getf top-sig :strategy-name)))
-                             (top-cat (when top-sig (getf top-sig :category)))
-                             (top-cache (when top-name (get-cached-backtest top-name)))
-                             (top-timeframe (or (and top-sig (getf top-sig :timeframe))
-                                                (let ((top-strat (resolve-strategy-by-name top-name)))
-                                                  (and top-strat (strategy-timeframe top-strat)))))
-                             (top-sharpe (if top-cache (or (getf top-cache :sharpe) 0) 0)))
-                        (when top-sig
-                          (format t "[L] 🏆 GLOBAL BEST: ~a (~a) Sharpe: ~,2f from ~d strategies~%"
-                                  top-name top-cat top-sharpe (length strat-signals))
-                          (let* ((direction (getf top-sig :direction))
-                                 (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
-                                 (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
-                                 (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
-                            (when (<= confidence-lot-mult 0.0)
-                              (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
-                                      top-name signal-confidence *signal-confidence-entry-threshold*))
-                            (when (and (> confidence-lot-mult 0.0)
-                                       (can-category-trade-p strat-key))
-                              (let ((trade-executed
-                                      (execute-category-trade top-cat direction symbol bid ask
-                                                              :lot-multiplier confidence-lot-mult
-                                                              :signal-confidence signal-confidence
-                                                              :strategy-name top-name
-                                                              :strategy-timeframe top-timeframe)))
-                                (when trade-executed
-                                  (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
-                                          symbol direction top-name signal-confidence confidence-lot-mult)
-                                  (record-category-trade-time strat-key)
-                                  (when (fboundp 'record-strategy-trade)
-                                    (record-strategy-trade top-name :trade 0)))))))))
+                      ;; Runtime routing policy:
+                      ;; Keep single-winner order flow, but rank candidates by evidence-aware score
+                      ;; instead of raw cached Sharpe-only global best.
+                      (multiple-value-bind (selected-candidate ranked-candidates)
+                          (select-runtime-signal-candidate symbol strat-signals)
+                        (let* ((top-sig (and selected-candidate (getf selected-candidate :signal)))
+                               (top-name (and selected-candidate (getf selected-candidate :strategy-name)))
+                               (top-cat (and selected-candidate (getf selected-candidate :category)))
+                               (top-timeframe (and selected-candidate (getf selected-candidate :timeframe)))
+                               (top-score (if selected-candidate
+                                              (%runtime-selection-coerce-float
+                                               (getf selected-candidate :selection-score)
+                                               0.0)
+                                              0.0))
+                               (top-sharpe (if selected-candidate
+                                               (%runtime-selection-coerce-float
+                                                (getf selected-candidate :raw-sharpe)
+                                                0.0)
+                                               0.0)))
+                          (emit-runtime-selection-telemetry symbol ranked-candidates top-name)
+                          (when top-sig
+                            (format t "[L] 🏆 RUNTIME SELECTED: ~a (~a) score=~,3f raw_sharpe=~,2f from ~d strategies~%"
+                                    top-name top-cat top-score top-sharpe (length strat-signals))
+                            (when (getf selected-candidate :fallback-selected-p)
+                              (format t "[L] ⚠️ Runtime selection fallback: no LIVE_READY/live-edge-passing candidate; selected highest score for legacy flow compatibility.~%"))
+                            (let* ((direction (getf top-sig :direction))
+                                   (signal-confidence (normalize-signal-confidence (getf top-sig :confidence)))
+                                   (confidence-lot-mult (signal-confidence-lot-multiplier signal-confidence))
+                                   (strat-key (intern (format nil "~a-~a" top-cat top-name) :keyword)))
+                              (when (<= confidence-lot-mult 0.0)
+                                (format t "[L] ⏭️ SKIP LOW CONF: ~a conf=~,2f (min=~,2f)~%"
+                                        top-name signal-confidence *signal-confidence-entry-threshold*))
+                              (when (and (> confidence-lot-mult 0.0)
+                                         (can-category-trade-p strat-key))
+                                (let ((trade-executed
+                                        (execute-category-trade top-cat direction symbol bid ask
+                                                                :lot-multiplier confidence-lot-mult
+                                                                :signal-confidence signal-confidence
+                                                                :strategy-name top-name
+                                                                :strategy-timeframe top-timeframe)))
+                                  (when trade-executed
+                                    (format t "[L] 📣 TRADE EXECUTED: ~a ~a strat=~a conf=~,2f lot-mult=~,2f~%"
+                                            symbol direction top-name signal-confidence confidence-lot-mult)
+                                    (record-category-trade-time strat-key)
+                                    (when (fboundp 'record-strategy-trade)
+                                      (record-strategy-trade top-name :trade 0))))))))))
                     nil)))
           (error (e)
             (declare (ignore e))

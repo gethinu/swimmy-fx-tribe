@@ -8,6 +8,7 @@ from unittest import mock
 import tools.xau_autobot_live_report as live_report
 from tools.xau_autobot_live_report import (
     _fetch_mt5_deals,
+    _fetch_open_positions_snapshot,
     aggregate_closed_positions,
     build_filter_diagnostics,
     load_latest_runtime_metrics,
@@ -320,6 +321,40 @@ class TestXauAutoBotLiveReport(unittest.TestCase):
             deals = _fetch_mt5_deals(start_utc=start, end_utc=end)
 
         self.assertEqual(deals, [])
+        self.assertEqual(fake_mt5.init_calls, 3)
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
+
+    def test_fetch_open_positions_snapshot_retries_ipc_timeout_initialize(self):
+        class FakeMt5:
+            def __init__(self):
+                self.init_calls = 0
+                self.shutdown_calls = 0
+
+            def initialize(self):
+                self.init_calls += 1
+                return self.init_calls >= 3
+
+            def last_error(self):
+                return (-10005, "IPC timeout")
+
+            def positions_get(self, symbol=None):
+                _ = symbol
+                return []
+
+            def shutdown(self):
+                self.shutdown_calls += 1
+
+        fake_mt5 = FakeMt5()
+        with mock.patch.object(live_report, "mt5", fake_mt5), mock.patch(
+            "tools.xau_autobot_live_report.time.sleep", return_value=None
+        ):
+            snapshot = _fetch_open_positions_snapshot(
+                symbol="XAUUSD",
+                magic=560070,
+                comment_prefix="xau_autobot",
+            )
+
+        self.assertEqual(snapshot["open_positions"], 0.0)
         self.assertEqual(fake_mt5.init_calls, 3)
         self.assertEqual(fake_mt5.shutdown_calls, 1)
 
