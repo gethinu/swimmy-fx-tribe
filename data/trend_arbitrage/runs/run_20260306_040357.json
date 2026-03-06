@@ -1,31 +1,22 @@
 {
-  "ran_at": "2026-03-06T12:58:40+00:00",
+  "ran_at": "2026-03-06T04:03:57+00:00",
   "trends_count": 10,
   "candidate_count": 12,
   "eligible_count": 0,
   "selected_count": 0,
   "top_candidates": [
     {
-      "id": "trend-4750393854be4418",
-      "query": "アフィリエイト 収益化まで",
-      "demand_score": 0.58,
-      "gap_score": 0.285,
-      "intent_score": 0.72,
-      "opportunity_score": 0.50475,
-      "serp_count": 10
-    },
-    {
       "id": "trend-989c75ac315a6a60",
       "query": "価格比較 ツール",
       "demand_score": 0.62,
-      "gap_score": 0.23,
+      "gap_score": 0.21,
       "intent_score": 0.72,
-      "opportunity_score": 0.5035,
+      "opportunity_score": 0.4965,
       "serp_count": 10
     },
     {
-      "id": "trend-ceadeee3e2347fca",
-      "query": "アフィリエイト 収益化 期間",
+      "id": "trend-4750393854be4418",
+      "query": "アフィリエイト 収益化まで",
       "demand_score": 0.58,
       "gap_score": 0.205,
       "intent_score": 0.72,
@@ -78,6 +69,15 @@
       "serp_count": 10
     },
     {
+      "id": "trend-ceadeee3e2347fca",
+      "query": "アフィリエイト 収益化 期間",
+      "demand_score": 0.58,
+      "gap_score": 0.045,
+      "intent_score": 0.72,
+      "opportunity_score": 0.42075,
+      "serp_count": 10
+    },
+    {
       "id": "trend-ad5733900a99e992",
       "query": "ai ツール 比較 ビジネス",
       "demand_score": 0.58,
@@ -90,9 +90,9 @@
       "id": "trend-2cec95843f1310de",
       "query": "業務自動化 テンプレ",
       "demand_score": 0.62,
-      "gap_score": 0.03,
+      "gap_score": 0.085,
       "intent_score": 0.47,
-      "opportunity_score": 0.3835,
+      "opportunity_score": 0.40275,
       "serp_count": 10
     }
   ],

@@ -6329,6 +6329,331 @@
       (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit-telemetry))))
 
+(deftest test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
+  "execute-order-sequence should prioritize strategy SL/TP for BUY orders."
+  (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
+         (orig-slots swimmy.school::*slot-allocation*)
+         (orig-resolve (symbol-function 'swimmy.school::resolve-strategy-by-name))
+         (orig-try-reserve (symbol-function 'swimmy.school::try-reserve-slot))
+         (orig-close-opp (symbol-function 'swimmy.school::close-opposing-category-positions))
+         (orig-update-exp (symbol-function 'swimmy.school::update-symbol-exposure))
+         (orig-request-pos (symbol-function 'swimmy.school::request-mt5-positions))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (safe-order-sym (if (fboundp 'swimmy.school::safe-order)
+                             'swimmy.school::safe-order
+                             'swimmy.engine::safe-order))
+         (orig-safe-order (symbol-function safe-order-sym))
+         (submitted nil)
+         (telemetry-data nil)
+         (magic 910001)
+         (strategy (swimmy.school:make-strategy :name "UT-SLTP-BUY"
+                                                :symbol "USDJPY"
+                                                :sl 0.21
+                                                :tp 0.34)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school::resolve-strategy-by-name)
+                (lambda (name)
+                  (if (string= name "UT-SLTP-BUY") strategy nil)))
+          (setf (symbol-function 'swimmy.school::try-reserve-slot)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf (gethash magic swimmy.school::*allocation-pending-orders*)
+                        (list :strategy "UT-SLTP-BUY"
+                              :symbol "USDJPY"
+                              :category :trend
+                              :direction :buy
+                              :magic magic))
+                  (values 0 magic)))
+          (setf (symbol-function 'swimmy.school::close-opposing-category-positions)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::update-symbol-exposure)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::request-mt5-positions)
+                (lambda () nil))
+          (setf (symbol-function safe-order-sym)
+                (lambda (action symbol lot sl tp magic-num comment)
+                  (setf submitted (list :action action
+                                        :symbol symbol
+                                        :lot lot
+                                        :sl sl
+                                        :tp tp
+                                        :magic magic-num
+                                        :comment comment))
+                  t))
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key service severity correlation-id data)
+                  (declare (ignore service severity correlation-id))
+                  (when (string= event-type "execution.order_submitted")
+                    (setf telemetry-data data))
+                  t))
+          (let ((ok (swimmy.school::execute-order-sequence
+                     :trend :buy "USDJPY" 100.0 100.2 0.01 "UT-SLTP-BUY" "H1" nil)))
+            (assert-true ok "Expected BUY order sequence to succeed")
+            (assert-not-nil submitted "Expected safe-order invocation")
+            (assert-equal "BUY" (getf submitted :action))
+            (assert-true (< (abs (- (getf submitted :sl) 99.79)) 1e-9)
+                         "BUY SL should use strategy-specific value")
+            (assert-true (< (abs (- (getf submitted :tp) 100.34)) 1e-9)
+                         "BUY TP should use strategy-specific value")
+            (let ((pending (gethash magic swimmy.school::*allocation-pending-orders*)))
+              (assert-not-nil pending "Expected pending state to remain")
+              (assert-true (< (abs (- (or (getf pending :effective-sl) 0.0) 99.79)) 1e-9)
+                           "Expected pending effective_sl to be persisted")
+              (assert-true (< (abs (- (or (getf pending :effective-tp) 0.0) 100.34)) 1e-9)
+                           "Expected pending effective_tp to be persisted")
+              (assert-equal "strategy" (getf pending :source_of_override)
+                            "Expected pending source_of_override=strategy"))
+            (assert-not-nil telemetry-data "Expected execution.order_submitted telemetry")
+            (assert-true (jsown:keyp telemetry-data "effective_sl")
+                         "Telemetry should include effective_sl")
+            (assert-true (jsown:keyp telemetry-data "effective_tp")
+                         "Telemetry should include effective_tp")
+            (assert-true (jsown:keyp telemetry-data "source_of_override")
+                         "Telemetry should include source_of_override")
+            (assert-equal "strategy" (jsown:val telemetry-data "source_of_override"))))
+      (setf swimmy.school::*allocation-pending-orders* orig-pending)
+      (setf swimmy.school::*slot-allocation* orig-slots)
+      (setf (symbol-function 'swimmy.school::resolve-strategy-by-name) orig-resolve)
+      (setf (symbol-function 'swimmy.school::try-reserve-slot) orig-try-reserve)
+      (setf (symbol-function 'swimmy.school::close-opposing-category-positions) orig-close-opp)
+      (setf (symbol-function 'swimmy.school::update-symbol-exposure) orig-update-exp)
+      (setf (symbol-function 'swimmy.school::request-mt5-positions) orig-request-pos)
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function safe-order-sym) orig-safe-order))))
+
+(deftest test-execute-order-sequence-uses-strategy-specific-sltp-for-sell
+  "execute-order-sequence should prioritize strategy SL/TP for SELL orders."
+  (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
+         (orig-slots swimmy.school::*slot-allocation*)
+         (orig-resolve (symbol-function 'swimmy.school::resolve-strategy-by-name))
+         (orig-try-reserve (symbol-function 'swimmy.school::try-reserve-slot))
+         (orig-close-opp (symbol-function 'swimmy.school::close-opposing-category-positions))
+         (orig-update-exp (symbol-function 'swimmy.school::update-symbol-exposure))
+         (orig-request-pos (symbol-function 'swimmy.school::request-mt5-positions))
+         (safe-order-sym (if (fboundp 'swimmy.school::safe-order)
+                             'swimmy.school::safe-order
+                             'swimmy.engine::safe-order))
+         (orig-safe-order (symbol-function safe-order-sym))
+         (magic 910002)
+         (submitted nil)
+         (strategy (swimmy.school:make-strategy :name "UT-SLTP-SELL"
+                                                :symbol "USDJPY"
+                                                :sl 0.21
+                                                :tp 0.34)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
+          (setf (symbol-function 'swimmy.school::resolve-strategy-by-name)
+                (lambda (name)
+                  (if (string= name "UT-SLTP-SELL") strategy nil)))
+          (setf (symbol-function 'swimmy.school::try-reserve-slot)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf (gethash magic swimmy.school::*allocation-pending-orders*)
+                        (list :strategy "UT-SLTP-SELL"
+                              :symbol "USDJPY"
+                              :category :trend
+                              :direction :sell
+                              :magic magic))
+                  (values 0 magic)))
+          (setf (symbol-function 'swimmy.school::close-opposing-category-positions)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::update-symbol-exposure)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::request-mt5-positions)
+                (lambda () nil))
+          (setf (symbol-function safe-order-sym)
+                (lambda (action symbol lot sl tp magic-num comment)
+                  (setf submitted (list :action action
+                                        :symbol symbol
+                                        :lot lot
+                                        :sl sl
+                                        :tp tp
+                                        :magic magic-num
+                                        :comment comment))
+                  t))
+          (let ((ok (swimmy.school::execute-order-sequence
+                     :trend :sell "USDJPY" 100.0 100.2 0.01 "UT-SLTP-SELL" "H1" nil)))
+            (assert-true ok "Expected SELL order sequence to succeed")
+            (assert-not-nil submitted "Expected safe-order invocation")
+            (assert-equal "SELL" (getf submitted :action))
+            (assert-true (< (abs (- (getf submitted :sl) 100.41)) 1e-5)
+                         "SELL SL should use strategy-specific value")
+            (assert-true (< (abs (- (getf submitted :tp) 99.86)) 1e-5)
+                         "SELL TP should use strategy-specific value")))
+      (setf swimmy.school::*allocation-pending-orders* orig-pending)
+      (setf swimmy.school::*slot-allocation* orig-slots)
+      (setf (symbol-function 'swimmy.school::resolve-strategy-by-name) orig-resolve)
+      (setf (symbol-function 'swimmy.school::try-reserve-slot) orig-try-reserve)
+      (setf (symbol-function 'swimmy.school::close-opposing-category-positions) orig-close-opp)
+      (setf (symbol-function 'swimmy.school::update-symbol-exposure) orig-update-exp)
+      (setf (symbol-function 'swimmy.school::request-mt5-positions) orig-request-pos)
+      (setf (symbol-function safe-order-sym) orig-safe-order))))
+
+(deftest test-execute-order-sequence-falls-back-to-default-sltp-when-strategy-invalid
+  "execute-order-sequence should fall back to defaults when strategy SL/TP is missing/invalid."
+  (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
+         (orig-slots swimmy.school::*slot-allocation*)
+         (orig-default-sl swimmy.school::*default-sl-pips*)
+         (orig-default-tp swimmy.school::*default-tp-pips*)
+         (orig-resolve (symbol-function 'swimmy.school::resolve-strategy-by-name))
+         (orig-try-reserve (symbol-function 'swimmy.school::try-reserve-slot))
+         (orig-close-opp (symbol-function 'swimmy.school::close-opposing-category-positions))
+         (orig-update-exp (symbol-function 'swimmy.school::update-symbol-exposure))
+         (orig-request-pos (symbol-function 'swimmy.school::request-mt5-positions))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (safe-order-sym (if (fboundp 'swimmy.school::safe-order)
+                             'swimmy.school::safe-order
+                             'swimmy.engine::safe-order))
+         (orig-safe-order (symbol-function safe-order-sym))
+         (submitted nil)
+         (telemetry-data nil)
+         (magic 910003)
+         (strategy (swimmy.school:make-strategy :name "UT-SLTP-DEFAULT"
+                                                :symbol "USDJPY"
+                                                :sl nil
+                                                :tp -1.0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*default-sl-pips* 0.50)
+          (setf swimmy.school::*default-tp-pips* 0.80)
+          (setf (symbol-function 'swimmy.school::resolve-strategy-by-name)
+                (lambda (name)
+                  (if (string= name "UT-SLTP-DEFAULT") strategy nil)))
+          (setf (symbol-function 'swimmy.school::try-reserve-slot)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf (gethash magic swimmy.school::*allocation-pending-orders*)
+                        (list :strategy "UT-SLTP-DEFAULT"
+                              :symbol "USDJPY"
+                              :category :trend
+                              :direction :buy
+                              :magic magic))
+                  (values 0 magic)))
+          (setf (symbol-function 'swimmy.school::close-opposing-category-positions)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::update-symbol-exposure)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::request-mt5-positions)
+                (lambda () nil))
+          (setf (symbol-function safe-order-sym)
+                (lambda (action symbol lot sl tp magic-num comment)
+                  (setf submitted (list :action action
+                                        :symbol symbol
+                                        :lot lot
+                                        :sl sl
+                                        :tp tp
+                                        :magic magic-num
+                                        :comment comment))
+                  t))
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key service severity correlation-id data)
+                  (declare (ignore service severity correlation-id))
+                  (when (string= event-type "execution.order_submitted")
+                    (setf telemetry-data data))
+                  t))
+          (let ((ok (swimmy.school::execute-order-sequence
+                     :trend :buy "USDJPY" 100.0 100.2 0.01 "UT-SLTP-DEFAULT" "H1" nil)))
+            (assert-true ok "Expected order sequence to succeed with default fallback")
+            (assert-not-nil submitted "Expected safe-order invocation")
+            (assert-true (< (abs (- (getf submitted :sl) 99.50)) 1e-9)
+                         "Fallback SL should use global default")
+            (assert-true (< (abs (- (getf submitted :tp) 100.80)) 1e-9)
+                         "Fallback TP should use global default")
+            (let ((pending (gethash magic swimmy.school::*allocation-pending-orders*)))
+              (assert-not-nil pending "Expected pending state to remain")
+              (assert-equal "global_default" (getf pending :source_of_override)
+                            "Expected global default source on fallback"))
+            (assert-not-nil telemetry-data "Expected telemetry payload")
+            (assert-equal "global_default" (jsown:val telemetry-data "source_of_override")
+                          "Expected telemetry source_of_override=global_default"))))
+      (setf swimmy.school::*allocation-pending-orders* orig-pending)
+      (setf swimmy.school::*slot-allocation* orig-slots)
+      (setf swimmy.school::*default-sl-pips* orig-default-sl)
+      (setf swimmy.school::*default-tp-pips* orig-default-tp)
+      (setf (symbol-function 'swimmy.school::resolve-strategy-by-name) orig-resolve)
+      (setf (symbol-function 'swimmy.school::try-reserve-slot) orig-try-reserve)
+      (setf (symbol-function 'swimmy.school::close-opposing-category-positions) orig-close-opp)
+      (setf (symbol-function 'swimmy.school::update-symbol-exposure) orig-update-exp)
+      (setf (symbol-function 'swimmy.school::request-mt5-positions) orig-request-pos)
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function safe-order-sym) orig-safe-order)))
+
+(deftest test-close-category-positions-prefers-effective-sltp-from-submit-state
+  "close-category-positions should use submit-time effective SL/TP stored in slot state."
+  (let* ((orig-slots swimmy.school::*slot-allocation*)
+         (orig-daily-pnl swimmy.globals::*daily-pnl*)
+         (orig-default-sl swimmy.school::*default-sl-pips*)
+         (orig-default-tp swimmy.school::*default-tp-pips*)
+         (orig-cmd swimmy.core::*cmd-publisher*)
+         (orig-send (symbol-function 'pzmq:send))
+         (orig-update-exp (symbol-function 'swimmy.school::update-symbol-exposure))
+         (orig-record-result (symbol-function 'swimmy.school::record-trade-result))
+         (orig-record-pred (symbol-function 'swimmy.school::record-prediction-outcome))
+         (orig-record-outcome (symbol-function 'swimmy.school::record-trade-outcome))
+         (orig-record-strategy (symbol-function 'swimmy.school::record-strategy-trade))
+         (orig-notify (symbol-function 'swimmy.shell:notify-discord-symbol))
+         (sent-close nil))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.globals::*daily-pnl* 0)
+          ;; Set defaults far away to ensure close is driven by effective levels.
+          (setf swimmy.school::*default-sl-pips* 5.0)
+          (setf swimmy.school::*default-tp-pips* 5.0)
+          (setf swimmy.core::*cmd-publisher* :ut-cmd)
+          (setf (gethash "trend-0" swimmy.school::*slot-allocation*)
+                (list :strategy "UT-CLOSE-EFFECTIVE"
+                      :symbol "USDJPY"
+                      :category :trend
+                      :direction :long
+                      :entry 100.0
+                      :magic 220001
+                      :lot 0.01
+                      :effective-sl 99.50
+                      :effective-tp 100.70
+                      :source_of_override "strategy"))
+          (setf (symbol-function 'pzmq:send)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf sent-close t)
+                  t))
+          (setf (symbol-function 'swimmy.school::update-symbol-exposure)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::record-trade-result)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::record-prediction-outcome)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::record-trade-outcome)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::record-strategy-trade)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.shell:notify-discord-symbol)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          ;; With effective_sl=99.50 this should close; default SL would not.
+          (swimmy.school::close-category-positions "USDJPY" 99.49 99.51)
+          (assert-true sent-close "Expected CLOSE command when effective SL is breached")
+          (assert-false (gethash "trend-0" swimmy.school::*slot-allocation*)
+                        "Expected slot to close using submit-time effective values"))
+      (setf swimmy.school::*slot-allocation* orig-slots)
+      (setf swimmy.globals::*daily-pnl* orig-daily-pnl)
+      (setf swimmy.school::*default-sl-pips* orig-default-sl)
+      (setf swimmy.school::*default-tp-pips* orig-default-tp)
+      (setf swimmy.core::*cmd-publisher* orig-cmd)
+      (setf (symbol-function 'pzmq:send) orig-send)
+      (setf (symbol-function 'swimmy.school::update-symbol-exposure) orig-update-exp)
+      (setf (symbol-function 'swimmy.school::record-trade-result) orig-record-result)
+      (setf (symbol-function 'swimmy.school::record-prediction-outcome) orig-record-pred)
+      (setf (symbol-function 'swimmy.school::record-trade-outcome) orig-record-outcome)
+      (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strategy)
+      (setf (symbol-function 'swimmy.shell:notify-discord-symbol) orig-notify))))
+
 ;;; ─────────────────────────────────────────
 ;;; CATEGORY EXECUTION TESTS
 ;;; ─────────────────────────────────────────
@@ -16056,6 +16381,10 @@
 	                  test-execute-category-trade-fails-closed-on-reserved-strategy-name-tokens
 	                  test-execute-order-sequence-fails-closed-on-missing-context
 	                  test-execute-order-sequence-fails-closed-on-reserved-strategy-token
+	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
+	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-sell
+	                  test-execute-order-sequence-falls-back-to-default-sltp-when-strategy-invalid
+	                  test-close-category-positions-prefers-effective-sltp-from-submit-state
 	                  ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy

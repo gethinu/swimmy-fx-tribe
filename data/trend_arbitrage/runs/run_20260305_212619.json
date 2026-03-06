@@ -1,31 +1,31 @@
 {
-  "ran_at": "2026-03-06T12:58:40+00:00",
+  "ran_at": "2026-03-05T21:26:19+00:00",
   "trends_count": 10,
   "candidate_count": 12,
   "eligible_count": 0,
   "selected_count": 0,
   "top_candidates": [
     {
-      "id": "trend-4750393854be4418",
-      "query": "アフィリエイト 収益化まで",
-      "demand_score": 0.58,
-      "gap_score": 0.285,
-      "intent_score": 0.72,
-      "opportunity_score": 0.50475,
-      "serp_count": 10
-    },
-    {
       "id": "trend-989c75ac315a6a60",
       "query": "価格比較 ツール",
       "demand_score": 0.62,
-      "gap_score": 0.23,
+      "gap_score": 0.175,
       "intent_score": 0.72,
-      "opportunity_score": 0.5035,
+      "opportunity_score": 0.48425,
       "serp_count": 10
     },
     {
-      "id": "trend-ceadeee3e2347fca",
-      "query": "アフィリエイト 収益化 期間",
+      "id": "trend-de6c0e34291b5d4c",
+      "query": "アフィリエイト 収益化",
+      "demand_score": 0.62,
+      "gap_score": 0.155,
+      "intent_score": 0.72,
+      "opportunity_score": 0.47725,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-4750393854be4418",
+      "query": "アフィリエイト 収益化まで",
       "demand_score": 0.58,
       "gap_score": 0.205,
       "intent_score": 0.72,
@@ -33,12 +33,12 @@
       "serp_count": 10
     },
     {
-      "id": "trend-de6c0e34291b5d4c",
-      "query": "アフィリエイト 収益化",
-      "demand_score": 0.62,
-      "gap_score": 0.135,
+      "id": "trend-ceadeee3e2347fca",
+      "query": "アフィリエイト 収益化 期間",
+      "demand_score": 0.58,
+      "gap_score": 0.125,
       "intent_score": 0.72,
-      "opportunity_score": 0.47025,
+      "opportunity_score": 0.44875,
       "serp_count": 10
     },
     {
@@ -60,8 +60,8 @@
       "serp_count": 10
     },
     {
-      "id": "trend-fd732479a85bb4c8",
-      "query": "副業 ai活用",
+      "id": "trend-55ba8f1bf2390eda",
+      "query": "副業 アイデア",
       "demand_score": 0.58,
       "gap_score": 0.2,
       "intent_score": 0.47,
@@ -69,12 +69,12 @@
       "serp_count": 10
     },
     {
-      "id": "trend-55ba8f1bf2390eda",
-      "query": "副業 アイデア",
+      "id": "trend-fd732479a85bb4c8",
+      "query": "副業 ai活用",
       "demand_score": 0.58,
-      "gap_score": 0.2,
+      "gap_score": 0.155,
       "intent_score": 0.47,
-      "opportunity_score": 0.425,
+      "opportunity_score": 0.40925,
       "serp_count": 10
     },
     {
@@ -87,12 +87,12 @@
       "serp_count": 10
     },
     {
-      "id": "trend-2cec95843f1310de",
-      "query": "業務自動化 テンプレ",
-      "demand_score": 0.62,
-      "gap_score": 0.03,
+      "id": "trend-af582bf07a887f69",
+      "query": "ai ツール 比較 表",
+      "demand_score": 0.58,
+      "gap_score": 0.12,
       "intent_score": 0.47,
-      "opportunity_score": 0.3835,
+      "opportunity_score": 0.397,
       "serp_count": 10
     }
   ],

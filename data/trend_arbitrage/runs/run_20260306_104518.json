@@ -1,9 +1,9 @@
 {
-  "ran_at": "2026-03-06T12:58:40+00:00",
+  "ran_at": "2026-03-06T10:45:18+00:00",
   "trends_count": 10,
   "candidate_count": 12,
-  "eligible_count": 0,
-  "selected_count": 0,
+  "eligible_count": 1,
+  "selected_count": 1,
   "top_candidates": [
     {
       "id": "trend-4750393854be4418",
@@ -18,10 +18,19 @@
       "id": "trend-989c75ac315a6a60",
       "query": "価格比較 ツール",
       "demand_score": 0.62,
-      "gap_score": 0.23,
+      "gap_score": 0.21,
       "intent_score": 0.72,
-      "opportunity_score": 0.5035,
+      "opportunity_score": 0.4965,
       "serp_count": 10
+    },
+    {
+      "id": "trend-69a995f0e9f1dcd4",
+      "query": "AI ツール 比較",
+      "demand_score": 0.62,
+      "gap_score": 0.35,
+      "intent_score": 0.47,
+      "opportunity_score": 0.4955,
+      "serp_count": 0
     },
     {
       "id": "trend-ceadeee3e2347fca",
@@ -39,15 +48,6 @@
       "gap_score": 0.135,
       "intent_score": 0.72,
       "opportunity_score": 0.47025,
-      "serp_count": 10
-    },
-    {
-      "id": "trend-69a995f0e9f1dcd4",
-      "query": "AI ツール 比較",
-      "demand_score": 0.62,
-      "gap_score": 0.16,
-      "intent_score": 0.47,
-      "opportunity_score": 0.429,
       "serp_count": 10
     },
     {
@@ -72,9 +72,9 @@
       "id": "trend-55ba8f1bf2390eda",
       "query": "副業 アイデア",
       "demand_score": 0.58,
-      "gap_score": 0.2,
+      "gap_score": 0.18,
       "intent_score": 0.47,
-      "opportunity_score": 0.425,
+      "opportunity_score": 0.418,
       "serp_count": 10
     },
     {
@@ -90,13 +90,56 @@
       "id": "trend-2cec95843f1310de",
       "query": "業務自動化 テンプレ",
       "demand_score": 0.62,
-      "gap_score": 0.03,
+      "gap_score": 0.05,
       "intent_score": 0.47,
-      "opportunity_score": 0.3835,
+      "opportunity_score": 0.3905,
       "serp_count": 10
     }
   ],
-  "eligible": [],
-  "selected": [],
-  "publish_results": []
+  "eligible": [
+    {
+      "id": "trend-4750393854be4418",
+      "query": "アフィリエイト 収益化まで",
+      "demand_score": 0.58,
+      "gap_score": 0.285,
+      "intent_score": 0.72,
+      "opportunity_score": 0.50475,
+      "serp_count": 10
+    }
+  ],
+  "selected": [
+    {
+      "id": "trend-4750393854be4418",
+      "query": "アフィリエイト 収益化まで",
+      "demand_score": 0.58,
+      "gap_score": 0.285,
+      "intent_score": 0.72,
+      "opportunity_score": 0.50475,
+      "serp_count": 10
+    }
+  ],
+  "publish_results": [
+    {
+      "candidate_id": "trend-4750393854be4418",
+      "query": "アフィリエイト 収益化まで",
+      "site": {
+        "ok": true,
+        "post_url": "https://example.com/trend-arbitrage/posts/topic-4750393854-47503938.md",
+        "path": "/home/swimmy/swimmy/data/trend_arbitrage/site/posts/topic-4750393854-47503938.md",
+        "slug": "topic-4750393854-47503938",
+        "dry_run": false
+      },
+      "x": {
+        "ok": true,
+        "skipped": true,
+        "reason": "x channel not configured",
+        "text": "アフィリエイト 収益化まで を自動スキャン。\n需要急増 × 供給不足を検知。\n厳選リンク集 + 実行チェック\n詳細: https://example.com/trend-arbitrage/posts/topic-4750393854-47503938.md"
+      },
+      "newsletter": {
+        "ok": true,
+        "skipped": true,
+        "reason": "newsletter channel not configured"
+      }
+    }
+  ]
 }
