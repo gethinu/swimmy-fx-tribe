@@ -39,7 +39,7 @@ runner は次を自動で行う。
 - `all`
   - 22 本
 
-`historical S` の `timeframe=3600` 個体は、移植コードが `PERIOD_CURRENT` を使っている。自動 runner では tester `Period=H1` を与えて再現する。
+`historical S` の `timeframe=3600` 個体は、移植コードが `PERIOD_CURRENT` を使っている。自動 runner では tester `Period=H1` を与えて再現する。この契約は `run_20260307_064816` の `historical_s` 13 件で実測済み。
 
 ## 使い方
 

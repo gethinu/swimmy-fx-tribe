@@ -22,6 +22,17 @@ Artifacts used:
   - `data/reports/mt5/inventory_tester/run_20260307_071952`
   - `data/reports/mt5/inventory_tester/run_20260307_072101`
   - `data/reports/mt5/inventory_tester/run_20260307_072157`
+- latest-window rerun:
+  - `data/reports/mt5/inventory_tester/run_20260307_101456`
+
+Coverage note:
+
+- `run_20260307_064816` is the baseline isolated tester run for all `22` active jobs
+  (`9` legend + `13` historical S).
+- This followup note is not the first-pass execution record. It only deepens validation for the
+  shortlist that survived the baseline screen or needed behavioral audit.
+- `run_20260307_101456` adds a fresh latest window from `2026.01.01` to `2026.03.07` for the
+  three remaining shortlist candidates.
 
 ## Yearly Validation
 
@@ -76,6 +87,27 @@ OOS conclusion:
 - `legend-pullback-breakout` has the largest gross upside after `legend-macd-above-zero-cross`, but that upside is dominated by `2025`.
 - `historical-s-bred940-trend-core` is not robust enough to survive a stability-first screen.
 - `legend-macd-signal-cross` should not be treated as a stable winner.
+
+## Latest Window: `2026.01.01` to `2026.03.07`
+
+The shortlist was rerun once more on the most recent available window:
+
+| Job | Net | PF | Sharpe | Trades |
+| --- | ---: | ---: | ---: | ---: |
+| `historical-s-bred940-trend-core` | `57.35` | `2.30` | `3.01` | `22` |
+| `legend-macd-above-zero-cross` | `-1.67` | `0.66` | `-0.31` | `4` |
+| `legend-pullback-breakout` | `-20.70` | `0.72` | `-4.30` | `82` |
+
+Latest-window conclusion:
+
+- `legend-macd-above-zero-cross` stays the primary stability-first survivor overall, but the
+  latest window only produced `4` trades, so this rerun is too thin to overrule the stronger
+  2024/2025 fixed-window evidence.
+- `legend-pullback-breakout` stayed negative in early `2026`, which reinforces the earlier
+  conclusion that it is regime-dependent rather than a stable always-on winner.
+- `historical-s-bred940-trend-core` recovered sharply in early `2026`, so it should be treated as
+  a live regime candidate, not as a dead line item. That said, one positive latest window still
+  does not erase its `2025` decay or promote it to the top stability-first slot.
 
 ## Parameter Audit: `legend-london-breakout-v1`
 
@@ -156,15 +188,22 @@ Audit conclusion:
 
 If the ranking emphasizes stability over raw short-window upside:
 
-1. Keep `legend-macd-above-zero-cross` as the primary validated survivor.
+1. Keep `legend-macd-above-zero-cross` as the primary validated survivor, with the caveat that
+   the fresh `2026.01.01-2026.03.07` rerun is sample-thin.
 2. Treat `legend-pullback-breakout` as a regime-dependent secondary candidate.
-3. Treat `historical-s-bred940-trend-core` as `2024`-specific, not globally stable.
+3. Treat `historical-s-bred940-trend-core` as a regime candidate that recovered in early `2026`,
+   but is still not globally stable enough to outrank the primary Legend survivor.
 4. Drop `legend-macd-signal-cross` from any stability-first shortlist.
 
 If the objective changes from stability-first to regime rotation, `legend-pullback-breakout` and `historical-s-bred940-trend-core` remain interesting, but they should not be promoted as unconditional winners.
 
 ## Remaining Risks
 
-- These are forward-free validation windows, but not full walk-forward optimization cycles.
+- Baseline isolated tester execution and the `timeframe=3600 -> H1` reproduction contract are
+  already covered. The open risk is robustness, not first-pass portability.
+- These are fixed-window and latest-window reruns, but not full walk-forward optimization cycles.
 - No parameter retuning was performed between windows.
-- The conclusions are based on MT5 tester results for the current portable environment and symbol setup, not broker-by-broker deployment variance.
+- The fresh `2026.01.01-2026.03.07` window is especially thin for `legend-macd-above-zero-cross`
+  (`4` trades), so that rerun alone cannot carry a final deployment decision.
+- The conclusions are based on MT5 tester results for the current portable environment and symbol
+  setup, not broker-by-broker deployment variance.
