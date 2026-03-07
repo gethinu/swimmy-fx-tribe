@@ -2,6 +2,11 @@
 
 ## 現在の状態
 - **稼働フェーズ**: V50.6 (Structured Telemetry) - 2026-02-03
+- **V50.8 WSL運用軽量化契約（2026-03-07）**:
+  - `sudo systemctl disable --now swimmy-evolution.service` は正当な停止手順とし、実行時は `swimmy-evolution.service` の実行停止と `default.target.wants/` 配下の自動起動 symlink 削除だけを行う。unit file 本体 `/etc/systemd/system/swimmy-evolution.service` は残る。
+  - `swimmy-evolution.service` を再開する場合は `sudo systemctl enable --now swimmy-evolution.service` を使う。`disable` は削除ではなく自動起動解除として扱う。
+  - `alive-lsp` は VS Code Remote の extension host 配下で起動される開発支援用 SBCL であり、Swimmy 本体サービスではない。停止しても editor 補助が一時的に失われるだけで、`swimmy-*` systemd サービス契約は変わらない。
+  - `wsl --shutdown` は WSL2 上の VS Code Remote / Codex セッションごと切断するため、軽量化目的ではまず `swimmy-evolution.service` や `alive-lsp` のような個別対象を止める。通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **V50.8 KPI再設定（2026-02-26）**:
   - 収益KPIを `月利10%` から **主KPI: 月利3% / ストレッチ: 月利5%** へ再設定。
   - `monthly10` 表記の成果物は履歴として保持し、運用判定は `3%/5%` 基準を正本とする。
