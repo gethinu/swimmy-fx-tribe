@@ -60,6 +60,20 @@
   "Penalty threshold where diversification pressure is considered high.")
 (defparameter *runtime-selection-max-diversification-penalty* 1.20
   "Maximum diversification penalty cap in runtime scoring.")
+(defparameter *symbol-sl-pips-overrides* (make-hash-table :test 'equal)
+  "Per-symbol SL pips overrides keyed by uppercase symbol string.")
+(defparameter *symbol-tp-pips-overrides* (make-hash-table :test 'equal)
+  "Per-symbol TP pips overrides keyed by uppercase symbol string.")
+(defparameter *symbol-sltp-overrides-path*
+  (let* ((raw (ignore-errors
+                (swimmy.core::getenv-or-dotenv "SWIMMY_SYMBOL_SLTP_OVERRIDES_PATH")))
+         (trimmed (and (stringp raw)
+                       (string-trim '(#\Space #\Tab #\Newline #\Return) raw))))
+    (if (and (stringp trimmed) (> (length trimmed) 0))
+        (namestring
+         (merge-pathnames trimmed (swimmy.core::resolve-swimmy-home)))
+        (namestring (swimmy.core::swimmy-path ".opus/symbol_sltp_overrides.sexp"))))
+  "Path to persisted per-symbol SL/TP override S-expression.")
 
 ;;; SIGNALS & EVALUATION moved to school-evaluation.lisp
 
@@ -478,6 +492,7 @@ Multiplier NIL means fallback to direction mismatch logic."
     (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         (find name *evolved-strategies* :key #'strategy-name :test #'string=))))
 
+<<<<<<< HEAD
 (defun resolve-live-effective-sltp (strategy-name)
   "Resolve live SL/TP pips and source with strategy-first fallback.
    Current model supports strategy value -> global default precedence."
@@ -493,6 +508,89 @@ Multiplier NIL means fallback to direction mismatch logic."
         (values (float *default-sl-pips* 1.0)
                 (float *default-tp-pips* 1.0)
                 "global_default"))))
+=======
+(defun %normalize-sltp-pips-value (value)
+  (and (numberp value)
+       (> value 0.0)
+       (float value 1.0)))
+
+(defun %normalize-symbol-override-key (symbol)
+  (when symbol
+    (let ((raw (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                           (format nil "~a" symbol)))))
+      (and (> (length raw) 0) raw))))
+
+(defun %lookup-symbol-pips-override (table symbol)
+  (let ((key (%normalize-symbol-override-key symbol)))
+    (when (and key (hash-table-p table))
+      (%normalize-sltp-pips-value (gethash key table nil)))))
+
+(defun %symbol-sltp-entry-field (entry key)
+  (or (and (listp entry) (getf entry key))
+      (and (consp entry)
+           (listp (rest entry))
+           (or (getf (rest entry) key)
+               (let ((payload (second entry)))
+                 (and (listp payload) (getf payload key)))))))
+
+(defun %symbol-sltp-entries (form)
+  (cond
+    ((null form) '())
+    ((and (listp form) (keywordp (first form)))
+     (let ((entries (getf form :symbols)))
+       (if (listp entries) entries '())))
+    ((listp form) form)
+    (t '())))
+
+(defun load-symbol-sltp-overrides (&key (path *symbol-sltp-overrides-path*))
+  "Load persisted symbol SL/TP overrides from PATH into current hash tables.
+   Accepted format:
+   (:schema-version 1 :symbols ((:symbol \"USDJPY\" :sl 0.33 :tp 0.55) ...))"
+  (setf *symbol-sl-pips-overrides* (make-hash-table :test 'equal)
+        *symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+  (when (and path (probe-file path))
+    (handler-case
+        (let* ((form (swimmy.core:read-sexp-file path :package :swimmy.school))
+               (loaded 0))
+          (dolist (entry (%symbol-sltp-entries form) loaded)
+            (let* ((symbol (%normalize-symbol-override-key
+                            (or (%symbol-sltp-entry-field entry :symbol)
+                                (and (consp entry) (first entry)))))
+                   (sl (%normalize-sltp-pips-value (%symbol-sltp-entry-field entry :sl)))
+                   (tp (%normalize-sltp-pips-value (%symbol-sltp-entry-field entry :tp))))
+              (when (and symbol sl tp)
+                (setf (gethash symbol *symbol-sl-pips-overrides*) sl
+                      (gethash symbol *symbol-tp-pips-overrides*) tp)
+                (incf loaded)))))
+      (error (e)
+        (format t "[EXEC] ⚠️ Failed to load symbol SL/TP overrides from ~a: ~a~%"
+                path e)
+        nil))))
+
+(defun resolve-live-effective-sltp (strategy-name &key symbol)
+  "Resolve execution SL/TP pips with precedence:
+   strategy value -> symbol override -> global default.
+   Partial pairs are ignored; source changes only when both SL and TP are valid."
+  (let* ((strat (and (stringp strategy-name)
+                     (not (%nil-like-strategy-name-p strategy-name))
+                     (resolve-strategy-by-name strategy-name)))
+         (resolved-symbol (or symbol
+                              (and strat (strategy-symbol strat))))
+         (strategy-sl (%normalize-sltp-pips-value (and strat (strategy-sl strat))))
+         (strategy-tp (%normalize-sltp-pips-value (and strat (strategy-tp strat))))
+         (symbol-sl (%lookup-symbol-pips-override *symbol-sl-pips-overrides* resolved-symbol))
+         (symbol-tp (%lookup-symbol-pips-override *symbol-tp-pips-overrides* resolved-symbol)))
+    (if (and strategy-sl strategy-tp)
+        (values strategy-sl strategy-tp "strategy")
+        (if (and symbol-sl symbol-tp)
+            (values symbol-sl symbol-tp "symbol_override")
+            (values (float *default-sl-pips* 1.0)
+                    (float *default-tp-pips* 1.0)
+                    "global_default")))))
+
+(eval-when (:load-toplevel :execute)
+  (ignore-errors (load-symbol-sltp-overrides)))
+>>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 
 (defun %digits-only-p (text)
   "Return T when TEXT consists of one or more ASCII digits."
@@ -1201,8 +1299,12 @@ Returns (values selected-candidate ranked-candidates)."
                 (entry (getf slot :entry))
                 (entry-bid (getf slot :entry-bid))
                 (entry-ask (getf slot :entry-ask))
-                (sl (getf slot :sl))
-                (tp (getf slot :tp))
+                (sl (or (%normalize-sltp-pips-value (getf slot :effective-sl))
+                        (%normalize-sltp-pips-value (getf slot :effective_sl))
+                        (%normalize-sltp-pips-value (getf slot :sl))))
+                (tp (or (%normalize-sltp-pips-value (getf slot :effective-tp))
+                        (%normalize-sltp-pips-value (getf slot :effective_tp))
+                        (%normalize-sltp-pips-value (getf slot :tp))))
                 (category (or (getf slot :category) :trend))
                 (strategy-name (getf slot :strategy))
                 (pair-id (getf slot :pair-id))
@@ -1275,35 +1377,38 @@ Returns (values selected-candidate ranked-candidates)."
              (direction (%normalize-shadow-direction (getf sig :direction)))
              (strat (and strategy-name (resolve-strategy-by-name strategy-name)))
              (rank (and strat (%normalize-shadow-rank (strategy-rank strat)))))
-        (when (and strategy-name
-                   strat
-                   direction
-                   (%shadow-strategy-eligible-p strategy-name rank))
-          (let* ((slot-key (%shadow-slot-key strategy-name symbol direction))
-                 (entry (if (eq direction :buy) ask bid))
-                 (sl-pips (let ((raw (strategy-sl strat)))
-                            (if (and (numberp raw) (> raw 0.0))
-                                (float raw 1.0)
-                                *default-sl-pips*)))
-                 (tp-pips (let ((raw (strategy-tp strat)))
-                            (if (and (numberp raw) (> raw 0.0))
-                                (float raw 1.0)
-                                *default-tp-pips*)))
-                 (sl (if (eq direction :buy) (- entry sl-pips) (+ entry sl-pips)))
-                 (tp (if (eq direction :buy) (+ entry tp-pips) (- entry tp-pips))))
-            (unless (gethash slot-key *shadow-slot-allocation*)
-              (setf (gethash slot-key *shadow-slot-allocation*)
-                    (list :strategy strategy-name
-                          :symbol symbol
-                          :direction direction
-                          :category (or (getf sig :category) :trend)
-                          :entry-bid bid
-                          :entry-ask ask
-                          :entry entry
-                          :sl sl
-                          :tp tp
-                          :pair-id (getf sig :pair-id)
-                          :opened-at (get-universal-time)))))))))
+	        (when (and strategy-name
+	                   strat
+	                   direction
+	                   (%shadow-strategy-eligible-p strategy-name rank))
+	          (let* ((slot-key (%shadow-slot-key strategy-name symbol direction))
+	                 (entry (if (eq direction :buy) ask bid)))
+	            (unless (gethash slot-key *shadow-slot-allocation*)
+	              (multiple-value-bind (sl-pips tp-pips source-of-override)
+	                  (resolve-live-effective-sltp strategy-name :symbol symbol)
+	                (let* ((effective-sl (if (eq direction :buy)
+	                                         (- entry sl-pips)
+	                                         (+ entry sl-pips)))
+	                       (effective-tp (if (eq direction :buy)
+	                                         (+ entry tp-pips)
+	                                         (- entry tp-pips))))
+	                  (setf (gethash slot-key *shadow-slot-allocation*)
+	                        (list :strategy strategy-name
+	                              :symbol symbol
+	                              :direction direction
+	                              :category (or (getf sig :category) :trend)
+	                              :entry-bid bid
+	                              :entry-ask ask
+	                              :entry entry
+	                              :sl effective-sl
+	                              :tp effective-tp
+	                              :effective-sl effective-sl
+	                              :effective-tp effective-tp
+	                              :effective_sl effective-sl
+	                              :effective_tp effective-tp
+	                              :source_of_override source-of-override
+	                              :pair-id (getf sig :pair-id)
+	                              :opened-at (get-universal-time)))))))))))
   t)
 
 (defun %forward-no-signal-probe-interval-ok-p (strategy-name now)
@@ -1442,6 +1547,7 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
       (let ((committed nil))
         (unwind-protect
             (progn
+<<<<<<< HEAD
               (close-opposing-category-positions category direction symbol
                                                  (if (eq direction :buy) bid ask)
                                                  "Doten")
@@ -1449,6 +1555,15 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                   (resolve-live-effective-sltp lead-name)
                 (let ((effective-sl nil)
                       (effective-tp nil))
+=======
+	              (close-opposing-category-positions category direction symbol
+	                                                 (if (eq direction :buy) bid ask)
+	                                                 "Doten")
+	              (multiple-value-bind (sl-pips tp-pips source-of-override)
+	                  (resolve-live-effective-sltp lead-name :symbol symbol)
+	                (let ((effective-sl nil)
+	                      (effective-tp nil))
+>>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
                   (cond
                     ((eq direction :buy)
                      (setf effective-sl (- bid sl-pips)
@@ -1596,6 +1711,7 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
        (let* ((category (getf slot :category))
               (pos (getf slot :direction))
               (entry (getf slot :entry))
+<<<<<<< HEAD
                (magic (getf slot :magic))
                (lot (or (getf slot :lot) 0.01))
                (sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)
@@ -1608,6 +1724,27 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                                  (and (numberp (getf slot :effective_tp))
                                       (float (getf slot :effective_tp) 1.0))))
                (pnl 0) (closed nil))
+=======
+              (magic (getf slot :magic))
+              (lot (or (getf slot :lot) 0.01))
+              (resolved-sltp (multiple-value-list
+                              (resolve-live-effective-sltp (getf slot :strategy)
+                                                           :symbol (or (getf slot :symbol) symbol))))
+              (sl-pips (or (first resolved-sltp)
+                           (float *default-sl-pips* 1.0)))
+              (tp-pips (or (second resolved-sltp)
+                           (float *default-tp-pips* 1.0)))
+              (effective-sl (or (and (numberp (getf slot :effective-sl))
+                                     (float (getf slot :effective-sl) 1.0))
+                                (and (numberp (getf slot :effective_sl))
+                                     (float (getf slot :effective_sl) 1.0))))
+              (effective-tp (or (and (numberp (getf slot :effective-tp))
+                                     (float (getf slot :effective-tp) 1.0))
+                                (and (numberp (getf slot :effective_tp))
+                                     (float (getf slot :effective_tp) 1.0))))
+              (pnl 0)
+              (closed nil))
+>>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
          (when (and entry (numberp bid) (numberp ask))
            (cond
              ((or (eq pos :long) (eq pos :buy))
@@ -1616,8 +1753,13 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                 (when (or (<= bid sl) (>= bid tp))
                   (setf pnl (- bid entry) closed t))))
              ((or (eq pos :short) (eq pos :sell))
+<<<<<<< HEAD
               (let ((sl (or effective-sl (+ ask sl-pips)))
                     (tp (or effective-tp (- ask tp-pips))))
+=======
+              (let ((sl (or effective-sl (+ entry sl-pips)))
+                    (tp (or effective-tp (- entry tp-pips))))
+>>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed

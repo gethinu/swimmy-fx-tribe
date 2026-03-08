@@ -133,6 +133,12 @@ sudo systemctl restart swimmy-brain swimmy-guardian swimmy-school swimmy-data-ke
 # 停止
 sudo systemctl stop swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
+# 進化デーモンを止めて自動起動も外す
+sudo systemctl disable --now swimmy-evolution.service
+
+# 再開して自動起動も戻す
+sudo systemctl enable --now swimmy-evolution.service
+
 # ステータス確認
 sudo systemctl status swimmy-brain swimmy-guardian swimmy-school swimmy-data-keeper swimmy-backtest swimmy-risk swimmy-notifier swimmy-evolution swimmy-watchdog
 
@@ -154,6 +160,19 @@ journalctl -f -u swimmy-brain -u swimmy-guardian -u swimmy-notifier -u swimmy-sc
 > pid=$(systemctl show -p MainPID --value swimmy-watchdog); [ "${pid:-0}" -gt 0 ] && kill -TERM "$pid"
 > systemctl status swimmy-brain swimmy-guardian swimmy-watchdog --no-pager
 > ```
+
+> [!IMPORTANT]
+> **WSL軽量化の注記 (2026-03-07)**  
+> `sudo systemctl disable --now swimmy-evolution.service` の `Removed "/etc/systemd/system/default.target.wants/swimmy-evolution.service"` は自動起動用 symlink を外しただけで、unit file 本体 `/etc/systemd/system/swimmy-evolution.service` を削除した意味ではありません。  
+> 進化処理だけを止めたい場合はこの操作を使い、再開時は `sudo systemctl enable --now swimmy-evolution.service` を使ってください。  
+> VS Code Remote 上の Lisp 補助用 `alive-lsp` は Swimmy 本体ではないため、必要なら次で個別停止できます。
+>
+> ```bash
+> pkill -TERM -f "asdf:load-system :alive-lsp"
+> pgrep -af "alive-lsp|codex app-server|code-server"
+> ```
+>
+> `alive-lsp` は VS Code が Lisp 補助を再要求すると再起動しえます。`wsl --shutdown` は VS Code Remote / Codex セッションごと切断するため、作業中は軽量化目的で使わないでください。
 
 ---
 

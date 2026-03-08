@@ -2,6 +2,11 @@
 
 ## 現在の状態
 - **稼働フェーズ**: V50.6 (Structured Telemetry) - 2026-02-03
+- **V50.8 WSL運用軽量化契約（2026-03-07）**:
+  - `sudo systemctl disable --now swimmy-evolution.service` は正当な停止手順とし、実行時は `swimmy-evolution.service` の実行停止と `default.target.wants/` 配下の自動起動 symlink 削除だけを行う。unit file 本体 `/etc/systemd/system/swimmy-evolution.service` は残る。
+  - `swimmy-evolution.service` を再開する場合は `sudo systemctl enable --now swimmy-evolution.service` を使う。`disable` は削除ではなく自動起動解除として扱う。
+  - `alive-lsp` は VS Code Remote の extension host 配下で起動される開発支援用 SBCL であり、Swimmy 本体サービスではない。停止しても editor 補助が一時的に失われるだけで、`swimmy-*` systemd サービス契約は変わらない。
+  - `wsl --shutdown` は WSL2 上の VS Code Remote / Codex セッションごと切断するため、軽量化目的ではまず `swimmy-evolution.service` や `alive-lsp` のような個別対象を止める。通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **V50.8 KPI再設定（2026-02-26）**:
   - 収益KPIを `月利10%` から **主KPI: 月利3% / ストレッチ: 月利5%** へ再設定。
   - `monthly10` 表記の成果物は履歴として保持し、運用判定は `3%/5%` 基準を正本とする。
@@ -19,6 +24,45 @@
     - `data/reports/mt5/ih_opt_eurusd_monthly3_20260301_012747.monthly5target.decision.json`
   - 最良候補（forward）実測: `monthly_cagr_pct=5.9136`, `trades=21`, `profit_factor=2.0606`, `equity_dd_pct=45.2789`。
   - 判定: `monthly3target/monthly5target` とも `accept_for_promotion=false`。主因は `drawdown_above_max`（DD上限12%超過）。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend MT5 broader-retune follow-up（2026-03-07 JST）**:
+  - narrow bounded walk-forward の追加検証として、次の artifact を生成:
+    - `data/reports/mt5/legend_walkforward/run_20260307_123443_wide/`
+    - `data/reports/mt5/legend_walkforward/run_20260307_132228_b940_medium/`
+  - 実測:
+    - `legend-macd-above-zero-cross` (`wide`): `folds=3/3`, `forward_profit_total=116.34`, `mean_pf=2.9664`, `trades=46`
+    - `legend-pullback-breakout` (`wide`): `folds=3/3`, `forward_profit_total=213.03`, `mean_pf=1.6812`, `trades=389`
+    - `historical-s-bred940-trend-core` (`medium` fallback): `folds=3/3`, `forward_profit_total=237.99`, `mean_pf=1.8208`, `trades=141`
+  - 判定:
+    - broader retune は `legend-macd-above-zero-cross` の主候補性を強化した。
+    - `historical-s-bred940-trend-core` は narrow bounded walk-forward でも十分に有効で、broader retune で隠れた大幅上振れは確認されなかった。
+    - `legend-pullback-breakout` は改善したが、品質順位では依然として上位2本の後ろに留まる。
+  - residual risk:
+    - broker variance は未解決だが、freeze closeout では deferred risk として受容する。
+    - `historical-s-bred940-trend-core` の true full-wide sweep は optional follow-up とし、現 portable 環境では runtime ceiling により `run_20260307_132228_b940_medium/` を canonical fallback とする。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend canonical-source alignment（2026-03-08 JST）**:
+  - reviewed MT5 port の behavioral source-of-truth は `strategies_v3.lisp` と `data/optimized_timeframes.json` とする。
+  - `src/lisp/strategies/strategies-trend.lisp` / `src/lisp/strategies/strategies-scalp.lisp` の該当定義は compatibility mirror として扱い、reviewed Legend (`MACD-Above-Zero-Cross`, `Pullback-Breakout`) で canonical behavior と drift させない。
+  - drift 検知は Lisp regression test で固定し、no-op な doc 解釈差ではなく source 定義差として fail-closed に扱う。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend MT5 evidence bridge（2026-03-08 JST）**:
+  - `tools/legend_mt5_evidence_bridge.py` を Legend freeze-era artifact を Swimmy の rank/deployment 契約へ接続する **offline bridge** の正本とする。
+  - 入力は `data/reports/mt5/inventory_tester/*/inventory_tester_manifest.json` と `data/reports/mt5/legend_walkforward/*/*/walkforward_summary.json`。出力は `data/reports/mt5/legend_evidence_bridge_*.json` とする。
+  - 目的は `legend-macd-above-zero-cross` / `historical-s-bred940-trend-core` / `legend-pullback-breakout` の shortlist ordering と proxy metrics を machine-readable に固定し、次の `paper-forward canonical` 候補列を明示すること。
+  - 契約:
+    - bridge は複数 inventory manifest を集約可能とし、rolling-window / latest-window / baseline rerun を同一 shortlist candidate の `inventory_validation` としてまとめてよい。
+    - MT5 inventory rerun は validation artifact であり、`RankTradeEvidence` の canonical source として直接加算しない。
+    - MT5 walk-forward summary は `paper_forward` の proxy であり、`deployment_gate_status.forward_*` を直接充足させない。
+    - bridge 出力は `requires_paper_forward=true` を保持し、`deployment_gate_status` / SQLite / Lisp rank を直接更新しない。
+    - freeze-era canonical ordering は `legend-macd-above-zero-cross` -> `historical-s-bred940-trend-core` -> `legend-pullback-breakout` とする。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend paper-forward queue artifact（2026-03-08 JST）**:
+  - `tools/legend_mt5_paper_forward_queue.py` を `legend_evidence_bridge_*.json` から次の paper-forward 候補列を生成する **offline queue artifact** の正本とする。
+  - 出力は `data/reports/mt5/legend_paper_forward_queue_*.json` とする。
+  - queue item は `strategy_name`, `shortlist_rank`, `symbol`, `timeframe`, `target_forward_days=30`, `target_forward_trades=300`, `target_forward_sharpe=0.70`, `target_forward_pf=1.50`, `bridge_source`, `queue_reason`, `status=QUEUED` を持つ。
+  - queue は `requires_paper_forward=true` の候補のみを対象にし、`deployment_gate_status` / SQLite / Lisp runtime へ直接反映しない。
+  - 目的は freeze-era shortlist を paper-forward canonical へ接続することにあり、`FORWARD_RUNNING` / `LIVE_READY` 判定そのものは既存の paper-forward evidence 集計契約に委ねる。
   - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **V50.8-P5.15 実装整合（2026-02-26）**:
   - `tools/xau_autobot.py` の `ema_gap_over_atr` レンジゲート（既定 `0.9..2.5`）を実コードへ適用する。
@@ -2091,6 +2135,13 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-03-08**: Legend freeze-closeout finalization を反映。broker variance は未解決のまま残すが、freeze-era MT5 validation の closeout blocker ではなく deferred residual risk として受容する方針へ更新。`legend-macd-above-zero-cross` の top slot、`historical-s-bred940-trend-core` の `run_20260307_132228_b940_medium/` fallback、`legend-pullback-breakout` の 3 位ラインはそのまま固定し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-08**: Legend freeze-closeout alignment を反映。`historical-s-bred940-trend-core` の `run_20260307_132228_b940_medium/` を freeze-era canonical fallback とし、true full-wide sweep は optional follow-up へ格下げした。実務上の残 blocker は broker variance のみと明記し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-08**: Legend canonical-source alignment を反映。reviewed MT5 port の正本を `strategies_v3.lisp` + `data/optimized_timeframes.json` に固定し、`src/lisp/strategies/strategies-trend.lisp` / `src/lisp/strategies/strategies-scalp.lisp` の reviewed Legend 定義は compatibility mirror として drift を許容しない契約を追加。検知は focused regression test で固定し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-08**: Legend MT5 evidence bridge を追加。`tools/legend_mt5_evidence_bridge.py` が inventory manifest + walk-forward summary から freeze-era shortlist ordering を contract-aware JSON に正規化し、`legend_evidence_bridge_*.json` を生成する。MT5 inventory は rank evidence の canonical source として直接加算せず、walk-forward も `deployment_gate_status.forward_*` を直接満たさない proxy 扱いに固定。`INTERFACES.md` 更新なし。
+- **2026-03-08**: V50.8-P5.111（chat handoff note）を反映。`implementation_plan_v50.8.md` の `V50.8-P5` 直下へ、「このチャットではここで中断し別チャットへ引き継ぐ」旨と、未解決課題 `managed 3run stop` / `current_run* stale meta` / `armada residue(-Live)` / `P5 live 実績不足` を追加。次チャットの開始条件は `live 再開`、`armada residue 停止`、または `P5 freeze hold で閉じる` のいずれかを明示選択すること。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-07**: V50.8-P5.110（P5 freeze-hold contract）を反映。`implementation_plan_v50.8.md` の `V50.8-P5` 直下に、`runtime_mode=freeze_offline`・managed 3run 不在・`current_run*` は stale meta という現況を明記し、P5 は「未完だが実行ブロック中」と整理した。再開条件は `ユーザーの明示的な live 操作許可` と `tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run => status=HEALTHY` の回復、または `freeze hold / NO_GO固定` の明示クローズ。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
+- **2026-03-07**: V50.8-P5.109（option2 monitor-only refresh #28 / runtime freeze sync）を反映。`data/reports/v50_8_runtime_freeze_status_20260307.json` を生成し、`current_run{,_r1,_r2,_r3,_armada}` は `2026-03-03` run meta を保持する一方、`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=DEGRADED` / `running_rows_count_pre=0` / managed 3 config 全欠落を確認。`systemctl` 上に `swimmy/xau_autobot/mt5` live service はなく、`ps` では `xau_autobot.armada_mt5_20260303p1_pandajiro_01.json` の Windows PowerShell residue（`-Live`）のみ観測されたため、managed 3run は `2026-03-07` 時点で停止中、run meta は runtime health の正本ではないと整理。Armada residue は operator intent なしで自動停止せず、月次判定は `decision=NO_GO` / `runtime_mode=freeze_offline` を維持。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-03**: V50.8-P5.108（option2 monitor-only refresh #27 / run drift sync + armada observe）を反映。外部更新で `current_run=trial_v2_20260303_v50_8_30d_h1_live`、`current_run_r2=trial_v2_20260303_v50_8_30d_m15_live`、`current_run_r3=trial_v2_20260303_r3_m20_e10_live` へドリフトしたため、3run を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価し、`xau_autobot_operational_audit_20260303_{h1_live,m15_live,r3_m20_e10_live}_refresh{2,2,1}_now1009.json` を生成。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=HEALTHY`（expected 3run 各1本）だが `unmanaged=xau_autobot.armada_mt5_20260303p1_pandajiro_01.json` を検出したため、`trial_v2_armada_20260303p1_pandajiro_1` も judge/audit 観測に接続し `xau_autobot_operational_audit_20260303_armada_pandajiro_refresh1_now1009.json` を追加。`v50_8_trial_judge_*`（h1/m15/r3_m20_e10/armada）・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260303_runtime_trial_v2_20260303_{v50_8_30d_h1_live,v50_8_30d_m15_live,r3_m20_e10_live}.json`・`v50_8_run_refresh_20260303_1010_h1live_m15live_m20e10_armada.json` を再同期。最新は managed 3run と armada の全てで `verdict=INVALID_TRIAL` / `closed_positions=0`、watchdog は managed 3run が `CONTINUE`、監査は全run `INSUFFICIENT_DATA`、月次判定は `decision=NO_GO` 継続。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-03**: V50.8-P5.107（option2 monitor-only refresh #26 / post-rotation sync）を反映。run meta の外部切替に追従し、`primary=trial_v2_20260303_primary_r2v_m5_48h` / `secondary=trial_v2_20260303_v50_8_30d_m15_live` / `explore=trial_v2_20260303_r3_entry48h_m5` を `XAU_AUTOBOT_TRIAL_WATCHDOG_ENABLED=1` で再評価。`xau_autobot_operational_audit_20260303_{primary_r2v_m5_48h,m15_live,r3_entry48h_m5}_refresh1_now0057.json` を生成し、`v50_8_trial_judge_*`（新3run）・`v50_8_dual_run_status_20260226/20260227.json`・`v50_8_monitor_only_status_20260227.json`・`v50_8_monthly_decision_20260225.json`・`v50_8_gap_analysis_20260303_runtime_trial_v2_20260303_{primary_r2v_m5_48h,v50_8_30d_m15_live}.json`・`v50_8_run_refresh_20260303_0958_r2v48h_m15live_r3entry48h.json` を再同期。`tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=HEALTHY`（expected 3run稼働）だが `unmanaged=xau_autobot.trial_v2_20260228_m20_executor_v1_m45_softgate_e10.json` を検出。最新は3runとも `verdict=INVALID_TRIAL`（`window_days≈0.00084/0.00093/0.00103`, `closed_positions=0`）、watchdogは全run `CONTINUE`、監査は `INSUFFICIENT_DATA/INSUFFICIENT_DATA/FAIL`、月次判定は `decision=NO_GO` 継続。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-03**: V50.8-P5.105（48h約定優先ピボット）を反映。`e10_shadow14d` の `closed_positions=0` 継続を受け、48時間は「約定母集団確保」を最優先にする契約へ更新。`primary` は約定実績のある `trial_v2_20260303_primary_r2v_m5_48h`、`secondary` は `trial_v2_20260303_v50_8_30d_m15_live`、`explore` は `trial_v2_20260303_r3_entry48h_m5` を正本runとする。48h判定は `closed_positions>=20 && profit_factor>=1.00 && net_profit>0` を採用し、未達runは fail-closed で次候補へ切替える。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。

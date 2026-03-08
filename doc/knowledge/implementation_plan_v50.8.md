@@ -183,6 +183,18 @@
   - 目的: P4で確定した成績不足（`PF/WR/net_profit`）を改善し、`NO_GO` からの復帰条件を作る。
   - 完了条件:
     - trial judge で `trial_valid=true` のまま `closed_positions>=30`, `profit_factor>=1.10`, `win_rate>=0.42`, `net_profit>0` を満たす。
+  - 現況（2026-03-07 JST / `freeze_offline`）:
+    - `data/reports/v50_8_runtime_freeze_status_20260307.json` で managed 3run 不在（`status=DEGRADED`, `running_rows_count_pre=0`, expected 3 config が全て `0`）を確認。
+    - `current_run{,_r1,_r2,_r3,_armada}` は `2026-03-03` run meta を保持するが、runtime health の正本ではない。
+    - よって P5 の `PF/WR/net_profit` 改善は新規 live 実績を積めず、未完のまま実行ブロック状態にある。
+  - handoff note（2026-03-08 JST）:
+    - このチャットではここで中断し、続きは別チャットへ引き継ぐ。
+    - 引き継ぎ時の未解決課題は `managed 3run stop`、`current_run* stale meta`、`armada residue(-Live)`、および `P5` の live 実績不足。
+    - 次チャットでは `live を再開する / armada residue を止める / P5 を freeze hold で閉じる` のいずれかを明示選択してから進める。
+  - 再開条件:
+    - ユーザーが明示的に live 操作を許可すること。
+    - managed 本線を再開する場合は、少なくとも `tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` が `status=HEALTHY` へ戻ること。
+    - もしくはユーザーが P5 を `freeze hold` / `NO_GO固定` として明示クローズすること。
   - 初期アクション:
     - `30d` 候補を正本にした run を固定し、日次 judge 更新を継続。
     - `0件/24h` を fail-closed 契約化し、検知時は `NO_GO` + configローテーションを自動実行する。
@@ -3651,6 +3663,19 @@
   - 含意:
     - run drift 後も managed 3run は `status=HEALTHY` を維持。
     - 月利KPI判定は `decision=NO_GO` 継続（primary 判定軸）。
+
+- [x] **P10-64 option2 monitor-only refresh #28（runtime freeze同期 + managed loop不在確認, 2026-03-07 JST）**
+  - 変化（freeze状態）:
+    - `current_run` / `current_run_r1` / `current_run_r2` / `current_run_r3` / `current_run_armada` は `2026-03-03` run meta を保持したまま。
+    - `tools/xau_autobot_live_loop_guard.py --include-r3 --dry-run` は `status=DEGRADED`、`running_rows_count_pre=0`、managed 3 config 全て `expected_config_counts_post=0`。
+    - `systemctl` 上に `swimmy/xau_autobot/mt5` 系 live service はなく、`ps` では `xau_autobot.armada_mt5_20260303p1_pandajiro_01.json` の Windows PowerShell residue のみ観測。
+  - 実行（観測のみ）:
+    - `data/reports/v50_8_runtime_freeze_status_20260307.json` を生成し、freeze時点の source of truth を固定。
+    - managed 3run の自動再起動は行わず、`-Live` 付き Armada residue も operator intent なしでは停止しない。
+  - 含意:
+    - `2026-03-07` 時点で managed V50.8 3run は停止中。
+    - `current_run*` は runtime health の正本ではなく、stale meta として扱う。
+    - 月次判定は `decision=NO_GO` / `runtime_mode=freeze_offline` を維持し、次の実行変更は operator 判断待ち。
 
 ## 11. M5除外 Timeframe拡張（M15/H1）
 

@@ -16,19 +16,16 @@
   :tp 0.15
   :regime-filter t)
 
-      (make-strategy :name "Legend-RSI-Reversion-V1"
-        :indicators '((rsi 2)) ;; 2-period RSI (Larry Connors)
-        :entry '(< rsi-2 5) ;; Extreme oversold
-        :exit '(> close sma-5) ;; Exit on break above 5-SMA
-        :sl 0.088 :tp 0.091 :volume 0.05
-        :category :reversion :timeframe 1440)
-        
-      (make-strategy :name "Legend-London-Breakout-V1"
-        :indicators '((session-high 8 16) (session-low 8 16)) ;; 8:00-16:00 (London Open)
-        :entry '(break-above session-high)
-        :exit '(time-exit 24)
-        :sl 0.10 :tp 0.20 :volume 0.10
-        :category :breakout :timeframe 60)
+;; 2026-03-07 audit note:
+;; These external Legend drafts remain as legacy seed only.
+;; Canonical definitions live in legends.lisp or data/library/LEGEND + DB rows.
+;; Do not restore the old RSI/London drafts here without a fresh source audit.
+;;
+;; legacy seed only: Legend-RSI-Reversion-V1
+;; - old draft: RSI(2) < 5, exit on close > SMA(5), D1, SL 0.088, TP 0.091
+;;
+;; legacy seed only: Legend-London-Breakout-V1
+;; - old draft: session-high/session-low 08-16, time-exit 24, H1, SL 0.10, TP 0.20
 
 ;; 2. [DELETED] London Breakout (Fragile Time-Based)
 ;; 3. [DELETED] RSI Reversion M30 (Redundant with M5)
