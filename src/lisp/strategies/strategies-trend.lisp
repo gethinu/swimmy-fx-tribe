@@ -72,11 +72,11 @@
         :sl 0.25 :tp 0.50 :volume 0.01
         :timeframe 240) ; M15 MACD Signal
       (make-strategy :name "MACD-Above-Zero-Cross"
-        :indicators '((macd 9 12 9))
+        :indicators '((macd 12 26 9))
         :entry '(and (> macd-line 0) (cross-above macd-line signal-line))
         :exit '(cross-below macd-line signal-line)
         :sl 0.25 :tp 0.50 :volume 0.01
-        :timeframe 240) ; M15 MACD Trend
+        :timeframe 240) ; H4 MACD Trend
       (make-strategy :name "MACD-Expansion"
         :indicators '((macd 9 12 9))
         :entry '(and (> macd-line 0) (> macd-line signal-line))

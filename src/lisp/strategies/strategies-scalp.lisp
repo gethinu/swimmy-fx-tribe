@@ -101,7 +101,7 @@
         :entry '(and (cross-above close ema-20) (> rsi-14 50))
         :exit '(cross-below close ema-20)
         :sl 0.30 :tp 0.60 :volume 0.01
-        :category :breakout :timeframe 60) ; M5 Pullback
+        :category :breakout :timeframe 60) ; H1 Pullback
       
       ;; ===== 7. ADDITIONAL FROM GEMINI =====
       

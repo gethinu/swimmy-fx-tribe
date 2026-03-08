@@ -3361,6 +3361,46 @@
           (setf (symbol-function 'swimmy.school::flush-backtest-send-queue) orig-send-queue-flush)
           (fmakunbound 'swimmy.school::flush-backtest-send-queue)))))
 
+(deftest test-internal-process-msg-reload-symbol-sltp-overrides-sexp
+  "internal-process-msg should reload persisted symbol SL/TP overrides on demand."
+  (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
+         (orig-path (and (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+                         swimmy.school::*symbol-sltp-overrides-path*))
+         (orig-sl (and (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+                       swimmy.school::*symbol-sl-pips-overrides*))
+         (orig-tp (and (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+                       swimmy.school::*symbol-tp-pips-overrides*))
+         (tmp-path (format nil "/tmp/swimmy-reload-symbol-sltp-~a.sexp" (get-universal-time))))
+    (assert-true (and fn (fboundp fn)) "internal-process-msg exists")
+    (unwind-protect
+        (progn
+          (swimmy.core:write-sexp-atomic
+           tmp-path
+           '(:schema-version 1
+             :symbols ((:symbol "USDJPY" :sl 0.33 :tp 0.55))))
+          (setf swimmy.school::*symbol-sltp-overrides-path* tmp-path)
+          (setf swimmy.school::*symbol-sl-pips-overrides* (make-hash-table :test 'equal))
+          (setf swimmy.school::*symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+          (setf (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.99)
+          (setf (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 1.23)
+          (funcall fn "((type . \"RELOAD_SYMBOL_SLTP_OVERRIDES\"))")
+          (assert-true (< (abs (- (or (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.0)
+                                   0.33))
+                          1e-9)
+                       "Expected dispatcher reload to refresh SL override")
+          (assert-true (< (abs (- (or (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 0.0)
+                                   0.55))
+                          1e-9)
+                       "Expected dispatcher reload to refresh TP override"))
+      (when (probe-file tmp-path)
+        (ignore-errors (delete-file tmp-path)))
+      (when (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+        (setf swimmy.school::*symbol-sltp-overrides-path* orig-path))
+      (when (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+        (setf swimmy.school::*symbol-sl-pips-overrides* orig-sl))
+      (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+        (setf swimmy.school::*symbol-tp-pips-overrides* orig-tp)))))
+
 (deftest test-internal-process-msg-history-sexp
   "internal-process-msg should store HISTORY S-expression as newest-first"
   (let* ((fn (find-symbol "INTERNAL-PROCESS-MSG" :swimmy.main))
@@ -4968,6 +5008,129 @@
         (setf swimmy.school::*a-rank-shadow-trading-enabled* orig-enabled))
       (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch))))
 
+(deftest test-open-a-rank-shadow-trades-uses-symbol-override-effective-sltp
+  "Shadow slots should persist effective SL/TP and source when strategy SL/TP is invalid."
+  (let ((orig-kb swimmy.school::*strategy-knowledge-base*)
+        (orig-shadow-slots (and (boundp 'swimmy.school::*shadow-slot-allocation*)
+                                swimmy.school::*shadow-slot-allocation*))
+        (orig-enabled (and (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+                           swimmy.school::*a-rank-shadow-trading-enabled*))
+        (orig-symbol-sl (and (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+                             swimmy.school::*symbol-sl-pips-overrides*))
+        (orig-symbol-tp (and (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+                             swimmy.school::*symbol-tp-pips-overrides*)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base*
+                (list (swimmy.school:make-strategy :name "UT-SHADOW-SYMBOL-OVERRIDE"
+                                                   :symbol "USDJPY"
+                                                   :timeframe 15
+                                                   :rank :A
+                                                   :sl nil
+                                                   :tp -1.0)))
+          (setf swimmy.school::*shadow-slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*a-rank-shadow-trading-enabled* t)
+          (setf swimmy.school::*symbol-sl-pips-overrides* (make-hash-table :test 'equal))
+          (setf swimmy.school::*symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+          (setf (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.33)
+          (setf (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 0.55)
+          (swimmy.school::open-a-rank-shadow-trades
+           "USDJPY" 100.00 100.02
+           (list (list :strategy-name "UT-SHADOW-SYMBOL-OVERRIDE"
+                       :category :trend
+                       :direction :BUY)))
+          (let* ((slot-key (swimmy.school::%shadow-slot-key "UT-SHADOW-SYMBOL-OVERRIDE" "USDJPY" :buy))
+                 (slot (gethash slot-key swimmy.school::*shadow-slot-allocation*)))
+            (assert-not-nil slot "Expected shadow slot to be created")
+            (assert-true (< (abs (- (or (getf slot :sl) 0.0) 99.69)) 1e-4)
+                         "Expected shadow SL to use symbol override")
+            (assert-true (< (abs (- (or (getf slot :tp) 0.0) 100.57)) 1e-4)
+                         "Expected shadow TP to use symbol override")
+            (assert-true (< (abs (- (or (getf slot :effective-sl) 0.0) 99.69)) 1e-4)
+                         "Expected effective shadow SL to be persisted")
+            (assert-true (< (abs (- (or (getf slot :effective-tp) 0.0) 100.57)) 1e-4)
+                         "Expected effective shadow TP to be persisted")
+            (assert-equal "symbol_override" (getf slot :source_of_override)
+                          "Expected shadow slot source_of_override=symbol_override")))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when (boundp 'swimmy.school::*shadow-slot-allocation*)
+        (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots))
+      (when (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+        (setf swimmy.school::*a-rank-shadow-trading-enabled* orig-enabled))
+      (when (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+        (setf swimmy.school::*symbol-sl-pips-overrides* orig-symbol-sl))
+      (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+        (setf swimmy.school::*symbol-tp-pips-overrides* orig-symbol-tp)))))
+
+(deftest test-backtest-live-shadow-exit-geometry-aligns-for-strategy-sltp
+  "Backtest payload distances and live/shadow submit-time geometry should match for the same signal."
+  (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-shadow-slots (and (boundp 'swimmy.school::*shadow-slot-allocation*)
+                                 swimmy.school::*shadow-slot-allocation*))
+         (orig-enabled (and (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+                            swimmy.school::*a-rank-shadow-trading-enabled*))
+         (strategy (swimmy.school:make-strategy :name "UT-BT-LIVE-SHADOW-ALIGN"
+                                                :symbol "USDJPY"
+                                                :timeframe 15
+                                                :rank :A
+                                                :sl 0.21
+                                                :tp 0.34))
+         (entry-bid 100.00)
+         (entry-ask 100.02))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*strategy-knowledge-base* (list strategy))
+          (setf swimmy.school::*shadow-slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*a-rank-shadow-trading-enabled* t)
+          (multiple-value-bind (live-sl-pips live-tp-pips source-of-override)
+              (swimmy.school::resolve-live-effective-sltp "UT-BT-LIVE-SHADOW-ALIGN" :symbol "USDJPY")
+            (let* ((alist (swimmy.school::strategy-to-alist strategy))
+                   (sl-key (find-symbol "SL" :swimmy.school))
+                   (tp-key (find-symbol "TP" :swimmy.school))
+                   (backtest-sl-pips (cdr (assoc sl-key alist)))
+                   (backtest-tp-pips (cdr (assoc tp-key alist)))
+                   (backtest-sl-level (- entry-ask backtest-sl-pips))
+                   (backtest-tp-level (+ entry-ask backtest-tp-pips))
+                   (live-sl-level (- entry-ask live-sl-pips))
+                   (live-tp-level (+ entry-ask live-tp-pips))
+                   (stop-bid 99.81)
+                   (take-bid 100.36))
+              (swimmy.school::open-a-rank-shadow-trades
+               "USDJPY" entry-bid entry-ask
+               (list (list :strategy-name "UT-BT-LIVE-SHADOW-ALIGN"
+                           :category :trend
+                           :direction :BUY)))
+              (let* ((slot-key (swimmy.school::%shadow-slot-key "UT-BT-LIVE-SHADOW-ALIGN" "USDJPY" :buy))
+                     (slot (gethash slot-key swimmy.school::*shadow-slot-allocation*)))
+                (assert-not-nil slot "Expected aligned shadow slot to be created")
+                (assert-equal "strategy" source-of-override
+                              "Expected strategy precedence for live SL/TP resolution")
+                (assert-true (< (abs (- backtest-sl-pips live-sl-pips)) 1e-9)
+                             "Expected backtest/live SL pips to match")
+                (assert-true (< (abs (- backtest-tp-pips live-tp-pips)) 1e-9)
+                             "Expected backtest/live TP pips to match")
+                (assert-true (< (abs (- backtest-sl-level live-sl-level)) 1e-9)
+                             "Expected backtest/live SL level to match")
+                (assert-true (< (abs (- backtest-tp-level live-tp-level)) 1e-9)
+                             "Expected backtest/live TP level to match")
+                (assert-true (< (abs (- live-sl-level (or (getf slot :effective-sl) 0.0))) 1e-9)
+                             "Expected shadow effective SL to match live geometry")
+                (assert-true (< (abs (- live-tp-level (or (getf slot :effective-tp) 0.0))) 1e-9)
+                             "Expected shadow effective TP to match live geometry")
+                (assert-true (<= stop-bid backtest-sl-level)
+                             "Expected shared stop path to breach backtest SL")
+                (assert-true (<= stop-bid live-sl-level)
+                             "Expected shared stop path to breach live SL")
+                (assert-true (>= take-bid backtest-tp-level)
+                             "Expected shared take-profit path to breach backtest TP")
+                (assert-true (>= take-bid live-tp-level)
+                             "Expected shared take-profit path to breach live TP")))))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (when (boundp 'swimmy.school::*shadow-slot-allocation*)
+        (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots))
+      (when (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+        (setf swimmy.school::*a-rank-shadow-trading-enabled* orig-enabled)))))
+
 (deftest test-forward-min-trades-default-is-300
   "Forward deployment gate should require 300 forward trades by default."
   (assert-equal 300 swimmy.school::*forward-min-trades*
@@ -6329,6 +6492,81 @@
       (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit-telemetry))))
 
+(deftest test-load-symbol-sltp-overrides-from-sexp-file
+  "Persistent symbol SL/TP override file should populate in-memory override tables."
+  (let* ((orig-path (and (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+                         swimmy.school::*symbol-sltp-overrides-path*))
+         (orig-sl (and (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+                       swimmy.school::*symbol-sl-pips-overrides*))
+         (orig-tp (and (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+                       swimmy.school::*symbol-tp-pips-overrides*))
+         (tmp-path (format nil "/tmp/swimmy-symbol-sltp-overrides-~a.sexp" (get-universal-time))))
+    (unwind-protect
+        (progn
+          (swimmy.core:write-sexp-atomic
+           tmp-path
+           '(:schema-version 1
+             :symbols ((:symbol "USDJPY" :sl 0.33 :tp 0.55)
+                       (:symbol "eurusd" :sl 0.22 :tp 0.44))))
+          (setf swimmy.school::*symbol-sltp-overrides-path* tmp-path)
+          (setf swimmy.school::*symbol-sl-pips-overrides* (make-hash-table :test 'equal))
+          (setf swimmy.school::*symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+          (swimmy.school::load-symbol-sltp-overrides)
+          (assert-true (< (abs (- (or (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.0)
+                                   0.33))
+                          1e-9)
+                       "Expected USDJPY SL override to load from file")
+          (assert-true (< (abs (- (or (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 0.0)
+                                   0.55))
+                          1e-9)
+                       "Expected USDJPY TP override to load from file")
+          (assert-true (< (abs (- (or (gethash "EURUSD" swimmy.school::*symbol-sl-pips-overrides*) 0.0)
+                                   0.22))
+                          1e-9)
+                       "Expected symbol loader to normalize keys to uppercase")
+          (assert-true (< (abs (- (or (gethash "EURUSD" swimmy.school::*symbol-tp-pips-overrides*) 0.0)
+                                   0.44))
+                          1e-9)
+                       "Expected EURUSD TP override to load from file"))
+      (when (probe-file tmp-path)
+        (ignore-errors (delete-file tmp-path)))
+      (when (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+        (setf swimmy.school::*symbol-sltp-overrides-path* orig-path))
+      (when (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+        (setf swimmy.school::*symbol-sl-pips-overrides* orig-sl))
+      (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+        (setf swimmy.school::*symbol-tp-pips-overrides* orig-tp)))))
+
+(deftest test-load-symbol-sltp-overrides-missing-file-clears-stale-values
+  "Missing override file should not leave stale symbol overrides in memory."
+  (let* ((orig-path (and (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+                         swimmy.school::*symbol-sltp-overrides-path*))
+         (orig-sl (and (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+                       swimmy.school::*symbol-sl-pips-overrides*))
+         (orig-tp (and (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+                       swimmy.school::*symbol-tp-pips-overrides*))
+         (missing-path (format nil "/tmp/swimmy-symbol-sltp-missing-~a.sexp" (get-universal-time))))
+    (unwind-protect
+        (progn
+          (when (probe-file missing-path)
+            (ignore-errors (delete-file missing-path)))
+          (setf swimmy.school::*symbol-sltp-overrides-path* missing-path)
+          (setf swimmy.school::*symbol-sl-pips-overrides* (make-hash-table :test 'equal))
+          (setf swimmy.school::*symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+          (setf (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.99)
+          (setf (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 1.23)
+          (swimmy.school::load-symbol-sltp-overrides)
+          (assert-equal 0 (hash-table-count swimmy.school::*symbol-sl-pips-overrides*)
+                        "Expected missing file to clear stale SL overrides")
+          (assert-equal 0 (hash-table-count swimmy.school::*symbol-tp-pips-overrides*)
+                        "Expected missing file to clear stale TP overrides"))
+      (when (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
+        (setf swimmy.school::*symbol-sltp-overrides-path* orig-path))
+      (when (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+        (setf swimmy.school::*symbol-sl-pips-overrides* orig-sl))
+      (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+        (setf swimmy.school::*symbol-tp-pips-overrides* orig-tp)))))
+
 (deftest test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
   "execute-order-sequence should prioritize strategy SL/TP for BUY orders."
   (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
@@ -6585,6 +6823,109 @@
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function safe-order-sym) orig-safe-order)))
 
+(deftest test-execute-order-sequence-uses-symbol-override-when-strategy-invalid
+  "execute-order-sequence should use symbol override before global defaults."
+  (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
+         (orig-slots swimmy.school::*slot-allocation*)
+         (orig-default-sl swimmy.school::*default-sl-pips*)
+         (orig-default-tp swimmy.school::*default-tp-pips*)
+         (orig-symbol-sl (and (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+                              swimmy.school::*symbol-sl-pips-overrides*))
+         (orig-symbol-tp (and (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+                              swimmy.school::*symbol-tp-pips-overrides*))
+         (orig-resolve (symbol-function 'swimmy.school::resolve-strategy-by-name))
+         (orig-try-reserve (symbol-function 'swimmy.school::try-reserve-slot))
+         (orig-close-opp (symbol-function 'swimmy.school::close-opposing-category-positions))
+         (orig-update-exp (symbol-function 'swimmy.school::update-symbol-exposure))
+         (orig-request-pos (symbol-function 'swimmy.school::request-mt5-positions))
+         (orig-emit (symbol-function 'swimmy.core::emit-telemetry-event))
+         (safe-order-sym (if (fboundp 'swimmy.school::safe-order)
+                             'swimmy.school::safe-order
+                             'swimmy.engine::safe-order))
+         (orig-safe-order (symbol-function safe-order-sym))
+         (submitted nil)
+         (telemetry-data nil)
+         (magic 910004)
+         (strategy (swimmy.school:make-strategy :name "UT-SLTP-SYMBOL"
+                                                :symbol "USDJPY"
+                                                :sl nil
+                                                :tp -1.0)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*allocation-pending-orders* (make-hash-table :test 'eql))
+          (setf swimmy.school::*slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*default-sl-pips* 0.50)
+          (setf swimmy.school::*default-tp-pips* 0.80)
+          (setf swimmy.school::*symbol-sl-pips-overrides* (make-hash-table :test 'equal))
+          (setf swimmy.school::*symbol-tp-pips-overrides* (make-hash-table :test 'equal))
+          (setf (gethash "USDJPY" swimmy.school::*symbol-sl-pips-overrides*) 0.33)
+          (setf (gethash "USDJPY" swimmy.school::*symbol-tp-pips-overrides*) 0.55)
+          (setf (symbol-function 'swimmy.school::resolve-strategy-by-name)
+                (lambda (name)
+                  (if (string= name "UT-SLTP-SYMBOL") strategy nil)))
+          (setf (symbol-function 'swimmy.school::try-reserve-slot)
+                (lambda (&rest _args)
+                  (declare (ignore _args))
+                  (setf (gethash magic swimmy.school::*allocation-pending-orders*)
+                        (list :strategy "UT-SLTP-SYMBOL"
+                              :symbol "USDJPY"
+                              :category :trend
+                              :direction :buy
+                              :magic magic))
+                  (values 0 magic)))
+          (setf (symbol-function 'swimmy.school::close-opposing-category-positions)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::update-symbol-exposure)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (setf (symbol-function 'swimmy.school::request-mt5-positions)
+                (lambda () nil))
+          (setf (symbol-function safe-order-sym)
+                (lambda (action symbol lot sl tp magic-num comment)
+                  (setf submitted (list :action action
+                                        :symbol symbol
+                                        :lot lot
+                                        :sl sl
+                                        :tp tp
+                                        :magic magic-num
+                                        :comment comment))
+                  t))
+          (setf (symbol-function 'swimmy.core::emit-telemetry-event)
+                (lambda (event-type &key service severity correlation-id data)
+                  (declare (ignore service severity correlation-id))
+                  (when (string= event-type "execution.order_submitted")
+                    (setf telemetry-data data))
+                  t))
+          (let ((ok (swimmy.school::execute-order-sequence
+                     :trend :buy "USDJPY" 100.0 100.2 0.01 "UT-SLTP-SYMBOL" "H1" nil)))
+            (assert-true ok "Expected order sequence to succeed with symbol override")
+            (assert-not-nil submitted "Expected safe-order invocation")
+            (assert-true (< (abs (- (getf submitted :sl) 99.67)) 1e-4)
+                         "Expected SL to use symbol override")
+            (assert-true (< (abs (- (getf submitted :tp) 100.55)) 1e-4)
+                         "Expected TP to use symbol override")
+            (let ((pending (gethash magic swimmy.school::*allocation-pending-orders*)))
+              (assert-not-nil pending "Expected pending state to remain")
+              (assert-equal "symbol_override" (getf pending :source_of_override)
+                            "Expected symbol override source in pending state"))
+            (assert-not-nil telemetry-data "Expected telemetry payload")
+            (assert-equal "symbol_override" (jsown:val telemetry-data "source_of_override")
+                          "Expected telemetry source_of_override=symbol_override")))
+      (setf swimmy.school::*allocation-pending-orders* orig-pending)
+      (setf swimmy.school::*slot-allocation* orig-slots)
+      (setf swimmy.school::*default-sl-pips* orig-default-sl)
+      (setf swimmy.school::*default-tp-pips* orig-default-tp)
+      (when (boundp 'swimmy.school::*symbol-sl-pips-overrides*)
+        (setf swimmy.school::*symbol-sl-pips-overrides* orig-symbol-sl))
+      (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
+        (setf swimmy.school::*symbol-tp-pips-overrides* orig-symbol-tp))
+      (setf (symbol-function 'swimmy.school::resolve-strategy-by-name) orig-resolve)
+      (setf (symbol-function 'swimmy.school::try-reserve-slot) orig-try-reserve)
+      (setf (symbol-function 'swimmy.school::close-opposing-category-positions) orig-close-opp)
+      (setf (symbol-function 'swimmy.school::update-symbol-exposure) orig-update-exp)
+      (setf (symbol-function 'swimmy.school::request-mt5-positions) orig-request-pos)
+      (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
+      (setf (symbol-function safe-order-sym) orig-safe-order))))
+
 (deftest test-close-category-positions-prefers-effective-sltp-from-submit-state
   "close-category-positions should use submit-time effective SL/TP stored in slot state."
   (let* ((orig-slots swimmy.school::*slot-allocation*)
@@ -6653,6 +6994,34 @@
       (setf (symbol-function 'swimmy.school::record-trade-outcome) orig-record-outcome)
       (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strategy)
       (setf (symbol-function 'swimmy.shell:notify-discord-symbol) orig-notify))))
+
+(deftest test-close-a-rank-shadow-positions-prefers-effective-sltp-from-submit-state
+  "Shadow close should honor submit-time effective SL/TP when present."
+  (let ((orig-shadow-slots (and (boundp 'swimmy.school::*shadow-slot-allocation*)
+                                swimmy.school::*shadow-slot-allocation*))
+        (orig-record-outcome (symbol-function 'swimmy.school::record-trade-outcome)))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*shadow-slot-allocation* (make-hash-table :test 'equal))
+          (setf (gethash "UT-SHADOW-EFFECTIVE|USDJPY|BUY" swimmy.school::*shadow-slot-allocation*)
+                (list :strategy "UT-SHADOW-EFFECTIVE"
+                      :symbol "USDJPY"
+                      :direction :buy
+                      :category :trend
+                      :entry 100.00
+                      :sl 95.00
+                      :tp 105.00
+                      :effective-sl 99.50
+                      :effective-tp 100.70
+                      :source_of_override "strategy"))
+          (setf (symbol-function 'swimmy.school::record-trade-outcome)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (swimmy.school::close-a-rank-shadow-positions "USDJPY" 99.49 99.51)
+          (assert-equal 0 (hash-table-count swimmy.school::*shadow-slot-allocation*)
+                        "Expected shadow slot to close using effective submit-time SL"))
+      (when (boundp 'swimmy.school::*shadow-slot-allocation*)
+        (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots))
+      (setf (symbol-function 'swimmy.school::record-trade-outcome) orig-record-outcome))))
 
 ;;; ─────────────────────────────────────────
 ;;; CATEGORY EXECUTION TESTS
@@ -13331,6 +13700,60 @@
       (ignore-errors (delete-file (concatenate 'string tmp-db "-wal")))
       (ignore-errors (delete-file (concatenate 'string tmp-db "-shm"))))))
 
+(deftest test-legend-split-definitions-match-canonical
+  "Reviewed split Legend definitions should match canonical strategies_v3 behavior."
+  (labels ((plist-value (form key)
+             (second (member key form :test #'eq)))
+           (find-make-strategy-form (form name)
+             (cond
+               ((and (consp form)
+                     (symbolp (first form))
+                     (string= "MAKE-STRATEGY" (symbol-name (first form)))
+                     (equal name (plist-value form :name)))
+                form)
+               ((consp form)
+                (or (find-make-strategy-form (car form) name)
+                    (find-make-strategy-form (cdr form) name)))
+               (t nil)))
+           (read-strategy-form (path name)
+             (with-open-file (stream path)
+               (loop for form = (read stream nil :eof)
+                     until (eq form :eof)
+                     for found = (find-make-strategy-form form name)
+                     when found do (return found))))
+           (effective-timeframe (name form)
+             (or (swimmy.school::%lookup-optimized-timeframe-minutes name)
+                 (plist-value form :timeframe))))
+    (let* ((canonical-path (swimmy.core::swimmy-path "strategies_v3.lisp"))
+           (trend-path (swimmy.core::swimmy-path "src/lisp/strategies/strategies-trend.lisp"))
+           (scalp-path (swimmy.core::swimmy-path "src/lisp/strategies/strategies-scalp.lisp"))
+           (cases `(("MACD-Above-Zero-Cross" ,trend-path)
+                    ("Pullback-Breakout" ,scalp-path))))
+      (dolist (case cases)
+        (destructuring-bind (name split-path) case
+          (let ((canonical (read-strategy-form canonical-path name))
+                (split (read-strategy-form split-path name)))
+            (assert-not-nil canonical (format nil "Missing canonical definition for ~a" name))
+            (assert-not-nil split (format nil "Missing split definition for ~a" name))
+            (assert-equal (plist-value canonical :indicators)
+                          (plist-value split :indicators)
+                          (format nil "Indicators drifted for ~a" name))
+            (assert-equal (plist-value canonical :entry)
+                          (plist-value split :entry)
+                          (format nil "Entry drifted for ~a" name))
+            (assert-equal (plist-value canonical :exit)
+                          (plist-value split :exit)
+                          (format nil "Exit drifted for ~a" name))
+            (assert-equal (plist-value canonical :sl)
+                          (plist-value split :sl)
+                          (format nil "SL drifted for ~a" name))
+            (assert-equal (plist-value canonical :tp)
+                          (plist-value split :tp)
+                          (format nil "TP drifted for ~a" name))
+            (assert-equal (effective-timeframe name canonical)
+                          (effective-timeframe name split)
+                          (format nil "Timeframe drifted for ~a" name))))))))
+
 (deftest test-ensure-rank-noop-heals-archived-db-rank
   "ensure-rank should heal archived DB rank even when old/new rank are both :LEGEND."
   (let* ((name "UT-LEGEND-NOOP-HEAL")
@@ -16079,7 +16502,8 @@
 			                  test-reconcile-with-mt5-positions-records-dryrun-slippage-on-promotion
 			                  test-internal-process-msg-status-now-sexp
 			                  test-internal-process-msg-recruit-special-forces-sexp
-			                  test-internal-process-msg-history-sexp
+			                  test-internal-process-msg-reload-symbol-sltp-overrides-sexp
+	                  test-internal-process-msg-history-sexp
 			                  test-internal-process-msg-history-sexp-normalizes-unix-timestamp
 	                  test-internal-process-msg-history-sexp-normalizes-symbol-key
                   test-data-client-sexp-candle-normalizes-unix-timestamp
@@ -16210,6 +16634,7 @@
 	                  test-restore-legend-61-updates-existing-timeframe-from-optimized-map
 	                  test-restore-legend-61-applies-optimized-timeframe-when-adding
 	                  test-restore-legend-61-resurrects-db-archived-rank-for-existing-legend
+	                  test-legend-split-definitions-match-canonical
 	                  test-ensure-rank-noop-heals-archived-db-rank
 	                  test-b-rank-culling-for-category-filters-expectancy-candidates
 	                  test-b-rank-culling-records-category-a-candidate-metrics
@@ -16362,9 +16787,11 @@
 			                  test-runtime-selection-prefers-gate-live-ready-over-raw-sharpe
 			                  test-runtime-selection-applies-diversification-penalty
 			                  test-runtime-selection-telemetry-emits-selected-and-rejected-reasons
-			                  test-process-category-trades-runs-a-rank-shadow-when-s-gate-blocked
-			                  test-open-a-rank-shadow-trades-allows-forward-running-b-rank
-				                  test-forward-min-trades-default-is-300
+				                  test-process-category-trades-runs-a-rank-shadow-when-s-gate-blocked
+				                  test-open-a-rank-shadow-trades-allows-forward-running-b-rank
+				                  test-open-a-rank-shadow-trades-uses-symbol-override-effective-sltp
+				                  test-backtest-live-shadow-exit-geometry-aligns-for-strategy-sltp
+					                  test-forward-min-trades-default-is-300
 				                  test-refresh-deployment-gate-forward-trades-boundary
 				                  test-fetch-deployment-gate-status-includes-fail-reason-alias
 				                  test-refresh-deployment-gate-forward-metrics-ignore-periodic-probes
@@ -16378,13 +16805,17 @@
 	                  test-verify-signal-authority-requires-live-ready-deployment-gate
 	                  test-verify-signal-authority-blocks-on-live-edge-degradation
 	                  test-verify-signal-authority-blocks-on-live-edge-loss-streak
-	                  test-execute-category-trade-fails-closed-on-reserved-strategy-name-tokens
-	                  test-execute-order-sequence-fails-closed-on-missing-context
-	                  test-execute-order-sequence-fails-closed-on-reserved-strategy-token
-	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
-	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-sell
-	                  test-execute-order-sequence-falls-back-to-default-sltp-when-strategy-invalid
-	                  test-close-category-positions-prefers-effective-sltp-from-submit-state
+		                  test-execute-category-trade-fails-closed-on-reserved-strategy-name-tokens
+		                  test-execute-order-sequence-fails-closed-on-missing-context
+		                  test-execute-order-sequence-fails-closed-on-reserved-strategy-token
+			                  test-load-symbol-sltp-overrides-from-sexp-file
+			                  test-load-symbol-sltp-overrides-missing-file-clears-stale-values
+			                  test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
+			                  test-execute-order-sequence-uses-strategy-specific-sltp-for-sell
+			                  test-execute-order-sequence-falls-back-to-default-sltp-when-strategy-invalid
+		                  test-execute-order-sequence-uses-symbol-override-when-strategy-invalid
+		                  test-close-category-positions-prefers-effective-sltp-from-submit-state
+		                  test-close-a-rank-shadow-positions-prefers-effective-sltp-from-submit-state
 	                  ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy

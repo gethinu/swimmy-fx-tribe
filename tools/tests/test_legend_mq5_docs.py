@@ -109,6 +109,37 @@ class TestLegendMq5Docs(unittest.TestCase):
         self.assertNotIn("legend-macd-zero-cross-long", text)
         self.assertIn("timeframe=3600", text)
 
+    def test_followup_validation_doc_closes_internal_freeze_tasks(self) -> None:
+        doc = ROOT / "doc/knowledge/legend_mt5_followup_validation_20260307.md"
+        self.assertTrue(doc.exists(), "followup validation doc must exist")
+
+        text = doc.read_text(encoding="utf-8")
+        self.assertIn("The MT5 freeze follow-up is complete for the current local environment.", text)
+        self.assertIn(
+            "medium fallback for `historical-s-bred940-trend-core` is treated as canonical closeout evidence",
+            text,
+        )
+        self.assertIn("true broker-variance replay", text)
+        self.assertIn("repo cleanup boundary has already been documented", text)
+
+    def test_inventory_doc_reduces_remaining_blocker_to_broker_variance(self) -> None:
+        doc = ROOT / "doc/knowledge/legend_s_rank_inventory_20260307.md"
+        self.assertTrue(doc.exists(), "legend s-rank inventory doc must exist")
+
+        text = doc.read_text(encoding="utf-8")
+        self.assertIn("`medium` fallback を canonical とし", text)
+        self.assertIn("現時点で残っている実務上の blocker は broker variance だけです", text)
+        self.assertIn("cleanup boundary も未解決のままではありません", text)
+
+    def test_cleanup_boundary_doc_records_current_operating_decisions(self) -> None:
+        doc = ROOT / "doc/knowledge/legend_mt5_cleanup_boundary_20260307.md"
+        self.assertTrue(doc.exists(), "cleanup boundary doc must exist")
+
+        text = doc.read_text(encoding="utf-8")
+        self.assertIn("現時点の運用決定", text)
+        self.assertIn("audit trail として repo に残してよい", text)
+        self.assertIn("separate 扱いを維持する", text)
+
     def test_strategies_legendary_only_keeps_external_legends_as_legacy_notes(self) -> None:
         path = ROOT / "src/lisp/strategies/strategies-legendary.lisp"
         text = path.read_text(encoding="utf-8")

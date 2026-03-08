@@ -796,6 +796,25 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                          (swimmy.main:update-candle bid-num symbol-str))
                        ;; Force immediate status emission even outside regular market hours.
                        (swimmy.shell:send-periodic-status-report symbol-str (or bid-num 0.0) t))))
+                  ((string= type-str "RELOAD_SYMBOL_SLTP_OVERRIDES")
+                   (let* ((path-raw (%alist-val sexp '(path :path overrides_path overrides-path
+                                                           symbol_sltp_overrides_path symbol-sltp-overrides-path)
+                                                 nil))
+                          (path (cond
+                                  ((pathnamep path-raw) (namestring path-raw))
+                                  ((stringp path-raw)
+                                   (let ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                               path-raw)))
+                                     (and (> (length trimmed) 0) trimmed)))
+                                  (t nil))))
+                     (when path
+                       (setf swimmy.school::*symbol-sltp-overrides-path* path))
+                     (if (fboundp 'swimmy.school::load-symbol-sltp-overrides)
+                         (let ((loaded (swimmy.school::load-symbol-sltp-overrides)))
+                           (format t "[DISPATCH] 🔁 Symbol SL/TP overrides reloaded path=~a loaded=~a~%"
+                                   swimmy.school::*symbol-sltp-overrides-path*
+                                   loaded))
+                         (format t "[DISPATCH] ⚠️ load-symbol-sltp-overrides unavailable~%"))))
                   ((string= type-str "RECRUIT_SPECIAL_FORCES")
                    (let* ((symbols-raw (%alist-val sexp '(symbols :symbols) nil))
                           (symbols (%normalize-symbol-list symbols-raw))
