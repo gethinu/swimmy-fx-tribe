@@ -84,11 +84,11 @@ What is not the objective anymore:
 - reopening the top slot with fresh ad hoc candidate churn
 - treating fixed-parameter short-window winners as sufficient by themselves
 
-What is still open:
+What remains only as residual risk or optional follow-up:
 
 - true broker-variance replay on an actually independent source
 - optional full-wide `historical-s-bred940-trend-core` sweep if runtime budget is explicitly approved
-  (`run_20260307_132228_b940_medium` is the freeze-era canonical fallback, so this is not a closeout blocker)
+  (`run_20260307_132228_b940_medium` is the freeze-era canonical fallback, so this is not needed to close the batch)
 - cleanup / commit-boundary decisions are already documented in
   `doc/knowledge/legend_mt5_cleanup_boundary_20260307.md`
 
@@ -280,7 +280,7 @@ Broader-retune conclusion:
   is now runtime cost, not obvious under-search.
 - For freeze closeout, `run_20260307_132228_b940_medium` is the canonical artifact for
   `historical-s-bred940-trend-core`. A true full-wide replay remains optional follow-up work, not a
-  blocker to lock the shortlist ordering.
+  requirement to lock the shortlist ordering.
 - The broader follow-up therefore does not reopen the top slot. It reinforces
   `legend-macd-above-zero-cross` as the quality-first leader, keeps
   `historical-s-bred940-trend-core` as the second adaptive contender, and leaves
@@ -312,7 +312,7 @@ Observed behavior:
 Broker-variance conclusion:
 
 - Broker-by-broker variance is still unresolved in this environment.
-- It is also the only remaining practical blocker for the freeze-era MT5 validation package.
+- For freeze closeout, this is treated as a deferred residual risk rather than a blocker.
 - The attempted proxies were useful as diagnostics, but they are not strong enough to close the
   risk:
   - history injection is contaminated by fresh `MetaQuotes-Demo` synchronization
@@ -432,22 +432,21 @@ Under that objective, the operational stance is:
 - fix `legend-macd-above-zero-cross` as the primary stability-first line
 - keep `historical-s-bred940-trend-core` as the second adaptive line, not as an unresolved top-slot challenger
 - keep `legend-pullback-breakout` as a third higher-turnover adaptive line
-- treat only one execution blocker as still open:
-  - true broker-variance replay
+- keep broker-variance replay as deferred residual risk rather than as a closeout requirement
 
 ## Freeze Closeout Status
 
 The MT5 freeze follow-up is complete for the current local environment.
 
 The medium fallback for `historical-s-bred940-trend-core` is treated as canonical closeout evidence
-rather than as an unresolved blocker. The full-wide rerun remains optional future research, not a
+instead of as an unresolved issue. The full-wide rerun remains optional future research, not a
 requirement for closing this batch.
 
 The repo cleanup boundary has already been documented in
 `doc/knowledge/legend_mt5_cleanup_boundary_20260307.md` and is therefore not kept on the
 validation-risk list.
 
-## Remaining Risks
+## Residual Risks
 
 - Baseline isolated tester execution and the `timeframe=3600 -> H1` reproduction contract are
   already covered. The open risk is robustness, not first-pass portability.
@@ -455,9 +454,10 @@ validation-risk list.
   `legend-macd-above-zero-cross` / `legend-pullback-breakout`, `medium` fallback for
   `historical-s-bred940-trend-core`). The medium fallback is accepted as the freeze-era closeout
   artifact, so the aborted true full-wide rerun is no longer treated as an unresolved blocker.
-- Broker variance is still open. The 2026-03-07 proxy probe showed that the current environment
-  cannot produce a clean second-broker replay, and fixed-spread overrides do not materially alter
-  the present `Model=4` tester results.
+- Broker variance remains unresolved. The 2026-03-07 proxy probe showed that the current
+  environment cannot produce a clean second-broker replay, and fixed-spread overrides do not
+  materially alter the present `Model=4` tester results. Freeze closeout accepts this as deferred
+  residual risk rather than keeping the batch open.
 - The fresh fixed-parameter `2026.01.01-2026.03.07` window is especially thin for
   `legend-macd-above-zero-cross` (`4` trades), so static-set deployment decisions should not rely
   on that rerun alone even though the walk-forward fold stayed positive.

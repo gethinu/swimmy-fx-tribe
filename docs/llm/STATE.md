@@ -37,8 +37,8 @@
     - broader retune は `legend-macd-above-zero-cross` の主候補性を強化した。
     - `historical-s-bred940-trend-core` は narrow bounded walk-forward でも十分に有効で、broader retune で隠れた大幅上振れは確認されなかった。
     - `legend-pullback-breakout` は改善したが、品質順位では依然として上位2本の後ろに留まる。
-  - open risk:
-    - broker variance は未解決で、freeze closeout の実務上の blocker はこれのみ。
+  - residual risk:
+    - broker variance は未解決だが、freeze closeout では deferred risk として受容する。
     - `historical-s-bred940-trend-core` の true full-wide sweep は optional follow-up とし、現 portable 環境では runtime ceiling により `run_20260307_132228_b940_medium/` を canonical fallback とする。
   - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **Legend canonical-source alignment（2026-03-08 JST）**:
@@ -2117,6 +2117,7 @@
 - **レポート手動更新（副作用抑制）**: `tools/ops/finalize_rank_report.sh` / `finalize_rank_report.lisp` は既定で「集計のみ（metrics refresh + report generation）」を実行し、rank評価（culling/昇格）は実行しない。rank評価を含める場合は明示的に `SWIMMY_FINALIZE_REPORT_RUN_RANK_EVAL=1` を指定する。
 
 ## 直近の変更履歴
+- **2026-03-08**: Legend freeze-closeout finalization を反映。broker variance は未解決のまま残すが、freeze-era MT5 validation の closeout blocker ではなく deferred residual risk として受容する方針へ更新。`legend-macd-above-zero-cross` の top slot、`historical-s-bred940-trend-core` の `run_20260307_132228_b940_medium/` fallback、`legend-pullback-breakout` の 3 位ラインはそのまま固定し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-08**: Legend freeze-closeout alignment を反映。`historical-s-bred940-trend-core` の `run_20260307_132228_b940_medium/` を freeze-era canonical fallback とし、true full-wide sweep は optional follow-up へ格下げした。実務上の残 blocker は broker variance のみと明記し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-08**: Legend canonical-source alignment を反映。reviewed MT5 port の正本を `strategies_v3.lisp` + `data/optimized_timeframes.json` に固定し、`src/lisp/strategies/strategies-trend.lisp` / `src/lisp/strategies/strategies-scalp.lisp` の reviewed Legend 定義は compatibility mirror として drift を許容しない契約を追加。検知は focused regression test で固定し、通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
 - **2026-03-08**: V50.8-P5.111（chat handoff note）を反映。`implementation_plan_v50.8.md` の `V50.8-P5` 直下へ、「このチャットではここで中断し別チャットへ引き継ぐ」旨と、未解決課題 `managed 3run stop` / `current_run* stale meta` / `armada residue(-Live)` / `P5 live 実績不足` を追加。次チャットの開始条件は `live 再開`、`armada residue 停止`、または `P5 freeze hold で閉じる` のいずれかを明示選択すること。通信ポート/メッセージ契約は不変のため `INTERFACES.md` 更新なし。
