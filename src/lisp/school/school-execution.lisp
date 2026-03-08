@@ -478,6 +478,22 @@ Multiplier NIL means fallback to direction mismatch logic."
     (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         (find name *evolved-strategies* :key #'strategy-name :test #'string=))))
 
+(defun resolve-live-effective-sltp (strategy-name)
+  "Resolve live SL/TP pips and source with strategy-first fallback.
+   Current model supports strategy value -> global default precedence."
+  (let* ((strat (and (stringp strategy-name)
+                     (not (%nil-like-strategy-name-p strategy-name))
+                     (resolve-strategy-by-name strategy-name)))
+         (raw-sl (and strat (strategy-sl strat)))
+         (raw-tp (and strat (strategy-tp strat)))
+         (strategy-sl (and (numberp raw-sl) (> raw-sl 0.0) (float raw-sl 1.0)))
+         (strategy-tp (and (numberp raw-tp) (> raw-tp 0.0) (float raw-tp 1.0))))
+    (if (and strategy-sl strategy-tp)
+        (values strategy-sl strategy-tp "strategy")
+        (values (float *default-sl-pips* 1.0)
+                (float *default-tp-pips* 1.0)
+                "global_default"))))
+
 (defun %digits-only-p (text)
   "Return T when TEXT consists of one or more ASCII digits."
   (and (stringp text)
@@ -1413,12 +1429,12 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
     ;; Reservation
     (multiple-value-bind (slot-index magic)
         (try-reserve-slot category lead-name symbol direction
-                                  :pair-id pair-id
-                                  :lot lot
-                                  :entry-bid entry-bid
-                                  :entry-ask entry-ask
-                                  :entry-spread-pips entry-spread-pips
-                                  :entry-cost-pips entry-cost-pips)
+                          :pair-id pair-id
+                          :lot lot
+                          :entry-bid entry-bid
+                          :entry-ask entry-ask
+                          :entry-spread-pips entry-spread-pips
+                          :entry-cost-pips entry-cost-pips)
       (unless slot-index
         (format t "[ALLOC] ⚠️ Category ~a Full (4/4)!~%" category)
         (return-from execute-order-sequence nil))
@@ -1426,49 +1442,72 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
       (let ((committed nil))
         (unwind-protect
             (progn
-              (close-opposing-category-positions category direction symbol (if (eq direction :buy) bid ask) "Doten")
-              (let ((sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)) ;; Constants (Phase 3.2)
-                (cond
-                  ((eq direction :buy)
-                   (let ((sl (- bid sl-pips)) (tp (+ bid tp-pips)))
-                     (when (safe-order "BUY" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
+              (close-opposing-category-positions category direction symbol
+                                                 (if (eq direction :buy) bid ask)
+                                                 "Doten")
+              (multiple-value-bind (sl-pips tp-pips source-of-override)
+                  (resolve-live-effective-sltp lead-name)
+                (let ((effective-sl nil)
+                      (effective-tp nil))
+                  (cond
+                    ((eq direction :buy)
+                     (setf effective-sl (- bid sl-pips)
+                           effective-tp (+ bid tp-pips))
+                     (when (safe-order "BUY" symbol lot effective-sl effective-tp magic
+                                       (format nil "~a|~a" lead-name timeframe-key))
+                       (setf committed t)))
+                    ((eq direction :sell)
+                     (setf effective-sl (+ ask sl-pips)
+                           effective-tp (- ask tp-pips))
+                     (when (safe-order "SELL" symbol lot effective-sl effective-tp magic
+                                       (format nil "~a|~a" lead-name timeframe-key))
                        (setf committed t))))
-                  ((eq direction :sell)
-                   (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
-                     (when (safe-order "SELL" symbol lot sl tp magic (format nil "~a|~a" lead-name timeframe-key))
-                       (setf committed t))))))
-              (when committed
-                (update-symbol-exposure symbol lot :open)
-                (incf *category-trades*)
-                (setf *last-entry-time* (get-universal-time))
-                (format t "[EXEC] ✅ Committed: ~a ~a~%" category symbol)
-                (when (fboundp 'swimmy.core::emit-telemetry-event)
-                  (let* ((dir (if (eq direction :buy) "BUY" "SELL"))
-                         (cat (if (keywordp category) (string-downcase (symbol-name category)) (format nil "~a" category)))
-                         (pip-size (get-pip-size symbol)))
-                    (swimmy.core::emit-telemetry-event "execution.order_submitted"
-                      :service "school"
-                      :severity "info"
-                      :data (jsown:new-js
-                              ("symbol" symbol)
-                              ("direction" dir)
-                              ("category" cat)
-                              ("strategy" (or lead-name "unknown"))
-                              ("timeframe" timeframe-key)
-                              ("lot" lot)
-                              ("magic" magic)
-                              ("entry_bid" entry-bid)
-                              ("entry_ask" entry-ask)
-                              ("spread_pips" entry-spread-pips)
-                              ("cost_pips" entry-cost-pips)
-                              ("pip_size" pip-size))))
-                (request-mt5-positions)
-                t))
+                  (when committed
+                    (let ((pending (gethash magic *allocation-pending-orders*)))
+                      (setf (getf pending :effective-sl) effective-sl
+                            (getf pending :effective-tp) effective-tp
+                            (getf pending :effective_sl) effective-sl
+                            (getf pending :effective_tp) effective-tp
+                            (getf pending :source_of_override) source-of-override)
+                      (setf (gethash magic *allocation-pending-orders*) pending)))
+                  (when committed
+                    (update-symbol-exposure symbol lot :open)
+                    (incf *category-trades*)
+                    (setf *last-entry-time* (get-universal-time))
+                    (format t "[EXEC] ✅ Committed: ~a ~a~%" category symbol)
+                    (when (fboundp 'swimmy.core::emit-telemetry-event)
+                      (let* ((dir (if (eq direction :buy) "BUY" "SELL"))
+                             (cat (if (keywordp category)
+                                      (string-downcase (symbol-name category))
+                                      (format nil "~a" category)))
+                             (pip-size (get-pip-size symbol)))
+                        (swimmy.core::emit-telemetry-event "execution.order_submitted"
+                          :service "school"
+                          :severity "info"
+                          :data (jsown:new-js
+                                  ("symbol" symbol)
+                                  ("direction" dir)
+                                  ("category" cat)
+                                  ("strategy" (or lead-name "unknown"))
+                                  ("timeframe" timeframe-key)
+                                  ("lot" lot)
+                                  ("magic" magic)
+                                  ("entry_bid" entry-bid)
+                                  ("entry_ask" entry-ask)
+                                  ("spread_pips" entry-spread-pips)
+                                  ("cost_pips" entry-cost-pips)
+                                  ("effective_sl" effective-sl)
+                                  ("effective_tp" effective-tp)
+                                  ("source_of_override" source-of-override)
+                                  ("pip_size" pip-size))))
+                    (request-mt5-positions)
+                    t))))
           ;; Cleanup
           (unless committed
             (remhash magic *allocation-pending-orders*)
             (remhash (format nil "~a-~d" category slot-index) *slot-allocation*)
-            (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))))))
+            (format t "[ALLOC] ♻️ Released Slot ~d~%" slot-index))))
+        committed))))
 
 (defun execute-category-trade (category direction symbol bid ask
                                &key (lot-multiplier 1.0) signal-confidence strategy-name strategy-timeframe)
@@ -1560,15 +1599,25 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                (magic (getf slot :magic))
                (lot (or (getf slot :lot) 0.01))
                (sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)
+               (effective-sl (or (and (numberp (getf slot :effective-sl))
+                                      (float (getf slot :effective-sl) 1.0))
+                                 (and (numberp (getf slot :effective_sl))
+                                      (float (getf slot :effective_sl) 1.0))))
+               (effective-tp (or (and (numberp (getf slot :effective-tp))
+                                      (float (getf slot :effective-tp) 1.0))
+                                 (and (numberp (getf slot :effective_tp))
+                                      (float (getf slot :effective_tp) 1.0))))
                (pnl 0) (closed nil))
          (when (and entry (numberp bid) (numberp ask))
            (cond
-             ((eq pos :long)
-              (let ((sl (- entry sl-pips)) (tp (+ entry tp-pips)))
+             ((or (eq pos :long) (eq pos :buy))
+              (let ((sl (or effective-sl (- entry sl-pips)))
+                    (tp (or effective-tp (+ entry tp-pips))))
                 (when (or (<= bid sl) (>= bid tp))
                   (setf pnl (- bid entry) closed t))))
-             ((eq pos :short)
-              (let ((sl (+ ask sl-pips)) (tp (- ask tp-pips)))
+             ((or (eq pos :short) (eq pos :sell))
+              (let ((sl (or effective-sl (+ ask sl-pips)))
+                    (tp (or effective-tp (- ask tp-pips))))
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed
