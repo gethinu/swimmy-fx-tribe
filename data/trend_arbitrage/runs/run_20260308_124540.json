@@ -1,0 +1,102 @@
+{
+  "ran_at": "2026-03-08T12:45:40+00:00",
+  "trends_count": 10,
+  "candidate_count": 12,
+  "eligible_count": 0,
+  "selected_count": 0,
+  "top_candidates": [
+    {
+      "id": "trend-989c75ac315a6a60",
+      "query": "価格比較 ツール",
+      "demand_score": 0.62,
+      "gap_score": 0.245,
+      "intent_score": 0.72,
+      "opportunity_score": 0.50875,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-de6c0e34291b5d4c",
+      "query": "アフィリエイト 収益化",
+      "demand_score": 0.62,
+      "gap_score": 0.135,
+      "intent_score": 0.72,
+      "opportunity_score": 0.47025,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-69a995f0e9f1dcd4",
+      "query": "AI ツール 比較",
+      "demand_score": 0.62,
+      "gap_score": 0.16,
+      "intent_score": 0.47,
+      "opportunity_score": 0.429,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-2ac43b01050b7cfd",
+      "query": "副業 AI",
+      "demand_score": 0.62,
+      "gap_score": 0.155,
+      "intent_score": 0.47,
+      "opportunity_score": 0.42725,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-81e63490287b9555",
+      "query": "佐藤輝明 おすすめ",
+      "demand_score": 0.586673,
+      "gap_score": 0.16,
+      "intent_score": 0.47,
+      "opportunity_score": 0.414003,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-303f42f41b8973e8",
+      "query": "佐藤輝明 比較",
+      "demand_score": 0.586673,
+      "gap_score": 0.16,
+      "intent_score": 0.47,
+      "opportunity_score": 0.414003,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-2cec95843f1310de",
+      "query": "業務自動化 テンプレ",
+      "demand_score": 0.62,
+      "gap_score": 0.105,
+      "intent_score": 0.47,
+      "opportunity_score": 0.40975,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-f4ef98e589481990",
+      "query": "佐藤輝明",
+      "demand_score": 0.666674,
+      "gap_score": 0.18,
+      "intent_score": 0.22,
+      "opportunity_score": 0.407003,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-7da1a9fdd175f7bd",
+      "query": "佐藤輝明 wbc",
+      "demand_score": 0.61334,
+      "gap_score": 0.2,
+      "intent_score": 0.22,
+      "opportunity_score": 0.390003,
+      "serp_count": 10
+    },
+    {
+      "id": "trend-dc6bfc0aeb724b73",
+      "query": "佐藤輝明 ポジション",
+      "demand_score": 0.61334,
+      "gap_score": 0.18,
+      "intent_score": 0.22,
+      "opportunity_score": 0.383003,
+      "serp_count": 10
+    }
+  ],
+  "eligible": [],
+  "selected": [],
+  "publish_results": []
+}

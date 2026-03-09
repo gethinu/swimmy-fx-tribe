@@ -64,6 +64,39 @@
   - queue は `requires_paper_forward=true` の候補のみを対象にし、`deployment_gate_status` / SQLite / Lisp runtime へ直接反映しない。
   - 目的は freeze-era shortlist を paper-forward canonical へ接続することにあり、`FORWARD_RUNNING` / `LIVE_READY` 判定そのものは既存の paper-forward evidence 集計契約に委ねる。
   - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend paper-forward runner input（2026-03-08 JST）**:
+  - `tools/legend_mt5_paper_forward_runner_input.py` を `legend_paper_forward_queue_*.json` から runner 向け seed を生成する **offline runner-input artifact** の正本とする。
+  - 出力は `data/reports/mt5/legend_paper_forward_runner_input_*.json` とする。
+  - runner item は `paper_run_id`, `strategy_name`, `shortlist_rank`, `symbol`, `timeframe`, `execution_mode=PAPER`, `paper_comment_prefix`, `planned_run_root`, `target_forward_days`, `target_forward_trades`, `target_forward_sharpe`, `target_forward_pf`, `queue_source`, `bridge_source`, `status=READY_FOR_PAPER_FORWARD` を持つ。
+  - runner input は orchestration seed であり、`deployment_gate_status` / SQLite / Lisp runtime へ直接反映しない。
+  - 目的は queue を「実行可能な paper-forward 入力」まで落とすことであり、実際の FORWARD_RUNNING/LIVE_READY 判定は従来の paper-forward evidence 契約を維持する。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend paper-forward stage manifests（2026-03-08 JST）**:
+  - `tools/legend_mt5_paper_forward_stage.py` を `legend_paper_forward_runner_input_*.json` から staged run manifest 群を生成する **offline orchestration artifact** の正本とする。
+  - 出力は `data/reports/mt5/legend_paper_forward_stage_*.json` とし、各 item の `planned_run_root` 配下に `run_manifest.json` を作成する。
+  - run manifest は `paper_run_id`, `strategy_name`, `execution_mode=PAPER`, `paper_comment_prefix`, `target_forward_*`, `observed_forward_days=0`, `observed_forward_trades=0`, `observed_forward_sharpe=null`, `observed_forward_pf=null`, `status=STAGED`, `status_reason=awaiting_paper_forward_executor` を持つ。
+  - stage artifact は executor 起動前の seed 固定が目的であり、`deployment_gate_status` / SQLite / Lisp runtime へ直接反映しない。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+- **Legend paper-forward status artifact（2026-03-08 JST）**:
+  - `tools/legend_mt5_paper_forward_status.py` を staged run manifest 群から current status を集約する **offline status artifact** の正本とする。
+  - 出力は `data/reports/mt5/legend_paper_forward_status_*.json` とする。
+  - status 集約は `run_manifest.json` の `status`, `observed_forward_*`, `target_forward_*` を読み、`status_counts`, `ready_count`, `running_count`, `completed_count`, `progress_summary` を生成する。
+  - 目的は `FORWARD_RUNNING` へ移行する前の orchestration health を可視化することにあり、`LIVE_READY` 判定や DB upsert を代替しない。
+
+- **Legend paper-forward result apply artifact（2026-03-08 JST）**:
+  - `tools/legend_mt5_paper_forward_apply_results.py` を staged run manifest 群へ executor result batch を反映する **offline manifest-update artifact** の正本とする。
+  - 入力は `legend_paper_forward_stage_*.json` と executor 側 result batch JSON とし、result item は `paper_run_id`, `observed_forward_days`, `observed_forward_trades`, `observed_forward_sharpe`, `observed_forward_pf`, `status`, `status_reason` を持つ。
+  - 出力は `data/reports/mt5/legend_paper_forward_apply_results_*.json` とし、matching `run_manifest.json` を in-place 更新する。
+  - apply report は `updated_count`, `missing_count`, `status_counts`, `items` を持ち、unknown `paper_run_id` は fail-closed で `missing` 扱いにする。
+  - result apply は `deployment_gate_status` / SQLite / Lisp runtime を直接更新しない。更新後の可視化は `legend_mt5_paper_forward_status.py` の再集約に委ねる。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
+
+- **Legend paper-forward result template artifact（2026-03-09 JST）**:
+  - `tools/legend_mt5_paper_forward_result_template.py` を `legend_paper_forward_stage_*.json` から executor 記入用 result batch 雛形を生成する **offline handoff artifact** の正本とする。
+  - 出力は `data/reports/mt5/legend_paper_forward_result_template_*.json` とする。
+  - template item は `paper_run_id`, `strategy_name`, `shortlist_rank`, `manifest_path`, `planned_run_root`, `execution_mode=PAPER`, `target_forward_*`, `observed_forward_days=0`, `observed_forward_trades=0`, `observed_forward_sharpe=null`, `observed_forward_pf=null`, `status=STAGED`, `status_reason=fill_from_executor` を持つ。
+  - 目的は `apply_results` へ渡す canonical shape を stage から機械的に生成することであり、`run_manifest.json` / `deployment_gate_status` / SQLite / Lisp runtime は直接更新しない。
+  - 通信ポート/メッセージ契約は変更しないため `INTERFACES.md` 更新は不要。
 - **V50.8-P5.15 実装整合（2026-02-26）**:
   - `tools/xau_autobot.py` の `ema_gap_over_atr` レンジゲート（既定 `0.9..2.5`）を実コードへ適用する。
   - `tools/xau_autobot_trial_judge.py` の判定出力を `readiness/performance` 分割へ統一し、`min_closed_positions` 既定を `12` に合わせる。
