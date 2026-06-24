@@ -37,11 +37,10 @@ Thumbs.db
 # Git worktrees
 .worktrees/
 
-# Rust build artifacts (if any)
+# Rust build artifacts (guardian is vendored via git subtree; ignore only build output)
 guardian/target/
+guardian/**/*.rs.bk
 
-# Guardian has its own git repo
-guardian/
 config/.env.systemd
 
 # Strategy Data (Generated/Ephemeral)
