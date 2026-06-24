@@ -1,5 +1,10 @@
 # Swimmy System Reference
 
+> **Repo thesis:** Swimmy's value is the strategy *factory* (蠱毒), not any single
+> strategy. See [`doc/FACTORY.md`](doc/FACTORY.md) for the factory reframe and the
+> survivor → feed contract. The factory's honest output lives in [`feed/`](feed/)
+> (regenerate with `python3 -m tools.tribe.export`).
+
 ## Important Paths
 
 ### WSL (Linux)
