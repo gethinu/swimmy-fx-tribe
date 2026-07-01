@@ -22,11 +22,9 @@
 > [`Cargo.toml`](Cargo.toml):
 > `cargo build --release --manifest-path guardian/Cargo.toml`.
 > The authoritative ZMQ S-expr message/port contract is
-> [`docs/llm/INTERFACES.md`](docs/llm/INTERFACES.md) — guardian binds **5557**
-> (market data, SUB), **5560** (→MT5, PUB), **5559** (external command, SUB) and
-> connects **5555** (PUSH→Brain) / **5556** (SUB←Brain) / **5562** (PUSH→Notifier).
-> The "Network Ports" table below is a legacy summary; where it disagrees,
-> `INTERFACES.md` wins.
+> [`docs/llm/INTERFACES.md`](docs/llm/INTERFACES.md); the "Network Ports" table
+> below mirrors it and `guardian/src/main.rs`. On any disagreement, `INTERFACES.md`
+> wins.
 | Genome | `/home/swimmy/swimmy/genome.lisp` |
 | Discord Bot | `/home/swimmy/swimmy/src/python/discord_bot.py` |
 | Config | `/home/swimmy/swimmy/config/.env` |
@@ -57,12 +55,26 @@
 
 ## Network Ports
 
-| Port | Direction | Purpose |
-|------|-----------|---------|
-| 5557 | MT5 → Guardian | Market data (TICK) |
-| 5558 | Guardian → Brain | Forwarded data |
-| 5559 | Brain → Guardian | Commands |
-| 5560 | Guardian → MT5 | Trade commands |
+Source of truth: [`docs/llm/INTERFACES.md`](docs/llm/INTERFACES.md) +
+[`guardian/src/main.rs`](guardian/src/main.rs). These are the six ZMQ endpoints
+guardian actually wires (S-expression payloads only on the ZMQ boundary):
+
+| Port | Direction (ZMQ) | Purpose |
+|------|-----------------|---------|
+| 5557 | MT5 (PUB) → Guardian (SUB, bind) | Market data: `TICK` / `ACCOUNT_INFO` / `HISTORY` / `POSITIONS` / `SWAP_DATA` / `ORDER_ACK` / `ORDER_REJECT` / `TRADE_CLOSED` |
+| 5560 | Guardian (PUB, bind) → MT5 (SUB) | Execution & queries: `ORDER_OPEN` / `CLOSE` / `REQ_HISTORY` / `GET_POSITIONS` / `GET_SWAP` / `CLOSE_SHORT_TF` |
+| 5555 | Guardian (PUSH) → Brain (PULL) | Sensory input: normalized market data + `SYSTEM_COMMAND` to Brain |
+| 5556 | Brain (PUB) → Guardian (SUB) | Motor output: Brain trade intents (`SIGNAL`) → Guardian |
+| 5559 | External MCP/Tools (PUB) → Guardian (SUB, bind) | External command input (external `ORDER_OPEN` forwarding gated by `SWIMMY_ALLOW_EXTERNAL_ORDER_OPEN`) |
+| 5562 | Guardian/Lisp (PUSH) → Notifier (PULL) | Notifications (Discord relay, S-expr) |
+
+> [!NOTE]
+> There is **no port 5558** in the running system — the old "Guardian → Brain on
+> 5558 / Brain → Guardian on 5559" summary was stale. The Brain link is 5555
+> (Guardian→Brain, PUSH) and 5556 (Brain→Guardian, PUB); 5559 is *external*
+> command input, not the Brain→Guardian path. Auxiliary S-expr services
+> (Data Keeper 5561 / Risk Gateway 5563 / Pattern Similarity 5564 / Inference
+> 5565 / Backtest 5580-5581) are documented in `INTERFACES.md`.
 
 ---
 
