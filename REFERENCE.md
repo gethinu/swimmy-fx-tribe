@@ -13,8 +13,20 @@
 | Brain (Lisp) | `/home/swimmy/swimmy/brain.lisp` |
 | School | `/home/swimmy/swimmy/src/lisp/school.lisp` |
 | DSL | `/home/swimmy/swimmy/src/lisp/dsl.lisp` |
-| Guardian (Rust) | `/home/swimmy/swimmy/guardian/src/main.rs` |
+| Guardian (Rust) | `guardian/src/main.rs` (repo-internal; vendored via `git subtree`) |
 | Run Script | `/home/swimmy/swimmy/run.sh` |
+
+> [!NOTE]
+> **Guardian is vendored in-repo** at [`guardian/`](guardian/) (Rust arena:
+> OOS/CPCV backtest + execution), built as one Cargo workspace from the root
+> [`Cargo.toml`](Cargo.toml):
+> `cargo build --release --manifest-path guardian/Cargo.toml`.
+> The authoritative ZMQ S-expr message/port contract is
+> [`docs/llm/INTERFACES.md`](docs/llm/INTERFACES.md) — guardian binds **5557**
+> (market data, SUB), **5560** (→MT5, PUB), **5559** (external command, SUB) and
+> connects **5555** (PUSH→Brain) / **5556** (SUB←Brain) / **5562** (PUSH→Notifier).
+> The "Network Ports" table below is a legacy summary; where it disagrees,
+> `INTERFACES.md` wins.
 | Genome | `/home/swimmy/swimmy/genome.lisp` |
 | Discord Bot | `/home/swimmy/swimmy/src/python/discord_bot.py` |
 | Config | `/home/swimmy/swimmy/config/.env` |

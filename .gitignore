@@ -38,6 +38,8 @@ Thumbs.db
 .worktrees/
 
 # Rust build artifacts (guardian is vendored via git subtree; ignore only build output)
+# Cargo workspace lives at repo root, so build output lands in ./target/.
+/target/
 guardian/target/
 guardian/**/*.rs.bk
 

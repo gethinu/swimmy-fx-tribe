@@ -38,19 +38,29 @@ cull     -> │  school-validation / school-monte-carlo / cemetery   (kill the w
                                    feed/strategies_feed.json   <-- machine-readable
                                    feed/CATALOG.md              <-- human-readable
                                                 │
-                                                v
-                              bundle-of-edge  /  guardian (separate repo)
+                        ┌───────────────────────┴───────────────────────┐
+                        v                                                v
+              bundle-of-edge (external                    guardian/  (vendored arena,
+              downstream consumer)                        Rust; OOS/CPCV backtest + exec)
 ```
 
-### The arena is external
-The Rust evaluation/execution engine (**guardian**) lives in a **separate
-repository**, not here. This repo holds the *brain* (generation + selection +
-the survivors). Out-of-sample backtesting and live execution happen in guardian
-+ MT5 on the operator's host. Consequences:
+### The arena is vendored at `guardian/`
+The Rust evaluation/execution engine (**guardian**) is now **vendored into this
+repo** at [`guardian/`](../guardian/) via `git subtree` (full history preserved),
+built as one Cargo workspace (root [`Cargo.toml`](../Cargo.toml) →
+`members = ["guardian"]`). Brain (generation + selection + survivors) and the
+arena therefore move together, so the ZMQ S-expr contract in
+[`docs/llm/INTERFACES.md`](../docs/llm/INTERFACES.md) can change atomically on
+both sides. `bundle-of-edge` stays a **separate** downstream consumer; only
+guardian is vendored. Consequences:
 
-- `data/historical/` and `data/reports/` are git-ignored — they live on the host.
-- Most survivors here carry `OOS-SHARPE 0.0` / `CPCV-* 0.0`: the arena has not
-  (yet) re-scored them out-of-sample. The feed marks these **UNVALIDATED**.
+- `data/historical/` and `data/reports/` are still git-ignored — they live on the
+  host (SSD); vendoring the *engine* does not vendor the *data*. See
+  [`doc/OPERATIONS.md`](OPERATIONS.md) for storage layout + the subtree runbook.
+- Most survivors here still carry `OOS-SHARPE 0.0` / `CPCV-* 0.0`: the arena has
+  not (yet) re-scored them out-of-sample. The feed marks these **UNVALIDATED**.
+  Running the vendored guardian over the PROVISIONAL set is what produces the real
+  OOS/CPCV numbers that would promote strategies into PASS.
 
 ## 3. The feed contract (`feed/`)
 
@@ -115,8 +125,8 @@ As of the latest export of `data/library/` (168 survivors):
 - **REJECT: 107** — under-sampled or PF below floor (incl. the `S/TestStrat` placeholder).
 
 The actionable read for bundle-of-edge: **do not consume PROVISIONAL as edge.**
-The next high-value work is to run the external guardian arena over the
-PROVISIONAL set to produce real OOS/CPCV numbers, which is what would move
+The next high-value work is to run the vendored guardian arena (`guardian/`) over
+the PROVISIONAL set to produce real OOS/CPCV numbers, which is what would move
 strategies into PASS. Until then the factory's honest output is "61 hypotheses,
 0 verified."
 

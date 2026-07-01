@@ -1,0 +1,6 @@
+# Windows MSVC only: zmq-sys' make_fdpair_tcpip references InitializeSecurityDescriptor /
+# SetSecurityDescriptorDacl from advapi32.dll. Larger bins pull advapi32 transitively, but
+# smaller ones (e.g. the stress_test helper) do not, so link it explicitly for this target.
+# Gated to the MSVC triple -> no effect on the operator's WSL2/Linux build of guardian.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=advapi32.lib"]
