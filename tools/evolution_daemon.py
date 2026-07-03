@@ -1,4 +1,3 @@
-import fcntl
 import os
 import subprocess
 import sys
@@ -6,7 +5,9 @@ import time
 
 BASE = os.path.abspath(os.path.dirname(__file__) + "/..")
 LOG = os.path.join(BASE, "logs", "evolution_daemon.log")
-LOCK_PATH = "/tmp/swimmy_evolution_daemon.lock"
+# Cross-platform single-instance lock (replaces Unix-only fcntl; handbook §3).
+sys.path.insert(0, os.path.join(BASE, "src", "python"))
+from single_instance import acquire as _acquire_singleton  # noqa: E402
 CHILD_MONITOR_INTERVAL_SEC = 5.0
 CHILD_STOP_TIMEOUT_SEC = 20.0
 
@@ -50,13 +51,11 @@ CMD = [
 
 
 def _acquire_singleton_lock(log):
-    lock_file = open(LOCK_PATH, "w")
     try:
-        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
+        return _acquire_singleton("evolution_daemon", on_busy_exit=False)
+    except Exception:
         log.write("[EVODAEMON] another instance is already running. exiting.\n")
         sys.exit(0)
-    return lock_file
 
 
 def _wait_if_school_running(log):

@@ -47,19 +47,15 @@ SWIMMY_QUERY_FILE = os.path.join(BASE_DIR, ".opus", "query.txt")
 SWIMMY_RESPONSE_FILE = os.path.join(BASE_DIR, ".opus", "response.txt")
 SWIMMY_STATUS_FILE = os.path.join(BASE_DIR, ".opus", "live_status.sexp")
 
-# Singleton check
-import fcntl
+# Singleton check (cross-platform; replaces Unix-only fcntl — handbook §3)
 import sys
 
-PID_FILE = "/tmp/swimmy_discord_bot.pid"
-fp = open(PID_FILE, "w")
-try:
-    fcntl.lockf(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    fp.write(str(os.getpid()))
-    fp.flush()
-except IOError:
-    print("❌ Another instance is already running. Exiting.")
-    sys.exit(0)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from single_instance import acquire as _acquire_singleton
+
+_singleton_lock = _acquire_singleton(
+    "discord_bot", message="❌ Another instance is already running. Exiting."
+)
 
 # Bot setup with intents
 intents = discord.Intents.default()
