@@ -21,12 +21,15 @@ use chrono::{Datelike, Timelike}; // V9.1: Fix for weekday() and hour()
 use std::fs::File;
 use std::io::{BufReader, Write};
 
-const ENDPOINT_MARKET_DATA: &str = "tcp://*:5557";
-const ENDPOINT_BRAIN_PUSH: &str = "tcp://localhost:5555";
-const ENDPOINT_BRAIN_SUB: &str = "tcp://localhost:5556";
-const ENDPOINT_EXTERNAL_CMD: &str = "tcp://*:5559";
-const ENDPOINT_MT5_CMD: &str = "tcp://*:5560";
-const ENDPOINT_NOTIFIER: &str = "tcp://localhost:5562";
+// ZMQ ports are env-overridable to mirror the Lisp side
+// (src/lisp/core/config.lisp:103-109). Same SWIMMY_PORT_* / SWIMMY_ZMQ_HOST keys,
+// same defaults. Endpoints are built at startup in main() from these.
+const DEFAULT_PORT_MARKET: u64 = 5557; // bind  (MT5 -> Guardian market data)
+const DEFAULT_PORT_SENSORY: u64 = 5555; // connect (Guardian PUSH -> Brain)
+const DEFAULT_PORT_MOTOR: u64 = 5556; // connect (Guardian SUB  <- Brain)
+const DEFAULT_PORT_EXTERNAL: u64 = 5559; // bind  (external command input)
+const DEFAULT_PORT_EXEC: u64 = 5560; // bind  (Guardian PUB -> MT5)
+const DEFAULT_PORT_NOTIFIER: u64 = 5562; // connect (Guardian PUSH -> Notifier)
 
 fn guardian_heartbeat_message() -> String {
     r#"((type . "HEARTBEAT") (source . "GUARDIAN") (status . "OK"))"#.to_string()
@@ -903,6 +906,14 @@ fn env_u64_or(default: u64, key: &str) -> u64 {
         .unwrap_or(default)
 }
 
+fn env_string_or(default: &str, key: &str) -> String {
+    std::env::var(key)
+        .ok()
+        .map(|raw| raw.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| default.to_string())
+}
+
 fn env_bool_or(default: bool, key: &str) -> bool {
     std::env::var(key)
         .ok()
@@ -935,41 +946,52 @@ fn main() {
     let context = Context::new();
     let _target_ip = "172.18.192.1"; // Windows IP
 
+    // Build ZMQ endpoints from env (mirrors Lisp config.lisp:103-140). Bind endpoints
+    // use tcp://*:PORT; connect endpoints use SWIMMY_ZMQ_HOST (default localhost).
+    let zmq_host = env_string_or("localhost", "SWIMMY_ZMQ_HOST");
+    let ep_market = format!("tcp://*:{}", env_u64_or(DEFAULT_PORT_MARKET, "SWIMMY_PORT_MARKET"));
+    let port_sensory = env_u64_or(DEFAULT_PORT_SENSORY, "SWIMMY_PORT_SENSORY");
+    let port_motor = env_u64_or(DEFAULT_PORT_MOTOR, "SWIMMY_PORT_MOTOR");
+    let ep_brain_push = format!("tcp://{}:{}", zmq_host, port_sensory);
+    let ep_brain_sub = format!("tcp://{}:{}", zmq_host, port_motor);
+    let ep_external = format!("tcp://*:{}", env_u64_or(DEFAULT_PORT_EXTERNAL, "SWIMMY_PORT_EXTERNAL"));
+    let ep_mt5 = format!("tcp://*:{}", env_u64_or(DEFAULT_PORT_EXEC, "SWIMMY_PORT_EXEC"));
+    let ep_notifier = format!("tcp://{}:{}", zmq_host, env_u64_or(DEFAULT_PORT_NOTIFIER, "SWIMMY_PORT_NOTIFIER"));
+
     // --- 1. DATA FLOW (MT5 -> Rust) ---
     // V15: bind instead of connect - allows multiple EAs to connect
     let sub_market = context.socket(zmq::SUB).unwrap();
-    let addr_market = ENDPOINT_MARKET_DATA;
-    println!("🔌 Binding Market Data: {}", addr_market);
-    sub_market.bind(addr_market).expect("Fail to bind MT5 Data");
+    println!("🔌 Binding Market Data: {}", ep_market);
+    sub_market.bind(&ep_market).expect("Fail to bind MT5 Data");
     sub_market.set_subscribe(b"").unwrap();
 
     // --- 2. NERVOUS SYSTEM (Rust <-> Lisp) ---
     // [AFFERENT] Rust -> Lisp (Sensory Input)
     let push_to_brain = context.socket(zmq::PUSH).unwrap();
-    push_to_brain.connect(ENDPOINT_BRAIN_PUSH).expect("Fail to connect Brain Sensory Nerve");
-    println!("🧠 Connected to Brain Sensory Nerve (PUSH 5555)");
+    push_to_brain.connect(&ep_brain_push).expect("Fail to connect Brain Sensory Nerve");
+    println!("🧠 Connected to Brain Sensory Nerve (PUSH {})", port_sensory);
 
     // [EFFERENT] Lisp -> Rust (Motor Output)
     let sub_from_brain = context.socket(zmq::SUB).unwrap();
-    sub_from_brain.connect(ENDPOINT_BRAIN_SUB).expect("Fail to connect Brain Motor Nerve");
+    sub_from_brain.connect(&ep_brain_sub).expect("Fail to connect Brain Motor Nerve");
     sub_from_brain.set_subscribe(b"").unwrap();
-    println!("👂 Listening to Brain Motor Nerve (SUB 5556)");
+    println!("👂 Listening to Brain Motor Nerve (SUB {})", port_motor);
 
-    // [EXTERNAL] Legacy Command Input (Port 5559)
+    // [EXTERNAL] Legacy Command Input
     let sub_cmd = context.socket(zmq::SUB).unwrap();
-    sub_cmd.bind(ENDPOINT_EXTERNAL_CMD).expect("Fail to bind External Command");
+    sub_cmd.bind(&ep_external).expect("Fail to bind External Command");
     sub_cmd.set_subscribe(b"").unwrap();
-    println!("👂 Listening for External Commands on port 5559");
+    println!("👂 Listening for External Commands on {}", ep_external);
 
-    // [PUB] MT5へ命令を転送 (5560)
+    // [PUB] MT5へ命令を転送
     let pub_to_mt5 = context.socket(zmq::PUB).unwrap();
-    pub_to_mt5.bind(ENDPOINT_MT5_CMD).expect("Fail to bind MT5 Command");
-    println!("👊 Ready to punch commands to MT5 on port 5560");
-    
-    // [PUSH] Notifier Service (5562) - V15.3: Dead Man's Switch Notification
+    pub_to_mt5.bind(&ep_mt5).expect("Fail to bind MT5 Command");
+    println!("👊 Ready to punch commands to MT5 on {}", ep_mt5);
+
+    // [PUSH] Notifier Service - V15.3: Dead Man's Switch Notification
     let push_to_notifier = context.socket(zmq::PUSH).unwrap();
-    push_to_notifier.connect(ENDPOINT_NOTIFIER).expect("Fail to connect Notifier");
-    println!("📢 Connected to Notifier Service (PUSH 5562)");
+    push_to_notifier.connect(&ep_notifier).expect("Fail to connect Notifier");
+    println!("📢 Connected to Notifier Service (PUSH {})", ep_notifier);
 
     println!("🧠 Neural Network: READY");
 

@@ -8,8 +8,10 @@
 $ErrorActionPreference = 'Stop'
 
 if (-not $env:SWIMMY_HOME -or [string]::IsNullOrWhiteSpace($env:SWIMMY_HOME)) {
-    # Default matches the handbook: mini-PC keeps repo + MT5 on D:.
-    $env:SWIMMY_HOME = 'D:\swimmy'
+    # Derive repo root from this script's location (scripts\windows\ -> repo root),
+    # so .env is found regardless of drive/checkout path. .env may re-assert
+    # SWIMMY_HOME below; that value then wins for child processes.
+    $env:SWIMMY_HOME = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
 
 $envFile = Join-Path $env:SWIMMY_HOME '.env'
