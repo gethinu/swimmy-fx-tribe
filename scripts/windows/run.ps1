@@ -70,19 +70,36 @@ function Start-Brain {
     }
 
     $heap = if ($env:SWIMMY_SBCL_DYNAMIC_SPACE_MB) { $env:SWIMMY_SBCL_DYNAMIC_SPACE_MB } else { '6144' }
-    Write-Host "[$(Get-Date)] Starting Swimmy Ver 41.5 (heap ${heap}MB)..."
+    $sbcl = Resolve-Sbcl
+    Write-Host "[$(Get-Date)] Starting Swimmy Ver 41.5 (heap ${heap}MB) via $sbcl..."
     try {
         # sbcl ... 2>&1 | tee logs/swimmy.log  (run.sh:71)
-        & sbcl --dynamic-space-size $heap --noinform --load $bootFile 2>&1 | Tee-Object -FilePath $mainLog
+        & $sbcl --dynamic-space-size $heap --noinform --load $bootFile 2>&1 | Tee-Object -FilePath $mainLog
     } finally {
         if ($bootTemp) { Remove-Item -LiteralPath $bootTemp -Force -ErrorAction SilentlyContinue }
     }
 }
 
+function Resolve-Sbcl {
+    # winget's SBCL MSI installs to Program Files but does not always add it to PATH.
+    $c = Get-Command sbcl -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    foreach ($p in @(
+        'C:\Program Files\Steel Bank Common Lisp\sbcl.exe',
+        'C:\Program Files (x86)\Steel Bank Common Lisp\sbcl.exe',
+        (Join-Path $env:LOCALAPPDATA 'Programs\Steel Bank Common Lisp\sbcl.exe')
+    )) { if (Test-Path -LiteralPath $p) { return $p } }
+    throw "sbcl.exe not found on PATH or standard install dirs. Install SBCL or add it to PATH."
+}
+
 function Start-Guardian {
-    $exe = Join-Path $env:SWIMMY_HOME 'guardian\target\release\guardian.exe'
+    # Workspace build lands the exe at the repo-root target\, not guardian\target\.
+    $exe = Join-Path $env:SWIMMY_HOME 'target\release\guardian.exe'
     if (-not (Test-Path -LiteralPath $exe)) {
-        throw "guardian.exe not found at $exe — run 'cargo build --release' in guardian\ first."
+        $exe = Join-Path $env:SWIMMY_HOME 'guardian\target\release\guardian.exe'
+    }
+    if (-not (Test-Path -LiteralPath $exe)) {
+        throw "guardian.exe not found (checked target\ and guardian\target\) — run 'cargo build --release' first."
     }
     # ExecStartPre parity: free port 5557 if a stale holder exists (handbook §1.4, was `fuser -k 5557/tcp`).
     try {
