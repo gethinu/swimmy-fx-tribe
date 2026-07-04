@@ -28,6 +28,13 @@ if (Test-Path -LiteralPath $envFile) {
     }
 }
 
+# Native-Windows: put %SWIMMY_HOME%\lib on PATH so CFFI/the OS loader can find
+# vendored native DLLs (sqlite3.dll for the `sqlite` system, libzmq.dll for `pzmq`).
+$libDir = Join-Path $env:SWIMMY_HOME 'lib'
+if ((Test-Path -LiteralPath $libDir) -and ($env:PATH -notlike "*$libDir*")) {
+    $env:PATH = "$libDir;$env:PATH"
+}
+
 # Dev safety parity with run.sh:16-19
 if ($env:SWIMMY_FORCE_DISABLE_DISCORD -eq '1') {
     [Environment]::SetEnvironmentVariable('SWIMMY_DISABLE_DISCORD', '1')

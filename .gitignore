@@ -60,6 +60,9 @@ data/logs/
 data/reports/
 data/locks/
 data/runstamps/
+
+# Vendored native DLLs for CFFI (sqlite3.dll, libzmq.dll) — machine-local, not committed.
+lib/*.dll
 data/memory/
 data/snapshots/
 data/models/
