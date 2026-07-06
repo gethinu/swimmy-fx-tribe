@@ -173,18 +173,28 @@
   (swimmy.core:notify-apex "✅ Swimmy System Online & Connected (Recovery Complete)" :color 3066993)
   
   ;; V8.9: Signal Handling for Graceful Shutdown (Save State on SIGTERM)
-  (sb-sys:enable-interrupt sb-unix:sigterm 
-                           (lambda (signal code scp)
-                             (declare (ignore signal code scp))
-                             (format t "~%[SYSTEM] 🛑 SIGTERM received. Saving state before exit...~%")
-                             (stop-brain)))
-
-  ;; V49.4: Hot Reload (SIGHUP) - Gene Kim's Requirement
-  (sb-sys:enable-interrupt sb-unix:sighup
-                           (lambda (signal code scp)
-                             (declare (ignore signal code scp))
-                             (format t "~%[SYSTEM] 🔄 SIGHUP derived. Triggering Hot Reload...~%")
-                             (hot-reload-school)))
+  ;; POSIX-only: Windows SBCL has no sb-sys:enable-interrupt / sb-unix:sighup
+  ;; (those symbols raise read-time errors), so guard with a #-win32 reader
+  ;; conditional. On native Windows the process lifecycle is driven externally
+  ;; (Task Scheduler / watchdog); we register an exit hook so a normal exit
+  ;; still saves state.
+  #-win32
+  (progn
+    (sb-sys:enable-interrupt sb-unix:sigterm
+                             (lambda (signal code scp)
+                               (declare (ignore signal code scp))
+                               (format t "~%[SYSTEM] 🛑 SIGTERM received. Saving state before exit...~%")
+                               (stop-brain)))
+    ;; V49.4: Hot Reload (SIGHUP) - Gene Kim's Requirement
+    (sb-sys:enable-interrupt sb-unix:sighup
+                             (lambda (signal code scp)
+                               (declare (ignore signal code scp))
+                               (format t "~%[SYSTEM] 🔄 SIGHUP derived. Triggering Hot Reload...~%")
+                               (hot-reload-school))))
+  #+win32
+  (progn
+    (format t "[SYSTEM] ⚠️ POSIX signals (SIGTERM/SIGHUP) unavailable on Windows SBCL; shutdown/hot-reload driven externally (Task Scheduler/watchdog).~%")
+    (push (lambda () (ignore-errors (stop-brain))) sb-ext:*exit-hooks*))
 
   ;; Start Runner (Infinite Loop)
   (start-brain))

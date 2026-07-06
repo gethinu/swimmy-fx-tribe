@@ -1,0 +1,10 @@
+# Native-Windows ops box: Lisp/ASDF sources MUST check out as LF.
+#
+# SBCL reads source files verbatim; the CL FORMAT "~<newline>" line-fold
+# directive (used as `~%~` at end of line) becomes `~\r` under CRLF and
+# raises "error in FORMAT: Unknown directive (character: Return)", aborting
+# compilation (see src/lisp/school/advisors.lisp). CRLF also injects stray
+# carriage returns into multi-line string literals that feed S-expr/ZMQ
+# payloads and Discord/log output. Force LF regardless of core.autocrlf.
+*.lisp text eol=lf
+*.asd  text eol=lf
