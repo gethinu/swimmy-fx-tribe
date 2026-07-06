@@ -6492,8 +6492,6 @@
       (setf (symbol-function 'swimmy.core:notify-discord-alert) orig-notify-alert)
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit-telemetry))))
 
-<<<<<<< HEAD
-=======
 (deftest test-load-symbol-sltp-overrides-from-sexp-file
   "Persistent symbol SL/TP override file should populate in-memory override tables."
   (let* ((orig-path (and (boundp 'swimmy.school::*symbol-sltp-overrides-path*)
@@ -6569,7 +6567,6 @@
       (when (boundp 'swimmy.school::*symbol-tp-pips-overrides*)
         (setf swimmy.school::*symbol-tp-pips-overrides* orig-tp)))))
 
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 (deftest test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
   "execute-order-sequence should prioritize strategy SL/TP for BUY orders."
   (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
@@ -6826,8 +6823,6 @@
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function safe-order-sym) orig-safe-order)))
 
-<<<<<<< HEAD
-=======
 (deftest test-execute-order-sequence-uses-symbol-override-when-strategy-invalid
   "execute-order-sequence should use symbol override before global defaults."
   (let* ((orig-pending swimmy.school::*allocation-pending-orders*)
@@ -6931,7 +6926,6 @@
       (setf (symbol-function 'swimmy.core::emit-telemetry-event) orig-emit)
       (setf (symbol-function safe-order-sym) orig-safe-order))))
 
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 (deftest test-close-category-positions-prefers-effective-sltp-from-submit-state
   "close-category-positions should use submit-time effective SL/TP stored in slot state."
   (let* ((orig-slots swimmy.school::*slot-allocation*)
@@ -7001,8 +6995,6 @@
       (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strategy)
       (setf (symbol-function 'swimmy.shell:notify-discord-symbol) orig-notify))))
 
-<<<<<<< HEAD
-=======
 (deftest test-close-a-rank-shadow-positions-prefers-effective-sltp-from-submit-state
   "Shadow close should honor submit-time effective SL/TP when present."
   (let ((orig-shadow-slots (and (boundp 'swimmy.school::*shadow-slot-allocation*)
@@ -7031,7 +7023,6 @@
         (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots))
       (setf (symbol-function 'swimmy.school::record-trade-outcome) orig-record-outcome))))
 
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 ;;; ─────────────────────────────────────────
 ;;; CATEGORY EXECUTION TESTS
 ;;; ─────────────────────────────────────────
@@ -16814,15 +16805,6 @@
 	                  test-verify-signal-authority-requires-live-ready-deployment-gate
 	                  test-verify-signal-authority-blocks-on-live-edge-degradation
 	                  test-verify-signal-authority-blocks-on-live-edge-loss-streak
-<<<<<<< HEAD
-	                  test-execute-category-trade-fails-closed-on-reserved-strategy-name-tokens
-	                  test-execute-order-sequence-fails-closed-on-missing-context
-	                  test-execute-order-sequence-fails-closed-on-reserved-strategy-token
-	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-buy
-	                  test-execute-order-sequence-uses-strategy-specific-sltp-for-sell
-	                  test-execute-order-sequence-falls-back-to-default-sltp-when-strategy-invalid
-	                  test-close-category-positions-prefers-effective-sltp-from-submit-state
-=======
 		                  test-execute-category-trade-fails-closed-on-reserved-strategy-name-tokens
 		                  test-execute-order-sequence-fails-closed-on-missing-context
 		                  test-execute-order-sequence-fails-closed-on-reserved-strategy-token
@@ -16834,7 +16816,6 @@
 		                  test-execute-order-sequence-uses-symbol-override-when-strategy-invalid
 		                  test-close-category-positions-prefers-effective-sltp-from-submit-state
 		                  test-close-a-rank-shadow-positions-prefers-effective-sltp-from-submit-state
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 	                  ;; V8.0: Walk-Forward Validation Tests (López de Prado)
                   test-wfv-logic-robust-strategy
                   test-wfv-logic-overfit-strategy
