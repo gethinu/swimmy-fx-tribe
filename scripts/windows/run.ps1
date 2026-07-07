@@ -20,7 +20,8 @@
 param(
     [ValidateSet('brain', 'guardian', 'core')]
     [string]$Component = 'brain',
-    [switch]$SkipDataGuard
+    [switch]$SkipDataGuard,
+    [switch]$DryRun            # -Component core: print the ordered startup plan without launching
 )
 
 $ErrorActionPreference = 'Stop'
@@ -120,31 +121,98 @@ function Start-Guardian {
     & $exe 2>&1 | Tee-Object -FilePath $gLog
 }
 
+# Poll until every port in $Ports is LISTEN, or $TimeoutSec elapses. Readiness gate
+# for the ordered core startup so the next component only starts once its dependency
+# is actually bound (replaces a blind Start-Sleep).
+function Wait-Ports {
+    param([int[]]$Ports, [int]$TimeoutSec = 120, [string]$Name = 'component')
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    do {
+        $up = @($Ports | Where-Object { Get-NetTCPConnection -LocalPort $_ -State Listen -ErrorAction SilentlyContinue })
+        if ($up.Count -eq $Ports.Count) {
+            Write-Host ("  [{0}] READY: {1} LISTEN" -f $Name, ($Ports -join ',')) -ForegroundColor Green
+            return $true
+        }
+        Start-Sleep -Seconds 3
+    } until ((Get-Date) -gt $deadline)
+    Write-Host ("  [{0}] TIMEOUT after {1}s waiting for {2}" -f $Name, $TimeoutSec, ($Ports -join ',')) -ForegroundColor Red
+    return $false
+}
+
 switch ($Component) {
     'brain'    { Start-Brain }
     'guardian' { Start-Guardian }
     'core' {
-        # Phase 1 GO/NO-GO smoke test: bring up all three core processes as background
-        # jobs, verify TCP ZMQ ports, then hold. Ctrl-C to tear down.
-        Write-Host '=== PHASE 1 CORE SMOKE TEST (Brain + Guardian + data_keeper) ===' -ForegroundColor Cyan
+        # Phase 1/2 GO/NO-GO smoke test with EXPLICIT dependency-ordered startup.
+        # Order — each step is gated on its bind ports becoming LISTEN before the next starts:
+        #   1. brain        binds sensory PULL + motor PUB  (SWIMMY_PORT_SENSORY, 5556)
+        #   2. guardian     binds market PUB + external       (5557, 5559); connects -> brain 15555/5556
+        #   3. data_keeper  binds data socket                 (5561);       brain connects -> it
+        # ZMQ connect-side sockets reconnect, so this order governs deterministic readiness,
+        # not correctness (data_keeper-first would also work, avoiding brain's brief
+        # offline-history window — flip the $steps order to prefer that).
+        # Components launch DETACHED (Start-Process) so they persist after this script returns.
+        $sensory = if ($env:SWIMMY_PORT_SENSORY) { [int]$env:SWIMMY_PORT_SENSORY } else { 5555 }
         $py = Join-Path $env:SWIMMY_HOME '.venv\Scripts\python.exe'
-        $jobs = @()
-        $jobs += Start-Job -Name brain    -ScriptBlock { & "$using:PSScriptRoot\run.ps1" -Component brain -SkipDataGuard }
-        $jobs += Start-Job -Name guardian -ScriptBlock { & "$using:PSScriptRoot\run.ps1" -Component guardian }
-        if (Test-Path -LiteralPath $py) {
-            $jobs += Start-Job -Name data_keeper -ScriptBlock {
-                & "$using:py" (Join-Path $using:env:SWIMMY_HOME 'tools\data_keeper.py')
+        $pwshExe = (Get-Process -Id $PID).Path        # same PowerShell host (run.ps1 needs PS7 features)
+        $steps = @(
+            @{ Name = 'brain';       Ports = @($sensory, 5556); Grace = 180 }
+            @{ Name = 'guardian';    Ports = @(5557, 5559);     Grace = 60  }
+            @{ Name = 'data_keeper'; Ports = @(5561);           Grace = 60  }
+        )
+
+        Write-Host '=== CORE ORDERED STARTUP: brain -> guardian -> data_keeper ===' -ForegroundColor Cyan
+        foreach ($s in $steps) {
+            Write-Host ("  step: {0,-12} gate on {1}" -f $s.Name, ($s.Ports -join ',')) -ForegroundColor DarkCyan
+        }
+        if ($DryRun) {
+            Write-Host "`n[DRY-RUN] no processes launched. Remove -DryRun to start the ordered smoke test." -ForegroundColor Yellow
+            break
+        }
+
+        foreach ($s in $steps) {
+            Write-Host ("[{0}] launching (detached)..." -f $s.Name) -ForegroundColor Cyan
+            switch ($s.Name) {
+                'brain' {
+                    Start-Process -FilePath $pwshExe -WindowStyle Hidden `
+                        -ArgumentList @('-NoProfile', '-File', "$PSScriptRoot\run.ps1", '-Component', 'brain', '-SkipDataGuard') | Out-Null
+                }
+                'guardian' {
+                    # -SkipDataGuard: the historical-data guard is a Brain concern; guardian
+                    # only needs its ZMQ sockets, so don't let it abort guardian startup.
+                    Start-Process -FilePath $pwshExe -WindowStyle Hidden `
+                        -ArgumentList @('-NoProfile', '-File', "$PSScriptRoot\run.ps1", '-Component', 'guardian', '-SkipDataGuard') | Out-Null
+                }
+                'data_keeper' {
+                    if (Test-Path -LiteralPath $py) {
+                        Start-Process -FilePath $py -WindowStyle Hidden `
+                            -ArgumentList @((Join-Path $env:SWIMMY_HOME 'tools\data_keeper.py')) `
+                            -RedirectStandardOutput (Join-Path $logDir 'data_keeper.log') `
+                            -RedirectStandardError  (Join-Path $logDir 'data_keeper.err.log') | Out-Null
+                    } else {
+                        Write-Host "  data_keeper venv python missing ($py); skipping" -ForegroundColor Yellow
+                    }
+                }
+            }
+            if (-not (Wait-Ports -Ports $s.Ports -TimeoutSec $s.Grace -Name $s.Name)) {
+                Write-Host ("[{0}] not ready in {1}s — aborting ordered startup." -f $s.Name, $s.Grace) -ForegroundColor Red
+                break
             }
         }
-        Start-Sleep -Seconds 8
-        Write-Host 'Checking ZMQ TCP ports (5555 PULL / 5556 PUB brain, 5557 PUB guardian, 5559 SUB, 5561 data_keeper)...'
-        $ports = 5555, 5556, 5557, 5559, 5561
-        foreach ($p in $ports) {
+
+        # Final consolidated 5-port GREEN summary.
+        Write-Host "`n=== FULL 5-PORT CHECK ===" -ForegroundColor Cyan
+        $allPorts = @($sensory, 5556, 5557, 5559, 5561)
+        $green = $true
+        foreach ($p in $allPorts) {
             $listening = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+            if (-not $listening) { $green = $false }
             $mark = if ($listening) { 'LISTEN  OK' } else { 'DOWN' }
-            $color = if ($listening) { 'Green' } else { 'Red' }
-            Write-Host ("  port {0,-5} : {1}" -f $p, $mark) -ForegroundColor $color
+            Write-Host ("  port {0,-5} : {1}" -f $p, $mark) -ForegroundColor ($(if ($listening) { 'Green' } else { 'Red' }))
         }
-        Write-Host 'Smoke jobs running. Inspect: Receive-Job -Name brain -Keep. Stop: Get-Job | Stop-Job; Get-Job | Remove-Job' -ForegroundColor Yellow
+        Write-Host ($(if ($green) { '>>> FULL 5-PORT GREEN <<<' } else { '>>> NOT ALL GREEN <<<' })) `
+            -ForegroundColor ($(if ($green) { 'Green' } else { 'Red' }))
+        Write-Host 'Components are detached and keep running. Stop by port owner, e.g.:' -ForegroundColor Yellow
+        Write-Host '  15555,5557,5561 | % { Get-NetTCPConnection -LocalPort $_ -State Listen -EA 0 | % { Stop-Process -Id $_.OwningProcess -Force } }' -ForegroundColor DarkYellow
     }
 }
