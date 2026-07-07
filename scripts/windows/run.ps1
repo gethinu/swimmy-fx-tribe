@@ -73,6 +73,11 @@ function Start-Brain {
     $sbcl = Resolve-Sbcl
     Write-Host "[$(Get-Date)] Starting Swimmy Ver 41.5 (heap ${heap}MB) via $sbcl..."
     try {
+        # SBCL writes compile notes to stderr; do NOT let that abort the pipeline.
+        $ErrorActionPreference = 'Continue'
+        if (Get-Variable PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
         # sbcl ... 2>&1 | tee logs/swimmy.log  (run.sh:71)
         & $sbcl --dynamic-space-size $heap --noinform --load $bootFile 2>&1 | Tee-Object -FilePath $mainLog
     } finally {
@@ -108,6 +113,10 @@ function Start-Guardian {
     } catch { }
     $gLog = Join-Path $logDir 'guardian.log'
     Write-Host "[$(Get-Date)] Starting Guardian..."
+    $ErrorActionPreference = 'Continue'
+    if (Get-Variable PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue) {
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
     & $exe 2>&1 | Tee-Object -FilePath $gLog
 }
 
