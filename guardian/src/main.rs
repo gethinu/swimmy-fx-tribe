@@ -1241,6 +1241,14 @@ fn main() {
                     // V15.4 P1 (Graham): Prefer non-interactive sudo so we can manage system units
                     // without triggering polkit prompts. Fall back to direct systemctl, then to
                     // MainPID kill so systemd Restart= can relaunch.
+                    // Native-Windows ops box: systemd/systemctl/sudo/kill do not exist. Brain
+                    // revival is delegated to the external PowerShell watchdog
+                    // (scripts/windows/watchdog.ps1 -> Restart-ScheduledTask). Gate the Linux
+                    // revival path behind cfg(unix) so Windows does not shell out to systemctl.
+                    #[cfg(not(unix))]
+                    println!("🪟 Windows: Brain revival delegated to external watchdog (Task Scheduler / watchdog.ps1); skipping systemctl.");
+                    #[cfg(unix)]
+                    {
                     let restart_result = std::process::Command::new("/usr/bin/sudo")
                         .arg("-n")
                         .arg("/usr/bin/systemctl")
@@ -1345,8 +1353,9 @@ fn main() {
                             }
                         }
                     }
+                    } // end #[cfg(unix)] Linux revival path
                 }
-                
+
                 // V8.0: Auto-close all positions on Brain timeout (Taleb's recommendation)
                 if !emergency_close_sent {
                     println!("🚨 EMERGENCY CLOSE: Closing H4 and below (D1+ protected)");
