@@ -436,7 +436,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (existing-row (ignore-errors (first (execute-to-list
                                               "SELECT sharpe, profit_factor, win_rate, trades, max_dd,
                                                       cpcv_median, cpcv_median_pf, cpcv_median_wr,
-                                                      cpcv_median_maxdd, cpcv_pass_rate, rank
+                                                      cpcv_median_maxdd, cpcv_pass_rate, rank, oos_sharpe
                                                  FROM strategies WHERE name=?"
                                               name))))
          (db-sharpe (if existing-row (or (first existing-row) 0.0) 0.0))
@@ -450,6 +450,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (db-cpcv-maxdd (if existing-row (or (ninth existing-row) 0.0) 0.0))
          (db-cpcv-pass (if existing-row (or (tenth existing-row) 0.0) 0.0))
          (db-rank-raw (if existing-row (nth 10 existing-row) nil))
+         (db-oos (if existing-row (nth 11 existing-row) nil))
          (cur-sharpe (or (strategy-sharpe strat) 0.0))
          (cur-pf (or (strategy-profit-factor strat) 0.0))
          (cur-wr (or (strategy-win-rate strat) 0.0))
@@ -460,6 +461,15 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (cur-cpcv-wr (or (strategy-cpcv-median-wr strat) 0.0))
          (cur-cpcv-maxdd (or (strategy-cpcv-median-maxdd strat) 0.0))
          (cur-cpcv-pass (or (strategy-cpcv-pass-rate strat) 0.0))
+         ;; P1 (Thread A): OOS is single-source-of-truth in SQL. Never clobber a real
+         ;; persisted OOS with a nil/0.0 in-memory value, and store "unvalidated" as NULL
+         ;; (nil) rather than 0.0. A genuine OOS result (including a negative Sharpe) is a
+         ;; non-zero number and is written as-is.
+         (cur-oos (let ((mem (strategy-oos-sharpe strat)))
+                    (cond
+                      ((and (numberp mem) (not (zerop mem))) mem)
+                      ((and (numberp db-oos) (not (zerop db-oos))) db-oos)
+                      (t nil))))
          (incoming-rank (strategy-rank strat))
          (updated-at (get-universal-time)))
     (labels ((normalize-rank (rank)
@@ -577,7 +587,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (or (strategy-symbol strat) "USDJPY")
          (format nil "~a" (strategy-direction strat))
          (strategy-hash strat)
-         (or (strategy-oos-sharpe strat) 0.0)
+         cur-oos ; P1: nil -> SQL NULL (unvalidated); preserves a real persisted OOS
          cur-cpcv-median
          cur-cpcv-pf
          cur-cpcv-wr

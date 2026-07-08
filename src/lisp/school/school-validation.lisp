@@ -1016,6 +1016,29 @@ Fallback mode uses legacy *oos-test-ratio* split when fixed window is disabled/i
     (when strat
       (let ((sharpe (float (or (getf metrics :sharpe) 0.0)))
             (req-id (getf metrics :request-id)))
+        ;; P1 (Thread A): reject a fake OOS that exactly mirrors the in-sample Sharpe.
+        ;; A genuine out-of-sample run essentially never reproduces the IS Sharpe to the
+        ;; bit; equality means the OOS ran on in-sample data (window/purge defect) or a
+        ;; degenerate tiny sample. Do NOT store it — leave OOS unvalidated (nil) so the
+        ;; strategy stays PROVISIONAL and remains eligible for a real backfill.
+        (let ((is-sharpe (strategy-sharpe strat)))
+          (when (and (numberp is-sharpe) (not (zerop is-sharpe)) (= sharpe is-sharpe))
+            (%oos-failure-inc :mirror)
+            (handler-case (complete-oos-request name req-id)
+              (error (e) (record-oos-error name req-id (format nil "~a" e))))
+            (format t "[OOS] 🚫 ~a mirror OOS rejected (oos==is Sharpe=~,4f); left unvalidated~%"
+                    name is-sharpe)
+            (ignore-errors
+              (swimmy.core::emit-telemetry-event "oos.mirror_rejected"
+                :service "school"
+                :severity "warning"
+                :correlation-id req-id
+                :data (jsown:new-js
+                        ("request_id" req-id)
+                        ("name" name)
+                        ("is_sharpe" is-sharpe))))
+            (ignore-errors (write-oos-status-file :reason "mirror"))
+            (return-from handle-oos-backtest-result nil)))
         (setf (strategy-oos-sharpe strat) sharpe)
         ;; Queue bookkeeping
         (handler-case (complete-oos-request name req-id)
