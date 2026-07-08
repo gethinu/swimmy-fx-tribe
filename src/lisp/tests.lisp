@@ -4845,39 +4845,21 @@
       (when (boundp 'swimmy.school::*shadow-slot-allocation*)
         (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots)))))
 
-(deftest test-process-category-trades-runs-legend-shadow-when-s-gate-blocked
-  "When live entry path is skipped, LEGEND signals should still run in shadow and persist shadow outcomes."
-  (let ((orig-candle-histories swimmy.globals:*candle-histories*)
-        (orig-candle-history swimmy.globals:*candle-history*)
-        (orig-kb swimmy.school::*strategy-knowledge-base*)
-        (orig-trading-allowed (symbol-function 'swimmy.engine::trading-allowed-p))
-        (orig-s-rank-gate (symbol-function 'swimmy.school::s-rank-gate-passed-p))
-        (orig-cleanup (symbol-function 'swimmy.school::cleanup-stale-allocations))
-        (orig-close (symbol-function 'swimmy.school::close-category-positions))
-        (orig-safe (symbol-function 'swimmy.school::is-safe-to-trade-p))
-        (orig-vol-ok (symbol-function 'swimmy.school::volatility-allows-trading-p))
-        (orig-research (symbol-function 'swimmy.core::research-enhanced-analysis))
-        (orig-detect (symbol-function 'swimmy.core::detect-regime-hmm))
-        (orig-elect (symbol-function 'swimmy.school::elect-leader))
-        (orig-collect (symbol-function 'swimmy.school::collect-strategy-signals))
-        (orig-cache (symbol-function 'swimmy.school::get-cached-backtest))
-        (orig-can-trade (symbol-function 'swimmy.school::can-category-trade-p))
-        (orig-exec (symbol-function 'swimmy.school::execute-category-trade))
-        (orig-narrative (symbol-function 'swimmy.school::generate-dynamic-narrative))
-        (orig-record-time (symbol-function 'swimmy.school::record-category-trade-time))
-        (orig-record-strat (symbol-function 'swimmy.school::record-strategy-trade))
-        (orig-record-outcome (symbol-function 'swimmy.school::record-trade-outcome))
-        (orig-record-slip (and (fboundp 'swimmy.school::record-dryrun-slippage)
-                               (symbol-function 'swimmy.school::record-dryrun-slippage)))
+(deftest test-open-a-rank-shadow-trades-excludes-legend
+  "P2: LEGEND is execution-decoupled (learning archive only). open-a-rank-shadow-trades
+   (the shadow PAPER-execution path) must NOT open a shadow slot for a :LEGEND strategy,
+   because :LEGEND was removed from *shadow-paper-eligible-ranks* and has no FORWARD_RUNNING
+   gate. (Passive forward-running probes still learn from legends by design — that path is
+   rank-agnostic and is covered by test-record-forward-running-periodic-shadow-probes-*.
+   A-rank/FORWARD_RUNNING positive shadow behavior is covered by the two sibling tests.)"
+  (let ((orig-kb swimmy.school::*strategy-knowledge-base*)
         (orig-shadow-slots (and (boundp 'swimmy.school::*shadow-slot-allocation*)
-                                swimmy.school::*shadow-slot-allocation*)))
+                                swimmy.school::*shadow-slot-allocation*))
+        (orig-enabled (and (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+                           swimmy.school::*a-rank-shadow-trading-enabled*))
+        (orig-fetch (symbol-function 'swimmy.school::fetch-deployment-gate-status)))
     (unwind-protect
-        (let ((live-executed nil)
-              (captured-modes nil)
-              (history (loop repeat 120 collect nil)))
-          (setf swimmy.globals:*candle-histories* (make-hash-table :test 'equal))
-          (setf (gethash "USDJPY" swimmy.globals:*candle-histories*) history)
-          (setf swimmy.globals:*candle-history* history)
+        (progn
           (setf swimmy.school::*strategy-knowledge-base*
                 (list (swimmy.school:make-strategy :name "UT-LEGEND-SHADOW"
                                                    :symbol "USDJPY"
@@ -4885,84 +4867,27 @@
                                                    :rank :LEGEND
                                                    :sl 0.03
                                                    :tp 0.03)))
-          (when (boundp 'swimmy.school::*shadow-slot-allocation*)
-            (setf swimmy.school::*shadow-slot-allocation* (make-hash-table :test 'equal)))
+          (setf swimmy.school::*shadow-slot-allocation* (make-hash-table :test 'equal))
+          (setf swimmy.school::*a-rank-shadow-trading-enabled* t)
+          ;; No deployment gate row -> not FORWARD_RUNNING, so eligibility rests purely
+          ;; on rank membership in *shadow-paper-eligible-ranks* (which no longer has :LEGEND).
+          (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status)
+                (lambda (_name) (declare (ignore _name)) nil))
 
-          (setf (symbol-function 'swimmy.engine::trading-allowed-p) (lambda () t))
-          (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) (lambda () nil))
-          (setf (symbol-function 'swimmy.school::cleanup-stale-allocations) (lambda () nil))
-          (setf (symbol-function 'swimmy.school::close-category-positions) (lambda (s b a) (declare (ignore s b a)) nil))
-          (setf (symbol-function 'swimmy.school::is-safe-to-trade-p) (lambda () t))
-          (setf (symbol-function 'swimmy.school::volatility-allows-trading-p) (lambda () t))
-          (setf (symbol-function 'swimmy.core::research-enhanced-analysis) (lambda (h) (declare (ignore h)) nil))
-          (setf (symbol-function 'swimmy.core::detect-regime-hmm) (lambda (h) (declare (ignore h)) :unknown))
-          (setf (symbol-function 'swimmy.school::elect-leader) (lambda () nil))
-          (setf (symbol-function 'swimmy.school::collect-strategy-signals)
-                (lambda (_s _h)
-                  (declare (ignore _s _h))
-                  (list (list :strategy-name "UT-LEGEND-SHADOW"
-                              :category :trend
-                              :direction :BUY
-                              :confidence 0.9
-                              :timeframe 15))))
-          (setf (symbol-function 'swimmy.school::get-cached-backtest)
-                (lambda (_n) (declare (ignore _n)) (list :sharpe 1.0)))
-          ;; Skip live entry path (independent from S-rank count gate).
-          (setf (symbol-function 'swimmy.school::can-category-trade-p)
-                (lambda (_k) (declare (ignore _k)) nil))
-          (setf (symbol-function 'swimmy.school::execute-category-trade)
-                (lambda (&rest _args)
-                  (declare (ignore _args))
-                  (setf live-executed t)
-                  t))
-          (setf (symbol-function 'swimmy.school::generate-dynamic-narrative)
-                (lambda (&rest args) (declare (ignore args)) ""))
-          (setf (symbol-function 'swimmy.school::record-category-trade-time)
-                (lambda (&rest args) (declare (ignore args)) nil))
-          (setf (symbol-function 'swimmy.school::record-strategy-trade)
-                (lambda (&rest args) (declare (ignore args)) nil))
-          (setf (symbol-function 'swimmy.school::record-trade-outcome)
-                (lambda (_symbol _direction _category _strategy-name _pnl &key execution-mode hold-time hit pair-id)
-                  (declare (ignore _symbol _direction _category _strategy-name _pnl hold-time hit pair-id))
-                  (push execution-mode captured-modes)
-                  nil))
-          (setf (symbol-function 'swimmy.school::record-dryrun-slippage)
-                (lambda (_strategy-name _slippage-pips)
-                  (declare (ignore _strategy-name _slippage-pips))
-                  nil))
+          (swimmy.school::open-a-rank-shadow-trades
+           "USDJPY" 100.00 100.02
+           (list (list :strategy-name "UT-LEGEND-SHADOW"
+                       :category :trend
+                       :direction :BUY)))
 
-          ;; 1st tick: open shadow trade, 2nd tick: hit TP and close.
-          (swimmy.school::process-category-trades "USDJPY" 100.00 100.02)
-          (swimmy.school::process-category-trades "USDJPY" 100.08 100.10)
-
-          (assert-false live-executed "Live execute-category-trade should not run when entry path is skipped")
-          (assert-true (member :shadow captured-modes :test #'eq)
-                       "Expected at least one shadow-mode learning outcome for LEGEND strategy"))
-      (setf swimmy.globals:*candle-histories* orig-candle-histories)
-      (setf swimmy.globals:*candle-history* orig-candle-history)
+          (assert-equal 0 (hash-table-count swimmy.school::*shadow-slot-allocation*)
+                        "P2: LEGEND must not open a shadow paper slot (execution-decoupled)"))
       (setf swimmy.school::*strategy-knowledge-base* orig-kb)
-      (setf (symbol-function 'swimmy.engine::trading-allowed-p) orig-trading-allowed)
-      (setf (symbol-function 'swimmy.school::s-rank-gate-passed-p) orig-s-rank-gate)
-      (setf (symbol-function 'swimmy.school::cleanup-stale-allocations) orig-cleanup)
-      (setf (symbol-function 'swimmy.school::close-category-positions) orig-close)
-      (setf (symbol-function 'swimmy.school::is-safe-to-trade-p) orig-safe)
-      (setf (symbol-function 'swimmy.school::volatility-allows-trading-p) orig-vol-ok)
-      (setf (symbol-function 'swimmy.core::research-enhanced-analysis) orig-research)
-      (setf (symbol-function 'swimmy.core::detect-regime-hmm) orig-detect)
-      (setf (symbol-function 'swimmy.school::elect-leader) orig-elect)
-      (setf (symbol-function 'swimmy.school::collect-strategy-signals) orig-collect)
-      (setf (symbol-function 'swimmy.school::get-cached-backtest) orig-cache)
-      (setf (symbol-function 'swimmy.school::can-category-trade-p) orig-can-trade)
-      (setf (symbol-function 'swimmy.school::execute-category-trade) orig-exec)
-      (setf (symbol-function 'swimmy.school::generate-dynamic-narrative) orig-narrative)
-      (setf (symbol-function 'swimmy.school::record-category-trade-time) orig-record-time)
-      (setf (symbol-function 'swimmy.school::record-strategy-trade) orig-record-strat)
-      (setf (symbol-function 'swimmy.school::record-trade-outcome) orig-record-outcome)
-      (if orig-record-slip
-          (setf (symbol-function 'swimmy.school::record-dryrun-slippage) orig-record-slip)
-          (fmakunbound 'swimmy.school::record-dryrun-slippage))
       (when (boundp 'swimmy.school::*shadow-slot-allocation*)
-        (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots)))))
+        (setf swimmy.school::*shadow-slot-allocation* orig-shadow-slots))
+      (when (boundp 'swimmy.school::*a-rank-shadow-trading-enabled*)
+        (setf swimmy.school::*a-rank-shadow-trading-enabled* orig-enabled))
+      (setf (symbol-function 'swimmy.school::fetch-deployment-gate-status) orig-fetch))))
 
 (deftest test-open-a-rank-shadow-trades-allows-forward-running-b-rank
   "FORWARD_RUNNING gate strategies should be shadow-eligible even when rank is :B."

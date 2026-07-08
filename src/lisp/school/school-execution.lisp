@@ -894,10 +894,23 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
            nil)))
     (t nil)))
 
+(defparameter *execution-ineligible-ranks* '(:legend :legend-archive :retired :graveyard)
+  "P2 (rank sanitization): ranks that are learning/archive only — never live-execution
+   or capital eligible. LEGEND is decoupled from the execution path and treated as a
+   learning archive: zero capital, no live or shadow/paper orders. It may still be
+   backtested/studied (active-strategy-p unchanged), just never traded.")
+
+(defun %execution-eligible-rank-p (rank)
+  "T when RANK may receive live execution / capital. NIL for archive/legend ranks."
+  (not (member (%runtime-selection-normalize-rank rank)
+               *execution-ineligible-ranks* :test #'eq)))
+
 (defun %runtime-selection-rank-score (rank)
-  "Return rank contribution score in [0,1]."
+  "Return rank contribution score in [0,1].
+   P2: :legend is neutralized to 0.0 (was 1.00) — legends are execution-ineligible,
+   so they must never out-score a tradeable candidate in runtime selection."
   (case (%runtime-selection-normalize-rank rank)
-    (:legend 1.00)
+    (:legend 0.00)
     (:s 0.90)
     (:a 0.75)
     (:b 0.60)
@@ -1084,7 +1097,13 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                                   diversification-penalty)
                                (if gate-ready-p 0.0 *runtime-selection-gate-penalty*)
                                (if live-edge-pass-p 0.0 *runtime-selection-live-edge-penalty*)))
-           (eligible-p (and gate-ready-p live-edge-pass-p)))
+           ;; P2: LEGEND (and other archive ranks) are execution-decoupled — never
+           ;; live-eligible regardless of deployment-gate state (defense-in-depth on
+           ;; top of the S/A-only portfolio draft and the shadow/pair pool exclusions).
+           (rank-execution-eligible-p (%execution-eligible-rank-p strategy-rank-token))
+           (eligible-p (and rank-execution-eligible-p gate-ready-p live-edge-pass-p)))
+      (unless rank-execution-eligible-p
+        (push (format nil "RANK_EXECUTION_INELIGIBLE(~a)" strategy-rank-token) reasons))
       (if gate-ready-p
           (push "DEPLOYMENT_GATE_LIVE_READY" reasons)
           (push (format nil "DEPLOYMENT_GATE_BLOCKED(~a)" gate-decision) reasons))
