@@ -1189,9 +1189,10 @@
                                             :win-rate wr :max-dd dd
                                             :trades trades)))
          (s-pass (funcall mk "S-PASS" 0.8 1.8 0.55 0.09 s-trades))
-         ;; S-base staged PF/WR + trade-evidence floor (>=100) should allow this.
+         ;; P2: staged PF/WR relaxation removed. PF 1.6 / WR 0.46 is below the strict
+         ;; S-base definition (PF>=1.70, WR>=0.50), so this is now EXCLUDED.
          (s-stage (funcall mk "S-STAGE" 0.8 1.6 0.46 0.09 s-trades))
-         ;; Still fails staged PF/WR gates (even with enough trade evidence).
+         ;; Fails strict S-base PF/WR gates (even with enough trade evidence).
          (s-fail (funcall mk "S-FAIL" 0.8 1.3 0.40 0.09 s-trades))
          (b-elite (swimmy.school:make-strategy :name "B-ELITE" :rank :B
                                                :sharpe 0.8 :profit-factor 2.0
@@ -1202,11 +1203,11 @@
           (setf (symbol-function 'swimmy.school:fetch-candidate-strategies)
                 (lambda (&rest args) (declare (ignore args)) (list s-pass s-stage s-fail b-elite)))
           (let ((cands (swimmy.school::fetch-cpcv-candidates)))
-            (assert-equal 2 (length cands) "should return only S-base-ready A-rank candidates")
+            (assert-equal 1 (length cands) "P2: only strict S-base-ready A-rank candidates (no staged relaxation)")
             (assert-true (find "S-PASS" cands :key #'swimmy.school:strategy-name :test #'string=)
                          "S-PASS should be included")
-            (assert-true (find "S-STAGE" cands :key #'swimmy.school:strategy-name :test #'string=)
-                         "S-STAGE should be included")
+            (assert-false (find "S-STAGE" cands :key #'swimmy.school:strategy-name :test #'string=)
+                          "S-STAGE should be excluded (below strict S-base; staged relaxation removed)")
             (assert-false (find "S-FAIL" cands :key #'swimmy.school:strategy-name :test #'string=)
                           "S-FAIL should be excluded")
             (assert-false (find "B-ELITE" cands :key #'swimmy.school:strategy-name :test #'string=)
@@ -12476,7 +12477,7 @@
                                              :sharpe 0.2
                                              :profit-factor 1.8
                                              :win-rate 0.60
-                                             :trades 120
+                                             :trades 200 ; P2: >= unified floor so eval isn't floor-blocked
                                              :max-dd 0.08)))
     (unwind-protect
         (progn
@@ -12530,25 +12531,30 @@
       (setf (symbol-function 'swimmy.school::send-to-graveyard) orig-send))))
 
 (deftest test-enforce-rank-trade-evidence-floors-demotes-existing-as
-  "Trade-evidence floor sweep should demote sparse S/A ranks."
+  "Trade-evidence floor sweep should demote sparse S/A ranks.
+   P2: A and S floors are unified to 200, so the old S->A soft-landing tier collapses —
+   any S below the floor drops straight to B (same target as a sub-floor A). Strategies
+   at/above the unified floor keep their rank."
   (let* ((orig-kb swimmy.school::*strategy-knowledge-base*)
          (orig-demote (symbol-function 'swimmy.school::demote-rank))
          (s-low (swimmy.school:make-strategy :name "UT-S-LOW"
                                              :rank :S
                                              :trades 35))
-         (s-mid (swimmy.school:make-strategy :name "UT-S-MID"
-                                             :rank :S
-                                             :trades 80))
+         ;; Just below the unified 200 floor: no S->A soft-landing anymore -> B.
+         (s-near (swimmy.school:make-strategy :name "UT-S-NEAR"
+                                              :rank :S
+                                              :trades 199))
          (a-low (swimmy.school:make-strategy :name "UT-A-LOW"
                                              :rank :A
                                              :trades 35))
+         ;; At/above the unified floor: stays A.
          (a-ok (swimmy.school:make-strategy :name "UT-A-OK"
                                             :rank :A
-                                            :trades 80))
+                                            :trades 220))
          (demotions '()))
     (unwind-protect
         (progn
-          (setf swimmy.school::*strategy-knowledge-base* (list s-low s-mid a-low a-ok))
+          (setf swimmy.school::*strategy-knowledge-base* (list s-low s-near a-low a-ok))
           (setf (symbol-function 'swimmy.school::demote-rank)
                 (lambda (s new-rank reason)
                   (declare (ignore reason))
@@ -12560,7 +12566,7 @@
             (assert-equal 2 (getf summary :s-demoted))
             (assert-equal 1 (getf summary :a-demoted))
             (assert-equal :B (swimmy.school:strategy-rank s-low))
-            (assert-equal :A (swimmy.school:strategy-rank s-mid))
+            (assert-equal :B (swimmy.school:strategy-rank s-near))
             (assert-equal :B (swimmy.school:strategy-rank a-low))
             (assert-equal :A (swimmy.school:strategy-rank a-ok))
             (assert-equal 3 (length demotions))))
@@ -12656,7 +12662,7 @@
                                             :profit-factor 1.80
                                             :win-rate 0.55
                                             :max-dd 0.08
-                                            :trades 160
+                                            :trades 200 ; P2: >= unified floor so demotion is metric-driven, not floor-driven
                                             :cpcv-pass-rate 0.80
                                             :cpcv-median-maxdd 0.10))
          (s-to-a (swimmy.school:make-strategy :name "UT-S-CONF-TO-A"
@@ -12665,7 +12671,7 @@
                                               :profit-factor 1.40
                                               :win-rate 0.45
                                               :max-dd 0.12
-                                              :trades 160
+                                              :trades 200 ; P2: >= unified floor
                                               :oos-sharpe 0.50
                                               :cpcv-pass-rate 0.80
                                               :cpcv-median-maxdd 0.10))
@@ -12675,7 +12681,7 @@
                                               :profit-factor 1.10
                                               :win-rate 0.36
                                               :max-dd 0.20
-                                              :trades 160
+                                              :trades 200 ; P2: >= unified floor
                                               :oos-sharpe 0.10
                                               :cpcv-pass-rate 0.80
                                               :cpcv-median-maxdd 0.10)))
@@ -12709,7 +12715,7 @@
                                             :profit-factor 1.60
                                             :win-rate 0.52
                                             :max-dd 0.10
-                                            :trades 120
+                                            :trades 200 ; P2: >= unified floor so demotion is metric-driven, not floor-driven
                                             :oos-sharpe 0.50))
          (a-to-b (swimmy.school:make-strategy :name "UT-A-AB-TO-B"
                                               :rank :A
@@ -12717,7 +12723,7 @@
                                               :profit-factor 1.10
                                               :win-rate 0.36
                                               :max-dd 0.20
-                                              :trades 120
+                                              :trades 200 ; P2: >= unified floor
                                               :oos-sharpe 0.50))
          (b-ok (swimmy.school:make-strategy :name "UT-B-AB-OK"
                                             :rank :B
@@ -12837,7 +12843,7 @@
                                             :sharpe 0.75
                                             :profit-factor 1.8
                                             :win-rate 0.55
-                                            :trades 120
+                                            :trades 200 ; P2: >= unified trade floor (200)
                                             :max-dd 0.09
                                             :cpcv-median-sharpe 0.8
                                             :cpcv-pass-rate 0.7
@@ -12846,8 +12852,9 @@
                                             :cpcv-median-maxdd 0.10)))
     (assert-true (swimmy.school::check-rank-criteria strat :S))))
 
-(deftest test-check-rank-criteria-s-allows-staged-pf-wr-for-high-trade-evidence
-  "S-RANK base PF/WR gate should relax for high trade-evidence candidates."
+(deftest test-check-rank-criteria-s-strict-pf-wr-no-staged-relaxation
+  "P2: staged PF/WR relaxation is removed. S-RANK must meet strict PF/WR even at
+   high trade-evidence — a below-definition candidate no longer earns S."
   (let ((strat (swimmy.school:make-strategy :name "UT-S-STAGED-PASS"
                                             :rank :A
                                             :sharpe 0.90
@@ -12860,8 +12867,8 @@
                                             :cpcv-median-wr 0.5
                                             :cpcv-pass-rate 0.80
                                             :cpcv-median-maxdd 0.10)))
-    (assert-true (swimmy.school::check-rank-criteria strat :S)
-                 "Expected staged PF/WR gate to pass for high-trade candidate")))
+    (assert-false (swimmy.school::check-rank-criteria strat :S)
+                  "PF 1.35 / WR 0.40 is below strict S definition (PF>=1.70, WR>=0.50); staged relaxation removed")))
 
 (deftest test-check-rank-criteria-s-keeps-strict-pf-wr-for-low-trade-evidence
   "S-RANK base PF/WR gate should remain strict for low trade-evidence candidates."
@@ -14298,7 +14305,7 @@
                                              :sharpe 0.80
                                              :profit-factor 1.50
                                              :win-rate 0.50
-                                             :trades 80
+                                             :trades 200 ; P2: >= unified A floor
                                              :max-dd 0.10
                                              :oos-sharpe 0.40))
          (promoted nil)
@@ -14351,7 +14358,7 @@
                                              :sharpe 0.82
                                              :profit-factor 1.55
                                              :win-rate 0.51
-                                             :trades 80
+                                             :trades 200 ; P2: >= unified A floor
                                              :max-dd 0.09
                                              :oos-sharpe 0.44))
          (promoted nil)
@@ -16604,7 +16611,7 @@
 		                  test-enforce-a-b-rank-criteria-conformance-corrects-noncompliant-ranks
 		                  test-run-rank-evaluation-invokes-a-b-rank-conformance
 		                  test-check-rank-criteria-requires-cpcv-pass-rate
-		                  test-check-rank-criteria-s-allows-staged-pf-wr-for-high-trade-evidence
+		                  test-check-rank-criteria-s-strict-pf-wr-no-staged-relaxation
 		                  test-check-rank-criteria-s-keeps-strict-pf-wr-for-low-trade-evidence
 		                  test-check-rank-criteria-a-requires-min-trade-evidence
 		                  test-check-rank-criteria-a-shadow-only-evidence-does-not-satisfy-floor

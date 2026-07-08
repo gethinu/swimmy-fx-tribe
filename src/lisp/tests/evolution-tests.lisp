@@ -1647,7 +1647,7 @@
                                                   :rank :S
                                                   :status :active
                                                   :sl 0.22 :tp 0.31
-                                                  :trades 180
+                                                  :trades 200 ; P2: >= unified S floor
                                                   :sharpe 0.80
                                                   :profit-factor 1.80
                                                   :win-rate 0.52
