@@ -13738,6 +13738,125 @@
       (ignore-errors (delete-file (concatenate 'string tmp-db "-wal")))
       (ignore-errors (delete-file (concatenate 'string tmp-db "-shm"))))))
 
+(deftest test-ensure-rank-legend-graveyard-routes-to-legend-archive
+  "P2e (Thread A): a :legend that earns graveyard is retired to :legend-archive
+   (honest, execution-forbidden, preserved) — never frozen as immortal :legend,
+   never dumped to :graveyard."
+  (let* ((name "UT-LEGEND-RETIRE")
+         (strat (swimmy.school:make-strategy :name name
+                                             :timeframe 1
+                                             :symbol "USDJPY"
+                                             :direction :BOTH
+                                             :rank :legend))
+         (tmp-db (format nil "/tmp/swimmy-legend-retire-~a.db" (get-universal-time)))
+         (orig-db-path swimmy.core::*db-path-default*)
+         (orig-db-conn swimmy.core::*sqlite-conn*)
+         (orig-db-init swimmy.school::*db-initialized*)
+         (orig-disable-auto swimmy.school::*disable-auto-migration*)
+         (orig-disable-timeframe-backfill swimmy.school::*disable-timeframe-backfill*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (db-rank nil))
+    (unwind-protect
+        (progn
+          (ignore-errors (delete-file tmp-db))
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*db-initialized* nil
+                swimmy.school::*disable-auto-migration* t
+                swimmy.school::*disable-timeframe-backfill* t
+                swimmy.school::*strategy-knowledge-base* (list strat))
+          (swimmy.school::init-db)
+          (swimmy.school::upsert-strategy strat)
+          ;; Attempt to graveyard the legend — should be redirected to archive.
+          (swimmy.school::ensure-rank strat :graveyard "should retire, not graveyard")
+          (assert-equal :legend-archive (swimmy.school:strategy-rank strat)
+                        "In-memory rank should become :legend-archive")
+          (setf db-rank (swimmy.school::execute-single
+                         "SELECT rank FROM strategies WHERE name = ?" name))
+          (assert-equal ":LEGEND-ARCHIVE"
+                        (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                    (format nil "~a" db-rank)))
+                        "DB rank should be persisted as :LEGEND-ARCHIVE (not :GRAVEYARD, not :LEGEND)"))
+      (ignore-errors (swimmy.school::close-db-connection))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb
+            swimmy.school::*disable-auto-migration* orig-disable-auto
+            swimmy.school::*disable-timeframe-backfill* orig-disable-timeframe-backfill
+            swimmy.school::*db-initialized* orig-db-init
+            swimmy.core::*db-path-default* orig-db-path
+            swimmy.core::*sqlite-conn* orig-db-conn)
+      (ignore-errors (delete-file tmp-db))
+      (ignore-errors (delete-file (concatenate 'string tmp-db "-wal")))
+      (ignore-errors (delete-file (concatenate 'string tmp-db "-shm"))))))
+
+(deftest test-restore-legend-61-skips-sticky-legend-archive
+  "P2e (Thread A): restore-legend-61 must NOT resurrect a strategy whose
+   authoritative DB rank is already :legend-archive (deliberate archival is
+   sticky — severs the restore-immortalization path)."
+  (let* ((name "Aggressive-Reversal")
+         (canonical (swimmy.school:make-strategy :name name
+                                                 :timeframe 1
+                                                 :symbol "USDJPY"
+                                                 :direction :BOTH
+                                                 :rank :legend))
+         (tmp-db (format nil "/tmp/swimmy-legend-sticky-~a.db" (get-universal-time)))
+         (orig-db-path swimmy.core::*db-path-default*)
+         (orig-db-conn swimmy.core::*sqlite-conn*)
+         (orig-db-init swimmy.school::*db-initialized*)
+         (orig-disable-auto swimmy.school::*disable-auto-migration*)
+         (orig-disable-timeframe-backfill swimmy.school::*disable-timeframe-backfill*)
+         (orig-kb swimmy.school::*strategy-knowledge-base*)
+         (orig-read (symbol-function 'swimmy.school::%read-make-strategy-forms))
+         (orig-lookup (symbol-function 'swimmy.school::%lookup-optimized-timeframe-minutes))
+         (orig-move (symbol-function 'swimmy.persistence:move-strategy))
+         (db-rank nil))
+    (unwind-protect
+        (progn
+          (ignore-errors (delete-file tmp-db))
+          (setf swimmy.core::*db-path-default* tmp-db
+                swimmy.core::*sqlite-conn* nil
+                swimmy.school::*db-initialized* nil
+                swimmy.school::*disable-auto-migration* t
+                swimmy.school::*disable-timeframe-backfill* t
+                swimmy.school::*strategy-knowledge-base* nil)
+          (swimmy.school::init-db)
+          ;; Seed a deliberately-archived legend row.
+          (swimmy.school::upsert-strategy
+           (swimmy.school:make-strategy :name name
+                                        :timeframe 1
+                                        :symbol "USDJPY"
+                                        :direction :BOTH
+                                        :rank :legend-archive))
+          (setf (symbol-function 'swimmy.school::%read-make-strategy-forms)
+                (lambda (_path _names)
+                  (declare (ignore _path _names))
+                  (list canonical)))
+          (setf (symbol-function 'swimmy.school::%lookup-optimized-timeframe-minutes)
+                (lambda (_name)
+                  (declare (ignore _name))
+                  10080))
+          (setf (symbol-function 'swimmy.persistence:move-strategy)
+                (lambda (&rest _args) (declare (ignore _args)) nil))
+          (swimmy.school::restore-legend-61)
+          (setf db-rank (swimmy.school::execute-single
+                         "SELECT rank FROM strategies WHERE name = ?" name))
+          (assert-equal ":LEGEND-ARCHIVE"
+                        (string-upcase (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                                    (format nil "~a" db-rank)))
+                        "restore-legend-61 must leave a sticky :legend-archive row untouched"))
+      (setf (symbol-function 'swimmy.school::%read-make-strategy-forms) orig-read)
+      (setf (symbol-function 'swimmy.school::%lookup-optimized-timeframe-minutes) orig-lookup)
+      (setf (symbol-function 'swimmy.persistence:move-strategy) orig-move)
+      (ignore-errors (swimmy.school::close-db-connection))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb
+            swimmy.school::*disable-auto-migration* orig-disable-auto
+            swimmy.school::*disable-timeframe-backfill* orig-disable-timeframe-backfill
+            swimmy.school::*db-initialized* orig-db-init
+            swimmy.core::*db-path-default* orig-db-path
+            swimmy.core::*sqlite-conn* orig-db-conn)
+      (ignore-errors (delete-file tmp-db))
+      (ignore-errors (delete-file (concatenate 'string tmp-db "-wal")))
+      (ignore-errors (delete-file (concatenate 'string tmp-db "-shm"))))))
+
 (deftest test-b-rank-culling-for-category-filters-expectancy-candidates
   "Category culling should queue only A-base candidates that also pass expectancy gate."
   (let* ((a-min (or (ignore-errors (swimmy.school::min-trade-evidence-for-rank :A)) 50))
@@ -16568,6 +16687,8 @@
 	                  test-restore-legend-61-resurrects-db-archived-rank-for-existing-legend
 	                  test-legend-split-definitions-match-canonical
 	                  test-ensure-rank-noop-heals-archived-db-rank
+	                  test-ensure-rank-legend-graveyard-routes-to-legend-archive
+	                  test-restore-legend-61-skips-sticky-legend-archive
 	                  test-b-rank-culling-for-category-filters-expectancy-candidates
 	                  test-b-rank-culling-records-category-a-candidate-metrics
 	                  test-a-candidate-metrics-snippet-summarizes-category-counts

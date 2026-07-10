@@ -28,8 +28,11 @@
 ;;; The stamp is written only AFTER a successful restore, so a failed restore
 ;;; (debugger-hook exit 1) is retried on the next boot.
 
-(defparameter *legend-restore-stamp-version* 1
-  "Bump when the restore logic or *legend-61-names* set changes so the gate re-runs.")
+(defparameter *legend-restore-stamp-version* 2
+  "Bump when the restore logic or *legend-61-names* set changes so the gate re-runs.
+   v2 (P2e, Thread A): restore-legend-61 now skips names already deliberately
+   retired to :LEGEND-ARCHIVE, so re-running the gate reconciles the new
+   sticky-archive semantics once.")
 
 (defun %legend-src-path ()
   (merge-pathnames "strategies_v3.lisp" (uiop:getcwd)))

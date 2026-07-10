@@ -794,11 +794,18 @@ Keys:
                 (and (fboundp 'execute-single)
                      (execute-single "SELECT rank FROM strategies WHERE name = ?"
                                      (strategy-name strategy)))))))
-      ;; LEGEND保護: レジェンドは墓場送りしない（子世代は別扱い）
+      ;; P2e (Thread A): retire a failed legend to :LEGEND-ARCHIVE instead of
+      ;; freezing it as immortal :LEGEND. Rank is a pure function of criteria; a
+      ;; legend that earns graveyard is archived — execution-forbidden and
+      ;; capital-zero (see *execution-ineligible-ranks*) — but preserved for
+      ;; audit/learning (no hard-delete) and never conflated with a failed
+      ;; recruit's :GRAVEYARD. Children are handled separately.
       (when (and (string= old-token "LEGEND")
                  (string= new-token "GRAVEYARD"))
-        (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
-        (return-from %ensure-rank-no-lock old-rank))
+        (format t "[RANK] 📚 Legend retirement: ~a :LEGEND → :LEGEND-ARCHIVE (honest archive, not graveyard).~%"
+                (strategy-name strategy))
+        (setf new-rank :legend-archive
+              new-token "LEGEND-ARCHIVE"))
       (when (and (string= new-token "GRAVEYARD")
                  (oos-request-pending-p (strategy-name strategy)))
         (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))

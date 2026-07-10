@@ -135,46 +135,73 @@
               (setf results (nconc results (%walk-and-collect form names)))))
     results))
 
+(defun %legend-current-db-rank-token (name)
+  "Uppercased, colon-stripped authoritative DB rank for NAME, or NIL if unknown/
+   unreadable. Lets deliberate :LEGEND-ARCHIVE archival stay sticky across
+   restore-legend-61 (P2e, Thread A)."
+  (ignore-errors
+    (when (fboundp 'execute-single)
+      (let ((raw (execute-single "SELECT rank FROM strategies WHERE name = ?" name)))
+        (when raw
+          (let ((up (string-upcase
+                     (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                  (format nil "~a" raw)))))
+            (if (and (> (length up) 0) (char= (char up 0) #\:))
+                (subseq up 1)
+                up)))))))
+
 (defun restore-legend-61 ()
   "Re-register the 61 signal-system strategies as LEGEND (immutables).
    - Uses definitions from strategies_v3.lisp
    - Protects existing LEGENDs from demotion
+   - P2e (Thread A): skips any name whose authoritative DB rank is already
+     :LEGEND-ARCHIVE — a deliberately-retired legend is NOT resurrected, so this
+     path can no longer re-immortalize a loss-making legend.
    - Does not restore offspring (Bred-Legen-*)"
   (format t "[LEGENDS-61] 🔍 Loading definitions from strategies_v3.lisp...~%")
   (let* ((path (swimmy.core::swimmy-path "strategies_v3.lisp"))
          (defs (%read-make-strategy-forms path *legend-61-names*))
          (count-added 0)
          (count-updated 0)
+         (count-archived-skipped 0)
          (*startup-mode* t)) ;; bypass graveyard pattern gate for restoration
     (dolist (s defs)
-      (setf (strategy-rank s) :legend)
-      (when (slot-exists-p s 'generation) (setf (strategy-generation s) 0))
-      (when (slot-exists-p s 'immortal) (setf (strategy-immortal s) t))
       (let* ((name (strategy-name s))
-             (resolved-tf (%resolve-legend-timeframe-minutes s))
-             (existing (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
-        (when (slot-exists-p s 'timeframe)
-          (setf (strategy-timeframe s) resolved-tf))
-        (if existing
+             (db-token (%legend-current-db-rank-token name)))
+        (if (and db-token (string= db-token "LEGEND-ARCHIVE"))
+            ;; P2e (Thread A): a deliberately-archived legend is sticky. Skipping
+            ;; it here severs the restore-immortalization path — a loss-making
+            ;; legend retired to :LEGEND-ARCHIVE stays retired across restores.
             (progn
-              (when (slot-exists-p existing 'timeframe)
-                (setf (strategy-timeframe existing) resolved-tf))
-              (when (slot-exists-p existing 'generation)
-                (setf (strategy-generation existing) 0))
-              (when (slot-exists-p existing 'immortal)
-                (setf (strategy-immortal existing) t))
-              (mark-revalidation-pending existing)
-              (ensure-rank existing :legend "Legend-61 restore")
-              (ignore-errors (swimmy.persistence:move-strategy existing :legend :force t))
-              (incf count-updated))
-            (progn
-              (mark-revalidation-pending s)
-              (when (add-to-kb s :founder :require-bt nil :notify nil)
-                (ensure-rank s :legend "Legend-61 restore")
-                (ignore-errors (swimmy.persistence:save-strategy s))
-                (incf count-added))))))
-    (format t "[LEGENDS-61] ✅ Restoration complete. Added: ~d | Updated: ~d~%"
-            count-added count-updated)))
+              (incf count-archived-skipped)
+              (format t "[LEGENDS-61] 📚 ~a is :LEGEND-ARCHIVE — skip resurrection (sticky archive).~%" name))
+            (let ((resolved-tf (%resolve-legend-timeframe-minutes s))
+                  (existing (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)))
+              (setf (strategy-rank s) :legend)
+              (when (slot-exists-p s 'generation) (setf (strategy-generation s) 0))
+              (when (slot-exists-p s 'immortal) (setf (strategy-immortal s) t))
+              (when (slot-exists-p s 'timeframe)
+                (setf (strategy-timeframe s) resolved-tf))
+              (if existing
+                  (progn
+                    (when (slot-exists-p existing 'timeframe)
+                      (setf (strategy-timeframe existing) resolved-tf))
+                    (when (slot-exists-p existing 'generation)
+                      (setf (strategy-generation existing) 0))
+                    (when (slot-exists-p existing 'immortal)
+                      (setf (strategy-immortal existing) t))
+                    (mark-revalidation-pending existing)
+                    (ensure-rank existing :legend "Legend-61 restore")
+                    (ignore-errors (swimmy.persistence:move-strategy existing :legend :force t))
+                    (incf count-updated))
+                  (progn
+                    (mark-revalidation-pending s)
+                    (when (add-to-kb s :founder :require-bt nil :notify nil)
+                      (ensure-rank s :legend "Legend-61 restore")
+                      (ignore-errors (swimmy.persistence:save-strategy s))
+                      (incf count-added))))))))
+    (format t "[LEGENDS-61] ✅ Restoration complete. Added: ~d | Updated: ~d | Archived(skipped): ~d~%"
+            count-added count-updated count-archived-skipped)))
 
 (defun queue-legend-revalidation (&key (send-requests t))
   "Flag all :legend strategies for revalidation and enqueue backtests.
