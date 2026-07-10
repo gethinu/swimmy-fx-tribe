@@ -13477,10 +13477,15 @@
          (orig-add (symbol-function 'swimmy.school::add-to-kb))
          (orig-ensure (symbol-function 'swimmy.school::ensure-rank))
          (orig-move (symbol-function 'swimmy.persistence:move-strategy))
+         (orig-dbrank (symbol-function 'swimmy.school::%legend-current-db-rank-token))
          (added nil))
     (unwind-protect
         (progn
           (setf swimmy.school::*strategy-knowledge-base* (list existing))
+          ;; Hermetic: the archive-skip guard reads the DB; keep this test
+          ;; independent of ambient live-DB rank (P2e sticky-archive).
+          (setf (symbol-function 'swimmy.school::%legend-current-db-rank-token)
+                (lambda (_name) (declare (ignore _name)) nil))
           (setf (symbol-function 'swimmy.school::%read-make-strategy-forms)
                 (lambda (_path _names)
                   (declare (ignore _path _names))
@@ -13511,6 +13516,7 @@
       (setf (symbol-function 'swimmy.school::mark-revalidation-pending) orig-mark)
       (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
       (setf (symbol-function 'swimmy.school::ensure-rank) orig-ensure)
+      (setf (symbol-function 'swimmy.school::%legend-current-db-rank-token) orig-dbrank)
       (setf (symbol-function 'swimmy.persistence:move-strategy) orig-move))))
 
 (deftest test-restore-legend-61-applies-optimized-timeframe-when-adding
@@ -13525,10 +13531,15 @@
          (orig-add (symbol-function 'swimmy.school::add-to-kb))
          (orig-ensure (symbol-function 'swimmy.school::ensure-rank))
          (orig-save (symbol-function 'swimmy.persistence:save-strategy))
+         (orig-dbrank (symbol-function 'swimmy.school::%legend-current-db-rank-token))
          (captured nil))
     (unwind-protect
         (progn
           (setf swimmy.school::*strategy-knowledge-base* nil)
+          ;; Hermetic: the archive-skip guard reads the DB; keep this test
+          ;; independent of ambient live-DB rank (P2e sticky-archive).
+          (setf (symbol-function 'swimmy.school::%legend-current-db-rank-token)
+                (lambda (_name) (declare (ignore _name)) nil))
           (setf (symbol-function 'swimmy.school::%read-make-strategy-forms)
                 (lambda (_path _names)
                   (declare (ignore _path _names))
@@ -13558,6 +13569,7 @@
       (setf (symbol-function 'swimmy.school::mark-revalidation-pending) orig-mark)
       (setf (symbol-function 'swimmy.school::add-to-kb) orig-add)
       (setf (symbol-function 'swimmy.school::ensure-rank) orig-ensure)
+      (setf (symbol-function 'swimmy.school::%legend-current-db-rank-token) orig-dbrank)
       (setf (symbol-function 'swimmy.persistence:save-strategy) orig-save))))
 
 (deftest test-restore-legend-61-resurrects-db-archived-rank-for-existing-legend

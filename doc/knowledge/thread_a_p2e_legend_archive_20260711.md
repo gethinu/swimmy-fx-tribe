@@ -68,3 +68,47 @@ KILL_CRITERIA §4 FAIL →（C）畳む、と整合。
 
 本変更はランクの**正直化**のみ。S/A/B の floor・criteria は不変（P2a の 200 統一を含む）。LEGEND を
 「不滅の称号」から「正直なアーカイブ」に落とすだけで、execution 安全は P2b で既に確立済。
+
+---
+
+## P2f: 実 DB 移行（64 :LEGEND → :LEGEND-ARCHIVE）
+
+新規ツール `tools/tribe/migrate_p2_legend_archive.py`（P2d と同型：dry-run 既定・単一トランザクション・
+durable ログ・逆操作明記）。**一括退役**（純関数ラダーへの個別再ランクではない）。
+
+**現物（apply 前）:** `:LEGEND` 64件（うち negative-sharpe 31）、`:LEGEND-ARCHIVE` 0件。
+64件のうち 61 は canonical 署名戦略、残りは過去セッションのテスト汚染（例 `TEST-REFRESH-ACTIVE-SEXP-SYNC`
+＝trades=0 の不当 :LEGEND）を含む。不当な称号こそ純関数原則で退役対象なので一括退役に含める。
+
+**apply 後の rank 分布:**
+```
+:SCOUT 18006 / :B 380 / :LEGEND-ARCHIVE 64 (0→+64) / :A 44 / :GRAVEYARD 11 / :RETIRED 1 / :LEGEND 0
+```
+不変条件: remaining `:LEGEND` = 0、`:LEGEND-ARCHIVE` の増分 = 64（＝退役件数）。冪等（再実行で 0件対象）。
+
+durable ログ: `data/reports/p2_legend_archive_dryrun_20260710T232031Z.log` /
+`..._apply_20260710T232129Z.log`。
+
+**逆操作（承認ゲートに揃える場合）:** apply 前に `:LEGEND-ARCHIVE` 0件だったため厳密可逆:
+```sql
+UPDATE strategies SET rank=':LEGEND' WHERE rank=':LEGEND-ARCHIVE';
+```
+`swimmy.db` は git 非追跡（runtime state）なので本コミットに DB 差分は含まれない。
+
+**restore との整合:** stamp を v2 に上げたため次回ブートで restore-legend-61 が一度だけ再走 →
+64件全て `:LEGEND-ARCHIVE` 検出でスキップ（復元されない）→ v2 stamp 書込で確定。以降は署名不変なら
+skip。不死化ループは完全に断たれる。
+
+## 検証（P2f 後）＋ テスト密閉性の修正
+
+実 DB 移行**直後**のフル再走は **580 passed / 13 failed**。差分の2件は
+`test-restore-legend-61-updates-existing-timeframe-from-optimized-map` と
+`...-applies-optimized-timeframe-when-adding`。両者は canonical 名 `Aggressive-Reversal` で
+tmp-db を張らず、P2e で追加した `%legend-current-db-rank-token` の DB 照会が **live-DB** を読み、
+移行後の `:LEGEND-ARCHIVE` を検出して skip したため（＝ambient live-DB 依存だった旧テストの露呈）。
+
+**修正:** 両テストで `%legend-current-db-rank-token` を nil にモック（他の副作用同様に密閉化）。archive-skip
+自体は専用の `test-restore-legend-61-skips-sticky-legend-archive`（tmp-db + :legend-archive）が担保。
+
+**再検証:** フル再走 → **582 passed / 11 failed**、失敗集合はベースライン同一（回帰ゼロ）。
+live-DB のランク書換がどの通過テストも壊さないことを確認。
