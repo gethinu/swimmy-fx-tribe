@@ -328,6 +328,10 @@
    #:execute-single
    #:with-transaction
    #:close-db-connection
+   ;; P5: persistence hardening
+   #:with-immediate-transaction
+   #:sha256-hex
+   #:*max-data-sexp-length*
    ))
 
 
