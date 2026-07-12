@@ -70,7 +70,11 @@ function Start-Brain {
         $bootFile = $bootTemp.FullName
     }
 
-    $heap = if ($env:SWIMMY_SBCL_DYNAMIC_SPACE_MB) { $env:SWIMMY_SBCL_DYNAMIC_SPACE_MB } else { '6144' }
+    # P4: prefer the brain-specific heap var (parity with run.sh), fall back to
+    # the legacy shared var, then 6144 for bare native runs.
+    $heap = if ($env:SWIMMY_BRAIN_HEAP_MB) { $env:SWIMMY_BRAIN_HEAP_MB } `
+            elseif ($env:SWIMMY_SBCL_DYNAMIC_SPACE_MB) { $env:SWIMMY_SBCL_DYNAMIC_SPACE_MB } `
+            else { '6144' }
     $sbcl = Resolve-Sbcl
     Write-Host "[$(Get-Date)] Starting Swimmy Ver 41.5 (heap ${heap}MB) via $sbcl..."
     try {

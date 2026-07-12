@@ -22,8 +22,12 @@ RestartSec=30
 
 # Environment
 Environment=HOME=/home/swimmy
-Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
+# P4: heap comes from the split-name var (brain default 3072). run.sh reads
+# SWIMMY_BRAIN_HEAP_MB. /etc/swimmy/heap.env is loaded LAST so it is the single
+# source of truth, overriding this default and anything in .env.
+Environment=SWIMMY_BRAIN_HEAP_MB=3072
 EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=-/etc/swimmy/heap.env
 
 # Logging
 StandardOutput=journal
