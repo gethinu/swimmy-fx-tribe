@@ -18,3 +18,4 @@
 *.service text eol=lf
 *.timer   text eol=lf
 *.env     text eol=lf
+*.py      text eol=lf
