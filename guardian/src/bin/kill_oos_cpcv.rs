@@ -278,7 +278,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let oos_qualified =
             oos.trades >= OOS_MIN_TRADES && oos.profit_factor >= PF_GATE && oos_pen >= PEN_SHARPE_GATE;
         let cpcv_ok = cpcv.pass_rate >= CPCV_PASS_RATE_GATE && cpcv.median_sharpe < CPCV_MEDIAN_SHARPE_MAX;
-        let diversity_ok = m.symbol != "USDJPY" || m.category != ":TREND";
+        // NB: `category` may arrive with or without a leading colon depending on the
+        // manifest source (SQL columns store "TREND"; .lisp-derived manifests store
+        // ":TREND"). Normalise before the diversity test — comparing raw against
+        // ":TREND" only was a false-positive bug that flagged every USDJPY/TREND clone
+        // as "diverse" and produced a spurious §4 SURVIVE (2026-07-13 go/no-go).
+        let cat_norm = m.category.trim_start_matches(':');
+        let diversity_ok = m.symbol != "USDJPY" || cat_norm != "TREND";
 
         eprintln!(
             "[{:2}/{}] {:42} tf={:4}m sma={}/{} | IS(t={},pf={:.3}) OOS(t={},pf={:.3},pen={:.3}) CPCV(pr={:.2},med={:.2}) {}",
