@@ -255,6 +255,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = arg(&args, "--data").expect("--data <csv> required");
     let manifest_path = arg(&args, "--manifest").expect("--manifest <json> required");
     let out_path = arg(&args, "--out").expect("--out <json> required");
+    // Per-side cost in PRICE units. Defaults to COST_2PIP=0.01, which is a true
+    // 2-pip round-trip ONLY for pip=0.01 symbols (USDJPY, JPY crosses). For
+    // pip=0.0001 majors (EURUSD, GBPUSD) pass --slippage 0.0001 to get a true
+    // 2-pip round-trip. Omitting the flag reproduces the 2026-07-08 §4 run exactly.
+    let slip_2pip: f64 = arg(&args, "--slippage")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(COST_2PIP);
+    let slip_fidelity: f64 = slip_2pip / 2.0; // keep the 1-pip fidelity : 2-pip real ratio
 
     eprintln!("[kill] loading candles {}", data);
     let all = load_candles_from_csv(&data)?;
@@ -270,9 +278,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut results: Vec<StratResult> = Vec::new();
     for (i, m) in manifest.iter().enumerate() {
         let strat = build_strategy(m);
-        let fidelity = run_on(&strat, is_slice, m.tf_seconds, COST_DEFAULT);
-        let oos = run_on(&strat, oos_slice, m.tf_seconds, COST_2PIP);
-        let cpcv = run_cpcv(&strat, &all, m.tf_seconds, COST_2PIP);
+        let fidelity = run_on(&strat, is_slice, m.tf_seconds, slip_fidelity);
+        let oos = run_on(&strat, oos_slice, m.tf_seconds, slip_2pip);
+        let cpcv = run_cpcv(&strat, &all, m.tf_seconds, slip_2pip);
 
         let oos_pen = calculate_penalized_sharpe(oos.sharpe, oos.trades);
         let oos_qualified =
@@ -336,7 +344,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "all_usdjpy": results.iter().all(|r| r.symbol == "USDJPY"),
             "all_trend": results.iter().all(|r| r.category == ":TREND"),
         },
-        "cost_model": "round-trip 2 pip (slippage=0.01 per side, applied entry+exit); sharpe annualized daily x sqrt(252); penalized = Taleb haircut",
+        "cost_model": format!("round-trip cost = 2 x slippage; slippage={} per side (fidelity IS={}); COST_DEFAULT ref={}; applied entry+exit; sharpe annualized daily x sqrt(252); penalized = Taleb haircut", slip_2pip, slip_fidelity, COST_DEFAULT),
         "gates": {
             "oos_min_trades": OOS_MIN_TRADES,
             "pf_gate": PF_GATE,
