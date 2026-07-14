@@ -455,6 +455,10 @@ fn run_backtest_range_from_loaded_candles(
         entry_short_ast: strategy_params.get("entry_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
         exit_long_ast: strategy_params.get("exit_long_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
         exit_short_ast: strategy_params.get("exit_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
     };
     
     // Run backtest on the range

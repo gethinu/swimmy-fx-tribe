@@ -76,6 +76,10 @@ impl StrategyParams {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         }
     }
 }

@@ -58,6 +58,9 @@ impl RatedStrategy {
             IndicatorType::Volsma => (rng.gen_range(5..40), rng.gen_range(110..220)), // period, spike%
             IndicatorType::Vpoc => (rng.gen_range(20..120), rng.gen_range(8..24)),     // lookback, bins
             IndicatorType::Vwapvr => (rng.gen_range(5..40), rng.gen_range(110..220)),  // period, orange threshold%
+            // Unreachable: IndicatorType::random() never yields Keltner, so live breeding
+            // cannot produce it. Arm exists only for match exhaustiveness.
+            IndicatorType::Keltner => (rng.gen_range(20..60), 20),                      // EMA period, reserved
         };
         let name = format!("{}-{}-{}", ind_type.name(), short, long);
         RatedStrategy::new(name, ind_type, short, long, rng.gen_range(0.1..0.4), rng.gen_range(0.2..0.8))
@@ -97,6 +100,10 @@ pub fn parallel_backtest(
                     entry_short_ast: None,
                     exit_long_ast: None,
                     exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
                 },
                 candles,
                 &HashMap::new(),
@@ -130,6 +137,10 @@ fn run_match(
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         },
         candles,
         &HashMap::new(),
@@ -152,6 +163,10 @@ fn run_match(
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         },
         candles,
         &HashMap::new(),

@@ -62,6 +62,16 @@ struct ManifestEntry {
     sl: f64,
     tp: f64,
     volume: f64,
+    // Optional additive knobs (default = current behaviour) so the same harness can
+    // drive the new backtester generators (Keltner / variable-dev BB / ATR barriers).
+    #[serde(default = "d_band_mult")]
+    band_mult: f64,
+    #[serde(default = "d_atr_period")]
+    atr_period: usize,
+    #[serde(default)]
+    atr_barrier_sl: f64,
+    #[serde(default)]
+    atr_barrier_tp: f64,
     #[serde(default)]
     is_trades: Option<i64>,
     #[serde(default)]
@@ -156,6 +166,7 @@ fn build_strategy(m: &ManifestEntry) -> Strategy {
         "volsma" => IndicatorType::Volsma,
         "vpoc" => IndicatorType::Vpoc,
         "vwapvr" => IndicatorType::Vwapvr,
+        "keltner" => IndicatorType::Keltner,
         other => {
             eprintln!("[kill] WARN unknown indicator_type {other:?} -> Sma (check manifest)");
             IndicatorType::Sma
@@ -177,8 +188,15 @@ fn build_strategy(m: &ManifestEntry) -> Strategy {
         entry_short_ast: None,
         exit_long_ast: None,
         exit_short_ast: None,
+        band_mult: m.band_mult,
+        atr_period: m.atr_period,
+        atr_barrier_sl: m.atr_barrier_sl,
+        atr_barrier_tp: m.atr_barrier_tp,
     }
 }
+
+fn d_band_mult() -> f64 { 2.0 }
+fn d_atr_period() -> usize { 14 }
 
 // ts in [lo, hi)
 fn slice_range<'a>(c: &'a [Candle], lo: i64, hi: i64) -> &'a [Candle] {
@@ -431,6 +449,10 @@ mod tests {
             sl: 0.003,
             tp: 0.006,
             volume: 0.01,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
             is_trades: None,
             is_pf: None,
             is_sharpe: None,

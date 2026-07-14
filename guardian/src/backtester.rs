@@ -83,6 +83,10 @@ pub enum IndicatorType {
     Volsma,
     Vpoc,
     Vwapvr,
+    // Additive (2026-07-14): EMA +/- band_mult*ATR channel mean-reversion. Never
+    // produced by IndicatorType::random(), so live breeding cannot emit it; only an
+    // explicit "keltner" in a request/manifest selects it. Live behaviour unchanged.
+    Keltner,
 }
 
 // V6.12: Methods moved from tournament.rs for unified implementation
@@ -116,9 +120,16 @@ impl IndicatorType {
             IndicatorType::Volsma => "VOLSMA",
             IndicatorType::Vpoc => "VPOC",
             IndicatorType::Vwapvr => "VWAPVR",
+            IndicatorType::Keltner => "KELTNER",
         }
     }
 }
+
+// Defaults for the additive, live-neutral Strategy knobs below. Chosen so a strategy
+// deserialized WITHOUT these fields (every live sexp/JSON today) reproduces exactly the
+// prior behaviour: Bollinger std-dev 2.0, ATR(14), ATR-barriers disabled.
+fn default_band_mult() -> f64 { 2.0 }
+fn default_atr_period() -> usize { 14 }
 
 #[derive(Debug, Deserialize)]
 pub struct Strategy {
@@ -150,6 +161,21 @@ pub struct Strategy {
     pub exit_long_ast: Option<StrategyNode>,
     #[serde(default)]
     pub exit_short_ast: Option<StrategyNode>,
+
+    // ── Additive experimental knobs (2026-07-14). All #[serde(default)] so existing
+    //    live strategies deserialize to identical behaviour. See default_* fns above. ──
+    /// Bollinger band std-dev multiplier (was hard-coded 2.0) and Keltner ATR band multiplier.
+    #[serde(default = "default_band_mult")]
+    pub band_mult: f64,
+    /// ATR lookback for Keltner bands and ATR-normalized barriers.
+    #[serde(default = "default_atr_period")]
+    pub atr_period: usize,
+    /// ATR-normalized barriers. 0.0 => disabled (use absolute sl/tp = current behaviour);
+    /// >0.0 => per-trade sl/tp distance = mult * ATR(atr_period) measured at entry.
+    #[serde(default)]
+    pub atr_barrier_sl: f64,
+    #[serde(default)]
+    pub atr_barrier_tp: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -500,8 +526,38 @@ fn calculate_bollinger(candles: &[Candle], period: usize, std_dev: f64, end_idx:
     
     let upper = mean + std_dev * std;
     let lower = mean - std_dev * std;
-    
+
     Some((upper, mean, lower))
+}
+
+// Additive helpers for Keltner / ATR-normalized barriers. Same window convention as
+// calculate_sma/calculate_bollinger: the `period` bars ENDING BEFORE end_idx, i.e.
+// [end_idx-period, end_idx) (current bar excluded).
+fn calculate_atr(candles: &[Candle], period: usize, end_idx: usize) -> Option<f64> {
+    if period == 0 || end_idx < period + 1 {
+        return None;
+    }
+    let mut sum = 0.0;
+    for i in (end_idx - period)..end_idx {
+        let tr = (candles[i].high - candles[i].low)
+            .max((candles[i].high - candles[i - 1].close).abs())
+            .max((candles[i].low - candles[i - 1].close).abs());
+        sum += tr;
+    }
+    Some(sum / period as f64)
+}
+
+fn calculate_ema(candles: &[Candle], period: usize, end_idx: usize) -> Option<f64> {
+    if period == 0 || end_idx < period {
+        return None;
+    }
+    let k = 2.0 / (period as f64 + 1.0);
+    let lo = if end_idx >= 4 * period { end_idx - 4 * period } else { 0 };
+    let mut e = candles[lo].close;
+    for j in lo + 1..end_idx {
+        e = candles[j].close * k + e * (1.0 - k);
+    }
+    Some(e)
 }
 
 fn parse_tf_minutes(tf: &str) -> Option<i64> {
@@ -725,6 +781,7 @@ fn run_backtest_internal(
         IndicatorType::Volsma => strategy.sma_short.max(2) + 2,
         IndicatorType::Vpoc => strategy.sma_short.max(4) + 2,
         IndicatorType::Vwapvr => strategy.sma_short.max(2) + 2,
+        IndicatorType::Keltner => strategy.sma_short.max(2).max(strategy.atr_period) + 2,
     };
     
     if candles.len() < min_bars {
@@ -839,6 +896,7 @@ fn run_backtest_internal(
                 IndicatorType::Volsma => generate_volsma_signals(candles, strategy, i),
                 IndicatorType::Vpoc => generate_vpoc_signals(candles, strategy, i),
                 IndicatorType::Vwapvr => generate_vwapvr_signals(candles, strategy, i),
+                IndicatorType::Keltner => generate_keltner_signals(candles, strategy, i),
             }
         };
         
@@ -953,18 +1011,20 @@ fn run_backtest_internal(
 	            if filter_passed {
 	                if entry_buy {
 	                let entry_price = price + slippage;
+                let (sl_dist, tp_dist) = barrier_distances(strategy, candles, i);
 	                position = Position::Long {
 	                    entry: entry_price,
-	                    sl: entry_price - strategy.sl,
-	                    tp: entry_price + strategy.tp,
+	                    sl: entry_price - sl_dist,
+	                    tp: entry_price + tp_dist,
 	                };
 	                entry_time = timestamp;
 	            } else if entry_sell {
 	                let entry_price = price - slippage;
+                let (sl_dist, tp_dist) = barrier_distances(strategy, candles, i);
 	                position = Position::Short {
 	                    entry: entry_price,
-	                    sl: entry_price + strategy.sl,
-	                    tp: entry_price - strategy.tp,
+	                    sl: entry_price + sl_dist,
+	                    tp: entry_price - tp_dist,
 	                };
                 entry_time = timestamp;
             }
@@ -1121,9 +1181,12 @@ fn generate_rsi_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (b
 
 fn generate_bb_signals(candles: &[Candle], strategy: &Strategy, i: usize, price: f64) -> (bool, bool, bool, bool) {
     let period = strategy.sma_short.max(20);
-    let bb = calculate_bollinger(candles, period, 2.0, i);
-    let prev_bb = calculate_bollinger(candles, period, 2.0, i - 1);
-    
+    // band_mult defaults to 2.0 (== the prior hard-coded value) for any strategy that
+    // does not set it, so existing Bollinger strategies are unchanged.
+    let dev = strategy.band_mult;
+    let bb = calculate_bollinger(candles, period, dev, i);
+    let prev_bb = calculate_bollinger(candles, period, dev, i - 1);
+
     if let (Some((upper, middle, lower)), Some((_, _, prev_lower))) = (bb, prev_bb) {
         let prev_price = candles[i - 1].close;
         let buy = prev_price <= prev_lower && price > lower;  // Bounce from lower band
@@ -1134,6 +1197,46 @@ fn generate_bb_signals(candles: &[Candle], strategy: &Strategy, i: usize, price:
     } else {
         (false, false, false, false)
     }
+}
+
+// Additive (2026-07-14): Keltner channel mean-reversion. Middle = EMA(sma_short),
+// bands = middle +/- band_mult*ATR(atr_period). Bounce off the lower band / fade the
+// upper band, exit at the middle. Selected only by an explicit IndicatorType::Keltner.
+fn generate_keltner_signals(candles: &[Candle], strategy: &Strategy, i: usize) -> (bool, bool, bool, bool) {
+    let period = strategy.sma_short.max(2);
+    let (ema, atr, prev_ema, prev_atr) = match (
+        calculate_ema(candles, period, i),
+        calculate_atr(candles, strategy.atr_period, i),
+        calculate_ema(candles, period, i - 1),
+        calculate_atr(candles, strategy.atr_period, i - 1),
+    ) {
+        (Some(e), Some(a), Some(pe), Some(pa)) => (e, a, pe, pa),
+        _ => return (false, false, false, false),
+    };
+    let upper = ema + strategy.band_mult * atr;
+    let lower = ema - strategy.band_mult * atr;
+    let prev_lower = prev_ema - strategy.band_mult * prev_atr;
+    let price = candles[i].close;
+    let prev_price = candles[i - 1].close;
+    let buy = prev_price <= prev_lower && price > lower; // bounce off lower band
+    let sell = price >= upper;                           // fade upper band
+    let exit_long = price >= ema;                        // exit at middle (EMA)
+    let exit_short = price <= ema;
+    (buy, sell, exit_long, exit_short)
+}
+
+// Per-trade SL/TP distances. Absolute (strategy.sl/tp) by default; ATR-normalized when
+// atr_barrier_sl>0 (distance = mult*ATR(atr_period) at entry). Falls back to absolute if
+// ATR is unavailable/zero, so a trade never gets a degenerate zero-width barrier.
+fn barrier_distances(strategy: &Strategy, candles: &[Candle], i: usize) -> (f64, f64) {
+    if strategy.atr_barrier_sl > 0.0 {
+        if let Some(a) = calculate_atr(candles, strategy.atr_period, i) {
+            if a > 0.0 {
+                return (strategy.atr_barrier_sl * a, strategy.atr_barrier_tp * a);
+            }
+        }
+    }
+    (strategy.sl, strategy.tp)
 }
 
 fn generate_macd_signals(candles: &[Candle], i: usize) -> (bool, bool, bool, bool) {
@@ -1454,6 +1557,76 @@ mod tests {
         assert_eq!(get_tf_duration("300"), 18_000);
         assert_eq!(get_tf_duration("MN1"), 2_592_000);
     }
+
+    // ── Additive-generator regression tests (2026-07-14): Keltner / variable-dev BB /
+    //    ATR-normalized barriers. Guarantee the shared-lib change stays live-neutral. ──
+    fn mk_strat(name: &str, it: IndicatorType, short: usize, long: usize) -> Strategy {
+        Strategy {
+            name: name.into(), sma_short: short, sma_long: long, sl: 0.5, tp: 0.5, volume: 0.01,
+            indicator_type: it, filter_enabled: false, filter_tf: String::new(), filter_period: 0,
+            filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None,
+            exit_long_ast: None, exit_short_ast: None,
+            band_mult: 2.0, atr_period: 14, atr_barrier_sl: 0.0, atr_barrier_tp: 0.0,
+        }
+    }
+    fn osc_candles(n: usize) -> Vec<Candle> {
+        (0..n).map(|i| {
+            let f = i as f64;
+            let base = 100.0 + (f / 6.0).sin() * 2.0 + (f / 41.0).cos();
+            Candle { timestamp: 1_420_070_400 + i as i64 * 3600,
+                open: base, high: base + 0.4, low: base - 0.4, close: base, volume: 1.0 }
+        }).collect()
+    }
+    fn bt(s: &Strategy, c: &[Candle]) -> BacktestResult {
+        run_backtest(s, c, &std::collections::HashMap::new(), &[])
+    }
+
+    // Live-neutrality: deserializing WITHOUT the new fields must reproduce prior behaviour.
+    #[test]
+    fn additive_fields_default_to_prior_behaviour() {
+        let json = r#"{"name":"x","sma_short":30,"sma_long":60,"sl":0.5,"tp":0.5,"volume":0.01,"indicator_type":"bb"}"#;
+        let s: Strategy = serde_json::from_str(json).unwrap();
+        assert_eq!(s.band_mult, 2.0);
+        assert_eq!(s.atr_period, 14);
+        assert_eq!(s.atr_barrier_sl, 0.0);
+        assert_eq!(s.atr_barrier_tp, 0.0);
+    }
+
+    // band_mult actually reaches the Bollinger generator (tighter bands => different signals).
+    #[test]
+    fn band_mult_is_wired_into_bb() {
+        let c = osc_candles(1500);
+        let mut tight = mk_strat("bb-tight", IndicatorType::Bb, 20, 40); tight.band_mult = 1.0;
+        let mut wide = mk_strat("bb-wide", IndicatorType::Bb, 20, 40); wide.band_mult = 3.0;
+        assert!(bt(&tight, &c).trades != bt(&wide, &c).trades, "band_mult must change BB behaviour");
+    }
+
+    // The new Keltner generator produces trades and does not panic on a normal series.
+    #[test]
+    fn keltner_generates_trades() {
+        let c = osc_candles(1500);
+        assert!(bt(&mk_strat("kelt", IndicatorType::Keltner, 20, 40), &c).trades > 0);
+    }
+
+    // random() must NEVER yield Keltner, else live breeding would start emitting it.
+    #[test]
+    fn random_indicator_never_keltner() {
+        for _ in 0..5000 {
+            assert!(!matches!(IndicatorType::random(), IndicatorType::Keltner));
+        }
+    }
+
+    // ATR-normalized barriers change outcomes vs absolute barriers (feature is wired).
+    #[test]
+    fn atr_barriers_change_behaviour() {
+        let c = osc_candles(1500);
+        let abs = mk_strat("abs", IndicatorType::Keltner, 20, 40);
+        let mut atr = mk_strat("atr", IndicatorType::Keltner, 20, 40);
+        atr.atr_barrier_sl = 2.0; atr.atr_barrier_tp = 2.0;
+        let (a, b) = (bt(&abs, &c), bt(&atr, &c));
+        assert!(a.trades != b.trades || (a.profit_factor - b.profit_factor).abs() > 1e-9,
+            "ATR barriers should change outcomes vs absolute");
+    }
     
     #[test]
     fn test_sma() {
@@ -1514,6 +1687,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         let (buy, sell, exit_long, exit_short) = generate_vwap_signals(&candles, &strategy, 4);
         assert!(buy);
@@ -1547,6 +1724,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         let (buy, sell, exit_long, exit_short) = generate_volsma_signals(&candles, &strategy, 4);
         assert!(buy);
@@ -1592,6 +1773,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         let (buy, sell, exit_long, exit_short) = generate_vwapvr_signals(&candles, &strategy, 4);
         assert!(buy);
@@ -1625,6 +1810,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         let (buy, sell, exit_long, exit_short) = generate_vwapvr_signals(&candles, &strategy, 4);
         assert!(!buy);
@@ -1646,17 +1835,29 @@ mod tests {
     #[test]
     fn test_clone_detection() {
         let existing = vec![
-            Strategy { name: "s1".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None },
+            Strategy { name: "s1".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0, },
         ];
         
         // Almost identical - should be clone
-        let clone = Strategy { name: "s2".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None };
+        let clone = Strategy { name: "s2".to_string(), sma_short: 5, sma_long: 20, sl: 0.1, tp: 0.2, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0, };
         let (is_clone, _, sim) = check_clone(&clone, &existing, 0.99);
         assert!(is_clone);
         assert!(sim > 0.99);
         
         // Different - should not be clone
-        let different = Strategy { name: "s3".to_string(), sma_short: 50, sma_long: 200, sl: 0.5, tp: 1.0, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None };
+        let different = Strategy { name: "s3".to_string(), sma_short: 50, sma_long: 200, sl: 0.5, tp: 1.0, volume: 0.01, indicator_type: IndicatorType::Sma, filter_enabled: false, filter_tf: String::new(), filter_period: 0, filter_logic: String::new(), entry_long_ast: None, entry_short_ast: None, exit_long_ast: None, exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0, };
         let (is_clone2, _, _) = check_clone(&different, &existing, 0.99);
         assert!(!is_clone2);
     }
@@ -1712,6 +1913,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
@@ -1753,6 +1958,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
 
         let plain = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
@@ -1793,6 +2002,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
         
         let result = run_backtest(&strategy, &candles, &std::collections::HashMap::new(), &[]);
@@ -1830,6 +2043,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
 
         let result = run_backtest_with_slippage(
@@ -1886,6 +2103,10 @@ mod tests {
             entry_short_ast: None,
             exit_long_ast: None,
             exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
         };
 
         let base = run_backtest_with_slippage(&strategy, &candles, &std::collections::HashMap::new(), &[], 0.0);

@@ -1,0 +1,1 @@
+[{"name":"XK-EURUSD-keltner-p50","symbol":"EURUSD","category":":REVERSION","indicator_type":"keltner","timeframe_min":240,"tf_seconds":14400,"sma_short":50,"sma_long":100,"sl":0.005,"tp":0.005,"volume":0.01,"band_mult":2.0,"atr_period":14,"atr_barrier_sl":2.0,"atr_barrier_tp":2.0,"is_trades":null,"is_pf":null,"is_sharpe":null}]
