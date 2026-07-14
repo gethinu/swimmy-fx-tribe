@@ -1,0 +1,4 @@
+[
+ {"name":"FWD-EURUSD-bb-p40-tf240-sl50tp50","symbol":"EURUSD","category":":REVERSION","indicator_type":"bb","timeframe_min":240,"tf_seconds":14400,"sma_short":40,"sma_long":80,"sl":0.005,"tp":0.005,"volume":0.01,"is_trades":null,"is_pf":null,"is_sharpe":null},
+ {"name":"FWD-EURUSD-bb-p50-tf240-sl50tp100","symbol":"EURUSD","category":":REVERSION","indicator_type":"bb","timeframe_min":240,"tf_seconds":14400,"sma_short":50,"sma_long":100,"sl":0.005,"tp":0.010,"volume":0.01,"is_trades":null,"is_pf":null,"is_sharpe":null}
+]

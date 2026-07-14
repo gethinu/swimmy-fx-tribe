@@ -122,6 +122,30 @@ GBPUSD は OOS 適格が最広（66/144）だが CPCV 頑健 0（近傍 8）→ 
 
 ---
 
+## 4b. forward/holdout 足切り（2026-07-14・②-1）— **境界2件は out-of-sample で消滅**
+
+唯一の頑健&diverse 候補（EURUSD BB-MR H4 p40 & p50）を、**選択に使っていない窓 2015-2020**（選択は OOS=2021-2024）で
+実コスト 2pip・purge/embargo CPCV（2015-2020 内 fold）で再評価。ハーネスに追加した `--is/oos/cpcv-start/end`
+フラグ（既定は正準分割を byte 再現）で窓を repoint。
+
+| config | 選択窓 2021-24 | **holdout 2015-20（未使用窓）** | 判定 |
+|---|---|---|---|
+| bb-p40-tf240-sl50tp50 | OOS pf=1.119, CPCV pr=0.60 | **OOS t=402, pf=0.951, pen=0.000, CPCV pr=0.30, med=−0.41** | ✗ 消滅 |
+| bb-p50-tf240-sl50tp100 | OOS pf=1.189, CPCV pr=0.60 | **OOS t=334, pf=0.986, pen=0.000, CPCV pr=0.40, med=−0.04** | ✗ 消滅 |
+
+両 config とも holdout で **PF<1.0（実コスト後ネット損）** かつ CPCV median 負。full-span CPCV pr=0.60 自体も
+**~50 trade のノイジー fold（fold PF 0.6–1.3 に散在）**由来で脆い。→ **エッジは 2021-2024 固有の artifact**（過剰最適化
+／レジーム依存のいずれにせよ、利用可能履歴の半分でネット損 = 頑健でない）。
+
+**事前登録ルール発火 → 破壊的 2c は不当・停止。** 真プリミティブは OOS 適格領域を独立ペアで開く（§2 で honest に成立）
+が、**forward で残る頑健エッジは現時点で 0**。多シンボルデータ＋現行プリミティブ集合では、ライブ育種背骨の破壊的
+書き換えを正当化する forward-robust な非TREND/非USDJPY エッジは**まだ無い**。
+
+**次の可逆な選択肢（破壊的でない・green-light 不要）**:
+- (i) プリミティブ/バリア空間の拡張（BB dev 可変化・Donchian/keltner breakout・ATR 正規化 barrier・より長い holding）を
+  同じ honest ハーネスで**先に探索**し、forward-robust なエッジが**存在するか**を安価に判定してから 2c を再検討。
+- (ii) forward-robust エッジが出るまで、ライブ背骨（school-breeder/school-backtest/Guardian 契約）は**無改変**を維持。
+
 ## 5. 再現コマンド
 ```bash
 D=logs/tribe_diversity_20260714 ; G=logs/tribe_gonogo_20260713
@@ -138,4 +162,11 @@ python $G/score_gate.py --results $D/grid2b_results_EURUSD.json --out $D/grid2b_
 python $D/gen_bb_confirm.py --symbol EURUSD --pip 0.0001 --out $D/bbconf_EURUSD.json
 target/release/kill_oos_cpcv.exe --data data/historical/EURUSD_M1.csv --manifest $D/bbconf_EURUSD.json --slippage 0.0001 --out $D/bbconf_results_EURUSD.json
 python $G/score_gate.py --results $D/bbconf_results_EURUSD.json --out $D/bbconf_gate_EURUSD.json
+
+# forward/holdout 足切り: OOS 窓を 2015-2020（未使用窓）に repoint（TS: 2015=1420070400 2021=1609459200 2025=1735689600）
+target/release/kill_oos_cpcv.exe --data data/historical/EURUSD_M1.csv --manifest $D/forward_2cfg.json --slippage 0.0001 \
+    --is-start 1609459200 --is-end 1735689600 \
+    --oos-start 1420070400 --oos-end 1609459200 --cpcv-start 1420070400 --cpcv-end 1609459200 \
+    --out $D/fwd_holdout_2015_2020.json
+# 既定（引数なしの窓）= 正準分割を byte 再現（p40:t=246,pf=1.119,pr=0.60 / p50:t=211,pf=1.189,pr=0.60）
 ```

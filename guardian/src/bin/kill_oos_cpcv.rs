@@ -288,16 +288,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest: Vec<ManifestEntry> = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
     eprintln!("[kill] {} strategies in manifest", manifest.len());
 
-    let is_slice = slice_range(&all, TS_2015, TS_2021); // 2015-2020 fidelity window
-    let oos_slice = slice_range(&all, TS_2021, TS_2025); // 2021-2024 OOS
-    eprintln!("[kill] IS(2015-2020)={} M1  OOS(2021-2024)={} M1", is_slice.len(), oos_slice.len());
+    // Optional analysis-window overrides (epoch seconds). Defaults reproduce the
+    // canonical split exactly: IS 2015-2020, OOS 2021-2024, CPCV over the full
+    // loaded span. Used for FORWARD/HOLDOUT confirmation — repoint OOS+CPCV to a
+    // window that was NOT used to select a config, to test whether the edge is
+    // stationary (survives out-of-sample) or a single-era fit.
+    let parse_ts = |k: &str, d: i64| arg(&args, k).and_then(|s| s.parse().ok()).unwrap_or(d);
+    let all_lo = all.first().map(|c| c.timestamp).unwrap_or(0);
+    let all_hi = all.last().map(|c| c.timestamp).unwrap_or(0) + 1;
+    let is_start = parse_ts("--is-start", TS_2015);
+    let is_end = parse_ts("--is-end", TS_2021);
+    let oos_start = parse_ts("--oos-start", TS_2021);
+    let oos_end = parse_ts("--oos-end", TS_2025);
+    let cpcv_start = parse_ts("--cpcv-start", all_lo);
+    let cpcv_end = parse_ts("--cpcv-end", all_hi);
+
+    let is_slice = slice_range(&all, is_start, is_end); // fidelity window
+    let oos_slice = slice_range(&all, oos_start, oos_end); // OOS
+    let cpcv_slice = slice_range(&all, cpcv_start, cpcv_end); // CPCV span (default: full)
+    eprintln!(
+        "[kill] IS[{}..{}]={} M1  OOS[{}..{}]={} M1  CPCV[{}..{}]={} M1",
+        is_start, is_end, is_slice.len(), oos_start, oos_end, oos_slice.len(),
+        cpcv_start, cpcv_end, cpcv_slice.len()
+    );
 
     let mut results: Vec<StratResult> = Vec::new();
     for (i, m) in manifest.iter().enumerate() {
         let strat = build_strategy(m);
         let fidelity = run_on(&strat, is_slice, m.tf_seconds, slip_fidelity);
         let oos = run_on(&strat, oos_slice, m.tf_seconds, slip_2pip);
-        let cpcv = run_cpcv(&strat, &all, m.tf_seconds, slip_2pip);
+        let cpcv = run_cpcv(&strat, cpcv_slice, m.tf_seconds, slip_2pip);
 
         let oos_pen = calculate_penalized_sharpe(oos.sharpe, oos.trades);
         let oos_qualified =
