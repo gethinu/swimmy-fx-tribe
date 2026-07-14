@@ -115,6 +115,15 @@
 (defparameter *backtest-service-enabled* (env-bool-or "SWIMMY_BACKTEST_SERVICE" nil)
   "Enable dedicated backtest service (5580/5581) when true.")
 
+;;; V2c (2026-07-14): master flag for the primitive-diversity breeding engine
+;;; (Keltner / variable-dev BB / ATR-normalized barriers in the emit path, regime
+;;; mutation + cross-regime primitives in the search space, fitness-sharing selection,
+;;; and a CPCV pre-gate). DEFAULT nil => every code path below stays byte-identical to
+;;; the legacy engine; the whole feature only activates with SWIMMY_PRIMITIVE_DIVERSITY=1.
+;;; This is the reversibility guarantee: live breeding is unchanged until explicitly on.
+(defparameter *enable-primitive-diversity* (env-bool-or "SWIMMY_PRIMITIVE_DIVERSITY" nil)
+  "Master flag for the 2c primitive-diversity engine. nil => legacy behaviour.")
+
 (defparameter *backtest-max-pending* (env-int-or "SWIMMY_BACKTEST_MAX_PENDING" 500)
   "Lisp sender-side max pending requests before throttling.")
 (defparameter *backtest-max-inflight* (env-int-or "SWIMMY_BACKTEST_MAX_INFLIGHT" 0)

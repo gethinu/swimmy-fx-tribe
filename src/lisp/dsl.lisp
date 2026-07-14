@@ -245,7 +245,12 @@ value = sign(close>=vwap ? +1 : -1) * (current_volume / prev_volume_sma(n) * 100
             (cpcv-median-maxdd 0.0)
             (cpcv-pass-rate 0.0)
             ;; Phase 21: Breeding & Competition DNA (Survival of the Fittest)
-            (age 0) (immortal nil) (parents nil))
+            (age 0) (immortal nil) (parents nil)
+            ;; V2c (2026-07-14): primitive-diversity genes. Defaults reproduce prior
+            ;; behaviour exactly (band-mult 2.0 = the old hard-coded Bollinger dev; ATR
+            ;; barriers 0.0 = disabled => absolute sl/tp). Only emitted / mutated when
+            ;; *enable-primitive-diversity* is on, so the legacy engine is unaffected.
+            (band-mult 2.0) (atr-period 14) (atr-barrier-sl 0.0) (atr-barrier-tp 0.0))
 
 (defmacro defstrategy (name &key indicators entry exit sl tp volume (category :trend) (indicator-type "sma") (timeframe 1) (generation 0) (filter-enabled nil) (regime-filter nil) (filter-tf "") (filter-period 0) (filter-logic "") (tier :incubator) (rank :incubator) (symbol "USDJPY") (direction :BOTH)
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)

@@ -231,6 +231,8 @@
    #:*port-backtest-res*
    #:*port-pattern-similarity*
    #:*backtest-service-enabled*
+   ;; V2c (2026-07-14): primitive-diversity breeding master flag (default OFF)
+   #:*enable-primitive-diversity*
    #:zmq-connect-endpoint
    #:zmq-bind-endpoint
    #:*constitution-version*
