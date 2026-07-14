@@ -210,6 +210,10 @@ fn make_golden_cross_strategy(pair: &str) -> Strategy {
             Box::new(StrategyNode::Sma { period: 200 }),
         )),
         exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
     }
 }
 
@@ -239,6 +243,10 @@ fn make_rsi2_reversion_strategy(pair: &str) -> Strategy {
             Box::new(StrategyNode::Constant(90.0)),
         )),
         exit_short_ast: None,
+            band_mult: 2.0,
+            atr_period: 14,
+            atr_barrier_sl: 0.0,
+            atr_barrier_tp: 0.0,
     }
 }
 
