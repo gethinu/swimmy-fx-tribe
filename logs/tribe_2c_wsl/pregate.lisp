@@ -1,0 +1,13 @@
+(in-package :swimmy.school)
+(setf *strategy-knowledge-base* (swimmy.persistence::load-all-strategies))
+(let* ((pop (remove-if (lambda (s) (eq (strategy-rank s) :graveyard)) *strategy-knowledge-base*))
+       (n (length pop))
+       (cpcv06 (remove-if-not (lambda (s) (>= (or (strategy-cpcv-pass-rate s) 0.0) 0.60)) pop))
+       (cpcv06-nonzero (remove-if-not (lambda (s) (> (or (strategy-cpcv-pass-rate s) 0.0) 0.0)) pop)))
+  (format t "~&PREGATE pop=~d  cpcv>0=~d  cpcv>=0.60(2f-eligible)=~d~%" n (length cpcv06-nonzero) (length cpcv06))
+  ;; distribution of 2f-eligible by category
+  (let ((h (make-hash-table :test 'equal)))
+    (dolist (s cpcv06) (incf (gethash (string-downcase (symbol-name (strategy-category s))) h 0)))
+    (let (a) (maphash (lambda (k v) (push (cons k v) a)) h)
+      (format t "~&2F-ELIGIBLE-BY-CAT=~s~%" a))))
+(sb-ext:exit :code 0)
