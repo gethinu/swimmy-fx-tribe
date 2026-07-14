@@ -28,20 +28,85 @@
                                (subseq i2 0 (ceiling (/ (length i2) 2))))
                        :test #'equal)))
 
+;; V2c (2026-07-14): regime helpers for the primitive-diversity search space.
+(defun breeder-legacy-regime (category)
+  "The legacy category->regime mapping (byte-identical to the old inline case)."
+  (case category
+    (:trend :trend)
+    (:reversion :reversion)
+    (:breakout :breakout)
+    (:scalp :reversion) ; Scalp usually reversions/fast trends
+    (t :trend)))
+
+(defun breeder-mutation-regime (category)
+  "Regime to draw a swap indicator from. Flag OFF => the legacy mapping. Flag ON =>
+   with 40% probability CROSS regimes (biased to :reversion/:breakout, where BB/Keltner
+   live), so a TREND lineage can finally acquire mean-reversion indicators. This is the
+   structural escape from the USDJPY/TREND/SMA absorbing state (regen doc B-3)."
+  (if (and *enable-primitive-diversity* (< (random 1.0) 0.4))
+      (nth (random 3) '(:reversion :breakout :reversion)) ; bias toward reversion
+      (breeder-legacy-regime category)))
+
+(defun pick-diverse-regime ()
+  "A non-trend regime for low-frequency regime mutation (flag ON)."
+  (nth (random 3) '(:reversion :breakout :reversion)))
+
+(defun make-diverse-primitive-genes (regime)
+  "Fresh single-primitive genes for a regime-mutated diverse child, seeded in the
+   FORWARD-ROBUST neighbourhood found offline (Keltner/BB mean-reversion, period ~40-64,
+   band-mult 1.5-2.5, ATR-normalized barriers 2-3xATR). Returns a plist with
+   :indicators/:band-mult/:atr-period/:atr-barrier-sl/:atr-barrier-tp."
+  (let* ((period (+ 40 (random 25)))            ; 40..64
+         (mult (+ 1.5 (* 0.5 (random 3))))      ; 1.5 / 2.0 / 2.5
+         (atr (+ 2.0 (random 2))))              ; 2.0 or 3.0
+    (list :indicators (list (list (if (eq regime :breakout) 'keltner 'bollinger) period))
+          :band-mult (float mult 1.0)
+          :atr-period 14
+          :atr-barrier-sl (float atr 1.0)
+          :atr-barrier-tp (float atr 1.0))))
+
+(defun make-diverse-child (parent1 parent2 next-gen child-name dir sym base-sl base-tp)
+  "Build a fresh diverse primitive child (flag ON regime mutation). Keltner/BB
+   mean-reversion in the forward-robust neighbourhood at H4/H6, ATR-normalized barriers.
+   Driven by indicator_type + genes on the Rust side, so entry/exit AST are nil. Bypasses
+   the legacy AST-crossover / logic-recovery machinery (which targets SMA-cross lineages)."
+  (let* ((regime (pick-diverse-regime))
+         (genes (make-diverse-primitive-genes regime))
+         (tf (nth (random 2) '(240 360)))) ; H4/H6 — where the offline edge lives
+    (make-strategy
+      :name child-name
+      :category regime
+      :timeframe tf
+      :direction dir
+      :symbol sym
+      :generation next-gen
+      :sl base-sl
+      :tp base-tp
+      :volume 0.01
+      :indicators (getf genes :indicators)
+      :entry nil
+      :exit nil
+      :band-mult (getf genes :band-mult)
+      :atr-period (getf genes :atr-period)
+      :atr-barrier-sl (getf genes :atr-barrier-sl)
+      :atr-barrier-tp (getf genes :atr-barrier-tp)
+      :rank :incubator
+      :tier :incubator
+      :status :active
+      :regime-intent regime
+      :parents (list (strategy-name parent1) (strategy-name parent2)))))
+
 (defun mutate-indicators-with-library (indicators category)
   "Mutate indicators by swapping one with a regime-aware alternative.
-   V49.5: Prevents 'Genetic Stagnation' using indicators-library."
+   V49.5: Prevents 'Genetic Stagnation' using indicators-library.
+   V2c: regime is chosen by breeder-mutation-regime (cross-regime when the diversity
+   flag is on; legacy mapping otherwise)."
   (let ((len (length indicators)))
     (when (zerop len)
       (return-from mutate-indicators-with-library indicators))
     (if (> (random 1.0) 0.7) ; 30% chance to swap an indicator
         (let* ((idx (random len))
-             (regime (case category
-                       (:trend :trend)
-                       (:reversion :reversion)
-                       (:breakout :breakout)
-                       (:scalp :reversion) ; Scalp usually reversions/fast trends
-                       (t :trend)))
+             (regime (breeder-mutation-regime category))
              (new-indicator (get-random-indicator-for-regime regime)))
         (format t "[BREEDER] 🧬 Indicator Swap: ~a -> ~a (Regime: ~a)~%" 
                 (nth idx indicators) new-indicator regime)
@@ -1144,6 +1209,14 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
          ;; Check if SL/TP falls in avoid region, regenerate if needed
          (child-sl initial-sl)
          (child-tp initial-tp))
+
+    ;; V2c: regime-mutation short-circuit (flag ON only, 15%). Produce a clean diverse
+    ;; Keltner/BB-MR child and skip the legacy AST-crossover/logic-recovery/SL-TP machinery
+    ;; below (which is tuned for SMA-cross lineages). This is the operator that breaks the
+    ;; TREND/USDJPY/SMA absorbing state. Flag OFF => never taken => legacy path unchanged.
+    (when (and *enable-primitive-diversity* (< (random 1.0) 0.15))
+      (return-from breed-strategies
+        (make-diverse-child parent1 parent2 next-gen child-name dir sym child-sl child-tp)))
 
     (multiple-value-bind (selected-tf tf-mode p1-tf p2-tf)
         (select-breeder-child-timeframe parent1 parent2)
