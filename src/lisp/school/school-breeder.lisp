@@ -96,6 +96,17 @@
       :regime-intent regime
       :parents (list (strategy-name parent1) (strategy-name parent2)))))
 
+;; V2c 2f (regen doc B-6): CPCV pre-gate. Only CPCV-robust seeds may enter the breeding
+;; pool, so single-window fits are not bred from. Matches the offline forward-robust bar.
+(defparameter *2c-cpcv-pregate-min* 0.60
+  "Minimum CPCV pass-rate to enter the breeding pool when *enable-primitive-diversity*.")
+
+(defun breeding-cpcv-eligible-p (strategy)
+  "Flag OFF => always t (legacy, no pre-gate). Flag ON => require CPCV pass-rate >= the
+   pre-gate minimum so only CPCV-robust individuals breed."
+  (or (not *enable-primitive-diversity*)
+      (>= (or (strategy-cpcv-pass-rate strategy) 0.0) *2c-cpcv-pregate-min*)))
+
 (defun mutate-indicators-with-library (indicators category)
   "Mutate indicators by swapping one with a regime-aware alternative.
    V49.5: Prevents 'Genetic Stagnation' using indicators-library.
@@ -1369,7 +1380,9 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                              (strategy-regime-class s)
                                              (strategy-category s))
                                          cat)
-                                     (not (eq (strategy-rank s) :graveyard))))
+                                     (not (eq (strategy-rank s) :graveyard))
+                                     ;; V2c 2f: CPCV pre-gate (no-op when flag OFF).
+                                     (breeding-cpcv-eligible-p s)))
                               *strategy-knowledge-base*))
                ;; V48.7: Rank-aware and composite score priority.
                (sorted (sort (copy-list all-warriors) #'>
@@ -1592,9 +1605,13 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 (defun %wisdom-push-elite-candidate (candidate elites limit)
   "Insert CANDIDATE into descending SHARPE-sorted ELITES capped by LIMIT."
   (let* ((cap (max 1 (or limit 50)))
-         (sorted (sort (cons candidate elites) #'>
+         (pool (cons candidate elites))
+         ;; V2c: stable population snapshot for niche counting (sort mutates `pool`).
+         (pop-snapshot (copy-list pool))
+         ;; V2c: rank by selection-fitness (fitness-sharing when flag ON; raw sharpe OFF).
+         (sorted (sort pool #'>
                        :key (lambda (s)
-                              (or (strategy-sharpe s)
+                              (or (selection-fitness s pop-snapshot)
                                   most-negative-double-float)))))
     (if (> (length sorted) cap)
         (nbutlast sorted (- (length sorted) cap))
@@ -1647,8 +1664,10 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
    - If Child is proven stronger (Sharpe), Parent is killed (unless Immortal).
    - If Child is weaker, Child is killed.
    - If Child is untested (Sharpe NIL), it is spared for now."
-   (let ((p-sharpe (or (strategy-sharpe parent) -999.0))
-         (c-sharpe (strategy-sharpe child))) ;; Child might be untested
+   ;; V2c: compare by selection-fitness (evidence-adjusted when flag ON; raw sharpe OFF).
+   ;; No population here => shrinkage only, no sharing (a duel is intrinsically 1v1).
+   (let ((p-sharpe (if *enable-primitive-diversity* (selection-fitness parent) (or (strategy-sharpe parent) -999.0)))
+         (c-sharpe (if (and *enable-primitive-diversity* (strategy-sharpe child)) (selection-fitness child) (strategy-sharpe child)))) ;; Child might be untested
      
      (unless c-sharpe
        (format t "[DEATHMATCH] 🐣 Child ~a is untested. Spared for now.~%" (strategy-name child))
@@ -1721,7 +1740,11 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
     (when (and (eq (strategy-status s) :active)
                (not (strategy-immortal s))
                (> (strategy-age s) 10))
-      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+      ;; V2c: score by selection-fitness (fitness-sharing thins redundant-niche clones
+      ;; when flag ON; raw sharpe when OFF => identical cull threshold).
+      (let ((sharpe (if *enable-primitive-diversity*
+                        (selection-fitness s *strategy-knowledge-base*)
+                        (or (strategy-sharpe s) -1.0))))
         (when (< sharpe 0.6)
           (kill-strategy (strategy-name s)
                          (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe)
@@ -1736,9 +1759,12 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                (not (strategy-immortal s))
                (> (strategy-age s) 5))
       ;; Check Performance (using existing Grade logic or simple Sharpe)
-      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+      ;; V2c: selection-fitness (fitness-sharing when flag ON; raw sharpe OFF).
+      (let ((sharpe (if *enable-primitive-diversity*
+                        (selection-fitness s *strategy-knowledge-base*)
+                        (or (strategy-sharpe s) -1.0))))
         (cond
-          ((< sharpe 0.0) 
+          ((< sharpe 0.0)
            (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe))))))))
 
 (defun retire-max-age-strategies ()

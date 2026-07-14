@@ -199,15 +199,47 @@
 ;;; SELECTION MECHANISMS (INCEST PREVENTION)
 ;;; ==========================================
 
+;; V2c (2026-07-14): fitness-sharing selection accessor (regen doc B-2). Flag OFF =>
+;; returns raw strategy-sharpe, so every legacy comparator is byte-identical. Flag ON =>
+;; evidence-adjusted sharpe (shrinks sparse-sample over-optimization) DIVIDED by a niche
+;; crowding count, so the k-th clone of a (symbol,category) niche is divided by ~k and a
+;; 484-strong USDJPY/TREND monoculture is structurally unable to dominate selection.
+(defun fitness-sharing-denominator (strategy population)
+  "Count population members sharing STRATEGY's (symbol, category) niche (>=1)."
+  (if (null population)
+      1
+      (let ((sym (strategy-symbol strategy))
+            (cat (strategy-category strategy))
+            (n 0))
+        (dolist (s population)
+          (when (and (equal (strategy-symbol s) sym)
+                     (eq (strategy-category s) cat))
+            (incf n)))
+        (max 1 n))))
+
+(defun selection-fitness (strategy &optional population)
+  "Selection score. Flag OFF => raw strategy-sharpe (legacy). Flag ON => evidence-adjusted
+   sharpe / niche-crowding (fitness sharing forces diversity by division)."
+  (let ((raw (or (strategy-sharpe strategy) 0.0)))
+    (if *enable-primitive-diversity*
+        (let* ((trades (or (strategy-trades strategy) 0))
+               (adj (if (fboundp 'evidence-adjusted-sharpe)
+                        (evidence-adjusted-sharpe raw trades)
+                        raw))
+               (share (fitness-sharing-denominator strategy population)))
+          (/ adj (max 1.0 (float share 1.0))))
+        raw)))
+
 (defun select-parent-tournament (population &key (k 3))
   "Select a parent using Tournament Selection (K-way).
-   Prevents 'Top 2' dominance and maintains diversity."
+   Prevents 'Top 2' dominance and maintains diversity.
+   V2c: ranks by selection-fitness (fitness-sharing when the diversity flag is on)."
   (let ((len (length population)))
     (when (plusp len)
-      (let ((candidates (loop repeat k 
+      (let ((candidates (loop repeat k
                               collect (nth (random len) population))))
-        ;; Return the one with highest sharpe (or 0 if nil)
-        (first (sort candidates #'> :key (lambda (s) (or (strategy-sharpe s) -999))))))))
+        ;; Return the one with highest selection-fitness (raw sharpe when flag OFF).
+        (first (sort candidates #'> :key (lambda (s) (or (selection-fitness s population) -999))))))))
 
 (defun select-category-pair (population)
   "Select two parents from DIFFERENT categories.
