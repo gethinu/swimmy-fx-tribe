@@ -85,6 +85,31 @@ holdout(2015-20)    P.PP.PP..P / PPPP..PP.P   (6年窓に分散)
 
 ---
 
+## 2-D. 中間段 path 2（2026-07-14 追補）— engine への additive generator ＋ walk-forward 補強
+
+### engine への additive generator（背骨は breeding-core 無改変・回帰で担保）
+- `backtester.rs` に **Keltner（新 IndicatorType）・可変dev BB（`band_mult`）・ATR 正規化バリア（`atr_barrier_sl/tp`）**を additive 追加。
+  `calculate_ema`/`calculate_atr` helper 追加。全新フィールドは `#[serde(default)]`（既定＝従来挙動）。
+- **live-neutral 担保**: `IndicatorType::random()` に Keltner を**足さない**（live 育種は Keltner を絶対に emit しない）。既存 80→85 test green、
+  **バイト一致回帰**（SMA t=423/pf=1.165・BB t=1049/pf=0.796・RSI t=984/pf=0.850 が改修後も不変）。
+  新 test: default 逆シリアライズの live-neutrality／band_mult 配線／Keltner 発火／random≠Keltner／ATR バリア効果。
+- **gold-standard cross-check**: engine の新 Keltner ＝ 検証済 `primitive_scan` の Keltner が**バイト一致**
+  （EURUSD p50 H4 ATR2×2: OOS t=270 pf=1.219 pen=0.594 CPCV pr=0.60 med=0.61）。
+- breeding-core（`school-breeder`／`strategy-to-alist`／Guardian 契約）は**無改変**。
+
+### walk-forward（2025 データは存在しない＝全 CSV が 2024-12-31 で終端。代替に 5×2年 disjoint 窓 2015-2024）
+forward-robust 領域（EURUSD 11・GBPUSD 1）を、各 2年窓で OOS PF/pen 評価（H4 で 1窓 ~100-160 trade＝200 floor 未満なので**診断**、
+§4 PASS ではない。floor 準拠の判定は既述の 200+trade 2窓（2021-24 選択／2015-20 holdout）が正）:
+
+| 銘柄 | PF≥1.10 in **全5窓** | pen>0 in 4/5 | 弱い窓 | 領域全体 PF≥1.10 in ≥4/5窓 |
+|---|---:|---|---|---:|
+| EURUSD | **0/11** | ほぼ全config | **2019-20**（PF≈0.85-0.93）| 6/243 |
+| GBPUSD | 0/1 | 1/1 | 2017-18 | 19/243 |
+
+**含意（正直に）**: Keltner-MR は **4/5 の 2年窓で PF≥1.10・pen>0**（2015-16 は特に強く PF 1.3-1.6）だが、**2019-2020 の 1 ビエニアムで PF<1.0**。
+→ **完全な全天候エッジではない**（0/11 が全5窓通過）。2015-20 holdout が通ったのは、強い 2015-18 が弱い 2019-20 を集計で相殺したため。
+walk-forward がその集計に隠れた 2019-20 の弱さを露呈。**エッジは実在・4/5 窓で頑健だが控えめ・レジーム依存**。
+
 ## 3. 断定と含意
 
 1. **forward-robust な非TREND/非USDJPY エッジは在る**（Keltner-MR H4 + ATR バリア／EURUSD 主・GBPUSD 部分）。**現行プリミティブ（SMA/BB-dev2/RSI）では出ず、engine に無い新機構（Keltner・可変dev・ATR 正規化バリア）で初めて出た。** → **2c（真プリミティブを生成エンジンに走らせる）の動機がデータで裏付けられた**（汚染 2b とは違い honest に）。
