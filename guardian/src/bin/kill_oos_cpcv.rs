@@ -140,9 +140,26 @@ struct StratResult {
 }
 
 fn build_strategy(m: &ManifestEntry) -> Strategy {
+    // Dispatch the manifest's indicator_type to the REAL generator variant so the
+    // backtester runs the actual primitive (backtester.rs:818-841), not a silent
+    // SMA collapse. The prior `_ => Sma` fallback meant every "bb"/"rsi"/"stoch"/
+    // "macd" manifest ran as an SMA crossover, contaminating the 2b experiment
+    // (2026-07-13): "BB-USDJPY robust" was actually SMA(30/60). Fixed 2026-07-14.
     let it = match m.indicator_type.to_lowercase().as_str() {
+        "sma" => IndicatorType::Sma,
         "ema" => IndicatorType::Ema,
-        _ => IndicatorType::Sma,
+        "rsi" => IndicatorType::Rsi,
+        "bb" | "bollinger" => IndicatorType::Bb,
+        "macd" => IndicatorType::Macd,
+        "stoch" | "stochastic" => IndicatorType::Stoch,
+        "vwap" => IndicatorType::Vwap,
+        "volsma" => IndicatorType::Volsma,
+        "vpoc" => IndicatorType::Vpoc,
+        "vwapvr" => IndicatorType::Vwapvr,
+        other => {
+            eprintln!("[kill] WARN unknown indicator_type {other:?} -> Sma (check manifest)");
+            IndicatorType::Sma
+        }
     };
     Strategy {
         name: m.name.clone(),
@@ -375,4 +392,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("§4 PASS = {}  =>  {}", s4_pass, if s4_pass { "SURVIVE" } else { "KILL per §5" });
     eprintln!("wrote {}", out_path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn me(it: &str) -> ManifestEntry {
+        ManifestEntry {
+            name: "t".into(),
+            symbol: "EURUSD".into(),
+            category: ":REVERSION".into(),
+            indicator_type: it.into(),
+            timeframe_min: 240,
+            tf_seconds: 14400,
+            sma_short: 30,
+            sma_long: 60,
+            sl: 0.003,
+            tp: 0.006,
+            volume: 0.01,
+            is_trades: None,
+            is_pf: None,
+            is_sharpe: None,
+        }
+    }
+
+    // Regression guard for the 2b contamination (2026-07-13 -> fixed 2026-07-14):
+    // build_strategy USED to map every non-"ema" indicator_type to Sma, so a "bb"
+    // manifest silently ran the SMA crossover generator. That made the 2b experiment
+    // report an SMA config's metrics under a mean-reversion label. Pin the dispatch
+    // so a non-SMA primitive can never again collapse to SMA unnoticed.
+    #[test]
+    fn build_strategy_dispatches_every_primitive() {
+        for (s, want) in [
+            ("sma", IndicatorType::Sma),
+            ("ema", IndicatorType::Ema),
+            ("rsi", IndicatorType::Rsi),
+            ("bb", IndicatorType::Bb),
+            ("bollinger", IndicatorType::Bb),
+            ("macd", IndicatorType::Macd),
+            ("stoch", IndicatorType::Stoch),
+            ("stochastic", IndicatorType::Stoch),
+            ("vwap", IndicatorType::Vwap),
+            ("volsma", IndicatorType::Volsma),
+            ("vpoc", IndicatorType::Vpoc),
+            ("vwapvr", IndicatorType::Vwapvr),
+            ("BB", IndicatorType::Bb),   // case-insensitive
+        ] {
+            assert_eq!(build_strategy(&me(s)).indicator_type, want, "indicator_type {s:?} misdispatched");
+        }
+        // A mean-reversion label must NOT resolve to the SMA generator.
+        assert_ne!(build_strategy(&me("bb")).indicator_type, IndicatorType::Sma);
+        assert_ne!(build_strategy(&me("rsi")).indicator_type, IndicatorType::Sma);
+    }
 }

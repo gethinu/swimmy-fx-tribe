@@ -1,3 +1,8 @@
+> ⚠️ **後続訂正 (2026-07-14)**: 本doc §4 Phase 2b の前提（後続セッションで実施）は採点ハーネスのバグで汚染された。
+> §3 の 2a（SMA×多銘柄で CPCV 頑健エッジ 0）は**無改変・有効**。ただし「真の MR プリミティブ」を honest に走らせると
+> EURUSD/GBPUSD の BB 平均回帰（H4）は**広い OOS 適格領域**を開く（SMA では OOS 適格すら 0 だった）。
+> 詳細は [`tribe_2b_correction_honest_primitives_20260714.md`](tribe_2b_correction_honest_primitives_20260714.md)。
+
 # 🧬 tribe 多様性エンジン再建 — 設計 grounding・単一栽培ルート原因・多シンボル第一ピース
 
 **日付**: 2026-07-13 JST ／ **モード**: オフライン・paper のみ（ライブ発注なし・ZMQ/Guardian 実発注経路 不使用）

@@ -1,3 +1,11 @@
+> ⚠️ **訂正 (2026-07-14)**: 本doc §2 の 2b 決定実験は**採点ハーネスのバグで汚染**されていた。
+> `kill_oos_cpcv.rs:build_strategy` が `indicator_type` を `"ema"` 以外すべて `Sma` に潰しており、
+> `bb`/`rsi`/`stoch`/`macd` の全 config が**実際には SMA として走った**。よって §2 の中核主張
+> **「BB 平均回帰は USDJPY H1 で CPCV 頑健エッジを生む」は誤り（実は SMA(30/60)）→ 撤回**。
+> honest 再測定では頑健&diverse は **EURUSD の BB H4（period 40–50）に 2 件（境界）**。
+> 正しい結論・数値は [`tribe_2b_correction_honest_primitives_20260714.md`](tribe_2b_correction_honest_primitives_20260714.md) を正とする。
+> （§1 の生成/育種エンジン機構 file:line マップは無改変・有効。）
+
 # 🏭 tribe 生成/育種エンジンの実機構 ＋ 2b 決定実験（非トレンド・プリミティブ）
 
 **日付**: 2026-07-13 JST ／ **モード**: オフライン・read-only 診断 ＋ ハーネス実験（ライブ発注なし・live `swimmy.db` 無改変・honest_gate/§4 floor 不変）
