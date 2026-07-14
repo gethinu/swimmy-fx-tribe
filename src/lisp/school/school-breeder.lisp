@@ -70,15 +70,22 @@
    mean-reversion in the forward-robust neighbourhood at H4/H6, ATR-normalized barriers.
    Driven by indicator_type + genes on the Rust side, so entry/exit AST are nil. Bypasses
    the legacy AST-crossover / logic-recovery machinery (which targets SMA-cross lineages)."
+  (declare (ignore sym))
   (let* ((regime (pick-diverse-regime))
          (genes (make-diverse-primitive-genes regime))
-         (tf (nth (random 2) '(240 360)))) ; H4/H6 — where the offline edge lives
+         (tf (nth (random 2) '(240 360))) ; H4/H6 — where the offline edge lives
+         ;; The Keltner/BB-MR edge is SYMBOL-specific (forward-robust on EURUSD, partial
+         ;; GBPUSD; absent on USDJPY/EURJPY). Since the population is ~487 USDJPY, the
+         ;; diverse injection must also mutate the symbol to where the edge lives, or the
+         ;; child cannot be forward-robust. This couples a minimal slice of 2e (symbol
+         ;; diversity) into the 2c injection — justified because the edge is symbol-bound.
+         (mut-sym (nth (random 2) '("EURUSD" "GBPUSD"))))
     (make-strategy
       :name child-name
       :category regime
       :timeframe tf
       :direction dir
-      :symbol sym
+      :symbol mut-sym
       :generation next-gen
       :sl base-sl
       :tp base-tp
