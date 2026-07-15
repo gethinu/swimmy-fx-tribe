@@ -1,0 +1,1 @@
+[{"name":"XK-EURUSD-keltner-p50","symbol":"EURUSD","regime":":REVERSION","prim":"keltner","period":50,"dev":2.0,"atr_period":14,"tf_seconds":14400,"barrier_mode":"atr","sl":2.0,"tp":2.0,"max_hold":0}]

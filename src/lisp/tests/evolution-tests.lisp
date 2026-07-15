@@ -1090,7 +1090,7 @@
                                                 :profit-factor 1.50
                                                 :win-rate 0.48
                                                 :max-dd 0.06
-                                                :trades 120
+                                                :trades 200 ; P2: >= unified A floor (200) so A-base pass is metric-driven
                                                 :oos-sharpe 1.20))
          (pre-a (swimmy.school:make-strategy :name "UT-PRIORITY-OOS-PRE-A"
                                               :rank :B
@@ -1098,7 +1098,7 @@
                                               :profit-factor 1.50
                                               :win-rate 0.48
                                               :max-dd 0.06
-                                              :trades 120
+                                              :trades 200 ; P2: >= unified floor; A-base miss is purely the low Sharpe (0.20)
                                               :oos-sharpe 1.20))
          (raw-scale 0.20))
     (let ((swimmy.school::*breeder-priority-oos-bonus-requires-a-base* t)
@@ -1600,7 +1600,7 @@
                                                    :rank :A
                                                    :status :active
                                                    :sl 0.22 :tp 0.31
-                                                   :trades 120
+                                                   :trades 200 ; P2: >= unified A floor (200) so can-breed A conformance passes
                                                    :sharpe 0.80
                                                    :profit-factor 1.45
                                                    :win-rate 0.48
@@ -1647,7 +1647,7 @@
                                                   :rank :S
                                                   :status :active
                                                   :sl 0.22 :tp 0.31
-                                                  :trades 180
+                                                  :trades 200 ; P2: >= unified S floor
                                                   :sharpe 0.80
                                                   :profit-factor 1.80
                                                   :win-rate 0.52

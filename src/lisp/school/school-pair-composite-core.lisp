@@ -46,7 +46,10 @@
         (list final-lot pair-id))))
 
 (defparameter *pair-candidate-per-group* 50)
-(defparameter *pair-eligible-ranks* '(:A :S :LEGEND :legend))
+(defparameter *pair-eligible-ranks* '(:A :S)
+  "Ranks eligible for the pair-composite (paired capital) overlay.
+   P2: :LEGEND removed — legends are execution-decoupled (learning archive only),
+   so they no longer receive pair-composite capital.")
 
 (defun %strategy-prop (strat key)
   (cond

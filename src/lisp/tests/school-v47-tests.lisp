@@ -248,10 +248,13 @@
 
 (deftest test-meets-a-rank-criteria-pass
   "P9: Test A-RANK criteria - passing strategy"
-  (let ((good-strat (cl-user::make-strategy 
+  ;; P2 note: pre-existing latent failure — this strategy carried 0 trades, so it
+  ;; failed the A trade-evidence floor even at the old floor of 50. Give it real
+  ;; trade evidence (>= unified 200 floor) so it exercises the metric criteria as intended.
+  (let ((good-strat (cl-user::make-strategy
                       :name "TestARank-Good"
-                      :sharpe 0.5 :profit-factor 1.5 
-                      :win-rate 0.5 :max-dd 0.1)))
+                      :sharpe 0.5 :profit-factor 1.5
+                      :win-rate 0.5 :max-dd 0.1 :trades 200)))
     (assert-true (swimmy.school::meets-a-rank-criteria good-strat)
                  "Good strategy should meet A-RANK criteria")))
 

@@ -86,25 +86,75 @@
          'stoch)
         (t 'sma)))))
 
+;; V2c (2026-07-14): extended detection used ONLY on the primitive-diversity emit path.
+;; Recognises keltner/donchian (which the legacy detector maps to 'sma), else defers to
+;; the legacy detector. Kept separate so *enable-primitive-diversity*=nil is byte-identical.
+(defun detect-indicator-type-extended (indicators)
+  "Detect primary indicator type incl. keltner/donchian. Falls back to detect-indicator-type."
+  (when (and indicators (listp indicators))
+    (let* ((first-ind (if (listp (car indicators)) (caar indicators) (car indicators)))
+           (nm (cond
+                 ((symbolp first-ind) (string-downcase (symbol-name first-ind)))
+                 ((stringp first-ind) (string-downcase first-ind))
+                 (t nil))))
+      (cond
+        ((and nm (search "keltner" nm)) 'keltner)
+        ((and nm (search "donchian" nm)) 'donchian)
+        (t (detect-indicator-type indicators))))))
+
+;; V2c: the first INTEGER parameter of the first indicator = the primitive's period.
+(defun primitive-first-int (indicators)
+  "First integer parameter of the first indicator (the period), or nil."
+  (let ((first-ind (car indicators)))
+    (when (listp first-ind)
+      (find-if #'integerp (cdr first-ind)))))
+
+;; V2c: (values short long) for the emit. The legacy path (flag OFF) is byte-identical
+;; to extract-sma-params. The diversity path emits the single-period primitives
+;; (keltner/bb/rsi/stoch/donchian) with short=period, long=2*period, so the primitive
+;; period is not corrupted by extract-sma-params' ascending-sort of all integer params
+;; (which would read a Bollinger/Keltner multiplier as the period).
+(defun emit-short-long (strat)
+  (let ((inds (strategy-indicators strat)))
+    (if *enable-primitive-diversity*
+        (let ((type (detect-indicator-type-extended inds))
+              (p (primitive-first-int inds)))
+          (if (and p (member type '(keltner bb rsi stoch donchian)))
+              (values p (* 2 p))
+              (extract-sma-params inds)))
+        (extract-sma-params inds))))
+
 ;; V7.13: Convert strategy to Alist for S-Expression Protocol
 (defun strategy-to-alist (strat &key (name-suffix ""))
   "Convert strategy struct to an alist for S-Expression communication with Guardian."
-  (multiple-value-bind (sma-short sma-long) 
-      (extract-sma-params (strategy-indicators strat))
+  (multiple-value-bind (sma-short sma-long)
+      (emit-short-long strat)
     `((name . ,(format nil "~a~a" (strategy-name strat) name-suffix))
       (sma_short . ,(or sma-short 5))
       (sma_long . ,(or sma-long 20))
       (sl . ,(or (strategy-sl strat) 0.0))
       (tp . ,(or (strategy-tp strat) 0.0))
       (volume . ,(or (strategy-volume strat) 0.01))
-      ,@(let ((type (detect-indicator-type (strategy-indicators strat))))
+      ;; V2c: extended detector (keltner/donchian) only when the diversity flag is on;
+      ;; otherwise the legacy detector, so the emitted alist is byte-identical to before.
+      ,@(let ((type (if *enable-primitive-diversity*
+                        (detect-indicator-type-extended (strategy-indicators strat))
+                        (detect-indicator-type (strategy-indicators strat)))))
           (if type `((indicator_type . ,type)) nil))
       (timeframe . ,(or (strategy-timeframe strat) 1))
       ,@(when (and (slot-exists-p strat 'filter-enabled) (strategy-filter-enabled strat))
           '((filter_enabled . t)))
       (filter_tf . ,(if (slot-exists-p strat 'filter-tf) (or (strategy-filter-tf strat) "") ""))
       (filter_period . ,(if (slot-exists-p strat 'filter-period) (or (strategy-filter-period strat) 0) 0))
-      (filter_logic . ,(if (slot-exists-p strat 'filter-logic) (format nil "~a" (strategy-filter-logic strat)) "")))))
+      (filter_logic . ,(if (slot-exists-p strat 'filter-logic) (format nil "~a" (strategy-filter-logic strat)) ""))
+      ;; V2c: primitive-diversity extension — Rust backtester reads these serde-default
+      ;; fields (band_mult / atr_period / atr_barrier_sl / atr_barrier_tp). Emitted ONLY
+      ;; when the flag is on; the OFF path never appends them (legacy contract unchanged).
+      ,@(when *enable-primitive-diversity*
+          `((band_mult . ,(float (or (strategy-band-mult strat) 2.0) 1.0))
+            (atr_period . ,(or (strategy-atr-period strat) 14))
+            (atr_barrier_sl . ,(float (or (strategy-atr-barrier-sl strat) 0.0) 1.0))
+            (atr_barrier_tp . ,(float (or (strategy-atr-barrier-tp strat) 0.0) 1.0)))))))
 
 (defun strategy-to-json (strat &key (name-suffix ""))
   "Convert strategy struct to a jsown JSON object."

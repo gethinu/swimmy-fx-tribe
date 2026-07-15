@@ -492,23 +492,6 @@ Multiplier NIL means fallback to direction mismatch logic."
     (or (find name *strategy-knowledge-base* :key #'strategy-name :test #'string=)
         (find name *evolved-strategies* :key #'strategy-name :test #'string=))))
 
-<<<<<<< HEAD
-(defun resolve-live-effective-sltp (strategy-name)
-  "Resolve live SL/TP pips and source with strategy-first fallback.
-   Current model supports strategy value -> global default precedence."
-  (let* ((strat (and (stringp strategy-name)
-                     (not (%nil-like-strategy-name-p strategy-name))
-                     (resolve-strategy-by-name strategy-name)))
-         (raw-sl (and strat (strategy-sl strat)))
-         (raw-tp (and strat (strategy-tp strat)))
-         (strategy-sl (and (numberp raw-sl) (> raw-sl 0.0) (float raw-sl 1.0)))
-         (strategy-tp (and (numberp raw-tp) (> raw-tp 0.0) (float raw-tp 1.0))))
-    (if (and strategy-sl strategy-tp)
-        (values strategy-sl strategy-tp "strategy")
-        (values (float *default-sl-pips* 1.0)
-                (float *default-tp-pips* 1.0)
-                "global_default"))))
-=======
 (defun %normalize-sltp-pips-value (value)
   (and (numberp value)
        (> value 0.0)
@@ -590,7 +573,6 @@ Multiplier NIL means fallback to direction mismatch logic."
 
 (eval-when (:load-toplevel :execute)
   (ignore-errors (load-symbol-sltp-overrides)))
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
 
 (defun %digits-only-p (text)
   "Return T when TEXT consists of one or more ASCII digits."
@@ -912,10 +894,23 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
            nil)))
     (t nil)))
 
+(defparameter *execution-ineligible-ranks* '(:legend :legend-archive :retired :graveyard)
+  "P2 (rank sanitization): ranks that are learning/archive only — never live-execution
+   or capital eligible. LEGEND is decoupled from the execution path and treated as a
+   learning archive: zero capital, no live or shadow/paper orders. It may still be
+   backtested/studied (active-strategy-p unchanged), just never traded.")
+
+(defun %execution-eligible-rank-p (rank)
+  "T when RANK may receive live execution / capital. NIL for archive/legend ranks."
+  (not (member (%runtime-selection-normalize-rank rank)
+               *execution-ineligible-ranks* :test #'eq)))
+
 (defun %runtime-selection-rank-score (rank)
-  "Return rank contribution score in [0,1]."
+  "Return rank contribution score in [0,1].
+   P2: :legend is neutralized to 0.0 (was 1.00) — legends are execution-ineligible,
+   so they must never out-score a tradeable candidate in runtime selection."
   (case (%runtime-selection-normalize-rank rank)
-    (:legend 1.00)
+    (:legend 0.00)
     (:s 0.90)
     (:a 0.75)
     (:b 0.60)
@@ -1102,7 +1097,13 @@ Returns NIL for missing/invalid labels instead of silently coercing to M1."
                                   diversification-penalty)
                                (if gate-ready-p 0.0 *runtime-selection-gate-penalty*)
                                (if live-edge-pass-p 0.0 *runtime-selection-live-edge-penalty*)))
-           (eligible-p (and gate-ready-p live-edge-pass-p)))
+           ;; P2: LEGEND (and other archive ranks) are execution-decoupled — never
+           ;; live-eligible regardless of deployment-gate state (defense-in-depth on
+           ;; top of the S/A-only portfolio draft and the shadow/pair pool exclusions).
+           (rank-execution-eligible-p (%execution-eligible-rank-p strategy-rank-token))
+           (eligible-p (and rank-execution-eligible-p gate-ready-p live-edge-pass-p)))
+      (unless rank-execution-eligible-p
+        (push (format nil "RANK_EXECUTION_INELIGIBLE(~a)" strategy-rank-token) reasons))
       (if gate-ready-p
           (push "DEPLOYMENT_GATE_LIVE_READY" reasons)
           (push (format nil "DEPLOYMENT_GATE_BLOCKED(~a)" gate-decision) reasons))
@@ -1547,15 +1548,6 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
       (let ((committed nil))
         (unwind-protect
             (progn
-<<<<<<< HEAD
-              (close-opposing-category-positions category direction symbol
-                                                 (if (eq direction :buy) bid ask)
-                                                 "Doten")
-              (multiple-value-bind (sl-pips tp-pips source-of-override)
-                  (resolve-live-effective-sltp lead-name)
-                (let ((effective-sl nil)
-                      (effective-tp nil))
-=======
 	              (close-opposing-category-positions category direction symbol
 	                                                 (if (eq direction :buy) bid ask)
 	                                                 "Doten")
@@ -1563,7 +1555,6 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
 	                  (resolve-live-effective-sltp lead-name :symbol symbol)
 	                (let ((effective-sl nil)
 	                      (effective-tp nil))
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
                   (cond
                     ((eq direction :buy)
                      (setf effective-sl (- bid sl-pips)
@@ -1711,20 +1702,6 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
        (let* ((category (getf slot :category))
               (pos (getf slot :direction))
               (entry (getf slot :entry))
-<<<<<<< HEAD
-               (magic (getf slot :magic))
-               (lot (or (getf slot :lot) 0.01))
-               (sl-pips *default-sl-pips*) (tp-pips *default-tp-pips*)
-               (effective-sl (or (and (numberp (getf slot :effective-sl))
-                                      (float (getf slot :effective-sl) 1.0))
-                                 (and (numberp (getf slot :effective_sl))
-                                      (float (getf slot :effective_sl) 1.0))))
-               (effective-tp (or (and (numberp (getf slot :effective-tp))
-                                      (float (getf slot :effective-tp) 1.0))
-                                 (and (numberp (getf slot :effective_tp))
-                                      (float (getf slot :effective_tp) 1.0))))
-               (pnl 0) (closed nil))
-=======
               (magic (getf slot :magic))
               (lot (or (getf slot :lot) 0.01))
               (resolved-sltp (multiple-value-list
@@ -1744,7 +1721,6 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                                      (float (getf slot :effective_tp) 1.0))))
               (pnl 0)
               (closed nil))
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
          (when (and entry (numberp bid) (numberp ask))
            (cond
              ((or (eq pos :long) (eq pos :buy))
@@ -1753,13 +1729,8 @@ This keeps FORWARD_RUNNING liveness telemetry active even when live execution is
                 (when (or (<= bid sl) (>= bid tp))
                   (setf pnl (- bid entry) closed t))))
              ((or (eq pos :short) (eq pos :sell))
-<<<<<<< HEAD
-              (let ((sl (or effective-sl (+ ask sl-pips)))
-                    (tp (or effective-tp (- ask tp-pips))))
-=======
               (let ((sl (or effective-sl (+ entry sl-pips)))
                     (tp (or effective-tp (- entry tp-pips))))
->>>>>>> da28fca8275070012eeaccbc387481dbbff3ad83
                 (when (or (>= ask sl) (<= ask tp))
                   (setf pnl (- entry ask) closed t)))))
            (when closed

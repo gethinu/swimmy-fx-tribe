@@ -3,7 +3,11 @@ import os
 import sys
 import time
 import zmq
-import fcntl
+import os as _os_si
+sys_path_si = _os_si.path.join(_os_si.path.dirname(_os_si.path.abspath(__file__)), "..", "src", "python")
+if sys_path_si not in __import__("sys").path:
+    __import__("sys").path.insert(0, sys_path_si)
+from single_instance import acquire as _acquire_singleton  # noqa: E402  (cross-platform, replaces fcntl)
 import requests
 from datetime import datetime
 from pathlib import Path
@@ -847,13 +851,10 @@ def run_server():
 
 def main():
     """Article 5 Compliant Main Loop."""
-    # Singleton Check
-    lock_file = open("/tmp/swimmy_data_keeper.lock", "w")
-    try:
-        fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        print("[DATA-KEEPER] Another instance is already running. Exiting.")
-        sys.exit(0)
+    # Singleton Check (cross-platform; retain handle for process lifetime)
+    lock_file = _acquire_singleton(
+        "data_keeper", message="[DATA-KEEPER] Another instance is already running. Exiting."
+    )
 
     send_discord_alert("✅ Data Keeper Service Started (Optimized)", is_error=False)
 

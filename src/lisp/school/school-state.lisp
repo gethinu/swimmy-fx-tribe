@@ -62,8 +62,10 @@
   "In-memory shadow positions keyed by strategy/symbol/direction for A-rank paper execution.")
 (defparameter *a-rank-shadow-trading-enabled* t
   "When T, A-rank signals are shadow-executed even when live S-gate blocks.")
-(defparameter *shadow-paper-eligible-ranks* '(:A :LEGEND)
-  "Strategy ranks eligible for shadow paper execution.")
+(defparameter *shadow-paper-eligible-ranks* '(:A)
+  "Strategy ranks eligible for shadow paper execution.
+   P2: :LEGEND removed — legends are execution-decoupled (learning archive only),
+   so they no longer shadow/paper-trade.")
 (defparameter *shadow-max-hold-seconds* 3600
   "Maximum hold seconds for a shadow slot before timeout close is forced.")
 (defparameter *forward-no-signal-shadow-enabled* t

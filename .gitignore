@@ -37,11 +37,12 @@ Thumbs.db
 # Git worktrees
 .worktrees/
 
-# Rust build artifacts (if any)
+# Rust build artifacts (guardian is vendored via git subtree; ignore only build output)
+# Cargo workspace lives at repo root, so build output lands in ./target/.
+/target/
 guardian/target/
+guardian/**/*.rs.bk
 
-# Guardian has its own git repo
-guardian/
 config/.env.systemd
 
 # Strategy Data (Generated/Ephemeral)
@@ -57,6 +58,11 @@ data/historical/
 data/heartbeat/
 data/logs/
 data/reports/
+data/locks/
+data/runstamps/
+
+# Vendored native DLLs for CFFI (sqlite3.dll, libzmq.dll) — machine-local, not committed.
+lib/*.dll
 data/memory/
 data/snapshots/
 data/models/

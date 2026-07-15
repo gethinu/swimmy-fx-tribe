@@ -945,7 +945,7 @@
   (let* ((strat (cl-user::make-strategy :name "UT-CPCV-PCT"
                                         :symbol "USDJPY"
                                         :rank :A
-                                        :trades 150
+                                        :trades 200 ; P2: >= unified floor so S-base stays true
                                         :sharpe 0.90
                                         :profit-factor 1.90
                                         :win-rate 0.56

@@ -28,20 +28,103 @@
                                (subseq i2 0 (ceiling (/ (length i2) 2))))
                        :test #'equal)))
 
+;; V2c (2026-07-14): regime helpers for the primitive-diversity search space.
+(defun breeder-legacy-regime (category)
+  "The legacy category->regime mapping (byte-identical to the old inline case)."
+  (case category
+    (:trend :trend)
+    (:reversion :reversion)
+    (:breakout :breakout)
+    (:scalp :reversion) ; Scalp usually reversions/fast trends
+    (t :trend)))
+
+(defun breeder-mutation-regime (category)
+  "Regime to draw a swap indicator from. Flag OFF => the legacy mapping. Flag ON =>
+   with 40% probability CROSS regimes (biased to :reversion/:breakout, where BB/Keltner
+   live), so a TREND lineage can finally acquire mean-reversion indicators. This is the
+   structural escape from the USDJPY/TREND/SMA absorbing state (regen doc B-3)."
+  (if (and *enable-primitive-diversity* (< (random 1.0) 0.4))
+      (nth (random 3) '(:reversion :breakout :reversion)) ; bias toward reversion
+      (breeder-legacy-regime category)))
+
+(defun pick-diverse-regime ()
+  "A non-trend regime for low-frequency regime mutation (flag ON)."
+  (nth (random 3) '(:reversion :breakout :reversion)))
+
+(defun make-diverse-primitive-genes (regime)
+  "Fresh single-primitive genes for a regime-mutated diverse child, seeded in the
+   FORWARD-ROBUST neighbourhood found offline (Keltner/BB mean-reversion, period ~40-64,
+   band-mult 1.5-2.5, ATR-normalized barriers 2-3xATR). Returns a plist with
+   :indicators/:band-mult/:atr-period/:atr-barrier-sl/:atr-barrier-tp."
+  (let* ((period (+ 40 (random 25)))            ; 40..64
+         (mult (+ 1.5 (* 0.5 (random 3))))      ; 1.5 / 2.0 / 2.5
+         (atr (+ 2.0 (random 2))))              ; 2.0 or 3.0
+    (list :indicators (list (list (if (eq regime :breakout) 'keltner 'bollinger) period))
+          :band-mult (float mult 1.0)
+          :atr-period 14
+          :atr-barrier-sl (float atr 1.0)
+          :atr-barrier-tp (float atr 1.0))))
+
+(defun make-diverse-child (parent1 parent2 next-gen child-name dir sym base-sl base-tp)
+  "Build a fresh diverse primitive child (flag ON regime mutation). Keltner/BB
+   mean-reversion in the forward-robust neighbourhood at H4/H6, ATR-normalized barriers.
+   Driven by indicator_type + genes on the Rust side, so entry/exit AST are nil. Bypasses
+   the legacy AST-crossover / logic-recovery machinery (which targets SMA-cross lineages)."
+  (declare (ignore sym))
+  (let* ((regime (pick-diverse-regime))
+         (genes (make-diverse-primitive-genes regime))
+         (tf (nth (random 2) '(240 360))) ; H4/H6 — where the offline edge lives
+         ;; The Keltner/BB-MR edge is SYMBOL-specific (forward-robust on EURUSD, partial
+         ;; GBPUSD; absent on USDJPY/EURJPY). Since the population is ~487 USDJPY, the
+         ;; diverse injection must also mutate the symbol to where the edge lives, or the
+         ;; child cannot be forward-robust. This couples a minimal slice of 2e (symbol
+         ;; diversity) into the 2c injection — justified because the edge is symbol-bound.
+         (mut-sym (nth (random 2) '("EURUSD" "GBPUSD"))))
+    (make-strategy
+      :name child-name
+      :category regime
+      :timeframe tf
+      :direction dir
+      :symbol mut-sym
+      :generation next-gen
+      :sl base-sl
+      :tp base-tp
+      :volume 0.01
+      :indicators (getf genes :indicators)
+      :entry nil
+      :exit nil
+      :band-mult (getf genes :band-mult)
+      :atr-period (getf genes :atr-period)
+      :atr-barrier-sl (getf genes :atr-barrier-sl)
+      :atr-barrier-tp (getf genes :atr-barrier-tp)
+      :rank :incubator
+      :tier :incubator
+      :status :active
+      :regime-intent regime
+      :parents (list (strategy-name parent1) (strategy-name parent2)))))
+
+;; V2c 2f (regen doc B-6): CPCV pre-gate. Only CPCV-robust seeds may enter the breeding
+;; pool, so single-window fits are not bred from. Matches the offline forward-robust bar.
+(defparameter *2c-cpcv-pregate-min* 0.60
+  "Minimum CPCV pass-rate to enter the breeding pool when *enable-primitive-diversity*.")
+
+(defun breeding-cpcv-eligible-p (strategy)
+  "Flag OFF => always t (legacy, no pre-gate). Flag ON => require CPCV pass-rate >= the
+   pre-gate minimum so only CPCV-robust individuals breed."
+  (or (not *enable-primitive-diversity*)
+      (>= (or (strategy-cpcv-pass-rate strategy) 0.0) *2c-cpcv-pregate-min*)))
+
 (defun mutate-indicators-with-library (indicators category)
   "Mutate indicators by swapping one with a regime-aware alternative.
-   V49.5: Prevents 'Genetic Stagnation' using indicators-library."
+   V49.5: Prevents 'Genetic Stagnation' using indicators-library.
+   V2c: regime is chosen by breeder-mutation-regime (cross-regime when the diversity
+   flag is on; legacy mapping otherwise)."
   (let ((len (length indicators)))
     (when (zerop len)
       (return-from mutate-indicators-with-library indicators))
     (if (> (random 1.0) 0.7) ; 30% chance to swap an indicator
         (let* ((idx (random len))
-             (regime (case category
-                       (:trend :trend)
-                       (:reversion :reversion)
-                       (:breakout :breakout)
-                       (:scalp :reversion) ; Scalp usually reversions/fast trends
-                       (t :trend)))
+             (regime (breeder-mutation-regime category))
              (new-indicator (get-random-indicator-for-regime regime)))
         (format t "[BREEDER] 🧬 Indicator Swap: ~a -> ~a (Regime: ~a)~%" 
                 (nth idx indicators) new-indicator regime)
@@ -1145,6 +1228,14 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
          (child-sl initial-sl)
          (child-tp initial-tp))
 
+    ;; V2c: regime-mutation short-circuit (flag ON only, 15%). Produce a clean diverse
+    ;; Keltner/BB-MR child and skip the legacy AST-crossover/logic-recovery/SL-TP machinery
+    ;; below (which is tuned for SMA-cross lineages). This is the operator that breaks the
+    ;; TREND/USDJPY/SMA absorbing state. Flag OFF => never taken => legacy path unchanged.
+    (when (and *enable-primitive-diversity* (< (random 1.0) 0.15))
+      (return-from breed-strategies
+        (make-diverse-child parent1 parent2 next-gen child-name dir sym child-sl child-tp)))
+
     (multiple-value-bind (selected-tf tf-mode p1-tf p2-tf)
         (select-breeder-child-timeframe parent1 parent2)
       (setf tf selected-tf)
@@ -1296,7 +1387,9 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                              (strategy-regime-class s)
                                              (strategy-category s))
                                          cat)
-                                     (not (eq (strategy-rank s) :graveyard))))
+                                     (not (eq (strategy-rank s) :graveyard))
+                                     ;; V2c 2f: CPCV pre-gate (no-op when flag OFF).
+                                     (breeding-cpcv-eligible-p s)))
                               *strategy-knowledge-base*))
                ;; V48.7: Rank-aware and composite score priority.
                (sorted (sort (copy-list all-warriors) #'>
@@ -1519,9 +1612,13 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
 (defun %wisdom-push-elite-candidate (candidate elites limit)
   "Insert CANDIDATE into descending SHARPE-sorted ELITES capped by LIMIT."
   (let* ((cap (max 1 (or limit 50)))
-         (sorted (sort (cons candidate elites) #'>
+         (pool (cons candidate elites))
+         ;; V2c: stable population snapshot for niche counting (sort mutates `pool`).
+         (pop-snapshot (copy-list pool))
+         ;; V2c: rank by selection-fitness (fitness-sharing when flag ON; raw sharpe OFF).
+         (sorted (sort pool #'>
                        :key (lambda (s)
-                              (or (strategy-sharpe s)
+                              (or (selection-fitness s pop-snapshot)
                                   most-negative-double-float)))))
     (if (> (length sorted) cap)
         (nbutlast sorted (- (length sorted) cap))
@@ -1574,8 +1671,10 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
    - If Child is proven stronger (Sharpe), Parent is killed (unless Immortal).
    - If Child is weaker, Child is killed.
    - If Child is untested (Sharpe NIL), it is spared for now."
-   (let ((p-sharpe (or (strategy-sharpe parent) -999.0))
-         (c-sharpe (strategy-sharpe child))) ;; Child might be untested
+   ;; V2c: compare by selection-fitness (evidence-adjusted when flag ON; raw sharpe OFF).
+   ;; No population here => shrinkage only, no sharing (a duel is intrinsically 1v1).
+   (let ((p-sharpe (if *enable-primitive-diversity* (selection-fitness parent) (or (strategy-sharpe parent) -999.0)))
+         (c-sharpe (if (and *enable-primitive-diversity* (strategy-sharpe child)) (selection-fitness child) (strategy-sharpe child)))) ;; Child might be untested
      
      (unless c-sharpe
        (format t "[DEATHMATCH] 🐣 Child ~a is untested. Spared for now.~%" (strategy-name child))
@@ -1648,7 +1747,11 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
     (when (and (eq (strategy-status s) :active)
                (not (strategy-immortal s))
                (> (strategy-age s) 10))
-      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+      ;; V2c: score by selection-fitness (fitness-sharing thins redundant-niche clones
+      ;; when flag ON; raw sharpe when OFF => identical cull threshold).
+      (let ((sharpe (if *enable-primitive-diversity*
+                        (selection-fitness s *strategy-knowledge-base*)
+                        (or (strategy-sharpe s) -1.0))))
         (when (< sharpe 0.6)
           (kill-strategy (strategy-name s)
                          (format nil "Cull: Stagnant C-Rank (~,2f) after 10 days" sharpe)
@@ -1663,9 +1766,12 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                (not (strategy-immortal s))
                (> (strategy-age s) 5))
       ;; Check Performance (using existing Grade logic or simple Sharpe)
-      (let ((sharpe (or (strategy-sharpe s) -1.0)))
+      ;; V2c: selection-fitness (fitness-sharing when flag ON; raw sharpe OFF).
+      (let ((sharpe (if *enable-primitive-diversity*
+                        (selection-fitness s *strategy-knowledge-base*)
+                        (or (strategy-sharpe s) -1.0))))
         (cond
-          ((< sharpe 0.0) 
+          ((< sharpe 0.0)
            (kill-strategy (strategy-name s) (format nil "Cull: Negative Sharpe (~,2f) after 5 days" sharpe))))))))
 
 (defun retire-max-age-strategies ()

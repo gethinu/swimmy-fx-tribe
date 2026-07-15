@@ -60,20 +60,31 @@
 (defparameter *a-candidate-category-metrics* (make-hash-table :test 'equal)
   "Latest A-candidate funnel metrics per category key (timeframe direction symbol).")
 
-(defparameter *s-rank-staged-pf-wr-enabled* t
-  "When T, S-rank PF/WR gates use trade-evidence stages.")
+(defparameter *s-rank-staged-pf-wr-enabled* nil
+  "P2 (rank sanitization): DISABLED. Was T — relaxed S-rank PF/WR floors for
+   high-trade-evidence candidates (down to 30 trades). Staged relaxation let a
+   loss-adjacent strategy reach S below the strict PF 1.70 / WR 0.50 definition,
+   decoupling the S title from realized quality. Rank is now a pure function of
+   *rank-criteria* (no evidence-dependent loosening). Kept as a flag (not deleted)
+   so the disable is auditable and reversible; do NOT re-enable without owner sign-off.")
 
 (defparameter *s-rank-staged-pf-wr-spec*
   '((:min-trades 150 :pf-min 1.30 :wr-min 0.38)
     (:min-trades 100 :pf-min 1.40 :wr-min 0.42)
     (:min-trades 30 :pf-min 1.55 :wr-min 0.45))
-  "Descending stage specs for S-rank PF/WR gates keyed by trade evidence.")
+  "DEPRECATED (P2): inert while *s-rank-staged-pf-wr-enabled* is NIL. Descending
+   stage specs that used to relax S-rank PF/WR gates keyed by trade evidence.")
 
-(defparameter *a-rank-min-trade-evidence* 50
-  "Minimum trade evidence required before A-rank eligibility.")
+(defparameter *a-rank-min-trade-evidence* 200
+  "Minimum trade evidence required before A-rank eligibility.
+   P2: unified to 200 to match the external honest_gate floor (min_trades=200).
+   Was 50 — an internal floor lower than the gate created a double standard where
+   a strategy could be internally A/S yet fail the deployment gate.")
 
-(defparameter *s-rank-min-trade-evidence* 100
-  "Minimum trade evidence required before S-rank eligibility.")
+(defparameter *s-rank-min-trade-evidence* 200
+  "Minimum trade evidence required before S-rank eligibility.
+   P2: unified to 200 to match the external honest_gate floor (min_trades=200).
+   Was 100 — see *a-rank-min-trade-evidence* rationale.")
 
 (defparameter *enforce-rank-trade-evidence-floors* t
   "When T, rank evaluation demotes existing A/S strategies that violate trade-evidence floors.")
@@ -783,11 +794,18 @@ Keys:
                 (and (fboundp 'execute-single)
                      (execute-single "SELECT rank FROM strategies WHERE name = ?"
                                      (strategy-name strategy)))))))
-      ;; LEGEND保護: レジェンドは墓場送りしない（子世代は別扱い）
+      ;; P2e (Thread A): retire a failed legend to :LEGEND-ARCHIVE instead of
+      ;; freezing it as immortal :LEGEND. Rank is a pure function of criteria; a
+      ;; legend that earns graveyard is archived — execution-forbidden and
+      ;; capital-zero (see *execution-ineligible-ranks*) — but preserved for
+      ;; audit/learning (no hard-delete) and never conflated with a failed
+      ;; recruit's :GRAVEYARD. Children are handled separately.
       (when (and (string= old-token "LEGEND")
                  (string= new-token "GRAVEYARD"))
-        (format t "[RANK] ⚠️ Legend protection: ~a remains :LEGEND (skip graveyard).~%" (strategy-name strategy))
-        (return-from %ensure-rank-no-lock old-rank))
+        (format t "[RANK] 📚 Legend retirement: ~a :LEGEND → :LEGEND-ARCHIVE (honest archive, not graveyard).~%"
+                (strategy-name strategy))
+        (setf new-rank :legend-archive
+              new-token "LEGEND-ARCHIVE"))
       (when (and (string= new-token "GRAVEYARD")
                  (oos-request-pending-p (strategy-name strategy)))
         (format t "[RANK] ⏳ OOS pending: skip graveyard for ~a~%" (strategy-name strategy))
