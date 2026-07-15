@@ -217,7 +217,10 @@ _STRATEGY_FIELDS = {
     "filter_period",
     "filter_logic",
 }
-_INDICATOR_TYPES = {"sma", "ema", "rsi", "macd", "bb", "stoch", "vwap", "volsma", "vpoc", "vwapvr"}
+# V2c (2026-07-15): "keltner" added so the primitive-diversity emit is NOT normalised to
+# "sma" before reaching the guardian (which now has an IndicatorType::Keltner generator).
+# Without this, flag-ON diverse Keltner children would be silently mis-scored as SMA.
+_INDICATOR_TYPES = {"sma", "ema", "rsi", "macd", "bb", "stoch", "vwap", "volsma", "vpoc", "vwapvr", "keltner"}
 _OPTIONAL_LIST_KEYS = (
     "data_id",
     "candles_file",
@@ -520,6 +523,14 @@ def _sanitize_strategy(raw):
         "filter_tf": filter_tf,
         "filter_period": filter_period,
         "filter_logic": filter_logic,
+        # V2c (2026-07-15): forward the primitive-diversity genes so the guardian actually
+        # runs Keltner / variable-dev Bollinger / ATR-normalized barriers. Defaults match
+        # backtester.rs serde defaults, so a flag-OFF strategy (which never emits these)
+        # yields band_mult=2.0 / atr_period=14 / atr barriers disabled == prior behaviour.
+        "band_mult": _to_float(_get("band_mult", 2.0), default=2.0),
+        "atr_period": _to_int(_get("atr_period", 14), default=14),
+        "atr_barrier_sl": _to_float(_get("atr_barrier_sl", 0.0), default=0.0),
+        "atr_barrier_tp": _to_float(_get("atr_barrier_tp", 0.0), default=0.0),
     }
 
 

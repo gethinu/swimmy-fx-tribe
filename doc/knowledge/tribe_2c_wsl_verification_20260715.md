@@ -87,6 +87,24 @@ daemon フルループ（zmq/add-to-kb）を起動せず、**実 2c/2d/2f ロジ
 - **機構が世代を跨いで複利で効く**：2d fitness-sharing が巨大 USDJPY niche（÷~90-120）を diverse 個体の下に沈め cull、2f が非頑健 mono の育種を阻止、2c が diverse を注入。
 - **限界（正直に）**: (i) seed 必須（実 population は CPCV-eligible が枯渇）＝**本番も初期 seed / 閾値緩和が要る**。(ii) 希釈は緩慢（~2-3%/gen、多数派化には ~15-20 世代）。(iii) daemon の add-to-kb/DB/zmq プラミングは未経由（ダイナミクスは実ロジック＋honest 採点だが cull は top-N 簡略）。
 
+## 3c. daemon プラミング検証 → **2 箇所の live 汚染を発見・修正**（2026-07-15）
+
+flag-ON の diverse child が live daemon の採点経路で正しく Keltner として採点されるかを検証したところ、
+**backtester.rs（Guardian 本体）以外の 2 経路で keltner→sma に潰れ、diverse gene が捨てられていた**ことが判明。
+これは 2b harness 汚染の live 版であり、放置すると **flag-ON でも diverse child が SMA として誤採点され CPCV 昇格しない**＝2c が本番で機能しない。
+
+| 汚染箇所 | 症状 | 修正 |
+|---|---|---|
+| `tools/backtest_service.py`（Lisp→Guardian の backtest wrapper）| `_INDICATOR_TYPES` に keltner 無し→sma に正規化・`_sanitize_strategy` が band_mult/atr を forward せず | keltner を whitelist 追加＋4 gene を forward（既定=backtester.rs serde 既定＝flag-OFF 不変）|
+| `guardian/src/cpcv.rs`（CPCV 採点＝**2f が読む経路**）| `_ => Sma`（keltner arm 無し）＋Strategy の band_mult/atr を **hardcode** で params 無視 | keltner arm 追加＋band_mult/atr を strategy_params から読取（未指定=既定＝flag-OFF 不変）|
+
+**検証（Guardian `--backtest-only` 実走）**:
+- keltner payload → **956,228 trades**、同 param の sma payload → **42,612 trades**＝keltner が SMA に潰れず**別物として dispatch**。
+- keltner の ATR バリア有(2x2)=956,228 trades / 絶対バリア=444,993 trades ＝**gene が forward され効いている**。
+- Rust 全 test green（85+27+26+26）。flag-OFF は gene 既定＝従来挙動（byte 不変）。
+
+→ **live daemon の採点経路（BACKTEST＋CPCV）が diverse Keltner を正しく採点できるようになった**。これで 2c の flag-ON 本番の残る採点汚染は解消。（ZMQ フル daemon ループの起動実走は未実施＝発注ループ起動リスク回避。各コンポーネントは個別検証済み。）
+
 ## 4. コミット/成果
 - 実装は `claude/2c-primitive-diversity-breeding`（Stage1-3＋本 WSL 検証）。scripts: `logs/tribe_2c_wsl/{measure,pregate}.lisp`。
 - 本 WSL 検証で 2c 実装は **compile-OK＋flag-ON 生成コア完走＋forward-robust diverse 個体 1 件を実育種**。未検証は daemon フルループ（要 Guardian backtest-only 隔離）。

@@ -393,6 +393,9 @@ fn run_backtest_range_from_loaded_candles(
         "volsma" | "vol_sma" | "volume_sma" => IndicatorType::Volsma,
         "vpoc" | "volume_profile" | "volume-profile" => IndicatorType::Vpoc,
         "vwapvr" | "vwap_volume_ratio" | "vwap-volume-ratio" => IndicatorType::Vwapvr,
+        // V2c (2026-07-15): keltner must dispatch here too, else the CPCV path (which the
+        // 2f pre-gate reads) silently scores diverse Keltner children as SMA.
+        "keltner" => IndicatorType::Keltner,
         _ => IndicatorType::Sma,
     };
 
@@ -455,10 +458,12 @@ fn run_backtest_range_from_loaded_candles(
         entry_short_ast: strategy_params.get("entry_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
         exit_long_ast: strategy_params.get("exit_long_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
         exit_short_ast: strategy_params.get("exit_short_ast").and_then(|v| serde_json::from_value(v.clone()).ok()),
-            band_mult: 2.0,
-            atr_period: 14,
-            atr_barrier_sl: 0.0,
-            atr_barrier_tp: 0.0,
+        // V2c (2026-07-15): read the primitive-diversity genes from params (was hardcoded to
+        // defaults). Missing keys fall back to backtester.rs serde defaults => flag-OFF unchanged.
+        band_mult: strategy_params.get("band_mult").and_then(|v| v.as_f64()).unwrap_or(2.0),
+        atr_period: strategy_params.get("atr_period").and_then(|v| v.as_u64()).unwrap_or(14) as usize,
+        atr_barrier_sl: strategy_params.get("atr_barrier_sl").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        atr_barrier_tp: strategy_params.get("atr_barrier_tp").and_then(|v| v.as_f64()).unwrap_or(0.0),
     };
     
     // Run backtest on the range
