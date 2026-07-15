@@ -56,9 +56,12 @@
    FORWARD-ROBUST neighbourhood found offline (Keltner/BB mean-reversion, period ~40-64,
    band-mult 1.5-2.5, ATR-normalized barriers 2-3xATR). Returns a plist with
    :indicators/:band-mult/:atr-period/:atr-barrier-sl/:atr-barrier-tp."
-  (let* ((period (+ 40 (random 25)))            ; 40..64
-         (mult (+ 1.5 (* 0.5 (random 3))))      ; 1.5 / 2.0 / 2.5
-         (atr (+ 2.0 (random 2))))              ; 2.0 or 3.0
+  ;; V2c (2026-07-15): CENTER the draw on the offline forward-robust region (EURUSD Keltner
+  ;; period 50-60, dev 2.0, ATR 2xATR) to lift the diverse-honest-PASS yield (was ~2% with a
+  ;; wide 40-64/1.5-2.5/2-3 draw). Kept a little spread so it still explores.
+  (let* ((period (+ 50 (random 11)))                        ; 50..60 (FR center)
+         (mult (nth (random 5) '(2.0d0 2.0d0 2.0d0 1.5d0 2.5d0)))  ; bias 2.0
+         (atr (nth (random 4) '(2.0d0 2.0d0 2.0d0 3.0d0))))        ; bias 2.0
     (list :indicators (list (list (if (eq regime :breakout) 'keltner 'bollinger) period))
           :band-mult (float mult 1.0)
           :atr-period 14
@@ -73,13 +76,16 @@
   (declare (ignore sym))
   (let* ((regime (pick-diverse-regime))
          (genes (make-diverse-primitive-genes regime))
-         (tf (nth (random 2) '(240 360))) ; H4/H6 — where the offline edge lives
+         (tf (nth (random 3) '(240 240 360))) ; bias H4 (240) — where the offline edge lives
          ;; The Keltner/BB-MR edge is SYMBOL-specific (forward-robust on EURUSD, partial
          ;; GBPUSD; absent on USDJPY/EURJPY). Since the population is ~487 USDJPY, the
          ;; diverse injection must also mutate the symbol to where the edge lives, or the
          ;; child cannot be forward-robust. This couples a minimal slice of 2e (symbol
          ;; diversity) into the 2c injection — justified because the edge is symbol-bound.
-         (mut-sym (nth (random 2) '("EURUSD" "GBPUSD"))))
+         ;; Bias EURUSD 2:1 over GBPUSD — the Keltner-MR edge is forward-robust on EURUSD but
+         ;; only marginal on GBPUSD (offline: EURUSD 11/207 vs GBPUSD 1/207 forward-robust),
+         ;; so concentrating the injection on EURUSD lifts the diverse-honest-PASS yield.
+         (mut-sym (nth (random 3) '("EURUSD" "EURUSD" "GBPUSD"))))
     (make-strategy
       :name child-name
       :category regime
