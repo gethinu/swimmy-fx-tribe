@@ -65,6 +65,28 @@ SWIMMY_PRIMITIVE_DIVERSITY=0 sbcl ... (asdf:load-system :swimmy) -> COMPILE-OK
 - **(C) diverse 注入の param を forward-robust 中心（EURUSD keltner p50-60 dev2 H4 ATR2x2）に寄せて歩留まり改善。**
 - honest_gate/§4 floor は不変・merge/本番はオーナー確認後。
 
+## 3b. 多世代希釈シミュレーション（2026-07-15 追補・安全）
+
+daemon フルループ（zmq/add-to-kb）を起動せず、**実 2c/2d/2f ロジック＋honest 採点（primitive_scan.exe を WSL interop で呼出・OOS 2pip＋purged CPCV）**で進化ダイナミクスを N 世代シミュレート。ライブ発注ゼロ・live DB 無改変。
+- **2f ブートストラップ**: `*2c-cpcv-pregate-min*` を 0.60→**0.55** に下げ、forward-robust な diverse Keltner/BB-MR を **20 体 seed**（実 population は CPCV≥0.6 が 1-2 体しかなく親枯渇するため）。seed は実個体を clone して breedability を保持・遺伝的に分散。
+- 各世代: 2f-eligible pool から breed（2c）→ child を honest 採点 → 全体を 2d selection-fitness で cap 130 に cull → 分布記録。
+
+**結果（単一栽培は世代ごとに実際に薄まる）**:
+
+| Gen | USDJPY | EURUSD | GBPUSD | div-robust | USDJPY% |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 120 | 14 | 6 | 20 | 86% |
+| 1 | 104 | 18 | 8 | 21 | 80% |
+| 2 | 102 | 20 | 8 | 22 | 78% |
+| 3 | 98 | 24 | 8 | 23 | 75% |
+| 4 | 95 | 27 | 8 | 23 | 73% |
+| 5 | 92 | 30 | 8 | 24 | 71% |
+| 6 | 87 | 34 | 9 | 24 | 67% |
+
+- **単一栽培 USDJPY 120→87（86%→67%）と単調減少**、diverse（EURUSD/GBPUSD）20→43（14%→33%）と単調増加、**diverse forward-robust honest-PASS 20→24 と累積**。2f-eligible pool も 20→24（forward-robust child が育種プールに自給的に加わる）。
+- **機構が世代を跨いで複利で効く**：2d fitness-sharing が巨大 USDJPY niche（÷~90-120）を diverse 個体の下に沈め cull、2f が非頑健 mono の育種を阻止、2c が diverse を注入。
+- **限界（正直に）**: (i) seed 必須（実 population は CPCV-eligible が枯渇）＝**本番も初期 seed / 閾値緩和が要る**。(ii) 希釈は緩慢（~2-3%/gen、多数派化には ~15-20 世代）。(iii) daemon の add-to-kb/DB/zmq プラミングは未経由（ダイナミクスは実ロジック＋honest 採点だが cull は top-N 簡略）。
+
 ## 4. コミット/成果
 - 実装は `claude/2c-primitive-diversity-breeding`（Stage1-3＋本 WSL 検証）。scripts: `logs/tribe_2c_wsl/{measure,pregate}.lisp`。
 - 本 WSL 検証で 2c 実装は **compile-OK＋flag-ON 生成コア完走＋forward-robust diverse 個体 1 件を実育種**。未検証は daemon フルループ（要 Guardian backtest-only 隔離）。
