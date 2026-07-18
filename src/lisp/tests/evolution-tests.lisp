@@ -2663,3 +2663,87 @@
       (if orig-near-pf-threshold
           (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
           (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))
+
+;;; ============================================================================
+;;; V2d (2026-07-18): B-4 / R4 behavioural distance
+;;;   (regen_engine_redesign_20260703.md §B-4; tribe rebuild §R4)
+;;; Flag-gated on swimmy.core:*enable-primitive-diversity*:
+;;;   OFF => byte-identical legacy formula; ON => symbol/TF/family/tree/behaviour composite.
+;;; Verified offline against the real 18.5k-strategy monoculture (a read-only swimmy.db copy):
+;;; same-(symbol,regime,tf) clones collapse to median dist 0.0010 (96% below the 0.02 clone
+;;; floor) while non-USDJPY / cross-regime stay 100% above 0.20.
+;;; ============================================================================
+
+(deftest test-b4-extract-genome-carries-symbol-and-behavior
+  "regen B-1: extract-genome must carry :symbol and :behavior as first-class genes."
+  (let* ((s (swimmy.school:make-strategy :name "B4-EG" :symbol "EURUSD"
+                                         :category :reversion :timeframe 240
+                                         :indicators '((rsi 14)) :sl 0.5 :tp 1.0
+                                         :pnl-history '(1.0 -2.0 3.0)))
+         (gm (swimmy.school::extract-genome s)))
+    (assert-equal "EURUSD" (getf gm :symbol) "genome must carry :symbol (regen B-1)")
+    (assert-equal 240 (getf gm :timeframe) "genome must carry :timeframe")
+    (assert-equal '(1.0 -2.0 3.0) (getf gm :behavior) "genome must carry :behavior (pnl-history)")))
+
+(deftest test-b4-distance-flag-off-is-legacy-and-symbol-blind
+  "Flag OFF => byte-identical legacy formula that is blind to symbol."
+  (let ((a (list :symbol "USDJPY" :category :trend :timeframe 1440
+                 :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09))
+        (b (list :symbol "EURUSD" :category :trend :timeframe 1440
+                 :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09)))
+    (let ((swimmy.core:*enable-primitive-diversity* nil))
+      (assert-true (< (abs (- (swimmy.school::calculate-genetic-distance a b)
+                              (swimmy.school::legacy-genetic-distance a b)))
+                      1e-6)
+                   "flag OFF must dispatch to the legacy formula")
+      (assert-true (< (swimmy.school::calculate-genetic-distance a b) 1e-6)
+                   "legacy distance is blind to symbol (identical indicators => 0)"))))
+
+(deftest test-b4-distance-collapses-clones-to-near-zero
+  "regen R4: same (symbol,regime,tf) clones differing only in periods collapse near-zero
+   under the flag, while the legacy formula scatters them above the 0.02 clone floor."
+  (let ((c1 (list :symbol "USDJPY" :category :trend :timeframe 1440
+                  :indicators '((sma 27) (sma 93)) :entry '(cross-above close sma-27)
+                  :sl 0.03 :tp 0.09))
+        (c2 (list :symbol "USDJPY" :category :trend :timeframe 1440
+                  :indicators '((sma 36) (sma 144)) :entry '(cross-above close sma-36)
+                  :sl 0.04 :tp 0.12)))
+    (let ((off (let ((swimmy.core:*enable-primitive-diversity* nil))
+                 (swimmy.school::calculate-genetic-distance c1 c2)))
+          (on  (let ((swimmy.core:*enable-primitive-diversity* t))
+                 (swimmy.school::calculate-genetic-distance c1 c2))))
+      (assert-true (> off 0.02) "legacy must scatter clones above the 0.02 clone floor (the bug)")
+      (assert-true (< on 0.02) "B-4 must collapse clones below the 0.02 clone floor")
+      (assert-true (< on off) "B-4 distance must be far smaller than legacy for clones")
+      (let ((swimmy.core:*enable-primitive-diversity* t))
+        (assert-false (swimmy.school::genetic-compatibility-p c1 c2)
+                      "clones must be rejected by the 0.2-0.8 breeding sweet spot")))))
+
+(deftest test-b4-distance-keeps-diverse-far
+  "regen R4: non-USDJPY and cross-regime genomes stay far (>0.2) under the flag."
+  (let ((usdjpy-trend (list :symbol "USDJPY" :category :trend :timeframe 1440
+                            :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09))
+        (eurusd-vwap  (list :symbol "EURUSD" :category :trend :timeframe 1440
+                            :indicators '((vwapvr 50 220)) :sl 1.2 :tp 4.0))
+        (usdjpy-rev   (list :symbol "USDJPY" :category :reversion :timeframe 240
+                            :indicators '((rsi 14)) :sl 0.5 :tp 1.0)))
+    (let ((swimmy.core:*enable-primitive-diversity* t))
+      (assert-true (> (swimmy.school::calculate-genetic-distance usdjpy-trend eurusd-vwap) 0.2)
+                   "non-USDJPY diverse must be far (>0.2)")
+      (assert-true (> (swimmy.school::calculate-genetic-distance usdjpy-trend usdjpy-rev) 0.2)
+                   "cross-regime must be far (>0.2)"))))
+
+(deftest test-b4-behavior-corr-hook
+  "regen B-4: 1-|corr| behaviour hook is real when data present, NIL (dormant) when absent."
+  (assert-true (< (abs (swimmy.school::genome-behavior-distance
+                        '(1.0 2.0 3.0 4.0) '(1.0 2.0 3.0 4.0)))
+                  1e-4)
+               "identical returns => behaviour distance ~0")
+  (assert-true (< (abs (swimmy.school::genome-behavior-distance
+                        '(1.0 2.0 3.0 4.0) '(-1.0 -2.0 -3.0 -4.0)))
+                  1e-4)
+               "perfectly anti-correlated => behaviour distance ~0 (same bet, mirrored)")
+  (assert-true (null (swimmy.school::genome-behavior-distance '(1.0 2.0) '(1.0 2.0)))
+               "<3 aligned points => NIL (hook stays dormant)")
+  (assert-true (null (swimmy.school::genome-behavior-distance nil nil))
+               "absent series => NIL (never fabricates data)"))
