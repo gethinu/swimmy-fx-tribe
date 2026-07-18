@@ -89,6 +89,7 @@
                (:file "src/lisp/school/school-memory")
                (:file "src/lisp/school/school-ecosystem")
                (:file "src/lisp/school/school-genome")    ; V14.0: The Genome Engine (Sexual Reproduction)
+               (:file "src/lisp/school/school-seed")      ; V2d regen: diversity-seed escape route (flag-gated)
                (:file "src/lisp/school/school-evolution") ; Genetic & LLM Generation (Dreamer)
                (:file "src/lisp/school/school-evolution-llm")
                (:file "src/lisp/school/school-evolution-orchestration")

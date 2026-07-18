@@ -102,13 +102,27 @@
          (cats (swimmy.core::execute-to-list (format nil "SELECT category,count(*) FROM strategies WHERE ~a GROUP BY category ORDER BY count(*) DESC" *active-where*)))
          (usd (or (second (assoc "USDJPY" syms :test #'equal)) 0))
          (trend (loop for row in cats when (search "TREND" (string-upcase (format nil "~a" (first row)))) sum (second row)))
+         ;; diverse-robust (legacy defn): non-USDJPY, non-TREND, CPCV-robust.
          (divrobust (swimmy.core::execute-single
-                     (format nil "SELECT count(*) FROM strategies WHERE ~a AND symbol<>'USDJPY' AND UPPER(category) NOT LIKE '%TREND%' AND cpcv_pass_rate>=0.6" *active-where*))))
+                     (format nil "SELECT count(*) FROM strategies WHERE ~a AND symbol<>'USDJPY' AND UPPER(category) NOT LIKE '%TREND%' AND cpcv_pass_rate>=0.6" *active-where*)))
+         ;; ESCAPE-ROUTE target metric: non-USDJPY TREND survivors (the regime the monoculture
+         ;; owns). survive = active rank; robust = additionally CPCV>=0.6.
+         (nonusd-trend (swimmy.core::execute-single
+                        (format nil "SELECT count(*) FROM strategies WHERE ~a AND symbol<>'USDJPY' AND UPPER(category) LIKE '%TREND%'" *active-where*)))
+         (nonusd-trend-robust (swimmy.core::execute-single
+                        (format nil "SELECT count(*) FROM strategies WHERE ~a AND symbol<>'USDJPY' AND UPPER(category) LIKE '%TREND%' AND cpcv_pass_rate>=0.6" *active-where*)))
+         ;; any surviving DVSEED-* (the injected seeds themselves, whatever their fate)
+         (seed-alive (swimmy.core::execute-single
+                        (format nil "SELECT count(*) FROM strategies WHERE ~a AND name LIKE 'DVSEED-%'" *active-where*))))
     (format t "~&[~a] active=~d  USDJPY=~d (~,1f%)  TREND=~d (~,1f%)  diverse-robust=~d~%"
             tag total usd (if (> total 0) (* 100.0 (/ usd total)) 0.0)
             trend (if (> total 0) (* 100.0 (/ trend total)) 0.0) divrobust)
+    (format t "~&        non-USDJPY-TREND: survive=~d robust=~d | DVSEED alive=~d~%"
+            nonusd-trend nonusd-trend-robust seed-alive)
     (format t "~&        symbols=~s cats=~s~%" syms cats)
-    (list :total total :usd usd :trend trend :divrobust divrobust)))
+    (list :total total :usd usd :trend trend :divrobust divrobust
+          :nonusd-trend nonusd-trend :nonusd-trend-robust nonusd-trend-robust
+          :seed-alive seed-alive)))
 
 ;;; ---- 1. load population from copy DB + build daemon pools ------------
 (init-db)
@@ -121,37 +135,70 @@
 (format t "~&===== GEN 0 (loaded monoculture, pre-seed) =====~%")
 (db-distro "GEN0")
 
-;;; ---- 2. 2f bootstrap seeds: 20 diverse Keltner/BB-MR (trap fix) ------
-(let* ((usd (remove-if-not (lambda (s) (equal (strategy-symbol s) "USDJPY")) *strategy-knowledge-base*))
-       (nseed 0))
-  (loop for i from 0 below 20
-        for base = (nth (mod (* i 7) (max 1 (length usd))) usd)
-        when base do
-          (let ((c (copy-strategy base))
-                (prim (if (evenp i) 'keltner 'bollinger)))
-            (setf (strategy-name c) (format nil "SEED-~a-~d" prim i)
-                  (strategy-symbol c) (if (< (mod i 3) 2) "EURUSD" "GBPUSD")
-                  (strategy-category c) :reversion
-                  (strategy-indicators c) (list (list prim (+ 45 (* 3 (mod i 7)))))
-                  (strategy-band-mult c) (nth (mod i 3) '(1.5d0 2.0d0 2.5d0))
-                  (strategy-atr-period c) 14
-                  (strategy-atr-barrier-sl c) (if (evenp i) 2.0d0 3.0d0)
-                  (strategy-atr-barrier-tp c) (if (evenp i) 2.0d0 3.0d0)
-                  (strategy-timeframe c) (nth (mod i 2) '(240 360))
-                  (strategy-sl c) 0.005d0 (strategy-tp c) 0.005d0
-                  (strategy-cpcv-pass-rate c) 0.7d0 (strategy-sharpe c) 0.7d0
-                  (strategy-cpcv-median-sharpe c) 0.5d0
-                  (strategy-profit-factor c) 1.5d0 (strategy-win-rate c) 0.55d0
-                  (strategy-max-dd c) 0.05d0 (strategy-oos-sharpe c) 0.5d0 (strategy-trades c) 400
-                  (strategy-breeding-count c) 0 (strategy-generation c) 0
-                  (strategy-rank c) :B (strategy-tier c) :battlefield (strategy-age c) 0
-                  (strategy-status c) :active (strategy-revalidation-pending c) nil)
-            (multiple-value-bind (ok st) (add-to-kb c :breeder :require-bt nil :notify nil)
-              (declare (ignore st))
-              (when ok (incf nseed)))))
-  (format t "~&SEEDED ~d diverse Keltner/BB-MR into KB+DB (2f bootstrap)~%" nseed))
+;;; ---- 2. ESCAPE ROUTE: inject non-USDJPY-TREND diversity seeds, HONESTLY scored ----
+;;; This REPLACES the previous run's inline fabricated-metric REVERSION seeding (which added
+;;; 20 EUR/GBP Keltner/BB seeds with cpcv=0.7/sharpe=0.7 pre-set and :require-bt nil — i.e.
+;;; they never touched the honest gate and were COSMETIC by construction). The escape-route
+;;; seeds come from the flag-gated source path inject-diversity-seeds (src/lisp/school/
+;;; school-seed.lisp): TREND-first, non-USDJPY, NO fabricated performance. Each seed bypasses
+;;; ONLY the breeding CPCV pre-gate (it is injected directly, not bred); it is then HONESTLY
+;;; scored by primitive_scan (guardian's real OOS/CPCV engine on real local price data) and
+;;; driven through the SAME Phase-1 gate (handle-v2-result) + §4 floor (run-rank-evaluation)
+;;; as every bred child. Only genuine honest-PASS seeds become rank :B and count toward the
+;;; active pool. "Give the entry, never fabricate the verdict."
+(defparameter *seed-orig-names* (make-hash-table :test 'equal))
+(let* ((seeds (inject-diversity-seeds *strategy-knowledge-base*))
+       (pending nil) (nrej 0))
+  (format t "~&INJECT: ~d diverse seed candidates (flag-gated escape route)~%" (length seeds))
+  (dolist (c seeds)
+    (setf (gethash (strategy-name c) *seed-orig-names*) (strategy-category c))
+    (multiple-value-bind (ok st)
+        (handler-case (add-to-kb c :breeder :require-bt t :notify nil)
+          (error (e) (format t "~&  SEED-ADDKB-ERR ~a~%" e) (values nil :err)))
+      (if (and ok (eq st :queued-phase1)) (push c pending) (incf nrej))))
+  (format t "~&  seed add-to-kb: pending=~d rejected-by-gates=~d~%" (length pending) nrej)
+  ;; HONEST scoring: real OOS/CPCV via primitive_scan (guardian's backtester/CPCV engine).
+  (let ((scores (score-all pending)) (npass 0) (ntrendpass 0) (ngrave 0) (nnoscore 0))
+    (dolist (c pending)
+      (let ((m (gethash (strategy-name c) scores)))
+        (if (null m)
+            (progn (incf nnoscore)
+                   (format t "~&  SEED-NOSCORE ~a~%" (strategy-name c)))
+            (progn
+              (setf (strategy-cpcv-pass-rate c) (getf m :cpcv-pr)
+                    (strategy-cpcv-median-sharpe c) (getf m :cpcv-med))
+              (handler-case
+                  (handle-v2-result (format nil "~a_P1" (strategy-name c))
+                                    (list :sharpe (getf m :sharpe) :profit-factor (getf m :pf)
+                                          :win-rate (getf m :wr) :trades (getf m :trades)
+                                          :max-dd (getf m :maxdd)))
+                (error (e) (format t "~&  SEED-HANDLE-ERR ~a: ~a~%" (strategy-name c) e)))
+              (let ((rk (strategy-rank c)))
+                (format t "~&  SEED ~a sym=~a reg=~a  oos-sharpe=~,3f pf=~,3f cpcv-pr=~,2f trades=~d  -> rank=~a~%"
+                        (strategy-name c) (strategy-symbol c)
+                        (string-downcase (symbol-name (strategy-category c)))
+                        (getf m :sharpe) (getf m :pf) (getf m :cpcv-pr) (getf m :trades) rk)
+                (cond ((member rk '(:B :A :S))
+                       (incf npass) (when (eq (strategy-category c) :trend) (incf ntrendpass)))
+                      ((eq rk :graveyard) (incf ngrave))))))))
+    ;; Persist each seed's HONEST verdict to the copy DB so db-distro / the gen-loop reload
+    ;; reflect the real gate outcome (belt-and-suspenders on ensure-rank's own persistence).
+    (dolist (c pending)
+      (let ((rk (strategy-rank c)))
+        (ignore-errors
+          (swimmy.core::execute-non-query
+           "UPDATE strategies SET rank=?, cpcv_pass_rate=?, symbol=?, category=? WHERE name=?"
+           (cond ((member rk '(:B :A :S)) (format nil ":~a" rk))  ; ":B" — DB uses colon-prefix
+                 ((eq rk :graveyard) ":GRAVEYARD")
+                 (t ":GRAVEYARD"))  ; unresolved/no-score seed = not active (honest: never promoted)
+           (float (or (strategy-cpcv-pass-rate c) 0.0) 1.0)
+           (strategy-symbol c)
+           (format nil "~a" (strategy-category c))
+           (strategy-name c)))))
+    (format t "~&SEED HONEST-GATE RESULT: seeded=~d honest-PASS=~d (non-USDJPY-TREND-PASS=~d) graveyard=~d no-score=~d~%"
+            (length seeds) npass ntrendpass ngrave nnoscore)))
 (build-category-pools)
-(format t "~&===== GEN 0b (post-seed) =====~%")
+(format t "~&===== GEN 0b (post-seed, HONESTLY scored) =====~%")
 (db-distro "GEN0b")
 
 ;;; ---- 3. one real generation ----------------------------------------
