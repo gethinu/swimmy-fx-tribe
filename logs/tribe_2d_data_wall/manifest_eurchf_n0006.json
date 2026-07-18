@@ -1,0 +1,5 @@
+[
+{"name":"n0006-FAITHFUL-EURCHF-bb20-d1","symbol":"EURCHF","regime":":REVERSION","prim":"bb","period":20,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":20},
+{"name":"n0006-VAR-EURCHF-bb20-d1-tp3","symbol":"EURCHF","regime":":REVERSION","prim":"bb","period":20,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":3.0,"max_hold":20},
+{"name":"n0006-VAR-EURCHF-bb20-d1-nohold","symbol":"EURCHF","regime":":REVERSION","prim":"bb","period":20,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":0}
+]

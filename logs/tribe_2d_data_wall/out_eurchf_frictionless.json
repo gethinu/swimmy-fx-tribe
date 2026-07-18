@@ -1,0 +1,307 @@
+{
+  "strategies": [
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.7504414361389016,
+            "trades": 29
+          },
+          {
+            "block": 1,
+            "pass": true,
+            "penalized_sharpe": 0.47443795999768495,
+            "pf": 1.4421553090332773,
+            "trades": 33
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8952489424015614,
+            "trades": 34
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.959394548704202,
+            "trades": 31
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.10348836703721097,
+            "pf": 1.0829715388326024,
+            "trades": 41
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.5808725622876136,
+            "pf": 1.8634513634513685,
+            "trades": 30
+          },
+          {
+            "block": 6,
+            "pass": false,
+            "penalized_sharpe": 0.11233553245788253,
+            "pf": 1.0952343688864528,
+            "trades": 34
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.99980655769416,
+            "trades": 31
+          },
+          {
+            "block": 8,
+            "pass": true,
+            "penalized_sharpe": 0.7234677264598545,
+            "pf": 1.9257798494083933,
+            "trades": 30
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.25917361860555926,
+            "pf": 1.243870446978105,
+            "trades": 32
+          }
+        ],
+        "median_sharpe": 0.11683035317943016,
+        "pass_rate": 0.3,
+        "passing_folds": 3,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "n0006-FAITHFUL-EURCHF-bb20-d1",
+      "oos": {
+        "penalized_sharpe": 0.5636152287925057,
+        "pf": 1.540750710333482,
+        "sharpe": 0.5636152287925057,
+        "trades": 54
+      },
+      "oos_qualified": false,
+      "period": 20,
+      "prim": "bb",
+      "regime": ":REVERSION",
+      "sl": 2.0,
+      "symbol": "EURCHF",
+      "timeframe_min": 1440,
+      "tp": 99.0
+    },
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.7504414361389016,
+            "trades": 29
+          },
+          {
+            "block": 1,
+            "pass": true,
+            "penalized_sharpe": 0.47443795999768495,
+            "pf": 1.4421553090332773,
+            "trades": 33
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8952489424015614,
+            "trades": 34
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.9559316353887414,
+            "trades": 31
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.15561209202620616,
+            "pf": 1.1245537867824338,
+            "trades": 42
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.5808725622876136,
+            "pf": 1.8634513634513685,
+            "trades": 30
+          },
+          {
+            "block": 6,
+            "pass": false,
+            "penalized_sharpe": 0.11233553245788253,
+            "pf": 1.0952343688864528,
+            "trades": 34
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.99980655769416,
+            "trades": 31
+          },
+          {
+            "block": 8,
+            "pass": true,
+            "penalized_sharpe": 0.7234677264598545,
+            "pf": 1.9257798494083933,
+            "trades": 30
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.25917361860555926,
+            "pf": 1.243870446978105,
+            "trades": 32
+          }
+        ],
+        "median_sharpe": 0.14386152469625807,
+        "pass_rate": 0.3,
+        "passing_folds": 3,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "n0006-VAR-EURCHF-bb20-d1-tp3",
+      "oos": {
+        "penalized_sharpe": 0.5636152287925057,
+        "pf": 1.540750710333482,
+        "sharpe": 0.5636152287925057,
+        "trades": 54
+      },
+      "oos_qualified": false,
+      "period": 20,
+      "prim": "bb",
+      "regime": ":REVERSION",
+      "sl": 2.0,
+      "symbol": "EURCHF",
+      "timeframe_min": 1440,
+      "tp": 3.0
+    },
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.7419354838709639,
+            "trades": 28
+          },
+          {
+            "block": 1,
+            "pass": true,
+            "penalized_sharpe": 0.49981219660328946,
+            "pf": 1.4736842105263115,
+            "trades": 33
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8952489424015614,
+            "trades": 34
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8757747593300818,
+            "trades": 30
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.023403324572381683,
+            "pf": 1.0181405895691549,
+            "trades": 41
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.5808725622876136,
+            "pf": 1.8634513634513685,
+            "trades": 30
+          },
+          {
+            "block": 6,
+            "pass": false,
+            "penalized_sharpe": 0.11274312522511545,
+            "pf": 1.0952343688864528,
+            "trades": 34
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.99980655769416,
+            "trades": 31
+          },
+          {
+            "block": 8,
+            "pass": true,
+            "penalized_sharpe": 0.7234677264598545,
+            "pf": 1.9257798494083933,
+            "trades": 30
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.25917361860555926,
+            "pf": 1.243870446978105,
+            "trades": 32
+          }
+        ],
+        "median_sharpe": 0.07472754511098913,
+        "pass_rate": 0.3,
+        "passing_folds": 3,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "n0006-VAR-EURCHF-bb20-d1-nohold",
+      "oos": {
+        "penalized_sharpe": 0.5636152287925057,
+        "pf": 1.540750710333482,
+        "sharpe": 0.5636152287925057,
+        "trades": 54
+      },
+      "oos_qualified": false,
+      "period": 20,
+      "prim": "bb",
+      "regime": ":REVERSION",
+      "sl": 2.0,
+      "symbol": "EURCHF",
+      "timeframe_min": 1440,
+      "tp": 99.0
+    }
+  ],
+  "summary": {
+    "n": 3,
+    "oos_qualified": 0,
+    "oos_qualified_and_cpcv_ok": 0,
+    "oos_qualified_and_diverse": 0
+  }
+}

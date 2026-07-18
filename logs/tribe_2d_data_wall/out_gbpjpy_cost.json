@@ -1,0 +1,307 @@
+{
+  "strategies": [
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": true,
+            "penalized_sharpe": 0.555984041266867,
+            "pf": 1.6438338493292257,
+            "trades": 31
+          },
+          {
+            "block": 1,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.4720591432920263,
+            "trades": 38
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.20591597374092266,
+            "pf": 1.2800387346675355,
+            "trades": 32
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.383968962050772,
+            "trades": 37
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8222726413310769,
+            "trades": 36
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.5710405693593085,
+            "pf": 1.9862391916038735,
+            "trades": 29
+          },
+          {
+            "block": 6,
+            "pass": false,
+            "penalized_sharpe": 0.23821949800407283,
+            "pf": 1.2509219276956793,
+            "trades": 31
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.5986585243768261,
+            "trades": 39
+          },
+          {
+            "block": 8,
+            "pass": true,
+            "penalized_sharpe": 0.32431803115196645,
+            "pf": 1.4141679919040286,
+            "trades": 28
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.9226176981788111,
+            "trades": 34
+          }
+        ],
+        "median_sharpe": 0.06820335713223208,
+        "pass_rate": 0.3,
+        "passing_folds": 3,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "s132-FAITHFUL-GBPJPY-donch7-d1",
+      "oos": {
+        "penalized_sharpe": 0.4727904850089759,
+        "pf": 1.5302898270075147,
+        "sharpe": 0.4727904850089759,
+        "trades": 52
+      },
+      "oos_qualified": false,
+      "period": 7,
+      "prim": "donchian",
+      "regime": ":BREAKOUT",
+      "sl": 2.0,
+      "symbol": "GBPJPY",
+      "timeframe_min": 1440,
+      "tp": 99.0
+    },
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": true,
+            "penalized_sharpe": 0.3722254986011576,
+            "pf": 1.2817628090290367,
+            "trades": 44
+          },
+          {
+            "block": 1,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.6254731898988997,
+            "trades": 48
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.28279577572998404,
+            "pf": 1.2175036098187146,
+            "trades": 45
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.6400577121606046,
+            "trades": 45
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8960216422660874,
+            "trades": 47
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.6894187882113674,
+            "pf": 1.5459583686126332,
+            "trades": 49
+          },
+          {
+            "block": 6,
+            "pass": true,
+            "penalized_sharpe": 0.5762645685282626,
+            "pf": 1.5163658838071992,
+            "trades": 42
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.7746482371496474,
+            "trades": 52
+          },
+          {
+            "block": 8,
+            "pass": true,
+            "penalized_sharpe": 0.347639398962212,
+            "pf": 1.3012273303850164,
+            "trades": 39
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.856270933097144,
+            "trades": 43
+          }
+        ],
+        "median_sharpe": 0.05839141345685499,
+        "pass_rate": 0.4,
+        "passing_folds": 4,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "s132-VAR-GBPJPY-donch7-d1-tp3",
+      "oos": {
+        "penalized_sharpe": 0.3520815323130023,
+        "pf": 1.2572849090715923,
+        "sharpe": 0.3520815323130023,
+        "trades": 77
+      },
+      "oos_qualified": false,
+      "period": 7,
+      "prim": "donchian",
+      "regime": ":BREAKOUT",
+      "sl": 2.0,
+      "symbol": "GBPJPY",
+      "timeframe_min": 1440,
+      "tp": 3.0
+    },
+    {
+      "barrier_mode": "atr",
+      "cpcv": {
+        "folds": [
+          {
+            "block": 0,
+            "pass": true,
+            "penalized_sharpe": 0.4072955621562124,
+            "pf": 1.4121517027863963,
+            "trades": 31
+          },
+          {
+            "block": 1,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.42654200188447383,
+            "trades": 38
+          },
+          {
+            "block": 2,
+            "pass": false,
+            "penalized_sharpe": 0.23102540038917035,
+            "pf": 1.3712164027075069,
+            "trades": 31
+          },
+          {
+            "block": 3,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.32369980142123816,
+            "trades": 36
+          },
+          {
+            "block": 4,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8575324468508765,
+            "trades": 34
+          },
+          {
+            "block": 5,
+            "pass": true,
+            "penalized_sharpe": 0.6009018558649243,
+            "pf": 2.115549008717514,
+            "trades": 27
+          },
+          {
+            "block": 6,
+            "pass": false,
+            "penalized_sharpe": 0.27080758354544165,
+            "pf": 1.2933280037307493,
+            "trades": 30
+          },
+          {
+            "block": 7,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.5696535161756373,
+            "trades": 38
+          },
+          {
+            "block": 8,
+            "pass": false,
+            "penalized_sharpe": 0.13175084470815276,
+            "pf": 1.2120221965578633,
+            "trades": 25
+          },
+          {
+            "block": 9,
+            "pass": false,
+            "penalized_sharpe": 0.0,
+            "pf": 0.8619185747495482,
+            "trades": 32
+          }
+        ],
+        "median_sharpe": -0.0029518930158490136,
+        "pass_rate": 0.2,
+        "passing_folds": 2,
+        "valid_folds": 10
+      },
+      "cpcv_ok": false,
+      "dev": 2.0,
+      "diversity_ok": true,
+      "name": "s132-VAR-GBPJPY-donch7-d1-nohold",
+      "oos": {
+        "penalized_sharpe": 0.3440203418124044,
+        "pf": 1.4409096092134024,
+        "sharpe": 0.3460969233525195,
+        "trades": 49
+      },
+      "oos_qualified": false,
+      "period": 7,
+      "prim": "donchian",
+      "regime": ":BREAKOUT",
+      "sl": 2.0,
+      "symbol": "GBPJPY",
+      "timeframe_min": 1440,
+      "tp": 99.0
+    }
+  ],
+  "summary": {
+    "n": 3,
+    "oos_qualified": 0,
+    "oos_qualified_and_cpcv_ok": 0,
+    "oos_qualified_and_diverse": 0
+  }
+}
