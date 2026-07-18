@@ -17052,6 +17052,9 @@
 	                  ;; V2d (2026-07-18): regen §B-3(3)/§B-5 fitness-sharing wired into overflow cull
 	                  test-b5-overflow-cull-flag-off-keeps-crowded-sheds-sparse
 	                  test-b5-overflow-cull-flag-on-sheds-crowded-keeps-sparse
+	                  ;; V2d (2026-07-18): regen §B-3(3) part-1 (symbol×regime) niche-quota overflow cull
+	                  test-b3-niche-quota-disabled-sort-alone-keeps-only-crowded
+	                  test-b3-niche-quota-sheds-crowded-usdjpy-first-protects-sparse
 	                  test-breeding-pair-blacklist-blocks-candidate-before-cooldown
 	                  test-breeding-pair-blacklist-expires-after-cooldown
 	                  test-find-diverse-breeding-partner-skips-blacklisted-pair

@@ -109,6 +109,42 @@
       :regime-intent regime
       :parents (list (strategy-name parent1) (strategy-name parent2)))))
 
+;; ═══════════════════════════════════════════════════════════════════════════
+;; V2d regen §B-3(2) — SYMBOL-mutation operator (escape the USDJPY absorbing state)
+;;   (regen_engine_redesign_20260703.md §B-3(2), §A-1(1); measured need: tribe_2d_regen_b5_overflow_20260718.md §4)
+;;
+;; make-diverse-child (above) mutates symbol AND regime together — it emits a fresh Keltner/
+;; BB mean-reversion child, which LEAVES the TREND pool. So the single-symbol TREND pool never
+;; acquires a non-USDJPY member, the fitness-sharing divisor and the §B-3(3) niche quota both
+;; cancel, and USDJPY-TREND stays a closed absorbing state (regen §A-1(1): symbol is inherited
+;; from parent1, never mutated). This operator adds the missing SYMBOL-ONLY mutation: with low
+;; probability it re-points a normal (SMA-cross-lineage) child OFF USDJPY while KEEPING its
+;; regime, so a non-USDJPY member lands INSIDE the monoculture's own regime pool. That is the
+;; precondition the B-5 measurement identified for the niche divisor to bite in-pool.
+;; B-4 already carries :symbol as a first-class gene (extract/implant-genome), so this only has
+;; to perturb it. Flag OFF => never fires => breeding byte-identical.
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(defparameter *breeder-symbol-mutation-rate* 0.10
+  "regen §B-3(2) (flag-ON only). Per-breed probability that a normal child's SYMBOL is mutated
+   off USDJPY while keeping its regime, injecting a non-USDJPY member into the monoculture's own
+   regime pool. Only the normal (non diverse-short-circuit) path is affected.")
+
+(defparameter *breeder-symbol-mutation-pool* '("EURUSD" "EURUSD" "GBPUSD")
+  "Currencies a symbol mutation may draw (EURUSD 2:1 over GBPUSD, matching the offline
+   forward-robust bias used by make-diverse-child).")
+
+(defun maybe-mutate-child-symbol (sym)
+  "Flag-ON low-probability symbol mutation. Mutates only AWAY from USDJPY (the absorbing
+   state); a child that is already non-USDJPY is returned untouched so existing diversity is
+   not scrambled. Flag OFF => returns SYM unchanged (byte-identical). Returns the symbol."
+  (if (and *enable-primitive-diversity*
+           (stringp sym)
+           (string-equal sym "USDJPY")
+           (< (random 1.0) *breeder-symbol-mutation-rate*))
+      (nth (random (length *breeder-symbol-mutation-pool*)) *breeder-symbol-mutation-pool*)
+      sym))
+
 ;; V2c 2f (regen doc B-6): CPCV pre-gate. Only CPCV-robust seeds may enter the breeding
 ;; pool, so single-window fits are not bred from. Matches the offline forward-robust bar.
 (defparameter *2c-cpcv-pregate-min* 0.60
@@ -1205,7 +1241,10 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                              (breeder-name-entropy)))
          (tf (normalize-breeder-timeframe (strategy-timeframe parent1)))
          (dir (or (strategy-direction parent1) :BOTH))
-         (sym (or (strategy-symbol parent1) "USDJPY"))
+         ;; V2d regen §B-3(2): low-probability symbol mutation off USDJPY (flag ON only). The
+         ;; diverse short-circuit below ignores SYM, so this only perturbs the normal-path
+         ;; child's :symbol — mixing a non-USDJPY member into its (unchanged) regime pool.
+         (sym (maybe-mutate-child-symbol (or (strategy-symbol parent1) "USDJPY")))
          (logic-anchor-parent (select-logic-anchor-parent parent1 parent2))
          (logic-entry-parent (or (higher-wr-parent parent1 parent2) logic-anchor-parent))
          (logic-exit-parent (or (higher-pf-parent parent1 parent2) logic-anchor-parent))
@@ -1456,8 +1495,78 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                            (cull-pool-overflow cat))))
                                    (note-breeding-pair-failure p1 p2 "add-to-kb rejected"))))))))))))))
 
+;; ═══════════════════════════════════════════════════════════════════════════
+;; V2d regen §B-3(3) part-1 — (symbol×regime) NICHE-QUOTA overflow cull
+;;   (regen_engine_redesign_20260703.md §B-3(3); measured gap: tribe_2d_regen_b5_overflow_20260718.md §4)
+;;
+;; §B-5 (part-2, already shipped, commit 519c3047) swapped the overflow sort-KEY to
+;; selection-fitness (evidence-adj sharpe ÷ niche-crowding). The B-5 daemon_verify measurement
+;; proved that key-swap ALONE cannot dilute a single-SYMBOL monoculture: cull-pool-overflow
+;; is scoped by regime-class, and inside an all-USDJPY :trend pool every (symbol,category)
+;; niche denominator is identical (=pool size), so the division cancels and the sort degenerates
+;; to adjusted-sharpe order — it cannot prefer to shed USDJPY because there is nothing else in
+;; the pool to keep instead.
+;;
+;; part-1 adds the missing STRUCTURE: a per-(symbol×regime)-niche fair-share cap. Once symbol
+;; mutation (§B-3(2)) mixes a non-USDJPY member into the same regime pool, the cap forces the
+;; crowded USDJPY sub-niche to shed FIRST while the sparse off-niche is protected — even when
+;; the crowded niche has strictly higher per-member selection-fitness (which is exactly the
+;; case the sort-key alone gets wrong). This is diversity forced by structure, not by weight
+;; tuning (regen §B-2 principle). With a single niche present the cap == the slot count, so this
+;; is a NO-OP on a genuinely single-niche pool — it only bites once a 2nd niche exists.
+;;
+;; Flag OFF => byte-identical legacy top-N slice. This is a KEEP-ORDER change ONLY; it never
+;; touches the honest_gate verification floor (min_trades/min_pf/min_sharpe).
+;; ═══════════════════════════════════════════════════════════════════════════
+
+(defparameter *overflow-niche-min-quota* 3
+  "regen §B-3(3) part-1 (flag-ON only). Minimum per-(symbol×regime)-niche survivor quota in
+   cull-pool-overflow. The fair-share cap is max(this, ceil(cullable-slots / live-niches)), so
+   a crowded monoculture niche is capped (sheds first) while a sparse off-niche is never
+   starved below this floor. A single-niche pool gets cap == cullable-slots (a no-op), so this
+   only bites once symbol/regime mutation (§B-3(2)) mixes a 2nd niche into the pool.")
+
+(defun %overflow-niche-key (strat)
+  "Overflow quota niche = (symbol . regime-class). Within a single-regime pool this reduces to
+   the symbol axis, so a crowded USDJPY sub-niche is capped and sparse non-USDJPY members of the
+   same regime survive (regen §B-3(3) part-1)."
+  (cons (if (fboundp '%b4-symbol-key)
+            (%b4-symbol-key (strategy-symbol strat))
+            (strategy-symbol strat))
+        (if (fboundp 'strategy-regime-class)
+            (or (ignore-errors (strategy-regime-class strat)) (strategy-category strat))
+            (strategy-category strat))))
+
+(defun select-overflow-survivors (cullable cullable-limit)
+  "Choose survivors among the already-fitness-sorted CULLABLE B-rank pool for an overflow.
+   Flag OFF => legacy top-N slice (byte-identical: subseq / nthcdr on the sorted list).
+   Flag ON  => (symbol×regime) niche-quota water-filling: walk CULLABLE best-first and keep
+   each member only while its niche is under the fair-share cap and the pool still has room,
+   so the crowded monoculture niche sheds first and sparse off-niche members are protected
+   (regen §B-3(3) part-1). Returns (values survivors victims). Never a pass/fail gate."
+  (if (not *enable-primitive-diversity*)
+      (let ((keep (min cullable-limit (length cullable))))
+        (values (subseq cullable 0 keep) (nthcdr keep cullable)))
+      (let* ((niche-count (length (remove-duplicates (mapcar #'%overflow-niche-key cullable)
+                                                     :test #'equal)))
+             (cap (max *overflow-niche-min-quota*
+                       (ceiling (max 0 cullable-limit) (max 1 niche-count))))
+             (counts (make-hash-table :test #'equal))
+             (kept 0)
+             (survivors nil)
+             (victims nil))
+        (dolist (s cullable)
+          (let* ((k (%overflow-niche-key s))
+                 (c (gethash k counts 0)))
+            (if (and (< kept cullable-limit) (< c cap))
+                (progn (push s survivors)
+                       (setf (gethash k counts) (1+ c))
+                       (incf kept))
+                (push s victims))))
+        (values (nreverse survivors) (nreverse victims)))))
+
 (defun cull-pool-overflow (category)
-  "Enforce Musk's '20 or Die' rule. 
+  "Enforce Musk's '20 or Die' rule.
    If pool size > *b-rank-pool-size*, kill the weakest."
   (let* ((regime-pool nil)
          (regime-foundp nil)
@@ -1520,13 +1629,19 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                                             :max-dd (strategy-max-dd s))))))))
         (let* ((protected (remove-if #'overflow-cullable-b-p sorted))
                (cullable (remove-if-not #'overflow-cullable-b-p sorted))
-               (cullable-limit (max 0 (- limit (length protected))))
-               (cullable-keep (min cullable-limit (length cullable))))
+               (cullable-limit (max 0 (- limit (length protected)))))
           (when (> (length protected) limit)
             (format t "[DEATHMATCH] 🛡️ Overflow protected-only set exceeds limit: keep=~d limit=~d category=~a~%"
                     (length protected) limit category))
-          (setf survivors (append protected (subseq cullable 0 cullable-keep)))
-          (setf victims (nthcdr cullable-keep cullable)))
+          ;; V2d regen §B-3(3) part-1 (flag-gated): pick which eligible B-rank survive.
+          ;; OFF => legacy top-N slice; ON => (symbol×regime) niche-quota water-filling so a
+          ;; crowded monoculture sub-niche is capped and sheds first while sparse off-niche
+          ;; members are protected (see select-overflow-survivors). CULLABLE is already sorted
+          ;; by the §B-5 keep-key (selection-fitness when flag ON).
+          (multiple-value-bind (keep-list cull-list)
+              (select-overflow-survivors cullable cullable-limit)
+            (setf survivors (append protected keep-list))
+            (setf victims cull-list)))
         
         ;; Update the source pool used for culling.
         (if regime-foundp
