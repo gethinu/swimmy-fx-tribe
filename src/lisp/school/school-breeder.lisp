@@ -1495,14 +1495,29 @@ Relaxes when parent PF surplus and candidate WR surplus are strong, but never be
                     (not (strategy-immortal strat))
                     (not (founder-overflow-protected-p strat)))))
       (when (> (length pool) limit)
-      ;; Sort by composite score (High to Low)
+      ;; Sort by keep-priority (High to Low).
+      ;; V2d regen §B-3(3)/§B-5 (flag-gated): under *enable-primitive-diversity* the overflow
+      ;; keep-order is ranked by SELECTION-FITNESS (evidence-adjusted sharpe DIVIDED by the
+      ;; fitness-sharing niche-crowding denominator) instead of the raw composite score, so a
+      ;; crowded (symbol,category) niche is divided down and its members are shed FIRST while a
+      ;; sparse off-niche survivor is retained. This closes the last raw-sharpe comparator the
+      ;; 2a daemon-isolation verify flagged (tribe_2a_daemon_isolation_20260718.md §3.2): before
+      ;; this, division only bit on daily cull + tournament/deathmatch/wisdom, never per-cycle
+      ;; overflow, so real-machinery dilution stalled at ~78% (raw) vs the sim's monotone 86%→67%.
+      ;; This is a KEEP-ORDER change ONLY: it decides *which* eligible B-rank strategies survive
+      ;; an overflow, and is NEVER a pass/fail gate — the honest_gate verification floor
+      ;; (min_trades/min_pf/min_sharpe) is untouched. Flag OFF => byte-identical raw ordering.
       (let ((sorted (sort (copy-list pool) #'>
-                          :key (lambda (s)
-                                 (score-from-metrics
-                                  (list :sharpe (strategy-sharpe s)
-                                        :profit-factor (strategy-profit-factor s)
-                                        :win-rate (strategy-win-rate s)
-                                        :max-dd (strategy-max-dd s)))))))
+                          :key (if *enable-primitive-diversity*
+                                   (lambda (s)
+                                     (or (selection-fitness s *strategy-knowledge-base*)
+                                         -999.0))
+                                   (lambda (s)
+                                     (score-from-metrics
+                                      (list :sharpe (strategy-sharpe s)
+                                            :profit-factor (strategy-profit-factor s)
+                                            :win-rate (strategy-win-rate s)
+                                            :max-dd (strategy-max-dd s))))))))
         (let* ((protected (remove-if #'overflow-cullable-b-p sorted))
                (cullable (remove-if-not #'overflow-cullable-b-p sorted))
                (cullable-limit (max 0 (- limit (length protected))))

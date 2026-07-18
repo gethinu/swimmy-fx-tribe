@@ -17049,6 +17049,9 @@
 	                  test-b4-distance-collapses-clones-to-near-zero
 	                  test-b4-distance-keeps-diverse-far
 	                  test-b4-behavior-corr-hook
+	                  ;; V2d (2026-07-18): regen §B-3(3)/§B-5 fitness-sharing wired into overflow cull
+	                  test-b5-overflow-cull-flag-off-keeps-crowded-sheds-sparse
+	                  test-b5-overflow-cull-flag-on-sheds-crowded-keeps-sparse
 	                  test-breeding-pair-blacklist-blocks-candidate-before-cooldown
 	                  test-breeding-pair-blacklist-expires-after-cooldown
 	                  test-find-diverse-breeding-partner-skips-blacklisted-pair

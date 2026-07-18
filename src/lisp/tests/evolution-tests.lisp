@@ -2747,3 +2747,105 @@
                "<3 aligned points => NIL (hook stays dormant)")
   (assert-true (null (swimmy.school::genome-behavior-distance nil nil))
                "absent series => NIL (never fabricates data)"))
+
+;;; ============================================================================
+;;; V2d (2026-07-18): regen §B-3(3)/§B-5 — fitness-sharing wired into overflow cull
+;;;   (regen_engine_redesign_20260703.md §B-3(3)/§B-5; A-verify §3.2)
+;;; cull-pool-overflow previously ranked the "20 or Die" keep-order by the RAW composite
+;;; score-from-metrics, so a crowded (symbol,category) monoculture with high raw sharpe always
+;;; won the overflow and a sparse off-niche survivor was shed first. Under the diversity flag
+;;; the keep-order is now SELECTION-FITNESS (evidence-adjusted sharpe / niche crowding), the
+;;; same divisor the daily culls and tournament/deathmatch already use. Flag OFF => byte-
+;;; identical raw ordering. These tests exercise the REAL cull-pool-overflow (DB writes and
+;;; Discord/notify stubbed so no swimmy.db / library is touched) with IDENTICAL metrics under
+;;; both flag states, proving the flip is caused by the wiring, not by the fixture.
+;;;
+;;; NOTE: overflow is a KEEP-ORDER only — it never changes the honest_gate verification floor
+;;; (min_trades/min_pf/min_sharpe); it only decides *which* eligible B-rank strategies survive.
+;;; ============================================================================
+
+(defun %b5-make-overflow-strat (name symbol sharpe)
+  "Build a pool-eligible B-rank :trend strategy for the overflow-cull tests. All strategies
+   share metrics EXCEPT symbol and sharpe, so the niche crowding (symbol count) is the only
+   thing selection-fitness adds over the raw score."
+  (swimmy.school:make-strategy
+   :name name :rank :B :status :active
+   :category :trend :symbol symbol :direction :BOTH :timeframe 3600
+   :generation 5 :trades 300
+   :sl 20.0 :tp 40.0
+   :sharpe sharpe :profit-factor 1.30 :win-rate 0.50 :max-dd 0.10))
+
+(defun %b5-run-overflow-scenario (flag)
+  "Overflow-cull a :trend pool of 8 crowded USDJPY-TREND (sharpe 1.5) + 2 sparse EURUSD-TREND
+   (sharpe 0.9) down to the pool limit (6), with *enable-primitive-diversity* = FLAG.
+   Returns (values survivor-symbols killed-names). Fully hermetic: init-db / execute-non-query
+   and notify-death are stubbed, so no swimmy.db row or library file is written."
+  (let ((orig-kb swimmy.school::*strategy-knowledge-base*)
+        (orig-regime swimmy.school::*regime-pools*)
+        (orig-cat swimmy.school::*category-pools*)
+        (orig-limit swimmy.school::*b-rank-pool-size*)
+        (orig-notify (symbol-function 'swimmy.school::notify-death))
+        (orig-initdb (symbol-function 'swimmy.school::init-db))
+        (orig-exec (symbol-function 'swimmy.school::execute-non-query))
+        (killed '()))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*b-rank-pool-size* 6)
+          (setf (symbol-function 'swimmy.school::notify-death)
+                (lambda (strat &rest _ignore)
+                  (declare (ignore _ignore))
+                  (push (swimmy.school:strategy-name strat) killed)))
+          (setf (symbol-function 'swimmy.school::init-db)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (setf (symbol-function 'swimmy.school::execute-non-query)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (let* ((usdjpy (loop for i from 1 to 8
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B5-UJ-~d" i) "USDJPY" 1.5)))
+                 (eurusd (loop for i from 1 to 2
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B5-EU-~d" i) "EURUSD" 0.9)))
+                 (all (append usdjpy eurusd)))
+            (setf swimmy.school::*strategy-knowledge-base* (copy-list all))
+            (setf (gethash :trend swimmy.school::*regime-pools*) (copy-list all))
+            (setf (gethash :trend swimmy.school::*category-pools*) (copy-list all))
+            (let ((swimmy.core:*enable-primitive-diversity* flag))
+              (swimmy.school::cull-pool-overflow :trend))
+            (values (mapcar #'swimmy.school:strategy-symbol
+                            (gethash :trend swimmy.school::*regime-pools*))
+                    (reverse killed))))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*regime-pools* orig-regime)
+      (setf swimmy.school::*category-pools* orig-cat)
+      (setf swimmy.school::*b-rank-pool-size* orig-limit)
+      (setf (symbol-function 'swimmy.school::notify-death) orig-notify)
+      (setf (symbol-function 'swimmy.school::init-db) orig-initdb)
+      (setf (symbol-function 'swimmy.school::execute-non-query) orig-exec))))
+
+(deftest test-b5-overflow-cull-flag-off-keeps-crowded-sheds-sparse
+  "regen §B-5 baseline (flag OFF, the bug): overflow ranks by raw score, so the crowded
+   high-sharpe USDJPY-TREND clones fill every survivor slot and BOTH sparse EURUSD-TREND are
+   culled. This is the monoculture-preserving behaviour the wiring targets; OFF stays legacy."
+  (multiple-value-bind (survivor-syms killed) (%b5-run-overflow-scenario nil)
+    (assert-equal 6 (length survivor-syms) "overflow keeps exactly the pool limit (6)")
+    (assert-true (every (lambda (s) (string= s "USDJPY")) survivor-syms)
+                 "flag OFF: raw score keeps only the high-sharpe USDJPY clones")
+    (assert-true (and (member "UT-B5-EU-1" killed :test #'string=)
+                      (member "UT-B5-EU-2" killed :test #'string=))
+                 "flag OFF: both sparse EURUSD-TREND are shed (raw-sharpe overflow bug)")))
+
+(deftest test-b5-overflow-cull-flag-on-sheds-crowded-keeps-sparse
+  "regen §B-5 fix (flag ON): with IDENTICAL metrics, fitness-sharing divides the crowded
+   USDJPY-TREND niche (denominator ~8) below the sparse EURUSD-TREND (denominator ~2), so BOTH
+   EURUSD survive overflow and the crowded clones are shed first. Proves selection-fitness —
+   not raw sharpe — now drives the per-cycle overflow keep-order (the wired divisor)."
+  (multiple-value-bind (survivor-syms killed) (%b5-run-overflow-scenario t)
+    (assert-equal 6 (length survivor-syms) "overflow keeps exactly the pool limit (6)")
+    (assert-equal 2 (count "EURUSD" survivor-syms :test #'string=)
+                  "flag ON: both sparse EURUSD-TREND survive (crowding penalty spares them)")
+    (assert-equal 4 (count "USDJPY" survivor-syms :test #'string=)
+                  "flag ON: the crowded USDJPY niche is thinned to fill the remaining slots")
+    (assert-true (and killed (every (lambda (n) (search "UT-B5-UJ-" n)) killed))
+                 "flag ON: only crowded USDJPY-TREND clones are culled")))
