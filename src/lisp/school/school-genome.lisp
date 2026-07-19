@@ -45,6 +45,16 @@
    genomes carry a usable return series; otherwise its weight renormalises onto structure.")
 (defparameter *b4-w-symbol* 0.20
   "Weight of symbol (currency) mismatch — the axis the monoculture collapses onto.")
+(defparameter *b4-w-session* 0.10
+  "Weight of trading-SESSION mismatch (yardstick axis 2026-07-19). A niche axis orthogonal
+   to every price-shape gene: a London-only strategy is behaviourally distinct from an
+   Asia-only one even at identical symbol/prim/params. DORMANT until a :session gene is
+   populated (extract-genome does not carry one today), exactly like :behavior — the term
+   only contributes when BOTH genomes carry :session, so its weight renormalises away and
+   the distance is byte-identical for every current genome (flag OFF *and* flag ON). See
+   tribe_2d_session_axis_yardstick_20260719.md: the honest scan found the session axis
+   surfaces new *frictionless* diverse mechanism but ZERO realistic-cost robust edge, so no
+   session-typed strategy is deployed yet — this is the ready hook, not a live populated gene.")
 (defparameter *b4-w-category* 0.12 "Weight of category/regime mismatch.")
 (defparameter *b4-w-timeframe* 0.08 "Weight of timeframe-bucket distance.")
 (defparameter *b4-w-family* 0.06
@@ -138,6 +148,12 @@
       (when (and sa sb)
         (incf tw *b4-w-symbol*)
         (unless (string= sa sb) (incf dist *b4-w-symbol*))))
+    ;; trading-session niche (yardstick axis, dormant until :session is populated — mirrors
+    ;; the :behavior hook: fires only when BOTH genomes carry it, else renormalises away).
+    (let ((za (getf genome-a :session)) (zb (getf genome-b :session)))
+      (when (and za zb)
+        (incf tw *b4-w-session*)
+        (unless (equalp za zb) (incf dist *b4-w-session*))))
     ;; category / regime niche
     (incf tw *b4-w-category*)
     (unless (eq (getf genome-a :category) (getf genome-b :category))
