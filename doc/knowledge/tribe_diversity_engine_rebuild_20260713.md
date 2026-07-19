@@ -1,3 +1,9 @@
+> 📌 **最新の確定 (2026-07-19)**: この umbrella の後、多様性エンジンは 2d/2a の **8 段探求**で決着した。
+> **単一栽培の内側突破は不可能 — 突破には物差し拡張（新プリミティブ）が必須**、bundle-import/seed 数増しルートは打ち止め、
+> 多様性機構は全て可逆 flag-OFF で棚載せ、内側唯一の robust 多様エッジは Keltner/BB-MR EUR/USD 1 家系（deployment gate 未満）。
+> 総括・honest↔cosmetic 対照表・次の一手は
+> [`tribe_2d_diversity_investigation_summary_20260719.md`](tribe_2d_diversity_investigation_summary_20260719.md)。
+
 > ⚠️ **後続訂正 (2026-07-14)**: 本doc §4 Phase 2b の前提（後続セッションで実施）は採点ハーネスのバグで汚染された。
 > §3 の 2a（SMA×多銘柄で CPCV 頑健エッジ 0）は**無改変・有効**。ただし「真の MR プリミティブ」を honest に走らせると
 > EURUSD/GBPUSD の BB 平均回帰（H4）は**広い OOS 適格領域**を開く（SMA では OOS 適格すら 0 だった）。

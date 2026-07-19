@@ -1,3 +1,11 @@
+> ⚠️ **後続訂正 (2026-07-19) — 本 run の希釈% と diverse-robust 数は cosmetic seed のアーティファクト。**
+> 本検証は 20 体の REVERSION クローンを `cpcv=0.7 / sharpe=0.7` pre-set・`:require-bt nil`（honest gate 未通過）で
+> seed した。よって §0/§1 の **「USDJPY 99.6%→72.9%/77.9% 希釈」「diverse-robust 0→~20–21」は水増し**。honest に
+> 採点し直すと（seed-escape `fed9bf7b` / inside-out `6ee78541`）**希釈 floor ≈ 84–85% / diverse-robust plateau = 2–3**。
+> **機序的結論はすべて有効**（実パイプライン flag-ON 完走・希釈主因は §4 floor・per-cycle cull は raw score=B-5 gap・
+> fitness-sharing 自己制限・隔離厳守）。判定 "CONDITIONAL GO" は「検証ギャップが閉じた」意で有効だが、**デプロイ含意は
+> deploy NO で上書き**。集約と対照表: [`tribe_2d_diversity_investigation_summary_20260719.md`](tribe_2d_diversity_investigation_summary_20260719.md) §1。
+
 # 🧪 2a Daemon-Isolation Verification — flag-ON breeding pipeline promotes diverse & dilutes monoculture (measured, real machinery)
 
 **日付:** 2026-07-18 JST ／ **ブランチ:** `claude/2d-behavioral-distance` (base `60edd7d1`, = master 2c + 2d/B-4 距離)

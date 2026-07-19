@@ -1,3 +1,10 @@
+> ⚠️ **後続訂正 (2026-07-19) — 絶対% と diverse-robust 数は cosmetic seed のアーティファクト。**
+> 本 run の 20 diverse seed は `cpcv=0.7` pre-set・`:require-bt nil`（honest gate 未通過）だった。よって
+> **「GEN6 75.6% / diverse-robust 20」「A=72.9% / diverse 23」は水増し**。honest 採点では希釈 floor ≈ 84–85% /
+> diverse-robust 2–3（seed-escape `fed9bf7b`）。**§0/§3 の機序的結論（sort-key 単独では単一栽培を希釈できない＝
+> regime-class スコープで除算がキャンセル、§B-3(3) part-1 が別途必要）は不変・有効。** 集約:
+> [`tribe_2d_diversity_investigation_summary_20260719.md`](tribe_2d_diversity_investigation_summary_20260719.md) §1・③。
+
 # 🧪 2d regen §B-5 — fitness-sharing wired into per-cycle overflow cull (implemented + measured)
 
 **日付:** 2026-07-18 JST ／ **ブランチ:** `claude/2d-behavioral-distance`（base `c96550ea` = 2a verify）／ **commit:** `519c3047`

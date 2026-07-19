@@ -1,3 +1,11 @@
+> ⚠️ **後続訂正 (2026-07-19) — 絶対% と diverse-robust 数は cosmetic seed のアーティファクト。**
+> 本 run の 20 diverse seed は `cpcv=0.7` pre-set・`:require-bt nil`（honest gate 未通過）だった。よって
+> **「GEN6 75.6% / diverse-robust 17」および A=72.9%・B-5=75.6% との比較は水増し値どうしの比較**。honest 採点では
+> 希釈 floor ≈ 84–85% / diverse-robust 2–3（seed-escape `fed9bf7b`）。**§0/§3 の機序的結論（niche クォータは正しいが
+> 今日の単一栽培には no-op＝TREND プールが 2f pre-gate + B-4 clone-block で一度も育種されず 62/62 USDJPY のまま単一 niche、
+> §B-3(2)↔§B-6 の構造的緊張）は不変・有効。** 集約:
+> [`tribe_2d_diversity_investigation_summary_20260719.md`](tribe_2d_diversity_investigation_summary_20260719.md) §1・④。
+
 # 🧪 2d regen §B-3 — (symbol×regime) niche-quota overflow cull + symbol-mutation operator (implemented + measured)
 
 **日付:** 2026-07-18 JST ／ **ブランチ:** `claude/2d-behavioral-distance`（base `3f377377` = B-5 doc）
