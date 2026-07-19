@@ -1,0 +1,5 @@
+[
+{"name":"s132-XPLANT-EURJPY-donch7-d1-hold40","symbol":"EURJPY","regime":":BREAKOUT","prim":"donchian","period":7,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":40},
+{"name":"n0006-XPLANT-EURJPY-bb20-d1","symbol":"EURJPY","regime":":REVERSION","prim":"bb","period":20,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":3.0,"max_hold":0},
+{"name":"n0119-XPLANT-EURJPY-donch5-h4-hold5","symbol":"EURJPY","regime":":BREAKOUT","prim":"donchian","period":5,"dev":2.0,"atr_period":14,"tf_seconds":14400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":5}
+]

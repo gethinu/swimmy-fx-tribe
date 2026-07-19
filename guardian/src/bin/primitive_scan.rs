@@ -58,11 +58,24 @@ struct ManifestEntry {
     tp: f64,
     #[serde(default)]
     max_hold: i64, // 0 = no time stop
+    // --- YARDSTICK AXIS (2026-07-19): session / time-of-day ENTRY gate. Pure function of the
+    // bar's UTC timestamp — orthogonal to every price-shape primitive. When all three fields
+    // hold their defaults (sess_start=0, sess_end=24, dow_mask=0) the gate is a no-op, so a
+    // manifest WITHOUT these keys is byte-identical to the pre-session engine (proven by diff).
+    #[serde(default)]
+    sess_start: i64, // entry-allowed window [start,end) in UTC hours, 0..24
+    #[serde(default = "def_sess_end")]
+    sess_end: i64,
+    #[serde(default)]
+    dow_mask: u8, // day-of-week bitmask (bit d, 0=Sun..6=Sat); 0 => all days allowed
+    #[serde(default)]
+    session: String, // human label only (e.g. "LONDON"); never read by the backtest logic
 }
 fn def_regime() -> String { ":REVERSION".into() }
 fn def_dev() -> f64 { 2.0 }
 fn def_atr_period() -> usize { 14 }
 fn def_barrier_mode() -> String { "pip".into() }
+fn def_sess_end() -> i64 { 24 }
 
 #[derive(Serialize, Clone)]
 struct RunMetrics {
@@ -101,6 +114,10 @@ struct StratResult {
     oos_qualified: bool,
     cpcv_ok: bool,
     diversity_ok: bool,
+    // Session axis (placed last, omitted when empty) so a no-session scan serializes
+    // byte-for-byte identically to the pre-session engine.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session: String,
 }
 
 // ---------- indicators (self-contained) ----------
@@ -245,6 +262,27 @@ fn min_bars(m: &ManifestEntry) -> usize {
     base.max(m.atr_period + 2)
 }
 
+// Session/time-of-day ENTRY gate (yardstick axis). A pure function of the bar timestamp,
+// so it multiplies the existing price-shape signal by a clock mask without touching the
+// signal itself. Default (sess_start=0, sess_end=24, dow_mask=0) => always true, i.e. a
+// manifest without session fields takes every entry it took before (byte-identical).
+fn in_session(m: &ManifestEntry, ts: i64) -> bool {
+    if m.sess_start == 0 && m.sess_end == 24 && m.dow_mask == 0 {
+        return true; // no gate — pre-session behavior
+    }
+    if m.dow_mask != 0 {
+        // epoch day 0 (1970-01-01) was a Thursday => (day + 4) mod 7 gives 0=Sun..6=Sat.
+        let dow = ((ts.div_euclid(86400) + 4).rem_euclid(7)) as u8;
+        if (m.dow_mask & (1u8 << dow)) == 0 { return false; }
+    }
+    let h = ts.rem_euclid(86400) / 3600; // UTC hour, 0..23
+    if m.sess_start <= m.sess_end {
+        h >= m.sess_start && h < m.sess_end
+    } else {
+        h >= m.sess_start || h < m.sess_end // window wraps past midnight (e.g. 22..6)
+    }
+}
+
 enum Pos { None, Long { entry: f64, sl: f64, tp: f64, bar: i64 }, Short { entry: f64, sl: f64, tp: f64, bar: i64 } }
 
 // Faithful mirror of run_backtest_internal (offline, swap=0).
@@ -290,13 +328,14 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             if closed > 0.0 { gp += closed; } else { gl += closed.abs(); }
             *daily.entry(day).or_insert(0.0) += closed;
         }
-        // entries when flat
+        // entries when flat (gated by the session mask; no-op mask => unchanged)
         if matches!(pos, Pos::None) {
+            let allowed = in_session(m, c[i].timestamp);
             let (sl_d, tp_d) = barrier_dist(m, c, i);
-            if buy {
+            if buy && allowed {
                 let e = price + slip;
                 pos = Pos::Long { entry: e, sl: e - sl_d, tp: e + tp_d, bar: bar_ct };
-            } else if sell {
+            } else if sell && allowed {
                 let e = price - slip;
                 pos = Pos::Short { entry: e, sl: e + sl_d, tp: e - tp_d, bar: bar_ct };
             }
@@ -431,6 +470,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             prim: m.prim.clone(), period: m.period, dev: m.dev, timeframe_min: m.tf_seconds / 60,
             barrier_mode: m.barrier_mode.clone(), sl: m.sl, tp: m.tp,
             oos, cpcv, oos_qualified, cpcv_ok, diversity_ok,
+            session: m.session.clone(),
         });
     }
     let qualified = results.iter().filter(|r| r.oos_qualified).count();

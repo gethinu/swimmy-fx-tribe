@@ -17043,6 +17043,18 @@
 	                  test-find-diverse-breeding-partner-allows-wr-complement-with-moderate-pf
 	                  test-find-diverse-breeding-partner-allows-low-pf-high-wr-when-parent-has-pf-surplus
 	                  test-find-diverse-breeding-partner-prefers-partial-wr-recovery-when-no-full-complement
+	                  ;; V2d (2026-07-18): B-4/R4 behavioural distance (regen doc §B-4)
+	                  test-b4-extract-genome-carries-symbol-and-behavior
+	                  test-b4-distance-flag-off-is-legacy-and-symbol-blind
+	                  test-b4-distance-collapses-clones-to-near-zero
+	                  test-b4-distance-keeps-diverse-far
+	                  test-b4-behavior-corr-hook
+	                  ;; V2d (2026-07-18): regen §B-3(3)/§B-5 fitness-sharing wired into overflow cull
+	                  test-b5-overflow-cull-flag-off-keeps-crowded-sheds-sparse
+	                  test-b5-overflow-cull-flag-on-sheds-crowded-keeps-sparse
+	                  ;; V2d (2026-07-18): regen §B-3(3) part-1 (symbol×regime) niche-quota overflow cull
+	                  test-b3-niche-quota-disabled-sort-alone-keeps-only-crowded
+	                  test-b3-niche-quota-sheds-crowded-usdjpy-first-protects-sparse
 	                  test-breeding-pair-blacklist-blocks-candidate-before-cooldown
 	                  test-breeding-pair-blacklist-expires-after-cooldown
 	                  test-find-diverse-breeding-partner-skips-blacklisted-pair

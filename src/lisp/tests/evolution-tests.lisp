@@ -2663,3 +2663,302 @@
       (if orig-near-pf-threshold
           (setf swimmy.school::*breeder-near-pf-threshold* orig-near-pf-threshold)
           (makunbound 'swimmy.school::*breeder-near-pf-threshold*)))))
+
+;;; ============================================================================
+;;; V2d (2026-07-18): B-4 / R4 behavioural distance
+;;;   (regen_engine_redesign_20260703.md §B-4; tribe rebuild §R4)
+;;; Flag-gated on swimmy.core:*enable-primitive-diversity*:
+;;;   OFF => byte-identical legacy formula; ON => symbol/TF/family/tree/behaviour composite.
+;;; Verified offline against the real 18.5k-strategy monoculture (a read-only swimmy.db copy):
+;;; same-(symbol,regime,tf) clones collapse to median dist 0.0010 (96% below the 0.02 clone
+;;; floor) while non-USDJPY / cross-regime stay 100% above 0.20.
+;;; ============================================================================
+
+(deftest test-b4-extract-genome-carries-symbol-and-behavior
+  "regen B-1: extract-genome must carry :symbol and :behavior as first-class genes."
+  (let* ((s (swimmy.school:make-strategy :name "B4-EG" :symbol "EURUSD"
+                                         :category :reversion :timeframe 240
+                                         :indicators '((rsi 14)) :sl 0.5 :tp 1.0
+                                         :pnl-history '(1.0 -2.0 3.0)))
+         (gm (swimmy.school::extract-genome s)))
+    (assert-equal "EURUSD" (getf gm :symbol) "genome must carry :symbol (regen B-1)")
+    (assert-equal 240 (getf gm :timeframe) "genome must carry :timeframe")
+    (assert-equal '(1.0 -2.0 3.0) (getf gm :behavior) "genome must carry :behavior (pnl-history)")))
+
+(deftest test-b4-distance-flag-off-is-legacy-and-symbol-blind
+  "Flag OFF => byte-identical legacy formula that is blind to symbol."
+  (let ((a (list :symbol "USDJPY" :category :trend :timeframe 1440
+                 :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09))
+        (b (list :symbol "EURUSD" :category :trend :timeframe 1440
+                 :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09)))
+    (let ((swimmy.core:*enable-primitive-diversity* nil))
+      (assert-true (< (abs (- (swimmy.school::calculate-genetic-distance a b)
+                              (swimmy.school::legacy-genetic-distance a b)))
+                      1e-6)
+                   "flag OFF must dispatch to the legacy formula")
+      (assert-true (< (swimmy.school::calculate-genetic-distance a b) 1e-6)
+                   "legacy distance is blind to symbol (identical indicators => 0)"))))
+
+(deftest test-b4-distance-collapses-clones-to-near-zero
+  "regen R4: same (symbol,regime,tf) clones differing only in periods collapse near-zero
+   under the flag, while the legacy formula scatters them above the 0.02 clone floor."
+  (let ((c1 (list :symbol "USDJPY" :category :trend :timeframe 1440
+                  :indicators '((sma 27) (sma 93)) :entry '(cross-above close sma-27)
+                  :sl 0.03 :tp 0.09))
+        (c2 (list :symbol "USDJPY" :category :trend :timeframe 1440
+                  :indicators '((sma 36) (sma 144)) :entry '(cross-above close sma-36)
+                  :sl 0.04 :tp 0.12)))
+    (let ((off (let ((swimmy.core:*enable-primitive-diversity* nil))
+                 (swimmy.school::calculate-genetic-distance c1 c2)))
+          (on  (let ((swimmy.core:*enable-primitive-diversity* t))
+                 (swimmy.school::calculate-genetic-distance c1 c2))))
+      (assert-true (> off 0.02) "legacy must scatter clones above the 0.02 clone floor (the bug)")
+      (assert-true (< on 0.02) "B-4 must collapse clones below the 0.02 clone floor")
+      (assert-true (< on off) "B-4 distance must be far smaller than legacy for clones")
+      (let ((swimmy.core:*enable-primitive-diversity* t))
+        (assert-false (swimmy.school::genetic-compatibility-p c1 c2)
+                      "clones must be rejected by the 0.2-0.8 breeding sweet spot")))))
+
+(deftest test-b4-distance-keeps-diverse-far
+  "regen R4: non-USDJPY and cross-regime genomes stay far (>0.2) under the flag."
+  (let ((usdjpy-trend (list :symbol "USDJPY" :category :trend :timeframe 1440
+                            :indicators '((sma 27) (sma 93)) :sl 0.03 :tp 0.09))
+        (eurusd-vwap  (list :symbol "EURUSD" :category :trend :timeframe 1440
+                            :indicators '((vwapvr 50 220)) :sl 1.2 :tp 4.0))
+        (usdjpy-rev   (list :symbol "USDJPY" :category :reversion :timeframe 240
+                            :indicators '((rsi 14)) :sl 0.5 :tp 1.0)))
+    (let ((swimmy.core:*enable-primitive-diversity* t))
+      (assert-true (> (swimmy.school::calculate-genetic-distance usdjpy-trend eurusd-vwap) 0.2)
+                   "non-USDJPY diverse must be far (>0.2)")
+      (assert-true (> (swimmy.school::calculate-genetic-distance usdjpy-trend usdjpy-rev) 0.2)
+                   "cross-regime must be far (>0.2)"))))
+
+(deftest test-b4-behavior-corr-hook
+  "regen B-4: 1-|corr| behaviour hook is real when data present, NIL (dormant) when absent."
+  (assert-true (< (abs (swimmy.school::genome-behavior-distance
+                        '(1.0 2.0 3.0 4.0) '(1.0 2.0 3.0 4.0)))
+                  1e-4)
+               "identical returns => behaviour distance ~0")
+  (assert-true (< (abs (swimmy.school::genome-behavior-distance
+                        '(1.0 2.0 3.0 4.0) '(-1.0 -2.0 -3.0 -4.0)))
+                  1e-4)
+               "perfectly anti-correlated => behaviour distance ~0 (same bet, mirrored)")
+  (assert-true (null (swimmy.school::genome-behavior-distance '(1.0 2.0) '(1.0 2.0)))
+               "<3 aligned points => NIL (hook stays dormant)")
+  (assert-true (null (swimmy.school::genome-behavior-distance nil nil))
+               "absent series => NIL (never fabricates data)"))
+
+;;; ============================================================================
+;;; V2d (2026-07-18): regen §B-3(3)/§B-5 — fitness-sharing wired into overflow cull
+;;;   (regen_engine_redesign_20260703.md §B-3(3)/§B-5; A-verify §3.2)
+;;; cull-pool-overflow previously ranked the "20 or Die" keep-order by the RAW composite
+;;; score-from-metrics, so a crowded (symbol,category) monoculture with high raw sharpe always
+;;; won the overflow and a sparse off-niche survivor was shed first. Under the diversity flag
+;;; the keep-order is now SELECTION-FITNESS (evidence-adjusted sharpe / niche crowding), the
+;;; same divisor the daily culls and tournament/deathmatch already use. Flag OFF => byte-
+;;; identical raw ordering. These tests exercise the REAL cull-pool-overflow (DB writes and
+;;; Discord/notify stubbed so no swimmy.db / library is touched) with IDENTICAL metrics under
+;;; both flag states, proving the flip is caused by the wiring, not by the fixture.
+;;;
+;;; NOTE: overflow is a KEEP-ORDER only — it never changes the honest_gate verification floor
+;;; (min_trades/min_pf/min_sharpe); it only decides *which* eligible B-rank strategies survive.
+;;; ============================================================================
+
+(defun %b5-make-overflow-strat (name symbol sharpe)
+  "Build a pool-eligible B-rank :trend strategy for the overflow-cull tests. All strategies
+   share metrics EXCEPT symbol and sharpe, so the niche crowding (symbol count) is the only
+   thing selection-fitness adds over the raw score."
+  (swimmy.school:make-strategy
+   :name name :rank :B :status :active
+   :category :trend :symbol symbol :direction :BOTH :timeframe 3600
+   :generation 5 :trades 300
+   :sl 20.0 :tp 40.0
+   :sharpe sharpe :profit-factor 1.30 :win-rate 0.50 :max-dd 0.10))
+
+(defun %b5-run-overflow-scenario (flag)
+  "Overflow-cull a :trend pool of 8 crowded USDJPY-TREND (sharpe 1.5) + 2 sparse EURUSD-TREND
+   (sharpe 0.9) down to the pool limit (6), with *enable-primitive-diversity* = FLAG.
+   Returns (values survivor-symbols killed-names). Fully hermetic: init-db / execute-non-query
+   and notify-death are stubbed, so no swimmy.db row or library file is written."
+  (let ((orig-kb swimmy.school::*strategy-knowledge-base*)
+        (orig-regime swimmy.school::*regime-pools*)
+        (orig-cat swimmy.school::*category-pools*)
+        (orig-limit swimmy.school::*b-rank-pool-size*)
+        ;; Isolate part-2 (sort-key) from part-1 (niche quota, added later): a quota above the
+        ;; slot count makes the cap a no-op so this test observes ONLY the selection-fitness
+        ;; sort. The part-1 quota is exercised by the dedicated test-b3-niche-quota-* tests.
+        (orig-quota swimmy.school::*overflow-niche-min-quota*)
+        (orig-notify (symbol-function 'swimmy.school::notify-death))
+        (orig-initdb (symbol-function 'swimmy.school::init-db))
+        (orig-exec (symbol-function 'swimmy.school::execute-non-query))
+        (killed '()))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*b-rank-pool-size* 6)
+          (setf swimmy.school::*overflow-niche-min-quota* 999)
+          (setf (symbol-function 'swimmy.school::notify-death)
+                (lambda (strat &rest _ignore)
+                  (declare (ignore _ignore))
+                  (push (swimmy.school:strategy-name strat) killed)))
+          (setf (symbol-function 'swimmy.school::init-db)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (setf (symbol-function 'swimmy.school::execute-non-query)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (let* ((usdjpy (loop for i from 1 to 8
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B5-UJ-~d" i) "USDJPY" 1.5)))
+                 (eurusd (loop for i from 1 to 2
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B5-EU-~d" i) "EURUSD" 0.9)))
+                 (all (append usdjpy eurusd)))
+            (setf swimmy.school::*strategy-knowledge-base* (copy-list all))
+            (setf (gethash :trend swimmy.school::*regime-pools*) (copy-list all))
+            (setf (gethash :trend swimmy.school::*category-pools*) (copy-list all))
+            (let ((swimmy.core:*enable-primitive-diversity* flag))
+              (swimmy.school::cull-pool-overflow :trend))
+            (values (mapcar #'swimmy.school:strategy-symbol
+                            (gethash :trend swimmy.school::*regime-pools*))
+                    (reverse killed))))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*regime-pools* orig-regime)
+      (setf swimmy.school::*category-pools* orig-cat)
+      (setf swimmy.school::*b-rank-pool-size* orig-limit)
+      (setf swimmy.school::*overflow-niche-min-quota* orig-quota)
+      (setf (symbol-function 'swimmy.school::notify-death) orig-notify)
+      (setf (symbol-function 'swimmy.school::init-db) orig-initdb)
+      (setf (symbol-function 'swimmy.school::execute-non-query) orig-exec))))
+
+(deftest test-b5-overflow-cull-flag-off-keeps-crowded-sheds-sparse
+  "regen §B-5 baseline (flag OFF, the bug): overflow ranks by raw score, so the crowded
+   high-sharpe USDJPY-TREND clones fill every survivor slot and BOTH sparse EURUSD-TREND are
+   culled. This is the monoculture-preserving behaviour the wiring targets; OFF stays legacy."
+  (multiple-value-bind (survivor-syms killed) (%b5-run-overflow-scenario nil)
+    (assert-equal 6 (length survivor-syms) "overflow keeps exactly the pool limit (6)")
+    (assert-true (every (lambda (s) (string= s "USDJPY")) survivor-syms)
+                 "flag OFF: raw score keeps only the high-sharpe USDJPY clones")
+    (assert-true (and (member "UT-B5-EU-1" killed :test #'string=)
+                      (member "UT-B5-EU-2" killed :test #'string=))
+                 "flag OFF: both sparse EURUSD-TREND are shed (raw-sharpe overflow bug)")))
+
+(deftest test-b5-overflow-cull-flag-on-sheds-crowded-keeps-sparse
+  "regen §B-5 fix (flag ON): with IDENTICAL metrics, fitness-sharing divides the crowded
+   USDJPY-TREND niche (denominator ~8) below the sparse EURUSD-TREND (denominator ~2), so BOTH
+   EURUSD survive overflow and the crowded clones are shed first. Proves selection-fitness —
+   not raw sharpe — now drives the per-cycle overflow keep-order (the wired divisor)."
+  (multiple-value-bind (survivor-syms killed) (%b5-run-overflow-scenario t)
+    (assert-equal 6 (length survivor-syms) "overflow keeps exactly the pool limit (6)")
+    (assert-equal 2 (count "EURUSD" survivor-syms :test #'string=)
+                  "flag ON: both sparse EURUSD-TREND survive (crowding penalty spares them)")
+    (assert-equal 4 (count "USDJPY" survivor-syms :test #'string=)
+                  "flag ON: the crowded USDJPY niche is thinned to fill the remaining slots")
+    (assert-true (and killed (every (lambda (n) (search "UT-B5-UJ-" n)) killed))
+                 "flag ON: only crowded USDJPY-TREND clones are culled")))
+
+;;; ============================================================================
+;;; regen §B-3(3) part-1 — (symbol×regime) NICHE-QUOTA overflow cull
+;;;   (regen_engine_redesign_20260703.md §B-3(3); gap: tribe_2d_regen_b5_overflow_20260718.md §4)
+;;;
+;;; The B-5 measurement proved the selection-fitness sort-KEY (part-2, above) cannot dilute a
+;;; single-SYMBOL monoculture: inside an all-USDJPY :trend pool every niche denominator is equal,
+;;; so the division cancels and the sort degenerates to adjusted-sharpe order. part-1 adds a
+;;; per-(symbol×regime) fair-share cap so the crowded USDJPY sub-niche sheds FIRST while a sparse
+;;; non-USDJPY-TREND member is protected — EVEN WHEN the crowded niche has strictly HIGHER
+;;; per-member selection-fitness (the case the sort-key alone gets wrong).
+;;;
+;;; Isolation trick: both part-1 and part-2 live under *enable-primitive-diversity*, so to prove
+;;; part-1's contribution ON TOP OF the sort we hold the flag ON in BOTH runs and toggle only
+;;; *overflow-niche-min-quota*. A huge quota (>= slots) makes the cap a no-op => the ON path is
+;;; pure §B-5 sort; the real quota (3) engages the cap. Same fixture, same sort, quota flipped =>
+;;; the flip is caused by the niche cap, not the fixture or the sort.
+;;;
+;;; Fixture is single-symbol-DOMINANT with the dense niche given HIGHER per-member fitness
+;;; (USDJPY sharpe 1.5 / denom 12 => 0.125  vs  EURUSD sharpe 0.3 / denom 3 => 0.100), so the
+;;; sort alone keeps only USDJPY. Overflow is a KEEP-ORDER only — honest floor untouched.
+;;; ============================================================================
+
+(defun %b3-run-niche-overflow-scenario (min-quota)
+  "Overflow-cull a :trend pool of 12 crowded USDJPY-TREND (sharpe 1.5) + 3 sparse EURUSD-TREND
+   (sharpe 0.3) down to the pool limit (8) with *enable-primitive-diversity* = T and
+   *overflow-niche-min-quota* = MIN-QUOTA. USDJPY has the HIGHER per-member selection-fitness
+   (1.5/12 > 0.3/3), so the §B-5 sort alone keeps only USDJPY. Returns
+   (values usdjpy-survivors eurusd-survivors total-survivors killed-names). Fully hermetic:
+   init-db / execute-non-query / notify-death stubbed, so no swimmy.db row or library file."
+  (let ((orig-kb swimmy.school::*strategy-knowledge-base*)
+        (orig-regime swimmy.school::*regime-pools*)
+        (orig-cat swimmy.school::*category-pools*)
+        (orig-limit swimmy.school::*b-rank-pool-size*)
+        (orig-quota swimmy.school::*overflow-niche-min-quota*)
+        (orig-notify (symbol-function 'swimmy.school::notify-death))
+        (orig-initdb (symbol-function 'swimmy.school::init-db))
+        (orig-exec (symbol-function 'swimmy.school::execute-non-query))
+        (killed '()))
+    (unwind-protect
+        (progn
+          (setf swimmy.school::*regime-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*category-pools* (make-hash-table :test 'equal))
+          (setf swimmy.school::*b-rank-pool-size* 8)
+          (setf swimmy.school::*overflow-niche-min-quota* min-quota)
+          (setf (symbol-function 'swimmy.school::notify-death)
+                (lambda (strat &rest _ignore)
+                  (declare (ignore _ignore))
+                  (push (swimmy.school:strategy-name strat) killed)))
+          (setf (symbol-function 'swimmy.school::init-db)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (setf (symbol-function 'swimmy.school::execute-non-query)
+                (lambda (&rest _ignore) (declare (ignore _ignore)) nil))
+          (let* ((usdjpy (loop for i from 1 to 12
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B3-UJ-~d" i) "USDJPY" 1.5)))
+                 (eurusd (loop for i from 1 to 3
+                               collect (%b5-make-overflow-strat
+                                        (format nil "UT-B3-EU-~d" i) "EURUSD" 0.3)))
+                 (all (append usdjpy eurusd)))
+            (setf swimmy.school::*strategy-knowledge-base* (copy-list all))
+            (setf (gethash :trend swimmy.school::*regime-pools*) (copy-list all))
+            (setf (gethash :trend swimmy.school::*category-pools*) (copy-list all))
+            (let ((swimmy.core:*enable-primitive-diversity* t))
+              (swimmy.school::cull-pool-overflow :trend))
+            (let ((survivors (gethash :trend swimmy.school::*regime-pools*)))
+              (values (count "USDJPY" survivors :key #'swimmy.school:strategy-symbol :test #'string=)
+                      (count "EURUSD" survivors :key #'swimmy.school:strategy-symbol :test #'string=)
+                      (length survivors)
+                      (reverse killed)))))
+      (setf swimmy.school::*strategy-knowledge-base* orig-kb)
+      (setf swimmy.school::*regime-pools* orig-regime)
+      (setf swimmy.school::*category-pools* orig-cat)
+      (setf swimmy.school::*b-rank-pool-size* orig-limit)
+      (setf swimmy.school::*overflow-niche-min-quota* orig-quota)
+      (setf (symbol-function 'swimmy.school::notify-death) orig-notify)
+      (setf (symbol-function 'swimmy.school::init-db) orig-initdb)
+      (setf (symbol-function 'swimmy.school::execute-non-query) orig-exec))))
+
+(deftest test-b3-niche-quota-disabled-sort-alone-keeps-only-crowded
+  "regen §B-3(3) part-1 baseline (quota off): with the niche cap raised above the slot count,
+   the ON path is pure §B-5 selection-fitness sort. On a single-symbol-DOMINANT pool the crowded
+   USDJPY niche has the higher per-member fitness (1.5/12 > 0.3/3), so it fills every survivor
+   slot and ALL sparse EURUSD-TREND are shed — reproducing the exact B-5 measurement gap."
+  (multiple-value-bind (usd eur total killed) (%b3-run-niche-overflow-scenario 999)
+    (assert-equal 8 total "quota off: overflow keeps exactly the pool limit (8)")
+    (assert-equal 8 usd "quota off: sort alone keeps only the crowded USDJPY niche")
+    (assert-equal 0 eur "quota off: sort alone sheds every sparse EURUSD-TREND (the B-5 gap)")
+    ;; Culling 15 -> 8 sheds 7: all 3 sparse EURUSD (lowest per-member fitness) PLUS 4 surplus
+    ;; USDJPY. The gap the fix targets is that every EURUSD is shed while USDJPY is retained.
+    (assert-true (every (lambda (nm) (member nm killed :test #'string=))
+                        '("UT-B3-EU-1" "UT-B3-EU-2" "UT-B3-EU-3"))
+                 "quota off: every sparse EURUSD-TREND is shed (the B-5 monoculture gap)")))
+
+(deftest test-b3-niche-quota-sheds-crowded-usdjpy-first-protects-sparse
+  "regen §B-3(3) part-1 fix (quota on): the SAME fixture and sort, with *overflow-niche-min-quota*
+   = 3, caps each (symbol×regime) niche at ceil(8/2)=4. The crowded USDJPY niche is thinned
+   12 -> 4 and ALL 3 sparse EURUSD-TREND survive — even though USDJPY has the higher per-member
+   selection-fitness. Proves the structural niche quota (not the sort key) is what dilutes the
+   single-symbol monoculture; the culled set is exclusively crowded USDJPY."
+  (multiple-value-bind (usd eur total killed) (%b3-run-niche-overflow-scenario 3)
+    (assert-equal 4 usd "quota on: crowded USDJPY-TREND niche capped at the fair share (4)")
+    (assert-equal 3 eur "quota on: all sparse EURUSD-TREND survive (cap protects the off-niche)")
+    (assert-equal 7 total "quota on: pool settles below the limit — the cap forces extra shedding")
+    (assert-equal 8 (length killed) "quota on: 8 crowded USDJPY shed (12 -> 4)")
+    (assert-true (every (lambda (n) (search "UT-B3-UJ-" n)) killed)
+                 "quota on: only crowded USDJPY-TREND clones are culled")))

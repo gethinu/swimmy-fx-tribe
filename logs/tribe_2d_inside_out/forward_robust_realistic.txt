@@ -1,0 +1,47 @@
+==============================================================================
+SEARCH COVERAGE: 9408 configs total ( 4 symbols x ~2352 each )
+==============================================================================
+
+### EURUSD:  configs=2352  selection-robust(sel oos+cpcv)=38  FORWARD-ROBUST(2-window)=13
+    keltner  REVERSION p60 d2.0 tf240m sl2.5 | sel(pf=1.171,pr=0.60) HOLD(t=368,pf=1.181,pr=0.80,med=0.75) [DIVERSE]
+    keltner  REVERSION p55 d2.0 tf240m sl2.0 | sel(pf=1.175,pr=0.60) HOLD(t=435,pf=1.199,pr=0.70,med=0.8) [DIVERSE]
+    keltner  REVERSION p55 d2.0 tf240m sl2.5 | sel(pf=1.211,pr=0.60) HOLD(t=374,pf=1.201,pr=0.70,med=0.7) [DIVERSE]
+    keltner  REVERSION p55 d2.0 tf240m sl3.0 | sel(pf=1.228,pr=0.60) HOLD(t=342,pf=1.198,pr=0.70,med=0.7) [DIVERSE]
+    keltner  REVERSION p60 d2.0 tf240m sl2.0 | sel(pf=1.126,pr=0.60) HOLD(t=432,pf=1.151,pr=0.70,med=0.7) [DIVERSE]
+    keltner  REVERSION p60 d2.5 tf240m sl2.0 | sel(pf=1.117,pr=0.60) HOLD(t=354,pf=1.137,pr=0.70,med=0.57) [DIVERSE]
+    keltner  REVERSION p30 d1.5 tf360m sl2.5 | sel(pf=1.195,pr=0.60) HOLD(t=338,pf=1.127,pr=0.60,med=0.48) [DIVERSE]
+    keltner  REVERSION p50 d1.5 tf240m sl2.5 | sel(pf=1.142,pr=0.60) HOLD(t=450,pf=1.111,pr=0.60,med=0.49) [DIVERSE]
+    keltner  REVERSION p50 d1.5 tf240m sl3.0 | sel(pf=1.213,pr=0.70) HOLD(t=424,pf=1.128,pr=0.60,med=0.48) [DIVERSE]
+    keltner  REVERSION p50 d2.0 tf240m sl2.0 | sel(pf=1.219,pr=0.60) HOLD(t=435,pf=1.176,pr=0.60,med=0.63) [DIVERSE]
+    keltner  REVERSION p50 d2.0 tf240m sl2.5 | sel(pf=1.223,pr=0.60) HOLD(t=377,pf=1.162,pr=0.60,med=0.49) [DIVERSE]
+    keltner  REVERSION p60 d2.0 tf240m sl3.0 | sel(pf=1.191,pr=0.60) HOLD(t=331,pf=1.163,pr=0.60,med=0.77) [DIVERSE]
+    bb       REVERSION p30 d1.75 tf360m sl2.0 | sel(pf=1.249,pr=0.80) HOLD(t=344,pf=1.136,pr=0.60,med=0.47) [DIVERSE]
+
+### GBPUSD:  configs=2352  selection-robust(sel oos+cpcv)=6  FORWARD-ROBUST(2-window)=2
+    keltner  REVERSION p40 d2.0 tf240m sl2.5 | sel(pf=1.173,pr=0.70) HOLD(t=374,pf=1.192,pr=0.60,med=0.47) [DIVERSE]
+    keltner  REVERSION p40 d2.0 tf240m sl3.0 | sel(pf=1.177,pr=0.70) HOLD(t=342,pf=1.223,pr=0.60,med=0.43) [DIVERSE]
+
+### EURJPY:  configs=2352  selection-robust(sel oos+cpcv)=0  FORWARD-ROBUST(2-window)=0
+
+### USDJPY:  configs=2352  selection-robust(sel oos+cpcv)=6  FORWARD-ROBUST(2-window)=0
+
+==============================================================================
+AGGREGATE — forward-robust (2-window) individuals: 15
+  of which DIVERSE (non-USDJPY-TREND): 15
+  by symbol : {'EURUSD': 13, 'GBPUSD': 2}
+  by prim   : {'keltner': 14, 'bb': 1}
+  by regime : {'REVERSION': 15}
+  by (sym,prim,regime): {('EURUSD', 'keltner', 'REVERSION'): 12, ('EURUSD', 'bb', 'REVERSION'): 1, ('GBPUSD', 'keltner', 'REVERSION'): 2}
+  by tf(min): {360: 2, 240: 13}
+
+Selection-robust total (pre-holdout): 50  -> shrinks to 15 after holdout (multiple-testing / forward filter)
+
+------------------------------------------------------------------------------
+DISTINCT DIVERSE EDGES (cluster = symbol x prim x regime x TF-band):
+   EURUSD/keltner/REVERSION/H4-H8: 12 variants  periods=[30, 50, 55, 60] devs=[1.5, 2.0, 2.5]
+   GBPUSD/keltner/REVERSION/H4-H8: 2 variants  periods=[40] devs=[2.0]
+   EURUSD/bb/REVERSION/H4-H8: 1 variants  periods=[30] devs=[1.75]
+
+=> 3 distinct diverse edge-cluster(s); 15 total diverse forward-robust variants
+
+-> wrote C:/Users/stair/AppData/Local/Temp/claude/C--Repos-swimmy-fx-tribe/d7a0c04d-0220-44ad-9dcd-552700bc45a9/scratchpad/tribe_inside/SCORE_SUMMARY.json

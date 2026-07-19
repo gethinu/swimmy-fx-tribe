@@ -1,0 +1,5 @@
+[
+{"name":"s132-FAITHFUL-GBPJPY-donch7-d1","symbol":"GBPJPY","regime":":BREAKOUT","prim":"donchian","period":7,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":40},
+{"name":"s132-VAR-GBPJPY-donch7-d1-tp3","symbol":"GBPJPY","regime":":BREAKOUT","prim":"donchian","period":7,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":3.0,"max_hold":40},
+{"name":"s132-VAR-GBPJPY-donch7-d1-nohold","symbol":"GBPJPY","regime":":BREAKOUT","prim":"donchian","period":7,"dev":2.0,"atr_period":14,"tf_seconds":86400,"barrier_mode":"atr","sl":2.0,"tp":99.0,"max_hold":0}
+]
