@@ -1,0 +1,19 @@
+LOADED 488 active strategies from copy DB
+[GEN0] active=488  USDJPY=486 (99.6%)  TREND=488 (100.0%)  diverse-robust=0
+        non-USDJPY-TREND: survive=2 robust=0 | DVSEED alive=0
+SEED HONEST-GATE RESULT: seeded=18 honest-PASS=10 (non-USDJPY-TREND-PASS=6) graveyard=8 no-score=0
+[GEN0b] active=498  USDJPY=486 (97.6%)  TREND=494 (99.2%)  diverse-robust=2
+        non-USDJPY-TREND: survive=8 robust=0 | DVSEED alive=10
+[GEN1] active=70  USDJPY=62 (88.6%)  TREND=66 (94.3%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+[GEN2] active=70  USDJPY=62 (88.6%)  TREND=66 (94.3%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+[GEN3] active=71  USDJPY=62 (87.3%)  TREND=66 (93.0%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+[GEN4] active=71  USDJPY=62 (87.3%)  TREND=66 (93.0%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+[GEN5] active=72  USDJPY=62 (86.1%)  TREND=66 (91.7%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+[GEN6] active=73  USDJPY=62 (84.9%)  TREND=66 (90.4%)  diverse-robust=2
+        non-USDJPY-TREND: survive=4 robust=0 | DVSEED alive=8
+EXIT=0
