@@ -130,6 +130,21 @@ the PROVISIONAL set to produce real OOS/CPCV numbers, which is what would move
 strategies into PASS. Until then the factory's honest output is "61 hypotheses,
 0 verified."
 
+> **Note (2026-07-19, hygiene audit) — the "PASS" name collides; this snapshot is stale, 要再測定.**
+> Two things about the counts above:
+> 1. **Disambiguate "PASS".** This section's **PASS** is the *strict OOS/CPCV-verified* gate
+>    (`honest_gate.py`, still **0**). The `KILL_CRITERIA_20260703.md §4` go/no-go's
+>    **"honest PASS = 60"** is a *different axis* — the **hard-floor continue-trigger** — which
+>    corresponds to this section's **PROVISIONAL (≈61)**, *not* to PASS. Mapped correctly the two
+>    numbers **agree** (hard-floor pass ≈ 60–61; OOS/CPCV-verified = 0); the apparent conflict is a
+>    name collision, not a contradiction.
+> 2. **The 168 / 0 / 61 / 107 snapshot is undated and now stale, and cannot be cleanly re-measured
+>    right now.** `data/library/` currently carries **~320 untracked `RECRUIT-RND-*` daemon-churn
+>    files** (uniform mtime 2026-07-18, not committed) that `os.walk`-based `python3 -m tools.tribe.export`
+>    would count, inflating every total; the `--source sql` mode instead reads the live `swimmy.db`
+>    (off-limits this pass). **Refresh these counts by re-running the export only after the library
+>    churn is cleaned** (see the hygiene note in the tribe-2d rollup).
+
 ## 5. Files
 
 | Path | Role |
