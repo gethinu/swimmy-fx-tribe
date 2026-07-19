@@ -118,11 +118,11 @@ python3 -m tools.tribe.honest_gate --monthly 5.9136 --dd 45.28 --trades 21 --for
 
 ## 4. Current state of the feed (snapshot)
 
-As of the latest export of `data/library/` (168 survivors):
+As of a clean file-walk export of `data/library/` (**180 survivors**; `--source lisp`, 2026-07-19):
 
 - **PASS: 0** — *nothing here has cleared out-of-sample validation.*
 - **PROVISIONAL: 61** — IS-only survivors with PF ≈ 1.1–1.3, Sharpe ≈ 0.3, mostly USDJPY.
-- **REJECT: 107** — under-sampled or PF below floor (incl. the `S/TestStrat` placeholder).
+- **REJECT: 119** — under-sampled or PF below floor (incl. the `S/TestStrat` placeholder).
 
 The actionable read for bundle-of-edge: **do not consume PROVISIONAL as edge.**
 The next high-value work is to run the vendored guardian arena (`guardian/`) over
@@ -130,20 +130,20 @@ the PROVISIONAL set to produce real OOS/CPCV numbers, which is what would move
 strategies into PASS. Until then the factory's honest output is "61 hypotheses,
 0 verified."
 
-> **Note (2026-07-19, hygiene audit) — the "PASS" name collides; this snapshot is stale, 要再測定.**
-> Two things about the counts above:
+> **Note (2026-07-19, hygiene audit) — re-measured; the "PASS" name collides but the numbers agree.**
 > 1. **Disambiguate "PASS".** This section's **PASS** is the *strict OOS/CPCV-verified* gate
 >    (`honest_gate.py`, still **0**). The `KILL_CRITERIA_20260703.md §4` go/no-go's
 >    **"honest PASS = 60"** is a *different axis* — the **hard-floor continue-trigger** — which
->    corresponds to this section's **PROVISIONAL (≈61)**, *not* to PASS. Mapped correctly the two
+>    corresponds to this section's **PROVISIONAL (61)**, *not* to PASS. Mapped correctly the two
 >    numbers **agree** (hard-floor pass ≈ 60–61; OOS/CPCV-verified = 0); the apparent conflict is a
 >    name collision, not a contradiction.
-> 2. **The 168 / 0 / 61 / 107 snapshot is undated and now stale, and cannot be cleanly re-measured
->    right now.** `data/library/` currently carries **~320 untracked `RECRUIT-RND-*` daemon-churn
->    files** (uniform mtime 2026-07-18, not committed) that `os.walk`-based `python3 -m tools.tribe.export`
->    would count, inflating every total; the `--source sql` mode instead reads the live `swimmy.db`
->    (off-limits this pass). **Refresh these counts by re-running the export only after the library
->    churn is cleaned** (see the hygiene note in the tribe-2d rollup).
+> 2. **Snapshot refreshed 2026-07-19 after a library-churn cleanup** (git clean removed ~327 untracked
+>    `RECRUIT-RND-*`/test daemon-churn files that an `os.walk` export would have miscounted). Clean
+>    re-export via **`--source lisp`** (file-walk; the live-`swimmy.db` `--source sql` path was
+>    deliberately not run): **180 / PASS 0 / PROVISIONAL 61 / REJECT 119**, 0 parse errors. PASS and
+>    PROVISIONAL are unchanged from the prior snapshot — only the total (168→180) and REJECT (107→119)
+>    moved. NB `lisp` is the *mirror* source; the **sql** source remains the single-source-of-truth and
+>    its canonical `feed/` was left untouched (this re-export wrote to scratch only).
 
 ## 5. Files
 
