@@ -2,6 +2,14 @@
 Description=Swimmy Brain Service
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
+# P4 (Thread B): bound the restart budget so a poison-data / unrecoverable
+# boot fault stops PERMANENTLY instead of looping forever (was Restart=always
+# with no StartLimit). After 5 failures in 600s the unit enters `failed` and
+# OnFailure fires the alert; Guardian's brain-disconnect gate then keeps new
+# entries blocked (degraded operation) while existing positions are held.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=swimmy-alert@%n.service
 
 [Service]
 Type=simple
@@ -9,13 +17,17 @@ User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/run.sh
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
 
 # Environment
 Environment=HOME=/home/swimmy
-Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
+# P4: heap comes from the split-name var (brain default 3072). run.sh reads
+# SWIMMY_BRAIN_HEAP_MB. /etc/swimmy/heap.env is loaded LAST so it is the single
+# source of truth, overriding this default and anything in .env.
+Environment=SWIMMY_BRAIN_HEAP_MB=3072
 EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=-/etc/swimmy/heap.env
 
 # Logging
 StandardOutput=journal

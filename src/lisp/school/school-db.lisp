@@ -228,6 +228,12 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
   (handler-case
       (execute-non-query "ALTER TABLE strategies ADD COLUMN updated_at INTEGER")
     (error () nil))
+  ;; P5 (Thread B): integrity checksum for the data_sexp blob. Populated by
+  ;; upsert-strategy at write time; re-verified by the persistence audit so
+  ;; bit-rot/truncation is caught instead of being silently skipped by safe-read.
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN data_sexp_sha256 TEXT")
+    (error () nil))
 
   ;; Table: Trades
   (execute-non-query
@@ -560,42 +566,56 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
               cur-cpcv-wr db-cpcv-wr
               cur-cpcv-maxdd db-cpcv-maxdd
               cur-cpcv-pass db-cpcv-pass)))
-    (handler-case
-        (execute-non-query
-         "INSERT OR REPLACE INTO strategies (
+    ;; P5 (Thread B): serialize once, cap the size, and checksum the blob.
+    ;; An oversize serialization is treated as corruption/pathology: we persist
+    ;; a short sentinel instead of the blob (all real metric columns still land)
+    ;; so a poison blob can neither bloat the DB nor choke safe-read downstream.
+    (let* ((raw-sexp (format nil "~s" strat))
+           (oversize (> (length raw-sexp) swimmy.core:*max-data-sexp-length*))
+           (data-sexp (if oversize
+                          (format nil ":OVERSIZE:~a" (length raw-sexp))
+                          raw-sexp))
+           (data-sexp-sha (swimmy.core:sha256-hex data-sexp)))
+      (when oversize
+        (format t "[DB] ⚠️ data_sexp for ~a is ~a chars (> ~a cap); storing sentinel.~%"
+                name (length raw-sexp) swimmy.core:*max-data-sexp-length*))
+      (handler-case
+          (execute-non-query
+           "INSERT OR REPLACE INTO strategies (
           name, indicators, entry, exit, sl, tp, volume,
           sharpe, profit_factor, win_rate, trades, max_dd,
           category, timeframe, generation, rank, symbol, direction, hash,
-          oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, data_sexp, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-         name
-         (format nil "~a" (strategy-indicators strat))
-         (format nil "~a" (strategy-entry strat))
-         (format nil "~a" (strategy-exit strat))
-         (strategy-sl strat)
-         (strategy-tp strat)
-         (strategy-volume strat)
-         cur-sharpe
-         cur-pf
-         cur-wr
-         cur-trades
-         cur-max-dd
-         (format nil "~a" (strategy-category strat))
-         (strategy-timeframe strat)
-         (strategy-generation strat)
-         (format nil "~s" incoming-rank) ; Store as ":RANK"
-         (or (strategy-symbol strat) "USDJPY")
-         (format nil "~a" (strategy-direction strat))
-         (strategy-hash strat)
-         cur-oos ; P1: nil -> SQL NULL (unvalidated); preserves a real persisted OOS
-         cur-cpcv-median
-         cur-cpcv-pf
-         cur-cpcv-wr
-         cur-cpcv-maxdd
-         cur-cpcv-pass
-         (format nil "~s" strat)
-         updated-at) ; Store full serialized object as backup
-      (error (e) (format t "[DB] ❌ Upsert error for ~a: ~a~%" (strategy-name strat) e))))
+          oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, data_sexp, data_sexp_sha256, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+           name
+           (format nil "~a" (strategy-indicators strat))
+           (format nil "~a" (strategy-entry strat))
+           (format nil "~a" (strategy-exit strat))
+           (strategy-sl strat)
+           (strategy-tp strat)
+           (strategy-volume strat)
+           cur-sharpe
+           cur-pf
+           cur-wr
+           cur-trades
+           cur-max-dd
+           (format nil "~a" (strategy-category strat))
+           (strategy-timeframe strat)
+           (strategy-generation strat)
+           (format nil "~s" incoming-rank) ; Store as ":RANK"
+           (or (strategy-symbol strat) "USDJPY")
+           (format nil "~a" (strategy-direction strat))
+           (strategy-hash strat)
+           cur-oos ; P1: nil -> SQL NULL (unvalidated); preserves a real persisted OOS
+           cur-cpcv-median
+           cur-cpcv-pf
+           cur-cpcv-wr
+           cur-cpcv-maxdd
+           cur-cpcv-pass
+           data-sexp          ; Store full serialized object as backup (or sentinel)
+           data-sexp-sha      ; P5: sha256 integrity checksum of data_sexp
+           updated-at)
+        (error (e) (format t "[DB] ❌ Upsert error for ~a: ~a~%" (strategy-name strat) e)))))
   )
 
 (defun update-cpcv-metrics-by-name (name median median-pf median-wr median-maxdd pass-rate

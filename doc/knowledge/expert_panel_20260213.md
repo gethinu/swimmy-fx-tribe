@@ -16,6 +16,7 @@
 - Data Keeper は大きな固定バッファを常時確保する設計（`tools/data_keeper.py:60`, `tools/data_keeper.py:61`）。
 - さらに起動時に全TFを eager load しており、メモリ・起動時間を前払いで消費する（`tools/data_keeper.py:188`, `tools/data_keeper.py:193`）。
 - `swimmy-data-keeper.service` は `StartLimitIntervalSec` を `[Service]` に置いており無効。実際に systemd が Unknown key を出している。安全装置が“あるつもり”になっている（`systemd/swimmy-data-keeper.service:13`）。
+  > [!NOTE] **訂正 (2026-07-12 / P4, stale)**: この指摘は解消済。現行 `systemd/swimmy-data-keeper.service:4-5` は `StartLimitIntervalSec=300` / `StartLimitBurst=5` を正しく `[Unit]` に置いており実害なし。P4 で cgroup `MemoryMax=3G` も追加（Taleb の「上限がない」指摘に対応）。
 
 ### Graham
 「複雑さの借金を、CPUとRAMで返済している。これはスケールしない。」
@@ -38,6 +39,7 @@
 「設定責務が分裂している。設定値が宣言されても、実行経路で使われない。」
 - `swimmy-brain.service` は `SWIMMY_SBCL_DYNAMIC_SPACE_MB` を定義しているが（`systemd/swimmy-brain.service:17`）、実際の起動スクリプトは 4096 固定で無視している（`run.sh:64`）。
 - “設定があるのに効かない”状態は運用事故を量産する。これは設計の失敗。
+  > [!NOTE] **訂正 (2026-07-12 / P4, stale)**: 「4096 固定で無視」は誤り。`run.sh` は当時から env を尊重していた（現行 `run.sh:69` は `${SWIMMY_BRAIN_HEAP_MB:-${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-6144}}`）。P4 でヒープを `/etc/swimmy/heap.env` に一元化し brain=3072 / school=4096、変数名を daemon 別に分離した。Fowler の「設定が実行経路で使われない」問題は解消（unit が heap.env を最後に読む単一正本）。
 
 ### Hickey
 「Simple made easy を逆行している。巨大な可変構造をぐるぐる回している。」
@@ -85,6 +87,6 @@
 2. `phase-7-wisdom-update` を毎サイクル実行から間隔実行へ変更（`src/lisp/school/school-connector.lisp:219`）。
 3. `phase-8-weekly-prune` の skip 条件（incubator backlog）を緩和し、hard-cap が効く状態を担保（`src/lisp/school/school-connector.lisp:116`, `src/lisp/school/school-pruning.lisp:30`）。
 4. Data Keeper の `MAX_CANDLES_PER_SYMBOL`/`MAX_TICKS_PER_SYMBOL` を env 化し、起動時は M1 を lazy-load（`tools/data_keeper.py:60`, `tools/data_keeper.py:61`, `tools/data_keeper.py:193`）。
-5. `run.sh` の `--dynamic-space-size` を env 参照へ統一し、`swimmy-brain.service` と整合（`run.sh:64`, `systemd/swimmy-brain.service:17`）。
-6. `systemd/swimmy-data-keeper.service` の `StartLimit*` を `[Unit]` へ移して検証スクリプト追加（`systemd/swimmy-data-keeper.service:13`）。
+5. ~~`run.sh` の `--dynamic-space-size` を env 参照へ統一し、`swimmy-brain.service` と整合~~ **✅ 済 (P4)**: `run.sh` は元々 env 尊重。P4 で `/etc/swimmy/heap.env` 一元化（brain 3072 / school 4096、変数名分離）。→ `doc/knowledge/p4_reliability_ops_20260712.md`。
+6. ~~`systemd/swimmy-data-keeper.service` の `StartLimit*` を `[Unit]` へ移して検証スクリプト追加~~ **✅ 済**: 現行は `[Unit]` に正しく配置。P4 で `MemoryMax=3G` 追加＋`tests/systemd_reliability_test.sh` で回帰防止。
 7. docsの実値整合を修正（M1保持上限、prune頻度）: `docs/llm/ARCHITECTURE.md:75`, `docs/llm/STATE.md:71`, `doc/owners_guide.md:157`。

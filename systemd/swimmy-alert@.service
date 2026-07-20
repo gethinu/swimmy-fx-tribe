@@ -1,0 +1,22 @@
+[Unit]
+Description=Swimmy failure alert for %i
+# P4 (Thread B / reliability): OnFailure sink for the brain-family units.
+# The failing unit references this as OnFailure=swimmy-alert@%n.service, so %i
+# expands to the full unit name (e.g. swimmy-brain.service). Deliberately has
+# NO OnFailure= / Restart= of its own so the alerter can never fail-loop.
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+Environment=HOME=/home/swimmy
+Environment=SWIMMY_HOME=/home/swimmy/swimmy
+# Alerting only needs the webhook; keep the environment minimal and optional so
+# a missing file never blocks the alert.
+EnvironmentFile=-/home/swimmy/swimmy/.env
+EnvironmentFile=-/home/swimmy/swimmy/config/.env.systemd
+ExecStart=/home/swimmy/swimmy/tools/ops/alert_on_failure.sh %i
+StandardOutput=append:/home/swimmy/swimmy/logs/alert.log
+StandardError=append:/home/swimmy/swimmy/logs/alert.log
+SyslogIdentifier=swimmy-alert
