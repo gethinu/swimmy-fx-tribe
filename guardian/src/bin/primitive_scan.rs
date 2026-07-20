@@ -58,6 +58,16 @@ struct ManifestEntry {
     tp: f64,
     #[serde(default)]
     max_hold: i64, // 0 = no time stop
+    // --- YARDSTICK AXIS (2026-07-21): hold-to-barrier / "let-winners-run" EXIT mode. The one
+    // representational gap that directly increases per-trade thickness: the backtest exit is
+    // otherwise UNCONDITIONALLY `sl || tp || indicator-exit || timeout`, so every mean-reversion
+    // trade is force-closed at the mid regardless of how wide tp is set — capping the per-trade
+    // edge at band->mid and pinning fat trades to high TF. hold_mode="barrier" DROPS the
+    // indicator-exit term so a winner rides to the (wide, ATR-multiple) tp or the (multi-day)
+    // time-stop. Default "" behaves exactly like "signal" (indicator-exit ON) => a manifest
+    // WITHOUT this key is byte-identical to the pre-hold engine (proven by diff).
+    #[serde(default)]
+    hold_mode: String, // "" | "signal" (default: indicator-exit ON) | "barrier" (indicator-exit OFF)
     // --- YARDSTICK AXIS (2026-07-19): session / time-of-day ENTRY gate. Pure function of the
     // bar's UTC timestamp — orthogonal to every price-shape primitive. When all three fields
     // hold their defaults (sess_start=0, sess_end=24, dow_mask=0) the gate is a no-op, so a
@@ -118,6 +128,10 @@ struct StratResult {
     // byte-for-byte identically to the pre-session engine.
     #[serde(skip_serializing_if = "String::is_empty")]
     session: String,
+    // Hold-to-barrier axis (also omitted when empty) — same byte-identity discipline: a scan
+    // with no hold_mode key serializes exactly as the pre-hold engine did.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    hold_mode: String,
 }
 
 // ---------- indicators (self-contained) ----------
@@ -295,6 +309,9 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
     let (mut trades, mut gp, mut gl) = (0i32, 0.0f64, 0.0f64);
     let mut daily: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
     let mut bar_ct: i64 = 0;
+    // hold-to-barrier axis: in "barrier" mode the indicator-driven exit is disabled so a
+    // winner rides to sl/tp/timeout only. "" and "signal" preserve the pre-hold behavior.
+    let hold_barrier = m.hold_mode == "barrier";
     for i in mb..c.len() {
         let price = c[i].close;
         let day = c[i].timestamp / 86400;
@@ -306,7 +323,7 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             Pos::Long { entry, sl, tp, bar } => {
                 let held = bar_ct - bar;
                 let timeout = m.max_hold > 0 && held >= m.max_hold;
-                if price <= sl || price >= tp || ex_long || timeout {
+                if price <= sl || price >= tp || (ex_long && !hold_barrier) || timeout {
                     closed = (price - slip) - entry;
                     did_close = true;
                     pos = Pos::None;
@@ -315,7 +332,7 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             Pos::Short { entry, sl, tp, bar } => {
                 let held = bar_ct - bar;
                 let timeout = m.max_hold > 0 && held >= m.max_hold;
-                if price >= sl || price <= tp || ex_short || timeout {
+                if price >= sl || price <= tp || (ex_short && !hold_barrier) || timeout {
                     closed = entry - (price + slip);
                     did_close = true;
                     pos = Pos::None;
@@ -471,6 +488,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             barrier_mode: m.barrier_mode.clone(), sl: m.sl, tp: m.tp,
             oos, cpcv, oos_qualified, cpcv_ok, diversity_ok,
             session: m.session.clone(),
+            hold_mode: m.hold_mode.clone(),
         });
     }
     let qualified = results.iter().filter(|r| r.oos_qualified).count();
