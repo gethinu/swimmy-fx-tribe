@@ -409,7 +409,11 @@ enum Pos { None, Long { entry: f64, sl: f64, tp: f64, bar: i64 }, Short { entry:
 // Faithful mirror of run_backtest_internal (offline, swap=0). `htf` is the precomputed multi-TF
 // confluence state aligned to `c`; `aux_c` is the Route-D aligned auxiliary leg close (both None =>
 // off, byte-identical for every existing primitive).
-fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64, htf: Option<&[i8]>, aux_c: Option<&[f64]>) -> RunMetrics {
+// `daily_sink` (VERIFICATION-ONLY, ⑫): when Some, the sorted per-UTC-day realized PnL is copied out for
+// return-stream correlation / regime analysis. None on every normal path => zero behavior change, and the
+// --out serialization is untouched, so a scan run without --dump-daily is byte-identical to the pre-⑫ engine.
+fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64, htf: Option<&[i8]>, aux_c: Option<&[f64]>,
+            daily_sink: Option<&mut Vec<(i64, f64)>>) -> RunMetrics {
     let mb = min_bars(m);
     if c.len() <= mb {
         return RunMetrics { trades: 0, pf: 0.0, sharpe: 0.0, penalized_sharpe: 0.0 };
@@ -492,6 +496,11 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64, htf: Option<&[i8]>, aux_
         eq += dp;
     }
     let sharpe = sharpe_ratio(&rets);
+    if let Some(sink) = daily_sink {
+        let mut v: Vec<(i64, f64)> = daily.iter().map(|(&d, &p)| (d, p)).collect();
+        v.sort_by_key(|(d, _)| *d);
+        *sink = v;
+    }
     RunMetrics {
         trades,
         pf: if gl != 0.0 { gp / gl } else { 0.0 },
@@ -525,16 +534,17 @@ fn median(v: &mut [f64]) -> f64 {
     if v.len() % 2 == 0 { (v[mid - 1] + v[mid]) / 2.0 } else { v[mid] }
 }
 
-fn run_on(m: &ManifestEntry, m1: &[Candle], slip: f64, aux: Option<&[Candle]>) -> RunMetrics {
+fn run_on(m: &ManifestEntry, m1: &[Candle], slip: f64, aux: Option<&[Candle]>,
+          daily_sink: Option<&mut Vec<(i64, f64)>>) -> RunMetrics {
     if m.tf_seconds > 60 {
         let tf = resample_candles(m1, m.tf_seconds);
         let htf = build_htf(m, m1, &tf); // None when off => no resample, byte-identical
         let aux_c = aux.map(|a| align_aux(a, &tf, m.tf_seconds));
-        backtest(m, &tf, slip, htf.as_deref(), aux_c.as_deref())
+        backtest(m, &tf, slip, htf.as_deref(), aux_c.as_deref(), daily_sink)
     } else {
         let htf = build_htf(m, m1, m1);
         let aux_c = aux.map(|a| align_aux(a, m1, m.tf_seconds));
-        backtest(m, m1, slip, htf.as_deref(), aux_c.as_deref())
+        backtest(m, m1, slip, htf.as_deref(), aux_c.as_deref(), daily_sink)
     }
 }
 
@@ -552,7 +562,7 @@ fn run_cpcv(m: &ManifestEntry, full: &[Candle], slip: f64, aux: Option<&[Candle]
             let hi = block.last().map(|c| c.timestamp).unwrap_or(0) + 1;
             slice_range(a, lo, hi)
         });
-        let r = run_on(m, block, slip, aux_block);
+        let r = run_on(m, block, slip, aux_block, None);
         valid += 1;
         sharpes.push(r.sharpe);
         let pass = r.trades >= CPCV_FOLD_MIN_TRADES && r.pf >= PF_GATE && r.penalized_sharpe >= PEN_SHARPE_GATE;
@@ -610,9 +620,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest: Vec<ManifestEntry> = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
     eprintln!("[scan] {} configs", manifest.len());
 
+    // VERIFICATION-ONLY (⑫): --dump-daily <path> appends per-config OOS daily-PnL JSONL for return-stream
+    // correlation / regime analysis. Absent => daily_sink is None everywhere => byte-identical scan output.
+    let dump_daily = arg(&args, "--dump-daily");
+    if let Some(p) = &dump_daily { let _ = std::fs::write(p, ""); eprintln!("[scan] dumping daily PnL -> {p}"); }
+
     let mut results = Vec::new();
     for (i, m) in manifest.iter().enumerate() {
-        let oos = run_on(m, oos_slice, slip, oos_aux);
+        let mut daily_vec: Vec<(i64, f64)> = Vec::new();
+        let oos = run_on(m, oos_slice, slip, oos_aux,
+                         if dump_daily.is_some() { Some(&mut daily_vec) } else { None });
+        if let Some(p) = &dump_daily {
+            use std::io::Write;
+            let line = serde_json::json!({"name": m.name, "daily": daily_vec}).to_string();
+            let mut f = std::fs::OpenOptions::new().append(true).create(true).open(p)?;
+            writeln!(f, "{line}")?;
+        }
         let cpcv = run_cpcv(m, cpcv_slice, slip, cpcv_aux);
         let oos_qualified = oos.trades >= OOS_MIN_TRADES && oos.pf >= PF_GATE && oos.penalized_sharpe >= PEN_SHARPE_GATE;
         let cpcv_ok = cpcv.pass_rate >= CPCV_PASS_RATE_GATE && cpcv.median_sharpe < CPCV_MEDIAN_SHARPE_MAX;
