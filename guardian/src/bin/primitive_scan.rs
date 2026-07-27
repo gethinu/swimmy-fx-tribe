@@ -58,6 +58,16 @@ struct ManifestEntry {
     tp: f64,
     #[serde(default)]
     max_hold: i64, // 0 = no time stop
+    // --- YARDSTICK AXIS (2026-07-21): hold-to-barrier / "let-winners-run" EXIT mode. The one
+    // representational gap that directly increases per-trade thickness: the backtest exit is
+    // otherwise UNCONDITIONALLY `sl || tp || indicator-exit || timeout`, so every mean-reversion
+    // trade is force-closed at the mid regardless of how wide tp is set — capping the per-trade
+    // edge at band->mid and pinning fat trades to high TF. hold_mode="barrier" DROPS the
+    // indicator-exit term so a winner rides to the (wide, ATR-multiple) tp or the (multi-day)
+    // time-stop. Default "" behaves exactly like "signal" (indicator-exit ON) => a manifest
+    // WITHOUT this key is byte-identical to the pre-hold engine (proven by diff).
+    #[serde(default)]
+    hold_mode: String, // "" | "signal" (default: indicator-exit ON) | "barrier" (indicator-exit OFF)
     // --- YARDSTICK AXIS (2026-07-19): session / time-of-day ENTRY gate. Pure function of the
     // bar's UTC timestamp — orthogonal to every price-shape primitive. When all three fields
     // hold their defaults (sess_start=0, sess_end=24, dow_mask=0) the gate is a no-op, so a
@@ -70,12 +80,49 @@ struct ManifestEntry {
     dow_mask: u8, // day-of-week bitmask (bit d, 0=Sun..6=Sat); 0 => all days allowed
     #[serde(default)]
     session: String, // human label only (e.g. "LONDON"); never read by the backtest logic
+    // --- YARDSTICK AXIS (2026-07-21b): multi-TF CONFLUENCE entry gate (Route C). A long entry is
+    // allowed only when a higher-timeframe SMA trend agrees (htf_close > htf_sma), short only when it
+    // disagrees (htf_close < htf_sma). Orthogonal to the trade-TF price shape: it conditions on a
+    // SLOWER horizon's regime, attacking 2-window robustness (drop counter-regime whipsaws that differ
+    // between 2015-21 and 2021-25). Off unless htf_seconds>0 && htf_period>0 && htf_logic!="" => a
+    // manifest without these keys is byte-identical to the pre-confluence engine (proven by diff).
+    #[serde(default)]
+    htf_seconds: i64, // higher-TF bar size in seconds (e.g. 86400=D1 filter for an H4 trade); 0 => off
+    #[serde(default)]
+    htf_period: usize, // SMA period on the HTF; 0 => off
+    #[serde(default)]
+    htf_logic: String, // "" => off; "trend" => long iff htf uptrend, short iff htf downtrend
+    // --- YARDSTICK AXIS (2026-07-21b): volatility-REGIME entry gate (Route B). Enter only when the
+    // trailing ATR percentile (over vol_win prior bars) is in [vol_lo, vol_hi). Conditions entries on a
+    // regime-invariant vol band rather than a price level. Off unless vol_hi>0.0 => a manifest without
+    // these keys is byte-identical to the pre-gate engine (proven by diff).
+    #[serde(default)]
+    vol_lo: f64, // lower percentile bound (0..1)
+    #[serde(default)]
+    vol_hi: f64, // upper percentile bound (0..1); <=0.0 => gate OFF
+    #[serde(default)]
+    vol_win: usize, // trailing window of ATR values for the percentile; 0 => default 200
+    // --- YARDSTICK AXIS (2026-07-21c): SINGLE-LEG relative-value divergence signal (Route D). The
+    // natural resolution of Route A's 2-leg cost wall. prim="rvspread" trades ONE real pair (the --data
+    // leg, so it pays SINGLE-leg cost) but its ENTRY is driven by the z-score of the cross-pair spread
+    // (leg - rv_beta*aux), aux being a SECOND series loaded via --aux. Long the leg when the spread is
+    // cheap (z < -rv_dev), short when rich (z > rv_dev), exit when it reverts to the mean (z crosses 0).
+    // Off unless prim=="rvspread" AND --aux is given => any manifest that never names "rvspread" is
+    // byte-identical to the pre-RV engine (existing prims never touch aux). Attacks the joint box:
+    // capture the 2-window-robust spread mechanism at single-leg (not doubled) cost.
+    #[serde(default)]
+    rv_beta: f64, // hedge ratio in spread = leg - rv_beta*aux
+    #[serde(default)]
+    rv_period: usize, // z-score lookback (bars at the trade TF)
+    #[serde(default = "def_rv_dev")]
+    rv_dev: f64, // z entry threshold (|z| > rv_dev to enter)
 }
 fn def_regime() -> String { ":REVERSION".into() }
 fn def_dev() -> f64 { 2.0 }
 fn def_atr_period() -> usize { 14 }
 fn def_barrier_mode() -> String { "pip".into() }
 fn def_sess_end() -> i64 { 24 }
+fn def_rv_dev() -> f64 { 2.0 }
 
 #[derive(Serialize, Clone)]
 struct RunMetrics {
@@ -118,6 +165,10 @@ struct StratResult {
     // byte-for-byte identically to the pre-session engine.
     #[serde(skip_serializing_if = "String::is_empty")]
     session: String,
+    // Hold-to-barrier axis (also omitted when empty) — same byte-identity discipline: a scan
+    // with no hold_mode key serializes exactly as the pre-hold engine did.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    hold_mode: String,
 }
 
 // ---------- indicators (self-contained) ----------
@@ -257,6 +308,7 @@ fn min_bars(m: &ManifestEntry) -> usize {
         "bb" => m.period.max(20) + 2,
         "keltner" => m.period.max(2).max(m.atr_period) + 2,
         "donchian" => m.period + 2,
+        "rvspread" => m.rv_period + 2,
         _ => m.period + 2,
     };
     base.max(m.atr_period + 2)
@@ -283,10 +335,85 @@ fn in_session(m: &ManifestEntry, ts: i64) -> bool {
     }
 }
 
+// Multi-TF CONFLUENCE gate (Route C). Returns, per trade-TF candle, the SLOWER horizon's SMA-trend
+// state (+1 up / -1 down / 0 = no completed HTF bar yet), using only HTF bars that CLOSED strictly
+// before the current HTF bucket => no look-ahead. None when the gate is off (byte-identical path,
+// no resampling done). The SMA window [j-p, j) excludes the current bar, matching the engine convention.
+fn build_htf(m: &ManifestEntry, m1: &[Candle], tf: &[Candle]) -> Option<Vec<i8>> {
+    if m.htf_seconds <= 0 || m.htf_period == 0 || m.htf_logic.is_empty() { return None; }
+    let hs = m.htf_seconds;
+    let htf = if hs > 60 { resample_candles(m1, hs) } else { m1.to_vec() };
+    let p = m.htf_period;
+    let mut states: Vec<(i64, i8)> = Vec::with_capacity(htf.len().saturating_sub(p));
+    for j in p..htf.len() {
+        let sma: f64 = htf[j - p..j].iter().map(|x| x.close).sum::<f64>() / p as f64;
+        let st: i8 = if htf[j].close > sma { 1 } else if htf[j].close < sma { -1 } else { 0 };
+        states.push((htf[j].timestamp.div_euclid(hs), st));
+    }
+    let mut out = vec![0i8; tf.len()];
+    let (mut ptr, mut last) = (0usize, 0i8);
+    for i in 0..tf.len() {
+        let tb = tf[i].timestamp.div_euclid(hs);
+        while ptr < states.len() && states[ptr].0 < tb { last = states[ptr].1; ptr += 1; }
+        out[i] = last;
+    }
+    Some(out)
+}
+
+// Volatility-REGIME gate (Route B). Per candle: is the trailing ATR percentile (fraction of the prior
+// vol_win ATR values below the current ATR) inside [vol_lo, vol_hi)? None when off (byte-identical path).
+fn build_vol_gate(m: &ManifestEntry, c: &[Candle]) -> Option<Vec<bool>> {
+    if m.vol_hi <= 0.0 { return None; }
+    let win = if m.vol_win > 0 { m.vol_win } else { 200 };
+    let atrv: Vec<f64> = (0..c.len()).map(|i| atr(c, m.atr_period, i).unwrap_or(f64::NAN)).collect();
+    let mut vp = vec![false; c.len()];
+    for i in 0..c.len() {
+        if atrv[i].is_nan() { continue; }
+        let lo = if i > win { i - win } else { 0 };
+        let (mut cnt, mut below) = (0.0f64, 0.0f64);
+        for j in lo..i {
+            if !atrv[j].is_nan() { cnt += 1.0; if atrv[j] < atrv[i] { below += 1.0; } }
+        }
+        let pct = if cnt > 0.0 { below / cnt } else { 0.5 };
+        vp[i] = pct >= m.vol_lo && pct < m.vol_hi;
+    }
+    Some(vp)
+}
+
+// Route D: align an auxiliary leg's close to every trade-TF bar of the primary, by resampling the aux
+// to the same TF and matching on the timestamp bucket (exact — both grids share the tf_sec boundary).
+// Bars with no matching aux resample to NaN => the RV spread is NaN there => no trade.
+fn align_aux(aux: &[Candle], tf: &[Candle], tf_sec: i64) -> Vec<f64> {
+    let aux_tf = if tf_sec > 60 { resample_candles(aux, tf_sec) } else { aux.to_vec() };
+    let mut map: std::collections::HashMap<i64, f64> = std::collections::HashMap::with_capacity(aux_tf.len());
+    for a in &aux_tf { map.insert(a.timestamp.div_euclid(tf_sec), a.close); }
+    tf.iter().map(|b| *map.get(&b.timestamp.div_euclid(tf_sec)).unwrap_or(&f64::NAN)).collect()
+}
+
+// Route D: RV-divergence signal from the precomputed spread vector. Long the traded leg when the spread
+// is cheap (z < -dev), short when rich (z > dev), exit_long when the spread has reverted up to its mean
+// (z >= 0) and exit_short when reverted down (z <= 0). Window [i-p, i) excludes the current bar.
+fn rv_signal(spread: &[f64], p: usize, dev: f64, i: usize) -> (bool, bool, bool, bool) {
+    if p == 0 || i < p + 1 { return (false, false, false, false); }
+    let win = &spread[i - p..i];
+    let mean: f64 = win.iter().sum::<f64>() / p as f64;
+    let var: f64 = win.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / p as f64;
+    let sd = var.sqrt();
+    if !(sd > 0.0) || !spread[i].is_finite() { return (false, false, false, false); }
+    let z = (spread[i] - mean) / sd;
+    (z < -dev, z > dev, z >= 0.0, z <= 0.0)
+}
+
 enum Pos { None, Long { entry: f64, sl: f64, tp: f64, bar: i64 }, Short { entry: f64, sl: f64, tp: f64, bar: i64 } }
 
-// Faithful mirror of run_backtest_internal (offline, swap=0).
-fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
+// Faithful mirror of run_backtest_internal (offline, swap=0). `htf` is the precomputed multi-TF
+// confluence state aligned to `c`; `aux_c` is the Route-D aligned auxiliary leg close (both None =>
+// off, byte-identical for every existing primitive).
+// `daily_sink` (VERIFICATION-ONLY, ⑫): when Some, the sorted per-UTC-day realized PnL is copied out for
+// return-stream correlation / regime analysis. None on every normal path => zero behavior change, and the
+// --out serialization is untouched, so a scan run without --dump-daily is byte-identical to the pre-⑫ engine.
+fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64, htf: Option<&[i8]>, aux_c: Option<&[f64]>,
+            daily_sink: Option<&mut Vec<(i64, f64)>>) -> RunMetrics {
     let mb = min_bars(m);
     if c.len() <= mb {
         return RunMetrics { trades: 0, pf: 0.0, sharpe: 0.0, penalized_sharpe: 0.0 };
@@ -295,10 +422,22 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
     let (mut trades, mut gp, mut gl) = (0i32, 0.0f64, 0.0f64);
     let mut daily: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
     let mut bar_ct: i64 = 0;
+    // hold-to-barrier axis: in "barrier" mode the indicator-driven exit is disabled so a
+    // winner rides to sl/tp/timeout only. "" and "signal" preserve the pre-hold behavior.
+    let hold_barrier = m.hold_mode == "barrier";
+    // vol-regime gate (Route B): None => off, unchanged behavior.
+    let vol_gate = build_vol_gate(m, c);
+    // RV-divergence spread (Route D): only when prim=="rvspread" AND an aux leg was aligned.
+    let rv_spread: Option<Vec<f64>> = if m.prim == "rvspread" {
+        aux_c.map(|a| (0..c.len()).map(|i| c[i].close - m.rv_beta * a[i]).collect())
+    } else { None };
     for i in mb..c.len() {
         let price = c[i].close;
         let day = c[i].timestamp / 86400;
-        let (buy, sell, ex_long, ex_short) = signals(m, c, i);
+        let (buy, sell, ex_long, ex_short) = match rv_spread.as_deref() {
+            Some(sp) => rv_signal(sp, m.rv_period, m.rv_dev, i),
+            None => signals(m, c, i),
+        };
         // exits first (close-based). A trade that closes at exactly 0 PnL still counts,
         // mirroring run_backtest_internal (trades += 1 unconditionally on exit).
         let (mut did_close, mut closed) = (false, 0.0);
@@ -306,7 +445,7 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             Pos::Long { entry, sl, tp, bar } => {
                 let held = bar_ct - bar;
                 let timeout = m.max_hold > 0 && held >= m.max_hold;
-                if price <= sl || price >= tp || ex_long || timeout {
+                if price <= sl || price >= tp || (ex_long && !hold_barrier) || timeout {
                     closed = (price - slip) - entry;
                     did_close = true;
                     pos = Pos::None;
@@ -315,7 +454,7 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             Pos::Short { entry, sl, tp, bar } => {
                 let held = bar_ct - bar;
                 let timeout = m.max_hold > 0 && held >= m.max_hold;
-                if price >= sl || price <= tp || ex_short || timeout {
+                if price >= sl || price <= tp || (ex_short && !hold_barrier) || timeout {
                     closed = entry - (price + slip);
                     did_close = true;
                     pos = Pos::None;
@@ -328,14 +467,18 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
             if closed > 0.0 { gp += closed; } else { gl += closed.abs(); }
             *daily.entry(day).or_insert(0.0) += closed;
         }
-        // entries when flat (gated by the session mask; no-op mask => unchanged)
+        // entries when flat. Gated by session mask (⑨) AND vol-regime band (Route B, direction-agnostic)
+        // AND multi-TF confluence (Route C, direction-specific). All default to no-op => unchanged.
         if matches!(pos, Pos::None) {
-            let allowed = in_session(m, c[i].timestamp);
+            let base_allowed = in_session(m, c[i].timestamp)
+                && vol_gate.as_ref().map_or(true, |v| v[i]);
+            let long_ok = htf.map_or(true, |h| h[i] == 1);
+            let short_ok = htf.map_or(true, |h| h[i] == -1);
             let (sl_d, tp_d) = barrier_dist(m, c, i);
-            if buy && allowed {
+            if buy && base_allowed && long_ok {
                 let e = price + slip;
                 pos = Pos::Long { entry: e, sl: e - sl_d, tp: e + tp_d, bar: bar_ct };
-            } else if sell && allowed {
+            } else if sell && base_allowed && short_ok {
                 let e = price - slip;
                 pos = Pos::Short { entry: e, sl: e + sl_d, tp: e - tp_d, bar: bar_ct };
             }
@@ -353,6 +496,11 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64) -> RunMetrics {
         eq += dp;
     }
     let sharpe = sharpe_ratio(&rets);
+    if let Some(sink) = daily_sink {
+        let mut v: Vec<(i64, f64)> = daily.iter().map(|(&d, &p)| (d, p)).collect();
+        v.sort_by_key(|(d, _)| *d);
+        *sink = v;
+    }
     RunMetrics {
         trades,
         pf: if gl != 0.0 { gp / gl } else { 0.0 },
@@ -386,23 +534,35 @@ fn median(v: &mut [f64]) -> f64 {
     if v.len() % 2 == 0 { (v[mid - 1] + v[mid]) / 2.0 } else { v[mid] }
 }
 
-fn run_on(m: &ManifestEntry, m1: &[Candle], slip: f64) -> RunMetrics {
+fn run_on(m: &ManifestEntry, m1: &[Candle], slip: f64, aux: Option<&[Candle]>,
+          daily_sink: Option<&mut Vec<(i64, f64)>>) -> RunMetrics {
     if m.tf_seconds > 60 {
         let tf = resample_candles(m1, m.tf_seconds);
-        backtest(m, &tf, slip)
+        let htf = build_htf(m, m1, &tf); // None when off => no resample, byte-identical
+        let aux_c = aux.map(|a| align_aux(a, &tf, m.tf_seconds));
+        backtest(m, &tf, slip, htf.as_deref(), aux_c.as_deref(), daily_sink)
     } else {
-        backtest(m, m1, slip)
+        let htf = build_htf(m, m1, m1);
+        let aux_c = aux.map(|a| align_aux(a, m1, m.tf_seconds));
+        backtest(m, m1, slip, htf.as_deref(), aux_c.as_deref(), daily_sink)
     }
 }
 
-fn run_cpcv(m: &ManifestEntry, full: &[Candle], slip: f64) -> CpcvSummary {
+fn run_cpcv(m: &ManifestEntry, full: &[Candle], slip: f64, aux: Option<&[Candle]>) -> CpcvSummary {
     let n = full.len();
     let (mut folds, mut sharpes) = (Vec::new(), Vec::new());
     let (mut passing, mut valid) = (0usize, 0usize);
     for b in 0..CPCV_BLOCKS {
         let start = b * n / CPCV_BLOCKS;
         let end = if b == CPCV_BLOCKS - 1 { n } else { (b + 1) * n / CPCV_BLOCKS };
-        let r = run_on(m, &full[start..end], slip);
+        let block = &full[start..end];
+        // slice aux to the same timestamp range as this block (index ranges differ between series)
+        let aux_block = aux.map(|a| {
+            let lo = block.first().map(|c| c.timestamp).unwrap_or(0);
+            let hi = block.last().map(|c| c.timestamp).unwrap_or(0) + 1;
+            slice_range(a, lo, hi)
+        });
+        let r = run_on(m, block, slip, aux_block, None);
         valid += 1;
         sharpes.push(r.sharpe);
         let pass = r.trades >= CPCV_FOLD_MIN_TRADES && r.pf >= PF_GATE && r.penalized_sharpe >= PEN_SHARPE_GATE;
@@ -447,14 +607,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cpcv_slice = slice_range(&all, cpcv_start, cpcv_end);
     eprintln!("[scan] OOS[{oos_start}..{oos_end}]={} CPCV[{cpcv_start}..{cpcv_end}]={}", oos_slice.len(), cpcv_slice.len());
 
+    // Route D: optional auxiliary leg for rvspread. Absent => aux None => every existing prim unchanged.
+    let aux_all: Option<Vec<Candle>> = match arg(&args, "--aux") {
+        Some(p) => { eprintln!("[scan] loading aux {}", p); Some(load_candles_from_csv(&p)?) }
+        None => None,
+    };
+    let aux_ref = aux_all.as_deref();
+    let oos_aux = aux_ref.map(|a| slice_range(a, oos_start, oos_end));
+    let cpcv_aux = aux_ref.map(|a| slice_range(a, cpcv_start, cpcv_end));
+
     let manifest_path = arg(&args, "--manifest").expect("--manifest <json>");
     let manifest: Vec<ManifestEntry> = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
     eprintln!("[scan] {} configs", manifest.len());
 
+    // VERIFICATION-ONLY (⑫): --dump-daily <path> appends per-config OOS daily-PnL JSONL for return-stream
+    // correlation / regime analysis. Absent => daily_sink is None everywhere => byte-identical scan output.
+    let dump_daily = arg(&args, "--dump-daily");
+    if let Some(p) = &dump_daily { let _ = std::fs::write(p, ""); eprintln!("[scan] dumping daily PnL -> {p}"); }
+
     let mut results = Vec::new();
     for (i, m) in manifest.iter().enumerate() {
-        let oos = run_on(m, oos_slice, slip);
-        let cpcv = run_cpcv(m, cpcv_slice, slip);
+        let mut daily_vec: Vec<(i64, f64)> = Vec::new();
+        let oos = run_on(m, oos_slice, slip, oos_aux,
+                         if dump_daily.is_some() { Some(&mut daily_vec) } else { None });
+        if let Some(p) = &dump_daily {
+            use std::io::Write;
+            let line = serde_json::json!({"name": m.name, "daily": daily_vec}).to_string();
+            let mut f = std::fs::OpenOptions::new().append(true).create(true).open(p)?;
+            writeln!(f, "{line}")?;
+        }
+        let cpcv = run_cpcv(m, cpcv_slice, slip, cpcv_aux);
         let oos_qualified = oos.trades >= OOS_MIN_TRADES && oos.pf >= PF_GATE && oos.penalized_sharpe >= PEN_SHARPE_GATE;
         let cpcv_ok = cpcv.pass_rate >= CPCV_PASS_RATE_GATE && cpcv.median_sharpe < CPCV_MEDIAN_SHARPE_MAX;
         let regime_norm = m.regime.trim_start_matches(':').to_uppercase();
@@ -471,6 +653,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             barrier_mode: m.barrier_mode.clone(), sl: m.sl, tp: m.tp,
             oos, cpcv, oos_qualified, cpcv_ok, diversity_ok,
             session: m.session.clone(),
+            hold_mode: m.hold_mode.clone(),
         });
     }
     let qualified = results.iter().filter(|r| r.oos_qualified).count();

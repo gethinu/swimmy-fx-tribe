@@ -1,6 +1,6 @@
 # tribe 多様性探求 — 総括 (2d/2a investigation summary, canonical) — 2026-07-19
 
-**これは何か.** 2026-07-18〜19 に走った tribe 多様性エンジン探求 **9 段**の集約・整合レコード。個別 doc は各段の
+**これは何か.** 2026-07-18〜21 に走った tribe 多様性エンジン探求 **12 段**の集約・整合レコード（⑫ native new-instrument を 2026-07-21 追加）。個別 doc は各段の
 一次記録（そのまま保存）、本 doc が **state-of-truth の入口**。読む順に迷ったら **ここ → 該当段の一次 doc**。
 設計正本は [`regen_engine_redesign_20260703.md`](regen_engine_redesign_20260703.md)、umbrella は
 [`tribe_diversity_engine_rebuild_20260713.md`](tribe_diversity_engine_rebuild_20260713.md)、kill 基準は
@@ -24,6 +24,33 @@ honest_gate / §4 floor 不変・flag flip 未実施**。検証は redirect 済�
    出現し、初めて MR-EUR/USD 以外の multi-family mechanism が測定された）が、realistic 2-pip では **全銘柄 0 robust** に落ち、
    **壁は mechanism → COST に移る**。ゆえに有効レバーは『任意の新プリミティブ』ではなく **低頻度・1 トレード厚利**
    （fewer/larger trades — H4/H6 の MR-EUR/USD が生き残る理由）に絞られる。
+   — その**厚利レバーの直接実測**が ⑩（hold-to-barrier 軸, `tribe_2d_hold_barrier_yardstick_20260721.md`）: 指標 exit を
+   外して winner を wide barrier/multi-day time-stop まで走らせる＝1 トレードを厚くする。結果は **⑨ の COST 壁を突破**
+   （厚いトレードは 2-pip を PF 1.30→1.23 程度でほぼ生き残る — ⑨ の薄い M15 は 1.0 割れだった）**が、realistic も frictionless も
+   0 load-bearing・新家系 0**。壁が **COST → DENSITY（≥200-trade floor で 62% が脱落）＋ 2-window CPCV robustness** に再移動
+   （厚利 ⟹ 低頻度 が density floor と直交衝突、frequent-and-fat な少数は両 window で不安定）。**⑨=fewer 軸・⑩=fatter 軸は
+   どちらも実装・実測され、各々別の honest-floor で落ちた**。結論の更新: 壁は単一の軸ではなく **joint box
+   {trades≥200, cost-survivable, 2-window-robust}**（現データの内点は MR-EUR/USD H4/H6 の 1 点のみ）。次軸が攻めるべき自由次元は
+   cost でも density でもなく **2-window robustness そのもの**（両レジームで安定な直交エッジ = cross-pair relative-value か新データ軸）。
+   — その **cross-pair 本命を含む 4 路線並行の実測**が ⑪（`tribe_2d_relative_value_multiaxis_20260721.md`）:
+   A=cross-pair 2-leg スプレッド instrument（純データ・binary 無改変）／B=vol-regime gate／C=multi-TF confluence／
+   D=single-leg RV-divergence gate（A の cost 壁を単脚実行で解く狙い）。**結論（最も鋭い box 特性づけ）: 内点は依然 1 点、
+   だが cross-pair は 2d 全線で初めて「2-window 自由次元」を *構造*（entry-gate でなく）で摩擦ゼロ突破した** —
+   `SPR_EJ_UJ bb-MR-H4`（EURJPY−0.973·USDJPY, corr0.94）が SEL 207/1.359/cpcv0.60・HOLD 320/1.127/cpcv0.70 で両 window robust。
+   **しかし realistic 2-leg cost（スプレッドは両脚 spread を払う ≈2×）で 0**（PF 1.359→1.250 sel / 1.127→1.043 hol → gate 落ち、
+   壁は COST に再移動）。D で単脚実行に落とすと **cost は緩い（PF −0.06 のみ）が de-hedge が 2-window robustness を破壊**
+   （EURJPY-RV は holdout を *摩擦ゼロでも* 落ちる 1.064<1.10）。⇒ **2-window robustness（hedge 由来）と低 cost（単脚由来）は
+   同一ノブの反対向き**（市場中立が両レジーム安定を生み、その市場中立が cost を倍にする）＝現4銘柄データではどの隅も joint box に入らない。
+   B/C（entry-gate 系）は ⑨ 予告どおり **0 gated / 0 load-bearing**（trade 数を削るだけ）。**cross-pair 派生ルートは打ち止め**、
+   残る自由次元の攻め手は「派生でなく *native* に 2-window robust な新 instrument（別アセットクラス）」に絞られた（⑦ data-wall と整合）。
+   — その **native 新 instrument の直接実測**が ⑫（`tribe_2d_native_instrument_20260721.md`）: bundle の実データ（zero-charge・read-only）で
+   **index 5 銘柄（US500/DE40/F40/JP225/UK100・真 M1・2017-24）＋ metals(XAUUSD・M15-base・2014-24)** を Rule-A で取り込み、
+   instrument 別の正直コスト（各 M5 `spread_med`／`scan_adapter` 由来）で 2-window gate にかけた。**結論: 2d 全線で初めて joint box の内点が
+   MR-EUR/USD 以外に増えた（1→2）。** realistic コストで `UK100 keltner-MR-H2`（FTSE, SEL 278/1.172/cpcv0.70・HOLD 300/1.174/cpcv0.60）が両 window robust、
+   真 M1・保守的 full-spread cost 生存（RT≈2.7bps・1.5×で死）。**ただし「別 instrument・別アセットクラス（B-4>0.20・MR-EURUSD と return corr 日次+0.019/月次+0.061=無相関の diversifier）」だが
+   *同一 mechanism 家系（keltner 平均回帰）・同一 sub-deploy 品質（pf~1.17, med-sharpe~0.5）*** — 新家系でも deploy 級でもない。
+   唯一の新 *mechanism*（`JP225 sma-TREND-H2` frictionless 1.213/1.241）は realistic で死（⑨ COST 壁再現）。**metals=0（全コスト）・rates=intraday データ皆無で未検証（gap）。**
+   ⇒ 単一栽培は **deployment gate では依然不破**だが、diverse-robust は初めて **無相関の複数 instrument（EURUSD FX + UK100 index, ともに MR・sub-deploy）** に。native がラスト構造レバー。
 2. **bundle 移植ルート・seed 数増しルートは打ち止め（closed）。** 独立 3 run（seed escape `fed9bf7b` /
    bundle import `1db94384` / data-wall `c20098d8`）＋網羅 census（`6ee78541`）が同一結論。再燃させない。
 3. **多様性機構は全て可逆・flag-gated・既定 OFF で棚載せ。** B-4 距離 / B-5 overflow sort / B-3 niche-quota+symbol-mutation /
@@ -31,10 +58,13 @@ honest_gate / §4 floor 不変・flag flip 未実施**。検証は redirect 済�
    （Lisp: master `*enable-primitive-diversity*` 既定 nil で全 path 分岐; Rust scorer: no-session 既定で SHA256 一致）、
    honest floor 未改変、flag flip 未実施。
    コードとしては正しく・安全に ship 可能だが、「単一栽培希釈」目的での本番 ON は**測定上正当化されない**。
-4. **内側で唯一の forward-robust な多様エッジ = Keltner/BB 平均回帰・EUR/USD 系メジャー・H4/H6・1 家系のみ。**
+4. **内側（現4 FX ペア）で唯一の forward-robust な多様エッジ = Keltner/BB 平均回帰・EUR/USD 系メジャー・H4/H6・1 家系のみ。**
    ただし **deployment gate 未満**（holdout PF ~1.13–1.20, median-sharpe ~0.5–0.8）＝多様化材料であって live edge ではない。
+   **⑫ で初めて *外側*（native 別アセットクラス）に 2 点目が出た**: `UK100 keltner-MR-H2`（realistic robust・MR-EURUSD と無相関・別アセットクラス）。
+   だが **同一 MR 家系・同一 sub-deploy 品質**ゆえ「新家系」でも「deploy 級」でもない ⇒ joint box 内点 **1→2（ともに MR）**、新 *mechanism* 家系は依然 0（deploy gate では不破）。
 5. **数値の確定値（§1 の訂正後）:** USDJPY §4-floor 均衡 **絶対数 = 62（全 run 不変）**／honest な GEN6 希釈 floor **≈ 84–85%**／
-   honest な diverse-robust plateau **= 2–3**。
+   honest な diverse-robust plateau **= 2–3**（内側）。**⑫ で joint box の realistic 内点は 1→2（MR-EUR/USD H4/H6 ＋ native UK100 keltner-MR-H2、return corr ≈0）**、
+   ただし両者とも MR・sub-deploy。**metals(gold)=0・rates=データ皆無。**
 
 > **§4 verdict との関係（不変）:** kill memo §4-2（多様性）は依然 **未充足**。honest PASS は出る（60, `tribe_gonogo` 参照）が、
 > §4 決定的テストの「diverse ≥1 robust」は満たされない（[[kill-criteria-s4-verdict]]）。本探求はこの結論を
@@ -73,7 +103,7 @@ forward-robust な多様 seed が 1 つも無かった（0/9）ため — 単一
 
 ---
 
-## 2. 9 段の探求 — time-ordered
+## 2. 12 段の探求 — time-ordered
 
 各段: 何を実装/測定したか → **機序の結論（有効）** → 数値注記。詳細は各一次 doc。
 
@@ -155,21 +185,80 @@ realistic 2-pip **と** frictionless 両方採点。
 こちらは壁が **COST**）が、honest bar が報いるのは **低頻度・厚利**（H4/H6 の MR-EUR/USD が生き残る所以）。次軸は「更なる
 intraday」ではなく **low-freq/fat-per-trade**（`dow_mask` 実装済・event/regime 条件・multi-day swing）に絞る。**Deploy NO, flag OFF。**
 
+### ⑩ 物差し拡張② — hold-to-barrier / fat-per-trade 軸 — `tribe_2d_hold_barrier_yardstick_20260721.md`
+⑨ の「低頻度・厚利を狙え」を受けた**最も直接的な厚利レバー**の実測。scorer の exit は従来
+`sl || tp || indicator-exit || timeout` で指標 exit が**無条件 OR**＝MR は必ず mid で強制決済（TP をいくら広げても
+band→mid で頭打ち＝厚利が高 TF でしか取れない根本原因）。唯一の representational gap = **指標 exit を外す** flag-gated
+`hold_mode:"barrier"` を追加（no-key は SHA256 byte-identical、⑨ と同じハッシュ `0cfa3445…`; genome gene は
+未populate＝edge 無しに carriage を作らない）。entry の稀少/確信は既存 `dev/period` で表現済ゆえ厚利のみを増分。
+768 config（16 core × 3 TF{H1/H4/D1} × 4 exit）を 2-window forward gate で realistic 2-pip **と** frictionless 採点。
+**結論（有効・新種の failure mode）: realistic 0 新規・frictionless も 0 load-bearing/0 新家系 — だが COST 壁は突破。**
+厚いトレードは 2-pip をほぼ生き残る（PF 1.30→1.23、⑨ の薄い M15 は 1.0 割れ）＝**⑨ の cost 壁を解決した唯一のレバー**。
+しかし壁が **DENSITY（barrier config の 62% が <200-trade で脱落）＋ 2-window CPCV robustness** に再移動: 厚利 ⟹ 低頻度が
+≥200-trade floor と直交衝突し、frequent-and-fat な 26 個（`donchian-USDJPY-BREAKOUT-H4`・`EURJPY`・`GBPUSD` 等の**多様**含む）は
+CPCV pass-rate 0.30–0.50 で両 window robust に届かない。realistic の最近接は `sma-EURUSD-TREND-H1-barrier`（多様・厚利・
+2-pip で **selection-robust** pf 1.225/cpcv 0.60）だが **holdout 落ち**（2015-21 pf 1.086）＝single-window artifact。
+唯一の 2-window robust は既知 `keltner-EURUSD-MR-H4`（signal exit・hold-to-barrier 不要）。**Deploy NO, flag OFF。**
+含意: **⑨=fewer 軸・⑩=fatter 軸はどちらも別 honest-floor で落ちた**。壁は単一軸ではなく joint box
+{trades≥200, cost-survivable, 2-window-robust}（内点＝MR-EUR/USD H4/H6 の 1 点）。次軸は cost/density でなく
+**2-window robustness（両レジーム安定）を攻める** — cross-pair relative-value か新データ軸。
+
+### ⑪ 物差し拡張③ — cross-pair relative-value 4 路線並行 — `tribe_2d_relative_value_multiaxis_20260721.md`
+⑩ の「2-window robustness を攻めよ・cross-pair 本命」を受け、**1 軸ずつでなく 4 路線を並行**実測（各路線が joint box の
+どこを攻めるか明示）。A=cross-pair **2-leg スプレッド instrument**（純データ・binary 無改変）／B=**vol-regime gate**／
+C=**multi-TF confluence**／D=**single-leg RV-divergence gate**（A の cost 壁を単脚実行で解く狙い）。全路線 realistic **と**
+frictionless 両採点・2-window gate。B/C/D は 1 つの flag-gated binary 変更、OFF は SHA256 byte-identical（`73394ee4…`、
+B/C 変更後も D 変更後も不変）、honest floor（200/1.10/0.30/0.60/2.0）read-only。
+**結論（最も鋭い box 特性づけ・内点は依然 1）:**
+- **A（cross-pair spread）＝ 2d 全線で初めて「2-window 自由次元」を *構造*（entry-gate でなく）で摩擦ゼロ突破。**
+  `SPR_EJ_UJ bb-MR-H4`（EURJPY−0.973·USDJPY, corr0.94）が SEL 207/1.359/cpcv0.60・HOLD 320/1.127/cpcv0.70 で両 window robust。
+  **だが realistic 2-leg cost（スプレッドは両脚 spread を払う ≈2×、honest に合算・単脚2pip に薄めない）で 0**（PF 1.359→1.250 sel /
+  1.127→1.043 hol → CPCV+holdout 落ち）。壁は 2-window でも density（207/320≥200）でもなく **COST に再移動**（⑨ と同型）。
+- **D（single-leg RV）＝ 最深の発見。** 単脚実行で **cost は緩い**（EURJPY-RV PF 1.340→1.277、−0.06 のみ＝cost 修正は効く）
+  **が de-hedge が 2-window robustness を破壊**（holdout を *摩擦ゼロでも* 落ちる 1.064<1.10）。⇒ **2-window robustness（hedge 由来）と
+  低 cost（単脚由来）は同一ノブの反対向き**（市場中立＝両レジーム安定を生む当の要因が cost を倍にする）。現4銘柄データでは
+  どの隅も joint box に入らない。
+- **B/C（entry-gate 系）＝ ⑨ 予告どおり 0**（fat H4/D1 適用でも 0 gated / 0 load-bearing、realistic も frictionless も。
+  既知 keltner-EURUSD-MR-H4 base のみ）。B の honest 注記: vol-*正規化* entry/target は既に swept（bb std-band・keltner
+  ATR-band・atr barrier）で、新規増分の regime *gate* が 0。
+- **正直さ incident（全開示）:** Route B の grid 生成で dev を name に含めず衝突→scorer dict が内点(242)を 197 に上書き。
+  discrepant count を追って発見・修正・Route B 再走してから採点（A/C は無影響）。捏造でなく検証で捕捉。
+**含意:** cross-pair 派生ルート（2-leg も 1-leg も）打ち止め。残る自由次元の攻め手は「*派生でなく native* に 2-window robust な
+新 instrument（別アセットクラス＝異なる regime dynamics）」に絞られた（⑦ data-wall と整合: 非robust 機序への data 追加は無駄・
+"edge ある native primitive" が要）。**Deploy NO, flag OFF。**
+
+### ⑫ 物差し拡張④ — native new-instrument（別アセットクラス）— `tribe_2d_native_instrument_20260721.md`
+⑪ の「残る唯一のレバー = native に 2-window robust な新 instrument」を実データで直接実測。bundle（read-only・zero-charge）の実データを
+Rule-A で取り込み（**canonicaliser が median bar≠60s を拒否＝phantom-PASS 防止**、scorer 自身が M1→TF resample）、instrument 別の
+正直コスト（各 M5 `spread_med`＝full-spread 両面 ≈ bundle 慣行／`scan_adapter` の XAU 25p）で 2-window gate。取得: **index 5（US500/DE40/F40/JP225/UK100・
+真 M1・2017-24・各 1.8–2.6M bar・0 dup・OHLC 100%整合）＋ metals(XAUUSD・M15-base・2014-24)**。rates=**intraday データ皆無**（D1 ETF のみ＝Rule-A 違反になるため未検証・gap）。
+M15-base の正当性は EURUSD M1↔M15 で **bit-identical** 検証済（granularity は H4+ で verdict 不変）。ハーネスは EURUSD M1 で **既知の唯一内点 keltner-EURUSD-MR-H4 を再現**（自己検証）。
+**結論（有効・2d 初の内点増）: native route が 2d 全線で初めて joint box 内点を MR-EUR/USD 以外に増やした（1→2）。** realistic で `UK100 keltner-REVERSION p50 d3.0 H2`
+（SEL 278/1.172/cpcv0.70/med0.56・HOLD 300/1.174/cpcv0.60/med0.44）が両 window robust。検証: **別 instrument・別アセットクラス**（B-4 symbol 距離>0.20、MR-EURUSD と
+return corr **日次+0.019/月次+0.061=無相関の真の diversifier**、regime 6/8 陽年・MR 整合）**だが同一 mechanism 家系（keltner-MR）・同一 sub-deploy 品質**（pf~1.17, med-sharpe~0.5）
+＝新 instrument for 既知 mechanism、新家系でも deploy 級でもない。コスト感度: frictionless→full-spread 生存・1.5× で死（保守側で採点、subsidy でない）。
+唯一の新 *mechanism*=`JP225 sma-TREND-H2`（frictionless 1.213/1.241）は realistic で 0（⑨ COST 壁）。**metals(gold)=0（全コスト）。**
+バイナリは native scan では**無改変**（純データ）、検証用 `--dump-daily` のみ flag-gated 追加（OFF=`--out` SHA256 一致 `3bea89ca…` 実証）。**Deploy NO, flag OFF。**
+**§4-2 との関係:** diverse-robust は既に ≥1（MR-EURUSD）だったが、**初めて無相関の複数 instrument（2, ともに MR・sub-deploy）**に。ただし deploy 級の diverse edge という決定的バーは依然未達。
+
 ---
 
 ## 3. 次の一手（オーナー判断）— 物差し拡張のレバー
 
 | 案 | 実体 | headroom |
 |---|---|---|
-| **新プリミティブ/特徴（本命）** | session/time-of-day〔⑨実測済〕・microstructure/order-flow・multi-TF/cross-pair 等、今日 representable でない機序 | **中〜高（要 fat-per-trade）** — ⑨ が実証: 直交軸は mechanism 多様性を確かに生む（frictionless 14 家系）が realistic-cost で 0。効くのは**低頻度・厚利**の直交特徴（`dow_mask`・event/regime 条件・multi-day swing）。単なる intraday 追加は同じ 2-pip 壁に当たる |
+| ~~native に 2-window robust な新 instrument（残る唯一の本命）~~〔⑫ 実測・**部分的成功**〕 | index/metals の native M1 を Rule-A 取込 | **低〜中（実測）** — index が 2d 初の box 内点増（1→2, `UK100 keltner-MR-H2`, MR-EURUSD と無相関）を出したが **同一 MR 家系・sub-deploy**。新 *mechanism*（JP225 TREND）は realistic で死、**metals=0**。deploy 級 or 新家系は未出 |
+| **native rates M1（未検証 gap）** | `ust10/bund/ukgilt` の free Dukascopy fetch（`drafts/fetch_dukascopy_bars_20260711.py`・**未実行・scale 未検証・要 probe-first**） | **不明** — bundle に intraday rates 皆無。rates は FX/index と regime dynamics が最も異なる＝唯一残る未測アセットクラス。ただし unverified fetch は phantom-data 危険（極小 probe＋schema/scale 検証を先行） |
+| ~~cross-pair relative-value（2-leg / 1-leg）~~〔⑪ 実測・打ち止め〕 | A=2-leg spread instrument / D=single-leg RV gate | **低（実測 0）** — A は 2-window を構造で摩擦ゼロ突破するが 2-leg cost で 0、D は単脚 cost 緩いが de-hedge で 2-window 喪失（摩擦ゼロでも holdout 落ち）。robustness↔cost が結合 |
+| ~~新プリミティブ/entry-gate（intraday/厚利/vol/multi-TF）~~〔⑨⑩⑪ 実測・打ち止め〕 | session〔⑨〕・hold-barrier〔⑩〕・vol-regime/multi-TF〔⑪ B/C〕 | **低（実測 0）** — entry-gate 系は trade 数を削るだけ（cost 壁 or density）、0 load-bearing。vol-正規化は既 swept |
 | 新データ（単独では弱い） | GBPJPY/USDCAD/EURCHF/XAU の M1 を `data/historical/` に追加 | 低 — data-wall が実証: 非robust 機序は data を足しても robust にならない。edge のある primitive と**組んで初めて**効く |
 | gate/instrument 変更 | rare-event D1 向け small-N sealed holdout（≥200-trade CPCV の代替） | 中 — ただし s132/n0006 は per-regime PF が 1.0 を跨ぐので、N 適正な instrument でも落ちる（cheap win ではない） |
 
 **やらないこと（打ち止め）:** bundle-import の再試行、seed 数/構成の再チューニング、探索深度の追加、単一栽培への機構追加。
-いずれも 9 段が「不足は機構でも深度でも seed でもない」と実測済み。
+いずれも 10 段が「不足は機構でも深度でも seed でもない」と実測済み。
 
-**今すぐ ship 安全なもの（コード）:** B-4/B-5/B-3/seed-escape/**session-軸 scorer+休眠 genome hook** は全て可逆・OFF byte-identical・honest floor 中立・offline 実証済。
-merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」目的で正当化してはならない**。flag flip はオーナー判断（未実施）。
+**今すぐ ship 安全なもの（コード）:** B-4/B-5/B-3/seed-escape/**session-軸 scorer+休眠 genome hook**/**hold-to-barrier 軸 scorer（`hold_mode`）**/**⑪ の vol-regime（`vol_*`）・multi-TF confluence（`htf_*`）・single-leg RV（`rvspread`/`rv_*`/`--aux`）scorer 軸**/**⑫ の検証専用 `--dump-daily`（OFF=`--out` SHA256 一致 `3bea89ca…`）＋ native harness/canonicaliser（純データ・binary 無改変）** は全て可逆・OFF byte-identical・honest floor 中立・offline 実証済。
+merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」目的で正当化してはならない**（native UK100-MR も sub-deploy）。flag flip はオーナー判断（未実施）。
 
 ---
 
@@ -185,7 +274,10 @@ merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」
 | ⑥ | bundle-founder 移植 | `tribe_2d_bundle_founder_import_20260719.md` | `1db94384` |
 | ⑦ | data-wall s132/n0006 | `tribe_2d_data_wall_s132_n0006_20260719.md` | `c20098d8` |
 | ⑧ | inside-out census | `tribe_2d_inside_out_diversity_20260719.md` | `6ee78541` |
-| ⑨ | 物差し拡張① session 軸（最終） | `tribe_2d_session_axis_yardstick_20260719.md` | `c5cd0f3d` |
+| ⑨ | 物差し拡張① session 軸 | `tribe_2d_session_axis_yardstick_20260719.md` | `c5cd0f3d` |
+| ⑩ | 物差し拡張② hold-to-barrier 軸 | `tribe_2d_hold_barrier_yardstick_20260721.md` | `b8146e29` |
+| ⑪ | 物差し拡張③ cross-pair relative-value 4 路線 | `tribe_2d_relative_value_multiaxis_20260721.md` | `e2e10601` |
+| ⑫ | 物差し拡張④ native new-instrument（別アセットクラス・box 1→2） | `tribe_2d_native_instrument_20260721.md` | (this run) |
 
 前段: [`tribe_2c_wsl_verification_20260715.md`](tribe_2c_wsl_verification_20260715.md) /
 [`tribe_2b_correction_honest_primitives_20260714.md`](tribe_2b_correction_honest_primitives_20260714.md) /
