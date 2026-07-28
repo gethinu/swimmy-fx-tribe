@@ -1,6 +1,6 @@
 # tribe 多様性探求 — 総括 (2d/2a investigation summary, canonical) — 2026-07-19
 
-**これは何か.** 2026-07-18〜21 に走った tribe 多様性エンジン探求 **13 段**の集約・整合レコード（⑫ native new-instrument を 2026-07-21、⑬ portfolio+calendar を 2026-07-28 追加）。個別 doc は各段の
+**これは何か.** 2026-07-18〜28 に走った tribe 多様性エンジン探求 **14 段**の集約・整合レコード（⑫ native new-instrument を 2026-07-21、⑬ portfolio+calendar と ⑭ OANDA 新規上場 metals 先行検証を 2026-07-28 追加）。個別 doc は各段の
 一次記録（そのまま保存）、本 doc が **state-of-truth の入口**。読む順に迷ったら **ここ → 該当段の一次 doc**。
 設計正本は [`regen_engine_redesign_20260703.md`](regen_engine_redesign_20260703.md)、umbrella は
 [`tribe_diversity_engine_rebuild_20260713.md`](tribe_diversity_engine_rebuild_20260713.md)、kill 基準は
@@ -103,7 +103,7 @@ forward-robust な多様 seed が 1 つも無かった（0/9）ため — 単一
 
 ---
 
-## 2. 13 段の探求 — time-ordered
+## 2. 14 段の探求 — time-ordered
 
 各段: 何を実装/測定したか → **機序の結論（有効）** → 数値注記。詳細は各一次 doc。
 
@@ -262,6 +262,30 @@ realistic の在庫は 3 グループ（EURUSD-GBPUSD は +0.22 相関）⇒ 算
 box 内点は依然 **2 点（MR-EUR/USD H4/H6 ＋ native UK100-MR H2、ともに MR・sub-deploy）**。バイナリは ⑬a **無改変**・⑬b は暦 4 フィールド追加で **OFF は byte-identical**
 （新キー無し manifest の `--out` SHA256 `feac84e7…` before==after）、floor 定数 diff 0 行。**Deploy NO, flag OFF。**
 
+### ⑭ OANDA 新規上場 metals（XAUXAG / XPTUSD / XPDUSD）先行検証 — `../../docs/oanda_metals_sleeve_probe_20260728.md`
+⑬a が数値化した必要条件「**実コストで 2 窓 robust かつ既存 3 グループと無相関なスリーブがあと 1〜2 本**」に対し、OANDA が 2026-08-03 に東京 MT5 へ追加する
+3 銘柄を**上場前に**歴史データで検証（$0・Dukascopy 公開フィード・raw-first）。⑫ の native harness を**無改変**で再利用、バイナリ変更 0。
+**結論: 3 銘柄すべて NO。理由は銘柄ごとに異なる。**
+**(1) データ健全性ゲートで 2 銘柄が脱落。** Dukascopy の正しいコードは `XPTCMDUSD`/`XPDCMDUSD`（`XPTUSD` 等は 404）。だが**上場開始が XPT 2021-11 / XPD 2021-07**
+＝ **holdout 窓 2015-2021 が完全に空**（実測: 両銘柄とも holdout スキャンで **186 config 全部が trades=0**）⇒ **2 窓 gate は構造的に実行不能**。
+無料の代替イントラデイ源なし（bundle のプラチナは D1 ETF `pplt` のみ＝Rule-A 違反、パラジウムは D1 すら無い）。**ここで即停止**。
+XPD は加えて**実際に薄い**（padding 44.34%、連続分の 60s 率 **88.43%**、>5分ギャップ 7,315 本）。
+**さらに実測コストが致命的: XPT RT 54.7 bp / XPD RT 51.6 bp ＝ FX(1.8bp) の約 30 倍** ⇒ データが揃う 2027-28 以降に再試行しても通らない公算大。**保留ではなく実質クローズ**。
+**(2) XAUXAG は健全に再構成でき、正直に採点して落ちた。** 単一ソース単一 UTC 時計の M1 を inner-join（**同時刻性 97.81%**）、保守側 widest-bound OHLC（⑪ 規約）、
+スケールは GSR 実績と一致（年央値 2015:74.0…2024:85.3、最大 128.9＝2020-03 COVID スパイク）。**実コスト（2 レグ含意 RT 33.4 bp）で 0、摩擦ゼロでも 0。**
+最良 MR `bb-XAUXAG-REVERSION-p20-H1` は**摩擦ゼロで 2 窓とも CPCV pass-rate 0.60 を満たす**のに **PF 1.067/1.061 < floor 1.10** ⇒ **GSR-MR は実在するが小さい**。
+実コストで **PF 1.067 → 0.318**（CPCV 0.60→0.00、median Sharpe +0.63→**−6.37**）。**主犯は銀のスプレッド（単独 RT 約 30 bp ＝ FX の 17 倍）**。
+**コスト掃引が「OANDA が細く出せば？」を閉じた: 実コストの 1/10（RT 3.34 bp ≒ FX 並み）でも PF 0.957/0.925 で 1.0 割れ**、しかも摩擦ゼロで既に floor 未達
+⇒ **ネイティブ単一銘柄でヘッジ 2 レグ・コストを免れても届かない**（⑪ の robustness↔cost カップリングを破る唯一の構造的希望が消えた）。
+repo 内の先行 kill 2 件（`hard_kill_memo_xagusd_gsr_mr_d1_20260530` gross EP −0.0213 / `probe_gsr_meanrevert_feasibility_20260624`）を**別粒度・別 protocol で追認**。
+**(3) 相関の前提は正しかったが救わない。** 金属 9 本 × 既存 3 群の**日次 |ρ| ≤ 0.112 / 月次 ≤ 0.220 ＝ 構造的に無相関**。だが実コスト Sharpe が 9 本中 7 本で負 ⇒ 束に足すと合成は**下がる**。
+**(4) ⑬a の必要条件を更新（重要）.** 既存 3 群 base を ⑬ 自身の builder で再現（static: 1'R1=3.616 / 合成 **0.807** ＝ ⑬ の 0.805 と ±0.002）。
+**4 本目に必要な Sharpe は無相関で ≥ 0.506（causal 正規化なら ≥ 0.653）**。0.5 級を **+1 本で 0.947（帯の下端ぎりぎり、causal base なら 0.878 で帯外）／+2 本で 1.070**
+⇒ **⑬ の「あと 1〜2 本」は正しいが楽観側の端。安全に 0.95〜1.10 へ入れるには実質 2 本**、しかも要求水準は**現有最良スリーブ（0.579）と同等以上**。
+**副産物（データ品質の恒久的知見）:** decode 連鎖を独立ソース照合で検証する過程で、**bundle の `xauusd_m15.parquet` が UTC ではなくブローカー時計（夏 UTC+3 = EET, DST 変動）**
+であることを発見（−180 分ずらすと ret-corr **+0.9948**・差 0.66 bp）。⑫ は当該 parquet を使用（当時「小さな TZ ずれは無視できる」と開示済で結論は不変）。
+**今後の金属系は全レグを単一 UTC ソースで揃えること。** バイナリ SHA256 `6ca0cfd2…` run 前後不変、floor 定数 diff 0 行。**Deploy NO, flag 変更なし。**
+
 ---
 
 ## 3. 次の一手（オーナー判断）— 物差し拡張のレバー
@@ -274,8 +298,9 @@ box 内点は依然 **2 点（MR-EUR/USD H4/H6 ＋ native UK100-MR H2、とも�
 | ~~新プリミティブ/entry-gate（intraday/厚利/vol/multi-TF）~~〔⑨⑩⑪ 実測・打ち止め〕 | session〔⑨〕・hold-barrier〔⑩〕・vol-regime/multi-TF〔⑪ B/C〕 | **低（実測 0）** — entry-gate 系は trade 数を削るだけ（cost 壁 or density）、0 load-bearing。vol-正規化は既 swept |
 | 新データ（単独では弱い） | GBPJPY/USDCAD/EURCHF/XAU の M1 を `data/historical/` に追加 | 低 — data-wall が実証: 非robust 機序は data を足しても robust にならない。edge のある primitive と**組んで初めて**効く |
 | gate/instrument 変更 | rare-event D1 向け small-N sealed holdout（≥200-trade CPCV の代替） | 中 — ただし s132/n0006 は per-regime PF が 1.0 を跨ぐので、N 適正な instrument でも落ちる（cheap win ではない） |
-| ~~ポートフォリオ結合（sub-deploy 点を束ねて越える）~~〔⑬a 実測・**必要条件が定量化された**〕 | 既知 forward-robust 点の equal-risk スリーブ、実コスト＆摩擦ゼロ両採点、P-A/P-B/P-C 3 プロトコル | **低（実測）だが "残る本命" の必要条件を数値で確定** — 利得は `ΣSh/√(1'R1)` ちょうど（±0.007）。現在の 3 グループでは SEL 0.805/HOL 0.742 が上限で deploy 未達。**realistic で 2 窓 robust かつ既存 3 グループと無相関なスリーブがあと 1〜2 本**あれば算術的に 0.95〜1.10 に届く ⇒ ⑫ の native route（唯一の実績ある供給源）と直結 |
+| ~~ポートフォリオ結合（sub-deploy 点を束ねて越える）~~〔⑬a 実測・**必要条件が定量化された**〕 | 既知 forward-robust 点の equal-risk スリーブ、実コスト＆摩擦ゼロ両採点、P-A/P-B/P-C 3 プロトコル | **低（実測）だが "残る本命" の必要条件を数値で確定** — 利得は `ΣSh/√(1'R1)` ちょうど（±0.007）。現在の 3 グループでは SEL 0.805/HOL 0.742 が上限で deploy 未達。**realistic で 2 窓 robust かつ既存 3 グループと無相関なスリーブがあと 1〜2 本**あれば算術的に 0.95〜1.10 に届く ⇒ ⑫ の native route（唯一の実績ある供給源）と直結。**〔⑭ で更新〕必要水準は無相関で Sharpe ≥ 0.506（causal 正規化なら ≥ 0.653）＝現有最良 0.579 と同等以上、かつ「1〜2 本」は楽観側の端で 0.5 級なら +1 本 0.947／+2 本 1.070 ⇒ 実質 2 本** |
 | ~~暦シーズナリティ × 複数日 barrier~~〔⑬b 実測・打ち止め〕 | `dom_lo`/`dom_hi`/`month_mask` flag-gated 追加、M15 base×20日 barrier×四半期末 | **低（実測 0）** — density は解けたが COST 回帰。シグナル（+0.02〜0.05 PF）が摩擦（−0.08〜0.19 PF）の 1/2〜1/4 で、密な格子では動かない構造的比率 |
+| ~~OANDA 新規上場 metals（XAUXAG/XPT/XPD）を 4 本目スリーブに~~〔⑭ 実測・**打ち止め**〕 | Dukascopy 公開 M1 を raw-first 取得、⑫ harness 無改変、実測スプレッドで 2 窓採点 | **0（実測）** — XAUXAG は**摩擦ゼロでも floor 未達（PF 1.067<1.10）かつ実コスト 1/10 でも PF<1.0** ⇒ OANDA が細く出しても不可。XPT/XPD は**上場が 2021-11/2021-07 で holdout が空＝採点不能**、加えて RT 52-55 bp（FX の約 30 倍）で実質クローズ。**相関は確かに低い（日次 |ρ|≤0.112）が実コスト Sharpe が負** |
 | **経済カレンダー（NFP/FOMC/CPI）イベントゲート（未検証 gap）** | 外部カレンダー・データが必要（repo に無し、`data/macro/` は空） | **低（予測）** — ⑬b の測定が entry-gate 族全般に強い事前予測を与える（同じ比率で負ける公算）。やるなら M15 でなく H4 以上の厚い base と組む。優先度は rates より低い |
 
 **やらないこと（打ち止め）:** bundle-import の再試行、seed 数/構成の再チューニング、探索深度の追加、単一栽培への機構追加、
@@ -303,7 +328,8 @@ merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」
 | ⑩ | 物差し拡張② hold-to-barrier 軸 | `tribe_2d_hold_barrier_yardstick_20260721.md` | `b8146e29` |
 | ⑪ | 物差し拡張③ cross-pair relative-value 4 路線 | `tribe_2d_relative_value_multiaxis_20260721.md` | `e2e10601` |
 | ⑫ | 物差し拡張④ native new-instrument（別アセットクラス・box 1→2） | `tribe_2d_native_instrument_20260721.md` | `d8b95635` |
-| ⑬ | 未踏 2 角度: (a) ポートフォリオ結合 / (b) 複数日barrier×暦シーズナリティ | `tribe_2d_portfolio_and_calendar_20260728.md` | (this run) |
+| ⑬ | 未踏 2 角度: (a) ポートフォリオ結合 / (b) 複数日barrier×暦シーズナリティ | `tribe_2d_portfolio_and_calendar_20260728.md` | `ce86b461` |
+| ⑭ | OANDA 新規上場 metals 先行検証（XAUXAG/XPT/XPD）— 3 銘柄とも NO | `../../docs/oanda_metals_sleeve_probe_20260728.md` | (this run) |
 
 前段: [`tribe_2c_wsl_verification_20260715.md`](tribe_2c_wsl_verification_20260715.md) /
 [`tribe_2b_correction_honest_primitives_20260714.md`](tribe_2b_correction_honest_primitives_20260714.md) /
