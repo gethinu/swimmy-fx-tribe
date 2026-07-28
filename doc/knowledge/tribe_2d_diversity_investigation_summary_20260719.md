@@ -1,6 +1,6 @@
 # tribe 多様性探求 — 総括 (2d/2a investigation summary, canonical) — 2026-07-19
 
-**これは何か.** 2026-07-18〜21 に走った tribe 多様性エンジン探求 **12 段**の集約・整合レコード（⑫ native new-instrument を 2026-07-21 追加）。個別 doc は各段の
+**これは何か.** 2026-07-18〜21 に走った tribe 多様性エンジン探求 **13 段**の集約・整合レコード（⑫ native new-instrument を 2026-07-21、⑬ portfolio+calendar を 2026-07-28 追加）。個別 doc は各段の
 一次記録（そのまま保存）、本 doc が **state-of-truth の入口**。読む順に迷ったら **ここ → 該当段の一次 doc**。
 設計正本は [`regen_engine_redesign_20260703.md`](regen_engine_redesign_20260703.md)、umbrella は
 [`tribe_diversity_engine_rebuild_20260713.md`](tribe_diversity_engine_rebuild_20260713.md)、kill 基準は
@@ -103,7 +103,7 @@ forward-robust な多様 seed が 1 つも無かった（0/9）ため — 単一
 
 ---
 
-## 2. 12 段の探求 — time-ordered
+## 2. 13 段の探求 — time-ordered
 
 各段: 何を実装/測定したか → **機序の結論（有効）** → 数値注記。詳細は各一次 doc。
 
@@ -241,6 +241,27 @@ return corr **日次+0.019/月次+0.061=無相関の真の diversifier**、regim
 バイナリは native scan では**無改変**（純データ）、検証用 `--dump-daily` のみ flag-gated 追加（OFF=`--out` SHA256 一致 `3bea89ca…` 実証）。**Deploy NO, flag OFF。**
 **§4-2 との関係:** diverse-robust は既に ≥1（MR-EURUSD）だったが、**初めて無相関の複数 instrument（2, ともに MR・sub-deploy）**に。ただし deploy 級の diverse edge という決定的バーは依然未達。
 
+### ⑬ 未踏 2 角度 — (a) ポートフォリオ結合 / (b) 複数日barrier×暦シーズナリティ — `tribe_2d_portfolio_and_calendar_20260728.md`
+①〜⑫ が全て「**1 本で** deploy 基準を越えるエッジ」を探したのに対し、⑬a は初めて「**見つかった無相関の点を束ねて**越えるか」を問う（スリーブ評価）。
+⑬b は ⑩ が名指しした未実装方向（**複数日 barrier × event/seasonality ゲート**）を新 primitive として flag-gated 追加（暦＝day-of-month/month-of-year は
+⑨ の hour+day-of-WEEK では表現不能な真の欠落。厚さ側は ⑩ の `hold_mode` が既存 ⇒ **新規コードは暦ゲートのみ**）。
+**(a) 結論: 分散の利得は本物だが「教科書算術ちょうど」で、deploy 基準に届かない。** MR-EURUSD H4 と UK100-MR H2（日次 corr **+0.005**）を equal-risk で束ねると
+SEL Sharpe **0.571/0.492 → 0.757**・maxDD 1.18/2.35→**1.25 vol-yr**・Calmar 0.48/0.21→**0.60**、GBPUSD-MR も足した 3 本で SEL **0.805** / HOL **0.742**（CPCV 0.80/0.70）＝
+**ポートフォリオとして 2 窓 honest floor を PASS**（構成員 3 本中 2 本は単体で落ちる）**が、事前登録した deploy-grade（両窓 Sharpe≥1.00 & Calmar≥0.50）は未達**。
+決定的に、**実測 = `ΣSh_i/√(1'R1)` の予測と ±0.007 で一致**（4 ケース全）⇒ 利得は純粋に相関構造の算術。**Sharpe 0.5 級から 1.0 に届くには完全無相関 4 本が必要、
+realistic の在庫は 3 グループ（EURUSD-GBPUSD は +0.22 相関）⇒ 算術的に本数不足**。
+**さらに重い: その PASS は後知恵。** 2021-01 時点の情報だけ（holdout robust）で組む**真の OOS（P-B）はどの構成規則でもマイナス〜ゼロ**
+（全117本 group **−0.442** / member **+0.090** / instrument別ベスト5本 **−0.237**）、逆向き P-C も floor FAIL。**摩擦ゼロなら同じ P-B が +0.714 / floor PASS（8 instrument）**
+⇒ 発想は健全、**実コストが事前候補集合を 8→5 instrument に削り残りをマイナスに変える＝壁は COST**。
+**(b) 結論: realistic 2-pip で 0。** 2,160 config の 2 窓 forward-robust は **1 本のみ = 既知 `keltner-EURUSD-MR-H4`（新軸を両方 OFF にした config）**、暦ゲート付き 0・load-bearing 0・家系外 0。
+**ただし ⑩ の DENSITY 壁は設計で解けた**（M15 base × 20 日 barrier × 四半期末ゲートで trades 380–1138）**うえで、摩擦ゼロで load-bearing な家系外が 7 本**
+（**⑧ census で摩擦ゼロでも 0 だった EURJPY**、USDJPY-**REVERSION**（diverse）を含む）**— 全部 2-pip で死ぬ**（PF −0.036〜−0.187、CPCV 0.70-0.90→0.30-0.50）。
+コスト感度 **0.5pip で 3 本生存 / 1.0pip 全滅**。暦効果自体は勝者だけでなく全格子 410-428 matched cell で検定し
+**pf(QEND)−pf(NONQ) = +0.021〜+0.051・勝率 52.7-57.5%（4 条件同符号）＝小さいが本物**、**ただし摩擦（−0.08〜−0.19 PF）の 2〜4 分の 1**。
+**壁の三巡が完成: ⑨ fewer→COST、⑩ fatter→DENSITY、⑬b fewer×fatter→density は解けて COST に回帰、⑬a portfolio→COST が事前候補集合を削り後知恵でしか PASS しない。**
+box 内点は依然 **2 点（MR-EUR/USD H4/H6 ＋ native UK100-MR H2、ともに MR・sub-deploy）**。バイナリは ⑬a **無改変**・⑬b は暦 4 フィールド追加で **OFF は byte-identical**
+（新キー無し manifest の `--out` SHA256 `feac84e7…` before==after）、floor 定数 diff 0 行。**Deploy NO, flag OFF。**
+
 ---
 
 ## 3. 次の一手（オーナー判断）— 物差し拡張のレバー
@@ -253,9 +274,13 @@ return corr **日次+0.019/月次+0.061=無相関の真の diversifier**、regim
 | ~~新プリミティブ/entry-gate（intraday/厚利/vol/multi-TF）~~〔⑨⑩⑪ 実測・打ち止め〕 | session〔⑨〕・hold-barrier〔⑩〕・vol-regime/multi-TF〔⑪ B/C〕 | **低（実測 0）** — entry-gate 系は trade 数を削るだけ（cost 壁 or density）、0 load-bearing。vol-正規化は既 swept |
 | 新データ（単独では弱い） | GBPJPY/USDCAD/EURCHF/XAU の M1 を `data/historical/` に追加 | 低 — data-wall が実証: 非robust 機序は data を足しても robust にならない。edge のある primitive と**組んで初めて**効く |
 | gate/instrument 変更 | rare-event D1 向け small-N sealed holdout（≥200-trade CPCV の代替） | 中 — ただし s132/n0006 は per-regime PF が 1.0 を跨ぐので、N 適正な instrument でも落ちる（cheap win ではない） |
+| ~~ポートフォリオ結合（sub-deploy 点を束ねて越える）~~〔⑬a 実測・**必要条件が定量化された**〕 | 既知 forward-robust 点の equal-risk スリーブ、実コスト＆摩擦ゼロ両採点、P-A/P-B/P-C 3 プロトコル | **低（実測）だが "残る本命" の必要条件を数値で確定** — 利得は `ΣSh/√(1'R1)` ちょうど（±0.007）。現在の 3 グループでは SEL 0.805/HOL 0.742 が上限で deploy 未達。**realistic で 2 窓 robust かつ既存 3 グループと無相関なスリーブがあと 1〜2 本**あれば算術的に 0.95〜1.10 に届く ⇒ ⑫ の native route（唯一の実績ある供給源）と直結 |
+| ~~暦シーズナリティ × 複数日 barrier~~〔⑬b 実測・打ち止め〕 | `dom_lo`/`dom_hi`/`month_mask` flag-gated 追加、M15 base×20日 barrier×四半期末 | **低（実測 0）** — density は解けたが COST 回帰。シグナル（+0.02〜0.05 PF）が摩擦（−0.08〜0.19 PF）の 1/2〜1/4 で、密な格子では動かない構造的比率 |
+| **経済カレンダー（NFP/FOMC/CPI）イベントゲート（未検証 gap）** | 外部カレンダー・データが必要（repo に無し、`data/macro/` は空） | **低（予測）** — ⑬b の測定が entry-gate 族全般に強い事前予測を与える（同じ比率で負ける公算）。やるなら M15 でなく H4 以上の厚い base と組む。優先度は rates より低い |
 
-**やらないこと（打ち止め）:** bundle-import の再試行、seed 数/構成の再チューニング、探索深度の追加、単一栽培への機構追加。
-いずれも 10 段が「不足は機構でも深度でも seed でもない」と実測済み。
+**やらないこと（打ち止め）:** bundle-import の再試行、seed 数/構成の再チューニング、探索深度の追加、単一栽培への機構追加、
+**0.5pip 生存を根拠にコスト仮定を下げること**、**density/CPCV floor を下げて near-miss を通すこと**、**⑬a の後知恵 P-A PASS を deploy 根拠に使うこと**。
+いずれも 10 段が「不足は機構でも深度でも seed でもない」と実測済み（後 3 者は ⑬ が P-B と算術検算で先回りして塞いだ自己欺瞞の形）。
 
 **今すぐ ship 安全なもの（コード）:** B-4/B-5/B-3/seed-escape/**session-軸 scorer+休眠 genome hook**/**hold-to-barrier 軸 scorer（`hold_mode`）**/**⑪ の vol-regime（`vol_*`）・multi-TF confluence（`htf_*`）・single-leg RV（`rvspread`/`rv_*`/`--aux`）scorer 軸**/**⑫ の検証専用 `--dump-daily`（OFF=`--out` SHA256 一致 `3bea89ca…`）＋ native harness/canonicaliser（純データ・binary 無改変）** は全て可逆・OFF byte-identical・honest floor 中立・offline 実証済。
 merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」目的で正当化してはならない**（native UK100-MR も sub-deploy）。flag flip はオーナー判断（未実施）。
@@ -277,7 +302,8 @@ merge は安全だが、**単独での本番 flag ON を「単一栽培希釈」
 | ⑨ | 物差し拡張① session 軸 | `tribe_2d_session_axis_yardstick_20260719.md` | `c5cd0f3d` |
 | ⑩ | 物差し拡張② hold-to-barrier 軸 | `tribe_2d_hold_barrier_yardstick_20260721.md` | `b8146e29` |
 | ⑪ | 物差し拡張③ cross-pair relative-value 4 路線 | `tribe_2d_relative_value_multiaxis_20260721.md` | `e2e10601` |
-| ⑫ | 物差し拡張④ native new-instrument（別アセットクラス・box 1→2） | `tribe_2d_native_instrument_20260721.md` | (this run) |
+| ⑫ | 物差し拡張④ native new-instrument（別アセットクラス・box 1→2） | `tribe_2d_native_instrument_20260721.md` | `d8b95635` |
+| ⑬ | 未踏 2 角度: (a) ポートフォリオ結合 / (b) 複数日barrier×暦シーズナリティ | `tribe_2d_portfolio_and_calendar_20260728.md` | (this run) |
 
 前段: [`tribe_2c_wsl_verification_20260715.md`](tribe_2c_wsl_verification_20260715.md) /
 [`tribe_2b_correction_honest_primitives_20260714.md`](tribe_2b_correction_honest_primitives_20260714.md) /

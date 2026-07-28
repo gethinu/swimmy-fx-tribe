@@ -80,6 +80,28 @@ struct ManifestEntry {
     dow_mask: u8, // day-of-week bitmask (bit d, 0=Sun..6=Sat); 0 => all days allowed
     #[serde(default)]
     session: String, // human label only (e.g. "LONDON"); never read by the backtest logic
+    // --- YARDSTICK AXIS (2026-07-28): CALENDAR-SEASONALITY entry gate. ⑩ concluded the binding
+    // quantity is per-trade thickness and named "rare, high-conviction entry x multi-day hold" as the
+    // one untried pairing. The multi-day hold half already exists (`hold_mode="barrier"` + wide ATR tp
+    // + `max_hold`); the rarity half does NOT: ⑨'s clock gate is hour-of-day + day-of-WEEK only, so
+    // there is no way to express a seasonality that repeats on the CALENDAR (turn-of-month rebalancing
+    // flow, month-of-year). These two fields close exactly that gap and nothing more.
+    //   dom_lo/dom_hi : day-of-month window, inclusive, 1..31. lo>hi wraps across the month boundary
+    //                   (dom_lo=25, dom_hi=5 => the turn-of-month). Both 0 => no day-of-month gate.
+    //   month_mask    : bit (month-1) for months 1..12; 0 => every month allowed.
+    // All three at their defaults (0,0,0) => in_calendar() short-circuits to true on its first line, so
+    // a manifest WITHOUT these keys is byte-identical to the pre-calendar engine (proven by diff).
+    // NOTE (honest scope): this is the *calendar* half of "event/seasonality". A macro-EVENT gate
+    // (NFP / FOMC / CPI) is not implementable here — the repo carries no economic calendar
+    // (`data/macro/` is empty) — and is left explicitly untested rather than faked with a price proxy.
+    #[serde(default)]
+    dom_lo: i64,
+    #[serde(default)]
+    dom_hi: i64,
+    #[serde(default)]
+    month_mask: u16,
+    #[serde(default)]
+    calendar: String, // human label only (e.g. "TOM"); never read by the backtest logic
     // --- YARDSTICK AXIS (2026-07-21b): multi-TF CONFLUENCE entry gate (Route C). A long entry is
     // allowed only when a higher-timeframe SMA trend agrees (htf_close > htf_sma), short only when it
     // disagrees (htf_close < htf_sma). Orthogonal to the trade-TF price shape: it conditions on a
@@ -169,6 +191,9 @@ struct StratResult {
     // with no hold_mode key serializes exactly as the pre-hold engine did.
     #[serde(skip_serializing_if = "String::is_empty")]
     hold_mode: String,
+    // Calendar-seasonality axis — same discipline again (omitted when empty).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    calendar: String,
 }
 
 // ---------- indicators (self-contained) ----------
@@ -335,6 +360,44 @@ fn in_session(m: &ManifestEntry, ts: i64) -> bool {
     }
 }
 
+// Civil date from a days-since-1970 count (Howard Hinnant's days_from_civil inverse). Pure integer
+// arithmetic, valid for any epoch day in range; used ONLY by the calendar gate.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+// CALENDAR-SEASONALITY ENTRY GATE (yardstick axis, 2026-07-28). A pure function of the bar timestamp,
+// like in_session, but on the CALENDAR (day-of-month / month-of-year) rather than the weekly clock —
+// the degree of freedom ⑨'s hour+day-of-week mask cannot express. Defaults (0,0,0) => always true, so
+// a manifest without these keys takes exactly the entries it took before (byte-identical).
+fn in_calendar(m: &ManifestEntry, ts: i64) -> bool {
+    if m.dom_lo == 0 && m.dom_hi == 0 && m.month_mask == 0 {
+        return true; // no gate — pre-calendar behavior
+    }
+    let (_, mo, dd) = civil_from_days(ts.div_euclid(86400));
+    if m.month_mask != 0 && (m.month_mask & (1u16 << (mo - 1))) == 0 {
+        return false;
+    }
+    if m.dom_lo == 0 && m.dom_hi == 0 {
+        return true; // month-only gate
+    }
+    let d = dd as i64;
+    if m.dom_lo <= m.dom_hi {
+        d >= m.dom_lo && d <= m.dom_hi
+    } else {
+        d >= m.dom_lo || d <= m.dom_hi // wraps the month boundary (turn-of-month)
+    }
+}
+
 // Multi-TF CONFLUENCE gate (Route C). Returns, per trade-TF candle, the SLOWER horizon's SMA-trend
 // state (+1 up / -1 down / 0 = no completed HTF bar yet), using only HTF bars that CLOSED strictly
 // before the current HTF bucket => no look-ahead. None when the gate is off (byte-identical path,
@@ -471,6 +534,7 @@ fn backtest(m: &ManifestEntry, c: &[Candle], slip: f64, htf: Option<&[i8]>, aux_
         // AND multi-TF confluence (Route C, direction-specific). All default to no-op => unchanged.
         if matches!(pos, Pos::None) {
             let base_allowed = in_session(m, c[i].timestamp)
+                && in_calendar(m, c[i].timestamp)
                 && vol_gate.as_ref().map_or(true, |v| v[i]);
             let long_ok = htf.map_or(true, |h| h[i] == 1);
             let short_ok = htf.map_or(true, |h| h[i] == -1);
@@ -654,6 +718,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             oos, cpcv, oos_qualified, cpcv_ok, diversity_ok,
             session: m.session.clone(),
             hold_mode: m.hold_mode.clone(),
+            calendar: m.calendar.clone(),
         });
     }
     let qualified = results.iter().filter(|r| r.oos_qualified).count();
