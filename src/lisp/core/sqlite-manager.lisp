@@ -62,3 +62,40 @@
   `(let ((conn (get-db-connection)))
      (sqlite:with-transaction conn
        ,@body)))
+
+;;; ---------------------------------------------------------------------------
+;;; P5 (Thread B / persistence hardening)
+;;; ---------------------------------------------------------------------------
+
+(defmacro with-immediate-transaction (&body body)
+  "Like WITH-TRANSACTION but issues BEGIN IMMEDIATE, taking the RESERVED write
+   lock up front. cl-sqlite's WITH-TRANSACTION uses a DEFERRED begin, so a
+   read-then-write (e.g. graveyard upsert) can start a shared transaction and
+   then hit SQLITE_BUSY when it tries to upgrade to a write while the other
+   daemon (brain vs school) holds the lock — losing the write. BEGIN IMMEDIATE
+   serializes writers cleanly. Rolls back on any non-local exit."
+  (let ((conn (gensym "CONN")) (ok (gensym "OK")))
+    `(let ((,conn (get-db-connection)) (,ok nil))
+       (sqlite:execute-non-query ,conn "BEGIN IMMEDIATE")
+       (unwind-protect
+            (multiple-value-prog1 (progn ,@body)
+              (sqlite:execute-non-query ,conn "COMMIT")
+              (setf ,ok t))
+         (unless ,ok
+           (ignore-errors (sqlite:execute-non-query ,conn "ROLLBACK")))))))
+
+(defparameter *max-data-sexp-length* 262144
+  "Hard upper bound (chars) on a strategy's serialized data_sexp blob. A healthy
+   strategy struct serializes to a few KB; anything past 256KB is treated as
+   corruption/pathology and its blob is NOT persisted (metrics still are), so a
+   poison blob can't propagate and bloat the DB. Tunable.")
+
+(defun sha256-hex (string)
+  "Lowercase 64-char hex SHA-256 of STRING (UTF-8). Integrity checksum for the
+   data_sexp column: computed at write, re-verified by the persistence audit so
+   silent bit-rot/truncation is caught instead of being swallowed by safe-read.
+   ironclad is already a hard dependency (swimmy.asd)."
+  (when (stringp string)
+    (ironclad:byte-array-to-hex-string
+     (ironclad:digest-sequence
+      :sha256 (sb-ext:string-to-octets string :external-format :utf-8)))))

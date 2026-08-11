@@ -12,6 +12,11 @@ WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/data_keeper.py
 Restart=always
 RestartSec=10
+# P4 (Thread B): cap the data-keeper's resident memory via the cgroup so a
+# runaway read/merge cannot starve the brain (3072MB) and school (4096MB)
+# heaps on the shared ops box. On OOM the cgroup kills only this unit, which
+# Restart=always then relaunches cleanly.
+MemoryMax=3G
 Environment=HOME=/home/swimmy
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/home/swimmy/swimmy/.env

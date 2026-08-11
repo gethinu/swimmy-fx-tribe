@@ -1,0 +1,19 @@
+[Unit]
+Description=Swimmy Persistence Audit (P5: read-only corruption / drift checks)
+After=network.target
+# A monotonic-invariant violation exits non-zero -> `failed` -> alert.
+OnFailure=swimmy-alert@%n.service
+
+[Service]
+Type=oneshot
+User=swimmy
+Group=swimmy
+WorkingDirectory=/home/swimmy/swimmy
+ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/persistence_audit.py
+Environment=HOME=/home/swimmy
+EnvironmentFile=-/home/swimmy/swimmy/.env
+StandardOutput=append:/home/swimmy/swimmy/logs/persistence_audit.log
+StandardError=append:/home/swimmy/swimmy/logs/persistence_audit.log
+
+[Install]
+WantedBy=default.target

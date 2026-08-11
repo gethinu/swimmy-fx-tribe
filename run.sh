@@ -65,7 +65,10 @@ if [ "$BOOT_TEMP" -eq 1 ]; then
 fi
 
 # Start Swimmy with logging
-# Allow runtime tuning from .env without editing this script again.
-SBCL_DYNAMIC_SPACE_MB="${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-6144}"
+# Allow runtime tuning without editing this script again.
+# P4: prefer the brain-specific heap var (from /etc/swimmy/heap.env, default
+# 3072 under systemd). Fall back to the legacy shared var, then to 6144 for
+# bare dev/native runs with no heap.env present.
+SBCL_DYNAMIC_SPACE_MB="${SWIMMY_BRAIN_HEAP_MB:-${SWIMMY_SBCL_DYNAMIC_SPACE_MB:-6144}}"
 echo "[$(date)] Starting Swimmy Ver 41.5..."
 sbcl --dynamic-space-size "$SBCL_DYNAMIC_SPACE_MB" --noinform --load "$BOOT_FILE" 2>&1 | tee logs/swimmy.log

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Swimmy Persistence Audit daily (P5)
+
+[Timer]
+OnCalendar=*-*-* 05:20:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

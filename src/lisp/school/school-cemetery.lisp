@@ -54,7 +54,15 @@
                    (if (and strat (strategy-p strat))
                        (let ((hash (calculate-strategy-hash strat)))
                          (execute-non-query "UPDATE strategies SET hash = ? WHERE name = ?" hash name))
-                       (execute-non-query "UPDATE strategies SET hash = ':INVALID' WHERE name = ?" name)))))
+                       ;; P5 (Thread B): the blob did not parse to a strategy =
+                       ;; corruption. QUARANTINE (rank=:CORRUPT), never delete, so
+                       ;; the row survives for forensics and is excluded from every
+                       ;; active/breeding allow-list (which enumerate B/A/S/LEGEND).
+                       (progn
+                         (format t "[CEMETERY] ☣️ QUARANTINE: ~a data_sexp unreadable -> rank=:CORRUPT~%" name)
+                         (execute-non-query
+                          "UPDATE strategies SET hash = ':INVALID', rank = ':CORRUPT' WHERE name = ?"
+                          name))))))
            (error (e) 
              (format t "[CEMETERY] ⚠️ Batch failed: ~a~%" e)
              (return)))
@@ -65,9 +73,20 @@
     total-processed))
 
 (defun record-graveyard-pattern (strat)
-  "Explicitly add a strategy to the graveyard and save its hash."
+  "Explicitly add a strategy to the graveyard and save its hash.
+   P5: the rank flip + upsert run under BEGIN IMMEDIATE so the graveyard write
+   is atomic and never loses to a concurrent brain/school writer (SQLITE_BUSY).
+   The graveyard is the append-only failure record whose monotonic growth the
+   persistence audit relies on, so a dropped write here is exactly what we must
+   prevent."
   (setf (strategy-rank strat) :GRAVEYARD)
   (unless (strategy-hash strat)
     (setf (strategy-hash strat) (calculate-strategy-hash strat)))
-  (upsert-strategy strat)
+  (handler-case
+      (with-immediate-transaction
+        (upsert-strategy strat))
+    (error (e)
+      (format t "[CEMETERY] ⚠️ Graveyard write failed for ~a: ~a~%"
+              (strategy-name strat) e)
+      (return-from record-graveyard-pattern nil)))
   (format t "[CEMETERY] 🪦 Recorded pattern ~a to SQL Graveyard.~%" (strategy-name strat)))

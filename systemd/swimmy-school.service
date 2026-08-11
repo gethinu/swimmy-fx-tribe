@@ -2,6 +2,13 @@
 Description=Swimmy School Service
 Documentation=https://github.com/swimmy/swimmy
 After=network.target
+# P4 (Thread B): the school daemon uses "Let It Crash" (school-daemon.lisp:10-17
+# exits 1 on any unhandled error). Paired with the old Restart=always/no-limit
+# this immortalized poison data via an infinite restart loop. Bound the budget
+# so 5 failures in 600s parks the unit in `failed` and fires OnFailure.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=swimmy-alert@%n.service
 
 [Service]
 Type=simple
@@ -9,14 +16,18 @@ User=swimmy
 Group=swimmy
 WorkingDirectory=/home/swimmy/swimmy
 ExecStartPre=/usr/bin/sbcl --disable-debugger --script /home/swimmy/swimmy/tools/restore_legend_61.lisp
-ExecStart=/usr/bin/sbcl --dynamic-space-size ${SWIMMY_SBCL_DYNAMIC_SPACE_MB} --noinform --load /home/swimmy/swimmy/src/lisp/school/school-daemon.lisp
-Restart=always
-RestartSec=10
+ExecStart=/usr/bin/sbcl --dynamic-space-size ${SWIMMY_SCHOOL_HEAP_MB} --noinform --load /home/swimmy/swimmy/src/lisp/school/school-daemon.lisp
+Restart=on-failure
+RestartSec=30
 
 # Environment
 Environment=HOME=/home/swimmy
-Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
+# P4: heap comes from the split-name var (school default 4096). ExecStart
+# substitutes SWIMMY_SCHOOL_HEAP_MB. /etc/swimmy/heap.env is loaded LAST so it
+# is the single source of truth, overriding this default and anything in .env.
+Environment=SWIMMY_SCHOOL_HEAP_MB=4096
 EnvironmentFile=/home/swimmy/swimmy/.env
+EnvironmentFile=-/etc/swimmy/heap.env
 
 # Logging
 StandardOutput=journal

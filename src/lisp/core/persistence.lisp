@@ -66,14 +66,33 @@
     (ensure-directory (merge-pathnames (format nil "~a/" dir) *library-path*)))
   (format t "[LIB] 📚 Library initialized at ~a~%" *library-path*))
 
+(defvar *save-proc-token*
+  (format nil "~a-~a"
+          (or (ignore-errors (sb-unix:unix-getpid)) (random 1000000))
+          (get-universal-time))
+  "Per-process token (pid + process-start time) that discriminates the atomic
+   .tmp files of concurrent writers. Two processes (brain vs school) get
+   distinct tokens; a per-call counter distinguishes writes within a process.")
+
+(defvar *save-tmp-counter* 0
+  "Monotonic per-process counter appended to atomic .tmp names.")
+
 (defun save-strategy (strategy-obj)
   "Save a strategy object to a file ATOMICALLY (Expert Panel 2).
-   Writes to .tmp first, then renames to prevent corruption."
-  
+   Writes to a unique .tmp first, then renames to prevent corruption.
+   P5: the .tmp name is uniquified with a per-process token + counter so two
+   daemons saving the same strategy concurrently never write the same temp file
+   (which would let one truncated write clobber the other before rename)."
+
   (let* ((name (slot-value strategy-obj 'swimmy.school::name))
          (rank (strategy-storage-rank strategy-obj))
          (path (get-strategy-path name rank))
-         (temp-path (merge-pathnames (format nil "~a.tmp" (pathname-name path)) path)))
+         (temp-path (merge-pathnames
+                     (format nil "~a.~a-~a.tmp"
+                             (pathname-name path)
+                             *save-proc-token*
+                             (incf *save-tmp-counter*))
+                     path)))
     
     (ensure-directories-exist path)
 
