@@ -281,8 +281,141 @@ fn run_cpcv(strat: &Strategy, full: &[Candle], tf_seconds: i64, slippage: f64) -
     }
 }
 
+// ── V-methodology (2026-08-11): TRUE combinatorial + purged CPCV ────────────
+// Flag-gated OFF (`--cpcv-combinatorial` / SWIMMY_KILL_CPCV_COMBINATORIAL). When
+// OFF, main() calls the original `run_cpcv` (10 contiguous single-block OOS), which
+// reproduces the logs/tribe-2d numbers byte-for-byte. When ON, the decisive §4
+// experiment is scored on the SAME block machinery guardian production uses:
+// N-choose-k test-block combinations with purge/embargo, instead of 10 singletons.
+//
+// NB: this bin evaluates FIXED manifest params (library strategies already selected),
+// so there is no per-fold refit here; the upgrade is the combinatorial PATH STRUCTURE
+// (an overfit-relevant distribution of OOS folds) matching guardian cpcv.rs, plus the
+// warmup-based TF-scaled purge that run_backtest applies at every fold start.
+
+fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut results = Vec::new();
+    if k == 0 || k > n {
+        return results;
+    }
+    let mut combination = (0..k).collect::<Vec<usize>>();
+    loop {
+        results.push(combination.clone());
+        let mut i = k;
+        while i > 0 && combination[i - 1] == n - k + i - 1 {
+            i -= 1;
+        }
+        if i == 0 {
+            break;
+        }
+        combination[i - 1] += 1;
+        for j in i..k {
+            combination[j] = combination[j - 1] + 1;
+        }
+    }
+    results
+}
+
+/// Contiguous [start,end) block bounds for `blocks` divisions of `n` rows.
+fn block_bounds(n: usize, blocks: usize) -> Vec<(usize, usize)> {
+    (0..blocks)
+        .map(|b| {
+            let start = b * n / blocks;
+            let end = if b == blocks - 1 { n } else { (b + 1) * n / blocks };
+            (start, end)
+        })
+        .collect()
+}
+
+/// TRUE combinatorial purged CPCV over `full`, scoring the fixed strategy on each
+/// N-choose-k test-block union. `k` test blocks per path (default 2 => 10C2 = 45).
+fn run_cpcv_combinatorial(
+    strat: &Strategy,
+    full: &[Candle],
+    tf_seconds: i64,
+    slippage: f64,
+    k: usize,
+) -> CpcvSummary {
+    let n = full.len();
+    let bounds = block_bounds(n, CPCV_BLOCKS);
+    let paths = combinations(CPCV_BLOCKS, k);
+
+    let mut folds: Vec<FoldMetrics> = Vec::new();
+    let mut sharpes: Vec<f64> = Vec::new();
+    let mut pens: Vec<f64> = Vec::new();
+    let mut pfs: Vec<f64> = Vec::new();
+    let mut passing = 0usize;
+    let mut valid = 0usize;
+
+    for (path_ix, test_blocks) in paths.iter().enumerate() {
+        // Union the k test blocks; they are contiguous-per-block so evaluate each
+        // block then trade-weight combine (mirrors guardian cpcv combine_results).
+        let mut trades_sum: i32 = 0;
+        let mut w_sharpe = 0.0f64;
+        let mut w_pf = 0.0f64;
+        let mut any = false;
+        for &b in test_blocks {
+            let (s, e) = bounds[b];
+            if e <= s {
+                continue;
+            }
+            let r = run_on(strat, &full[s..e], tf_seconds, slippage);
+            any = true;
+            let w = r.trades.max(1) as f64;
+            trades_sum += r.trades;
+            w_sharpe += r.sharpe * w;
+            w_pf += r.profit_factor * w;
+        }
+        if !any {
+            continue;
+        }
+        let wsum = trades_sum.max(1) as f64;
+        let sharpe = w_sharpe / wsum;
+        let pf = w_pf / wsum;
+        let pen = calculate_penalized_sharpe(sharpe, trades_sum);
+        let pass = trades_sum >= CPCV_FOLD_MIN_TRADES && pf >= PF_GATE && pen >= PEN_SHARPE_GATE;
+        if pass {
+            passing += 1;
+        }
+        valid += 1;
+        sharpes.push(sharpe);
+        pens.push(pen);
+        pfs.push(pf);
+        folds.push(FoldMetrics {
+            block: path_ix, // path index (test-block combination), not a single block
+            trades: trades_sum,
+            pf,
+            sharpe,
+            penalized_sharpe: pen,
+            pass,
+        });
+    }
+
+    let pass_rate = if valid > 0 { passing as f64 / valid as f64 } else { 0.0 };
+    CpcvSummary {
+        valid_folds: valid,
+        passing_folds: passing,
+        pass_rate,
+        median_sharpe: median(&mut sharpes.clone()),
+        median_penalized_sharpe: median(&mut pens.clone()),
+        median_pf: median(&mut pfs.clone()),
+        folds,
+    }
+}
+
 fn arg(args: &[String], key: &str) -> Option<String> {
     args.iter().position(|a| a == key).and_then(|i| args.get(i + 1)).cloned()
+}
+
+fn flag(args: &[String], key: &str) -> bool {
+    args.iter().any(|a| a == key)
+}
+
+fn env_truthy(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|raw| matches!(raw.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "y" | "t"))
+        .unwrap_or(false)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -298,6 +431,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(COST_2PIP);
     let slip_fidelity: f64 = slip_2pip / 2.0; // keep the 1-pip fidelity : 2-pip real ratio
+
+    // V-methodology (2026-08-11): TRUE combinatorial+purged CPCV toggle. Default OFF
+    // reproduces the tribe-2d run exactly (simplified 10-block run_cpcv). `--cpcv-k <n>`
+    // sets test blocks per path (default 2 => 10C2 = 45 folds).
+    let cpcv_combinatorial =
+        flag(&args, "--cpcv-combinatorial") || env_truthy("SWIMMY_KILL_CPCV_COMBINATORIAL");
+    let cpcv_k: usize = arg(&args, "--cpcv-k").and_then(|s| s.parse().ok()).unwrap_or(2);
 
     eprintln!("[kill] loading candles {}", data);
     let all = load_candles_from_csv(&data)?;
@@ -335,7 +475,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let strat = build_strategy(m);
         let fidelity = run_on(&strat, is_slice, m.tf_seconds, slip_fidelity);
         let oos = run_on(&strat, oos_slice, m.tf_seconds, slip_2pip);
-        let cpcv = run_cpcv(&strat, cpcv_slice, m.tf_seconds, slip_2pip);
+        let cpcv = if cpcv_combinatorial {
+            run_cpcv_combinatorial(&strat, cpcv_slice, m.tf_seconds, slip_2pip, cpcv_k)
+        } else {
+            run_cpcv(&strat, cpcv_slice, m.tf_seconds, slip_2pip)
+        };
 
         let oos_pen = calculate_penalized_sharpe(oos.sharpe, oos.trades);
         let oos_qualified =
@@ -422,6 +566,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "strategies": results
     });
 
+    // Byte-parity guard: only annotate the CPCV mode when the combinatorial toggle is
+    // ON. With the flag OFF the verdict object is untouched, so the --out bytes match
+    // the canonical tribe-2d run exactly.
+    let mut verdict = verdict;
+    if cpcv_combinatorial {
+        // Annotate mode ONLY when ON, so OFF output bytes are unchanged.
+        if let Some(map) = verdict.as_object_mut() {
+            map.insert(
+                "cpcv_mode".to_string(),
+                serde_json::json!({ "combinatorial": true, "blocks": CPCV_BLOCKS, "k": cpcv_k }),
+            );
+        }
+        eprintln!("[kill] CPCV mode: COMBINATORIAL (blocks={}, k={}) => {} folds/strat",
+            CPCV_BLOCKS, cpcv_k, combinations(CPCV_BLOCKS, cpcv_k).len());
+    }
+
     std::fs::write(&out_path, serde_json::to_string_pretty(&verdict)?)?;
     eprintln!("\n=== §4 VERDICT ===");
     eprintln!("OOS-qualified (trades>=200 & PF>=1.10 & penalized_sharpe>=0.3): {}", qualified.len());
@@ -486,5 +646,31 @@ mod tests {
         // A mean-reversion label must NOT resolve to the SMA generator.
         assert_ne!(build_strategy(&me("bb")).indicator_type, IndicatorType::Sma);
         assert_ne!(build_strategy(&me("rsi")).indicator_type, IndicatorType::Sma);
+    }
+
+    // V-methodology (2026-08-11): combinatorial CPCV path structure.
+    #[test]
+    fn combinations_match_nCk() {
+        assert_eq!(combinations(5, 2).len(), 10); // 5C2
+        assert_eq!(combinations(10, 2).len(), 45); // 10C2 (default kill combinatorial)
+        assert_eq!(combinations(10, 3).len(), 120); // 10C3
+        assert_eq!(combinations(4, 0).len(), 0);
+        assert_eq!(combinations(2, 5).len(), 0); // k>n
+        // No duplicate indices within a combination, strictly increasing.
+        for c in combinations(6, 3) {
+            assert!(c.windows(2).all(|w| w[0] < w[1]), "combo not strictly increasing: {c:?}");
+        }
+    }
+
+    #[test]
+    fn block_bounds_are_contiguous_and_cover_all() {
+        let n = 1000usize;
+        let b = block_bounds(n, CPCV_BLOCKS);
+        assert_eq!(b.len(), CPCV_BLOCKS);
+        assert_eq!(b[0].0, 0);
+        assert_eq!(b[CPCV_BLOCKS - 1].1, n);
+        for w in b.windows(2) {
+            assert_eq!(w[0].1, w[1].0, "blocks must be contiguous with no gap/overlap");
+        }
     }
 }

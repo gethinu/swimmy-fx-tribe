@@ -226,25 +226,86 @@ pub fn calculate_penalized_sharpe(sharpe: f64, trades: i32) -> f64 {
 
 /// V8.7: Taleb's Bootstrap Confidence Interval for Sharpe Ratio
 /// Returns the 5th percentile (lower bound of 90% CI)
+/// V-methodology (2026-08-11): moving-block bootstrap toggle. Default OFF keeps the
+/// original IID resample path (behaviour/logs unchanged). When ON, the CI uses a
+/// moving-block bootstrap that preserves short-range serial dependence in returns —
+/// the correct resampling for autocorrelated PnL (Politis & Romano).
+fn moving_block_bootstrap_enabled() -> bool {
+    std::env::var("SWIMMY_BOOTSTRAP_MOVING_BLOCK")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "y" | "t"
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// Block length for the moving-block bootstrap. Env override, else ~ n^(1/3)
+/// (a standard rule of thumb), clamped to [2, n/2].
+fn moving_block_len(n: usize) -> usize {
+    let default = ((n as f64).powf(1.0 / 3.0).round() as usize).max(2);
+    let l = std::env::var("SWIMMY_BOOTSTRAP_BLOCK_LEN")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|v| *v >= 2)
+        .unwrap_or(default);
+    l.min((n / 2).max(2))
+}
+
+/// Moving-block bootstrap 5th-percentile Sharpe CI. Concatenates random contiguous
+/// blocks of length `block_len` to length n, preserving local autocorrelation.
+pub fn bootstrap_sharpe_ci_moving_block(returns: &[f64], n_samples: usize, block_len: usize) -> f64 {
+    use rand::Rng;
+    let n = returns.len();
+    if n < 10 {
+        return f64::NEG_INFINITY;
+    }
+    let block_len = block_len.clamp(2, n);
+    let max_start = n - block_len; // inclusive range [0, max_start]
+    let mut rng = rand::thread_rng();
+    let mut sharpes: Vec<f64> = Vec::with_capacity(n_samples);
+
+    for _ in 0..n_samples {
+        let mut resampled: Vec<f64> = Vec::with_capacity(n + block_len);
+        while resampled.len() < n {
+            let start = rng.gen_range(0..=max_start);
+            resampled.extend_from_slice(&returns[start..start + block_len]);
+        }
+        resampled.truncate(n);
+        sharpes.push(sharpe_ratio(&resampled));
+    }
+
+    sharpes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = (n_samples as f64 * 0.05) as usize;
+    sharpes.get(idx).copied().unwrap_or(0.0)
+}
+
 pub fn bootstrap_sharpe_ci(returns: &[f64], n_samples: usize) -> f64 {
     use rand::Rng;
-    
+
     if returns.len() < 10 {
         return f64::NEG_INFINITY; // Not enough data
     }
-    
+
+    // V-methodology: opt-in moving-block variant; default path is the original IID.
+    if moving_block_bootstrap_enabled() {
+        return bootstrap_sharpe_ci_moving_block(returns, n_samples, moving_block_len(returns.len()));
+    }
+
     let mut rng = rand::thread_rng();
     let mut sharpes: Vec<f64> = Vec::with_capacity(n_samples);
-    
+
     for _ in 0..n_samples {
         // Resample with replacement
         let resampled: Vec<f64> = (0..returns.len())
             .map(|_| returns[rng.gen_range(0..returns.len())])
             .collect();
-        
+
         sharpes.push(sharpe_ratio(&resampled));
     }
-    
+
     // Sort and return 5th percentile
     sharpes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let idx = (n_samples as f64 * 0.05) as usize;
@@ -1539,6 +1600,29 @@ mod tests {
         let returns = vec![0.01, 0.02, -0.01, 0.015, 0.005];
         let sharpe = sharpe_ratio(&returns);
         assert!(sharpe > 0.0);
+    }
+
+    #[test]
+    fn test_moving_block_bootstrap_basic() {
+        // Too little data -> NEG_INFINITY (same guard as IID).
+        assert_eq!(bootstrap_sharpe_ci_moving_block(&[0.01, 0.02], 50, 2), f64::NEG_INFINITY);
+        // Adequate data -> a finite CI value; block length is respected/clamped.
+        let returns: Vec<f64> = (0..200).map(|i| ((i % 7) as f64 - 3.0) * 0.001 + 0.002).collect();
+        let ci = bootstrap_sharpe_ci_moving_block(&returns, 200, 5);
+        assert!(ci.is_finite(), "moving-block CI should be finite for adequate data");
+    }
+
+    #[test]
+    fn test_moving_block_len_within_bounds() {
+        std::env::remove_var("SWIMMY_BOOTSTRAP_BLOCK_LEN");
+        let l = moving_block_len(1000);
+        assert!(l >= 2 && l <= 500, "block len must be in [2, n/2], got {}", l);
+    }
+
+    #[test]
+    fn test_bootstrap_defaults_to_iid_when_flag_off() {
+        std::env::remove_var("SWIMMY_BOOTSTRAP_MOVING_BLOCK");
+        assert!(!moving_block_bootstrap_enabled(), "moving-block bootstrap must default OFF");
     }
 
     #[test]

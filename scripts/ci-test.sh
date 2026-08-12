@@ -7,6 +7,51 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ---------------------------------------------------------------------------
+# Permanent CI fix (2026-08-11): auto-route SQLite test DBs to a NATIVE Linux FS.
+#
+# When the repo lives on a Windows drive seen through WSL as /mnt/c (DrvFs), SQLite
+# in WAL mode raises "disk I/O error" (SQLITE_IOERR) because DrvFs cannot mmap the
+# WAL "-shm" file. This does NOT depend on WSLENV reaching this process: we detect
+# DrvFs here and default SWIMMY_TEST_DB_DIR to a native filesystem ourselves, so a
+# direct `bash scripts/ci-test.sh` and the PowerShell runbook behave identically.
+#
+# An explicitly-set SWIMMY_TEST_DB_DIR is always respected (never overridden).
+# The Lisp side reads SWIMMY_TEST_DB_DIR; unset on a native-FS checkout => historical
+# data/memory/ behaviour (byte-parity), which is fine because native FS has no IOERR.
+# ---------------------------------------------------------------------------
+fstype_of() { df -T "$1" 2>/dev/null | awk 'NR==2{print $2}'; }
+pick_native_dir() {
+  # Print the first candidate directory that is NOT on DrvFs/9p (i.e. a real Linux FS).
+  local d fstype
+  for d in "${TMPDIR:-}" /tmp /dev/shm "$HOME/.cache"; do
+    [ -n "$d" ] || continue
+    mkdir -p "$d" 2>/dev/null || continue
+    fstype="$(fstype_of "$d")"
+    case "$fstype" in
+      drvfs|9p|v9fs|cifs|"") continue ;;   # DrvFs/9p/unknown -> keep looking
+      *) printf '%s\n' "$d"; return 0 ;;
+    esac
+  done
+  return 1
+}
+if [ -z "${SWIMMY_TEST_DB_DIR:-}" ]; then
+  repo_fstype="$(fstype_of "$REPO_ROOT")"
+  case "$REPO_ROOT:$repo_fstype" in
+    /mnt/*|*:drvfs|*:9p|*:v9fs|*:cifs)
+      if native_dir="$(pick_native_dir)"; then
+        export SWIMMY_TEST_DB_DIR="$native_dir/swimmy-ci-db"
+        mkdir -p "$SWIMMY_TEST_DB_DIR" 2>/dev/null || true
+        echo "[CI] repo on '$repo_fstype' ($REPO_ROOT) -> SWIMMY_TEST_DB_DIR=$SWIMMY_TEST_DB_DIR (native FS; avoids DrvFs SQLITE_IOERR)"
+      else
+        echo "[CI] ⚠️ repo on DrvFs but no native tmp FS found; test DBs stay on data/memory/ (SQLITE_IOERR risk)"
+      fi
+      ;;
+  esac
+else
+  echo "[CI] SWIMMY_TEST_DB_DIR already set -> $SWIMMY_TEST_DB_DIR (respected)"
+fi
+
 # History file
 HISTORY_FILE="$SCRIPT_DIR/.opus/ci_history.json"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

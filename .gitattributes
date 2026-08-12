@@ -8,3 +8,8 @@
 # payloads and Discord/log output. Force LF regardless of core.autocrlf.
 *.lisp text eol=lf
 *.asd  text eol=lf
+
+# Shell scripts must check out as LF: WSL/Git-Bash cannot execute CRLF scripts
+# (a stray \r makes bash fail with "$'\r': command not found" / syntax errors).
+# This keeps scripts/ci-test.sh (run by the landing runbook) executable on Windows.
+*.sh   text eol=lf
