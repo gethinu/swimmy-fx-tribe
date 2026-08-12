@@ -1785,7 +1785,7 @@
 
 (deftest test-oos-retry-uses-new-request-id
   "OOS retry should generate a new request_id"
-  (let* ((tmp-db (format nil "data/memory/test-oos-retry-~a.db" (get-universal-time)))
+  (let* ((tmp-db (swimmy.core::test-db-path (format nil "test-oos-retry-~a.db" (get-universal-time))))
          (orig-db swimmy.core::*db-path-default*)
          (orig-interval swimmy.school::*oos-request-interval*)
          (orig-request (symbol-function 'swimmy.school::request-backtest)))
@@ -1813,7 +1813,7 @@
 
 (deftest test-oos-queue-prune-on-startup
   "startup cleanup should prune stale rows and preserve fresh inflight rows"
-  (let* ((tmp-db (format nil "data/memory/test-oos-startup-~a.db" (get-universal-time)))
+  (let* ((tmp-db (swimmy.core::test-db-path (format nil "test-oos-startup-~a.db" (get-universal-time))))
          (orig-db swimmy.core::*db-path-default*))
     (unwind-protect
          (progn
@@ -16450,10 +16450,28 @@
                 (swimmy.core::*telemetry-fallback-log-path* "data/memory/swimmy-tests-telemetry-fallback.jsonl")
                 (swimmy.school::*evolution-report-path* "data/memory/swimmy-tests-evolution-report.txt")
                 ;; Keep tests hermetic and fast; dedicated backfill test calls it explicitly.
-                (swimmy.school::*disable-timeframe-backfill* t))
+                (swimmy.school::*disable-timeframe-backfill* t)
+                ;; Permanent CI fix (2026-08-11): when SWIMMY_TEST_DB_DIR is set, run the
+                ;; whole suite against a FRESH default DB on a native FS so tests that do
+                ;; NOT rebind the DB stop touching the live data/memory/swimmy.db (WAL on
+                ;; /mnt/c DrvFs => SQLITE_IOERR, plus daemon contention). Unset => this
+                ;; evaluates to the current default => byte-identical behaviour.
+                (swimmy.core::*db-path-default*
+                  (if (swimmy.core::test-db-redirect-active-p)
+                      (swimmy.core::test-db-path "swimmy-ci-default.db")
+                      swimmy.core::*db-path-default*)))
             (ignore-errors (ensure-directories-exist swimmy.core::*log-file-path*))
             (ignore-errors (ensure-directories-exist swimmy.core::*telemetry-fallback-log-path*))
             (ignore-errors (ensure-directories-exist swimmy.school::*evolution-report-path*))
+            ;; CI-only: start the redirected default DB clean and schema-inited so
+            ;; count/read paths return 0 rather than erroring. No-op when the env is unset.
+            (when (swimmy.core::test-db-redirect-active-p)
+              (ignore-errors (swimmy.core::close-db-connection))
+              (setf swimmy.core::*sqlite-conn* nil)
+              (ignore-errors (ensure-directories-exist swimmy.core::*db-path-default*))
+              (ignore-errors (delete-file swimmy.core::*db-path-default*))
+              (ignore-errors (swimmy.school::init-db))
+              (format t "[CI-DB] test DBs redirected to native FS: ~a~%" swimmy.core::*db-path-default*))
             ;; Run each test
             (dolist (test '(;; Clan tests
                   test-main-shadows-last-new-day
@@ -17079,7 +17097,14 @@
                   test-check-symbol-mismatch-allows-correct-pair
                   test-check-symbol-mismatch-allows-generic
                   test-check-symbol-mismatch-blocks-eurusd-on-gbpusd
-                  test-check-symbol-mismatch-case-insensitive))
+                  test-check-symbol-mismatch-case-insensitive
+                  ;; V-methodology (2026-08-11): real Deflated Sharpe + trial counter
+                  test-dsr-norm-cdf-known-values
+                  test-dsr-norm-ppf-known-values
+                  test-dsr-count-total-trials
+                  test-dsr-gate-off-equals-legacy
+                  test-dsr-short-history-abstains
+                  test-dsr-probability-in-range))
               (format t "Running ~a... " test)
               (if (funcall test)
                   (format t "✅ PASSED~%")

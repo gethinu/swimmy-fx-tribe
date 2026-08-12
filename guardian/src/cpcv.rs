@@ -54,6 +54,10 @@ pub struct CpcvAggregateResult {
     pub std_sharpe: f64,  // Stability measure
     pub path_count: usize,
     pub passed_count: usize,  // Paths meeting minimum criteria
+    /// V-methodology (2026-08-11): CSCV Probability of Backtest Overfitting for the
+    /// refit candidate grid. `None` unless SWIMMY_CPCV_PBO is enabled (default OFF),
+    /// so existing callers/logs are unchanged.
+    pub pbo: Option<f64>,
 }
 
 /// Create N blocks from data of given length (V48.2: num_blocks is now dynamic)
@@ -247,6 +251,90 @@ pub fn run_cpcv_validation(
     run_cpcv_validation_with_loaded_candles(strategy_name, &all_candles, strategy_params)
 }
 
+/// V-methodology (2026-08-11): per-fold refit switch for honest CPCV.
+///
+/// Flag-gated OFF by default (`SWIMMY_CPCV_REFIT`). When OFF the incoming *seed*
+/// parameters are scored on the test ranges unchanged — byte-parity with the
+/// pre-refit behaviour that produced the existing logs. When ON, parameters are
+/// (re)selected on the PURGED + EMBARGOED train ranges of each path (in-sample)
+/// and then scored out-of-sample on that path's test ranges, so the purge/embargo
+/// that this module already computes stops firing blanks and actually removes
+/// look-ahead leakage from the selection step.
+fn cpcv_refit_enabled() -> bool {
+    std::env::var("SWIMMY_CPCV_REFIT")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "y" | "t"
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// Deterministic bounded neighbourhood used for per-fold refit. Multiplicative
+/// factors on the two lookback knobs (sma_short / sma_long). `1.0` reproduces the
+/// seed, so the seed is always a candidate and wins ties (never worse than OFF).
+const CPCV_REFIT_FACTORS: [f64; 3] = [0.75, 1.0, 1.5];
+
+/// Select parameters on the purged/embargoed TRAIN ranges (in-sample) by maximising
+/// the Taleb-penalized Sharpe. Returns an owned params `Value`. Only called when the
+/// refit flag is ON; the OFF path never constructs this and passes the seed through.
+fn fit_params_on_train(
+    all_candles: &[Candle],
+    seed: &serde_json::Value,
+    train_ranges: &[(usize, usize)],
+) -> serde_json::Value {
+    let seed_short = seed.get("sma_short").and_then(|v| v.as_u64()).unwrap_or(10);
+    let seed_long = seed.get("sma_long").and_then(|v| v.as_u64()).unwrap_or(50);
+
+    let mut best = seed.clone();
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_is_seed = false;
+
+    for fs in CPCV_REFIT_FACTORS {
+        for fl in CPCV_REFIT_FACTORS {
+            let cand_short = ((seed_short as f64 * fs).round() as u64).max(2);
+            let cand_long = ((seed_long as f64 * fl).round() as u64).max(cand_short + 1);
+            let is_seed = cand_short == seed_short && cand_long == seed_long;
+
+            let mut cand = seed.clone();
+            cand["sma_short"] = serde_json::json!(cand_short);
+            cand["sma_long"] = serde_json::json!(cand_long);
+
+            let mut rs = Vec::new();
+            let mut ok = true;
+            for (start, end) in train_ranges {
+                if end.saturating_sub(*start) < MIN_RANGE_BARS {
+                    continue;
+                }
+                match run_backtest_range_from_loaded_candles(all_candles, &cand, *start, *end) {
+                    Ok(bt) => rs.push(bt),
+                    Err(_) => {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if !ok || rs.is_empty() {
+                continue;
+            }
+            let bt = combine_results(&rs);
+            let score = crate::backtester::calculate_penalized_sharpe(bt.sharpe, bt.trades);
+
+            // Strictly-greater wins; on an exact tie prefer the seed so refit is
+            // never worse than OFF for a genuinely tied grid.
+            let take = score > best_score || (score == best_score && is_seed && !best_is_seed);
+            if take {
+                best_score = score;
+                best = cand;
+                best_is_seed = is_seed;
+            }
+        }
+    }
+    best
+}
+
 fn run_cpcv_validation_with_loaded_candles(
     strategy_name: &str,
     all_candles: &[Candle],
@@ -268,9 +356,17 @@ fn run_cpcv_validation_with_loaded_candles(
     // k = 2 for combinations (López de Prado: small k is fine for n=5..10)
     let paths = generate_cpcv_paths(num_blocks, 2);
     
-    println!("[CPCV] Data length: {} rows -> Using {} blocks ({} paths) for {}", 
+    // Original log line preserved verbatim for OFF byte-parity.
+    println!("[CPCV] Data length: {} rows -> Using {} blocks ({} paths) for {}",
              total_rows, num_blocks, paths.len(), strategy_name);
-    
+
+    // V-methodology (2026-08-11): read the refit flag ONCE (default OFF => unchanged).
+    // Only emit an extra line when refit is actually enabled, so default output is intact.
+    let refit_enabled = cpcv_refit_enabled();
+    if refit_enabled {
+        println!("[CPCV] per-fold refit ENABLED (SWIMMY_CPCV_REFIT)");
+    }
+
     // Run backtests in parallel for each path
     let results: Vec<CpcvPathResult> = paths.par_iter()
         .filter_map(|(train_idx, test_idx)| {
@@ -301,6 +397,19 @@ fn run_cpcv_validation_with_loaded_candles(
                 return None;
             }
 
+            // V-methodology (2026-08-11): OFF => borrow the seed unchanged (byte-parity).
+            // ON => select params in-sample on the purged/embargoed train ranges, then
+            // score them out-of-sample on the test ranges below.
+            let eval_params: std::borrow::Cow<serde_json::Value> = if refit_enabled {
+                std::borrow::Cow::Owned(fit_params_on_train(
+                    all_candles,
+                    strategy_params,
+                    &purged_train,
+                ))
+            } else {
+                std::borrow::Cow::Borrowed(strategy_params)
+            };
+
             let mut test_results = Vec::new();
                 for (start, end) in &test_ranges {
                     let bars = end.saturating_sub(*start);
@@ -313,7 +422,7 @@ fn run_cpcv_validation_with_loaded_candles(
                     );
                     return None;
                     }
-                match run_backtest_range_from_loaded_candles(all_candles, strategy_params, *start, *end) {
+                match run_backtest_range_from_loaded_candles(all_candles, eval_params.as_ref(), *start, *end) {
                     Ok(bt) => test_results.push(bt),
                     Err(e) => {
                         eprintln!("[CPCV] Path {:?}/{:?} failed: {}", train_idx, test_idx, e);
@@ -342,8 +451,19 @@ fn run_cpcv_validation_with_loaded_candles(
     if results.is_empty() {
         return Err("All CPCV paths failed".to_string());
     }
-    
-    Ok(calculate_aggregate(&results))
+
+    let mut agg = calculate_aggregate(&results);
+
+    // V-methodology (2026-08-11): additive CSCV PBO diagnostic (default OFF).
+    if cpcv_pbo_enabled() {
+        agg.pbo = compute_grid_pbo(all_candles, strategy_params, &blocks);
+        if let Some(p) = agg.pbo {
+            println!("[CPCV] PBO(CSCV) for refit grid = {:.4} (N_grid={}, blocks={})",
+                     p, CPCV_REFIT_FACTORS.len() * CPCV_REFIT_FACTORS.len(), num_blocks);
+        }
+    }
+
+    Ok(agg)
 }
 
 fn run_backtest_range(
@@ -529,7 +649,73 @@ fn calculate_aggregate(results: &[CpcvPathResult]) -> CpcvAggregateResult {
         std_sharpe: variance.sqrt(),
         path_count: n,
         passed_count: passed,
+        pbo: None,
     }
+}
+
+/// V-methodology (2026-08-11): PBO toggle. Default OFF -> PBO never computed and the
+/// aggregate's `pbo` stays None, so behaviour/logs are unchanged.
+fn cpcv_pbo_enabled() -> bool {
+    std::env::var("SWIMMY_CPCV_PBO")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on" | "y" | "t"
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// Build the refit candidate grid (same neighbourhood as `fit_params_on_train`),
+/// score each candidate per block, and return the CSCV PBO of that selection grid.
+/// Returns None if PBO is not estimable (too few blocks/candidates or no trades).
+fn compute_grid_pbo(
+    all_candles: &[Candle],
+    seed: &serde_json::Value,
+    blocks: &[DataBlock],
+) -> Option<f64> {
+    let seed_short = seed.get("sma_short").and_then(|v| v.as_u64()).unwrap_or(10);
+    let seed_long = seed.get("sma_long").and_then(|v| v.as_u64()).unwrap_or(50);
+
+    // Candidate grid (N configs).
+    let mut candidates: Vec<serde_json::Value> = Vec::new();
+    for fs in CPCV_REFIT_FACTORS {
+        for fl in CPCV_REFIT_FACTORS {
+            let cand_short = ((seed_short as f64 * fs).round() as u64).max(2);
+            let cand_long = ((seed_long as f64 * fl).round() as u64).max(cand_short + 1);
+            let mut cand = seed.clone();
+            cand["sma_short"] = serde_json::json!(cand_short);
+            cand["sma_long"] = serde_json::json!(cand_long);
+            candidates.push(cand);
+        }
+    }
+    if candidates.len() < 2 || blocks.len() < 2 {
+        return None;
+    }
+
+    // block_perf[b][cfg] = per-block Sharpe.
+    let block_perf: Vec<Vec<f64>> = blocks
+        .par_iter()
+        .map(|b| {
+            candidates
+                .iter()
+                .map(|cand| {
+                    match run_backtest_range_from_loaded_candles(
+                        all_candles,
+                        cand,
+                        b.start_row,
+                        b.end_row,
+                    ) {
+                        Ok(bt) => bt.sharpe,
+                        Err(_) => 0.0,
+                    }
+                })
+                .collect()
+        })
+        .collect();
+
+    crate::pbo::compute_pbo(&block_perf).map(|r| r.pbo)
 }
 
 #[cfg(test)]
@@ -652,6 +838,74 @@ mod tests {
         let purged = apply_purge_embargo_to_ranges(train_ranges, &test_ranges, 50, 30);
 
         assert_eq!(purged, vec![(0, 350), (630, 1000)]);
+    }
+
+    #[test]
+    fn test_cpcv_refit_flag_defaults_off() {
+        // Explicitly clear the env for a deterministic default-OFF assertion.
+        std::env::remove_var("SWIMMY_CPCV_REFIT");
+        assert!(!cpcv_refit_enabled(), "refit must default OFF when unset");
+        std::env::set_var("SWIMMY_CPCV_REFIT", "1");
+        assert!(cpcv_refit_enabled(), "refit must turn ON for truthy value");
+        std::env::remove_var("SWIMMY_CPCV_REFIT");
+    }
+
+    fn write_flat_csv(bars: usize) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        path.push(format!("swimmy-ut-cpcv-refit-{}.csv", nanos));
+        let mut f = std::fs::File::create(&path).expect("create temp csv");
+        writeln!(f, "timestamp,open,high,low,close,volume").unwrap();
+        // Perfectly flat closes => SMA crossover never triggers => 0 trades for every
+        // candidate => all penalized-Sharpe scores tie at 0 => seed must win the tie.
+        for i in 0..bars {
+            writeln!(f, "{},{},{},{},{},{}", (i as i64) * 60, 100.0, 100.0, 100.0, 100.0, 1.0).unwrap();
+        }
+        drop(f);
+        path
+    }
+
+    #[test]
+    fn test_fit_params_on_train_returns_seed_on_flat_ties() {
+        let path = write_flat_csv(4000);
+        let candles = crate::backtester::load_candles_from_csv(path.to_str().unwrap())
+            .expect("load candles");
+        let seed = serde_json::json!({
+            "name": "UT-REFIT", "sma_short": 10, "sma_long": 50,
+            "sl": 50.0, "tp": 100.0, "volume": 0.01, "indicator_type": "sma"
+        });
+        // Two contiguous train ranges spanning the flat series.
+        let train_ranges = vec![(0usize, 2000usize), (2000usize, 4000usize)];
+        let fitted = fit_params_on_train(&candles, &seed, &train_ranges);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(fitted.get("sma_short").and_then(|v| v.as_u64()), Some(10),
+            "seed sma_short must win ties");
+        assert_eq!(fitted.get("sma_long").and_then(|v| v.as_u64()), Some(50),
+            "seed sma_long must win ties");
+    }
+
+    #[test]
+    fn test_fit_params_on_train_keeps_ordering_invariant() {
+        let path = write_flat_csv(4000);
+        let candles = crate::backtester::load_candles_from_csv(path.to_str().unwrap())
+            .expect("load candles");
+        // Seed with a tiny long so factor rounding could invert order without the guard.
+        let seed = serde_json::json!({
+            "name": "UT-REFIT2", "sma_short": 3, "sma_long": 4,
+            "sl": 50.0, "tp": 100.0, "volume": 0.01, "indicator_type": "sma"
+        });
+        let train_ranges = vec![(0usize, 4000usize)];
+        let fitted = fit_params_on_train(&candles, &seed, &train_ranges);
+        let _ = std::fs::remove_file(&path);
+
+        let s = fitted.get("sma_short").and_then(|v| v.as_u64()).unwrap();
+        let l = fitted.get("sma_long").and_then(|v| v.as_u64()).unwrap();
+        assert!(s >= 2, "sma_short floored at 2");
+        assert!(l > s, "sma_long must stay strictly greater than sma_short");
     }
 
     #[test]

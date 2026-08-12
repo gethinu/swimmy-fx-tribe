@@ -32,3 +32,11 @@ Notes:
 - Discord webhooks come from SWIMMY_DISCORD_* env vars. .env is the local fallback.
 - If Evolution Factory Report is missing in Discord, confirm .env is loaded and notifier is running.
 - When editing, keep ZMQ notifier contract stable (payload with webhook + data).
+- **Methodology (validation) upgrades (2026-08-11):** CPCV per-fold refit, combinatorial
+  CPCV, real Deflated Sharpe, PBO/CSCV, moving-block bootstrap, and MDA are implemented
+  but **all default OFF** (flag-gated, byte-parity; `tribe-2d` reproduces exactly). Before
+  touching CPCV / the S-rank DSR gate / `failure_auditor.py` / `kill_oos_cpcv`, read
+  `REFERENCE.md` → "Methodology & Validation Upgrades" and `docs/methodology_uplift_20260811.md`.
+  Flags: `SWIMMY_CPCV_REFIT`, `SWIMMY_CPCV_PBO`, `--cpcv-combinatorial`, `*enable-real-dsr*`,
+  `SWIMMY_BOOTSTRAP_MOVING_BLOCK`, `AUDITOR_MDA`. Land/enable via
+  `scripts/land_methodology_uplift.ps1` (host only; PLAN default, `-Execute` to apply).

@@ -7,6 +7,35 @@
 (defvar *sqlite-primed* nil
   "T once sqlite3_initialize has been called (native-Windows workaround).")
 
+;;; ---------------------------------------------------------------------------
+;;; Test-DB directory override (permanent CI fix, 2026-08-11)
+;;; ---------------------------------------------------------------------------
+;;; SQLite in WAL mode fails with "disk I/O error" (SQLITE_IOERR) when its DB lives
+;;; on the Windows drive seen through WSL as /mnt/c (DrvFs): the WAL "-shm" file is
+;;; memory-mapped and DrvFs does not support the required mmap/locking. Putting test
+;;; DBs on a native Linux filesystem (e.g. /tmp = ext4 under WSL2) avoids this.
+;;;
+;;; SWIMMY_TEST_DB_DIR lets the CI point test databases at such a native directory.
+;;; UNSET => historical behaviour (data/memory/), so default runs are byte-identical.
+
+(defun test-db-dir ()
+  "Directory for test databases: SWIMMY_TEST_DB_DIR when set, else \"data/memory\"
+   (the historical default => byte-parity when the env var is unset)."
+  (let ((d (uiop:getenv "SWIMMY_TEST_DB_DIR")))
+    (if (and d (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) d))))
+        (string-trim '(#\Space #\Tab #\Newline #\Return) d)
+        "data/memory")))
+
+(defun test-db-path (filename)
+  "Resolve FILENAME under (test-db-dir). With SWIMMY_TEST_DB_DIR unset this returns
+   data/memory/FILENAME exactly as before."
+  (namestring (merge-pathnames filename (uiop:ensure-directory-pathname (test-db-dir)))))
+
+(defun test-db-redirect-active-p ()
+  "True only when SWIMMY_TEST_DB_DIR is explicitly set (i.e. the CI opted in)."
+  (let ((d (uiop:getenv "SWIMMY_TEST_DB_DIR")))
+    (and d (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) d))))))
+
 (defun prime-sqlite ()
   "Explicitly run sqlite3_initialize before the first sqlite3_open.
 

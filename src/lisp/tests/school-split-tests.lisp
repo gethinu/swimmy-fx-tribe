@@ -517,7 +517,7 @@
 
 (deftest test-oos-queue-persists-and-clears
   "Queue entry should persist and clear when result arrives."
-  (let* ((tmp-db (format nil "data/memory/test-oos-~a.db" (get-universal-time))))
+  (let* ((tmp-db (swimmy.core::test-db-path (format nil "test-oos-~a.db" (get-universal-time)))))
     (unwind-protect
          (let ((swimmy.core::*db-path-default* tmp-db)
                (swimmy.core::*sqlite-conn* nil)
@@ -562,7 +562,9 @@
 
 (deftest test-oos-stale-result-ignored
   "Stale OOS result (request_id mismatch) should be ignored."
-  (let* ((tmp-db (format nil "data/memory/test-oos-stale-~a.db" (get-universal-time)))
+  ;; test-db-path keeps this under data/memory/ by default (byte-parity) but lets CI
+  ;; move it to a native FS via SWIMMY_TEST_DB_DIR to avoid the DrvFs WAL IOERR.
+  (let* ((tmp-db (swimmy.core::test-db-path (format nil "test-oos-stale-~a.db" (get-universal-time))))
          (orig-db swimmy.core::*db-path-default*))
     (unwind-protect
          (let ((swimmy.core::*db-path-default* tmp-db)
@@ -591,7 +593,7 @@
 
 (deftest test-oos-result-falls-back-to-db-when-strategy-missing-in-memory
   "OOS result should update strategy from DB even when in-memory lookup misses."
-  (let* ((tmp-db (format nil "data/memory/test-oos-db-fallback-~a.db" (get-universal-time)))
+  (let* ((tmp-db (swimmy.core::test-db-path (format nil "test-oos-db-fallback-~a.db" (get-universal-time))))
          (orig-db swimmy.core::*db-path-default*))
     (unwind-protect
          (let ((swimmy.core::*db-path-default* tmp-db)
@@ -664,7 +666,7 @@
   "OOS dispatch should update oos_status.txt via writer."
   (let* ((data-path (swimmy.core::swimmy-path "data/historical/USDJPY_M1.csv"))
          (created-file nil)
-         (tmp-db (format nil "data/memory/test-oos-status-~a.db" (get-universal-time))))
+         (tmp-db (swimmy.core::test-db-path (format nil "test-oos-status-~a.db" (get-universal-time)))))
     (unless (probe-file data-path)
       (ensure-directories-exist data-path)
       (with-open-file (s data-path :direction :output :if-does-not-exist :create :if-exists :supersede)
@@ -1199,7 +1201,7 @@
 
 (deftest test-backtest-dead-letter-replay
   "Malformed BACKTEST_RESULT should go to DLQ and be replayable."
-  (let ((tmp-db (format nil "data/memory/test-dlq-~a.db" (get-universal-time))))
+  (let ((tmp-db (swimmy.core::test-db-path (format nil "test-dlq-~a.db" (get-universal-time)))))
     (let ((swimmy.core::*db-path-default* tmp-db)
           (swimmy.core::*sqlite-conn* nil))
       (unwind-protect

@@ -181,7 +181,8 @@
                (:file "src/lisp/tests/school-mismatch-tests")
                (:file "src/lisp/tests/evolution-tests")
                (:file "src/lisp/tests/integration-tests")
-               
+               (:file "src/lisp/tests/dsr-tests") ; V-methodology: real Deflated Sharpe
+
                ;; RUNNER & MAIN
                (:file "src/lisp/system/runner")
                (:file "src/lisp/main")))

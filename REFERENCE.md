@@ -5,6 +5,41 @@
 > survivor → feed contract. The factory's honest output lives in [`feed/`](feed/)
 > (regenerate with `python3 -m tools.tribe.export`).
 
+## Methodology & Validation Upgrades (2026-08-11)
+
+> **Read this before touching CPCV, the S-rank/DSR gate, the failure auditor, or the
+> `kill_oos_cpcv` decisive experiment.** Full rationale, byte-parity proof, tests,
+> the 55→82 rubric, and residual gaps live in
+> [`docs/methodology_uplift_20260811.md`](docs/methodology_uplift_20260811.md).
+> Land / enable via [`scripts/land_methodology_uplift.ps1`](scripts/land_methodology_uplift.ps1)
+> (host only; PLAN by default, `-Execute` to apply).
+
+Six methodology improvements are implemented and **all default OFF**. With every
+flag OFF the code path is byte-identical to before — in particular the
+`logs/tribe-2d` `--out` bytes reproduce exactly. Enabling any flag is a single,
+reversible switch and **changes no live gate threshold**.
+
+| Flag (default OFF) | Module / stage it touches | What ON does |
+|---|---|---|
+| `SWIMMY_CPCV_REFIT=1` | `guardian/src/cpcv.rs` — Stage-2 CPCV validation (`run_cpcv_validation*`) | Per-fold refit: selects params on the **purged/embargoed train** ranges, scores OOS on the test ranges — makes purge/embargo actually fire instead of gating a selection that never happened. |
+| `--cpcv-combinatorial` / `SWIMMY_KILL_CPCV_COMBINATORIAL=1` (opt `--cpcv-k`) | `guardian/src/bin/kill_oos_cpcv.rs` — KILL_CRITERIA §4 decisive experiment | Scores the fixed library strategy on true **N-choose-k combinatorial** test-block CPCV (default 10C2=45 folds) instead of 10 contiguous singletons. |
+| `*enable-real-dsr*` = T (Lisp `swimmy.school`) | `src/lisp/school/school-ranking.lisp` — S-rank promotion gate | Real **Deflated Sharpe Ratio** (Bailey & López de Prado 2014: skew, kurtosis, sample length, trial count N) replaces the legacy Sharpe-floor. `count-total-trials` supplies the honest N. |
+| `SWIMMY_CPCV_PBO=1` | `guardian/src/pbo.rs` (new) wired into `cpcv.rs` | Computes **PBO via CSCV** (Probability of Backtest Overfitting) over the refit candidate grid; surfaced in the CPCV payload/s-expr only when present. |
+| `SWIMMY_BOOTSTRAP_MOVING_BLOCK=1` (opt `SWIMMY_BOOTSTRAP_BLOCK_LEN`) | `guardian/src/backtester.rs` — Sharpe CI bootstrap | **Moving-block bootstrap** (preserves PnL autocorrelation) instead of IID resample. |
+| `AUDITOR_MDA=1` / `--mda` | `tools/failure_auditor.py` — offline toxic-feature audit | Adds **MDA / permutation importance** beside XGBoost MDI, written to a separate `toxic_features_mda.json` (canonical `toxic_features.json` unchanged). |
+
+**Enable examples:** `SWIMMY_CPCV_REFIT=1 SWIMMY_CPCV_PBO=1 <guardian run>`;
+`kill_oos_cpcv --cpcv-combinatorial --cpcv-k 2 …`; in Lisp
+`(setf swimmy.school::*enable-real-dsr* t)`; `AUDITOR_MDA=1 python3 tools/failure_auditor.py`.
+**Verify ON:** `scripts/land_methodology_uplift.ps1` (`-Execute`) runs cargo + Lisp +
+pytest suites and an explicit **flag-ON functional check**; see the report's
+"Flag-ON verification" section for the sandbox evidence
+(`tools/_methodology_flag_on_check.py`, `tools/_methodology_math_check.py`).
+
+**Score:** methodology ≈ 55 → 82 (rubric in the dated report). **Residual gaps:**
+FDR/Bonferroni/SPA not yet added; the refit search is a bounded 3×3 lookback grid;
+PBO is computed over that grid rather than the full live candidate population.
+
 ## Important Paths
 
 ### WSL (Linux)
@@ -155,6 +190,7 @@ guardian actually wires (S-expression payloads only on the ZMQ boundary):
 | 38.0 | QUALITY - Crypto + Tests + Macros + REPL |
 | 38.1 | EXCELLENCE - Error Handling + Quality Metrics |
 | 39.0 | **🏛️ CIVILIZATION COMPLETE - Hierarchy + Council + Economics** |
+| 40.0 (2026-08-11) | **📐 METHODOLOGY UPGRADE — CPCV per-fold refit, combinatorial CPCV, real Deflated Sharpe, PBO/CSCV, moving-block bootstrap, MDA. All flag-gated OFF (byte-parity). See [`docs/methodology_uplift_20260811.md`](docs/methodology_uplift_20260811.md).** |
 
 ---
 

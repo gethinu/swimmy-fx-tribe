@@ -9,6 +9,7 @@ mod ppo;  // V6.20: PPO Agent
 mod ensemble;  // V8.10: Ensemble Predictions & A/B Testing
 mod audit; // Phase 8: Immutable Audit Logging
 mod cpcv;   // V47.0: CPCV Backtest Validation
+mod pbo;    // V-methodology (2026-08-11): CSCV Probability of Backtest Overfitting
 mod kalman; // V47.0: Kalman Filter for Parameter Estimation
 mod strategy_ast; // Phase 23: Native AST Protocol
 mod cmd_route; // S-expression command routing (Brain -> MT5 vs internal)
@@ -205,6 +206,10 @@ struct CpcvResultPayload {
     failed_count: usize,
     pass_rate: f64,
     is_passed: bool,
+    // V-methodology (2026-08-11): CSCV PBO diagnostic. Omitted from the wire format
+    // unless SWIMMY_CPCV_PBO produced a value, so the default payload is byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pbo: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -257,6 +262,11 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
         "(is_passed . {})",
         if result.is_passed { "t" } else { "nil" }
     ));
+    // Emitted only when the PBO diagnostic ran (SWIMMY_CPCV_PBO); absent otherwise so
+    // the default s-expression is byte-identical to the pre-change output.
+    if let Some(pbo) = result.pbo {
+        parts.push(format!("(pbo . {})", pbo));
+    }
     if let Some(err) = &result.error {
         parts.push(format!("(error . {})", sexp_escape_string(err)));
     }
@@ -446,6 +456,7 @@ fn cpcv_payload_from_aggregate(
         failed_count,
         pass_rate,
         is_passed,
+        pbo: agg.pbo,
         error: None,
     }
 }
@@ -466,6 +477,7 @@ fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
             failed_count: 0,
             pass_rate: 0.0,
             is_passed: false,
+            pbo: None,
             error: Some(e),
         },
     }
@@ -2286,6 +2298,7 @@ mod tests {
             std_sharpe: 0.2,
             path_count: 10,
             passed_count: 7,
+            pbo: None,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", None, &agg);
@@ -2312,6 +2325,7 @@ mod tests {
             std_sharpe: 0.2,
             path_count: 10,
             passed_count: 6,
+            pbo: None,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-PASS", None, &agg);
@@ -2330,6 +2344,7 @@ mod tests {
             std_sharpe: 0.2,
             path_count: 10,
             passed_count: 9,
+            pbo: None,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-MAXDD", None, &agg);
@@ -2352,6 +2367,7 @@ mod tests {
             failed_count: 2,
             pass_rate: 0.6,
             is_passed: true,
+            pbo: None,
             error: None,
         };
 
