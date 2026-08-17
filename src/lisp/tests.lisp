@@ -17108,7 +17108,8 @@
                   test-dsr-probability-in-range
                   test-statistical-s-gate-requires-refit-pbo-and-dsr
                   test-ensure-rank-refuses-overfit-cpcv-result
-                  test-s-candidate-selection-requires-real-dsr))
+                  test-s-candidate-selection-requires-real-dsr
+                  test-s-rank-block-diagnostics-returns-plist-without-common-stage2))
               (format t "Running ~a... " test)
               (if (funcall test)
                   (format t "✅ PASSED~%")

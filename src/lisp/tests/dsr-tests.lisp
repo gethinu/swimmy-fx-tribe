@@ -146,3 +146,42 @@
     (setf (swimmy.school::strategy-pnl-history target) '(1.0d0 -1.0d0 2.0d0))
     (assert-false (swimmy.school::check-rank-criteria target :S :include-cpcv nil)
                   "Short PnL history must be excluded before CPCV dispatch")))
+
+(deftest test-s-rank-block-diagnostics-returns-plist-without-common-stage2
+  "Diagnostics must be returned for both :INCLUDE-COMMON-STAGE2 values.
+Regression: the statistical-gate rewrite once nested the result inside the
+Common-Stage2 WHEN, so callers that skipped that gate silently got NIL."
+  (let* ((mk (lambda (name seed)
+               (make-strategy
+                :name name :rank :A :sharpe 1.0d0 :profit-factor 2.0d0
+                :win-rate 0.60d0 :max-dd 0.05d0 :trades 200
+                :cpcv-pass-rate 0.80d0 :cpcv-median-maxdd 0.05d0
+                :cpcv-pbo 0.50d0 :cpcv-refit t
+                :pnl-history
+                (loop for i from 0 below 60
+                      collect (+ 0.1d0
+                                 (* 0.01d0 (mod (* seed (1+ i)) 7))
+                                 (if (evenp i) 0.05d0 -0.05d0))))))
+         (target (funcall mk "diag-target" 3))
+         (*strategy-knowledge-base*
+           (list target (funcall mk "b" 5) (funcall mk "c" 2) (funcall mk "d" 4)))
+         (swimmy.school::*statistical-promotion-gates-enabled* t)
+         (swimmy.school::*s-rank-pbo-max* 0.25d0)
+         (swimmy.school::*dsr-prob-threshold* 0.95d0))
+    (dolist (include '(t nil))
+      (let ((diag (swimmy.school::s-rank-block-diagnostics
+                   target :include-common-stage2 include)))
+        (assert-not-nil diag "Diagnostics plist must be returned")
+        (assert-true (listp diag) "Diagnostics must be a plist")
+        (assert-true (member :pbo (getf diag :failed-gates))
+                     "Excessive PBO must be reported as a failed gate")
+        (assert-not-nil (getf diag :statistical-message)
+                        "A statistical failure must carry an actionable message")
+        (assert-equal t (getf diag :cpcv-refit)
+                      "Refit provenance must be reported in diagnostics")))
+    ;; The Common-Stage2 gate itself must stay opt-out-able.
+    (assert-false (member :common-stage2
+                          (getf (swimmy.school::s-rank-block-diagnostics
+                                 target :include-common-stage2 nil)
+                                :failed-gates))
+                  "Skipping Common Stage2 must not report it as failed")))

@@ -728,26 +728,28 @@ evaluation, and direct/manual promotion from applying different standards."
               ;; The statistical reason is more directly actionable; retain it
               ;; when both gates fail.
               (unless common-stage2-message
-                (setf common-stage2-message message))))
-        (return-from s-rank-block-diagnostics
-          (list :failed-gates (nreverse failed)
-                :trade-evidence trade-evidence
-                :trade-evidence-breakdown trade-evidence-breakdown
-                :min-trade-evidence min-trade-evidence
-                :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
-                :sharpe sharpe
-                :pf pf
-                :wr wr
-                :maxdd maxdd
-                :pf-min (getf criteria :pf-min)
-                :wr-min (getf criteria :wr-min)
-                :cpcv-pass-rate pass-rate
-                :cpcv-maxdd cpcv-maxdd
-                :cpcv-pbo (strategy-cpcv-pbo strategy)
-                :cpcv-refit (and (strategy-cpcv-refit strategy) t)
-                :dsr dsr
-                 :statistical-message stats-message
-                 :common-stage2-message common-stage2-message)))))))
+                (setf common-stage2-message message)))))
+        ;; The plist is the value of this MULTIPLE-VALUE-BIND, not of the
+        ;; Common-Stage2 WHEN above: callers passing :INCLUDE-COMMON-STAGE2 NIL
+        ;; must still receive full diagnostics rather than NIL.
+        (list :failed-gates (nreverse failed)
+              :trade-evidence trade-evidence
+              :trade-evidence-breakdown trade-evidence-breakdown
+              :min-trade-evidence min-trade-evidence
+              :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
+              :sharpe sharpe
+              :pf pf
+              :wr wr
+              :maxdd maxdd
+              :pf-min (getf criteria :pf-min)
+              :wr-min (getf criteria :wr-min)
+              :cpcv-pass-rate pass-rate
+              :cpcv-maxdd cpcv-maxdd
+              :cpcv-pbo (strategy-cpcv-pbo strategy)
+              :cpcv-refit (and (strategy-cpcv-refit strategy) t)
+              :dsr dsr
+              :statistical-message stats-message
+              :common-stage2-message common-stage2-message)))))
 
 (defun %format-s-rank-failed-gates (failed-gates)
   (if failed-gates

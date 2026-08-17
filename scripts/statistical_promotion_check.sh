@@ -28,6 +28,7 @@ sbcl --non-interactive \
   --eval '(unless (and (swimmy.tests::test-statistical-s-gate-requires-refit-pbo-and-dsr)
                        (swimmy.tests::test-ensure-rank-refuses-overfit-cpcv-result)
                        (swimmy.tests::test-s-candidate-selection-requires-real-dsr)
+                       (swimmy.tests::test-s-rank-block-diagnostics-returns-plist-without-common-stage2)
                        (swimmy.tests::test-cpcv-statistical-proof-persists-and-clears-fail-closed))
             (sb-ext:exit :code 1))' \
   --eval '(format t "~&[STATISTICAL-S-GATE] PASS~%")'
