@@ -101,13 +101,21 @@
   (handler-bind ((style-warning #'muffle-warning))
     (asdf:load-system :swimmy))
 
-  (let ((*package* (find-package :swimmy.school)))
+  ;; Resolve the entry points through FIND-SYMBOL rather than naming them
+  ;; literally. Binding *PACKAGE* at run time is too late: SBCL --script READS
+  ;; this whole top-level form while *PACKAGE* is still CL-USER, so a literal
+  ;; `queue-legend-revalidation` interns CL-USER::QUEUE-LEGEND-REVALIDATION
+  ;; before the ASDF:LOAD-SYSTEM above runs. The system's USE-PACKAGE of
+  ;; SWIMMY.SCHOOL into CL-USER then dies with an unhandled NAME-CONFLICT,
+  ;; which fails the school daemon's ExecStartPre on every stamp-stale boot.
+  (let ((restore (find-symbol "RESTORE-LEGEND-61" :swimmy.school))
+        (queue (find-symbol "QUEUE-LEGEND-REVALIDATION" :swimmy.school)))
     (format t "[LEGENDS-61] Restoring 61 legends...~%")
-    (when (fboundp 'restore-legend-61)
-      (restore-legend-61))
+    (when (and restore (fboundp restore))
+      (funcall restore))
     ;; Flag-only queue to avoid premature BACKTEST dispatch before daemon wiring
-    (when (fboundp 'queue-legend-revalidation)
-      (queue-legend-revalidation :send-requests nil)))
+    (when (and queue (fboundp queue))
+      (funcall queue :send-requests nil)))
 
   ;; Persist the stamp only after a successful restore.
   (%write-legend-stamp sig)
