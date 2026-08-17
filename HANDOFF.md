@@ -15,6 +15,8 @@ sudo systemctl daemon-reload && sudo systemctl restart swimmy-guardian
 - `[build] target-dir` による出力先の付け替えは**行わない**方針。旧 `guardian/target/` は zmq の build-script が実行権限エラーを起こす壊れたキャッシュを抱えており、参照させない。
 - 稼働確認: `ls -l /proc/$(systemctl show swimmy-guardian -p MainPID --value)/exe` が正典パスを指すこと。
 
+**`StartLimitIntervalSec` / `StartLimitBurst` は `[Unit]` に書く。** `[Service]` では systemd が "Unknown key name ... ignoring" として捨てるため、`swimmy-pattern-similarity.service` は `Restart=always` かつ実質無制限で再試行していた（`b822600f` で `[Unit]` へ移動、値は 300s/5 のまま）。ホスト反映後 `systemctl show` が `StartLimitIntervalUSec=10s`（既定値）→ `5min` に変わり、`systemd-analyze verify` の指摘も消えたことを確認済み。なお `systemd/mt5_account_sync.service` と `systemd/strategy_hunter.service` に同じ誤配置が残っている。
+
 **Python依存は `requirements.txt`（リポジトリroot）に宣言する。**
 
 systemdのExecStartから到達する第三者importはすべてここに列挙してある。venv再構築は `.venv/bin/python3 -m pip install -r requirements.txt`。`portalocker` の宣言漏れで `swimmy-data-keeper` が `ModuleNotFoundError` で起動できなかった事故を受けて追加した。新しい第三者パッケージをimportしたら、必ずこのファイルにも追記すること。
