@@ -75,3 +75,8 @@ data/macro/
 # arXiv Scout runtime data
 tools/arxiv-scout/data/
 tools/arxiv-scout/logs/
+
+# Guardian build artefacts: the canonical binary is <repo>/target/release/guardian
+# (root Cargo.toml declares the workspace). /guardian/guardian was an ELF binary
+# vendored in by the 2026-07-01 subtree import; never commit a built binary here.
+/guardian/guardian

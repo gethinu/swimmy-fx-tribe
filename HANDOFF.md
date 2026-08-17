@@ -14,6 +14,7 @@ sudo systemctl daemon-reload && sudo systemctl restart swimmy-guardian
 - **デプロイ時にバイナリをコピーする必要はない。** 2026-08-17以前は unit が旧パスを指していたため `target/release/guardian` を `guardian/target/release/` へ手でコピーする運用になっていたが、その手順は廃止。コピーが残っていると古いバイナリが起動する事故になる。
 - `[build] target-dir` による出力先の付け替えは**行わない**方針。旧 `guardian/target/` は zmq の build-script が実行権限エラーを起こす壊れたキャッシュを抱えており、参照させない。
 - 稼働確認: `ls -l /proc/$(systemctl show swimmy-guardian -p MainPID --value)/exe` が正典パスを指すこと。
+- **Guardianの正典バイナリは `target/release/guardian` のみ。** `guardian/guardian` は2026-07-01のsubtree取り込みで紛れ込んだ追跡済みの旧ビルド成果物（ELF、参照ゼロ）だったため除去し、`.gitignore` に `/guardian/guardian` を追加した。ビルド成果物をリポジトリにコミットしないこと。
 
 **`StartLimitIntervalSec` / `StartLimitBurst` は `[Unit]` に書く。** `[Service]` では systemd が "Unknown key name ... ignoring" として捨てるため、`swimmy-pattern-similarity.service` は `Restart=always` かつ実質無制限で再試行していた（`b822600f` で `[Unit]` へ移動、値は 300s/5 のまま）。ホスト反映後 `systemctl show` が `StartLimitIntervalUSec=10s`（既定値）→ `5min` に変わり、`systemd-analyze verify` の指摘も消えたことを確認済み。なお `systemd/mt5_account_sync.service` と `systemd/strategy_hunter.service` に同じ誤配置が残っている。
 
