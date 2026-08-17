@@ -1,6 +1,11 @@
 [Unit]
 Description=Swimmy Pattern Similarity Service (REQ/REP 5564, S-exp)
 After=network.target
+# Start rate limiting lives in [Unit], not [Service]: systemd parses these keys
+# only here and merely warns ("Unknown key name ... ignoring") elsewhere, so the
+# limit silently did not apply while Restart=always kept retrying forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -10,8 +15,6 @@ WorkingDirectory=/home/swimmy/swimmy
 ExecStart=/home/swimmy/swimmy/.venv/bin/python3 /home/swimmy/swimmy/tools/pattern_similarity_service.py
 Restart=always
 RestartSec=10
-StartLimitIntervalSec=300
-StartLimitBurst=5
 Environment=HOME=/home/swimmy
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/home/swimmy/swimmy/.env
