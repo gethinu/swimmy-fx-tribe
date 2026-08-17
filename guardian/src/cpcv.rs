@@ -58,6 +58,10 @@ pub struct CpcvAggregateResult {
     /// refit candidate grid. `None` unless SWIMMY_CPCV_PBO is enabled (default OFF),
     /// so existing callers/logs are unchanged.
     pub pbo: Option<f64>,
+    /// `true` only when every CPCV path selected its parameters on the purged and
+    /// embargoed training ranges before scoring OOS.  The promotion layer uses
+    /// this provenance marker to reject legacy fixed-parameter CPCV results.
+    pub refit_enabled: bool,
 }
 
 /// Create N blocks from data of given length (V48.2: num_blocks is now dynamic)
@@ -453,6 +457,10 @@ fn run_cpcv_validation_with_loaded_candles(
     }
 
     let mut agg = calculate_aggregate(&results);
+    // Preserve the method that produced this result.  A PBO value alone is not
+    // enough provenance: PBO can be computed for the grid while a legacy fixed
+    // parameter CPCV evaluation is still in use.
+    agg.refit_enabled = refit_enabled;
 
     // V-methodology (2026-08-11): additive CSCV PBO diagnostic (default OFF).
     if cpcv_pbo_enabled() {
@@ -650,6 +658,7 @@ fn calculate_aggregate(results: &[CpcvPathResult]) -> CpcvAggregateResult {
         path_count: n,
         passed_count: passed,
         pbo: None,
+        refit_enabled: false,
     }
 }
 

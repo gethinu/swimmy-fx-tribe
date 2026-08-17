@@ -1205,34 +1205,31 @@ Fallback mode uses legacy *oos-test-ratio* split when fixed window is disabled/i
        nil)
       (passed
        (let ((median (getf result :median-sharpe))
-             (median-pf (getf result :median-pf))
-             (median-wr (getf result :median-wr))
-             (median-maxdd (getf result :median-maxdd))
-             (pass-rate (getf result :pass-rate)))
+              (median-pf (getf result :median-pf))
+              (median-wr (getf result :median-wr))
+              (median-maxdd (getf result :median-maxdd))
+              (pass-rate (getf result :pass-rate))
+              (pbo (getf result :pbo))
+              (cpcv-refit (getf result :cpcv-refit)))
          (setf (strategy-cpcv-median-sharpe strat) median)
          (setf (strategy-cpcv-median-pf strat) median-pf)
          (setf (strategy-cpcv-median-wr strat) median-wr)
-         (setf (strategy-cpcv-median-maxdd strat) median-maxdd)
-         (setf (strategy-cpcv-pass-rate strat) pass-rate)
+          (setf (strategy-cpcv-median-maxdd strat) median-maxdd)
+          (setf (strategy-cpcv-pass-rate strat) pass-rate)
+          (setf (strategy-cpcv-pbo strat) (and (numberp pbo) (float pbo 0.0)))
+          (setf (strategy-cpcv-refit strat) (and cpcv-refit t))
          (upsert-strategy strat)
          (format t "[S-RANK] ✅ ~a: CPCV PASSED (median Sharpe=~,3f, ~d/~d paths)~%"
                  (strategy-name strat)
                  median
                  (getf result :passed-count)
                  (getf result :path-count))
-         (if (check-rank-criteria strat :S)
-             (multiple-value-bind (common-pass common-msg) (common-stage2-gates-passed-p strat)
-               (if common-pass
-                   t
-                   (progn
-                     (format t "[S-RANK] ❌ ~a: ~a~%" (strategy-name strat) common-msg)
-                     nil)))
-             (progn
-               (format t "[S-RANK] ❌ ~a: CPCV stage2 failed (pass_rate=~,2f DD=~,2f)~%"
-                       (strategy-name strat)
-                       (or pass-rate 0.0)
-                       (or median-maxdd 1.0))
-               nil))))
+          (multiple-value-bind (eligible message) (s-rank-promotion-eligible-p strat)
+            (if eligible
+                t
+                (progn
+                  (format t "[S-RANK] ❌ ~a: ~a~%" (strategy-name strat) message)
+                  nil)))))
       (t
        (format t "[S-RANK] ❌ ~a: CPCV FAILED (median Sharpe=~,3f)~%"
                (strategy-name strat) (getf result :median-sharpe))

@@ -16,6 +16,11 @@ RestartSec=10
 Environment=HOME=/home/swimmy
 Environment=SWIMMY_SBCL_DYNAMIC_SPACE_MB=4096
 EnvironmentFile=/home/swimmy/swimmy/.env
+# S-rank promotion requires DSR/PBO/refit proof; deployment remains governed
+# by its separate per-strategy deployment gate.
+Environment=SWIMMY_STATISTICAL_PROMOTION_GATES=1
+Environment=SWIMMY_ENABLE_REAL_DSR=1
+Environment=SWIMMY_S_RANK_PBO_MAX=0.25
 
 # Logging
 StandardOutput=journal

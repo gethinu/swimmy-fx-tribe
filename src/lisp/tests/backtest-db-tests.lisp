@@ -200,6 +200,37 @@
               (assert-true (< (abs (- pass 0.8)) 0.0001)
                            "cpcv_pass_rate should be preserved")))
         (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
+         (ignore-errors (close-db-connection))
+         (ignore-errors (delete-file tmp-db))))))
+
+(deftest test-cpcv-statistical-proof-persists-and-clears-fail-closed
+  "PBO/refit proof is stored with CPCV results and is cleared when a later legacy result omits it."
+  (let* ((name "TEST-CPCV-STATISTICAL-PROOF")
+         (tmp-db (format nil "/tmp/swimmy-cpcv-proof-~a.db" (get-universal-time))))
+    (let ((swimmy.core::*db-path-default* tmp-db)
+          (swimmy.core::*sqlite-conn* nil)
+          (*strategy-knowledge-base* nil)
+          (*default-pathname-defaults* #P"/tmp/"))
+      (unwind-protect
+          (progn
+            (swimmy.school::init-db)
+            (upsert-strategy
+             (make-strategy :name name :symbol "USDJPY"
+                            :cpcv-pbo 0.125d0 :cpcv-refit t))
+            (assert-true (< (abs (- (execute-single "SELECT cpcv_pbo FROM strategies WHERE name = ?" name)
+                                    0.125d0))
+                            1d-6)
+                         "PBO must persist with the CPCV result")
+            (assert-equal 1 (execute-single "SELECT cpcv_refit FROM strategies WHERE name = ?" name)
+                          "Refit provenance must persist with the CPCV result")
+            ;; A subsequent legacy / incomplete result must not inherit this proof.
+            (swimmy.school::update-cpcv-metrics-by-name name 0.9d0 1.8d0 0.55d0 0.08d0 0.8d0
+                                                         :pbo nil :cpcv-refit nil)
+            (assert-true (null (execute-single "SELECT cpcv_pbo FROM strategies WHERE name = ?" name))
+                         "Missing PBO must clear the prior proof")
+            (assert-true (null (execute-single "SELECT cpcv_refit FROM strategies WHERE name = ?" name))
+                         "Missing refit provenance must clear the prior proof"))
+        (ignore-errors (execute-non-query "DELETE FROM strategies WHERE name = ?" name))
         (ignore-errors (close-db-connection))
         (ignore-errors (delete-file tmp-db))))))
 

@@ -14,10 +14,16 @@
 > Land / enable via [`scripts/land_methodology_uplift.ps1`](scripts/land_methodology_uplift.ps1)
 > (host only; PLAN by default, `-Execute` to apply).
 
-Six methodology improvements are implemented and **all default OFF**. With every
-flag OFF the code path is byte-identical to before — in particular the
+Six methodology improvements are implemented and are **flag-gated in the
+library**. With every flag OFF the code path is byte-identical to before — in particular the
 `logs/tribe-2d` `--out` bytes reproduce exactly. Enabling any flag is a single,
 reversible switch and **changes no live gate threshold**.
+
+The production `swimmy-brain` and `swimmy-guardian` unit files now enable the
+honest-validation subset: per-fold CPCV refit, PBO, moving-block bootstrap, and
+the S-rank DSR/PBO/refit promotion protocol.  S promotion additionally requires
+`PBO <= 0.25`; legacy CPCV results without `cpcv_refit` provenance fail closed.
+See [`docs/statistical_promotion_protocol_20260813.md`](docs/statistical_promotion_protocol_20260813.md).
 
 | Flag (default OFF) | Module / stage it touches | What ON does |
 |---|---|---|

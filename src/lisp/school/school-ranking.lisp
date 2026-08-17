@@ -76,16 +76,9 @@
 (defun promote-to-rank-s (strategy)
   "Promote to Rank S (Gladiator).
    Triggered after passing CPCV."
-  (format t "[RANK] 👑 Promoting ~a to Rank S (The Gladiator)!~%" (strategy-name strategy))
-  
-  (bt:with-lock-held (*kb-lock*)
-    (setf (strategy-rank strategy) :S)
-    (upsert-strategy strategy)
-    
-    ;; Notification
-    (swimmy.core:notify-discord-alert 
-     (format nil "👑 **NEW GLADIATOR**: `~a` Promoted to Rank S!" (strategy-name strategy))
-     :color 16766720))) ;; Gold
+  ;; Never retain a legacy direct SETF path for an S rank.  ENSURE-RANK owns the
+  ;; complete DSR + CPCV refit/PBO + Common Stage2 decision and persistence.
+  (ensure-rank strategy :S "CPCV validated S-rank promotion"))
 
 ;;; =========================================================
 ;;; DSR (DEFLATED SHARPE RATIO) LOGIC (Simons/Prado)
@@ -126,9 +119,16 @@
 ;;; DEFAULT OFF: with *ENABLE-REAL-DSR* nil, MEETS-S-RANK-DSR-P is byte-identical to
 ;;; the legacy Sharpe-floor gate above. Turning it on is reversible (one defparameter).
 
-(defparameter *enable-real-dsr* nil
-  "OFF by default. When T, MEETS-S-RANK-DSR-P uses the real Deflated Sharpe Ratio
-   (Bailey-Lopez de Prado) instead of the legacy Sharpe-floor. Reversible.")
+(defparameter *enable-real-dsr*
+  (or (and (fboundp 'swimmy.core::env-bool-or)
+           (swimmy.core::env-bool-or "SWIMMY_ENABLE_REAL_DSR" nil))
+      ;; The integrated promotion protocol always enables the real calculation.
+      ;; This keeps its setting in the service environment, rather than relying
+      ;; on a transient REPL SETF that vanishes at the next restart.
+      (and (boundp '*statistical-promotion-gates-enabled*)
+           *statistical-promotion-gates-enabled*))
+  "When T, MEETS-S-RANK-DSR-P uses the real Deflated Sharpe Ratio
+   (Bailey-Lopez de Prado) instead of the legacy Sharpe-floor.")
 
 (defparameter *dsr-prob-threshold* 0.95
   "Minimum Deflated Sharpe probability required for the S-rank gate when real DSR is on.")

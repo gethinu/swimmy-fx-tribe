@@ -70,3 +70,79 @@
       (assert-not-nil dsr "DSR should be estimable with adequate data")
       (assert-true (and (>= dsr 0.0d0) (<= dsr 1.0d0))
                    "DSR must be a probability in [0,1]"))))
+
+(deftest test-statistical-s-gate-requires-refit-pbo-and-dsr
+  "An S candidate is admitted only with measured DSR, acceptable PBO and refit provenance."
+  (let* ((mk (lambda (name seed)
+               (make-strategy
+                :name name
+                :cpcv-pbo 0.10
+                :cpcv-refit t
+                :pnl-history
+                (loop for i from 0 below 60
+                      collect (+ 0.1d0
+                                 (* 0.01d0 (mod (* seed (1+ i)) 7))
+                                 (if (evenp i) 0.05d0 -0.05d0))))))
+         (target (funcall mk "target" 3))
+         (*strategy-knowledge-base*
+           (list target (funcall mk "b" 5) (funcall mk "c" 2) (funcall mk "d" 4)))
+         (swimmy.school::*statistical-promotion-gates-enabled* t)
+         (swimmy.school::*s-rank-pbo-max* 0.25d0)
+         (swimmy.school::*dsr-prob-threshold* 0.95d0))
+    (multiple-value-bind (passed code message dsr)
+        (swimmy.school::s-rank-statistical-gates-p target)
+      (declare (ignore message))
+      (assert-true passed "Expected full statistical S gate to pass")
+      (assert-equal nil code "No failure code on complete proof")
+      (assert-true (numberp dsr) "DSR should be recorded in the gate result"))
+    (setf (strategy-cpcv-pbo target) 0.50d0)
+    (multiple-value-bind (passed code _message _dsr)
+        (swimmy.school::s-rank-statistical-gates-p target)
+      (declare (ignore _message _dsr))
+       (assert-false passed "Overfit-prone candidate must not pass S gate")
+       (assert-equal :pbo code "PBO must be the reported failure"))))
+
+(deftest test-ensure-rank-refuses-overfit-cpcv-result
+  "The actual unified promotion entry point must refuse an otherwise-eligible S candidate with excessive PBO."
+  (let* ((mk (lambda (name seed)
+               (make-strategy
+                :name name :rank :A :sharpe 1.0d0 :profit-factor 2.0d0
+                :win-rate 0.60d0 :max-dd 0.05d0 :trades 200
+                :cpcv-pass-rate 0.80d0 :cpcv-median-maxdd 0.05d0
+                :cpcv-pbo 0.50d0 :cpcv-refit t
+                :pnl-history
+                (loop for i from 0 below 60
+                      collect (+ 0.1d0
+                                 (* 0.01d0 (mod (* seed (1+ i)) 7))
+                                 (if (evenp i) 0.05d0 -0.05d0))))))
+         (target (funcall mk "overfit-target" 3))
+         (*strategy-knowledge-base*
+           (list target (funcall mk "b" 5) (funcall mk "c" 2) (funcall mk "d" 4)))
+         (swimmy.school::*statistical-promotion-gates-enabled* t)
+         (swimmy.school::*s-rank-pbo-max* 0.25d0)
+         (swimmy.school::*dsr-prob-threshold* 0.95d0))
+    (assert-equal :A (swimmy.school::promote-to-rank-s target))
+    (assert-equal :A (strategy-rank target)
+                  "PBO failure must leave the strategy below S rank")))
+
+(deftest test-s-candidate-selection-requires-real-dsr
+  "With the protocol on, CPCV candidate selection rejects an unmeasurable DSR before using CPCV capacity."
+  (let* ((mk (lambda (name seed)
+               (make-strategy
+                :name name :rank :A :sharpe 1.0d0 :profit-factor 2.0d0
+                :win-rate 0.60d0 :max-dd 0.05d0 :trades 200
+                :pnl-history
+                (loop for i from 0 below 60
+                      collect (+ 0.1d0
+                                 (* 0.01d0 (mod (* seed (1+ i)) 7))
+                                 (if (evenp i) 0.05d0 -0.05d0))))))
+         (target (funcall mk "candidate-target" 3))
+         (*strategy-knowledge-base*
+           (list target (funcall mk "b" 5) (funcall mk "c" 2) (funcall mk "d" 4)))
+         (swimmy.school::*statistical-promotion-gates-enabled* t)
+         (swimmy.school::*dsr-prob-threshold* 0.95d0))
+    (assert-true (swimmy.school::check-rank-criteria target :S :include-cpcv nil)
+                 "Adequate DSR evidence should enter the CPCV candidate pool")
+    (setf (swimmy.school::strategy-pnl-history target) '(1.0d0 -1.0d0 2.0d0))
+    (assert-false (swimmy.school::check-rank-criteria target :S :include-cpcv nil)
+                  "Short PnL history must be excluded before CPCV dispatch")))

@@ -133,6 +133,18 @@
                    (ignore-errors (parse-integer raw :junk-allowed t)))))
     (if (integerp num) num default)))
 
+;;; Statistical promotion protocol ------------------------------------------------
+;;; A strategy reaches S only after the validation *method* as well as its point
+;;; estimates have passed.  Keep this separate from the numerical rank criteria so
+;;; B/A admission remains operationally unchanged and the S-only policy is auditable.
+(defparameter *statistical-promotion-gates-enabled*
+  (armada-core-env-bool-or "SWIMMY_STATISTICAL_PROMOTION_GATES" nil)
+  "When T, S promotion requires real DSR, PBO and purged/embargoed CPCV-refit provenance.")
+
+(defparameter *s-rank-pbo-max*
+  (armada-core-env-float-or "SWIMMY_S_RANK_PBO_MAX" 0.25)
+  "Maximum accepted CSCV Probability of Backtest Overfitting for an S promotion.")
+
 (defun armada-core-parse-rank-token (token)
   "Parse rank token string into keyword rank."
   (let* ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) token))
@@ -543,6 +555,72 @@ Keys:
             (getf criteria :wr-min) (getf stage-spec :wr-min (getf criteria :wr-min 0.50))))
     (values criteria trade-evidence stage-spec breakdown)))
 
+(defun s-rank-dsr-gate-p (strategy)
+  "Return (values passed-p failure-code message dsr).
+When the statistical-promotion protocol is on, an unavailable DSR is a failed
+gate rather than a legacy-Sharpe fallback: an S promotion must be evidenced, not
+merely compatible with the old rule."
+  (if (not *statistical-promotion-gates-enabled*)
+      (values t nil nil nil)
+      (cond
+        ((not (fboundp 'deflated-sharpe-ratio))
+         (values nil :dsr "DSR implementation unavailable" nil))
+        (t
+         (let* ((dsr (ignore-errors (deflated-sharpe-ratio strategy)))
+                (threshold (if (boundp '*dsr-prob-threshold*)
+                               (symbol-value '*dsr-prob-threshold*)
+                               0.95d0)))
+           (cond
+             ((not (numberp dsr))
+              (values nil :dsr
+                      "DSR unavailable: need sufficient per-trade PnL history and comparable trials"
+                      nil))
+             ((< dsr threshold)
+              (values nil :dsr
+                      (format nil "DSR=~,4f < threshold=~,2f" dsr threshold)
+                      dsr))
+              (t (values t nil nil dsr))))))))
+
+(defun s-rank-statistical-gates-p (strategy)
+  "Return (values passed-p failure-code message dsr).
+This is the complete Lopez de Prado promotion protocol: DSR rejects selected
+Sharpe luck, PBO rejects a likely overfit parameter search, and CPCV provenance
+proves selection was refit on the purged/embargoed train folds."
+  (multiple-value-bind (dsr-pass dsr-code dsr-message dsr)
+      (s-rank-dsr-gate-p strategy)
+    (cond
+      ((not dsr-pass) (values nil dsr-code dsr-message dsr))
+      ((not *statistical-promotion-gates-enabled*) (values t nil nil dsr))
+      ((not (strategy-cpcv-refit strategy))
+       (values nil :cpcv-refit
+               "CPCV result lacks purged/embargoed per-fold refit provenance"
+               dsr))
+      ((not (numberp (strategy-cpcv-pbo strategy)))
+       (values nil :pbo "PBO unavailable for CPCV refit candidate grid" dsr))
+      ((> (strategy-cpcv-pbo strategy) *s-rank-pbo-max*)
+       (values nil :pbo
+               (format nil "PBO=~,4f > max=~,2f"
+                       (strategy-cpcv-pbo strategy) *s-rank-pbo-max*)
+               dsr))
+      (t (values t nil nil dsr)))))
+
+(defun s-rank-promotion-eligible-p (strategy)
+  "Return (values eligible-p message) for every S promotion path.
+Keeping this single predicate prevents async CPCV delivery, scheduled rank
+evaluation, and direct/manual promotion from applying different standards."
+  (cond
+    ((not (check-rank-criteria strategy :S))
+     (values nil "base S-rank criteria failed"))
+    (t
+     (multiple-value-bind (stats-pass _code stats-message _dsr)
+         (s-rank-statistical-gates-p strategy)
+       (declare (ignore _code _dsr))
+       (if (not stats-pass)
+           (values nil stats-message)
+           (if (fboundp 'common-stage2-gates-passed-p)
+               (common-stage2-gates-passed-p strategy)
+               (values nil "Common Stage2 gate unavailable")))))))
+
 (defun check-rank-criteria (strategy target-rank &key (include-oos t) (include-cpcv t))
   "Check if strategy meets all criteria for target-rank.
    Returns T if all conditions pass, NIL otherwise.
@@ -575,6 +653,9 @@ Keys:
             (>= pf (getf criteria :pf-min 0))
             (>= wr (getf criteria :wr-min 0))
             (< maxdd (getf criteria :maxdd-max 1.0))
+            ;; Apply DSR before spending CPCV capacity.  PBO/refit are checked
+            ;; only after a result exists in S-RANK-PROMOTION-ELIGIBLE-P.
+            (nth-value 0 (s-rank-dsr-gate-p strategy))
             (or (not include-cpcv)
                 ;; vNext: S stage2 gate uses CPCV pass-rate + median maxdd
                 (and (>= (or (strategy-cpcv-pass-rate strategy) 0.0) (getf criteria :cpcv-pass-min 0))
@@ -608,6 +689,9 @@ Keys:
     (:maxdd "maxdd")
     (:cpcv-pass-rate "cpcv-pass-rate")
     (:cpcv-maxdd "cpcv-maxdd")
+    (:cpcv-refit "cpcv-refit")
+    (:pbo "pbo")
+    (:dsr "deflated-sharpe")
     (:common-stage2 "common-stage2")
     (t (string-downcase (string gate)))))
 
@@ -631,25 +715,39 @@ Keys:
       (when (>= maxdd (getf criteria :maxdd-max 1.0)) (push :maxdd failed))
       (when (< pass-rate (getf criteria :cpcv-pass-min 0.0)) (push :cpcv-pass-rate failed))
       (when (>= cpcv-maxdd (getf criteria :cpcv-maxdd-max 1.0)) (push :cpcv-maxdd failed))
-      (when (and include-common-stage2 (fboundp 'common-stage2-gates-passed-p))
-        (multiple-value-bind (passed message) (common-stage2-gates-passed-p strategy)
-          (unless passed
-            (push :common-stage2 failed)
-            (setf common-stage2-message message))))
-      (list :failed-gates (nreverse failed)
-            :trade-evidence trade-evidence
-            :trade-evidence-breakdown trade-evidence-breakdown
-            :min-trade-evidence min-trade-evidence
-            :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
-            :sharpe sharpe
-            :pf pf
-            :wr wr
-            :maxdd maxdd
-            :pf-min (getf criteria :pf-min)
-            :wr-min (getf criteria :wr-min)
-            :cpcv-pass-rate pass-rate
-            :cpcv-maxdd cpcv-maxdd
-            :common-stage2-message common-stage2-message))))
+      (multiple-value-bind (stats-pass stats-code stats-message dsr)
+          (s-rank-statistical-gates-p strategy)
+        (unless stats-pass
+          (push (or stats-code :statistical-method) failed))
+        (when stats-message
+          (setf common-stage2-message stats-message))
+        (when (and include-common-stage2 (fboundp 'common-stage2-gates-passed-p))
+          (multiple-value-bind (passed message) (common-stage2-gates-passed-p strategy)
+            (unless passed
+              (push :common-stage2 failed)
+              ;; The statistical reason is more directly actionable; retain it
+              ;; when both gates fail.
+              (unless common-stage2-message
+                (setf common-stage2-message message))))
+        (return-from s-rank-block-diagnostics
+          (list :failed-gates (nreverse failed)
+                :trade-evidence trade-evidence
+                :trade-evidence-breakdown trade-evidence-breakdown
+                :min-trade-evidence min-trade-evidence
+                :stage-min-trades (and stage-spec (getf stage-spec :min-trades))
+                :sharpe sharpe
+                :pf pf
+                :wr wr
+                :maxdd maxdd
+                :pf-min (getf criteria :pf-min)
+                :wr-min (getf criteria :wr-min)
+                :cpcv-pass-rate pass-rate
+                :cpcv-maxdd cpcv-maxdd
+                :cpcv-pbo (strategy-cpcv-pbo strategy)
+                :cpcv-refit (and (strategy-cpcv-refit strategy) t)
+                :dsr dsr
+                 :statistical-message stats-message
+                 :common-stage2-message common-stage2-message)))))))
 
 (defun %format-s-rank-failed-gates (failed-gates)
   (if failed-gates
@@ -812,7 +910,7 @@ Keys:
         (return-from %ensure-rank-no-lock old-rank))
       (when (and (string= new-token "S")
                  (not (string= old-token "S"))
-                 (not (check-rank-criteria strategy :S)))
+                 (not (nth-value 0 (s-rank-promotion-eligible-p strategy))))
         (let* ((diag (s-rank-block-diagnostics strategy :include-common-stage2 t))
                (failed-gates (getf diag :failed-gates))
                (common-msg (getf diag :common-stage2-message))
@@ -859,6 +957,10 @@ Keys:
                           :maxdd (getf diag :maxdd)
                           :cpcv-pass-rate (getf diag :cpcv-pass-rate)
                           :cpcv-maxdd (getf diag :cpcv-maxdd)
+                          :cpcv-pbo (getf diag :cpcv-pbo)
+                          :cpcv-refit (getf diag :cpcv-refit)
+                          :dsr (getf diag :dsr)
+                          :statistical-message (getf diag :statistical-message)
                           :common-stage2-message common-msg))))
         (return-from %ensure-rank-no-lock old-rank))
 
@@ -1223,22 +1325,18 @@ Keys:
                            trade-evidence
                            a-min-trade-evidence))
       (return-from evaluate-a-rank-strategy :B))
-    (if (check-rank-criteria strategy :S)
-        (multiple-value-bind (common-pass common-msg)
-            (if (fboundp 'common-stage2-gates-passed-p)
-                (common-stage2-gates-passed-p strategy)
-                (values nil "Common Stage2 gate unavailable"))
-          (if common-pass
-              (progn
-                (remhash name *a-rank-probation-tracker*)
-                (promote-rank strategy :S "CPCV+CommonStage2 validated - LIVE TRADING PERMITTED")
-                :S)
-              (progn
-                (format t "[RANK] ⛔ ~a blocked for S-RANK: ~a~%" name common-msg)
-                :A)))
+    (multiple-value-bind (s-eligible s-message)
+        (s-rank-promotion-eligible-p strategy)
+       (if s-eligible
+           (progn
+             (remhash name *a-rank-probation-tracker*)
+             (promote-rank strategy :S "CPCV+CommonStage2 validated - LIVE TRADING PERMITTED")
+             :S)
         ;; V50.3: No more automatic A->S shortcuts. 
         ;; We just check if it's ready for CPCV dispatch.
         (progn
+          (when (and s-message (check-rank-criteria strategy :S))
+            (format t "[RANK] ⛔ ~a blocked for S-RANK: ~a~%" name s-message))
           (when (and (>= score *a-rank-elite-score*)
                      (fboundp 'run-a-rank-cpcv-batch))
             (format t "[RANK] 🧪 ~a is Elite. Awaiting CPCV validation (Score=~,2f).~%" name score))
@@ -1258,7 +1356,7 @@ Keys:
               (progn
                 (remhash name *a-rank-probation-tracker*)
                 (send-to-graveyard strategy "CPCV Critical Failure (< 0.1 Sharpe)")
-                :graveyard))))))
+                :graveyard)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; BREEDING HELPERS
@@ -1310,7 +1408,7 @@ Returns plist summary:
   (:s-demoted N)"
   (let ((s-demoted 0))
     (dolist (s (copy-list (get-strategies-by-rank :S)))
-      (unless (check-rank-criteria s :S)
+      (unless (nth-value 0 (s-rank-promotion-eligible-p s))
         (let ((target (if (check-rank-criteria s :A) :A :B)))
           (demote-rank s target
                        (format nil "S criteria conformance failed (target ~a)" target))
@@ -1492,7 +1590,7 @@ Returns plist summary:
                  t
                  (case rank
                    (:A (check-rank-criteria s :A :include-oos t :include-cpcv nil))
-                   (:S (check-rank-criteria s :S :include-oos t :include-cpcv t))
+                   (:S (nth-value 0 (s-rank-promotion-eligible-p s)))
                    (otherwise t)))))
   (let ((rank (and strategy (strategy-rank strategy))))
     (and strategy

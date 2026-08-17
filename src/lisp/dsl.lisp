@@ -244,6 +244,9 @@ value = sign(close>=vwap ? +1 : -1) * (current_volume / prev_volume_sma(n) * 100
             (cpcv-median-wr 0.0)
             (cpcv-median-maxdd 0.0)
             (cpcv-pass-rate 0.0)
+            ;; Statistical CPCV provenance.  NIL means the value was not
+            ;; produced by the current honest-validation protocol, never "0".
+            (cpcv-pbo nil) (cpcv-refit nil)
             ;; Phase 21: Breeding & Competition DNA (Survival of the Fittest)
             (age 0) (immortal nil) (parents nil)
             ;; V2c (2026-07-14): primitive-diversity genes. Defaults reproduce prior
@@ -256,6 +259,7 @@ value = sign(close>=vwap ? +1 : -1) * (current_volume / prev_volume_sma(n) * 100
                          (sharpe 0.0) (profit-factor 0.0) (win-rate 0.0) (trades 0) (max-dd 0.0)
                          (oos-sharpe nil) (cpcv-median-sharpe 0.0) (cpcv-median-pf 0.0)
                          (cpcv-median-wr 0.0) (cpcv-median-maxdd 0.0) (cpcv-pass-rate 0.0)
+                         (cpcv-pbo nil) (cpcv-refit nil)
                          (age 0) (immortal nil) (parents nil)
                          (revalidation-pending nil))
   `(make-strategy :name (string ',name) :indicators ',indicators :entry ',entry :exit ',exit :sl ,sl :tp ,tp :volume ,volume :category ,category :indicator-type ,indicator-type :timeframe ,timeframe :generation ,generation
@@ -264,6 +268,7 @@ value = sign(close>=vwap ? +1 : -1) * (current_volume / prev_volume_sma(n) * 100
                   :oos-sharpe ,oos-sharpe :cpcv-median-sharpe ,cpcv-median-sharpe
                   :cpcv-median-pf ,cpcv-median-pf :cpcv-median-wr ,cpcv-median-wr
                   :cpcv-median-maxdd ,cpcv-median-maxdd :cpcv-pass-rate ,cpcv-pass-rate
+                  :cpcv-pbo ,cpcv-pbo :cpcv-refit ,cpcv-refit
                   :age ,age :immortal ,immortal :parents ,parents
                   :revalidation-pending ,revalidation-pending))
 

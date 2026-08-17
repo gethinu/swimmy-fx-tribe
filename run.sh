@@ -18,6 +18,12 @@ if [ "${SWIMMY_FORCE_DISABLE_DISCORD:-0}" = "1" ]; then
     export SWIMMY_DISABLE_DISCORD=1
 fi
 
+# Match the production service's honest S-rank promotion protocol for manual
+# starts unless an operator deliberately supplies an override for an experiment.
+export SWIMMY_STATISTICAL_PROMOTION_GATES="${SWIMMY_STATISTICAL_PROMOTION_GATES:-1}"
+export SWIMMY_ENABLE_REAL_DSR="${SWIMMY_ENABLE_REAL_DSR:-1}"
+export SWIMMY_S_RANK_PBO_MAX="${SWIMMY_S_RANK_PBO_MAX:-0.25}"
+
 # Create log directory
 mkdir -p logs
 

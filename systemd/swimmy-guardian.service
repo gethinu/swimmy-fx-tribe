@@ -22,6 +22,10 @@ StandardOutput=append:/home/swimmy/swimmy/logs/guardian.log
 StandardError=append:/home/swimmy/swimmy/logs/guardian.log
 Environment=HOME=/home/swimmy
 EnvironmentFile=/home/swimmy/swimmy/.env
+# Select on purged/embargoed train folds and expose the PBO used by the S gate.
+Environment=SWIMMY_CPCV_REFIT=1
+Environment=SWIMMY_CPCV_PBO=1
+Environment=SWIMMY_BOOTSTRAP_MOVING_BLOCK=1
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
