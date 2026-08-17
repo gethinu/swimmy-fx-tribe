@@ -16805,9 +16805,10 @@
 		                  ;; Backtest DB sync regression
 			                  test-apply-backtest-result-updates-data-sexp
 		                  test-apply-backtest-result-evaluates-incubator-strategy
-	                  test-apply-backtest-result-evaluates-incubator-string-rank
-	                  test-apply-backtest-result-fallback-evaluates-incubator
-	                  test-refresh-strategy-metrics-reconciles-missing-active-kb
+		                  test-apply-backtest-result-evaluates-incubator-string-rank
+		                  test-apply-backtest-result-fallback-evaluates-incubator
+		                  test-cpcv-statistical-proof-persists-and-clears-fail-closed
+		                  test-refresh-strategy-metrics-reconciles-missing-active-kb
 	                  test-refresh-strategy-metrics-reconciles-missing-active-db
 	                  test-refresh-strategy-metrics-reconcile-ignores-unevaluated-db-ranks
 	                  test-reconcile-active-library-with-db-hydrates-missing-active-files
@@ -17104,7 +17105,10 @@
                   test-dsr-count-total-trials
                   test-dsr-gate-off-equals-legacy
                   test-dsr-short-history-abstains
-                  test-dsr-probability-in-range))
+                  test-dsr-probability-in-range
+                  test-statistical-s-gate-requires-refit-pbo-and-dsr
+                  test-ensure-rank-refuses-overfit-cpcv-result
+                  test-s-candidate-selection-requires-real-dsr))
               (format t "Running ~a... " test)
               (if (funcall test)
                   (format t "✅ PASSED~%")

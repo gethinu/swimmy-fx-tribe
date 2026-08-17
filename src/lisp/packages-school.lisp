@@ -147,6 +147,8 @@
    #:strategy-cpcv-median-wr
    #:strategy-cpcv-median-maxdd
    #:strategy-cpcv-pass-rate
+   #:strategy-cpcv-pbo
+   #:strategy-cpcv-refit
    
    ;; Leader Info Struct Accessors
    #:make-leader-info

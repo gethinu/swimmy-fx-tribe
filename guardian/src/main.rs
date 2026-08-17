@@ -210,6 +210,10 @@ struct CpcvResultPayload {
     // unless SWIMMY_CPCV_PBO produced a value, so the default payload is byte-identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pbo: Option<f64>,
+    /// Provenance marker for purged/embargoed per-fold refit.  Omitted on the
+    /// legacy path so existing OFF-mode payloads remain byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cpcv_refit: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -266,6 +270,9 @@ fn cpcv_result_to_sexp(result: &CpcvResultPayload) -> String {
     // the default s-expression is byte-identical to the pre-change output.
     if let Some(pbo) = result.pbo {
         parts.push(format!("(pbo . {})", pbo));
+    }
+    if result.cpcv_refit == Some(true) {
+        parts.push("(cpcv_refit . t)".to_string());
     }
     if let Some(err) = &result.error {
         parts.push(format!("(error . {})", sexp_escape_string(err)));
@@ -457,6 +464,7 @@ fn cpcv_payload_from_aggregate(
         pass_rate,
         is_passed,
         pbo: agg.pbo,
+        cpcv_refit: if agg.refit_enabled { Some(true) } else { None },
         error: None,
     }
 }
@@ -478,6 +486,7 @@ fn build_cpcv_result(_req: &CpcvRequest) -> CpcvResultPayload {
             pass_rate: 0.0,
             is_passed: false,
             pbo: None,
+            cpcv_refit: None,
             error: Some(e),
         },
     }
@@ -2299,6 +2308,7 @@ mod tests {
             path_count: 10,
             passed_count: 7,
             pbo: None,
+            refit_enabled: false,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-SUCCESS", None, &agg);
@@ -2326,6 +2336,7 @@ mod tests {
             path_count: 10,
             passed_count: 6,
             pbo: None,
+            refit_enabled: false,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-PASS", None, &agg);
@@ -2345,6 +2356,7 @@ mod tests {
             path_count: 10,
             passed_count: 9,
             pbo: None,
+            refit_enabled: false,
         };
 
         let payload = cpcv_payload_from_aggregate("UT-CPCV-NO-MAXDD", None, &agg);
@@ -2367,7 +2379,8 @@ mod tests {
             failed_count: 2,
             pass_rate: 0.6,
             is_passed: true,
-            pbo: None,
+            pbo: Some(0.125),
+            cpcv_refit: Some(true),
             error: None,
         };
 
@@ -2376,6 +2389,8 @@ mod tests {
         assert!(sexp.contains("median_pf"), "sexp should include median_pf");
         assert!(sexp.contains("median_wr"), "sexp should include median_wr");
         assert!(sexp.contains("median_maxdd"), "sexp should include median_maxdd");
+        assert!(sexp.contains("(pbo . 0.125)"), "sexp should include PBO when measured");
+        assert!(sexp.contains("(cpcv_refit . t)"), "sexp should include refit provenance");
     }
 
     #[test]

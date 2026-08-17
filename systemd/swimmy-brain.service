@@ -27,6 +27,12 @@ Environment=HOME=/home/swimmy
 # source of truth, overriding this default and anything in .env.
 Environment=SWIMMY_BRAIN_HEAP_MB=3072
 EnvironmentFile=/home/swimmy/swimmy/.env
+# S-rank promotion requires DSR/PBO/refit proof; deployment remains governed
+# by its separate per-strategy deployment gate.
+Environment=SWIMMY_STATISTICAL_PROMOTION_GATES=1
+Environment=SWIMMY_ENABLE_REAL_DSR=1
+Environment=SWIMMY_S_RANK_PBO_MAX=0.25
+# Kept last: heap.env stays the single source of truth for the heap vars.
 EnvironmentFile=-/etc/swimmy/heap.env
 
 # Logging

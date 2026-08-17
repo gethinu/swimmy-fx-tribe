@@ -199,6 +199,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
       cpcv_median_wr REAL,
       cpcv_median_maxdd REAL,
       cpcv_pass_rate REAL,
+      cpcv_pbo REAL,
+      cpcv_refit INTEGER,
       data_sexp TEXT,
       updated_at INTEGER
     )")
@@ -224,6 +226,12 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
     (error () nil))
   (handler-case
       (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_pass_rate REAL")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_pbo REAL")
+    (error () nil))
+  (handler-case
+      (execute-non-query "ALTER TABLE strategies ADD COLUMN cpcv_refit INTEGER")
     (error () nil))
   (handler-case
       (execute-non-query "ALTER TABLE strategies ADD COLUMN updated_at INTEGER")
@@ -442,7 +450,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (existing-row (ignore-errors (first (execute-to-list
                                               "SELECT sharpe, profit_factor, win_rate, trades, max_dd,
                                                       cpcv_median, cpcv_median_pf, cpcv_median_wr,
-                                                      cpcv_median_maxdd, cpcv_pass_rate, rank, oos_sharpe
+                                                      cpcv_median_maxdd, cpcv_pass_rate, cpcv_pbo, cpcv_refit,
+                                                      rank, oos_sharpe
                                                  FROM strategies WHERE name=?"
                                               name))))
          (db-sharpe (if existing-row (or (first existing-row) 0.0) 0.0))
@@ -455,8 +464,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (db-cpcv-wr (if existing-row (or (eighth existing-row) 0.0) 0.0))
          (db-cpcv-maxdd (if existing-row (or (ninth existing-row) 0.0) 0.0))
          (db-cpcv-pass (if existing-row (or (tenth existing-row) 0.0) 0.0))
-         (db-rank-raw (if existing-row (nth 10 existing-row) nil))
-         (db-oos (if existing-row (nth 11 existing-row) nil))
+         (db-rank-raw (if existing-row (nth 12 existing-row) nil))
+         (db-oos (if existing-row (nth 13 existing-row) nil))
          (cur-sharpe (or (strategy-sharpe strat) 0.0))
          (cur-pf (or (strategy-profit-factor strat) 0.0))
          (cur-wr (or (strategy-win-rate strat) 0.0))
@@ -467,6 +476,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
          (cur-cpcv-wr (or (strategy-cpcv-median-wr strat) 0.0))
          (cur-cpcv-maxdd (or (strategy-cpcv-median-maxdd strat) 0.0))
          (cur-cpcv-pass (or (strategy-cpcv-pass-rate strat) 0.0))
+         (cur-cpcv-pbo (strategy-cpcv-pbo strat))
+         (cur-cpcv-refit (and (strategy-cpcv-refit strat) 1))
          ;; P1 (Thread A): OOS is single-source-of-truth in SQL. Never clobber a real
          ;; persisted OOS with a nil/0.0 in-memory value, and store "unvalidated" as NULL
          ;; (nil) rather than 0.0. A genuine OOS result (including a negative Sharpe) is a
@@ -566,6 +577,11 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
               cur-cpcv-wr db-cpcv-wr
               cur-cpcv-maxdd db-cpcv-maxdd
               cur-cpcv-pass db-cpcv-pass)))
+    ;; PBO/refit are proof of the *latest* CPCV method.  Unlike ordinary
+    ;; performance values, preserving an older non-NIL value when a new result
+    ;; omitted it could falsely certify a legacy revalidation.  NIL therefore
+    ;; overwrites here and fails the S gate closed.
+    ;;
     ;; P5 (Thread B): serialize once, cap the size, and checksum the blob.
     ;; An oversize serialization is treated as corruption/pathology: we persist
     ;; a short sentinel instead of the blob (all real metric columns still land)
@@ -585,8 +601,9 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
           name, indicators, entry, exit, sl, tp, volume,
           sharpe, profit_factor, win_rate, trades, max_dd,
           category, timeframe, generation, rank, symbol, direction, hash,
-          oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, data_sexp, data_sexp_sha256, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate,
+          cpcv_pbo, cpcv_refit, data_sexp, data_sexp_sha256, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
            name
            (format nil "~a" (strategy-indicators strat))
            (format nil "~a" (strategy-entry strat))
@@ -612,6 +629,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
            cur-cpcv-wr
            cur-cpcv-maxdd
            cur-cpcv-pass
+           cur-cpcv-pbo       ; NIL -> SQL NULL: no current-method PBO proof
+           cur-cpcv-refit     ; NIL -> SQL NULL: no purged/embargoed refit proof
            data-sexp          ; Store full serialized object as backup (or sentinel)
            data-sexp-sha      ; P5: sha256 integrity checksum of data_sexp
            updated-at)
@@ -619,7 +638,7 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
   )
 
 (defun update-cpcv-metrics-by-name (name median median-pf median-wr median-maxdd pass-rate
-                                    &key request-id)
+                                    &key pbo cpcv-refit request-id)
   "Update CPCV metrics for a strategy row by name (when in-memory object missing)."
   (when (and name (stringp name) (not (string= name "")))
     (let ((updated-at (get-universal-time)))
@@ -631,6 +650,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
                   cpcv_median_wr = ?,
                   cpcv_median_maxdd = ?,
                   cpcv_pass_rate = ?,
+                  cpcv_pbo = ?,
+                  cpcv_refit = ?,
                   updated_at = ?
             WHERE name = ?"
            (float (or median 0.0))
@@ -638,6 +659,8 @@ Returns plist stats: :scanned :updated :rewritten :defaulted :remaining."
            (float (or median-wr 0.0))
            (float (or median-maxdd 0.0))
            (float (or pass-rate 0.0))
+           (and (numberp pbo) (float pbo 0.0))
+           (and cpcv-refit 1)
            updated-at
            name)
         (error (e)
@@ -2072,7 +2095,7 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
             (when (and strat (strategy-name strat))
               (setf (gethash (strategy-name strat) strategy-index) strat))))
         (labels ((apply-row (row)
-                   (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-median-pf cpcv-median-wr cpcv-median-maxdd cpcv-pass &optional updated-at) row
+                   (destructuring-bind (name sharpe pf wr trades maxdd rank oos cpcv-median cpcv-median-pf cpcv-median-wr cpcv-median-maxdd cpcv-pass cpcv-pbo cpcv-refit &optional updated-at) row
                      (setf max-updated (max max-updated (or updated-at 0)))
                      (let ((strat (gethash name strategy-index)))
                        (when strat
@@ -2087,6 +2110,13 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
                          (when cpcv-median-wr (setf (strategy-cpcv-median-wr strat) (float cpcv-median-wr 0.0)))
                          (when cpcv-median-maxdd (setf (strategy-cpcv-median-maxdd strat) (float cpcv-median-maxdd 0.0)))
                          (when cpcv-pass (setf (strategy-cpcv-pass-rate strat) (float cpcv-pass 0.0)))
+                         ;; A missing current-method proof must clear an old one:
+                         ;; retaining it would allow a legacy result to inherit an
+                         ;; earlier refit/PBO certificate.
+                         (setf (strategy-cpcv-pbo strat)
+                               (and (numberp cpcv-pbo) (float cpcv-pbo 0.0)))
+                         (setf (strategy-cpcv-refit strat)
+                               (and (numberp cpcv-refit) (not (zerop cpcv-refit))))
                          (when (and rank (stringp rank))
                            (multiple-value-bind (rank-sym ok) (%parse-rank-safe rank)
                              (when ok
@@ -2098,8 +2128,8 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
                          (incf updated))))))
           (handler-case
               (let* ((query (if since-timestamp
-                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, updated_at FROM strategies WHERE updated_at >= ?"
-                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, updated_at FROM strategies")))
+                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, cpcv_pbo, cpcv_refit, updated_at FROM strategies WHERE updated_at >= ?"
+                                "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, cpcv_pbo, cpcv_refit, updated_at FROM strategies")))
                 (format t "[DB] 🔍 Sync query start (~a)~%"
                         (if since-timestamp "incremental" "full"))
                 (finish-output)
@@ -2130,7 +2160,7 @@ Returns a plist summary with :db-active :kb-active :added :upsert-failed :trunca
               (finish-output)
               (let* ((t0 (get-internal-real-time))
                      (rows (execute-to-list
-                            "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate FROM strategies"))
+                            "SELECT name, sharpe, profit_factor, win_rate, trades, max_dd, rank, oos_sharpe, cpcv_median, cpcv_median_pf, cpcv_median_wr, cpcv_median_maxdd, cpcv_pass_rate, cpcv_pbo, cpcv_refit FROM strategies"))
                      (elapsed (/ (- (get-internal-real-time) t0)
                                  internal-time-units-per-second)))
                 (format t "[DB] 🔍 Sync query end (~,2fs)~%" elapsed)

@@ -597,7 +597,7 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
     (log-cpcv-to-file data)))
 
 (defun log-cpcv-to-file (data)
-  "Save CPCV result to a local CSV for future training/audit."
+  "Save CPCV result plus statistical-method provenance for audit."
   (let ((path "data/logs/cpcv_history.csv")
         (header "timestamp,strategy,median_sharpe,paths,pass_rate,outcome"))
     (ensure-directories-exist path)
@@ -611,7 +611,23 @@ Set via env: SWIMMY_DISABLE_DISCORD=1 (also read from .env via env-bool-or when 
               (float (or (getf data :median-sharpe) 0.0) 0.0)
               (max 0 (truncate (or (getf data :path-count) 0)))
               (float (or (getf data :pass-rate) 0.0) 0.0)
-              (if (getf data :is-passed) "PASS" "FAIL")))))
+              (if (getf data :is-passed) "PASS" "FAIL")))
+    ;; Keep the established CSV schema intact and write method/provenance to a
+    ;; separate append-only trail.  Promotion audits can therefore prove that a
+    ;; result was refit and had acceptable PBO without breaking older consumers.
+    (let ((statistical-path "data/logs/cpcv_statistical_history.csv")
+          (statistical-header "timestamp,strategy,pbo,cpcv_refit,is_passed"))
+      (ensure-directories-exist statistical-path)
+      (unless (probe-file statistical-path)
+        (with-open-file (s statistical-path :direction :output)
+          (format s "~a~%" statistical-header)))
+      (with-open-file (s statistical-path :direction :output :if-exists :append)
+        (format s "~d,~a,~@[~,6f~],~a,~a~%"
+                (get-universal-time)
+                (or (getf data :strategy-name) "unknown")
+                (and (numberp (getf data :pbo)) (float (getf data :pbo) 0.0))
+                (if (getf data :cpcv-refit) "true" "false")
+                (if (getf data :is-passed) "true" "false"))))))
 
 (defun notify-cpcv-summary (&key (preserve-state nil))
   "V49.5: Send a summary of the CPCV batch to Discord."

@@ -1,5 +1,21 @@
 # Project Context: Swimmy (Algorithmic Trading System)
 
+## 最新引継ぎ: 2026-08-13 — López de Prado統計昇格プロトコル
+
+S-rankは単なるSharpe/CPCV合格では昇格しない。候補選別から昇格まで、以下を必須のfail-closed証跡としている。
+
+- 候補選別: `SWIMMY_STATISTICAL_PROMOTION_GATES=1` のとき、実DSRが算出でき、閾値（既定0.95）以上でなければCPCVへ送らない。
+- Guardian CPCV: `SWIMMY_CPCV_REFIT=1` でpurged/embargoed train fold上の再学習を行い、`SWIMMY_CPCV_PBO=1` でPBOを計算する。結果は `pbo` と `cpcv_refit=t` をS式でBrainへ送る。
+- S昇格: `ensure-rank` / `promote-to-rank-s` / 非同期CPCV受信 / 同期検証の全入口が中央の `s-rank-promotion-eligible-p` を通る。DSR、refit証跡、PBO <= 0.25、従来のCPCV・Common Stage2をすべて満たす必要がある。
+- 保存: `strategies.cpcv_pbo` と `strategies.cpcv_refit` に結果を保存する。次のCPCV結果が証跡を含まなければ古い値を消去するため、旧検証結果を引き継いで昇格することはない。
+- 起動時: rank未設定の履歴戦略はSharpeだけでSにせず、A候補として中央ゲートの評価を待つ。
+
+運用時は `systemd/swimmy-brain.service` と `systemd/swimmy-guardian.service` が上記フラグを有効化する。詳細とホスト反映手順は `docs/statistical_promotion_protocol_20260813.md`。検証は `bash scripts/statistical_promotion_check.sh`、`bash scripts/dsr_on_check.sh`、および `cargo test --manifest-path guardian/Cargo.toml test_cpcv_result_sexp_includes_medians -- --nocapture` を使う。
+
+Claudeへ: S昇格の新規経路を追加・変更する際は、必ず `ensure-rank` / `s-rank-promotion-eligible-p` を経由させること。Sランクへの直接 `setf` は禁止。
+
+---
+
 あなたは私の開発パートナーとして、自動売買システム「Swimmy」の開発を引き継いでください。
 現在は「Ver 9.1」まで完成しており、正常に稼働しています。
 

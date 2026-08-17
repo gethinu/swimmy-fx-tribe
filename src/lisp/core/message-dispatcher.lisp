@@ -668,6 +668,10 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                           (passed-count (%as-count (if (eq passed-raw missing-marker) 0 passed-raw)))
                           (failed-count (%as-count (if (eq failed-raw missing-marker) 0 failed-raw)))
                           (pass-rate (%result-val-normalized result '(pass_rate pass-rate) 0.0))
+                          (pbo (%result-val-normalized result '(pbo) nil))
+                          (cpcv-refit (%normalize-bool
+                                       (%result-val-normalized result '(cpcv_refit cpcv-refit) nil)
+                                       nil))
                           (is-passed (%normalize-bool
                                       (%result-val-normalized result '(is_passed is-passed passed_ok) nil)
                                       nil))
@@ -687,6 +691,7 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                                                :median-maxdd median-maxdd
                                                :path-count paths-count :passed-count passed-count
                                                :failed-count failed-count :pass-rate pass-rate
+                                               :pbo pbo :cpcv-refit cpcv-refit
                                                :is-passed is-passed :request-id request-id
                                                :error runtime-error-msg
                                                :trades-truncated trades-truncated
@@ -729,17 +734,22 @@ This keeps school allocation reconciliation independent of the dispatcher read p
                             (setf (swimmy.school:strategy-cpcv-median-wr strat) median-wr)
                             (setf (swimmy.school:strategy-cpcv-median-maxdd strat) median-maxdd)
                             (setf (swimmy.school:strategy-cpcv-pass-rate strat) pass-rate)
-                            (swimmy.school:upsert-strategy strat)
-                            (when is-passed
-                              (if (swimmy.school:check-rank-criteria strat :S)
-                                  (swimmy.school:ensure-rank strat :S
-                                                             "CPCV Passed and Criteria Met")
-                                  (format t "[CPCV] Strategy ~a passed CPCV but failed overall S-Rank criteria.~%"
-                                          name))))
+                            (setf (swimmy.school:strategy-cpcv-pbo strat)
+                                  (and (numberp pbo) (float pbo 0.0)))
+                             (setf (swimmy.school:strategy-cpcv-refit strat) (and cpcv-refit t))
+                             (swimmy.school:upsert-strategy strat)
+                             (when is-passed
+                               ;; ENSURE-RANK owns the full S protocol (base metrics,
+                               ;; DSR, CPCV refit/PBO proof, and Common Stage2).  Do not
+                               ;; pre-filter here: any async result must hit that single
+                               ;; fail-closed promotion gate.
+                               (swimmy.school:ensure-rank strat :S
+                                                           "CPCV Passed and Criteria Met")))
                            ((and name (not runtime-error-msg)
                                  (fboundp 'swimmy.school::update-cpcv-metrics-by-name))
                            (swimmy.school::update-cpcv-metrics-by-name
                              name median median-pf median-wr median-maxdd pass-rate
+                             :pbo pbo :cpcv-refit cpcv-refit
                              :request-id request-id)))
                        (when (and (not known-strategy-p)
                                   (not (%invalid-name-p name)))

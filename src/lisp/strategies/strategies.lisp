@@ -245,7 +245,10 @@
           ;; Only rank/purge strategies that have actually traded.
           (when (> trades 0)
             (cond
-              ((>= sharpe 0.5) (setf (strategy-rank s) :S))
+              ;; Historical files without rank/provenance are candidates, never
+              ;; instant S-rank strategies.  S requires the centralized CPCV
+              ;; statistical promotion protocol after startup.
+              ((>= sharpe 0.5) (setf (strategy-rank s) :A))
               ((>= sharpe 0.3) (setf (strategy-rank s) :A))
               ((>= sharpe 0.1) (setf (strategy-rank s) :B))
               (t (setf (strategy-rank s) :graveyard))))
