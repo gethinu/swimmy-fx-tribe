@@ -80,3 +80,10 @@ tools/arxiv-scout/logs/
 # (root Cargo.toml declares the workspace). /guardian/guardian was an ELF binary
 # vendored in by the 2026-07-01 subtree import; never commit a built binary here.
 /guardian/guardian
+
+# Trend arbitrage output is generated at runtime by tools/trend_arbitrage_engine.py
+# (DATA_DIR = REPO_ROOT/data/trend_arbitrage): per-run JSON snapshots, the static
+# site (posts/index/rss) and the service's own state. 208 of these had been
+# committed while ~700 newer ones piled up untracked, which made `git status`
+# useless on the ops box. Generated output does not belong in the tree.
+data/trend_arbitrage/

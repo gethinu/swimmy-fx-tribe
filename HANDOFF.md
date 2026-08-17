@@ -20,6 +20,8 @@ sudo systemctl daemon-reload && sudo systemctl restart swimmy-guardian
 
 **2026-08-17 22:55:26 にWSLディストロが予期せず再起動した。原因は未確定。** 発生時はホストで `git fetch` / `git merge --ff-only` を実行中で、通常のアイドル状態ではなかった。WSLのアイドルシャットダウンと断定できる根拠はない。実害はなく、9サービスすべてが 22:55:56〜22:56:00 に自動復旧している。この機会に、正典unitでの初回ブートで Guardian が `target/release/guardian` から起動すること（コピー運用不要）と、`swimmy-pattern-similarity` の `StartLimitIntervalUSec=5min` が再起動後も維持されることを確認できた。再発する場合は Windows イベントログと `dmesg` の突合が要る。
 
+**生成物はコミットしない。** `data/trend_arbitrage/`（`tools/trend_arbitrage_engine.py` の `DATA_DIR` が書く実行時出力 — runごとのJSONスナップショット、静的サイトの posts/index/rss、サービスのstate）は208件が追跡済みのまま新しい約700件が未追跡で堆積し、稼働ホストの `git status` を実質使えなくしていた。追跡解除して `.gitignore` に追加済み（ディスク上のファイルは残し、過去分はgit履歴に残る）。一方 `data/library/` は school デーモンが常時書き換えるものの、restore/persistence 系コードが依存しているため追跡のまま。作業ツリーがランタイムのデータストアを兼ねている構造は変わっていないので、`git status` が常時dirtyなのは正常。
+
 **Python依存は `requirements.txt`（リポジトリroot）に宣言する。**
 
 systemdのExecStartから到達する第三者importはすべてここに列挙してある。venv再構築は `.venv/bin/python3 -m pip install -r requirements.txt`。`portalocker` の宣言漏れで `swimmy-data-keeper` が `ModuleNotFoundError` で起動できなかった事故を受けて追加した。新しい第三者パッケージをimportしたら、必ずこのファイルにも追記すること。
