@@ -1,5 +1,26 @@
 # Project Context: Swimmy (Algorithmic Trading System)
 
+## 最新引継ぎ: 2026-08-17 — Guardianビルド出力の正典パスとPython依存
+
+**Guardianバイナリの正典パスは `<repo>/target/release/guardian` のみ。**
+
+root の `Cargo.toml` がワークスペース (`members = ["guardian"]`) を宣言しているため、`cargo build --release` はどのディレクトリから呼んでも root の `target/release/` に出力する。以前の `guardian/target/release/guardian` は**もう使わない**。`systemd/swimmy-guardian.service` の `ExecStart`、`src/lisp/tests/integration-tests.lisp`、`tools/run_benchmarks.sh`、`.codex/skills/pipeline-diagnosis/SKILL.md` はすべて正典パスを指している。
+
+```bash
+cargo build --release --manifest-path guardian/Cargo.toml   # -> target/release/guardian
+sudo systemctl daemon-reload && sudo systemctl restart swimmy-guardian
+```
+
+- **デプロイ時にバイナリをコピーする必要はない。** 2026-08-17以前は unit が旧パスを指していたため `target/release/guardian` を `guardian/target/release/` へ手でコピーする運用になっていたが、その手順は廃止。コピーが残っていると古いバイナリが起動する事故になる。
+- `[build] target-dir` による出力先の付け替えは**行わない**方針。旧 `guardian/target/` は zmq の build-script が実行権限エラーを起こす壊れたキャッシュを抱えており、参照させない。
+- 稼働確認: `ls -l /proc/$(systemctl show swimmy-guardian -p MainPID --value)/exe` が正典パスを指すこと。
+
+**Python依存は `requirements.txt`（リポジトリroot）に宣言する。**
+
+systemdのExecStartから到達する第三者importはすべてここに列挙してある。venv再構築は `.venv/bin/python3 -m pip install -r requirements.txt`。`portalocker` の宣言漏れで `swimmy-data-keeper` が `ModuleNotFoundError` で起動できなかった事故を受けて追加した。新しい第三者パッケージをimportしたら、必ずこのファイルにも追記すること。
+
+---
+
 ## 最新引継ぎ: 2026-08-13 — López de Prado統計昇格プロトコル
 
 S-rankは単なるSharpe/CPCV合格では昇格しない。候補選別から昇格まで、以下を必須のfail-closed証跡としている。

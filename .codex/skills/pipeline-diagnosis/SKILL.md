@@ -29,7 +29,7 @@ systemctl --user list-unit-files 'swimmy*' --no-pager 2>/dev/null || true
 ```bash
 ps aux | rg -i "sbcl|guardian|data_keeper|notifier|risk_gateway|backtest_service"
 ss -tulnp | rg "5555|5556|5557|5559|5560|5561|5562|5563|5580|5581"
-for p in $(pgrep -f "backtest_service.py|data_keeper.py|notifier.py|risk_gateway.py|brain.lisp|school-daemon.lisp|guardian/target/release/guardian" | head -n 10); do
+for p in $(pgrep -f "backtest_service.py|data_keeper.py|notifier.py|risk_gateway.py|brain.lisp|school-daemon.lisp|target/release/guardian" | head -n 10); do
   echo "== PID $p =="; cat /proc/$p/cgroup; done
 ```
 3. Read pipeline reports and verify backtest count moves between two reads.

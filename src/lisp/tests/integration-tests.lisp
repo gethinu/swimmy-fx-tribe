@@ -15,7 +15,8 @@
   (let* ((strategy-json "{\"name\":\"INTEGRATION-TEST\",\"sma_short\":10,\"sma_long\":50,\"sl\":0.3,\"tp\":0.6,\"volume\":0.01}")
          (candles-json "[{\"t\":1,\"o\":150.0,\"h\":150.5,\"l\":149.5,\"c\":150.2},{\"t\":2,\"o\":150.2,\"h\":150.8,\"l\":150.0,\"c\":150.6}]")
          (input (format nil "{\"strategy\":~a,\"candles\":~a}" strategy-json candles-json))
-         (guardian-path (merge-pathnames "guardian/target/release/guardian" (uiop:getcwd))))
+         ;; Workspace build output (root Cargo.toml), not guardian/target/.
+         (guardian-path (merge-pathnames "target/release/guardian" (uiop:getcwd))))
     ;; Run guardian --backtest-only with input
     (multiple-value-bind (output error-output exit-code)
         (uiop:run-program (list (namestring guardian-path) "--backtest-only")

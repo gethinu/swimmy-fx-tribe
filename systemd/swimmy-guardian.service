@@ -17,7 +17,10 @@ ExecStartPre=/bin/sleep 2
 ExecStartPre=-/usr/bin/fuser -k 5557/tcp
 # Phase 4: Final cooldown
 ExecStartPre=/bin/sleep 1
-ExecStart=/home/swimmy/swimmy/guardian/target/release/guardian
+# Canonical build output: the root Cargo.toml declares a workspace, so
+# `cargo build --release` writes to <repo>/target/release/guardian. Deploy is
+# therefore a plain rebuild — never copy the binary into guardian/target/.
+ExecStart=/home/swimmy/swimmy/target/release/guardian
 StandardOutput=append:/home/swimmy/swimmy/logs/guardian.log
 StandardError=append:/home/swimmy/swimmy/logs/guardian.log
 Environment=HOME=/home/swimmy
