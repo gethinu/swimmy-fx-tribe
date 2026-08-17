@@ -2,6 +2,10 @@
 Description=Swimmy MT5 Account Sync Service
 Documentation=https://github.com/gethinu/swimmy-fx-tribe
 After=network.target
+# Start rate limiting is parsed only in [Unit]; systemd drops these keys with an
+# "Unknown key name ... ignoring" warning anywhere else.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -9,8 +13,6 @@ WorkingDirectory=%h/swimmy
 ExecStart=/usr/bin/python3 %h/swimmy/tools/mt5_account_sync.py
 Restart=always
 RestartSec=10
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # Environment
 EnvironmentFile=%h/swimmy/.env

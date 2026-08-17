@@ -16,7 +16,9 @@ sudo systemctl daemon-reload && sudo systemctl restart swimmy-guardian
 - 稼働確認: `ls -l /proc/$(systemctl show swimmy-guardian -p MainPID --value)/exe` が正典パスを指すこと。
 - **Guardianの正典バイナリは `target/release/guardian` のみ。** `guardian/guardian` は2026-07-01のsubtree取り込みで紛れ込んだ追跡済みの旧ビルド成果物（ELF、参照ゼロ）だったため除去し、`.gitignore` に `/guardian/guardian` を追加した。ビルド成果物をリポジトリにコミットしないこと。
 
-**`StartLimitIntervalSec` / `StartLimitBurst` は `[Unit]` に書く。** `[Service]` では systemd が "Unknown key name ... ignoring" として捨てるため、`swimmy-pattern-similarity.service` は `Restart=always` かつ実質無制限で再試行していた（`b822600f` で `[Unit]` へ移動、値は 300s/5 のまま）。ホスト反映後 `systemctl show` が `StartLimitIntervalUSec=10s`（既定値）→ `5min` に変わり、`systemd-analyze verify` の指摘も消えたことを確認済み。なお `systemd/mt5_account_sync.service` と `systemd/strategy_hunter.service` に同じ誤配置が残っている。
+**`StartLimitIntervalSec` / `StartLimitBurst` は `[Unit]` に書く。** `[Service]` では systemd が "Unknown key name ... ignoring" として捨てるため、`swimmy-pattern-similarity.service` は `Restart=always` かつ実質無制限で再試行していた（`b822600f` で `[Unit]` へ移動、値は 300s/5 のまま）。ホスト反映後 `systemctl show` が `StartLimitIntervalUSec=10s`（既定値）→ `5min` に変わり、`systemd-analyze verify` の指摘も消えたことを確認済み。`systemd/mt5_account_sync.service` と `systemd/strategy_hunter.service` にも同じ誤配置があり、同様に `[Unit]` へ移動済み（値は 300s/5 のまま）。新しい unit を書くときは最初から `[Unit]` に置くこと。
+
+**2026-08-17 22:55:26 にWSLディストロが予期せず再起動した。原因は未確定。** 発生時はホストで `git fetch` / `git merge --ff-only` を実行中で、通常のアイドル状態ではなかった。WSLのアイドルシャットダウンと断定できる根拠はない。実害はなく、9サービスすべてが 22:55:56〜22:56:00 に自動復旧している。この機会に、正典unitでの初回ブートで Guardian が `target/release/guardian` から起動すること（コピー運用不要）と、`swimmy-pattern-similarity` の `StartLimitIntervalUSec=5min` が再起動後も維持されることを確認できた。再発する場合は Windows イベントログと `dmesg` の突合が要る。
 
 **Python依存は `requirements.txt`（リポジトリroot）に宣言する。**
 
